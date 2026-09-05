@@ -7,6 +7,9 @@
       <div>
         <strong>{{ packageInfo.name || '共用方案' }}</strong>
         <span class="package-info-pool">方案池剩餘 {{ packageInfo.remaining_sessions ?? 0 }} / {{ packageInfo.total_sessions ?? 0 }} 堂</span>
+        <span v-if="packageInfo.renewal_warning" class="package-info-warning" role="alert">
+          ⚠️ {{ packageInfo.renewal_message || `未來預排超過剩餘 ${packageInfo.overage_sessions ?? 0} 堂，請安排續約或加購` }}
+        </span>
       </div>
     </div>
 
@@ -668,6 +671,13 @@ function computeEndTime(startRaw, durHours) {
   font-size: 12px;
   color: var(--ds-success);
   margin-top: 2px;
+}
+.package-info-warning {
+  display: block;
+  margin-top: 4px;
+  color: var(--ds-warning);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .form-section {

@@ -86,7 +86,7 @@
       :aria-labelledby="`teachers-tab-${tab}`"
       tabindex="0"
     >
-      <AtSkeleton v-if="loading" rows="4" aria-label="老師資料載入中" />
+      <AtSkeleton v-if="shouldShowInitialListSkeleton(loading, teachers)" rows="4" aria-label="老師資料載入中" />
       <div v-else-if="filteredTeachers.length === 0" class="empty-state">
         目前沒有符合條件的老師資料。
       </div>
@@ -482,6 +482,7 @@ import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
+import { isCurrentListRequest, shouldShowInitialListSkeleton } from '../lib/listRefreshState.js';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 
@@ -1017,12 +1018,15 @@ async function getAuthHeaders() {
 }
 
 let loadTimeout = null;
+let loadRequestId = 0;
+let rankRequestId = 0;
 function debouncedLoad() {
   if (loadTimeout) clearTimeout(loadTimeout);
   loadTimeout = setTimeout(loadTeachers, 300);
 }
 
 const loadTeachers = async () => {
+  const requestId = ++loadRequestId;
   loading.value = true;
   try {
     const params = new URLSearchParams();
@@ -1038,18 +1042,20 @@ const loadTeachers = async () => {
       alert('載入老師資料失敗：' + (data?.message || res.statusText));
       return;
     }
+    if (!isCurrentListRequest(requestId, loadRequestId)) return;
     teachers.value = list;
     loadRanks(list.map((t) => t.id).filter((id) => id != null));
   } catch (err) {
     console.error('loadTeachers error:', err);
     alert('載入老師資料時發生錯誤');
   } finally {
-    loading.value = false;
+    if (isCurrentListRequest(requestId, loadRequestId)) loading.value = false;
   }
 };
 
 // 批次撈各老師軍階徽章（後端依角色/opt-out 決定可見性，不回 XP 數字）
 async function loadRanks(ids) {
+  const requestId = ++rankRequestId;
   if (!ids.length) { teacherRanks.value = {}; return; }
   try {
     const headers = { ...(await getAuthHeaders()), 'Content-Type': 'application/json' };
@@ -1062,7 +1068,7 @@ async function loadRanks(ids) {
     const data = await res.json().catch(() => ({}));
     const map = {};
     for (const r of (data?.ranks || [])) map[r.user_id] = r;
-    teacherRanks.value = map;
+    if (isCurrentListRequest(requestId, rankRequestId)) teacherRanks.value = map;
   } catch { /* 徽章為加值資訊，失敗不影響老師列表 */ }
 }
 

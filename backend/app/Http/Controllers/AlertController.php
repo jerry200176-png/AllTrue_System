@@ -73,9 +73,20 @@ class AlertController extends Controller
 
         $countResults = $countQuery->with('student')->get();
         $dateResults  = $dateQuery->with('student')->get();
+        // Unpaid closed contracts must stay actionable in 帳務中心.
+        // settled_pending = 結案（不續報）未繳；contract_amended = 提前結束／改堂數未繳
+        // (in-app #251 / GH #2461 — amended unpaid rows previously vanished from tuition).
         $pendingSettlementResults = StudentClass::query()
             ->where('Stop', 1)
-            ->where('closed_reason', 'settled_pending')
+            ->where(function ($q) {
+                $q->where('closed_reason', 'settled_pending')
+                    ->orWhere(function ($q2) {
+                        $q2->where('closed_reason', 'contract_amended')
+                            ->where(function ($q3) {
+                                $q3->where('Paid', 0)->orWhereNull('Paid');
+                            });
+                    });
+            })
             ->with('student')
             ->get();
         if ($studentIds !== null) {
@@ -787,11 +798,12 @@ class AlertController extends Controller
      * Compute the six-value payment_status for a StudentClass row in alerts/tuition.
      * Priority order (first match wins):
      *   1. pending_report — has an unconfirmed PaymentReport
-     *   2. partial — has partial Invoice payment
-     *   3. unpaid — Paid=0 and no partial/pending
-     *   4. renew_needed — Paid=1, count-mode, RemainingSessions <= 2
-     *   5. monthly_due_soon — date-mode and Paid=1
-     *   6. paid — Paid=1 and none of the above
+     *   2. pending_reconciliation — closed unpaid (settled_pending / contract_amended)
+     *   3. partial — has partial Invoice payment
+     *   4. unpaid — Paid=0 and no partial/pending
+     *   5. renew_needed — Paid=1, count-mode, RemainingSessions <= 2
+     *   6. monthly_due_soon — date-mode and Paid=1
+     *   7. paid — Paid=1 and none of the above
      *
      * "Paid" (for step 3/4 purposes) also counts a fully-covered invoice
      * (paid_amount >= charge) even when the raw Paid flag was never flipped,
@@ -808,11 +820,13 @@ class AlertController extends Controller
             return 'pending_report';
         }
 
-        if ((string) ($sc->getAttribute('closed_reason') ?? '') === 'settled_pending') {
+        $closedReason = (string) ($sc->getAttribute('closed_reason') ?? '');
+        $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);
+
+        // Closed-but-unpaid settlements stay in the tuition actionable queue.
+        if (!$isPaid && in_array($closedReason, ['settled_pending', 'contract_amended'], true)) {
             return 'pending_reconciliation';
         }
-
-        $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);
 
         if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
             return 'partial';

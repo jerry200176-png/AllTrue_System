@@ -34,13 +34,13 @@ describe('TransferSessionsModal', () => {
     await wrapper.find('input[type="checkbox"]').setValue(true);
     expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined(); // still no target id
 
-    await wrapper.find('input[type="text"]').setValue('1849');
+    await wrapper.findAll('.target-course-option')[0].trigger('click');
     expect(wrapper.find('button.primary').attributes('disabled')).toBeUndefined();
   });
 
   it('emits submit with the selected session ids (as numbers) and target course id', async () => {
     const wrapper = mountModal();
-    await wrapper.find('input[type="text"]').setValue('1849');
+    await wrapper.findAll('.target-course-option')[0].trigger('click');
     const checkboxes = wrapper.findAll('input[type="checkbox"]');
     await checkboxes[0].setValue(true);
     await checkboxes[1].setValue(true);

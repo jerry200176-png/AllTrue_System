@@ -55,7 +55,7 @@
           <label>搜尋姓名</label>
           <div class="search-input-wrap">
             <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
-            <input v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
+            <input v-model="filters.name" placeholder="輸入姓名…" @input="debouncedLoad" />
           </div>
         </div>
         <div>
@@ -388,16 +388,11 @@
                     <details class="student-course-card__actions">
                       <summary>更多操作</summary>
                       <div class="student-course-card__actions-body">
-                        <button
-                          type="button"
-                          :class="['small', paymentStatusButtonClass(course)]"
-                          title="點擊切換繳費狀態"
-                          :disabled="isPaymentStatusPending(course.id)"
-                          @click="togglePaymentStatus(course, student.name)"
-                        >{{ paymentStatusButtonLabel(course) }}</button>
+                        <span :class="['small', 'btn-status', paymentStatusButtonClass(course)]">{{ paymentStatusButtonLabel(course) }}</span>
+                        <button type="button" class="small ghost" @click="goToTuitionBilling(course)">前往帳務中心</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
-                        <button type="button" class="small ghost" @click="openLatestPaymentInfo(course, student.name)">繳費資訊</button>
+                        <button type="button" class="small ghost" @click="goToTuitionBilling(course)">繳費資訊</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button type="button" class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -525,9 +520,11 @@
             <div v-for="b in lineBindings" :key="b.id" class="line-binding-row">
               <span class="line-binding-id">{{ b.line_user_id_masked }}</span>
               <span class="line-binding-time">{{ b.bound_at }}</span>
-              <button type="button" class="line-binding-remove" @click="removeLineBinding(b.id)">解除</button>
             </div>
           </div>
+          <button type="button" class="small ghost" style="margin-top:8px;" @click="goToBindingManagement(students.find((s) => s.id === editingStudentId))">
+            前往 LINE 綁定管理
+          </button>
         </div>
 
         <div v-if="editingStudentId && multiGuardianEnabled" class="form-section-title">家長／監護人</div>
@@ -580,7 +577,7 @@
         </div>
         <div class="form-group">
           <label>備註</label>
-          <textarea v-model="studentForm.notes" rows="2" placeholder="特殊需求、過敏、家長偏好等..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+          <textarea v-model="studentForm.notes" rows="2" placeholder="特殊需求、過敏、家長偏好等…" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
           <div v-if="studentForm.latest_payment_note" class="student-latest-payment-note" role="note">
             <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
             <div>
@@ -618,7 +615,7 @@
         />
 
         <div v-if="courseForm.payment_type === 'session'" class="quick-add-session-link" style="margin: 12px 0 4px; text-align: right;">
-          <button type="button" class="ghost small" @click="openQuickAddSession">＋ 補課 / 補登（總堂數不變）</button>
+          <button type="button" class="ghost small" @click="goToCourseMgmtOps({ id: editingCourseId, student_id: courseForm.student_id }, selectedStudent?.name)">補課／補登請至課程管理 →</button>
         </div>
 
         <div class="actions">
@@ -629,38 +626,6 @@
     </div>
 
     <ToastWithUndo ref="toastRef" />
-
-    <!-- Payment Entry Modal — 核帳登記（未繳費→已繳費必須填繳款日期） -->
-    <PaymentEntryModal
-      :show="paymentEntryOpen"
-      :row="paymentEntryRow"
-      @close="paymentEntryOpen = false"
-      @confirmed="onPaymentEntryConfirmed"
-    />
-
-    <ReceiptModal
-      :show="receiptOpen"
-      :report-id="receiptReportId"
-      @close="receiptOpen = false"
-    />
-
-    <LatestPaymentInfoModal
-      :show="latestPaymentOpen"
-      :course="latestPaymentCourse"
-      @close="latestPaymentOpen = false"
-      @view-receipt="openReceiptByReport"
-    />
-
-    <QuickAddSessionModal
-      :show="showQuickAddSession"
-      :form="quickAddSessionForm"
-      :time-options="TIME_OPTIONS_30"
-      :conflict="quickAddConflict"
-      :checking="quickAddChecking"
-      @close="showQuickAddSession = false"
-      @submit="submitQuickAddSession"
-      @check="runQuickAddCheck"
-    />
 
     <UniversalClassScheduler
       v-if="showCourseModal && !editingCourseId"
@@ -728,6 +693,7 @@
 
         <div class="actions" style="margin-top: 20px;">
           <button type="button" class="ghost" @click="showInvoiceModal = false">關閉</button>
+          <button type="button" class="small primary" @click="goToTuitionBilling(invoiceModalCourse); showInvoiceModal = false">前往帳務中心</button>
         </div>
       </div>
     </div>
@@ -904,13 +870,14 @@ import {
   findCourseForPurchase,
   normalizeActiveCourseConflicts,
 } from '../lib/enrollmentConflictDecision';
-import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
-import PaymentEntryModal from '../components/PaymentEntryModal.vue';
-import ReceiptModal from '../components/ReceiptModal.vue';
-import LatestPaymentInfoModal from '../components/LatestPaymentInfoModal.vue';
-import { useReceiptFlow } from '../composables/useReceiptFlow.js';
+import {
+  buildTuitionCollectNav,
+  buildCourseMgmtOpsNav,
+  buildBindingManagementNav,
+  tuitionIntentForPaymentStatus,
+} from '../lib/authoritativeMutationRoutes.js';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
@@ -924,6 +891,26 @@ const props = defineProps({
   initialStudentIntent: String,
 });
 const emit = defineEmits(['navigate', 'clear-initial-student']);
+
+const goToTuitionBilling = (course) => {
+  emit('navigate', buildTuitionCollectNav(course, {
+    intent: tuitionIntentForPaymentStatus(course?.payment_status),
+  }));
+};
+
+const goToCourseMgmtOps = (course, studentName = '') => {
+  emit('navigate', {
+    ...buildCourseMgmtOpsNav(course),
+    studentName,
+  });
+};
+
+const goToBindingManagement = (student) => {
+  emit('navigate', buildBindingManagementNav({
+    studentId: student?._laravelId ?? student?.id,
+    studentName: student?.name || '',
+  }));
+};
 
 // --- State ---
 const subjectOptions = ref([...SUBJECTS]);
@@ -1078,36 +1065,8 @@ const interceptPendingStudent = ref(null);
 const interceptOriginalPayload = ref(null);
 const interceptPendingClassType = ref('');
 const forceSubmitting = ref(false);
-const pendingPaymentStatusIds = ref(new Set());
-const receiptFlow = useReceiptFlow({
-  refreshCourses: (studentId) => loadStudentCourses(studentId),
-  toast: (msg) => showToast(msg),
-});
-const {
-  paymentEntryOpen,
-  paymentEntryRow,
-  receiptOpen,
-  receiptReportId,
-  latestPaymentOpen,
-  latestPaymentCourse,
-  openReceiptByReport,
-  onPaymentEntryConfirmed,
-} = receiptFlow;
 
-// Quick add session (single extra lesson within existing session count)
-const showQuickAddSession = ref(false);
-const quickAddConflict = ref(null);
-const quickAddChecking = ref(false);
-const quickAddSessionForm = ref({ session_date: '', start_time: '16:00', duration_minutes: 120, note: '', auto_approve: true, student_name: '', subject: '' });
-
-const isPaymentStatusPending = (courseId) => pendingPaymentStatusIds.value.has(String(courseId));
-const setPaymentStatusPending = (courseId, pending) => {
-  const next = new Set(pendingPaymentStatusIds.value);
-  const key = String(courseId);
-  if (pending) next.add(key);
-  else next.delete(key);
-  pendingPaymentStatusIds.value = next;
-};
+// Quick add session moved to course-mgmt (authoritative scheduling ops)
 const paymentStatusButtonClass = (course) => {
   if (course?.payment_status === 'paid') return 'ghost';
   if (course?.payment_status === 'pending_report') return 'ghost';
@@ -1375,7 +1334,7 @@ const getCoursePrimaryAction = (course) => {
 const openCoursePrimaryAction = (course, studentName = '') => {
   const action = getCoursePrimaryAction(course);
   if (action.key === 'renew') return openAddSessionsForCourse(course);
-  if (action.key === 'payment') return openLatestPaymentInfo(course, studentName);
+  if (action.key === 'payment') return goToTuitionBilling(course);
   return editCourse(course);
 };
 const getCourseProgressSummary = (course) => {
@@ -1758,6 +1717,10 @@ const loadStudentCourses = async (studentId) => {
           package_remaining_sessions: c.package_remaining_sessions ?? null,
           package_total_sessions: c.package_total_sessions ?? null,
           package_used_sessions: c.package_used_sessions ?? null,
+          package_future_planned_sessions: c.package_future_planned_sessions ?? 0,
+          package_overage_sessions: c.package_overage_sessions ?? 0,
+          package_renewal_warning: c.package_renewal_warning ?? false,
+          package_renewal_message: c.package_renewal_message ?? null,
           status: c.status ?? null,
           closed_reason: c.closed_reason ?? null,
           paid_at: c.paid_at ?? null,
@@ -1837,6 +1800,10 @@ const loadAllStudentCourses = async () => {
             package_remaining_sessions: c.package_remaining_sessions ?? null,
             package_total_sessions: c.package_total_sessions ?? null,
             package_used_sessions: c.package_used_sessions ?? null,
+            package_future_planned_sessions: c.package_future_planned_sessions ?? 0,
+            package_overage_sessions: c.package_overage_sessions ?? 0,
+            package_renewal_warning: c.package_renewal_warning ?? false,
+            package_renewal_message: c.package_renewal_message ?? null,
             status: c.status ?? null,
             closed_reason: c.closed_reason ?? null,
             paid_at: c.paid_at ?? null,
@@ -1901,8 +1868,11 @@ const focusInitialStudent = async () => {
     const targetCourse = Number.isSafeInteger(targetCourseId) && targetCourseId > 0
       ? (studentCourses.value[student.id] || []).find((course) => Number(course?.id) === targetCourseId)
       : null;
-    if (props.initialStudentIntent === 'edit' && targetCourse) {
-      editCourse(targetCourse);
+    if (targetCourse) {
+      selectStudentCourse(student.id, targetCourse.id);
+      if (props.initialStudentIntent === 'edit') editCourse(targetCourse);
+      else if (props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew') openAddSessionsForCourse(targetCourse);
+      else if (props.initialStudentIntent === 'close') closeCourseNoRenew(targetCourse, student.name);
     }
     handledInitialFocusKey.value = focusKey;
     emit('clear-initial-student');
@@ -2062,40 +2032,6 @@ const removeGuardian = async (guardianLinkId) => {
     }
   } catch {
     /* ignore network errors; list refresh will surface state */
-  }
-};
-
-const removeLineBinding = async (bindingId) => {
-  if (!confirm('確定要解除此 LINE 綁定？解除後家長需重新綁定。')) return;
-  const studentId = editingStudentId.value;
-  const st = students.value.find(s => s.id === studentId);
-  const laravelId = st?._laravelId ?? st?.id;
-  if (!laravelId) return;
-  try {
-    const sess = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
-    const token = sess?.access_token;
-    if (!token) return;
-    const res = await fetch(`/api/v1/students/${laravelId}/line-bindings/${bindingId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (res.ok) {
-      lineBindings.value = lineBindings.value.filter(b => b.id !== bindingId);
-      const idx = students.value.findIndex(
-        s => s.id === studentId || s._laravelId === laravelId
-      );
-      if (idx !== -1) {
-        students.value[idx] = {
-          ...students.value[idx],
-          line_bound: lineBindings.value.length > 0,
-        };
-      }
-      showToast('已解除綁定');
-    } else {
-      alert('解除失敗，請重試');
-    }
-  } catch (_) {
-    alert('解除失敗，請重試');
   }
 };
 
@@ -2628,6 +2564,10 @@ const editPackageInfo = computed(() => {
     name: c.package_name || '共用方案',
     total_sessions: c.package_total_sessions ?? 0,
     remaining_sessions: c.package_remaining_sessions ?? 0,
+    future_planned_sessions: c.package_future_planned_sessions ?? 0,
+    overage_sessions: c.package_overage_sessions ?? 0,
+    renewal_warning: c.package_renewal_warning ?? false,
+    renewal_message: c.package_renewal_message ?? null,
   };
 });
 const editContextTitle = computed(() => {
@@ -2910,101 +2850,6 @@ const deleteCourse = async (course) => {
   await loadAllStudentCourses();
 };
 
-// --- Quick Add Session (single extra lesson, no total increase) ---
-function openQuickAddSession() {
-  const form = courseForm.value;
-  quickAddConflict.value = null;
-  quickAddChecking.value = false;
-  quickAddSessionForm.value = {
-    session_date: new Date().toISOString().slice(0, 10),
-    start_time: normalizeTo30Min(form.start_time || '16:00'),
-    duration_minutes: Math.max(30, Math.round((Number(form.duration_hours) || 2) * 60)),
-    note: '',
-    auto_approve: true,
-    student_name: selectedStudent.value?.name || '—',
-    subject: form.subject || 'Math',
-  };
-  showQuickAddSession.value = true;
-  runQuickAddCheck();
-}
-
-let _quickAddCheckTimer = null;
-async function runQuickAddCheck() {
-  const courseId = editingCourseId.value;
-  if (!courseId) return;
-  const form = quickAddSessionForm.value;
-  if (!form.session_date || !form.start_time) return;
-  clearTimeout(_quickAddCheckTimer);
-  _quickAddCheckTimer = setTimeout(async () => {
-    quickAddChecking.value = true;
-    quickAddConflict.value = null;
-    try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
-      if (!token) return;
-      const res = await fetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
-      });
-      const json = await res.json().catch(() => ({}));
-      quickAddConflict.value = json;
-    } catch (_) {
-      quickAddConflict.value = null;
-    } finally {
-      quickAddChecking.value = false;
-    }
-  }, 300);
-}
-
-async function submitQuickAddSession() {
-  const courseId = editingCourseId.value;
-  if (!courseId) return;
-  if (!quickAddSessionForm.value.session_date) { alert('請選擇上課日期'); return; }
-  if (!quickAddSessionForm.value.start_time) { alert('請選擇開始時間'); return; }
-  const durationMinutes = Number(quickAddSessionForm.value.duration_minutes || 0);
-  if (!Number.isFinite(durationMinutes) || durationMinutes < 30) { alert('時長至少 30 分鐘'); return; }
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入後再試'); return; }
-    const res = await fetch(`/api/v1/student-classes/${courseId}/add-session`, {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        session_date: quickAddSessionForm.value.session_date,
-        start_time: quickAddSessionForm.value.start_time,
-        duration_minutes: durationMinutes,
-        note: quickAddSessionForm.value.note || null,
-        auto_approve: !!quickAddSessionForm.value.auto_approve,
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      if (res.status === 409 && json?.suggested_actions?.length) {
-        quickAddConflict.value = json;
-        runQuickAddCheck();
-      } else {
-        const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-        alert(details || json?.message || '補課失敗');
-      }
-      return;
-    }
-    showQuickAddSession.value = false;
-    quickAddConflict.value = null;
-    const movedFrom = String(json?.moved_from_date || '').slice(0, 10);
-    const defaultMsg = movedFrom
-      ? `已加課完成，已將原 ${movedFrom} 的堂次調整到新日期（總堂數不變）。`
-      : (json?.no_total_increase ? '已加課完成（總堂數不變）。' : '已加課完成。');
-    alert(json?.message ? `${json.message}\n${defaultMsg}` : defaultMsg);
-    const sid = selectedStudent.value?.id;
-    if (sid) await loadStudentCourses(sid);
-    await loadAllStudentCourses();
-  } catch (e) {
-    alert('補課失敗：' + (e?.message || '請稍後再試'));
-  }
-}
-
 // --- Add Sessions (per-course) ---
 const openAddSessionsForCourse = (course) => {
   if (course?.payment_type === 'monthly') {
@@ -3177,72 +3022,6 @@ const submitRenewMonthly = async (endDate) => {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
   }
 };
-
-// --- Toggle Payment Status ---
-const togglePaymentStatus = async (course, studentName = '') => {
-  const courseId = course?.id;
-  if (!courseId || isPaymentStatusPending(courseId)) return;
-
-  if (course.payment_status === 'pending_report') {
-    alert('此課程已有待對帳回報，請到帳務中心確認入帳或退回後再登錄。');
-    return;
-  }
-
-  // 未繳費 → 已回報：走登記 Modal；確認入帳後才變已繳費
-  if (course.payment_status !== 'paid') {
-    const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
-    receiptFlow.openPaymentEntry({
-      id: courseId,
-      student_name: studentName || '此學生',
-      subject: subjectLabel || course.subject || '',
-      charge: course.charge ?? 0,
-    }, course.student_id ?? null);
-    return;
-  }
-
-  // 已繳費 → 未繳費：保留原有 confirm 流程
-  const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
-  const targetLabel = studentName || '此學生';
-  if (!confirm(`確定將「${targetLabel}」${subjectLabel ? `的${subjectLabel}課程` : '課程'}改為「未繳費」嗎？`)) return;
-
-  setPaymentStatusPending(courseId, true);
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) {
-      alert('登入狀態已過期，請重新登入後再試。');
-      return;
-    }
-    const res = await fetch(`/api/v1/student-classes/${courseId}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ payment_status: 'unpaid', paid_at: null }),
-    });
-    // #799 阻擋＋導引：有收款入帳紀錄時後端回 409，提示去收費頁作廢，不再靜默回跳
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      alert(errBody?.message || '改為未繳費失敗，請稍後再試。');
-      return;
-    }
-    course.payment_status = 'unpaid';
-    course.last_paid_at = null;
-    course.paid_at = null;
-  } catch (e) {
-    alert('更新繳費狀態失敗：' + (e?.message || '請稍後再試'));
-  } finally {
-    setPaymentStatusPending(courseId, false);
-  }
-};
-
-function openLatestPaymentInfo(course, studentName = '') {
-  const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
-  receiptFlow.openLatestPaymentInfo({
-    id: course.id,
-    student_name: studentName || '此學生',
-    subject: subjectLabel || course.subject || '',
-  });
-}
 
 // --- CSV Import ---
 const openImportDialog = () => {

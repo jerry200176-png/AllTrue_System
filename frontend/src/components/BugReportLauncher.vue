@@ -367,8 +367,9 @@ function closeForm() {
 }
 
 function openSubmittedReport() {
+  const bugId = submittedBugId.value;
   closeForm();
-  emit('open-bugs');
+  emit('open-bugs', bugId);
 }
 
 function onPaste(event) {

@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Campus;
+use App\Models\Guardian;
 use App\Models\ParentBindingAttempt;
 use App\Models\ParentSession;
 use App\Models\Student;
+use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
 use App\Services\ParentBinding\ParentBindingClassifier;
 use App\Support\ParentBinding\ParentBindingCodes;
@@ -32,6 +34,27 @@ class ParentBindingObservabilityTest extends TestCase
         return Student::create([
             'name' => $name, 'CampusID' => $cid, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(),
             'Notify_Token' => '', 'Phone' => $phone, 'parent_phone' => $parent, 'status' => 'active',
+        ]);
+    }
+
+    private function guardianLink(Student $student, ?string $phone, bool $primary, string $status = StudentGuardian::STATUS_ACTIVE): StudentGuardian
+    {
+        $guardian = Guardian::create([
+            'display_name' => '測試家長',
+            'phone' => $phone,
+            'phone_normalized' => Guardian::normalizePhone($phone),
+        ]);
+
+        return StudentGuardian::create([
+            'student_id' => $student->id,
+            'guardian_id' => $guardian->id,
+            'campus_id' => $student->CampusID,
+            'role' => StudentGuardian::ROLE_GUARDIAN,
+            'is_primary' => $primary,
+            'status' => $status,
+            'notify_learning_feedback' => true,
+            'notify_tuition' => true,
+            'source' => StudentGuardian::SOURCE_STAFF,
         ]);
     }
 
@@ -175,5 +198,36 @@ class ParentBindingObservabilityTest extends TestCase
         $this->line($campus, 'U' . str_repeat('h', 32), '綁定 無表 0977777777')->assertOk();
         $this->assertTrue(StudentLineBinding::where('line_user_id', 'U' . str_repeat('h', 32))->exists());
         ParentBindingAttempt::flushEventListeners();
+    }
+
+    public function test_classifier_accepts_primary_secondary_and_legacy_phones_but_not_revoked_or_missing(): void
+    {
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $campus = Campus::factory()->create();
+        $classifier = new ParentBindingClassifier();
+
+        $primary = $this->student($campus->id, '主要家長', '', '');
+        $this->guardianLink($primary, '0912000001', true);
+        $this->assertSame('success', $classifier->classifyLineStudentId($primary, '0912000001', $campus->id)['outcome']);
+
+        $secondary = $this->student($campus->id, '次要家長', '', '');
+        $this->guardianLink($secondary, null, true);
+        $this->guardianLink($secondary, '0912000002', false, StudentGuardian::STATUS_READ_ONLY);
+        $this->assertSame('success', $classifier->classifyLineStudentId($secondary, '0912000002', $campus->id)['outcome']);
+        $this->assertSame('success', $classifier->classifyPortalName(collect([$secondary]), '0912000002')['outcome']);
+
+        config(['perfflags.multi_guardian_enabled' => false]);
+        $legacy = $this->student($campus->id, '舊資料', '', '0912000004');
+        $this->assertSame('success', $classifier->classifyLineStudentId($legacy, '0912000004', $campus->id)['outcome']);
+
+        config(['perfflags.multi_guardian_enabled' => true]);
+        $revoked = $this->student($campus->id, '已撤銷', '', '');
+        $this->guardianLink($revoked, '0912000005', true, StudentGuardian::STATUS_REVOKED);
+        $revokedResult = $classifier->classifyLineStudentId($revoked, '0912000005', $campus->id);
+        $this->assertSame('CONTACT_PHONE_MISSING', $revokedResult['reasonCode']);
+
+        $missing = $this->student($campus->id, '未登記', '', '');
+        $missingResult = $classifier->classifyLineStudentId($missing, '0912000006', $campus->id);
+        $this->assertSame('CONTACT_PHONE_MISSING', $missingResult['reasonCode']);
     }
 }

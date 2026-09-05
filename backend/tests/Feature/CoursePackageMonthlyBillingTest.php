@@ -280,14 +280,14 @@ class CoursePackageMonthlyBillingTest extends TestCase
 
         // 建立當月 3 堂 attended：第 1 科 2 堂、第 2 科 1 堂
         $members = StudentClass::where('PackageID', $pkgId)->get();
-        $today = Carbon::today();
+        $sessionStart = Carbon::parse($members[0]->StartDate)->startOfDay();
         foreach ([[$members[0], 2], [$members[1], 1]] as [$m, $n]) {
             for ($i = 0; $i < $n; $i++) {
                 ClassSession::create([
                     'StudentClassID' => $m->ID,
-                    'SessionDate'    => $today->copy()->startOfMonth()->addDays($i)->toDateString(),
-                    'StartTime'      => '16:00',
-                    'EndTime'        => '18:00',
+                    'SessionDate'    => $sessionStart->toDateString(),
+                    'StartTime'      => $i === 0 ? '16:00' : '18:00',
+                    'EndTime'        => $i === 0 ? '18:00' : '20:00',
                     'Status'         => 'attended',
                 ]);
             }

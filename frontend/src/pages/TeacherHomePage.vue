@@ -105,7 +105,12 @@
     </button>
 
     <!-- Single source of truth for today's work. Secondary metrics stay below the fold. -->
-    <section id="teacher-work-queue" class="th-work-queue card" data-guide="teacher-home-work-queue" aria-labelledby="teacher-work-queue-title">
+    <section
+      id="teacher-work-queue"
+      class="th-work-queue card"
+      data-guide="teacher-home-today"
+      aria-labelledby="teacher-work-queue-title"
+    >
       <div class="th-work-queue__header">
         <div>
           <p class="th-work-queue__eyebrow">今天</p>

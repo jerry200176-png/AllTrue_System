@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-09-04T15:53:00Z — Phase C write-back for in-app #251: unpaid contract_amended tuition visibility fix merged as `ff177339d9d7b1cdf35c059ef87f5cc6c9cda946` (PR #2462), Deploy to Pi run `33891742470` succeeded, Calendar/Course Production Acceptance (read-only) run `33891824518` succeeded. Root cause: tuition alerts only listed settled_pending closed unpaid courses, so early-settle contract_amended unpaid rows vanished from 帳務中心. No production billing data mutation; public reply requests reporter verification.
+
 # kickoff 2026-09-03T02:42:00Z — Phase C write-back for in-app #247: minimal availability observability merged in `d21ed8de1a2a80034aee50d214ac68b7944f3251`, Deploy to Pi run `33707145582` succeeded, and target-specific read-only evidence confirms the exact slot remains selectable with two seats remaining. No capacity semantics or production data changed; public reply requests reporter verification.
 
 # kickoff 2026-09-03T02:31:00Z — Phase C write-back for in-app #250: transfer-session replenishment fix merged as `d21ed8de1a2a80034aee50d214ac68b7944f3251`, Deploy to Pi run `33707145582` succeeded, production manifest/health/post-merge smoke verified, and target-specific read-only evidence run `33707548893` reports exact student match 1, four target classes, zero underfilled automatic recurrence classes. Public reply requests reporter verification; no production billing or historical course data mutation.

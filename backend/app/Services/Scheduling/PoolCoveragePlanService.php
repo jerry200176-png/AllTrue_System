@@ -2,6 +2,8 @@
 
 namespace App\Services\Scheduling;
 
+use App\Models\CoursePackage;
+use App\Services\SharedPackagePlanningService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -71,6 +73,10 @@ final class PoolCoveragePlanService
 
         $candidates = [];
         $memberSummaries = [];
+        $groupSlotKeys = [];
+        $isGroupPackage = in_array((string) ($pkg->class_type ?? ''), [
+            'one_on_two', 'one_on_three', 'one_on_many', 'tutoring',
+        ], true);
         foreach ($memberIds as $scId) {
             $dto = $this->preview->preview($scId, $throughDate, $today, $requireCampusId);
             $p = $dto['preview'];
@@ -88,6 +94,14 @@ final class PoolCoveragePlanService
                     continue; // already materialized; coverage attach is later write path
                 }
                 if (($o['state'] ?? '') === 'planned_covered' || ($o['state'] ?? '') === 'planned_uncovered') {
+                    if ($isGroupPackage) {
+                        $slotKey = $packageId . '|' . substr((string) ($o['date'] ?? ''), 0, 10)
+                            . '|' . substr((string) ($o['start_hm'] ?? ''), 0, 5);
+                        if (isset($groupSlotKeys[$slotKey])) {
+                            continue;
+                        }
+                        $groupSlotKeys[$slotKey] = true;
+                    }
                     $candidates[] = [
                         'student_class_id' => $scId,
                         'date' => $o['date'],
@@ -99,9 +113,12 @@ final class PoolCoveragePlanService
             }
         }
 
+        $packagePlanning = app(SharedPackagePlanningService::class)->summarize(
+            CoursePackage::query()->findOrFail($packageId)
+        );
         $plan = $this->allocator->plan(
             $packageId,
-            (int) ($pkg->remaining_sessions ?? 0),
+            (int) $packagePlanning['remaining_sessions'],
             $candidates,
             $campusId > 0 ? $campusId : null,
         );
@@ -118,8 +135,13 @@ final class PoolCoveragePlanService
                 'horizon_expected_new' => count($candidates),
                 'horizon_coverable' => $plan['pool']['held_planned'],
                 'horizon_uncovered' => $plan['pool']['uncovered_planned'],
-                'ensure_would_block' => $plan['pool']['ensure_would_block'],
-                'ensure_block_reason' => $plan['pool']['ensure_block_reason'],
+                // Coverage planning reports the renewal gap but does not own
+                // the scheduling gate. Future rows remain creatable for every
+                // subject in the shared package.
+                'ensure_would_block' => false,
+                'ensure_block_reason' => null,
+                'renewal_warning' => $plan['pool']['uncovered_planned'] > 0,
+                'overage_sessions' => $plan['pool']['uncovered_planned'],
             ],
         ];
     }

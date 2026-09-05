@@ -4,6 +4,353 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-05-admissions-funnel-v1",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "新生問班可直接追蹤",
+    "summary": "主任可認領新生問班並安排下一步追蹤。",
+    "items": [
+      "「新生問班」會集中顯示新需求，主任可認領負責並查看目前狀態與下一步。",
+      "可在同一筆紀錄設定下次追蹤日期、留下工作備註並查看處理歷程。",
+      "請認領自己負責的詢問，完成聯絡後更新狀態，避免佇列留下無人跟進的案件。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "「新生問班」會集中顯示新需求，主任可認領負責並查看目前狀態與下一步。",
+          "可在同一筆紀錄設定下次追蹤日期、留下工作備註並查看處理歷程。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "請認領自己負責的詢問，完成聯絡後更新狀態，避免佇列留下無人跟進的案件。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:admissions-ownership-history",
+      "github:#2472",
+      "deploy:33942384695"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
+    "id": "staff-2026-09-05-subject-units-timeline",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "科目數改為每日明細",
+    "summary": "主任可比較授權分校內的老師與每日科目數；老師只看到自己的資料。",
+    "items": [
+      "科目數現在按日期、分校、科目與老師拆開顯示，可直接看出每日變化與跨分校差異。",
+      "正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "科目數現在按日期、分校、科目與老師拆開顯示，可直接看出每日變化與跨分校差異。",
+          "正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:subject-units-timeline"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
+    "id": "staff-2026-09-05-search-and-bug-tracking",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "搜尋更穩定，Bug 回報可直接追蹤",
+    "summary": "查找時不再閃爍，送出 Bug 後可直接開啟該筆進度。",
+    "items": [
+      "老師與課程查找在輸入或切換篩選時會保留目前列表，連續快速搜尋也只顯示最新條件的結果。",
+      "Bug 回報送出後點「查看回報進度」，會直接開啟剛送出的回報詳情與目前狀態。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師與課程查找在輸入或切換篩選時會保留目前列表，連續快速搜尋也只顯示最新條件的結果。",
+          "Bug 回報送出後點「查看回報進度」，會直接開啟剛送出的回報詳情與目前狀態。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:search-and-bug-tracking"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
+    "id": "staff-2026-09-05-high-frequency-ux",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "高頻核心頁面更容易完成工作",
+    "summary": "新生問班、科目數、課程管理與學生管理減少切換，重點與下一步更清楚。",
+    "items": [
+      "新生問班會先檢查必填資料，切換步驟後保留鍵盤焦點；主任可在同一頁查看清單、明細與下一步。",
+      "科目數先呈現趨勢與日明細，計算說明預設收合；課程管理的共用方案狀態不一致時會補充逐科閱讀提示。",
+      "學生管理的搜尋與備註提示文字更一致，四個高頻頁面沿用既有 responsive 與設計系統。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新生問班會先檢查必填資料，切換步驟後保留鍵盤焦點；主任可在同一頁查看清單、明細與下一步。",
+          "科目數先呈現趨勢與日明細，計算說明預設收合；課程管理的共用方案狀態不一致時會補充逐科閱讀提示。",
+          "學生管理的搜尋與備註提示文字更一致，四個高頻頁面沿用既有 responsive 與設計系統。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:high-frequency-ux"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
+    "id": "staff-2026-09-04-shared-package-planning-entitlement",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "多科共用方案預排與堂數提醒",
+    "summary": "共用預排不佔其他科堂數；超排會提醒續約或加購。",
+    "items": [
+      "預排不先扣堂，也不會阻擋其他科建立 recurring schedule。",
+      "超排仍可排課，系統會顯示超排與續約／加購提醒。",
+      "取消、刪除、轉課、減少堂數與單科方案維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "預排不先扣堂，也不會阻擋其他科建立 recurring schedule。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "超排仍可排課，系統會顯示超排與續約／加購提醒。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "取消、刪除、轉課、減少堂數與單科方案維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:shared-package-planning-entitlement"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
+    "id": "staff-2026-09-04-contract-amended-unpaid-tuition",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "提前結束未繳課程可回帳務中心對帳",
+    "summary": "合約改堂數／提前結束後若還沒繳費，會留在帳務中心待對帳，可登記與入帳。",
+    "items": [
+      "提前結束或改少堂數後仍未繳費的課程，會出現在帳務中心，不會消失。",
+      "請到帳務中心找到該筆「結案待對帳」，先「登記已回報」再「確認入帳」；若先前被退回，可重新登記。",
+      "課程管理會提示尚未完成繳費，並導向帳務中心。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "提前結束或改少堂數後仍未繳費的課程，會出現在帳務中心，不會消失。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "請到帳務中心找到該筆「結案待對帳」，先「登記已回報」再「確認入帳」；若先前被退回，可重新登記。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理會提示尚未完成繳費，並導向帳務中心。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:contract-amended-unpaid-tuition",
+      "github:#2461",
+      "in-app:#251"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
+    "id": "staff-2026-09-04-role-onboarding-v11",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "主任與老師新手任務 V1.1",
+    "summary": "開始前先看任務清單，稍後可繼續，完成後有清楚回饋。",
+    "items": [
+      "新手導覽開始前會顯示四個關鍵任務與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開會保留目前進度。",
+      "導覽中會顯示任務清單與完成進度，全部完成後會看到任務完成回饋；帳號選單仍可重新觀看。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新手導覽開始前會顯示四個關鍵任務與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開會保留目前進度。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "導覽中會顯示任務清單與完成進度，全部完成後會看到任務完成回饋；帳號選單仍可重新觀看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:role-onboarding-v11"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
+    "id": "staff-2026-09-04-role-onboarding",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "主任與老師新手教學",
+    "summary": "首次進入依角色帶你完成常用工作流程。",
+    "items": [
+      "首次進入 AllTrue 時，主任與老師會看到符合角色的四步驟導覽，依序認識摘要、通知、出勤、評量與行事曆。",
+      "可按上一步、下一步、跳過或完成；之後可從帳號選單重新觀看，已完成使用者不會重複打擾。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "首次進入 AllTrue 時，主任與老師會看到符合角色的四步驟導覽，依序認識摘要、通知、出勤、評量與行事曆。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "可按上一步、下一步、跳過或完成；之後可從帳號選單重新觀看，已完成使用者不會重複打擾。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:role-onboarding"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
+    "id": "staff-2026-09-04-monthly-leave-date-boundary",
+    "publishedAt": "2026-09-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "月結請假維持合約日期",
+    "summary": "月結課程請假只減少實際堂次，不會自動延長到下個月。",
+    "items": [
+      "月結課程月底或最後一堂請假時，只會將該堂標記為請假；未來堂次與原合約起訖日維持不變。",
+      "月結帳務只計算合約日期內的實際可計費堂次；調課到合約外日期會被系統阻擋。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結課程月底或最後一堂請假時，只會將該堂標記為請假；未來堂次與原合約起訖日維持不變。",
+          "月結帳務只計算合約日期內的實際可計費堂次；調課到合約外日期會被系統阻擋。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-04:monthly-leave-date-boundary"
+    ],
+    "date": "2026-09-04",
+    "version": "2026.09.04"
+  },
+  {
     "id": "staff-2026-09-03-multi-guardian-ga",
     "publishedAt": "2026-09-03",
     "effectiveAt": null,

@@ -135,6 +135,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 18. **學習檢測 MVP（#1934，Slice 1）**：[`architecture/RFC_LEARNING_ASSESSMENT_MVP.md`](architecture/RFC_LEARNING_ASSESSMENT_MVP.md) · [`research/2026-08-learning-assessment-mvp.md`](research/2026-08-learning-assessment-mvp.md) — 獨立於點名／學習紀錄／扣堂的檢測定義、結果登錄、主任審核與 audit；先不做線上題庫與家長端。
 19. **單科堂數制轉多科方案安全流程（2026-08-27，Draft，T3）**：[`plans/2026-08-27-single-course-to-package-conversion.md`](plans/2026-08-27-single-course-to-package-conversion.md) — 預檢、零歷史安全轉換、既有歷史導向新方案；不搬移付款／發票／出席／評量帳本。
 20. **出勤／評量一致性與主任指標（2026-08-28，Implementation slice）**：[`architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md`](architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md) — ClassSession 單一事件來源、到課必有評量、請假／缺席／取消不產生，主任首屏分開顯示缺表與待完成。
+21. **新生問班招生閉環 V1（runtime activated；E2E／retention sign-off pending）**：[`architecture/RFC_ADMISSIONS_FUNNEL_V1.md`](architecture/RFC_ADMISSIONS_FUNNEL_V1.md) · REP [`runbooks/admissions-funnel-v1-activation-execution-package.md`](runbooks/admissions-funnel-v1-activation-execution-package.md) · brief [`runbooks/admissions-funnel-v1-founder-activation-brief.md`](runbooks/admissions-funnel-v1-founder-activation-brief.md) — code default `ADMISSIONS_FUNNEL_V1` 仍為 off；production 已由 Founder-gated deploy 啟用，完整 staff／public E2E 與 retention／PII sign-off 仍需指定安全測試身份。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |

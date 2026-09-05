@@ -44,76 +44,6 @@
     />
 
     <template v-else>
-      <!-- 登記已回報 Modal（待對帳，非立刻已繳） -->
-      <AtDialog
-        :open="tuitionModal.visible"
-        title="登記已回報"
-        title-id="tuition-report-dialog-title"
-        panel-class="payment-modal"
-        close-label="關閉登記已回報視窗"
-        @close="tuitionModal.visible = false"
-      >
-          <p class="modal-desc">依家長回報填寫；送出後仍是未繳費，對到帳後由主任按確認入帳才開收據。</p>
-          <div class="modal-item-name">
-            <span><strong>學生</strong>{{ tuitionPaymentRow.student_name || '-' }}</span>
-            <span><strong>科目</strong>{{ tuitionPaymentRow.subject || '學費' }}</span>
-            <span><strong>應繳</strong>{{ formatCurrency(tuitionPaymentRow.charge || tuitionModal.form.amount || 0) }}</span>
-          </div>
-
-          <form @submit.prevent="confirmTuitionPaid">
-            <label class="modal-field">
-              繳費日期 <span class="required">*</span>
-              <input v-model="tuitionModal.form.payment_date" type="date" required :max="todayYmd" />
-            </label>
-
-            <div class="modal-field">
-              <span>繳費方式 <span class="required">*</span></span>
-              <div class="payment-method-row">
-                <label :class="['payment-method-option', { active: tuitionModal.form.payment_method === 'transfer' }]">
-                  <input v-model="tuitionModal.form.payment_method" type="radio" value="transfer" />
-                  匯款
-                </label>
-                <label :class="['payment-method-option', { active: tuitionModal.form.payment_method === 'cash' }]">
-                  <input v-model="tuitionModal.form.payment_method" type="radio" value="cash" />
-                  現金
-                </label>
-              </div>
-            </div>
-
-            <label v-if="tuitionModal.form.payment_method === 'transfer'" class="modal-field">
-              帳號後5碼（選填）
-              <input
-                v-model="tuitionModal.form.account_last5"
-                type="text"
-                maxlength="5"
-                inputmode="numeric"
-                pattern="[0-9]*"
-                placeholder="例如 45688"
-              />
-            </label>
-
-            <label class="modal-field">
-              繳費金額 <span class="required">*</span>
-              <input v-model.number="tuitionModal.form.amount" type="number" required min="0" max="999999" step="1" />
-            </label>
-            <p v-if="Number(tuitionModal.form.amount || 0) === 0" class="modal-hint">免費課程，金額為 NT$ 0，送出後仍待對帳。</p>
-
-            <label class="modal-field">
-              備註（選填）
-              <textarea v-model="tuitionModal.form.note" rows="2" placeholder="例如：官方 LINE 已回報"></textarea>
-            </label>
-
-            <div v-if="tuitionModal.error" class="modal-error">{{ tuitionModal.error }}</div>
-
-            <div class="modal-actions">
-              <AtButton shape="rect" size="sm" variant="ghost" type="button" @click="tuitionModal.visible = false">取消</AtButton>
-              <AtButton shape="rect" size="sm" variant="primary" type="submit" :loading="tuitionModal.processing" :disabled="tuitionModal.processing">
-                {{ tuitionModal.processing ? '處理中...' : '送出已回報' }}
-              </AtButton>
-            </div>
-          </form>
-      </AtDialog>
-
       <AtSection class="controls-card" data-guide="notifications-controls">
         <!-- 主 tabs：待辦案件 / 營運通知（全部僅次要 overview，不作為預設） -->
         <div class="type-tabs" role="tablist" aria-label="收件匣分類" aria-orientation="horizontal">
@@ -292,13 +222,12 @@
               <div class="urgent-actions">
                 <button v-if="!item.read_at" type="button" class="small" @click="markRead(item.id)">標記已讀</button>
                 <button
-                  v-if="canMarkTuitionPaid(item)"
+                  v-if="canGoToTuitionBilling(item)"
                   type="button"
                   class="small primary"
-                  :disabled="isMarkingTuitionPaid(item.id)"
-                  @click="openTuitionModal(item)"
+                  @click="goToTarget(item.Type, item)"
                 >
-                  {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
+                  前往帳務中心
                 </button>
                 <button v-if="canCopyTuition(item)" type="button" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
                 <button v-if="targetPage(item.Type)" type="button" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
@@ -336,13 +265,12 @@
             <div class="item-actions">
               <button v-if="!item.read_at" type="button" class="small" @click="markRead(item.id)">標記已讀</button>
               <button
-                v-if="canMarkTuitionPaid(item)"
+                v-if="canGoToTuitionBilling(item)"
                 type="button"
                 class="small primary"
-                :disabled="isMarkingTuitionPaid(item.id)"
-                @click="openTuitionModal(item)"
+                @click="goToTarget(item.Type, item)"
               >
-                {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
+                前往帳務中心
               </button>
               <button v-if="canCopyTuition(item)" type="button" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
               <button v-if="targetPage(item.Type)" type="button" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
@@ -379,7 +307,6 @@ import AtSection from '../components/design-system/AtSection.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtToolbar from '../components/design-system/AtToolbar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
-import AtDialog from '../components/design-system/AtDialog.vue';
 import AtBadge from '../components/design-system/AtBadge.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -429,23 +356,6 @@ const clearingResolved = ref(false);
 const severityRank = { high: 3, medium: 2, low: 1, info: 0 };
 const hasUrgentWatchInitialized = ref(false);
 const lastUrgentDigest = ref('');
-const markingTuitionPaidIds = ref(new Set());
-
-const todayYmd = computed(() => new Date().toISOString().slice(0, 10));
-const tuitionModal = ref({
-  visible: false,
-  item: null,
-  processing: false,
-  error: '',
-  form: {
-    payment_date: todayYmd.value,
-    payment_method: 'transfer',
-    account_last5: '',
-    amount: 0,
-    note: '',
-  },
-});
-const tuitionPaymentRow = computed(() => paymentRowFromNotification(tuitionModal.value.item));
 
 const getToken = () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
@@ -596,15 +506,6 @@ const paymentAmountFromPayload = (payload) => {
   return total;
 };
 
-const paymentRowFromNotification = (item) => {
-  const payload = payloadOf(item);
-  const amount = paymentAmountFromPayload(payload);
-  return {
-    student_name: payload.student_name || '',
-    subject: payload.subject || (item?.SourceType === 'Invoice' ? '學費' : ''),
-    charge: amount,
-  };
-};
 
 const notificationSummary = (item) => {
   const payload = payloadOf(item);
@@ -626,21 +527,11 @@ const canCopyTuition = (item) => {
   return Number(payload?.student_id || 0) > 0;
 };
 
-const canMarkTuitionPaid = (item) => {
+const canGoToTuitionBilling = (item) => {
   if (!item || item.ResolvedAt) return false;
-  // low_sessions = 已繳但堂數偏低（續課提醒），不應出現「標記已繳費」
+  // low_sessions = 已繳但堂數偏低（續課提醒），帳務中心以續課／加購流程處理
   if (item.Type === 'low_sessions') return false;
   return item.SourceType === 'StudentClass' || item.SourceType === 'Invoice';
-};
-
-const isMarkingTuitionPaid = (notificationId) => markingTuitionPaidIds.value.has(String(notificationId));
-
-const setMarkingTuitionPaid = (notificationId, pending) => {
-  const next = new Set(markingTuitionPaidIds.value);
-  const key = String(notificationId);
-  if (pending) next.add(key);
-  else next.delete(key);
-  markingTuitionPaidIds.value = next;
 };
 
 const copyText = async (text) => {
@@ -1040,70 +931,6 @@ const markAllRead = async () => {
     errorMessage.value = err.message || '全部已讀失敗';
   } finally {
     markingAllRead.value = false;
-  }
-};
-
-const openTuitionModal = (item) => {
-  if (!item?.id || isMarkingTuitionPaid(item.id)) return;
-  const amount = paymentAmountFromPayload(payloadOf(item));
-  tuitionModal.value = {
-    visible: true,
-    item,
-    processing: false,
-    error: '',
-    form: {
-      payment_date: todayYmd.value,
-      payment_method: 'transfer',
-      account_last5: '',
-      amount,
-      note: '',
-    },
-  };
-};
-
-const confirmTuitionPaid = async () => {
-  const item = tuitionModal.value.item;
-  if (!item?.id || !props.branchId) return;
-  const form = tuitionModal.value.form;
-  tuitionModal.value.error = '';
-  const amount = Number(form.amount);
-  if (!form.payment_date || form.amount === '' || form.amount == null || !Number.isFinite(amount) || amount < 0) {
-    tuitionModal.value.error = '請填寫繳費日期與金額，金額不可小於 0';
-    return;
-  }
-
-  tuitionModal.value.processing = true;
-  setMarkingTuitionPaid(item.id, true);
-  errorMessage.value = '';
-  try {
-    const token = getToken();
-    const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/notifications/${item.id}/tuition-paid`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        branch_id: Number(props.branchId),
-        payment_date: form.payment_date,
-        payment_method: form.payment_method,
-        account_last5: form.payment_method === 'transfer' ? form.account_last5 : '',
-        amount,
-        note: form.note?.trim() || '',
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || '送出已回報失敗');
-
-    tuitionModal.value.visible = false;
-    await syncNotifications(false);
-  } catch (err) {
-    tuitionModal.value.error = err.message || '送出已回報失敗';
-  } finally {
-    setMarkingTuitionPaid(item.id, false);
-    tuitionModal.value.processing = false;
   }
 };
 

@@ -35,7 +35,14 @@ class AccountingController extends Controller
             ->where(function ($q) {
                 $q->where('Paid', 1)
                     ->orWhereHas('invoices', fn ($invoice) => $invoice->where('Status', 'paid'))
-                    ->orWhere('closed_reason', 'settled_pending');
+                    ->orWhere('closed_reason', 'settled_pending')
+                    // in-app #251: unpaid early-settle / session-count amend must stay listable
+                    ->orWhere(function ($q2) {
+                        $q2->where('closed_reason', 'contract_amended')
+                            ->where(function ($q3) {
+                                $q3->where('Paid', 0)->orWhereNull('Paid');
+                            });
+                    });
             });
 
         $guard = $this->applyStudentClassCampusGuard($request, $query);
@@ -103,7 +110,10 @@ class AccountingController extends Controller
             }
 
             $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1;
-            $pendingReconciliation = (string) ($course->getAttribute('closed_reason') ?? '') === 'settled_pending';
+            $closedReason = (string) ($course->getAttribute('closed_reason') ?? '');
+            $courseUnpaid = (int) ($course->Paid ?? 0) !== 1;
+            $pendingReconciliation = $closedReason === 'settled_pending'
+                || ($closedReason === 'contract_amended' && $courseUnpaid);
             if ($pendingReconciliation && $invoices->isEmpty()) {
                 $invoiceTotal = (int) ($course->Charge ?? 0);
                 $outstandingTotal = max(0, $invoiceTotal - $appliedTotal);

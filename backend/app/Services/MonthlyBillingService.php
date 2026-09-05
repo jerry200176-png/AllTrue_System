@@ -135,12 +135,31 @@ class MonthlyBillingService
             $anchor = Carbon::today();
         }
 
+        $periodStart = $anchor->copy()->startOfMonth()->toDateString();
+        $periodEnd = $anchor->copy()->endOfMonth()->toDateString();
+
         return ClassSession::query()
             ->where('StudentClassID', (int) $course->getKey())
-            ->whereBetween('SessionDate', [
-                $anchor->copy()->startOfMonth()->toDateString(),
-                $anchor->copy()->endOfMonth()->toDateString(),
-            ])
+            ->whereBetween('SessionDate', [$periodStart, $periodEnd])
+            ->where(function ($query) use ($course, $periodStart, $periodEnd) {
+                // Monthly/date-mode courses are bounded by their contract
+                // interval even when legacy ClassSession rows exist outside it.
+                // Count-based courses retain their purchased-session behavior.
+                if (strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) !== 'date') {
+                    return;
+                }
+
+                $courseStart = $course->getAttribute('StartDate')
+                    ? Carbon::parse($course->getAttribute('StartDate'))->toDateString()
+                    : $periodStart;
+                $courseEnd = $course->getAttribute('EndDate')
+                    ? Carbon::parse($course->getAttribute('EndDate'))->toDateString()
+                    : $periodEnd;
+                $query->whereBetween('SessionDate', [
+                    max($periodStart, $courseStart),
+                    min($periodEnd, $courseEnd),
+                ]);
+            })
             ->whereIn('Status', self::BILLABLE_STATUSES)
             ->orderBy('SessionDate')
             ->orderBy('StartTime')

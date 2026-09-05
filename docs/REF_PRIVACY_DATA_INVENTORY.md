@@ -9,6 +9,7 @@
 | 資料表 | PII 欄位 | 用途 | 保存/刪除機制 |
 |---|---|---|---|
 | `Student` | `name`、`SchoolName`、`RFID`、`LineID`、`TelegramID`/`1`/`2`、`Phone`、`parent_name`、`parent_phone`、`notes`（自由文字） | 核心學生資料 | 由 `StudentController::purgeStudentRecords()`（`app/Http/Controllers/StudentController.php:230-344`）硬刪除，經 `destroy()`/`bulkDestroy()` 觸發。**無 soft-delete 欄位、無排程自動清除、無「退學封存」流程**——只有主任明確操作才會刪除。 |
+| `admission_inquiries` | encrypted `parent_name`／`parent_phone`／`student_name`／`school_name`／`public_notes`／`staff_notes`；keyed `*_hash` for dedupe | 公開問班 prospect（試聽前非 Student） | Feature-flagged dark launch；**無排程 purge**；retention／activation 需 Founder GO（見 RFC_ADMISSIONS_FUNNEL_V1）。List API 遮罩；audit 不寫明文。 |
 | `Teacher` | `T_Name`、`Phone`、`RFID`、`LineID`、`TelegramID`/`1`/`2` | 核心老師資料 | 未發現任何刪除/保存邏輯。 |
 | `User` | `LoginName`、`Name`、`phone`、`AvatarUrl` | 登入身分（老師/職員/管理員帳號） | 未發現刪除/匿名化邏輯；`CheckInactiveUsers` 只發提醒，不停用/刪除帳號。 |
 

@@ -37,7 +37,7 @@ final class ParentBindingClassifier
         if ($n === 0) {
             return $this->pack(C::OUTCOME_FAILURE, C::STUDENT_NOT_FOUND, $campusId, null, 0, 0);
         }
-        if ($nameCandidates->every(fn (Student $s) => StudentContactPhone::normalizedDigits($s) === '')) {
+        if ($nameCandidates->every(fn (Student $s) => !StudentContactPhone::hasUsableContactPhone($s))) {
             return $this->pack(C::OUTCOME_FAILURE, C::CONTACT_PHONE_MISSING, $campusId, null, $n, 0);
         }
         $matches = $nameCandidates->filter(fn (Student $s) => StudentContactPhone::matchesNormalizedInput($s, $normalizedPhone))->values();
@@ -62,11 +62,10 @@ final class ParentBindingClassifier
         if ($normalizedPhone === '') {
             return $this->pack(C::OUTCOME_FAILURE, C::INVALID_INPUT, $campusId, $this->sid($student), 1, 0);
         }
-        $stored = StudentContactPhone::normalizedDigits($student);
-        if ($stored === '') {
+        if (!StudentContactPhone::hasUsableContactPhone($student)) {
             return $this->pack(C::OUTCOME_FAILURE, C::CONTACT_PHONE_MISSING, $campusId, $this->sid($student), 1, 0);
         }
-        if ($stored !== $normalizedPhone) {
+        if (!StudentContactPhone::matchesNormalizedInput($student, $normalizedPhone)) {
             return $this->pack(C::OUTCOME_FAILURE, C::PHONE_MISMATCH, $campusId, $this->sid($student), 1, 0);
         }
         if ($isAlreadyBound && $isAlreadyBound($this->sid($student))) {
@@ -81,10 +80,10 @@ final class ParentBindingClassifier
             return $this->pack(C::OUTCOME_FAILURE, C::STUDENT_NOT_FOUND, null, null);
         }
         $campusId = $this->cid($candidate);
-        if (trim(StudentContactPhone::forStudent($candidate)) === '') {
+        if (!StudentContactPhone::hasUsableContactPhone($candidate)) {
             return $this->pack(C::OUTCOME_FAILURE, C::CONTACT_PHONE_MISSING, $campusId, $this->sid($candidate), 1, 0);
         }
-        if (StudentContactPhone::normalizedDigits($candidate) !== $normalizedPhone) {
+        if (!StudentContactPhone::matchesNormalizedInput($candidate, $normalizedPhone)) {
             return $this->pack(C::OUTCOME_FAILURE, C::PHONE_MISMATCH, $campusId, $this->sid($candidate), 1, 0);
         }
         if ($rawName !== '' && trim((string) ($candidate->getAttribute('name') ?? '')) !== $rawName) {
@@ -99,8 +98,7 @@ final class ParentBindingClassifier
         if ($allByName->isEmpty()) {
             return $this->pack(C::OUTCOME_FAILURE, C::STUDENT_NOT_FOUND, null, null);
         }
-        $matches = $allByName->filter(fn (Student $s) => trim(StudentContactPhone::forStudent($s)) !== ''
-            && StudentContactPhone::normalizedDigits($s) === $normalizedPhone)->values();
+        $matches = $allByName->filter(fn (Student $s) => StudentContactPhone::matchesNormalizedInput($s, $normalizedPhone))->values();
         $hint = $this->cid($this->asStudent($allByName->first()));
         if ($matches->count() > 1) {
             return $this->pack(C::OUTCOME_FAILURE, C::AMBIGUOUS_MATCH, $hint, null, $allByName->count(), $matches->count());
@@ -109,7 +107,7 @@ final class ParentBindingClassifier
             $s = $this->asStudent($matches->first());
             return $this->pack(C::OUTCOME_SUCCESS, null, $this->cid($s), $this->sid($s), $allByName->count(), 1);
         }
-        if ($allByName->contains(fn (Student $s) => trim(StudentContactPhone::forStudent($s)) === '')) {
+        if ($allByName->contains(fn (Student $s) => !StudentContactPhone::hasUsableContactPhone($s))) {
             return $this->pack(C::OUTCOME_FAILURE, C::CONTACT_PHONE_MISSING, $hint, null, $allByName->count(), 0);
         }
         return $this->pack(C::OUTCOME_FAILURE, C::PHONE_MISMATCH, $hint, null, $allByName->count(), 0);
