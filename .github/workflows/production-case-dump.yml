@@ -470,12 +470,27 @@ jobs:
               ->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')
               ->pluck('sg.student_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
             $eligibleStudents = $eligibleIds === [] ? collect() : \App\Models\Student::query()->whereIn('id', $eligibleIds)->get(['id', 'parent_phone', 'Phone']);
+            $eligibleGuardianPhones = $eligibleIds === [] ? collect() : $db::table('student_guardians as sg')
+              ->join('guardians as g', 'g.id', '=', 'sg.guardian_id')->whereIn('sg.status', ['active', 'read_only'])
+              ->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')
+              ->get(['sg.student_id', 'sg.is_primary', 'g.phone_normalized']);
+            $displayPhones = $eligibleStudents->mapWithKeys(function ($student) {{
+              $parent = preg_replace('/[^0-9]/', '', trim((string) ($student->parent_phone ?? ''))) ?? '';
+              $legacy = preg_replace('/[^0-9]/', '', trim((string) ($student->Phone ?? ''))) ?? '';
+              return [(int) $student->getKey() => $parent !== '' ? $parent : $legacy];
+            }});
             $affected = $eligibleStudents->filter(function ($student) use ($db) {{
               $hasPrimaryPhone = $db::table('student_guardians as sg')->join('guardians as g', 'g.id', '=', 'sg.guardian_id')
                 ->where('sg.student_id', (int) $student->getKey())->where('sg.status', '!=', 'revoked')
                 ->where('sg.is_primary', true)->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')->exists();
               return !$hasPrimaryPhone && trim((string) ($student->parent_phone ?? '')) === ''
                 && trim((string) ($student->Phone ?? '')) === '';
+            }})->count();
+            $nonPrimaryDifferent = $eligibleGuardianPhones->groupBy('student_id')->filter(function ($rows, $studentId) use ($displayPhones) {{
+              $displayPhone = (string) ($displayPhones->get((int) $studentId) ?? '');
+              return $rows->contains(fn ($row) => !(bool) $row->is_primary
+                && (string) ($row->phone_normalized ?? '') !== ''
+                && (string) $row->phone_normalized !== $displayPhone);
             }})->count();
             $out['campus'] = ['found' => $parentCampus !== null, 'campus_id' => $parentCampusId];
             $out['feature_flags'] = [
@@ -489,6 +504,7 @@ jobs:
             $out['impact_cohort'] = [
               'students_with_active_or_read_only_guardian_phone' => count($eligibleIds),
               'students_with_guardian_phone_but_no_primary_or_legacy_phone' => $affected,
+              'students_with_non_primary_phone_different_from_display_contact' => $nonPrimaryDifferent,
               'definition' => 'active/read_only guardian phone exists, no non-revoked primary guardian phone, Student.parent_phone and Student.Phone are blank',
             ];
           }} else {{
