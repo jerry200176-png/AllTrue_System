@@ -6,10 +6,12 @@ action_dir="$repo_root/.github/actions/production-ssh-trust"
 setup="$action_dir/setup.sh"
 
 test -x "$setup" || { echo 'setup.sh must be executable' >&2; exit 1; }
-! rg -n --glob '*.yml' --glob '*.yaml' --glob '!presubmit.yml' \
+if grep -RInE --include='*.yml' --include='*.yaml' --exclude='presubmit.yml' \
   'ssh-keyscan|StrictHostKeyChecking[[:space:]]+no|UserKnownHostsFile[[:space:]=]+/dev/null' \
-  "$repo_root/.github/workflows" \
-  || { echo 'production workflows contain unsafe SSH trust configuration' >&2; exit 1; }
+  "$repo_root/.github/workflows"; then
+  echo 'production workflows contain unsafe SSH trust configuration' >&2
+  exit 1
+fi
 
 python3 - "$repo_root/.github/workflows" <<'PY'
 from pathlib import Path
@@ -48,16 +50,24 @@ PY
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 key="$tmp/test-key"
+key2="$tmp/test-key-2"
 ssh-keygen -q -t ed25519 -N '' -f "$key"
+ssh-keygen -q -t ed25519 -N '' -f "$key2"
 host='pi.example.test'
 known_hosts_line="$host $(cat "$key.pub")"
+known_hosts_lines="$known_hosts_line
+$host $(cat "$key2.pub")"
 
 HOME="$tmp/home-ok" INPUT_HOST="$host" INPUT_HOST_KEY="$known_hosts_line" \
   GITHUB_OUTPUT="$tmp/output" bash "$setup"
 test -s "$tmp/home-ok/.ssh/known_hosts"
 test "$(ssh-keygen -F "$host" -f "$tmp/home-ok/.ssh/known_hosts" | wc -l)" -gt 0
-rg -q '^  StrictHostKeyChecking yes$' "$tmp/home-ok/.ssh/config"
-rg -q '^  GlobalKnownHostsFile /dev/null$' "$tmp/home-ok/.ssh/config"
+grep -Eq '^  StrictHostKeyChecking yes$' "$tmp/home-ok/.ssh/config"
+grep -Eq '^  GlobalKnownHostsFile /dev/null$' "$tmp/home-ok/.ssh/config"
+
+HOME="$tmp/home-multi-ok" INPUT_HOST="$host" INPUT_HOST_KEY="$known_hosts_lines" \
+  bash "$setup"
+test "$(ssh-keygen -lf "$tmp/home-multi-ok/.ssh/known_hosts" | wc -l)" -eq 2
 
 if HOME="$tmp/home-mismatch" INPUT_HOST='other.example.test' INPUT_HOST_KEY="$known_hosts_line" \
   bash "$setup" >/dev/null 2>&1; then
@@ -66,9 +76,9 @@ if HOME="$tmp/home-mismatch" INPUT_HOST='other.example.test' INPUT_HOST_KEY="$kn
 fi
 
 if HOME="$tmp/home-multiline" INPUT_HOST="$host" INPUT_HOST_KEY="$known_hosts_line
-other.example.test ssh-ed25519 invalid" \
+other.example.test $(cat "$key2.pub")" \
   bash "$setup" >/dev/null 2>&1; then
-  echo 'multi-line host key was accepted' >&2
+  echo 'mixed-host key set was accepted' >&2
   exit 1
 fi
 

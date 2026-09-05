@@ -486,7 +486,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 | Secret | 說明 | ⚠️ 格式規則 |
 |---|---|---|
 | `PI_SSH_KEY` | deploy key 私鑰（base64 單行）| 值 = `base64 -w0 rpi_actions_deploy`，不含換行 |
-| `PI_HOST_KEY` | Pi SSH host key（known_hosts 單行）| 由已核准的 production host identity 維護；workflow 只接受此 pinned entry，不在 runner 動態取得 |
+| `PI_HOST_KEY` | Pi SSH host key（pinned known_hosts entries）| 由已核准的 production host identity 維護；workflow 只接受這些 pinned entries，不在 runner 動態取得 |
 | `PI_SSH_USER` | Pi SSH 帳號 | **只填 `admin`，禁止含 `@hostname`** |
 | `PI_SSH_HOST` | Pi 主機名稱 | **只填 `pi.lifenet.com.tw`，禁止含 `user@`** |
 | `PI_USER` | pi-health.yml 用帳號 | 同 PI_SSH_USER，只填 `admin` |
@@ -506,7 +506,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
    authoritative key，停止並請 Founder 決策，不可用 runner scan 覆蓋 pin。
 3. 經核准後才更新 GitHub Secret：
    ```bash
-   gh secret set PI_HOST_KEY --body "<Founder-approved single known_hosts entry>"
+   gh secret set PI_HOST_KEY --body "<Founder-approved known_hosts entries>"
    ```
 4. 變更後以 `pi-health.yml`、`backup-restore-test.yml`、`slow-query-report.yml`
    的 read-only path 驗證連線；任何 host-key mismatch 都必須維持 failure，

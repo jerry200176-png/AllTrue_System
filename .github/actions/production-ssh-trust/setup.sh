@@ -13,11 +13,6 @@ if [[ ! "$host" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]*$ ]]; then
   echo '::error::invalid production SSH host' >&2
   exit 1
 fi
-if [[ "$host_key" == *$'\n'* || "$host_key" == *$'\r'* ]]; then
-  echo '::error::PI_HOST_KEY must contain exactly one known_hosts line' >&2
-  exit 1
-fi
-
 ssh_dir=${HOME}/.ssh
 known_hosts=${ssh_dir}/known_hosts
 config=${ssh_dir}/config
@@ -31,8 +26,16 @@ if ! ssh-keygen -F "$host" -f "$known_hosts" >/dev/null 2>&1; then
   echo '::error::PI_HOST_KEY does not contain the configured production host' >&2
   exit 1
 fi
-if [[ "$(ssh-keygen -lf "$known_hosts" 2>/dev/null | wc -l)" -ne 1 ]]; then
-  echo '::error::PI_HOST_KEY must contain exactly one parseable host key' >&2
+
+# Multiple pinned algorithms for the same host are valid. Every non-comment
+# entry must parse as a key and must be returned by ssh-keygen -F for this
+# exact host; this rejects a mixed-host secret and malformed pin without ever
+# discovering or accepting a key from the network.
+entry_count=$(awk 'NF && $1 !~ /^#/ { count++ } END { print count + 0 }' "$known_hosts")
+parsed_count=$(ssh-keygen -lf "$known_hosts" 2>/dev/null | wc -l)
+matched_count=$(ssh-keygen -F "$host" -f "$known_hosts" 2>/dev/null | awk '$1 !~ /^#/ { count++ } END { print count + 0 }')
+if [[ "$entry_count" -lt 1 || "$parsed_count" -ne "$entry_count" || "$matched_count" -ne "$entry_count" ]]; then
+  echo '::error::PI_HOST_KEY must contain only parseable pinned keys for the configured production host' >&2
   exit 1
 fi
 
