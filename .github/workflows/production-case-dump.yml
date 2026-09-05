@@ -505,7 +505,10 @@ jobs:
               'students_with_active_or_read_only_guardian_phone' => count($eligibleIds),
               'students_with_guardian_phone_but_no_primary_or_legacy_phone' => $affected,
               'students_with_non_primary_phone_different_from_display_contact' => $nonPrimaryDifferent,
-              'definition' => 'active/read_only guardian phone exists, no non-revoked primary guardian phone, Student.parent_phone and Student.Phone are blank',
+              'definitions' => [
+                'students_with_guardian_phone_but_no_primary_or_legacy_phone' => 'active/read_only guardian phone exists, no non-revoked primary guardian phone, Student.parent_phone and Student.Phone are blank',
+                'students_with_non_primary_phone_different_from_display_contact' => 'student has an active/read_only non-primary guardian phone whose normalized value differs from the UI legacy parent_phone-or-Phone display value',
+              ],
             ];
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
