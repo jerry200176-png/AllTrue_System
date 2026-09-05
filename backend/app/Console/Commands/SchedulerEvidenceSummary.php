@@ -40,9 +40,11 @@ class SchedulerEvidenceSummary extends Command
             return self::FAILURE;
         }
 
-        $dbChecks = $this->databaseChecks($date, $summary);
+        $databaseChecksAt = CarbonImmutable::now(SchedulerEvidence::TIMEZONE);
+        $dbChecks = $this->databaseChecks($date, $summary, $databaseChecksAt);
         $reconciliation = $this->reconciliationBaseline($dbChecks, $summary);
         $summary['database_checks'] = $dbChecks;
+        $summary['database_checks_as_of'] = $databaseChecksAt->toIso8601String();
         $summary['reconciliation_baseline'] = $reconciliation;
         $summary['failure_routing'] = $this->failureRouting($summary, $reconciliation);
 
@@ -161,8 +163,13 @@ class SchedulerEvidenceSummary extends Command
      * @param  array<string,mixed>  $schedulerSummary
      * @return array<string,int>
      */
-    private function databaseChecks(string $date, array $schedulerSummary): array
+    private function databaseChecks(
+        string $date,
+        array $schedulerSummary,
+        ?CarbonImmutable $databaseChecksAt = null
+    ): array
     {
+        $databaseChecksAt ??= CarbonImmutable::now(SchedulerEvidence::TIMEZONE);
         $today = CarbonImmutable::parse($date, SchedulerEvidence::TIMEZONE)->startOfDay();
 
         $studentOrphans = StudentSignIn::query()
@@ -227,12 +234,13 @@ class SchedulerEvidenceSummary extends Command
                 FROM ClassSession cs
                 JOIN StudentClass sc ON sc.ID = cs.StudentClassID
                 WHERE LOWER(cs.Status) IN ('attended','late','absent')
-                  AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()
+                  AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= ?
                   AND NOT EXISTS (
                     SELECT 1 FROM LearningRecord lr
                     WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL
                   )
-                SQL
+                SQL,
+                [$databaseChecksAt->toDateTimeString()]
             )->c ?? 0),
         ];
     }

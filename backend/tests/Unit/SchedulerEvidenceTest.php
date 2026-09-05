@@ -82,6 +82,22 @@ class SchedulerEvidenceTest extends TestCase
         $this->assertNotSame('succeeded_with_zero_work', $summary['jobs']['reconcile-nightly']['status']);
     }
 
+    public function test_summary_exposes_per_job_evidence_age_and_observation_time(): void
+    {
+        $job = 'rfid-prune-pending';
+        $observedAt = $this->date->addMinutes(30);
+        file_put_contents(SchedulerEvidence::outputPath($job, $this->date), $this->outputFor($job));
+        SchedulerEvidence::recordCompletion($job, 'success', $this->date);
+
+        $summary = SchedulerEvidence::summarize($this->date->toDateString(), $observedAt);
+
+        $this->assertSame($observedAt->toIso8601String(), $summary['observed_at']);
+        $this->assertSame($this->date->toIso8601String(), $summary['jobs'][$job]['evidence_timestamp']);
+        $this->assertSame(1800, $summary['jobs'][$job]['evidence_age_seconds']);
+        $this->assertNull($summary['jobs']['reconcile-nightly']['evidence_timestamp']);
+        $this->assertNull($summary['jobs']['reconcile-nightly']['evidence_age_seconds']);
+    }
+
     public function test_every_observed_job_is_registered_once_with_private_output_and_taipei_timezone(): void
     {
         $events = app(Schedule::class)->events();
