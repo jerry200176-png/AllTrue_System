@@ -34,6 +34,7 @@ fi
 entry_count=$(awk 'NF && $1 !~ /^#/ { count++ } END { print count + 0 }' "$known_hosts")
 parsed_count=$(ssh-keygen -lf "$known_hosts" 2>/dev/null | wc -l)
 matched_count=$(ssh-keygen -F "$host" -f "$known_hosts" 2>/dev/null | awk '$1 !~ /^#/ { count++ } END { print count + 0 }')
+echo "Pinned production host-key validation: entries=$entry_count parsed=$parsed_count matched=$matched_count"
 if [[ "$entry_count" -lt 1 || "$parsed_count" -ne "$entry_count" || "$matched_count" -ne "$entry_count" ]]; then
   echo '::error::PI_HOST_KEY must contain only parseable pinned keys for the configured production host' >&2
   exit 1
