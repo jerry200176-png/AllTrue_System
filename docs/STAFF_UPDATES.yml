@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-05-role-onboarding-v12
+    published_at: "2026-09-05"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 新手任務更貼近今天的工作
+    summary: 主任與老師會沿著各自的真實工作順序完成一輪任務。
+    items:
+      - category: improved
+        text: 主任會依序巡檢今日待辦、通知、課表與評量；老師會依序處理今日待辦、點名、評量與下一堂課。
+      - category: improved
+        text: 每一步都會標示這一步的目標與完成提示，並可從中途位置繼續任務。
+      - category: improved
+        text: 任務會顯示目前軍階與角色場景；完成 onboarding 不會額外灌入 XP，軍階仍依既有營運事件累計。
+    source_refs:
+      - "changelog:2026-09-05:role-onboarding-v12"
+
   - id: staff-2026-09-05-search-and-bug-tracking
     published_at: "2026-09-05"
     audiences:

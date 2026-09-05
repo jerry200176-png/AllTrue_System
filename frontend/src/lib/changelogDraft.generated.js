@@ -32,6 +32,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
           "高頻核心頁面降低切換與認知負擔"
         ]
       }
@@ -41,6 +42,7 @@ export const changelogDraftNotes = [
       "科目數改為日粒度明細",
       "搜尋更新不閃爍並可直接追蹤 Bug 回報",
       "phone binding classifier parity",
+      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
       "高頻核心頁面降低切換與認知負擔"
     ]
   },

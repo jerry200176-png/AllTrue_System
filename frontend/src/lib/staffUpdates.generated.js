@@ -113,6 +113,42 @@ export const staffUpdates = [
     "version": "2026.09.05"
   },
   {
+    "id": "staff-2026-09-05-role-onboarding-v12",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "新手任務更貼近今天的工作",
+    "summary": "主任與老師會沿著各自的真實工作順序完成一輪任務。",
+    "items": [
+      "主任會依序巡檢今日待辦、通知、課表與評量；老師會依序處理今日待辦、點名、評量與下一堂課。",
+      "每一步都會標示這一步的目標與完成提示，並可從中途位置繼續任務。",
+      "任務會顯示目前軍階與角色場景；完成 onboarding 不會額外灌入 XP，軍階仍依既有營運事件累計。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任會依序巡檢今日待辦、通知、課表與評量；老師會依序處理今日待辦、點名、評量與下一堂課。",
+          "每一步都會標示這一步的目標與完成提示，並可從中途位置繼續任務。",
+          "任務會顯示目前軍階與角色場景；完成 onboarding 不會額外灌入 XP，軍階仍依既有營運事件累計。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:role-onboarding-v12"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
     "id": "staff-2026-09-05-high-frequency-ux",
     "publishedAt": "2026-09-05",
     "effectiveAt": null,
