@@ -1,4 +1,4 @@
-# REP — Admissions Funnel V1 activation（dark launch → Founder GO）
+# REP — Admissions Funnel V1 activation（dark launch → Founder GO → runtime verified）
 
 > **狀態**：Activated and production-verified on 2026-09-05
 > **PCR / REP ID**：REP-2026-09-04-ADMISSIONS-FUNNEL-V1  
@@ -13,7 +13,7 @@
 |------|------|
 | In scope | `admission_inquiries` additive migration；後端 `ADMISSIONS_FUNNEL_V1`；前端 `VITE_ADMISSIONS_FUNNEL_V1`；公開 `#/admissions` 與主任「新生問班」nav |
 | Out of scope | CRM、第二套排課／收款、role-onboarding、CourseManagement payment、legacy parent_phone cutover |
-| Dark-launch code | 已在 main（#2444 / #2449 / #2452 / #2459 + finish PR）；本次補上 owner／follow-up／history slice（待本 PR） |
+| Delivered code | 已在 main（#2444 / #2449 / #2452 / #2459 + finish PR + #2472 owner／follow-up／history slice） |
 | Feature flags default | Code default remains **off**；production activation was explicitly dispatched with `admissions_funnel_v1=on` |
 
 ### Production activation record
@@ -55,6 +55,13 @@
 - Frontend：`AdmissionInquiriesPageContract.test.js`、`navigationRegistry` flag-off hide。
 - Deploy：workflow 日誌含 `admissions funnel flag prepared ... value=false`（或 production 現值仍為 false）。
 - 唯讀：`GET /api/v1/health`；公開 `POST /api/v1/admission-inquiries` 在 flag off 應 **404**。
+
+## 2.4a Session handoff / provenance
+
+- Exo session：`SES-20260905020259-5241AF1D`；ticket：`TKT-20260905-014517-XJHQ`；intent：`INT-20260905-014505-V308`。
+- Product base／implementation：base `3c6f5c...`；PR #2472 implementation head `44b863958975940216d89fec76e669869ff79331`；squash merge `5c4fed10facd7cf120e4168c06bf7e3ec03e4755`。
+- Activation／release evidence：Founder activation run `33942384695` targeted `5c4fed10`; release evidence PR #2473 merged as `36e14793299a31dc694779c4111816891ee22948`; exact-main release publish run `33954840323` preserved the existing admissions flag.
+- Scope: no billing, identity, permission widening, data repair, or manual production writes; remaining work is designated-identity staff／public E2E and retention／PII sign-off.
 
 ---
 
