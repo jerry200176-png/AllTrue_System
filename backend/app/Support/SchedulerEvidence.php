@@ -169,12 +169,19 @@ final class SchedulerEvidence
             $outputPath = self::outputPath($key, $at);
             $expectedAt = $at->setTimeFromTimeString($definition['time'] . ':00');
             $pastDue = $nowLocal->greaterThan($expectedAt->addMinutes(30));
+            $latestRecord = $records === [] ? null : $records[array_key_last($records)];
+            $candidateTimestamp = is_array($latestRecord)
+                ? ($latestRecord['completed_at'] ?? $latestRecord['finished_at'] ?? null)
+                : null;
+            $evidenceTimestamp = is_string($candidateTimestamp) ? $candidateTimestamp : null;
 
             $result = [
                 'job_key' => $key,
                 'expected_schedule' => $definition['time'],
                 'executions' => count($records),
-                'latest_execution' => $records === [] ? null : end($records)['completed_at'] ?? end($records)['finished_at'] ?? null,
+                'latest_execution' => $evidenceTimestamp,
+                'evidence_timestamp' => $evidenceTimestamp,
+                'evidence_age_seconds' => self::evidenceAgeSeconds($evidenceTimestamp, $nowLocal),
                 'status' => 'succeeded',
                 'run_status' => 'succeeded',
                 'observed_result' => null,
@@ -278,6 +285,7 @@ final class SchedulerEvidence
         return [
             'date' => $at->toDateString(),
             'timezone' => self::TIMEZONE,
+            'observed_at' => $nowLocal->toIso8601String(),
             'execution_healthy' => $executionHealthy,
             // Phase 1: healthy means execution truth only — residuals are separate.
             'healthy' => $executionHealthy,
@@ -334,6 +342,22 @@ final class SchedulerEvidence
         }
 
         return max(0, $nowLocal->getTimestamp() - $mtime);
+    }
+
+    private static function evidenceAgeSeconds(?string $evidenceTimestamp, CarbonImmutable $nowLocal): ?int
+    {
+        if ($evidenceTimestamp === null) {
+            return null;
+        }
+
+        try {
+            return max(0, $nowLocal->getTimestamp() - CarbonImmutable::parse(
+                $evidenceTimestamp,
+                self::TIMEZONE
+            )->setTimezone(self::TIMEZONE)->getTimestamp());
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /** @return list<array<string,mixed>> */
