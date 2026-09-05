@@ -1,9 +1,3 @@
-## 2026-09-05 — fix(finance): 科目數統計保留原始值至月底核薪
-<!-- release-notes: staff_update=staff-2026-09-05-subject-units-raw-counts -->
-- 明細、每日與區間統計的正課、輔導／試聽、計薪科目數改顯示加權後原始科目數；完整月結算原始總數加總後才除以 8。
-- 修正逐筆／逐教師 rounding 造成的月結總額誤差；既有核薪資格、排除、出勤去重與權限範圍不變。
-- 補齊 API、鎖定月結、前端文案與回歸測試；無 migration 或 production 資料修補。
-
 ## 2026-09-05 — fix(ux): 搜尋更新不閃爍並可直接追蹤 Bug 回報
 <!-- release-notes: staff_update=staff-2026-09-05-search-and-bug-tracking -->
 - 老師／課程查找在輸入關鍵字或切換篩選時保留上一份有效列表，不會因載入 skeleton 短暫清空；快速連續搜尋時只採用最新回應，避免舊結果覆蓋新條件。
@@ -25,6 +19,7 @@
 <!-- release-notes: staff_update=staff-2026-09-05-subject-units-timeline -->
 - 科目數頁改以「老師 × 日期 × 分校 × 科目」呈現，主任可在授權分校內比較老師與每日變化，老師只會看到自己的資料。
 - 正課、輔導／試聽與核薪科目數拆開顯示；跨分校、跨日期與同堂出勤去重沿用既有核薪資料規則，不需 migration 或 production 資料修補。
+- 明細、每日與區間統計顯示加權後原始科目數；只有完整月結算才將符合既有規則的整月原始總數合計後除以 8，避免逐筆 rounding 誤差。
 
 ## 2026-09-05 — ops: Xindian capacity read-only diagnose workflow
 <!-- release-notes: silent_ship=silent-2026-09-05-xindian-capacity-diagnose -->
