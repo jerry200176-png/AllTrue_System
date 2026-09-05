@@ -26,7 +26,7 @@
   </span>
 
   <teleport to="body">
-    <div v-if="showRankOverview" class="rank-modal-overlay" @click.self="showRankOverview = false">
+    <div v-if="showRankOverview" class="rank-modal-overlay" :style="{ zIndex: overlayZIndex }" @click.self="showRankOverview = false">
       <div class="rank-modal-card">
         <div class="rank-modal-header">
           <h3>軍階一覽</h3>
@@ -65,6 +65,7 @@ import { rankTierProgress, xpRemainingToNext } from '../lib/engagementRankProgre
 import RocRankBadge from './RocRankBadge.vue';
 
 const props = defineProps({
+  overlayZIndex: { type: Number, default: 10000 },
   engagement: {
     type: Object,
     required: true,

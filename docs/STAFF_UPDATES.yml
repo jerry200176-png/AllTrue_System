@@ -15,7 +15,7 @@ updates:
       - category: improved
         text: 主任會依序巡檢今日待辦、通知、課表與評量；老師會依序處理今日待辦、點名、評量與下一堂課。
       - category: improved
-        text: 每一步都會標示這一步的目標與完成提示，並可從中途位置繼續任務。
+        text: 每一步都有目標與提示；可收起提示操作原頁面，再回到同一步繼續任務。
       - category: improved
         text: 任務會顯示目前軍階與角色場景；完成 onboarding 不會額外灌入 XP，軍階仍依既有營運事件累計。
     source_refs:
