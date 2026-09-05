@@ -14,7 +14,7 @@ describe('admission inquiry UI contract', () => {
   });
 
   it('keeps staff mutations explicit and mobile-safe', () => {
-    for (const action of ['contact', 'trial', 'trial-result', 'enroll', 'lost']) {
+    for (const action of ['claim', 'contact', 'trial', 'trial-result', 'enroll', 'lost', 'follow-up']) {
       expect(source).toContain("'" + action + "'");
     }
     expect(source).toContain('min-height: 44px');
@@ -22,5 +22,8 @@ describe('admission inquiry UI contract', () => {
     expect(source).toContain('admission-skeleton');
     expect(source).toContain('statusFilter');
     expect(source).toContain('下一步：');
+    expect(source).toContain('目前負責');
+    expect(source).toContain('下次追蹤');
+    expect(source).toContain('詢問歷程');
   });
 });

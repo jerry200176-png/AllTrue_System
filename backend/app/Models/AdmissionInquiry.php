@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int|null $trial_student_class_id
  * @property int|null $enrolled_student_class_id
  * @property int|null $assigned_to
+ * @property \Illuminate\Support\Carbon|null $follow_up_at
  * @property \Illuminate\Support\Carbon|null $consent_at
  * @property \Illuminate\Support\Carbon|null $contacted_at
  * @property \Illuminate\Support\Carbon|null $trial_scheduled_at
@@ -47,6 +48,7 @@ class AdmissionInquiry extends Model
         'student_name', 'student_name_hash', 'grade', 'school_name', 'subject',
         'preferred_slots', 'public_notes', 'staff_notes', 'consent_at', 'assigned_to',
         'contacted_at', 'trial_scheduled_at', 'trial_completed_at', 'enrolled_at',
+        'follow_up_at',
         'trial_result', 'student_id', 'trial_student_class_id', 'enrolled_student_class_id',
     ];
 
@@ -63,6 +65,7 @@ class AdmissionInquiry extends Model
         'trial_scheduled_at' => 'datetime',
         'trial_completed_at' => 'datetime',
         'enrolled_at' => 'datetime',
+        'follow_up_at' => 'datetime',
     ];
 
     public static function mask(string|null $value, int $visible = 1): string
@@ -86,6 +89,9 @@ class AdmissionInquiry extends Model
     /** Staff queue CTA hint — never trust client to invent transitions. */
     public function nextAction(): string
     {
+        if (!$this->assigned_to && !in_array($this->status, [self::STATUS_ENROLLED, self::STATUS_LOST], true)) {
+            return 'claim';
+        }
         return match ($this->status) {
             self::STATUS_NEW => 'contact',
             self::STATUS_CONTACTED => 'schedule_trial',
