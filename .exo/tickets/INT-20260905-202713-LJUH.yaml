@@ -37,6 +37,7 @@ scope:
   - frontend/src/components/__tests__/SubjectUnitsAccessibility.test.js
   - frontend/src/lib/subjectUnitsDisplay.js
   - frontend/src/lib/subjectUnitsDisplay.test.js
+  - docs/CHANGELOG.md
   - .exo/cache/**
   - .exo/memory/**
   - .exo/locks/**
@@ -52,7 +53,7 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: review
 parent_id: null
 spec_ref: null
 notes: []
@@ -60,3 +61,5 @@ blockers: []
 created_at: '2026-09-05T20:27:14+08:00'
 children: []
 resource_profile: default
+commits:
+- 94434a5cdf2157744a73c61a7935685b39038489

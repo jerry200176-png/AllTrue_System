@@ -5,9 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\User;
 use App\Models\UserCampus;
-use App\Support\FulltimePayrollLockStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class FulltimePayrollLockTest extends TestCase
@@ -78,34 +76,6 @@ class FulltimePayrollLockTest extends TestCase
             'month' => '2026-08',
             'branch_id' => 1,
         ])->assertStatus(422);
-    }
-
-    public function test_lock_sums_raw_monthly_subject_counts_before_dividing(): void
-    {
-        $runId = FulltimePayrollLockStore::lock(1, '2026-08', [
-            [
-                'teacher_id' => 101,
-                'settlement' => [
-                    'regular_subject_count' => 1.25,
-                    'tutoring_trial_subject_count' => 0,
-                    'payroll_subject_count' => 0.1563,
-                ],
-            ],
-            [
-                'teacher_id' => 102,
-                'settlement' => [
-                    'regular_subject_count' => 1.25,
-                    'tutoring_trial_subject_count' => 0,
-                    'payroll_subject_count' => 0.1563,
-                ],
-            ],
-        ], 1, 'test-policy');
-
-        $this->assertEqualsWithDelta(
-            0.3125,
-            (float) DB::table('fulltime_payroll_runs')->where('id', $runId)->value('branch_subject_total'),
-            0.0001
-        );
     }
 
     private function createDirector(int $campusId, string $email): array

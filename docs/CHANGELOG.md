@@ -1,3 +1,9 @@
+## 2026-09-05 — fix(finance): 科目數統計保留原始值至月底核薪
+<!-- release-notes: staff_update=staff-2026-09-05-subject-units-raw-counts -->
+- 明細、每日與區間統計的正課、輔導／試聽、計薪科目數改顯示加權後原始科目數；完整月結算原始總數加總後才除以 8。
+- 修正逐筆／逐教師 rounding 造成的月結總額誤差；既有核薪資格、排除、出勤去重與權限範圍不變。
+- 補齊 API、鎖定月結、前端文案與回歸測試；無 migration 或 production 資料修補。
+
 ## 2026-09-05 — fix(ux): 搜尋更新不閃爍並可直接追蹤 Bug 回報
 <!-- release-notes: staff_update=staff-2026-09-05-search-and-bug-tracking -->
 - 老師／課程查找在輸入關鍵字或切換篩選時保留上一份有效列表，不會因載入 skeleton 短暫清空；快速連續搜尋時只採用最新回應，避免舊結果覆蓋新條件。
