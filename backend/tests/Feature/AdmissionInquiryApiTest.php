@@ -59,7 +59,7 @@ class AdmissionInquiryApiTest extends TestCase
         $this->assertSame('王***', $list['student_name']);
         $this->assertStringEndsWith('5678', $list['parent_phone']);
         $this->assertStringNotContainsString('0912345678', $list['parent_phone']);
-        $this->assertSame('contact', $list['next_action']);
+        $this->assertSame('claim', $list['next_action']);
         $this->withHeaders(['Authorization' => "Bearer {$token}"])
             ->getJson('/api/v1/admission-inquiries?campus_id=' . $campus->id . '&status=contacted')
             ->assertOk()
@@ -75,6 +75,35 @@ class AdmissionInquiryApiTest extends TestCase
         $token = $this->directorToken((int) $campusA->id);
         $id = AdmissionInquiry::query()->value('id');
         $this->withHeaders(['Authorization' => "Bearer {$token}"])->getJson("/api/v1/admission-inquiries/{$id}")->assertForbidden();
+    }
+
+    public function test_owner_follow_up_and_history_are_visible_in_detail(): void
+    {
+        config(['perfflags.admissions_funnel_v1' => true]);
+        $campus = Campus::factory()->create(['active' => true]);
+        $this->postJson('/api/v1/admission-inquiries', $this->payload($campus->id))->assertStatus(202);
+        $inquiry = AdmissionInquiry::firstOrFail();
+        $token = $this->directorToken((int) $campus->id);
+        $owner = User::query()->where('Name', '招生主任')->latest('id')->firstOrFail();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/admission-inquiries/{$inquiry->id}/claim")
+            ->assertOk()
+            ->assertJsonPath('owner_id', $owner->id);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/admission-inquiries/{$inquiry->id}/follow-up", [
+                'follow_up_at' => '2026-09-15',
+                'staff_notes' => '已通話，等待家長確認時段',
+            ])->assertOk();
+
+        $detail = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson("/api/v1/admission-inquiries/{$inquiry->id}")
+            ->assertOk()
+            ->json();
+        $this->assertSame($owner->id, $detail['owner_id']);
+        $this->assertSame('2026-09-15', Carbon::parse($detail['follow_up_at'])->setTimezone('Asia/Taipei')->toDateString());
+        $this->assertContains('owner_assigned', array_column($detail['history'], 'reason_code'));
+        $this->assertContains('follow_up_saved', array_column($detail['history'], 'reason_code'));
     }
 
     public function test_teacher_cannot_manage_inquiries(): void
