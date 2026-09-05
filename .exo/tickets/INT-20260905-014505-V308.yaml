@@ -33,6 +33,7 @@ scope:
   - frontend/src/components/__tests__/AdmissionInquiriesPageContract.test.js
   - docs/CHANGELOG.md
   - docs/RELEASE_NOTES_EXEMPTIONS.yml
+  - docs/REF_API_ROUTES.md
   - .exo/cache/**
   - .exo/memory/**
   - .exo/locks/**
