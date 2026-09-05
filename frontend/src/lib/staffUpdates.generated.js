@@ -113,6 +113,42 @@ export const staffUpdates = [
     "version": "2026.09.05"
   },
   {
+    "id": "staff-2026-09-05-high-frequency-ux",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "高頻核心頁面更容易完成工作",
+    "summary": "新生問班、科目數、課程管理與學生管理減少切換，重點與下一步更清楚。",
+    "items": [
+      "新生問班會先檢查必填資料，切換步驟後保留鍵盤焦點；主任可在同一頁查看清單、明細與下一步。",
+      "科目數先呈現趨勢與日明細，計算說明預設收合；課程管理的共用方案狀態不一致時會補充逐科閱讀提示。",
+      "學生管理的搜尋與備註提示文字更一致，四個高頻頁面沿用既有 responsive 與設計系統。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新生問班會先檢查必填資料，切換步驟後保留鍵盤焦點；主任可在同一頁查看清單、明細與下一步。",
+          "科目數先呈現趨勢與日明細，計算說明預設收合；課程管理的共用方案狀態不一致時會補充逐科閱讀提示。",
+          "學生管理的搜尋與備註提示文字更一致，四個高頻頁面沿用既有 responsive 與設計系統。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:high-frequency-ux"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
     "id": "staff-2026-09-04-shared-package-planning-entitlement",
     "publishedAt": "2026-09-04",
     "effectiveAt": null,

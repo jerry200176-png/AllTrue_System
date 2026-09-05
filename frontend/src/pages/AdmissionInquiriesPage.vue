@@ -19,40 +19,40 @@
 
       <form v-else class="admission-form" @submit.prevent="submitPublic">
         <div class="admission-progress" aria-label="問班進度">
-          <span :class="{ active: step >= 1 }">1 基本資料</span>
-          <span :class="{ active: step >= 2 }">2 學習需求</span>
+          <span :class="{ active: step >= 1 }" :aria-current="step === 1 ? 'step' : undefined">1 基本資料</span>
+          <span :class="{ active: step >= 2 }" :aria-current="step === 2 ? 'step' : undefined">2 學習需求</span>
         </div>
         <p v-if="errorMessage" class="admission-error" role="alert" aria-live="assertive">{{ errorMessage }}</p>
         <fieldset v-if="step === 1">
-          <legend>先讓我們知道怎麼聯絡您</legend>
-          <label>分校 <span>*</span>
-            <select v-model="publicForm.campus_id" required>
+          <legend id="admission-step-title" tabindex="-1">先讓我們知道怎麼聯絡您</legend>
+          <label for="admission-campus">分校 <span>*</span>
+            <select id="admission-campus" v-model="publicForm.campus_id" required>
               <option value="" disabled>請選擇方便的分校</option>
               <option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
             </select>
           </label>
-          <label>家長稱呼 <span>*</span><input v-model.trim="publicForm.parent_name" required maxlength="64" autocomplete="name" /></label>
-          <label>聯絡電話 <span>*</span><input v-model.trim="publicForm.parent_phone" required maxlength="32" inputmode="tel" autocomplete="tel" /></label>
-          <label>學生姓名 <span>*</span><input v-model.trim="publicForm.student_name" required maxlength="64" /></label>
-          <button class="admission-button" type="button" @click="step = 2">下一步</button>
+          <label for="admission-parent-name">家長稱呼 <span>*</span><input id="admission-parent-name" v-model.trim="publicForm.parent_name" required maxlength="64" autocomplete="name" /></label>
+          <label for="admission-parent-phone">聯絡電話 <span>*</span><input id="admission-parent-phone" v-model.trim="publicForm.parent_phone" required maxlength="32" inputmode="tel" autocomplete="tel" /></label>
+          <label for="admission-student-name">學生姓名 <span>*</span><input id="admission-student-name" v-model.trim="publicForm.student_name" required maxlength="64" /></label>
+          <button class="admission-button" type="button" @click="advancePublicStep">下一步</button>
         </fieldset>
         <fieldset v-else>
-          <legend>孩子想學什麼？</legend>
-          <label>年級 <span>*</span>
-            <select v-model="publicForm.grade" required>
+          <legend id="admission-step-title" tabindex="-1">孩子想學什麼？</legend>
+          <label for="admission-grade">年級 <span>*</span>
+            <select id="admission-grade" v-model="publicForm.grade" required>
               <option value="" disabled>請選擇年級</option>
-              <option v-for="grade in grades" :key="grade" :value="grade">{{ grade }}</option>
+              <option v-for="grade in grades" :key="grade.value" :value="grade.value">{{ grade.label }}</option>
             </select>
           </label>
-          <label>學校 <span>*</span><input v-model.trim="publicForm.school_name" required maxlength="128" /></label>
-          <label>想詢問的科目 <span>*</span>
-            <select v-model="publicForm.subject" required>
+          <label for="admission-school">學校 <span>*</span><input id="admission-school" v-model.trim="publicForm.school_name" required maxlength="128" /></label>
+          <label for="admission-subject">想詢問的科目 <span>*</span>
+            <select id="admission-subject" v-model="publicForm.subject" required>
               <option value="" disabled>請選擇科目</option>
-              <option v-for="subject in subjects" :key="subject" :value="subject">{{ subject }}</option>
+              <option v-for="subject in subjects" :key="subject.value" :value="subject.value">{{ subject.label }}</option>
             </select>
           </label>
-          <label>方便時段 <span>*</span>
-            <select v-model="publicForm.preferred_slots[0]" required>
+          <label for="admission-slot">方便時段 <span>*</span>
+            <select id="admission-slot" v-model="publicForm.preferred_slots[0]" required>
               <option value="" disabled>請選擇一個時段</option>
               <option v-for="slot in slots" :key="slot" :value="slot">{{ slot }}</option>
             </select>
@@ -60,14 +60,14 @@
           <label>補充說明 <textarea v-model.trim="publicForm.public_notes" maxlength="500" rows="3" placeholder="例如：希望加強的單元（選填）"></textarea></label>
           <label class="admission-consent"><input v-model="publicForm.consent" type="checkbox" required /> 我同意 AllTrue 以此需求聯絡我 <span>*</span></label>
           <div class="admission-actions">
-            <button class="admission-button secondary" type="button" @click="step = 1">上一步</button>
+            <button class="admission-button secondary" type="button" @click="setPublicStep(1)">上一步</button>
             <button class="admission-button" type="submit" :disabled="busy">{{ busy ? '送出中…' : '送出問班需求' }}</button>
           </div>
         </fieldset>
       </form>
     </section>
 
-    <template v-else>
+    <template v-if="!standalone">
       <header class="admission-staff-header">
         <div><div class="admission-kicker">招生工作流</div><h1>新生問班</h1><p>從新詢問一路推進到試聽與報名，學生資料只建立一次。</p></div>
         <button class="admission-button secondary" type="button" :disabled="loading" @click="loadQueue">重新整理</button>
@@ -87,7 +87,7 @@
       <div v-else-if="!inquiries.length" class="admission-empty"><span class="material-symbols-outlined" aria-hidden="true">inbox</span><h2>目前沒有新詢問</h2><p>公開問班送出後，這裡會出現下一步工作。</p><button class="admission-button secondary" type="button" @click="loadQueue">重新整理</button></div>
       <div v-else class="admission-staff-grid">
         <section class="admission-queue" aria-label="詢問清單">
-          <button v-for="item in inquiries" :key="item.id" type="button" :class="['admission-queue-item', { selected: selectedId === item.id }]" @click="selectInquiry(item.id)">
+          <button v-for="item in inquiries" :key="item.id" type="button" :class="['admission-queue-item', { selected: selectedId === item.id }]" :aria-pressed="selectedId === item.id" @click="selectInquiry(item.id)">
             <span class="admission-status">{{ statusLabel(item.status) }}</span>
             <strong>{{ item.student_name }}</strong>
             <small>{{ item.subject }} · {{ item.parent_phone }}</small>
@@ -95,7 +95,7 @@
             <small class="admission-next">下一步：{{ nextActionLabel(item.next_action) }}</small>
           </button>
         </section>
-        <article v-if="detail" class="admission-detail">
+        <article v-if="detail" id="admission-detail" class="admission-detail">
           <div class="admission-detail-head"><div><span class="admission-status">{{ statusLabel(detail.status) }}</span><h2>{{ detail.student_name }}</h2><p>{{ detail.grade }} · {{ detail.school_name }} · {{ detail.subject }}</p></div><a class="admission-phone" :href="'tel:' + detail.parent_phone">{{ detail.parent_name }} · {{ detail.parent_phone }}</a></div>
           <dl class="admission-meta">
             <div><dt>方便時段</dt><dd>{{ (detail.preferred_slots || []).join('、') || '未填' }}</dd></div>
@@ -158,8 +158,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { admissionAction, convertAdmissionTrial, getAdmissionBranches, getAdmissionInquiry, getAdmissionInquiries, getAdmissionTeachers, submitAdmissionInquiry } from '../api';
+import { GRADES, SUBJECTS } from '../lib/constants';
 import perfFlags from '../lib/perfFlags';
 
 const props = defineProps({ standalone: { type: Boolean, default: false }, branchId: { type: [Number, String], default: null }, token: { type: String, default: '' } });
@@ -182,8 +183,8 @@ const trialResult = ref('attended');
 const publicForm = ref({ campus_id: '', parent_name: '', parent_phone: '', student_name: '', grade: '', school_name: '', subject: '', preferred_slots: [''], public_notes: '', consent: false });
 const trial = ref({ teacher_id: '', trial_date: '', start_time: '16:00', duration_minutes: 120 });
 const formal = ref({ sessions: 8, start_date: '' });
-const grades = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'J1', 'J2', 'J3', 'H1', 'H2', 'H3'];
-const subjects = ['Chinese', 'English', 'Math', 'Physics', 'Chemistry', 'Science', 'Biology', 'Social'];
+const grades = GRADES;
+const subjects = SUBJECTS;
 const slots = ['平日下午', '平日晚上', '週六上午', '週六下午', '週日上午'];
 const statusNames = { new: '新詢問', contacted: '已聯絡', trial_scheduled: '已安排試聽', trial_completed: '已完成試聽', enrolled: '已報名', lost: '暫不繼續' };
 const nextActionNames = { claim: '先認領負責', contact: '聯絡家長', schedule_trial: '安排試聽', record_result: '記錄試聽結果', enroll: '轉正式報名', enroll_or_lost: '報名或結案', mark_lost: '標為暫不繼續', done: '已完成', review: '檢視' };
@@ -193,6 +194,19 @@ const resultLabel = result => ({ attended: '已出席', no_show: '未到', cance
 const formatDate = value => String(value).slice(0, 10);
 const formatDateTime = value => value ? new Date(value).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' }) : '';
 const historyLabel = event => ({ submit: '收到問班需求', contacted: '已聯絡家長', owner_assigned: '認領負責', trial_scheduled: '已安排試聽', trial_completed: '已記錄試聽結果', enrolled: '已連結正式課程', lost: '已結案', follow_up_saved: '已更新追蹤' }[event.reason_code] || '更新詢問');
+function setPublicStep(value) {
+  step.value = value;
+  nextTick(() => document.getElementById('admission-step-title')?.focus());
+}
+function advancePublicStep(event) {
+  const fieldset = event.currentTarget.closest('fieldset');
+  const invalid = fieldset?.querySelector(':invalid');
+  if (invalid) {
+    invalid.focus();
+    return;
+  }
+  setPublicStep(2);
+}
 
 async function loadPublic() {
   try { branches.value = await getAdmissionBranches(); } catch (error) { errorMessage.value = error.message; }
@@ -202,7 +216,7 @@ async function submitPublic() {
   try { await submitAdmissionInquiry({ ...publicForm.value, campus_id: Number(publicForm.value.campus_id), preferred_slots: publicForm.value.preferred_slots.filter(Boolean) }); submitted.value = true; } catch (error) { errorMessage.value = error.message; } finally { busy.value = false; }
 }
 function resetPublic() {
-  submitted.value = false; step.value = 1; publicForm.value = { campus_id: '', parent_name: '', parent_phone: '', student_name: '', grade: '', school_name: '', subject: '', preferred_slots: [''], public_notes: '', consent: false };
+  submitted.value = false; publicForm.value = { campus_id: '', parent_name: '', parent_phone: '', student_name: '', grade: '', school_name: '', subject: '', preferred_slots: [''], public_notes: '', consent: false }; setPublicStep(1);
 }
 async function loadQueue() {
   if (!props.token || !props.branchId) return;

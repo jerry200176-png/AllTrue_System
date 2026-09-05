@@ -45,5 +45,8 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(source).toContain('輔導／試聽');
     expect(source).toContain('核薪');
     expect(source).toContain('每日核薪科目數');
+    expect(source).toContain('<p class="eyebrow">每日變化</p>');
+    expect(source).toContain('<p class="eyebrow">日明細</p>');
+    expect(source).toContain('const showCalcGuide = ref(false);');
   });
 });

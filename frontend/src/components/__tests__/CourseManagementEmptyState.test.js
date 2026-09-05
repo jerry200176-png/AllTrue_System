@@ -24,6 +24,8 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
 
   it('empty state only points to 學生管理 via a real deep-link, no local add action', () => {
     expect(source).toContain('目前尚無課程資料');
+    expect(source).toContain('<span class="material-symbols-outlined empty-icon" aria-hidden="true">menu_book</span>');
+    expect(source).not.toContain('📋');
     expect(source).toContain('請在「學生管理」為學生建立課程。');
     expect(source).not.toContain('或使用上方「新增課程」快速建立課程');
     expect(source).toContain('data-testid="empty-state-goto-students"');

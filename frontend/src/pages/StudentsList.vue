@@ -55,7 +55,7 @@
           <label>搜尋姓名</label>
           <div class="search-input-wrap">
             <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
-            <input v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
+            <input v-model="filters.name" placeholder="輸入姓名…" @input="debouncedLoad" />
           </div>
         </div>
         <div>
@@ -577,7 +577,7 @@
         </div>
         <div class="form-group">
           <label>備註</label>
-          <textarea v-model="studentForm.notes" rows="2" placeholder="特殊需求、過敏、家長偏好等..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+          <textarea v-model="studentForm.notes" rows="2" placeholder="特殊需求、過敏、家長偏好等…" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
           <div v-if="studentForm.latest_payment_note" class="student-latest-payment-note" role="note">
             <span class="material-symbols-outlined" aria-hidden="true">receipt_long</span>
             <div>

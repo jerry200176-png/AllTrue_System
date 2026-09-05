@@ -7,7 +7,15 @@ const source = readFileSync(resolve(__dirname, '../../pages/AdmissionInquiriesPa
 describe('admission inquiry UI contract', () => {
   it('keeps the public flow standalone and progressive', () => {
     expect(source).toContain("standalone ? 'admission-page-public' : 'admission-page-staff'");
+    expect(source).toContain('<template v-if="!standalone">');
+    expect(source).not.toContain('<template v-else>');
+    expect(source).toContain('standalone && !clientEnabled');
     expect(source).toContain('問班進度');
+    expect(source).toContain('@click="advancePublicStep"');
+    expect(source).toContain("querySelector(':invalid')");
+    expect(source).toContain('nextTick');
+    expect(source).toContain('aria-current');
+    expect(source).toContain("import { GRADES, SUBJECTS } from '../lib/constants';");
     expect(source).toContain('已收到問班需求');
     expect(source).toContain('role="alert"');
     expect(source).toContain('aria-live="assertive"');
@@ -25,5 +33,6 @@ describe('admission inquiry UI contract', () => {
     expect(source).toContain('目前負責');
     expect(source).toContain('下次追蹤');
     expect(source).toContain('詢問歷程');
+    expect(source).toContain(':aria-pressed="selectedId === item.id"');
   });
 });
