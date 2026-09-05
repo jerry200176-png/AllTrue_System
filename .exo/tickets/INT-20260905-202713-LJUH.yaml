@@ -38,6 +38,8 @@ scope:
   - frontend/src/lib/subjectUnitsDisplay.js
   - frontend/src/lib/subjectUnitsDisplay.test.js
   - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/staffUpdates.generated.js
   - .exo/cache/**
   - .exo/memory/**
   - .exo/locks/**
@@ -45,7 +47,7 @@ scope:
   - .exo/logs/**
   deny: []
 budgets:
-  max_files_changed: 10
+  max_files_changed: 12
   max_loc_changed: 400
 checks:
 - bash scripts/phpunit-isolated.sh
