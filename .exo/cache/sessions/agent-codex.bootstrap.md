@@ -1,35 +1,35 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260903-165120-IGVX | actor: agent:codex║
-║  model: gpt-5                                        ║
-║  branch: chore/task-transfer-contract-integrity-20260903║
+║  ticket: TKT-20260905-214801-DDDN | actor: agent:codex║
+║  model: gpt-6                                        ║
+║  branch: exo/TKT-20260905-214801-DDDN                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260903165129-5C08849E
+session_id: SES-20260905214810-03B6F746
 actor: agent:codex
 vendor: openai
-model: gpt-5
+model: gpt-6
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260903-165120-IGVX
-ticket_title: 堂次轉移契約容量與衝突診斷
+ticket_id: TKT-20260905-214801-DDDN
+ticket_title: Enable hands-on role onboarding with resumable mission coach
 ticket_status: todo
-ticket_priority: 1
+ticket_priority: 3
 topic_id: repo:default
 lock_owner: agent:codex
-git_branch: chore/task-transfer-contract-integrity-20260903
-lock_branch: codex/TKT-20260903-165120-IGVX
-lock_expires_at: 2026-09-03T20:51:29+08:00
+git_branch: exo/TKT-20260905-214801-DDDN
+lock_branch: codex/TKT-20260905-214801-DDDN
+lock_expires_at: 2026-09-05T23:48:10+08:00
 
 ## Scope
-- allow: ["backend/app/Http/Controllers/StudentClassController.php", "backend/app/Services/ClassSessionMaterializationService.php", "backend/app/Services/SessionEntitlementTransferService.php", "backend/app/Exceptions/SlotOccupiedException.php", "backend/tests/Feature/StudentClassTransferSessionsTest.php", "backend/tests/Feature/SessionEntitlementTransferTest.php", ".agent-session/**", ".exo/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
-- deny: ["backend/database/**", "frontend/**", "production/**"]
+- allow: ["frontend/src/App.vue", "frontend/src/lib/usePageGuideTour.js", "frontend/src/lib/__tests__/usePageGuideTour.test.js", "docs/CHANGELOG.md", ".exo/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- deny: []
 
 ## Checks
-- ["vendor/bin/phpunit", "bash scripts/phpunit-isolated.sh"]
+- ["npm run test:unit"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -38,14 +38,15 @@ lock_expires_at: 2026-09-03T20:51:29+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 0.2
-- ram: 3.1GB available / 4.8GB total
+- load_avg_1m: 5.0
+- ram: 2.7GB available / 4.8GB total
 
 ## Sibling Sessions (other agents working concurrently)
-- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=59.9h)
+- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=112.8h)
 
 ## Start Advisories
-- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: .agent-session/**, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: frontend/src/**, frontend/src/lib/**, docs/CHANGELOG.md, docs/**, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [INFO] Unmerged work on branch chore/task-transfer-contract-integrity-20260903 (ticket=TKT-20260903-165120-IGVX, actor=agent:codex) — Implemented canonical transfer capacity preflight, orphan schedule exclusion, co
 - [INFO] Unmerged work on branch chore/task-contract-session-date-overlap-20260903-final (ticket=TKT-20260903-155417-MUVF, actor=agent:codex) — Fixed student slot conflict queries to ignore ClassSession and schedule residue 
 - [INFO] Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) — Refresh paired read-only evidence requests for in-app bug 247 after restoring ma
 - [INFO] Unmerged work on branch chore/task-bug247-evidence-refresh-20260831 (ticket=TKT-20260831-073322-7VYG, actor=human) — Refreshed the paired read-only bug dump requests for in-app bug 247, corrected t
@@ -117,10 +118,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-修復堂次轉移的幽靈衝突、目標課程空值、預排超額與堂數契約計算；補回歸測試並準備 CI/merge/deploy/production read-only verify。
+Continue existing onboarding UI; enable hands-on mission collapse/resume without business changes
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260903-165120-IGVX --owner agent:codex
+- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260905-214801-DDDN --owner agent:codex
 - run worker once: EXO_ACTOR=agent:codex python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=agent:codex python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260903-165120-IGVX
+- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260905-214801-DDDN
