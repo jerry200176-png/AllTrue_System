@@ -1,629 +1,375 @@
 <template>
-  <div>
-    <!-- Month Filter -->
+  <div class="subject-units-page">
     <AtPageHeader
       title="科目數統計"
-      description="查看所選月份與分校的老師授課時數及加權科目數。"
+      description="按日期、分校與科目查看正課、輔導／試聽與核薪科目數的變化。"
       icon="calculate"
       data-guide="subject-units-header"
     >
       <template #actions>
-        <div class="header-controls">
-          <div class="branch-selector">
-            <label>分校</label>
-            <select v-model="selectedBranchId" @change="loadData">
-              <option
-                v-for="b in branchOptions"
-                :key="b.id"
-                :value="b.id"
-              >
-                {{ b.name }}
-              </option>
-            </select>
-          </div>
-          <div class="month-selector">
-          <button class="ghost small" @click="changeMonth(-1)">◀</button>
-          <span class="month-label">{{ monthLabel }}</span>
-          <button class="ghost small" @click="changeMonth(1)">▶</button>
-          </div>
+        <div class="period-actions" aria-label="日期範圍">
+          <button class="ghost small" type="button" aria-label="上一個月份" @click="shiftMonth(-1)">←</button>
+          <label class="date-field">
+            <span>起日</span>
+            <input v-model="startDate" type="date" @change="loadData" />
+          </label>
+          <span class="date-separator" aria-hidden="true">至</span>
+          <label class="date-field">
+            <span>迄日</span>
+            <input v-model="endDate" type="date" @change="loadData" />
+          </label>
+          <button class="ghost small" type="button" aria-label="下一個月份" @click="shiftMonth(1)">→</button>
+          <button class="secondary small" type="button" @click="setCurrentMonth">本月</button>
         </div>
+        <label v-if="branchOptions.length > 0" class="branch-field">
+          <span>分校</span>
+          <select v-model="selectedBranchId" @change="loadData">
+            <option value="all">全部可見分校</option>
+            <option v-for="branch in branchOptions" :key="branch.id" :value="String(branch.id)">
+              {{ branch.name }}
+            </option>
+          </select>
+        </label>
       </template>
     </AtPageHeader>
 
-    <!-- Empty State -->
-    <div v-if="!loading && teacherList.length === 0" class="card">
-      <div class="empty-state-large">
-        <div class="empty-icon">📐</div>
-        <h3>尚無資料</h3>
-        <p>請先在「學生管理」中為學生建立課程設定，系統才能計算科目數。</p>
-        <p class="hint">計算規則：一對一 × 1.5、一對二 × 0.75、一對三 × 0.5、輔導 × 0.5，總科目數 ÷ 8</p>
+    <div class="scope-strip" role="status">
+      <span class="material-symbols-outlined scope-icon" aria-hidden="true">verified_user</span>
+      <span>{{ scopeLabel }}</span>
+      <span class="scope-separator" aria-hidden="true">·</span>
+      <span class="scope-period">{{ periodLabel }}</span>
+    </div>
+
+    <div v-if="loading" class="state-card" aria-live="polite">
+      <span class="material-symbols-outlined state-icon loading-icon" aria-hidden="true">progress_activity</span>
+      <span>載入中…</span>
+    </div>
+
+    <div v-else-if="errorMessage" class="state-card state-card--error" role="alert">
+      <span class="material-symbols-outlined state-icon" aria-hidden="true">error</span>
+      <div>
+        <strong>科目數資料載入失敗</strong>
+        <p>{{ errorMessage }}</p>
+        <button class="secondary small" type="button" @click="loadData">重新載入</button>
       </div>
     </div>
 
-    <!-- Summary Cards -->
-    <div v-if="teacherList.length > 0" class="summary-cards" data-guide="subject-units-summary">
-      <AtMetric
-        label="總上課時數"
-        :value="`${totals.totalHours}h`"
-        :delta="`一對一 ${totals.oneOnOneHours}h · 一對二 ${totals.oneOnTwoHours}h · 一對三 ${totals.oneOnThreeHours}h · 輔導 ${totals.tutoringHours}h`"
-      />
-      <AtMetric
-        label="本校總科目數（含輔導）"
-        :value="totals.subjectCountWith"
-        :delta="`加權總分 ${totals.totalUnitsWithTutoring}`"
-        delta-tone="positive"
-      />
-      <AtMetric
-        label="本校總科目數（不含輔導）"
-        :value="totals.subjectCountWithout"
-        :delta="`加權總分 ${totals.totalUnitsWithoutTutoring}`"
-        delta-tone="positive"
-      />
-    </div>
+    <template v-else>
+      <section class="summary-grid" data-guide="subject-units-summary" aria-label="科目數摘要">
+        <AtMetric
+          label="核薪科目數"
+          :value="formatCount(totals.payroll_subject_count)"
+          :delta="`${totals.session_count} 堂 · ${days.length} 個有資料日`"
+          delta-tone="positive"
+          accent="var(--ds-cta)"
+        />
+        <AtMetric
+          label="正課科目數"
+          :value="formatCount(totals.regular_subject_count)"
+          :delta="`${formatHours(totals.regular_hours)} 小時`"
+          accent="var(--ds-primary)"
+        />
+        <AtMetric
+          label="輔導／試聽科目數"
+          :value="formatCount(totals.tutoring_trial_subject_count)"
+          :delta="`${formatHours(totals.tutoring_trial_hours)} 小時`"
+          accent="var(--ds-warning)"
+        />
+        <AtMetric
+          label="明細列"
+          :value="entries.length"
+          delta="老師 × 日期 × 分校 × 科目"
+          accent="var(--ds-info)"
+        />
+      </section>
 
-    <!-- Subject-count calculation (matches GET /api/v1/finance/subject-units) -->
-    <div v-if="teacherList.length > 0" class="card calc-guide" data-guide="subject-units-formula">
-      <div class="calc-guide-header">
-        <h3 id="subject-units-calc-guide-title">
-          <button
-            type="button"
-            class="ghost small calc-guide-toggle"
-            :aria-expanded="showCalcGuide"
-            aria-controls="subject-units-calc-guide-body"
-            @click="showCalcGuide = !showCalcGuide"
-          >
-            <span>📎 科目數計算方式</span>
-            <span aria-hidden="true">{{ showCalcGuide ? '收合 ▲' : '展開 ▼' }}</span>
-          </button>
-        </h3>
-      </div>
-      <div
-        v-show="showCalcGuide"
-        id="subject-units-calc-guide-body"
-        class="calc-guide-body"
-        aria-labelledby="subject-units-calc-guide-title"
-      >
-        <p class="calc-guide-lead">
-          本頁「科目數」與「加權總分」由後端依下列規則計算，與薪資報表口徑一致。
-        </p>
-        <ul class="calc-guide-list">
-          <li>
-            <strong>資料範圍</strong>：所選月份、分校內，學習評量狀態為「已審核通過（approved）」的紀錄。
-          </li>
-          <li>
-            <strong>上課時數（各堂別欄位）</strong>：優先依評量上的開始／結束時間換算為小時；若無法推算，則使用該學生課程設定的單堂分鐘數（SessionDuration）換算；仍無資料時預設每堂 2 小時。
-          </li>
-          <li>
-            <strong>加權總分（含輔導）</strong>：
-            一對一×1.5 ＋ 一對二×0.75 ＋ 一對三×0.5 ＋ 輔導×0.5。
-          </li>
-          <li>
-            <strong>加權總分（不含輔導）</strong>：同上前三項之和，<strong>不</strong>將輔導時數列入加權。
-          </li>
-          <li>
-            <strong>科目數</strong>＝ 對應加權總分 ÷ <strong>8</strong>。
-            摘要卡上的大數字即為此商；「加權總分」即除法前的分子。
-          </li>
-        </ul>
-        <p class="calc-guide-example" v-if="totals.totalUnitsWithTutoring > 0 || totals.totalUnitsWithoutTutoring > 0">
-          <strong>本月合計對照</strong>：
-          含輔導科目數 {{ totals.subjectCountWith }}
-          ＝ 加權總分 {{ totals.totalUnitsWithTutoring }} ÷ 8；
-          不含輔導科目數 {{ totals.subjectCountWithout }}
-          ＝ 加權總分 {{ totals.totalUnitsWithoutTutoring }} ÷ 8。
-        </p>
-      </div>
-    </div>
-
-    <!-- Teacher Breakdown Table -->
-    <div v-if="teacherList.length > 0" class="card" data-guide="subject-units-table">
-      <h3>👨‍🏫 老師科目數明細</h3>
-      <table>
-        <thead>
-         <tr>
-            <th>老師</th>
-            <th>一對一 (h)</th>
-            <th>一對二 (h)</th>
-            <th>一對三 (h)</th>
-            <th>輔導 (h)</th>
-            <th>總時數</th>
-            <th>科目數（含輔導）</th>
-            <th>科目數（不含輔導）</th>
-            <th title="各老師「含輔導科目數」占本月全校該欄合計的比例（與加權科目數一致，非總時數占比）">佔比（科目數）</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="t in teacherList" :key="t.name">
-            <td><strong>{{ t.name }}</strong></td>
-            <td>{{ t.oneOnOneHours }}</td>
-            <td>{{ t.oneOnTwoHours }}</td>
-            <td>{{ t.oneOnThreeHours }}</td>
-            <td>{{ t.tutoringHours }}</td>
-            <td style="font-weight: 600;">{{ t.totalHours }}</td>
-            <td style="font-weight: 700; color: var(--primary);">{{ t.unitsWith }}</td>
-            <td style="font-weight: 700; color: var(--accent);">{{ t.unitsWithout }}</td>
-            <td style="width: 200px;">
-              <div class="progress-bar-wrap">
-                <div class="progress-bar" :style="{ width: t.pct + '%' }"></div>
-                <span class="progress-label">{{ t.pct }}%</span>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td><strong>合計</strong></td>
-            <td>{{ totals.oneOnOneHours }}</td>
-            <td>{{ totals.oneOnTwoHours }}</td>
-            <td>{{ totals.oneOnThreeHours }}</td>
-            <td>{{ totals.tutoringHours }}</td>
-            <td style="font-weight: 700;">{{ totals.totalHours }}</td>
-            <td style="font-weight: 800; color: var(--primary);">{{ totals.subjectCountWith }}</td>
-            <td style="font-weight: 800; color: var(--accent);">{{ totals.subjectCountWithout }}</td>
-            <td>100%</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-
-    <!-- Level Breakdown -->
-    <div v-if="levelBreakdownTotals.length > 0" class="card" style="margin-top: 20px;">
-      <div class="level-breakdown-header">
-        <h3 id="subject-units-level-breakdown-title">
-          <button
-            type="button"
-            class="ghost small level-breakdown-toggle"
-            :aria-expanded="showLevelBreakdown"
-            aria-controls="subject-units-level-breakdown-body"
-            @click="showLevelBreakdown = !showLevelBreakdown"
-          >
-            <span>📊 學段分解（國小/國中/高中）</span>
-            <span aria-hidden="true">{{ showLevelBreakdown ? '收合 ▲' : '展開 ▼' }}</span>
-          </button>
-        </h3>
-      </div>
-
-      <div
-        v-show="showLevelBreakdown"
-        id="subject-units-level-breakdown-body"
-        aria-labelledby="subject-units-level-breakdown-title"
-      >
-        <div class="level-summary-cards">
-          <div v-for="lb in levelBreakdownTotals" :key="'lvl-total-'+lb.level" class="summary-card level-card">
-            <div class="summary-label">{{ lb.levelLabel }}</div>
-            <div class="summary-value" style="font-size: 24px;">{{ lb.totalHours }}h</div>
-            <div class="summary-sub">
-              科目數（含輔導）: {{ lb.unitsWith }} ｜ 科目數（不含）: {{ lb.unitsWithout }}
-            </div>
+      <section class="card daily-trend-card" aria-labelledby="daily-trend-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Daily movement</p>
+            <h3 id="daily-trend-title">每日核薪科目數</h3>
           </div>
+          <span class="section-hint">選一天可快速聚焦下方明細</span>
+        </div>
+        <div v-if="days.length > 0" class="trend-grid" role="list" aria-label="每日核薪科目數趨勢">
+          <button
+            v-for="day in days"
+            :key="day.date"
+            type="button"
+            class="trend-day"
+            :class="{ 'trend-day--selected': focusedDate === day.date }"
+            :aria-label="`${formatDate(day.date)} 核薪科目數 ${formatCount(day.payroll_subject_count)}`"
+            @click="toggleFocusedDate(day.date)"
+          >
+            <span class="trend-value">{{ formatCount(day.payroll_subject_count) }}</span>
+            <span class="trend-track" aria-hidden="true">
+              <span class="trend-bar" :style="{ height: `${barHeight(day.payroll_subject_count)}%` }" />
+            </span>
+            <span class="trend-date">{{ shortDate(day.date) }}</span>
+          </button>
+        </div>
+        <div v-else class="inline-empty">
+          <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
+          <span>這段期間沒有已認列的科目數。可調整日期或分校範圍。</span>
+        </div>
+      </section>
+
+      <section class="card detail-card" data-guide="subject-units-table" aria-labelledby="detail-title">
+        <div class="detail-heading">
+          <div>
+            <p class="eyebrow">Daily detail</p>
+            <h3 id="detail-title">老師 × 日期 × 分校 × 科目</h3>
+          </div>
+          <span class="row-count">{{ filteredEntries.length }} 筆明細</span>
+        </div>
+        <div class="table-toolbar">
+          <label class="search-field">
+            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            <span class="sr-only">搜尋老師、分校或科目</span>
+            <input v-model.trim="searchQuery" type="search" placeholder="搜尋老師、分校或科目" />
+          </label>
+          <label class="filter-field">
+            <span>顯示</span>
+            <select v-model="categoryFilter">
+              <option value="all">全部明細</option>
+              <option value="regular">只看正課</option>
+              <option value="tutoring_trial">只看輔導／試聽</option>
+            </select>
+          </label>
+          <button v-if="focusedDate" class="ghost small clear-focus" type="button" @click="focusedDate = ''">清除日期篩選</button>
         </div>
 
-        <table style="margin-top: 12px;">
-          <thead>
-            <tr>
-              <th>老師</th>
-              <th v-for="lb in levelBreakdownTotals" :key="'lvl-th-h-'+lb.level">{{ lb.levelLabel }} 時數</th>
-              <th v-for="lb in levelBreakdownTotals" :key="'lvl-th-u-'+lb.level">{{ lb.levelLabel }} 科目數</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="t in teacherList" :key="'lvl-'+t.name">
-              <td><strong>{{ t.name }}</strong></td>
-              <td v-for="lb in levelBreakdownTotals" :key="'lvl-h-'+t.name+'-'+lb.level">
-                {{ (t.levelBreakdown.find(x => x.level === lb.level) || {}).totalHours || 0 }}
-              </td>
-              <td v-for="lb in levelBreakdownTotals" :key="'lvl-u-'+t.name+'-'+lb.level" style="font-weight: 600; color: var(--primary);">
-                {{ (t.levelBreakdown.find(x => x.level === lb.level) || {}).unitsWith || 0 }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+        <div v-if="filteredEntries.length === 0" class="table-empty">
+          <span class="material-symbols-outlined" aria-hidden="true">filter_alt_off</span>
+          <span>找不到符合條件的明細。請調整搜尋或篩選條件。</span>
+        </div>
+        <div v-else class="table-wrap">
+          <table class="detail-table">
+            <caption class="sr-only">科目數日明細</caption>
+            <thead>
+              <tr>
+                <th scope="col">日期</th>
+                <th scope="col">老師</th>
+                <th scope="col">分校</th>
+                <th scope="col">科目</th>
+                <th scope="col" class="number-cell">正課</th>
+                <th scope="col" class="number-cell">輔導／試聽</th>
+                <th scope="col" class="number-cell highlight-cell">核薪</th>
+                <th scope="col" class="number-cell">堂數</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="group in groupedEntries" :key="group.date">
+                <tr class="day-summary-row">
+                  <th colspan="4" scope="rowgroup">
+                    {{ formatDate(group.date) }}
+                    <span>{{ group.entries.length }} 個科目明細</span>
+                  </th>
+                  <td class="number-cell">{{ formatCount(group.summary.regular_subject_count) }}</td>
+                  <td class="number-cell">{{ formatCount(group.summary.tutoring_trial_subject_count) }}</td>
+                  <td class="number-cell highlight-cell">{{ formatCount(group.summary.payroll_subject_count) }}</td>
+                  <td class="number-cell">{{ group.summary.session_count }}</td>
+                </tr>
+                <tr v-for="entry in group.entries" :key="entryKey(entry)" class="detail-row">
+                  <td class="date-cell">{{ formatDate(entry.date) }}</td>
+                  <td class="teacher-cell"><strong>{{ entry.teacher_name }}</strong></td>
+                  <td><span class="campus-pill">{{ entry.campus_name }}</span></td>
+                  <td><span class="subject-name">{{ entry.subject_name }}</span></td>
+                  <td class="number-cell">{{ formatCount(entry.regular_subject_count) }}</td>
+                  <td class="number-cell">{{ formatCount(entry.tutoring_trial_subject_count) }}</td>
+                  <td class="number-cell highlight-cell"><strong>{{ formatCount(entry.payroll_subject_count) }}</strong></td>
+                  <td class="number-cell">{{ entry.session_count }}</td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card disclosure-card calc-guide" data-guide="subject-units-formula">
+        <div class="calc-guide-header">
+          <h3 id="subject-units-calc-guide-title">
+            <button
+              type="button"
+              class="ghost small calc-guide-toggle"
+              :aria-expanded="showCalcGuide"
+              aria-controls="subject-units-calc-guide-body"
+              @click="showCalcGuide = !showCalcGuide"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">info</span>
+              <span>查看計算方式</span>
+              <span aria-hidden="true">{{ showCalcGuide ? '收合' : '展開' }}</span>
+            </button>
+          </h3>
+        </div>
+        <div
+        v-show="showCalcGuide"
+          id="subject-units-calc-guide-body"
+          class="disclosure-body"
+          aria-labelledby="subject-units-calc-guide-title"
+        >
+          <p>數字沿用既有核薪科目數規則；本頁只改成可按日、分校與科目追查的呈現方式。</p>
+          <div class="formula-row"><span>正課</span><strong>一對一 × 1.5 ＋ 一對二 × 0.75 ＋ 一對三 × 0.5</strong></div>
+          <div class="formula-row"><span>輔導／試聽</span><strong>已認列到班時數 × 0.5</strong></div>
+          <div class="formula-row"><span>核薪科目數</span><strong>（正課加權 ＋ 輔導／試聽加權）÷ 8</strong></div>
+        </div>
+      </section>
+
+      <section class="card disclosure-card level-breakdown-card">
+        <div class="level-breakdown-header">
+          <h3 id="subject-units-level-breakdown-title">
+            <button
+              type="button"
+              class="ghost small level-breakdown-toggle"
+              :aria-expanded="showLevelBreakdown"
+              aria-controls="subject-units-level-breakdown-body"
+              @click="showLevelBreakdown = !showLevelBreakdown"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+              <span>分組與資料範圍</span>
+              <span aria-hidden="true">{{ showLevelBreakdown ? '收合' : '展開' }}</span>
+            </button>
+          </h3>
+        </div>
+        <div
+        v-show="showLevelBreakdown"
+          id="subject-units-level-breakdown-body"
+          class="disclosure-body compact-copy"
+          aria-labelledby="subject-units-level-breakdown-title"
+        >
+          <p>主任會看到自己分校權限內的老師；老師只會看到自己的資料。分校取學生目前所屬分校，避免同一堂跨校重複歸類。</p>
+          <p>資料來源為已核准且未排除的評量，以及既有出勤認列規則；堂次只在同一個老師、日期、分校、科目列計一次。</p>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
-import { supabase } from '../supabase';
+import { computed, onMounted, ref, watch } from 'vue';
 import { branches, loadBranches } from '../lib/useBranches';
-import { formatSubjectCount } from '../lib/subjectUnitsDisplay';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
   branchId: [String, Number],
-  userRole: {
-    type: String,
-    default: '',
-  },
+  userRole: { type: String, default: '' },
 });
 
 const loading = ref(true);
-const teacherList = ref([]);
-const levelBreakdownTotals = ref([]);
-const showLevelBreakdown = ref(false);
-const showCalcGuide = ref(true);
-const totals = ref({
-  oneOnOneHours: 0, oneOnTwoHours: 0, oneOnThreeHours: 0, tutoringHours: 0,
-  totalHours: 0, totalUnitsWithTutoring: 0, totalUnitsWithoutTutoring: 0,
-  subjectCountWith: '0.00', subjectCountWithout: '0.00'
-});
+const errorMessage = ref('');
+const entries = ref([]);
+const days = ref([]);
+const totals = ref({ regular_subject_count: 0, tutoring_trial_subject_count: 0, payroll_subject_count: 0, regular_hours: 0, tutoring_trial_hours: 0, session_count: 0 });
 const currentDate = ref(new Date());
-const selectedBranchId = ref(props.branchId ? Number(props.branchId) : null);
+const startDate = ref(monthStart(currentDate.value));
+const endDate = ref(monthEnd(currentDate.value));
+const selectedBranchId = ref(props.branchId ? String(props.branchId) : 'all');
+const searchQuery = ref('');
+const categoryFilter = ref('all');
+const focusedDate = ref('');
+const showCalcGuide = ref(true);
+const showLevelBreakdown = ref(false);
+let requestSerial = 0;
+
 const sessionCampusIds = computed(() => {
   try {
-    const raw = localStorage.getItem('alltrue_session') || '{}';
-    const sess = JSON.parse(raw);
-    const ids = Array.isArray(sess?.user?.campuses) ? sess.user.campuses : [];
-    return ids.map((id) => Number(id)).filter((id) => Number.isFinite(id));
-  } catch (_) {
-    return [];
-  }
-});
-const branchOptions = computed(() =>
-  (branches.value || [])
-    .filter((b) => {
-      const bid = Number(b?.id);
-      if (!Number.isFinite(bid)) return false;
-      if (props.userRole !== 'teacher') return true;
-      // Teacher can only switch between assigned campuses (home + support campuses)
-      if (sessionCampusIds.value.length === 0) return false;
-      return sessionCampusIds.value.includes(bid);
-    })
-    .filter((b) => Number.isFinite(Number(b?.id)))
-    .map((b) => ({ id: Number(b.id), name: b.name || `分校 #${b.id}` }))
-);
-
-const monthLabel = computed(() => {
-  const d = currentDate.value;
-  return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月`;
+    const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    return (Array.isArray(session?.user?.campuses) ? session.user.campuses : []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  } catch (_) { return []; }
 });
 
-const changeMonth = (delta) => {
-  const d = new Date(currentDate.value);
-  d.setMonth(d.getMonth() + delta);
-  currentDate.value = d;
-  loadData();
-};
+const branchOptions = computed(() => (branches.value || []).filter((branch) => {
+  const id = Number(branch?.id);
+  return Number.isFinite(id) && (props.userRole !== 'teacher' || sessionCampusIds.value.includes(id));
+}).map((branch) => ({ id: Number(branch.id), name: branch.name || `分校 #${branch.id}` })));
 
-/**
- * Fetch subject-unit data from the unified backend endpoint.
- * This ensures the numbers here match the teacher-payroll report exactly.
- */
-const loadData = async () => {
-  loading.value = true;
+const selectedBranchName = computed(() => selectedBranchId.value === 'all'
+  ? '全部可見分校'
+  : branchOptions.value.find((branch) => String(branch.id) === String(selectedBranchId.value))?.name || '所選分校');
+const scopeLabel = computed(() => props.userRole === 'teacher' ? `只顯示我的資料 · ${selectedBranchName.value}` : `主任權限範圍 · ${selectedBranchName.value}`);
+const periodLabel = computed(() => `${formatDate(startDate.value)} 至 ${formatDate(endDate.value)}`);
+
+const filteredEntries = computed(() => {
+  const query = searchQuery.value.toLowerCase();
+  return entries.value.filter((entry) => !focusedDate.value || entry.date === focusedDate.value)
+    .filter((entry) => categoryFilter.value === 'all'
+      || (categoryFilter.value === 'regular' && Number(entry.regular_subject_count) > 0)
+      || (categoryFilter.value === 'tutoring_trial' && Number(entry.tutoring_trial_subject_count) > 0))
+    .filter((entry) => !query || [entry.teacher_name, entry.campus_name, entry.subject_name].some((value) => String(value || '').toLowerCase().includes(query)))
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.teacher_name).localeCompare(String(b.teacher_name), 'zh-Hant') || String(a.campus_name).localeCompare(String(b.campus_name), 'zh-Hant') || String(a.subject_name).localeCompare(String(b.subject_name), 'zh-Hant'));
+});
+const dayMap = computed(() => new Map(days.value.map((day) => [day.date, day])));
+const groupedEntries = computed(() => {
+  const groups = new Map();
+  filteredEntries.value.forEach((entry) => {
+    if (!groups.has(entry.date)) groups.set(entry.date, { date: entry.date, entries: [], summary: dayMap.value.get(entry.date) || emptyDay(entry.date) });
+    groups.get(entry.date).entries.push(entry);
+  });
+  return Array.from(groups.values());
+});
+const maxDailyValue = computed(() => Math.max(0.01, ...days.value.map((day) => Number(day.payroll_subject_count) || 0)));
+
+function monthStart(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`; }
+function monthEnd(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()).padStart(2, '0')}`; }
+function emptyDay(date) { return { date, regular_subject_count: 0, tutoring_trial_subject_count: 0, payroll_subject_count: 0, session_count: 0 }; }
+function formatCount(value) { const number = Number(value ?? 0); return (Number.isFinite(number) ? number : 0).toFixed(2); }
+function formatHours(value) { const number = Number(value ?? 0); return (Number.isFinite(number) ? number : 0).toFixed(1); }
+function formatDate(value) { if (!value) return '—'; const [, month, day] = String(value).slice(0, 10).split('-'); return `${month}/${day}`; }
+function shortDate(value) { return formatDate(value); }
+function entryKey(entry) { return `${entry.teacher_id}-${entry.date}-${entry.campus_id}-${entry.subject_id}`; }
+function barHeight(value) { return Math.max(8, Math.round((Number(value || 0) / maxDailyValue.value) * 100)); }
+function toggleFocusedDate(date) { focusedDate.value = focusedDate.value === date ? '' : date; }
+function shiftMonth(delta) { const date = new Date(`${startDate.value}T00:00:00`); date.setMonth(date.getMonth() + delta); currentDate.value = date; startDate.value = monthStart(date); endDate.value = monthEnd(date); focusedDate.value = ''; loadData(); }
+function setCurrentMonth() { const date = new Date(); currentDate.value = date; startDate.value = monthStart(date); endDate.value = monthEnd(date); focusedDate.value = ''; loadData(); }
+
+async function loadData() {
+  if (!startDate.value || !endDate.value || startDate.value > endDate.value) { errorMessage.value = '日期範圍無效，請確認起日與迄日。'; return; }
+  const serial = ++requestSerial;
+  loading.value = true; errorMessage.value = '';
   try {
-    const d = currentDate.value;
-    const year = d.getFullYear();
-    const month = d.getMonth(); // 0-based
-    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
     const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
     const token = session?.access_token || '';
     const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const params = new URLSearchParams({ start: startDate.value, end: endDate.value });
+    if (selectedBranchId.value !== 'all') params.set('branch_id', selectedBranchId.value);
+    const response = await fetch(`${baseUrl}/v1/finance/subject-units/timeline?${params}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+    if (!response.ok) throw new Error(response.status === 403 ? '您沒有查看此分校資料的權限。' : '請稍後再試。');
+    const payload = await response.json();
+    if (serial !== requestSerial) return;
+    entries.value = Array.isArray(payload.entries) ? payload.entries : [];
+    days.value = Array.isArray(payload.days) ? payload.days : [];
+    totals.value = { ...totals.value, ...(payload.totals || {}) };
+  } catch (error) {
+    if (serial !== requestSerial) return;
+    entries.value = []; days.value = []; errorMessage.value = error?.message || '網路連線逾時，請確認網路後重試。';
+  } finally { if (serial === requestSerial) loading.value = false; }
+}
 
-    const params = new URLSearchParams({ start: startDate, end: endDate, include_level: '1' });
-    if (selectedBranchId.value) {
-      params.set('branch_id', String(selectedBranchId.value));
-    }
-    const res = await fetch(`${baseUrl}/v1/finance/subject-units?${params}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/json',
-      }
-    });
-
-    if (!res.ok) {
-      teacherList.value = [];
-      return;
-    }
-
-    const json = await res.json();
-
-    // Map backend response to template format
-    teacherList.value = (json.teachers || []).map(t => ({
-      name: t.teacher_name,
-      oneOnOneHours: t.one_on_one_hours,
-      oneOnTwoHours: t.one_on_two_hours,
-      oneOnThreeHours: t.one_on_three_hours,
-      tutoringHours: t.tutoring_hours,
-      totalHours: t.total_hours,
-      unitsWith: t.subject_count_with,
-      unitsWithout: t.subject_count_without,
-      pct: t.share_pct,
-      levelBreakdown: (t.level_breakdown || []).map(lb => ({
-        level: lb.level,
-        levelLabel: lb.level_label,
-        totalHours: lb.total_hours,
-        unitsWith: lb.subject_count_with,
-        unitsWithout: lb.subject_count_without,
-      })),
-    }));
-
-    levelBreakdownTotals.value = (json.level_breakdown_totals || []).map(lb => ({
-      level: lb.level,
-      levelLabel: lb.level_label,
-      oneOnOneHours: lb.one_on_one_hours,
-      oneOnTwoHours: lb.one_on_two_hours,
-      oneOnThreeHours: lb.one_on_three_hours,
-      tutoringHours: lb.tutoring_hours,
-      totalHours: lb.total_hours,
-      unitsWith: lb.subject_count_with,
-      unitsWithout: lb.subject_count_without,
-    }));
-
-    const t = json.totals || {};
-    totals.value = {
-      oneOnOneHours: t.one_on_one_hours || 0,
-      oneOnTwoHours: t.one_on_two_hours || 0,
-      oneOnThreeHours: t.one_on_three_hours || 0,
-      tutoringHours: t.tutoring_hours || 0,
-      totalHours: t.total_hours || 0,
-      totalUnitsWithTutoring: t.weighted_with_tutoring || 0,
-      totalUnitsWithoutTutoring: t.weighted_without_tutoring || 0,
-      subjectCountWith: formatSubjectCount(t.subject_count_with),
-      subjectCountWithout: formatSubjectCount(t.subject_count_without),
-    };
-  } catch (e) {
-    console.error('Failed to load subject units:', e);
-    teacherList.value = [];
-  } finally {
-    loading.value = false;
-  }
-};
-
-watch(() => props.branchId, (val) => {
-  const next = val ? Number(val) : null;
-  if (next && next !== selectedBranchId.value) {
-    selectedBranchId.value = next;
-  }
-  loadData();
-});
-
-onMounted(async () => {
-  await loadBranches();
-  if (!selectedBranchId.value && branchOptions.value.length > 0) {
-    selectedBranchId.value = branchOptions.value[0].id;
-  }
-  if (
-    selectedBranchId.value &&
-    !branchOptions.value.some((b) => b.id === Number(selectedBranchId.value))
-  ) {
-    selectedBranchId.value = branchOptions.value.length ? branchOptions.value[0].id : null;
-  }
-  loadData();
-});
+watch(() => props.branchId, (value) => { selectedBranchId.value = value ? String(value) : 'all'; loadData(); });
+onMounted(async () => { await loadBranches(); loadData(); });
 </script>
 
 <style scoped>
-.header-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.branch-selector {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.branch-selector label {
-  font-size: 12px;
-  color: var(--text-light);
-}
-
-.branch-selector select {
-  min-width: 130px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card-bg);
-  color: var(--text);
-}
-
-.month-selector {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.month-label {
-  font-size: 16px;
-  font-weight: 700;
-  min-width: 120px;
-  text-align: center;
-}
-
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.summary-card {
-  background: var(--card-bg);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: var(--shadow);
-  border-left: 4px solid var(--border);
-}
-
-.summary-card.accent { border-left-color: var(--accent); }
-.summary-card.primary { border-left-color: var(--primary); }
-
-.summary-label {
-  font-size: 13px;
-  color: var(--text-light);
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.summary-value {
-  font-size: 32px;
-  font-weight: 800;
-  color: var(--text);
-}
-
-.summary-sub {
-  font-size: 12px;
-  color: var(--text-light);
-  margin-top: 6px;
-}
-
-.empty-state-large {
-  text-align: center;
-  padding: 60px 20px;
-}
-
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
-.empty-state-large h3 {
-  color: var(--text-light);
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-
-.empty-state-large p {
-  color: var(--text-light);
-  font-size: 14px;
-}
-
-/* Progress Bar */
-.progress-bar-wrap {
-  height: 22px;
-  background: #ECEFF1;
-  border-radius: 12px;
-  position: relative;
-  overflow: hidden;
-}
-
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--primary));
-  border-radius: 12px;
-  transition: width 0.6s ease;
-}
-
-.progress-label {
-  position: absolute;
-  right: 8px;
-  top: 2px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #333;
-}
-
-table tfoot td {
-  background: #FAFAFA;
-  font-weight: 600;
-  border-top: 2px solid var(--border);
-}
-
-.level-breakdown-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.calc-guide-header h3,
-.level-breakdown-header h3 {
-  margin: 0;
-}
-.calc-guide-header .calc-guide-toggle,
-.level-breakdown-header .level-breakdown-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-.calc-guide-toggle:focus-visible,
-.level-breakdown-toggle:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 3px;
-}
-
-.level-summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-  margin-top: 12px;
-}
-.level-card {
-  border-left-color: #8b5cf6;
-}
-
-.calc-guide {
-  border: 1px dashed var(--border);
-  background: var(--card-bg);
-  border-left: 4px solid var(--primary);
-}
-
-.calc-guide-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  user-select: none;
-}
-
-.calc-guide-header h3 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.calc-guide-body {
-  margin-top: 14px;
-  padding-top: 4px;
-  border-top: 1px solid var(--border);
-}
-
-.calc-guide-lead {
-  margin: 0 0 10px;
-  font-size: 13px;
-  color: var(--text-light);
-  line-height: 1.5;
-}
-
-.calc-guide-list {
-  margin: 0;
-  padding-left: 1.25rem;
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--text);
-}
-
-.calc-guide-list li {
-  margin-bottom: 8px;
-}
-
-.calc-guide-example {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.55;
-  border-radius: 8px;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  color: var(--text-light);
-}
+.subject-units-page { color: var(--ds-ink); }
+.period-actions, .branch-field { display: flex; align-items: center; gap: 8px; }
+.date-field, .branch-field { display: flex; flex-direction: column; gap: 4px; }
+.date-field span, .branch-field span, .filter-field span { color: var(--ds-ink-mute); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+input, select { min-height: 36px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-ink); padding: 7px 10px; font: inherit; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px solid var(--ds-primary-wash); outline-offset: 1px; border-color: var(--ds-primary); }
+.scope-strip { display: flex; align-items: center; gap: 8px; margin: -4px 0 16px; color: var(--ds-ink-mute); font-size: 13px; }
+.scope-icon { color: var(--ds-success); font-size: 18px; }.scope-separator { color: var(--ds-hairline-input); }.scope-period { font-variant-numeric: tabular-nums; }
+.state-card, .card { border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); box-shadow: 0 1px 3px rgba(0,55,112,.08); }
+.state-card { display: flex; align-items: center; gap: 12px; min-height: 150px; justify-content: center; color: var(--ds-ink-mute); }.state-card--error { justify-content: flex-start; padding: 24px; color: var(--ds-danger); }.state-card--error p { margin: 6px 0 12px; color: var(--ds-ink-mute); }
+.state-icon { font-size: 24px; }.loading-icon { animation: spin 1.1s linear infinite; color: var(--ds-primary); }
+.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.daily-trend-card, .detail-card, .disclosure-card { padding: 20px; margin-bottom: 16px; }.section-heading, .detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }.eyebrow { margin: 0 0 4px; color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; } h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }.section-hint, .row-count { color: var(--ds-ink-mute); font-size: 12px; }
+.trend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: 6px; align-items: end; min-height: 144px; }.trend-day { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--ds-ink-mute); padding: 4px 2px; cursor: pointer; }.trend-day:hover, .trend-day--selected { background: var(--ds-primary-wash); color: var(--ds-ink); }.trend-value, .trend-date { font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }.trend-track { display: flex; width: 100%; height: 88px; align-items: flex-end; justify-content: center; border-bottom: 1px solid var(--ds-hairline); }.trend-bar { width: min(22px, 70%); min-height: 5px; border-radius: 6px 6px 2px 2px; background: var(--ds-primary); transition: height .22s ease, background .22s ease; }.trend-day--selected .trend-bar { background: var(--ds-cta); }
+.inline-empty, .table-empty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 100px; color: var(--ds-ink-mute); font-size: 13px; }
+.table-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }.search-field { display: flex; min-width: min(100%, 320px); flex: 1 1 260px; align-items: center; gap: 8px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); padding: 0 10px; }.search-field input { width: 100%; border: 0; outline: 0; padding-left: 0; }.search-field .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 19px; }.filter-field { display: flex; flex-direction: column; gap: 4px; }.clear-focus { margin-left: auto; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.detail-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; }.detail-table th, .detail-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.detail-table thead th { position: sticky; top: 0; z-index: 1; background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.detail-table tbody tr.detail-row:hover { background: var(--ds-canvas-soft); }.detail-table tbody tr:last-child td { border-bottom: 0; }.number-cell { text-align: right !important; font-variant-numeric: tabular-nums; }.highlight-cell { color: var(--ds-cta); }.day-summary-row { background: var(--ds-primary-wash); }.day-summary-row th { color: var(--ds-ink); font-weight: 700; }.day-summary-row th span { margin-left: 8px; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; }.day-summary-row td { border-bottom-color: var(--ds-hairline-input); font-weight: 700; }.date-cell { color: var(--ds-ink-mute); font-variant-numeric: tabular-nums; }.teacher-cell { min-width: 100px; }.subject-name { font-weight: 600; }.campus-pill { display: inline-flex; border: 1px solid var(--ds-hairline-input); border-radius: 999px; padding: 3px 8px; color: var(--ds-ink-secondary); background: var(--ds-canvas); font-size: 12px; }
+.disclosure-card { padding: 0; }.calc-guide-header, .level-breakdown-header { padding: 12px 16px; }.calc-guide-header h3, .level-breakdown-header h3 { margin: 0; }.calc-guide-toggle, .level-breakdown-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; }.disclosure-body { border-top: 1px solid var(--ds-hairline); padding: 16px; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.7; }.disclosure-body p { margin: 0 0 8px; }.disclosure-body p:last-child { margin-bottom: 0; }.formula-row { display: flex; gap: 16px; padding: 6px 0; border-top: 1px solid var(--ds-hairline); }.formula-row span { min-width: 100px; color: var(--ds-ink-mute); }.compact-copy { color: var(--ds-ink-mute); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); } @keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 900px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.period-actions { flex-wrap: wrap; }.branch-field { width: 100%; }.branch-field select { width: 100%; } }
+@media (max-width: 560px) { .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }.daily-trend-card, .detail-card, .disclosure-card { padding: 14px; }.section-heading, .detail-heading { flex-direction: column; gap: 6px; }.date-field input { max-width: 142px; }.date-separator { align-self: end; padding-bottom: 9px; }.clear-focus { margin-left: 0; }.formula-row { display: block; }.formula-row span { display: block; margin-bottom: 2px; } }
 </style>

@@ -1,3 +1,8 @@
+## 2026-09-05 — feat(ux): 科目數改為日粒度明細
+<!-- release-notes: staff_update=staff-2026-09-05-subject-units-timeline -->
+- 科目數頁改以「老師 × 日期 × 分校 × 科目」呈現，主任可在授權分校內比較老師與每日變化，老師只會看到自己的資料。
+- 正課、輔導／試聽與核薪科目數拆開顯示；跨分校、跨日期與同堂出勤去重沿用既有核薪資料規則，不需 migration 或 production 資料修補。
+
 ## 2026-09-05 — fix(ux): 搜尋更新不閃爍並可直接追蹤 Bug 回報
 <!-- release-notes: staff_update=staff-2026-09-05-search-and-bug-tracking -->
 - 老師／課程查找在輸入關鍵字或切換篩選時保留上一份有效列表，不會因載入 skeleton 短暫清空；快速連續搜尋時只採用最新回應，避免舊結果覆蓋新條件。

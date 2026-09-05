@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.05",
     "date": "2026-09-05",
     "title": "2026.09.05 草稿（未發布）",
-    "summary": "搜尋更新不閃爍並可直接追蹤 Bug 回報",
+    "summary": "科目數改為日粒度明細；搜尋更新不閃爍並可直接追蹤 Bug 回報",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "科目數改為日粒度明細"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "科目數改為日粒度明細",
       "搜尋更新不閃爍並可直接追蹤 Bug 回報"
     ]
   },

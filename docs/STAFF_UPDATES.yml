@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-05-subject-units-timeline
+    published_at: "2026-09-05"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 科目數改為每日明細
+    summary: 主任可比較授權分校內的老師與每日科目數；老師只看到自己的資料。
+    items:
+      - category: improved
+        text: 科目數現在按日期、分校、科目與老師拆開顯示，可直接看出每日變化與跨分校差異。
+      - category: improved
+        text: 正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。
+    source_refs:
+      - "changelog:2026-09-05:subject-units-timeline"
+
   - id: staff-2026-09-05-search-and-bug-tracking
     published_at: "2026-09-05"
     audiences:
