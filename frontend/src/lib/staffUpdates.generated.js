@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-05-admissions-funnel-v1",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "新生問班可直接追蹤",
+    "summary": "主任可認領新生問班並安排下一步追蹤。",
+    "items": [
+      "「新生問班」會集中顯示新需求，主任可認領負責並查看目前狀態與下一步。",
+      "可在同一筆紀錄設定下次追蹤日期、留下工作備註並查看處理歷程。",
+      "請認領自己負責的詢問，完成聯絡後更新狀態，避免佇列留下無人跟進的案件。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "「新生問班」會集中顯示新需求，主任可認領負責並查看目前狀態與下一步。",
+          "可在同一筆紀錄設定下次追蹤日期、留下工作備註並查看處理歷程。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "請認領自己負責的詢問，完成聯絡後更新狀態，避免佇列留下無人跟進的案件。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:admissions-ownership-history",
+      "github:#2472",
+      "deploy:33942384695"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
     "id": "staff-2026-09-05-subject-units-timeline",
     "publishedAt": "2026-09-05",
     "effectiveAt": null,

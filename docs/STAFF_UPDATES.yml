@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-05-admissions-funnel-v1
+    published_at: "2026-09-05"
+    audiences:
+      - director
+    importance: action_required
+    title: 新生問班可直接追蹤
+    summary: 主任可認領新生問班並安排下一步追蹤。
+    items:
+      - category: added
+        text: 「新生問班」會集中顯示新需求，主任可認領負責並查看目前狀態與下一步。
+      - category: added
+        text: 可在同一筆紀錄設定下次追蹤日期、留下工作備註並查看處理歷程。
+      - category: action_required
+        text: 請認領自己負責的詢問，完成聯絡後更新狀態，避免佇列留下無人跟進的案件。
+    source_refs:
+      - "changelog:2026-09-05:admissions-ownership-history"
+      - "github:#2472"
+      - "deploy:33942384695"
+
   - id: staff-2026-09-05-subject-units-timeline
     published_at: "2026-09-05"
     audiences:

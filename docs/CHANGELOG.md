@@ -5,9 +5,9 @@
 - 本次不執行 migration、feature flag activation、production data repair 或 production mutation。
 
 ## 2026-09-05 — feat(admissions): 補齊負責人、追蹤與詢問歷程
-<!-- release-notes: silent_ship=silent-2026-09-05-admissions-ownership-history -->
+<!-- release-notes: staff_update=staff-2026-09-05-admissions-funnel-v1 -->
 - 主任可在同一筆新生問班紀錄認領負責、查看目前狀態／下一步、設定下次追蹤日期與瀏覽處理歷程；既有試聽、評估、成交／未成交流程不變。
-- 以既有 campus scope、SecurityAuditEvent 與 feature flag 控制；本次不開啟 production flag、不執行 migration 或資料修復。
+- 以既有 campus scope、SecurityAuditEvent 與 feature flag 控制；production migration 與 `ADMISSIONS_FUNNEL_V1` 已經 Founder-gated deploy activation 並完成 runtime verify。
 
 ## 2026-09-05 — feat(ux): 科目數改為日粒度明細
 <!-- release-notes: staff_update=staff-2026-09-05-subject-units-timeline -->
