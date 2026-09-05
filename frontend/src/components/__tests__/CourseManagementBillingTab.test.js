@@ -19,6 +19,8 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('studentGroupTab(group.key) === \'billing\'');
     expect(source).toContain('/api/v1/payment-reports?student_class_id=');
     expect(source).toContain('/api/v1/student-classes/${c.id}/invoices');
+    expect(source).toContain('hasMixedPackagePaymentStatuses(group.key)');
+    expect(source).toContain('共用方案的繳費狀態按科目分開顯示');
   });
 
   it('labels pending reports as 待對帳 and deep-links billing mutations to tuition-collect', () => {

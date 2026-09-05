@@ -28,13 +28,20 @@ export const changelogDraftNotes = [
           "搜尋更新不閃爍並可直接追蹤 Bug 回報",
           "phone binding classifier parity"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "高頻核心頁面降低切換與認知負擔"
+        ]
       }
     ],
     "items": [
       "補齊負責人、追蹤與詢問歷程",
       "科目數改為日粒度明細",
       "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-      "phone binding classifier parity"
+      "phone binding classifier parity",
+      "高頻核心頁面降低切換與認知負擔"
     ]
   },
   {

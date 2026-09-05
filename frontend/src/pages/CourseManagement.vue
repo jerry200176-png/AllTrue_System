@@ -643,6 +643,10 @@
               {{ studentBillingState[group.key].error }}
             </div>
             <table v-else class="course-table student-billing-table" aria-label="帳務資料">
+              <caption v-if="hasMixedPackagePaymentStatuses(group.key)" class="student-billing-note">
+                <span class="material-symbols-outlined" aria-hidden="true">info</span>
+                <span>共用方案的繳費狀態按科目分開顯示；請以每一列狀態為準。待對帳項目請前往帳務中心確認。</span>
+              </caption>
               <thead>
                 <tr>
                   <th>科目</th>
@@ -699,7 +703,7 @@
         </section>
       </div>
       <div v-else class="empty-state">
-        <div class="empty-icon">📋</div>
+        <span class="material-symbols-outlined empty-icon" aria-hidden="true">menu_book</span>
         <p class="empty-title">目前尚無課程資料</p>
         <p class="empty-desc">請在「學生管理」為學生建立課程。</p>
         <button type="button" class="btn-accent" data-testid="empty-state-goto-students" @click="emit('navigate', 'students')">
@@ -3995,6 +3999,13 @@ const reportStatusLabel = (status) => ({
   confirmed: '已入帳',
   rejected: '已退回',
 }[status] || status || '—');
+const hasMixedPackagePaymentStatuses = (key) => {
+  const rows = studentBillingState.value[key]?.rows || [];
+  const packageStatuses = rows
+    .filter(({ course }) => isPackageMember(course))
+    .map(({ course }) => paymentStatusButtonLabel(course));
+  return packageStatuses.length > 1 && new Set(packageStatuses).size > 1;
+};
 
 const formatMoney = (value) => {
   const n = Number(value ?? 0);
@@ -6088,6 +6099,19 @@ onUnmounted(() => {
 }
 .student-billing-error { color: var(--ds-danger); }
 .student-billing-table { min-width: 640px; }
+.student-billing-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ds-ink-secondary);
+  background: color-mix(in srgb, var(--ds-warning) 10%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
+.student-billing-note .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-warning); font-size: 18px; }
 
 .student-group-add-btn {
   font-size: 12.5px;

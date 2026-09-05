@@ -86,7 +86,7 @@
       <section class="card daily-trend-card" aria-labelledby="daily-trend-title">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Daily movement</p>
+            <p class="eyebrow">每日變化</p>
             <h3 id="daily-trend-title">每日核薪科目數</h3>
           </div>
           <span class="section-hint">選一天可快速聚焦下方明細</span>
@@ -117,7 +117,7 @@
       <section class="card detail-card" data-guide="subject-units-table" aria-labelledby="detail-title">
         <div class="detail-heading">
           <div>
-            <p class="eyebrow">Daily detail</p>
+            <p class="eyebrow">日明細</p>
             <h3 id="detail-title">老師 × 日期 × 分校 × 科目</h3>
           </div>
           <span class="row-count">{{ filteredEntries.length }} 筆明細</span>
@@ -268,7 +268,7 @@ const selectedBranchId = ref(props.branchId ? String(props.branchId) : 'all');
 const searchQuery = ref('');
 const categoryFilter = ref('all');
 const focusedDate = ref('');
-const showCalcGuide = ref(true);
+const showCalcGuide = ref(false);
 const showLevelBreakdown = ref(false);
 let requestSerial = 0;
 
