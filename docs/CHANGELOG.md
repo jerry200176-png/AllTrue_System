@@ -1,3 +1,9 @@
+## 2026-09-05 — fix(ux): 搜尋更新不閃爍並可直接追蹤 Bug 回報
+<!-- release-notes: staff_update=staff-2026-09-05-search-and-bug-tracking -->
+- 老師／課程查找在輸入關鍵字或切換篩選時保留上一份有效列表，不會因載入 skeleton 短暫清空；快速連續搜尋時只採用最新回應，避免舊結果覆蓋新條件。
+- Bug 回報送出後的「查看回報進度」會直接開啟該筆回報詳情，回報者可立即看到目前狀態與後續確認入口。
+- 不改 API、權限、回報狀態規則或既有資料；無 migration／production data repair。
+
 ## 2026-09-05 — ops: Xindian capacity read-only diagnose workflow
 <!-- release-notes: silent_ship=silent-2026-09-05-xindian-capacity-diagnose -->
 - Added a workflow-dispatch, SELECT-only production probe that aggregates 新店 (campus 9) invoice cash, session mix, peak slots, and teacher cross-campus load for capacity modeling.

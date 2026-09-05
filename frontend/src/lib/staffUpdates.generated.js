@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-05-search-and-bug-tracking",
+    "publishedAt": "2026-09-05",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "搜尋更穩定，Bug 回報可直接追蹤",
+    "summary": "查找時不再閃爍，送出 Bug 後可直接開啟該筆進度。",
+    "items": [
+      "老師與課程查找在輸入或切換篩選時會保留目前列表，連續快速搜尋也只顯示最新條件的結果。",
+      "Bug 回報送出後點「查看回報進度」，會直接開啟剛送出的回報詳情與目前狀態。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師與課程查找在輸入或切換篩選時會保留目前列表，連續快速搜尋也只顯示最新條件的結果。",
+          "Bug 回報送出後點「查看回報進度」，會直接開啟剛送出的回報詳情與目前狀態。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-05:search-and-bug-tracking"
+    ],
+    "date": "2026-09-05",
+    "version": "2026.09.05"
+  },
+  {
     "id": "staff-2026-09-04-shared-package-planning-entitlement",
     "publishedAt": "2026-09-04",
     "effectiveAt": null,

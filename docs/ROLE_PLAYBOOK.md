@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-06-06
+last_reviewed: 2026-09-05
 ---
 
 # Role Playbook（角色操作手冊）
@@ -135,4 +135,3 @@ last_reviewed: 2026-06-06
 
 6. `docs/AI_REGRESSION_LESSONS.md`
 7. `docs/DANGEROUS_OPERATIONS.md`
-
