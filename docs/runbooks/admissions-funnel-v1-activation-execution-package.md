@@ -64,6 +64,7 @@
 [x] Founder 核准 production migrate 與 `admissions_funnel_v1=on`
 [x] Deploy run 33942384695：migration、前後端 rebuild、health/smoke 通過
 [x] Runtime SHA 與 activation probe 對齊 merge SHA
+[ ] 核准 retention／PII 政策（見 REF_PRIVACY_DATA_INVENTORY）
 [ ] Staff-only end-to-end smoke：需 Founder 指定低峰測試帳號／分校
 [ ] Bounded public inquiry：需 Founder 指定可用測試家庭；本次不建立真實 production inquiry
 [ ] 異常則立即 `admissions_funnel_v1=off`，不刪資料

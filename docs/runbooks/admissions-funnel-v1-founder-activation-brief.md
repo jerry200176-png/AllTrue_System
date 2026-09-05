@@ -46,4 +46,5 @@
 
 - [x] Production migration GO／執行完成（`2026_09_05_020000_add_follow_up_to_admission_inquiries`；主表 migration 已由既有版本完成）
 - [x] Flag activation GO／執行完成
+- [ ] Retention／PII policy sign-off（見 `REF_PRIVACY_DATA_INVENTORY`）
 - [ ] Post-activation staff/public end-to-end smoke sign-off：請指定低峰主任帳號、分校與可用測試家庭；未指定前不建立 production inquiry
