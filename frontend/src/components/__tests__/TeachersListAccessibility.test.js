@@ -55,4 +55,10 @@ describe('TeachersList status workspace accessibility', () => {
     expect(source).toContain('<label for="teachers-subject-filter">科目</label>');
     expect(source).toContain('id="teachers-subject-filter"');
   });
+
+  it('keeps the current results visible and ignores stale search responses', () => {
+    expect(source).toContain('shouldShowInitialListSkeleton(loading, teachers)');
+    expect(source).toContain('isCurrentListRequest(requestId, loadRequestId)');
+    expect(source).toContain('let rankRequestId = 0;');
+  });
 });
