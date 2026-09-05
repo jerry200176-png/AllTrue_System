@@ -72,7 +72,7 @@ final class FulltimePayrollLockStore
                 'locked_by' => $userId,
                 'locked_at' => now(),
                 'teacher_count' => count($teachers),
-                'branch_subject_total' => round(collect($teachers)->sum(fn ($row) => (float) ($row['settlement']['payroll_subject_count'] ?? 0)), 4),
+                'branch_subject_total' => self::branchSubjectTotal($teachers),
                 'policy_version' => $policyVersion,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -93,6 +93,30 @@ final class FulltimePayrollLockStore
             self::audit($branchId, $month, 'lock', $userId, ['run_id' => $runId, 'teacher_count' => count($teachers)]);
             return $runId;
         });
+    }
+
+    /**
+     * Sum the raw monthly subject counts before applying the payroll divisor.
+     * This keeps the locked branch total independent of teacher-level rounding.
+     *
+     * @param list<array> $teachers
+     */
+    private static function branchSubjectTotal(array $teachers): float
+    {
+        $rawTotal = collect($teachers)->sum(function ($row): float {
+            $settlement = $row['settlement'] ?? [];
+            if (array_key_exists('regular_subject_count', $settlement)
+                || array_key_exists('tutoring_trial_subject_count', $settlement)) {
+                return (float) ($settlement['regular_subject_count'] ?? 0)
+                    + (float) ($settlement['tutoring_trial_subject_count'] ?? 0);
+            }
+
+            // Preserve compatibility with pre-change clients that only send
+            // the already-normalised payroll total.
+            return (float) ($settlement['payroll_subject_count'] ?? 0) * 8;
+        });
+
+        return round($rawTotal / 8, 4);
     }
 
     public static function reopen(int $branchId, string $month, int $userId, string $reason): void

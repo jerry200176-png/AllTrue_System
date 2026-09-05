@@ -344,7 +344,9 @@ class TeacherEligibilityController extends Controller
             'components' => ['weekly_16_segments', 'holiday_16_hours', 'weekday_afternoon', 'special_performance', 'deductions', 'admin_allowance', 'cash_adjustments', 'subject_count_bonus'],
             'teachers' => $rows,
             'total_teachers' => count($rows),
-            'branch_subject_total' => round(collect($rows)->sum(fn ($row) => (float) ($row['settlement']['payroll_subject_count'] ?? 0)), 4),
+            // Divide only after the complete eligible monthly raw total is
+            // summed, so teacher-level rounding cannot affect the branch total.
+            'branch_subject_total' => round(collect($subjectUnitsByTeacher)->sum(fn ($units) => (float) ($units['payroll_raw_total'] ?? 0)) / 8, 4),
             'lock' => [
                 'status' => 'draft',
                 'month' => $lockMonth,
@@ -802,8 +804,17 @@ class TeacherEligibilityController extends Controller
 
         return collect($buckets)->mapWithKeys(function ($parts, $teacherId) use ($unknown) {
             if (isset($unknown[$teacherId])) return [$teacherId => null];
-            $regular = round($parts['regular'] / 8, 4); $tutoringTrial = round($parts['tutoring_trial'] / 8, 4); $oneToThree = round($parts['one_to_three'] / 8, 4);
-            return [$teacherId => ['regular' => $regular, 'tutoring_trial' => $tutoringTrial, 'one_to_three' => $oneToThree, 'payroll_total' => round($regular + $tutoringTrial, 4)]];
+            $regular = round($parts['regular'], 4);
+            $tutoringTrial = round($parts['tutoring_trial'], 4);
+            $oneToThree = round($parts['one_to_three'] / 8, 4);
+            $payrollRawTotal = $parts['regular'] + $parts['tutoring_trial'];
+            return [$teacherId => [
+                'regular' => $regular,
+                'tutoring_trial' => $tutoringTrial,
+                'one_to_three' => $oneToThree,
+                'payroll_total' => round($payrollRawTotal / 8, 4),
+                'payroll_raw_total' => $payrollRawTotal,
+            ]];
         })->all();
     }
 
