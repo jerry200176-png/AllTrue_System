@@ -102,6 +102,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -109,7 +120,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Run dry-run on production
         env:
           LIMIT: ${{ github.event.inputs.limit }}
@@ -137,6 +147,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -144,7 +165,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Apply then verify
         env:
           LIMIT: ${{ github.event.inputs.limit }}
@@ -186,6 +206,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -193,7 +224,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Verify
         env:
           LIMIT: ${{ github.event.inputs.limit }}
@@ -223,6 +253,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -230,7 +271,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Enable flag with auto-rollback on failure
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
@@ -315,6 +355,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -322,7 +373,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Disable flag
         run: |
           set -euo pipefail
@@ -358,6 +408,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
@@ -365,7 +426,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Staff CRUD + legacy intact
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}

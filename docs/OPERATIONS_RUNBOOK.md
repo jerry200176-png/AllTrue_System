@@ -486,7 +486,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 | Secret | 說明 | ⚠️ 格式規則 |
 |---|---|---|
 | `PI_SSH_KEY` | deploy key 私鑰（base64 單行）| 值 = `base64 -w0 rpi_actions_deploy`，不含換行 |
-| `PI_HOST_KEY` | Pi SSH host key（known_hosts 單行）| 值範例：`pi.lifenet.com.tw ssh-ed25519 AAAA...`（用 `ssh-keyscan -H` 產生） |
+| `PI_HOST_KEY` | Pi SSH host key（pinned known_hosts entries）| 由已核准的 production host identity 維護；workflow 只接受這些 pinned entries，不在 runner 動態取得 |
 | `PI_SSH_USER` | Pi SSH 帳號 | **只填 `admin`，禁止含 `@hostname`** |
 | `PI_SSH_HOST` | Pi 主機名稱 | **只填 `pi.lifenet.com.tw`，禁止含 `user@`** |
 | `PI_USER` | pi-health.yml 用帳號 | 同 PI_SSH_USER，只填 `admin` |
@@ -497,19 +497,20 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 
 ### SSH Host Key Pinning SOP（maintenance workflows）
 
-1. 在可信任環境抓取 host key（至少兩次比對）：
+1. `PI_HOST_KEY` 是 production SSH host identity 的 authoritative pinned
+   source。所有 workflow 透過 `.github/actions/production-ssh-trust` 在第一個
+   SSH/scp/rsync 呼叫前寫入 known_hosts，並以 `StrictHostKeyChecking=yes`
+   fail closed；不得在 workflow 以 `ssh-keyscan` 或其他網路探測建立 trust。
+2. 若 host identity 需要變更，Founder/production operator 必須先以既有
+   trusted record 與獨立可信通道核對 key fingerprint；若無法可靠確認目前
+   authoritative key，停止並請 Founder 決策，不可用 runner scan 覆蓋 pin。
+3. 經核准後才更新 GitHub Secret：
    ```bash
-   ssh-keyscan -H pi.lifenet.com.tw
+   gh secret set PI_HOST_KEY --body "<Founder-approved known_hosts entries>"
    ```
-2. 記錄 fingerprint 供人工核對：
-   ```bash
-   ssh-keyscan -H pi.lifenet.com.tw | ssh-keygen -lf -
-   ```
-3. 更新 GitHub Secret：
-   ```bash
-   gh secret set PI_HOST_KEY --body "pi.lifenet.com.tw ssh-ed25519 AAAA..."
-   ```
-4. rotation 後，手動觸發 `pi-health.yml`、`backup-restore-test.yml`、`slow-query-report.yml` 驗證均可連線。
+4. 變更後以 `pi-health.yml`、`backup-restore-test.yml`、`slow-query-report.yml`
+   的 read-only path 驗證連線；任何 host-key mismatch 都必須維持 failure，
+   不得 fallback 到動態接受新 key。
 
 ### Pi authorized_keys
 

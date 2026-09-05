@@ -14,6 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_HOST || secrets.PI_SSH_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Check Pi secrets
         id: secrets
         env:
@@ -43,8 +48,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/pi_key
           chmod 600 ~/.ssh/pi_key
-          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
 
       - name: Check Pi thermal telemetry
         id: thermal

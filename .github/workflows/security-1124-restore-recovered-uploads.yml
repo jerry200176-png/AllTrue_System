@@ -52,6 +52,11 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
       - name: Fetch the recovery source commit
         run: |
           set -euo pipefail
@@ -77,7 +82,6 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Fill-only restore to production (rsync --ignore-existing)
         env:
@@ -97,7 +101,7 @@ jobs:
           # the whole point: recover what we can without touching anything
           # Jerry / the app has written since.
           rsync $RSYNC_FLAGS \
-            -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no" \
+            -e "ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
             /tmp/backend/storage/app/public/ \
             "${PI_SSH_USER}@${PI_SSH_HOST}:/home/admin/backend/storage/app/public/"
 

@@ -11,6 +11,6 @@
     "ci:preflight:self-test": "node scripts/ci-preflight.mjs --self-test",
     "sync:generated": "node scripts/sync-generated.mjs",
     "sync:generated:check": "node scripts/sync-generated.mjs --check",
-    "test:gov": "node --test scripts/ci/gov.test.mjs && node scripts/ci-preflight.mjs --self-test && node scripts/ci/bug-writeback-workflow.test.mjs"
+    "test:gov": "node --test scripts/ci/gov.test.mjs && node scripts/ci-preflight.mjs --self-test && node scripts/ci/bug-writeback-workflow.test.mjs && bash scripts/tests/production-ssh-trust.test.sh"
   }
 }

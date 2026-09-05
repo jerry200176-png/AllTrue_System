@@ -1,0 +1,18 @@
+name: Configure pinned production SSH trust
+description: Configure fail-closed SSH host verification from the pinned PI_HOST_KEY secret.
+inputs:
+  host:
+    description: Production SSH hostname used by the calling workflow.
+    required: true
+  host-key:
+    description: Pinned known_hosts entries for the production host.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install pinned host key and fail-closed SSH config
+      shell: bash
+      env:
+        INPUT_HOST: ${{ inputs.host }}
+        INPUT_HOST_KEY: ${{ inputs.host-key }}
+      run: bash "$GITHUB_ACTION_PATH/setup.sh"
