@@ -1,3 +1,9 @@
+## 2026-09-05 — improved(ux): 主任與老師新手任務 V1.2
+<!-- release-notes: staff_update=staff-2026-09-05-role-onboarding-v12 -->
+- 新手教學改以「主任今日營運巡檢」與「老師今日教學收尾」兩條任務路線呈現，逐步對準今日待辦、出缺勤、評量、通知與課表等既有工作區。
+- 每一步都顯示操作目標與完成提示；任務完成只保存 onboarding 進度，軍階 XP 仍只由既有可審計的營運事件累計。
+- 沿用既有導覽狀態、軍階與設計 token，新增角色情境場景圖與主任軍階入口；不改 API、權限、資料表或 production activation。
+
 ## 2026-09-05 — fix(ux): 搜尋更新不閃爍並可直接追蹤 Bug 回報
 <!-- release-notes: staff_update=staff-2026-09-05-search-and-bug-tracking -->
 - 老師／課程查找在輸入關鍵字或切換篩選時保留上一份有效列表，不會因載入 skeleton 短暫清空；快速連續搜尋時只採用最新回應，避免舊結果覆蓋新條件。
