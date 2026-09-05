@@ -342,6 +342,13 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("effective_tier", self.workflow)
         self.assertNotIn("re.search(r\"(?m)^\\*\\*Risk-Class", self.workflow)
 
+    def test_safe_merge_gate_keeps_large_github_payloads_out_of_environment(self):
+        self.assertIn('PR_JSON_FILE="$(mktemp)"', AUTOMERGE_WORKFLOW.read_text(encoding="utf-8"))
+        self.assertIn('FILES_JSON_FILE="$(mktemp)"', AUTOMERGE_WORKFLOW.read_text(encoding="utf-8"))
+        self.assertIn('gh api "/repos/${REPO}/pulls/${PR_NUMBER}" >"$PR_JSON_FILE"', AUTOMERGE_WORKFLOW.read_text(encoding="utf-8"))
+        self.assertIn('Path(os.environ["PR_JSON_FILE"])', AUTOMERGE_WORKFLOW.read_text(encoding="utf-8"))
+        self.assertNotIn('PR_JSON="$PR_JSON" FILES_JSON="$FILES_JSON"', AUTOMERGE_WORKFLOW.read_text(encoding="utf-8"))
+
     def test_state_machine_has_fail_closed_modes(self):
         policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
         for mode in ("no-op", "manual", "auto", "awaiting-activation"):
