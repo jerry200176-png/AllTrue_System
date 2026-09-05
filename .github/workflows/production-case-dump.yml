@@ -13,6 +13,7 @@ on:
           - fixed_slot_huang
           - billing_linlai
           - parent_lou
+          - parent_binding
           - transfer_capacity_chen
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
@@ -78,9 +79,9 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'transfer_capacity_chen'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else '林奕安'))
+          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else '林奕安')))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
@@ -396,6 +397,100 @@ jobs:
               ->get(['p.id', 'i.StudentClassID as class_id', 'p.Amount as amount', 'p.payment_report_id'])
               ->map(fn ($r) => ['id'=>(int)$r->id, 'class_id'=>(int)$r->class_id, 'amount'=>(float)$r->amount,
                 'payment_report_id'=>$r->payment_report_id === null ? null : (int)$r->payment_report_id])->values()->all();
+          }} elseif ($case === 'parent_binding') {{
+            $parentCampus = $db::table('Campus')->where('name', 'like', '%木柵%')->first(['id', 'name']);
+            $parentCampusId = $parentCampus ? (int) $parentCampus->id : null;
+            $parentStudents = $parentCampusId === null ? collect() : $db::table('Student')
+              ->where('CampusID', $parentCampusId)->whereRaw('TRIM(name) = ?', [$targetStudentName])
+              ->get(['id', 'CampusID as campus_id', 'Phone as legacy_phone', 'parent_phone', 'enable']);
+            $parentStudentIds = $parentStudents->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $studentModels = $parentStudentIds === [] ? collect() : \App\Models\Student::query()->whereIn('id', $parentStudentIds)->get();
+            $studentModelById = $studentModels->keyBy(fn ($student) => (int) $student->getKey());
+            $sync = app(\App\Services\ParentBinding\GuardianSyncService::class);
+            $classifier = app(\App\Services\ParentBinding\ParentBindingClassifier::class);
+            $studentEvidence = $parentStudents->map(function ($row) use ($studentModelById, $db, $classifier, $sync, $parentCampusId) {{
+              $student = $studentModelById->get((int) $row->id);
+              $links = $student === null ? collect() : $db::table('student_guardians as sg')
+                ->leftJoin('guardians as g', 'g.id', '=', 'sg.guardian_id')
+                ->where('sg.student_id', (int) $row->id)
+                ->orderByDesc('sg.is_primary')->orderBy('sg.id')
+                ->get(['sg.id as link_id', 'sg.status', 'sg.is_primary', 'sg.revoked_at',
+                  'sg.campus_id', 'g.phone', 'g.phone_normalized', 'g.line_user_id']);
+              $accessWithPhone = $links->filter(fn ($link) => in_array((string) $link->status, ['active', 'read_only'], true)
+                && trim((string) ($link->phone_normalized ?? '')) !== '');
+              $resolved = $student === null ? '' : \App\Support\StudentContactPhone::forStudent($student);
+              $legacyParent = trim((string) ($row->parent_phone ?? ''));
+              $legacyPhone = trim((string) ($row->legacy_phone ?? ''));
+              $guardianEvidence = $links->map(function ($link) use ($student, $classifier, $parentCampusId) {{
+                $guardianPhone = trim((string) ($link->phone_normalized ?? ''));
+                $isAccess = in_array((string) $link->status, ['active', 'read_only'], true);
+                $classification = null;
+                $authMatch = null;
+                if ($student !== null && $guardianPhone !== '') {{
+                  $classification = $classifier->classifyLineStudentId($student, $guardianPhone, (int) $parentCampusId);
+                  $authMatch = \App\Support\StudentContactPhone::matchesNormalizedInput($student, $guardianPhone);
+                }}
+                return [
+                  'link_id' => (int) $link->link_id,
+                  'status' => (string) $link->status,
+                  'is_primary' => (bool) $link->is_primary,
+                  'revoked_at_present' => $link->revoked_at !== null,
+                  'campus_matches_student' => $link->campus_id === null || (int) $link->campus_id === (int) $parentCampusId,
+                  'phone_present' => $guardianPhone !== '',
+                  'phone_is_accessible' => $isAccess && $guardianPhone !== '',
+                  'classifier_reason_code_for_stored_phone' => $classification['reasonCode'] ?? null,
+                  'classifier_outcome_for_stored_phone' => $classification['outcome'] ?? null,
+                  'auth_match_for_stored_phone' => $authMatch,
+                ];
+              }})->values()->all();
+              $lastAttempts = $db::table('parent_binding_attempts')->where('student_id', (int) $row->id)
+                ->orderByDesc('occurred_at')->limit(20)->get(['occurred_at', 'channel', 'method', 'outcome',
+                  'reason_code', 'candidate_count', 'phone_match_count'])
+                ->map(fn ($attempt) => ['occurred_at' => $attempt->occurred_at, 'channel' => $attempt->channel,
+                  'method' => $attempt->method, 'outcome' => $attempt->outcome, 'reason_code' => $attempt->reason_code,
+                  'candidate_count' => $attempt->candidate_count === null ? null : (int) $attempt->candidate_count,
+                  'phone_match_count' => $attempt->phone_match_count === null ? null : (int) $attempt->phone_match_count])->values()->all();
+              return [
+                'student_id' => (int) $row->id,
+                'campus_id' => (int) $row->campus_id,
+                'enabled' => (bool) $row->enable,
+                'ui_legacy_parent_phone_present' => $legacyParent !== '',
+                'ui_legacy_phone_present' => $legacyPhone !== '',
+                'ui_legacy_contact_source' => $legacyParent !== '' ? 'parent_phone' : ($legacyPhone !== '' ? 'Phone' : 'none'),
+                'resolver_contact_phone_present' => $resolved !== '',
+                'resolver_contact_source' => $resolved === '' ? 'none' : ($sync->primaryContactPhone($student) !== null ? 'primary_guardian' : ($legacyParent !== '' ? 'parent_phone' : 'Phone')),
+                'guardian_link_count' => $links->count(),
+                'active_or_read_only_guardian_phone_count' => $accessWithPhone->count(),
+                'guardian_links' => $guardianEvidence,
+                'recent_attempts' => $lastAttempts,
+              ];
+            }})->values()->all();
+            $eligibleIds = $db::table('student_guardians as sg')->join('guardians as g', 'g.id', '=', 'sg.guardian_id')
+              ->join('Student as st', 'st.id', '=', 'sg.student_id')->whereIn('sg.status', ['active', 'read_only'])
+              ->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')
+              ->pluck('sg.student_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $eligibleStudents = $eligibleIds === [] ? collect() : \App\Models\Student::query()->whereIn('id', $eligibleIds)->get(['id', 'parent_phone', 'Phone']);
+            $affected = $eligibleStudents->filter(function ($student) use ($db) {{
+              $hasPrimaryPhone = $db::table('student_guardians as sg')->join('guardians as g', 'g.id', '=', 'sg.guardian_id')
+                ->where('sg.student_id', (int) $student->getKey())->where('sg.status', '!=', 'revoked')
+                ->where('sg.is_primary', true)->whereNotNull('g.phone_normalized')->where('g.phone_normalized', '!=', '')->exists();
+              return !$hasPrimaryPhone && trim((string) ($student->parent_phone ?? '')) === ''
+                && trim((string) ($student->Phone ?? '')) === '';
+            }})->count();
+            $out['campus'] = ['found' => $parentCampus !== null, 'campus_id' => $parentCampusId];
+            $out['feature_flags'] = [
+              'multi_guardian_enabled' => (bool) config('perfflags.multi_guardian_enabled', false),
+              'guardian_tables_available' => \App\Services\ParentBinding\GuardianSyncService::dualWriteEnabled(),
+              'parent_binding_observability_enabled' => (bool) config('parent_binding.observability_enabled', false),
+              'store_phone_fingerprint' => (bool) config('parent_binding.store_phone_fingerprint', false),
+            ];
+            $out['student_count'] = count($parentStudentIds);
+            $out['students'] = $studentEvidence;
+            $out['impact_cohort'] = [
+              'students_with_active_or_read_only_guardian_phone' => count($eligibleIds),
+              'students_with_guardian_phone_but_no_primary_or_legacy_phone' => $affected,
+              'definition' => 'active/read_only guardian phone exists, no non-revoked primary guardian phone, Student.parent_phone and Student.Phone are blank',
+            ];
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int)$parentCampus->id : null;
@@ -458,6 +553,11 @@ jobs:
                   raise SystemExit('黃品皓 production target was not found')
               if not verification.get('target_class_has_wednesday_and_thursday'):
                   raise SystemExit('黃品皓 production target has no single fixed course with both Wednesday and Thursday')
+          if obj.get('case') == 'parent_binding':
+              if not obj.get('campus', {}).get('found'):
+                  raise SystemExit('木柵 campus was not found')
+              if obj.get('student_count') != 1:
+                  raise SystemExit('parent binding probe requires exactly one target student')
           print('parsed read-only production case', obj.get('case'))
           PY
 
