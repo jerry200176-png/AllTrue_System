@@ -16,9 +16,10 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Authoritative writer for the flexible/逐堂手動排課 flow.
  *
- * Count courses still use RemainingSessions for booking capacity. Date-mode
- * monthly courses use their explicit StartDate/EndDate and are billed from
- * actual attendance; attendance remains the only deduction path.
+ * Standalone count courses still use RemainingSessions for booking capacity.
+ * Shared-package count courses report future planning separately, while
+ * date-mode monthly courses use their explicit StartDate/EndDate and are
+ * billed from actual attendance; attendance remains the only deduction path.
  */
 class ManualSessionBookingService
 {
@@ -47,6 +48,7 @@ class ManualSessionBookingService
                 ->where('student_id', $studentId)
                 ->first();
         }
+        $isSharedPackage = $package !== null && app(SharedPackagePlanningService::class)->isSharedPackage($package);
 
         $base = [
             'can_add' => false,
@@ -64,12 +66,24 @@ class ManualSessionBookingService
                 ? max(0, (int) $package->computeRemainingFromLedger())
                 : max(0, (int) ($course->RemainingSessions ?? 0)),
             'available_sessions' => 0,
+            'purchased_entitlement' => $package ? (int) $package->total_sessions : max(0, (int) ($course->SessionCount ?? 0)),
+            'actual_consumed' => $package
+                ? max(0, (int) $package->total_sessions - (int) $package->computeRemainingFromLedger())
+                : max(0, (int) ($course->UsedSessions ?? 0)),
+            'future_planned_sessions' => 0,
+            'projected_future_planned_sessions' => 0,
+            'overage_sessions' => 0,
+            'renewal_warning' => false,
+            'renewal_message' => null,
             'existing_session_id' => null,
             'suggested_actions' => [],
         ];
 
         if ($packageId > 0 && !$package) {
             return $this->blocked($base, 'package_not_found', '找不到共用方案，請重新整理後再試');
+        }
+        if ($package) {
+            $base = array_merge($base, app(SharedPackagePlanningService::class)->summarize($package));
         }
 
         // Validate the course contract before idempotency. A stale matching row
@@ -145,13 +159,17 @@ class ManualSessionBookingService
             }
         }
 
-        $reserved = $isMonthly ? 0 : $this->reservedSessionCount($course, $now->toDateString());
+        $reserved = $isMonthly || $isSharedPackage ? 0 : $this->reservedSessionCount($course, $now->toDateString());
         $remaining = (int) $base['remaining_sessions'];
         $available = $isMonthly ? null : max(0, $remaining - $reserved);
         $base['reserved_sessions'] = $reserved;
         $base['available_sessions'] = $available;
-        if (!$isMonthly && $available <= 0) {
+        if (!$isMonthly && !$isSharedPackage && $available <= 0) {
             return $this->blocked($base, 'reservation_limit', '剩餘堂數已被既有未來排課占用，請先完成、取消或調整既有堂次');
+        }
+
+        if ($isSharedPackage && !$isMonthly) {
+            $base = array_merge($base, app(SharedPackagePlanningService::class)->summarize($package, 1));
         }
 
         $studentRows = DB::table('ClassSession as cs')

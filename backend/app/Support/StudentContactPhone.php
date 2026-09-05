@@ -38,6 +38,28 @@ final class StudentContactPhone
         return preg_replace('/[^0-9]/', '', self::forStudent($student)) ?? '';
     }
 
+    /**
+     * Whether binding/auth has at least one usable contact phone.
+     *
+     * `forStudent()` is a display projection (primary guardian, then legacy
+     * columns). It must not be used as the existence check for authentication:
+     * a valid non-primary active/read_only guardian is also an accepted phone.
+     */
+    public static function hasUsableContactPhone(Student $student): bool
+    {
+        if (GuardianSyncService::enabled() && GuardianSyncService::dualWriteEnabled()
+            && StudentGuardian::activeAccess()
+                ->where('student_id', (int) $student->getKey())
+                ->whereHas('guardian', function ($q) {
+                    $q->whereNotNull('phone_normalized')->where('phone_normalized', '!=', '');
+                })
+                ->exists()) {
+            return true;
+        }
+
+        return self::normalizedDigits($student) !== '';
+    }
+
     public static function matchesNormalizedInput(Student $student, string $normalizedInput): bool
     {
         $normalizedInput = Guardian::normalizePhone($normalizedInput);

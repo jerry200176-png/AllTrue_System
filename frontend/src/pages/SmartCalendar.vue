@@ -435,6 +435,7 @@
       @delete-course="deleteCourse"
       @cancel-makeup="cancelMakeupClass"
       @teacher-change="checkConflict"
+      @goto-attendance="goToAttendanceFromSession"
     />
 
     <!-- #740 Modals：請假 -->
@@ -537,6 +538,7 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
+import { buildAttendanceNav } from '../lib/authoritativeMutationRoutes.js';
 import {
   resolveCalendarDataFetchBoundsYmd,
   isRangeWithinFetchedBounds,
@@ -607,7 +609,7 @@ const props = defineProps({
   resetWeekToken: [String, Number],
   initialIntent: String,
 });
-const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context']);
+const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context', 'navigate']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const currentTeacherId = computed(() => {
@@ -2363,6 +2365,17 @@ const sessionEditOptions = computed(() => ({
   teachers: teachers.value || [],
   settlementDayOptions,
 }));
+
+const goToAttendanceFromSession = () => {
+  const courseId = editingCourseId.value;
+  const base = courses.value.find((c) => c.id === courseId) || {};
+  emit('navigate', buildAttendanceNav({
+    studentId: modalForm.value.student_id || base.student_id,
+    courseId,
+    date: editingActionDate.value || '',
+  }));
+  showModal.value = false;
+};
 
 const doConfirmCancelSession = async () => {
   const row = cancelTargetSession.value;

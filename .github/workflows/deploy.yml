@@ -34,6 +34,15 @@ on:
         description: "Type the phase-specific confirmation phrase; application deploy uses ACTIVATE_PRODUCTION:<target_sha>, POP bootstrap uses BOOTSTRAP_POP_MACHINE:<target_sha>:CAMPUS:<campus_id>"
         required: true
         type: string
+      admissions_funnel_v1:
+        description: "Application deploy only: explicitly set the admissions funnel flag, or preserve its current production value"
+        required: false
+        default: unchanged
+        type: choice
+        options:
+          - unchanged
+          - "on"
+          - "off"
 
 permissions:
   contents: read
@@ -709,6 +718,10 @@ jobs:
           MIGRATION_RAN=0
           MIGRATION_FAILED=0
           TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"
+          ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"
+          ADMISSIONS_FLAG_CHANGED=0
+          ADMISSIONS_FLAG_WAS_PRESENT=0
+          ADMISSIONS_FLAG_BACKUP=""
 
           write_deployment_manifest() {
             python3 /home/admin/scripts/write-deployment-manifest.py \
@@ -740,6 +753,15 @@ jobs:
             if ! write_deployment_manifest "$PREV_COMMIT"; then
               echo "⚠️ rollback deployment manifest 寫入失敗"
               rollback_failed=1
+            fi
+
+            if [ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]; then
+              if [ "$ADMISSIONS_FLAG_WAS_PRESENT" -eq 1 ]; then
+                sed -i -E "s/^ADMISSIONS_FUNNEL_V1=.*/$ADMISSIONS_FLAG_BACKUP/" /home/admin/backend/.env
+              else
+                sed -i -E '/^ADMISSIONS_FUNNEL_V1=/d' /home/admin/backend/.env
+              fi
+              echo "✅ admissions flag restored during rollback"
             fi
 
             if ! (cd /home/admin/backend && php artisan optimize); then
@@ -910,6 +932,38 @@ jobs:
           if ! echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local; then
             abort_deploy "frontend temporary environment 寫入失敗"
           fi
+          if [ "$ADMISSIONS_FLAG_MODE" = "on" ]; then
+            ADMISSIONS_FLAG_VALUE=true
+            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
+              ADMISSIONS_FLAG_WAS_PRESENT=1
+              ADMISSIONS_FLAG_BACKUP=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1)
+              sed -i -E 's/^ADMISSIONS_FUNNEL_V1=.*/ADMISSIONS_FUNNEL_V1=true/' /home/admin/backend/.env
+            else
+              printf '\nADMISSIONS_FUNNEL_V1=true\n' >> /home/admin/backend/.env
+            fi
+            ADMISSIONS_FLAG_CHANGED=1
+          elif [ "$ADMISSIONS_FLAG_MODE" = "off" ]; then
+            ADMISSIONS_FLAG_VALUE=false
+            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
+              ADMISSIONS_FLAG_WAS_PRESENT=1
+              ADMISSIONS_FLAG_BACKUP=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1)
+              sed -i -E 's/^ADMISSIONS_FUNNEL_V1=.*/ADMISSIONS_FUNNEL_V1=false/' /home/admin/backend/.env
+            else
+              printf '\nADMISSIONS_FUNNEL_V1=false\n' >> /home/admin/backend/.env
+            fi
+            ADMISSIONS_FLAG_CHANGED=1
+          else
+            ADMISSIONS_FLAG_VALUE=false
+            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
+              ADMISSIONS_FLAG_VALUE=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+            fi
+            case "$ADMISSIONS_FLAG_VALUE" in
+              true|false) ;;
+              *) ADMISSIONS_FLAG_VALUE=false ;;
+            esac
+          fi
+          printf 'VITE_ADMISSIONS_FUNNEL_V1=%s\n' "$ADMISSIONS_FLAG_VALUE" >> /home/admin/frontend/.env.production.local
+          echo "✅ admissions funnel flag prepared for backend/frontend deployment (mode=${ADMISSIONS_FLAG_MODE:-unchanged}, value=$ADMISSIONS_FLAG_VALUE)"
           echo "✅ frontend .env.production.local 已寫入"
 
           echo "=== [4/7] 前端變動偵測 ==="
@@ -918,8 +972,8 @@ jobs:
           # 若 index.html 不存在（git rm --cached 後首次 deploy），強制 build
           ASSETS_MISSING=0
           [ ! -f /home/admin/backend/public/index.html ] && ASSETS_MISSING=1
-          if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ]; then
-            echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}），執行 build + deploy..."
+          if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ] || [ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]; then
+            echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}）或招生 flag 變更（${ADMISSIONS_FLAG_CHANGED}），執行 build + deploy..."
             if ! (cd /home/admin/frontend && npm install --prefer-offline && npm run deploy); then
               rm -f /home/admin/frontend/.env.production.local || true
               abort_deploy "frontend build/deploy 失敗"

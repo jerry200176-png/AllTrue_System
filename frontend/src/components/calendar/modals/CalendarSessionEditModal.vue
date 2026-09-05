@@ -44,6 +44,7 @@
         <div class="schedule-actions-btns">
           <button class="action-btn leave" @click="$emit('leave')">📋 請假</button>
           <button class="action-btn reschedule" @click="$emit('reschedule')">🔄 調課</button>
+          <button class="action-btn attendance" data-testid="calendar-goto-attendance" @click="$emit('goto-attendance')">✓ 出缺勤</button>
           <button
             v-if="!session.isTeacher"
             class="action-btn substitute"
@@ -228,7 +229,7 @@ const props = defineProps({
   },
 });
 defineEmits([
-  'close', 'leave', 'reschedule', 'substitute', 'substitute-v2',
+  'close', 'leave', 'reschedule', 'substitute', 'substitute-v2', 'goto-attendance',
   'show-cancel-confirm', 'dismiss-cancel-confirm', 'confirm-cancel',
   'restore-session',
   'delete-exception', 'delete-course', 'cancel-makeup', 'teacher-change',
@@ -394,6 +395,8 @@ defineEmits([
 }
 .action-btn.leave { background: var(--ds-warning-wash); color: var(--ds-primary); border-color: var(--ds-warning); }
 .action-btn.leave:hover { background: var(--ds-warning-wash); }
+.action-btn.attendance { background: var(--ds-success-wash); color: var(--ds-success); border-color: var(--ds-success); }
+.action-btn.attendance:hover { background: var(--ds-success-wash); }
 .action-btn.reschedule { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); border-color: var(--ds-ink-mute); }
 .action-btn.reschedule:hover { background: var(--ds-canvas-soft); }
 .action-btn.substitute { background: var(--ds-canvas-soft); color: var(--ds-ink); border-color: var(--ds-ink-mute); }

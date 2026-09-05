@@ -12,5 +12,8 @@ assert.match(source, /event\.key === 'ArrowLeft' \|\| event\.key === 'ArrowUp'/)
 assert.match(source, /event\.key === 'Home'/);
 assert.match(source, /event\.key === 'End'/);
 assert.match(source, /querySelector\(`\[data-testid="student-tab-\$\{nextTab\}"\]`\)\?\.focus\(\)/);
+assert.match(source, /let courseLoadRequestId = 0;/);
+assert.match(source, /const isCurrent = \(\) => isCurrentListRequest\(requestId, courseLoadRequestId\);/);
+assert.match(source, /if \(!isCurrentListRequest\(requestId, courseLoadRequestId\)\) return;\s+pagination\.value = \{/);
 
 console.log('courseManagementTabsA11y.test.js: ok');

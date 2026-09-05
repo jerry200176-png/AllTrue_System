@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 446 api/* routes · generated 2026-09-03
+> Source: `php artisan route:list --json` · 459 api/* routes · generated 2026-09-05
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -61,6 +61,21 @@
 | GET | `api/v1/admin/teachers/duplicates` | `TeacherDuplicateController@index` | role |
 | POST | `api/v1/admin/teachers/merge` | `TeacherDuplicateController@merge` | role |
 | POST | `api/v1/admin/teachers/merge-preview` | `TeacherDuplicateController@preview` | role |
+
+## /api/v1/admission-inquiries (10)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| POST | `api/v1/admission-inquiries` | `AdmissionInquiryController@store` | public |
+| GET | `api/v1/admission-inquiries` | `AdmissionInquiryController@index` | role+campus |
+| GET | `api/v1/admission-inquiries/{admissionInquiry}` | `AdmissionInquiryController@show` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/claim` | `AdmissionInquiryController@claim` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/contact` | `AdmissionInquiryController@contact` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/enroll` | `AdmissionInquiryController@linkEnrollment` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/follow-up` | `AdmissionInquiryController@followUp` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/lost` | `AdmissionInquiryController@markLost` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/trial` | `AdmissionInquiryController@scheduleTrial` | role+campus |
+| POST | `api/v1/admission-inquiries/{admissionInquiry}/trial-result` | `AdmissionInquiryController@recordResult` | role+campus |
 
 ## /api/v1/adoption (5)
 
@@ -333,7 +348,7 @@
 | POST | `api/v1/exception-workflows/{id}/reject` | `ExceptionWorkflowController@reject` | role+campus |
 | POST | `api/v1/exception-workflows/{id}/waive` | `ExceptionWorkflowController@waive` | role+campus |
 
-## /api/v1/finance (55)
+## /api/v1/finance (56)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -359,6 +374,7 @@
 | POST | `api/v1/finance/periods/reopen` | `AccountingPeriodController@reopen` | role+campus |
 | GET | `api/v1/finance/revenue` | `FinanceController@revenue` | role+campus |
 | GET | `api/v1/finance/subject-units` | `FinanceController@subjectUnits` | role+campus |
+| GET | `api/v1/finance/subject-units/timeline` | `FinanceController@subjectUnitsTimeline` | role+campus |
 | GET | `api/v1/finance/summary` | `FinanceController@summary` | role+campus |
 | GET | `api/v1/finance/teacher-eligibility` | `TeacherEligibilityController@index` | role+campus+pin |
 | POST | `api/v1/finance/teacher-eligibility/achievements` | `TeacherEligibilityInputController@storeAchievement` | role+campus+pin |
@@ -666,7 +682,7 @@
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
 
-## /api/v1/student-classes (31)
+## /api/v1/student-classes (33)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -685,6 +701,8 @@
 | POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/charge-correction` | `StudentClassController@chargeCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/contract-amendment` | `ContractAmendmentController@execute` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/contract-amendment/preview` | `ContractAmendmentController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/convert-to-package` | `CoursePackageController@convertToPackage` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/convert-trial` | `StudentClassController@convertTrial` | role+campus |
 | GET | `api/v1/student-classes/{studentClass}/editability` | `StudentClassController@editability` | role+campus |

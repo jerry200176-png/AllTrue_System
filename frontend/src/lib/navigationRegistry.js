@@ -3,7 +3,7 @@
 
 const DIRECTOR_ROLES = new Set(['director', 'admin', 'super_admin']);
 
-function directorGroups(role) {
+function directorGroups(role, { admissionsEnabled = true } = {}) {
   const systemItems = [
     { page: 'line-integration', label: '家長 LINE 通知', icon: 'chat' },
     { page: 'binding-management', label: 'LINE 綁定管理', icon: 'link' },
@@ -18,7 +18,7 @@ function directorGroups(role) {
       { page: 'nightly-reconcile', label: '夜間堂數對帳', icon: 'receipt_long' },
     );
   }
-  return [
+  const groups = [
     {
       key: 'overview', title: '今日工作', defaultOpen: true, primary: true,
       items: [
@@ -48,6 +48,7 @@ function directorGroups(role) {
       items: [
         { page: 'students', label: '學生管理', icon: 'groups' },
         { page: 'course-mgmt', label: '課程查找', icon: 'menu_book', badgeTypes: ['tuition'] },
+        { page: 'admission-inquiries', label: '新生問班', icon: 'how_to_reg' },
       ],
     },
     {
@@ -82,6 +83,11 @@ function directorGroups(role) {
       ],
     },
   ];
+  if (!admissionsEnabled) {
+    const group = groups.find(item => item.key === 'students-courses');
+    if (group) group.items = group.items.filter(item => item.page !== 'admission-inquiries');
+  }
+  return groups;
 }
 
 function teacherGroups() {
@@ -120,8 +126,8 @@ function cloneGroups(groups) {
 }
 
 /** Return a fresh role-scoped model for every renderer. */
-export function getNavigationGroups(role) {
-  if (DIRECTOR_ROLES.has(role)) return cloneGroups(directorGroups(role));
+export function getNavigationGroups(role, options = {}) {
+  if (DIRECTOR_ROLES.has(role)) return cloneGroups(directorGroups(role, options));
   if (role === 'teacher') return cloneGroups(teacherGroups());
   return [];
 }

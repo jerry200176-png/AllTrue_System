@@ -3,6 +3,140 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-05-search-and-bug-tracking
+    published_at: "2026-09-05"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 搜尋更穩定，Bug 回報可直接追蹤
+    summary: 查找時不再閃爍，送出 Bug 後可直接開啟該筆進度。
+    items:
+      - category: improved
+        text: 老師與課程查找在輸入或切換篩選時會保留目前列表，連續快速搜尋也只顯示最新條件的結果。
+      - category: improved
+        text: Bug 回報送出後點「查看回報進度」，會直接開啟剛送出的回報詳情與目前狀態。
+    source_refs:
+      - "changelog:2026-09-05:search-and-bug-tracking"
+
+  - id: staff-2026-09-05-admissions-funnel-v1
+    published_at: "2026-09-05"
+    audiences:
+      - director
+    importance: action_required
+    title: 新生問班可直接追蹤
+    summary: 主任可認領新生問班並安排下一步追蹤。
+    items:
+      - category: added
+        text: 「新生問班」會集中顯示新需求，主任可認領負責並查看目前狀態與下一步。
+      - category: added
+        text: 可在同一筆紀錄設定下次追蹤日期、留下工作備註並查看處理歷程。
+      - category: action_required
+        text: 請認領自己負責的詢問，完成聯絡後更新狀態，避免佇列留下無人跟進的案件。
+    source_refs:
+      - "changelog:2026-09-05:admissions-ownership-history"
+      - "github:#2472"
+      - "deploy:33942384695"
+
+  - id: staff-2026-09-05-subject-units-timeline
+    published_at: "2026-09-05"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 科目數改為每日明細
+    summary: 主任可比較授權分校內的老師與每日科目數；老師只看到自己的資料。
+    items:
+      - category: improved
+        text: 科目數現在按日期、分校、科目與老師拆開顯示，可直接看出每日變化與跨分校差異。
+      - category: improved
+        text: 正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。
+    source_refs:
+      - "changelog:2026-09-05:subject-units-timeline"
+
+  - id: staff-2026-09-04-contract-amended-unpaid-tuition
+    published_at: "2026-09-04"
+    audiences:
+      - director
+    importance: action_required
+    title: 提前結束未繳課程可回帳務中心對帳
+    summary: 合約改堂數／提前結束後若還沒繳費，會留在帳務中心待對帳，可登記與入帳。
+    items:
+      - category: fixed
+        text: 提前結束或改少堂數後仍未繳費的課程，會出現在帳務中心，不會消失。
+      - category: action_required
+        text: 請到帳務中心找到該筆「結案待對帳」，先「登記已回報」再「確認入帳」；若先前被退回，可重新登記。
+      - category: improved
+        text: 課程管理會提示尚未完成繳費，並導向帳務中心。
+    source_refs:
+      - "changelog:2026-09-04:contract-amended-unpaid-tuition"
+      - "github:#2461"
+      - "in-app:#251"
+
+  - id: staff-2026-09-04-shared-package-planning-entitlement
+    published_at: "2026-09-04"
+    audiences:
+      - director
+    importance: action_required
+    title: 多科共用方案預排與堂數提醒
+    summary: 共用預排不佔其他科堂數；超排會提醒續約或加購。
+    items:
+      - category: fixed
+        text: 預排不先扣堂，也不會阻擋其他科建立 recurring schedule。
+      - category: action_required
+        text: 超排仍可排課，系統會顯示超排與續約／加購提醒。
+      - category: improved
+        text: 取消、刪除、轉課、減少堂數與單科方案維持原規則。
+    source_refs:
+      - "changelog:2026-09-04:shared-package-planning-entitlement"
+  - id: staff-2026-09-04-role-onboarding-v11
+    published_at: "2026-09-04"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 主任與老師新手任務 V1.1
+    summary: 開始前先看任務清單，稍後可繼續，完成後有清楚回饋。
+    items:
+      - category: improved
+        text: 新手導覽開始前會顯示四個關鍵任務與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開會保留目前進度。
+      - category: added
+        text: 導覽中會顯示任務清單與完成進度，全部完成後會看到任務完成回饋；帳號選單仍可重新觀看。
+    source_refs:
+      - "changelog:2026-09-04:role-onboarding-v11"
+
+  - id: staff-2026-09-04-monthly-leave-date-boundary
+    published_at: "2026-09-04"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 月結請假維持合約日期
+    summary: 月結課程請假只減少實際堂次，不會自動延長到下個月。
+    items:
+      - category: fixed
+        text: 月結課程月底或最後一堂請假時，只會將該堂標記為請假；未來堂次與原合約起訖日維持不變。
+      - category: fixed
+        text: 月結帳務只計算合約日期內的實際可計費堂次；調課到合約外日期會被系統阻擋。
+    source_refs:
+      - "changelog:2026-09-04:monthly-leave-date-boundary"
+
+  - id: staff-2026-09-04-role-onboarding
+    published_at: "2026-09-04"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 主任與老師新手教學
+    summary: 首次進入依角色帶你完成常用工作流程。
+    items:
+      - category: added
+        text: 首次進入 AllTrue 時，主任與老師會看到符合角色的四步驟導覽，依序認識摘要、通知、出勤、評量與行事曆。
+      - category: improved
+        text: 可按上一步、下一步、跳過或完成；之後可從帳號選單重新觀看，已完成使用者不會重複打擾。
+    source_refs:
+      - "changelog:2026-09-04:role-onboarding"
+
   - id: staff-2026-09-03-guardian-ssot-ui
     published_at: "2026-09-03"
     audiences:

@@ -292,8 +292,8 @@ class CourseLeaveCascadeService
      *   weekdays: list<int>,
      *   moves: list<array{from:string,to:string,id:?int}>,
      *   vacated: list<string>,
-     *   append: string,
-     *   extended_end_date: string
+     *   append: ?string,
+     *   extended_end_date: ?string
      * }
      */
     public static function previewLeaveCascadeForCourse(
@@ -355,6 +355,25 @@ class CourseLeaveCascadeService
                 'append' => $plan['append'],
                 'extended_end_date' => $plan['extended_end_date'],
                 'future_dates_unchanged' => false,
+                'next_billable_session' => null,
+            ];
+        }
+        // Monthly/date-mode courses are bounded by their contract interval.
+        // A leave reduces actual billable sessions; it never creates a tail or
+        // changes EndDate. This also protects legacy rows with a positive
+        // SessionCount from entering the count-based planner.
+        if (strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date') {
+            return [
+                'policy' => self::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
+                'leave_session_date' => $leaveSessionDate,
+                'weekdays' => $weekdays,
+                'moves' => [],
+                'vacated' => [],
+                'append' => null,
+                'extended_end_date' => $course->EndDate
+                    ? Carbon::parse($course->EndDate)->toDateString()
+                    : null,
+                'future_dates_unchanged' => true,
                 'next_billable_session' => null,
             ];
         }
@@ -458,6 +477,13 @@ class CourseLeaveCascadeService
     public static function appendTailAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
         $course = StudentClass::query()->where('ID', $courseId)->first();
+        if ($course && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date') {
+            return [
+                self::fetchCourseSessionRows($courseId),
+                $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null,
+                null,
+            ];
+        }
         if ($course && (string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
             return [self::fetchCourseSessionRows($courseId), $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null, null];
         }
@@ -473,12 +499,6 @@ class CourseLeaveCascadeService
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
         $weekdays = self::resolveCourseWeekdays($course, Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso);
         $purchased = max(0, (int) ($course->SessionCount ?? 0));
-        $scheduleMode = strtolower((string) ($course->ScheduleMode ?? 'count'));
-        if ($scheduleMode === 'date' && $purchased <= 0) {
-            $rows = self::fetchCourseSessionRows($courseId);
-            $end = ClassSession::query()->where('StudentClassID', $courseId)->max('SessionDate');
-            return [$rows, $end ? substr((string) $end, 0, 10) : null, null];
-        }
         $sessionRows = $sessions->map(fn ($s) => [
             'id' => (int) $s->id,
             'date' => Carbon::parse($s->SessionDate)->toDateString(),
@@ -929,7 +949,7 @@ class CourseLeaveCascadeService
         }
 
         $scheduleMode = strtolower((string) ($course->ScheduleMode ?? 'count'));
-        if ($scheduleMode === 'date' && (int) ($course->SessionCount ?? 0) <= 0) {
+        if ($scheduleMode === 'date') {
             return true;
         }
         return false;

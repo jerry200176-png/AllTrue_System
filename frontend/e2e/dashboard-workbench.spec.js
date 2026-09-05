@@ -12,6 +12,42 @@ const VIEWPORTS = [
   { name: '1440', width: 1440, height: 900 },
 ];
 
+async function seedOnboardingCompleted(page) {
+  await page.evaluate(() => {
+    try {
+      const version = '2026-09-04-v1.1';
+      const payload = JSON.stringify({
+        version,
+        status: 'completed',
+        stepIndex: 0,
+        updatedAt: new Date().toISOString(),
+      });
+      // Cover common key shapes used by roleOnboarding storage helper.
+      const candidates = [];
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('alltrue_role_onboarding:')) candidates.push(key);
+      }
+      // Also write role-scoped anonymous/director keys if user id is discoverable.
+      const sessionRaw = localStorage.getItem('alltrue_session')
+        || localStorage.getItem('session')
+        || localStorage.getItem('user');
+      let userId = '';
+      try {
+        const parsed = sessionRaw ? JSON.parse(sessionRaw) : null;
+        userId = String(parsed?.user?.id || parsed?.id || parsed?.user_id || '');
+      } catch (_) { /* ignore */ }
+      if (userId) {
+        candidates.push(`alltrue_role_onboarding:director:${userId}`);
+        candidates.push(`alltrue_role_onboarding:teacher:${userId}`);
+      }
+      candidates.push('alltrue_role_onboarding:director:anonymous');
+      for (const key of new Set(candidates)) {
+        localStorage.setItem(key, payload);
+      }
+    } catch (_) { /* ignore */ }
+  });
+}
+
 async function login(page) {
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('alltrue.director_dashboard_view_mode.v1'));
@@ -20,6 +56,10 @@ async function login(page) {
   await page.locator('#login-password').fill(DIRECTOR.password);
   await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
+  await page.waitForTimeout(500);
+  await seedOnboardingCompleted(page);
+  await dismissOverlays(page);
+  await page.waitForTimeout(400);
   await dismissOverlays(page);
 }
 

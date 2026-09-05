@@ -1,10 +1,25 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-06-06
+last_reviewed: 2026-09-05
 ---
 
 # AI／工程師防再犯紀錄（必讀）
+
+### R137. Parent binding 不可用 display projection 判斷 guardian contact existence（2026-09-05）
+
+- **現象**：多監護人開啟時，主要監護人沒有手機但 secondary active／read_only guardian 有手機；LINE／Portal classifier 仍可能回 `CONTACT_PHONE_MISSING` 或 `PHONE_MISMATCH`。
+- **根因層級**：F1 身份／狀態邊界的架構設計缺口；`StudentContactPhone::forStudent()` 是 primary／legacy display projection，卻被當成 auth existence predicate。這是 R10 legacy projection 與 R10b multi-guardian canonical access 的交界回歸，不是單一學生資料錯誤。
+- **強制規則**：display source 與 auth source 必須分開；auth existence／match 只能使用 active／read_only guardian phone 集合，並維持 revoked／suspended／pending 不得授權與 active guardian 存在時 legacy 不得繞過的規則。LINE 與 Portal classifier 必須共用同一 predicate。
+- **參考做法**：OWASP Authentication Cheat Sheet 將 digital identity 與 authenticator 分開；Keycloak authentication flow 支援 alternative authenticators。AllTrue 對應為 primary display projection 與多 guardian access set 分離，避免單欄位造成合法 authenticator 遺失。
+- **測試必補**：primary、non-primary active／read_only、legacy flag-off、revoked、missing；姓名與 Student ID classifier 都要驗證。Production probe 必須只輸出 PII-safe parity／aggregate evidence。
+
+### R136. 月結請假不得以 legacy 堂數補尾延長合約（2026-09-04）
+
+- **現象**：月結課程在月底請假後，下一個月出現自動補堂，且 `StudentClass.EndDate` 被改到跨月；實際月結堂數因此可能被錯誤計費。
+- **根因層級**：F1 狀態收尾與 F3 recurring 生成共用堂數制的 append-tail writer；`ScheduleMode=date` 的 legacy 正 `SessionCount` 讓月結誤入堂數制路徑，讀帳務又只看月份而不看課程合約區間。
+- **強制規則**：`ScheduleMode=date` 的 `StartDate/EndDate` 是自動 recurring 與月結帳務的權威邊界；一般請假只改目標堂狀態，不移動未來堂、不補跨界尾堂、不改 `EndDate`。調課越界必須 fail closed；堂數制與具名的整體停課順延例外分開處理。
+- **測試必補**：月末請假、最後一堂請假、多次請假、跨月 stray `ClassSession` 不得進月結帳務，以及月結調課越界回 422；至少一條測試必須保留 legacy 正 `SessionCount` 以防回歸。
 
 ### R135. POP 失敗 dry-run 必須可在不改 caller key 下受控重試（2026-09-03）
 

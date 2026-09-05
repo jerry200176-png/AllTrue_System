@@ -2,6 +2,58 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-05-parent-binding-guardian-phone
+    changelog_date: "2026-09-05"
+    changelog_title: "fix(parent): guardian phone binding classifier parity"
+    reason: 家長 LINE／Portal 綁定的後端 auth classifier 與 PII-safe production evidence；不新增教職員操作流程，沒有 production activation、migration 或資料修復。
+
+  - id: silent-2026-09-05-admissions-ownership-history
+    changelog_date: "2026-09-05"
+    changelog_title: "feat(admissions): 補齊負責人、追蹤與詢問歷程"
+    reason: 新生問班 owner／follow-up／history 先隨 dark-launch code 交付；flag 仍關閉，不執行 production migration 或 activation，待 Founder GO 後再發布 staff update。
+    resolved_at: "2026-09-05"
+    resolution: 已由 staff_update=staff-2026-09-05-admissions-funnel-v1 取代；Founder activation 與 production evidence 見 admissions activation REP 及 deploy runs 33942384695／33954840323。
+
+  - id: silent-2026-09-05-xindian-capacity-diagnose
+    changelog_date: "2026-09-05"
+    changelog_title: "ops: Xindian capacity read-only diagnose workflow"
+    reason: 僅新增新店產能唯讀聚合 diagnose workflow／script；不改教職員產品行為、不寫入 production 資料。
+
+  - id: silent-2026-09-04-admissions-funnel-finish
+    changelog_date: "2026-09-04"
+    changelog_title: "feat(admissions): finish dark-launch acceptance for 新生問班"
+    reason: 招生閉環 dark-launch 驗收與 activation 文件補齊；flag 仍關閉，不對教職員發布啟用公告，待 Founder GO 後再 staff update。
+
+  - id: silent-2026-09-04-role-onboarding-anchors
+    changelog_date: "2026-09-04"
+    changelog_title: "fix(ux): 新手教學標註錨點補齊"
+    reason: 僅補上既有主任／老師新手教學第一步的 spotlight data-guide 與回歸測試；不新增教職員操作流程，已由 role-onboarding staff update 覆蓋能力說明。
+
+  - id: silent-2026-09-04-changelog-tip-order
+    changelog_date: "2026-09-04"
+    changelog_title: "docs(release): restore tip order for today's release notes"
+    reason: 僅把已發布的 shared-package／admissions CHANGELOG 區段從檔案尾端移回 tip，方便教職員版本紀錄檢索；不改產品行為、不新增 staff update。
+
+  - id: silent-2026-09-04-ci-npm-audit-reliability
+    changelog_date: "2026-09-04"
+    changelog_title: "ci: harden npm audit network retries"
+    reason: 僅修正 CI 安全稽核的 bounded retry、timeout 與故障證據；不改 AllTrue 產品行為，也沒有 production deploy。
+
+  - id: silent-2026-09-04-admissions-activation-control
+    changelog_date: "2026-09-04"
+    changelog_title: "fix(deploy): explicitly activate admissions flags"
+    reason: 僅補上招生 dark launch 的 protected activation contract 與測試；本次沒有開啟 production flag、執行 migration 或修改 production 資料。
+
+  - id: silent-2026-09-04-archify-orientation
+    changelog_date: "2026-09-04"
+    changelog_title: "docs(architecture): finalize Archify architecture orientation"
+    reason: 僅新增 code-backed 架構圖、索引與 Agent orientation 規則；不新增教職員操作流程、不改產品行為，也沒有 production deploy。
+
+  - id: silent-2026-09-04-admissions-funnel-v1
+    changelog_date: "2026-09-04"
+    changelog_title: "feat(admissions): 新生問班招生閉環 V1"
+    reason: 新招生入口與主任工作流先以 dark launch 部署，前後端 ADMISSIONS_FUNNEL_V1 預設關閉；待 Founder activation GO、production migration 與驗收後再發布 staff update。
+
   - id: silent-2026-09-03-multi-guardian-cutover
     changelog_date: "2026-09-03"
     changelog_title: "feat(parent): Multi-Guardian canonical Portal cutover"

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "合約與堂次生命週期",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1080, 720],
+    "views": [
+      { "id": "coverage-path", "label": "Coverage path", "focus": ["contract", "preplanned", "allocated", "used", "closed"], "note": "Follow contract creation to exhausted or closed coverage." },
+      { "id": "amend-transfer", "label": "調整與轉移", "focus": ["allocated", "used", "adjusted", "closed"], "note": "See controlled amendment and transfer return paths." }
+    ]
+  },
+  "lanes": [{ "id": "main", "label": "合約／堂次主流程" }, { "id": "exception", "label": "調整與轉移" }, { "id": "terminal", "label": "結束" }],
+  "states": [
+    { "id": "contract", "type": "start", "label": "合約建立", "sublabel": "StudentClass", "lane": "main", "col": 0, "step": "01", "tag": "contract" },
+    { "id": "preplanned", "type": "active", "label": "預排規劃", "sublabel": "commitment / horizon", "lane": "main", "col": 1, "step": "02", "tag": "plan" },
+    { "id": "allocated", "type": "active", "label": "堂次已配置", "sublabel": "scheduled coverage", "lane": "main", "col": 2, "step": "03", "tag": "allocate" },
+    { "id": "used", "type": "decision", "label": "堂次使用", "sublabel": "attendance + ledger", "lane": "main", "col": 3, "step": "04", "tag": "consume" },
+    { "id": "closed", "type": "success", "label": "合約結束", "sublabel": "closed / exhausted", "lane": "main", "col": 4, "step": "05", "tag": "terminal" },
+    { "id": "adjusted", "type": "waiting", "label": "調整／轉移", "sublabel": "amend or transfer", "lane": "exception", "col": 1, "tag": "controlled" },
+    { "id": "voided", "type": "failure", "label": "撤銷／結束", "sublabel": "explicit terminal outcome", "lane": "terminal", "col": 0, "tag": "terminal" }
+  ],
+  "transitions": [
+    { "id": "contract-plan", "from": "contract", "to": "preplanned", "label": "plan session horizon", "labelDy": 55, "route": "straight", "variant": "emphasis" },
+    { "id": "plan-allocate", "from": "preplanned", "to": "allocated", "label": "materialize coverage", "labelDy": 55, "variant": "default" },
+    { "id": "allocate-use", "from": "allocated", "to": "used", "label": "teach + deduct", "labelDy": 55, "variant": "emphasis" },
+    { "id": "use-close", "from": "used", "to": "closed", "label": "coverage exhausted / close", "labelDx": -150, "labelDy": -56, "variant": "emphasis" },
+    { "id": "use-adjust", "from": "used", "to": "adjusted", "label": "amend / transfer", "labelDx": 120, "labelDy": 24, "variant": "security" },
+    { "id": "adjust-use", "from": "adjusted", "to": "used", "label": "recompute authoritative coverage", "labelDx": -170, "labelDy": 0, "variant": "emphasis" },
+    { "id": "contract-void", "from": "contract", "to": "voided", "label": "explicit cancellation", "route": "drop", "fromSide": "bottom", "toSide": "top", "channelY": 360, "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Contract boundary", "items": ["StudentClass routes and session operations: backend/routes/api.php:547–568.", "Cross-campus amendment and recovery are explicitly role + campus gated: backend/routes/api.php:505–519."] },
+    { "dot": "emerald", "title": "Planning and use evidence", "items": ["Planning services: backend/app/Services/Scheduling/EnsureSessionHorizonService.php and SessionCoverageStateMachine.php.", "Use and reverse events are transactional ledger operations in backend/app/Services/SessionDeductionService.php:262–353."] },
+    { "dot": "amber", "title": "Adjustment evidence", "items": ["Contract amendment previews future sessions and executes inside DB::transaction: backend/app/Services/ContractAmendmentService.php:16–75.", "Session transfer is exposed at backend/routes/api.php:567 and implemented by SessionEntitlementTransferService.php."] }
+  ]
+}

@@ -10,6 +10,7 @@
 **Launch:** `agent-start alltrue <task-id>` (only official Agent entry).
 **Bare store:** `/home/jerry/workspace/repos/AllTrue_System.git`
 **Tasks:** `/home/jerry/workspace/tasks/alltrue/<task-id>/`
+**Forbidden checkouts:** `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
 **Provenance:** commit `.agent-session/manifest.json` (or human-authored.json).
 
@@ -39,6 +40,19 @@
 | 需要回顧決策或舊 bug | `~/.local/bin/mempalace search "<關鍵字>"`（本機搜尋；非跨機器權威）|
 | 任何瀏覽器測試 | `.cursor/.local/test-credentials.md` |
 | 任務牽涉長文件／多份 docs | `docs/INDEX.md` 的速讀卡／治理節奏（`docs/AI_DOC_LITERACY.md` 只是索引 stub）|
+
+### Critical-domain architecture orientation
+
+修改 AllTrue critical domain 前，先讀 [`docs/architecture/README.md`](docs/architecture/README.md)
+中與任務相關的 canonical Archify diagram，理解 system boundary、authoritative
+data flow、lifecycle 與 invariants，再以 current code、schema、tests，以及適用時的
+runtime evidence 驗證實作。只讀任務相關的圖；若任務跨 domain 或 ownership 不明，
+才先讀 `alltrue-runtime.architecture.json`。
+
+Diagram 是 orientation，不是高於 code 的真理。若 diagram 與 current implementation
+不一致，必須辨識是 stale docs 或 regression 並調查，不可盲從。Archify 不新增 CI
+gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某 domain 因架構理解
+不足反覆出錯，否則不擴充圖稿。
 
 ## 公司治理記錄原則
 

@@ -1,3 +1,95 @@
+## 2026-09-05 — fix(ux): 搜尋更新不閃爍並可直接追蹤 Bug 回報
+<!-- release-notes: staff_update=staff-2026-09-05-search-and-bug-tracking -->
+- 老師／課程查找在輸入關鍵字或切換篩選時保留上一份有效列表，不會因載入 skeleton 短暫清空；快速連續搜尋時只採用最新回應，避免舊結果覆蓋新條件。
+- Bug 回報送出後的「查看回報進度」會直接開啟該筆回報詳情，回報者可立即看到目前狀態與後續確認入口。
+- 不改 API、權限、回報狀態規則或既有資料；無 migration／production data repair。
+
+## 2026-09-05 — fix(parent): guardian phone binding classifier parity
+<!-- release-notes: silent_ship=silent-2026-09-05-parent-binding-guardian-phone -->
+- LINE／Parent Portal 綁定判斷改以 active／read_only 監護人手機集合比對，不再把主要聯絡人顯示欄位誤當成唯一可用手機。
+- 保留 legacy `parent_phone`／`Phone` fallback 與 revoked／suspended／pending 拒絕規則；補上 primary、secondary、legacy、revoked、missing 回歸測試。
+- 本次不執行 migration、feature flag activation、production data repair 或 production mutation。
+
+## 2026-09-05 — feat(admissions): 補齊負責人、追蹤與詢問歷程
+<!-- release-notes: staff_update=staff-2026-09-05-admissions-funnel-v1 -->
+- 主任可在同一筆新生問班紀錄認領負責、查看目前狀態／下一步、設定下次追蹤日期與瀏覽處理歷程；既有試聽、評估、成交／未成交流程不變。
+- 以既有 campus scope、SecurityAuditEvent 與 feature flag 控制；production migration 與 `ADMISSIONS_FUNNEL_V1` 已經 Founder-gated deploy activation 並完成 runtime verify。
+
+## 2026-09-05 — feat(ux): 科目數改為日粒度明細
+<!-- release-notes: staff_update=staff-2026-09-05-subject-units-timeline -->
+- 科目數頁改以「老師 × 日期 × 分校 × 科目」呈現，主任可在授權分校內比較老師與每日變化，老師只會看到自己的資料。
+- 正課、輔導／試聽與核薪科目數拆開顯示；跨分校、跨日期與同堂出勤去重沿用既有核薪資料規則，不需 migration 或 production 資料修補。
+
+## 2026-09-05 — ops: Xindian capacity read-only diagnose workflow
+<!-- release-notes: silent_ship=silent-2026-09-05-xindian-capacity-diagnose -->
+- Added a workflow-dispatch, SELECT-only production probe that aggregates 新店 (campus 9) invoice cash, session mix, peak slots, and teacher cross-campus load for capacity modeling.
+- No product UI change and no production data mutation.
+
+## 2026-09-04 — feat(admissions): finish dark-launch acceptance for 新生問班
+<!-- release-notes: silent_ship=silent-2026-09-04-admissions-funnel-finish -->
+- Closed remaining admissions funnel gaps while keeping `ADMISSIONS_FUNNEL_V1` off: status filter, next-action queue hints, terminal `lost`, submit audit, and fuller API/UI contract tests.
+- Added Founder activation REP + brief; production migrate／flag on remain Founder GO only.
+
+## 2026-09-04 — fix(ux): 新手教學標註錨點補齊
+<!-- release-notes: silent_ship=silent-2026-09-04-role-onboarding-anchors -->
+- 主任儀表板「今日摘要」與老師工作台「今日待辦」補上 spotlight `data-guide`，避免新手教學第一步無法對準畫面元素。
+- 補上 role-onboarding 錨點回歸測試，並納入 frontend build gate；導覽流程、狀態儲存與 WebDriver 自動略過行為不變。
+
+## 2026-09-04 — fix(billing): 合約提前結束未繳費可回帳務中心對帳
+<!-- release-notes: staff_update=staff-2026-09-04-contract-amended-unpaid-tuition -->
+
+- 提前結束／改堂數（`contract_amended`）後若仍未繳費，課程會出現在帳務中心「結案待對帳」，可繼續登記已回報與確認入帳。
+- 已繳費後再提前結束的課程不會進入催繳佇列；既有「結案（不續報）」待對帳流程不變。
+- 課程管理會標示「尚未完成繳費，請至帳務中心對帳」，避免只看到未繳費卻找不到入帳入口（in-app #251）。
+
+## 2026-09-04 — docs(release): restore tip order for today's release notes
+<!-- release-notes: silent_ship=silent-2026-09-04-changelog-tip-order -->
+- Moved the shared-package and admissions funnel CHANGELOG sections from the file footer to the tip so staff release notes stay discoverable.
+- No product behavior or production deployment change.
+
+## 2026-09-04 — fix(schedule): 多科共用方案分離購買、已用與未來預排堂數
+<!-- release-notes: staff_update=staff-2026-09-04-shared-package-planning-entitlement -->
+- 多科共用方案的未來預排不再獨占或永久扣減 shared entitlement；不同科目可各自建立 recurring schedule。
+- 購買堂數、實際已扣堂與未來預排分開顯示；預排超過剩餘堂數時允許繼續排課，但明確顯示超排與續約／加購提醒。
+- 群組同時段預排去重、待核准請假與停用科目殘留資料沿用既有狀態規則；取消、刪除、轉課、減少堂數、單科方案與既有 ledger 行為不變。
+
+## 2026-09-04 — docs(architecture): finalize Archify architecture orientation
+<!-- release-notes: silent_ship=silent-2026-09-04-archify-orientation -->
+- Added the code-backed Archify architecture index and five canonical diagrams for runtime, entitlement, payment/receipt, release/deploy, and session lifecycle orientation.
+- Updated the agent entry points to require task-relevant architecture reading while treating diagrams as orientation, not a replacement for current code, schema, tests, or runtime evidence. Docs-only; no product behavior or production deployment changed.
+
+## 2026-09-04 — improved(ux): 主任與老師新手任務 V1.1
+<!-- release-notes: staff_update=staff-2026-09-04-role-onboarding-v11 -->
+- 新手導覽開始前會先顯示任務清單與角色插圖，可選擇「開始導覽」或「稍後再看」；中途離開後可從原步驟繼續。
+- 導覽中顯示目前任務進度，完成後提供任務完成回饋與輕量動態效果；既有角色版本與一般頁面導覽不受影響。
+
+## 2026-09-04 — fix(schedule): 月結請假維持合約日期邊界
+<!-- release-notes: staff_update=staff-2026-09-04-monthly-leave-date-boundary -->
+- 月結課程請假只將該堂標記為請假並降低實際可計費堂次，不再以 legacy `SessionCount` 觸發尾堂補回或延長 `EndDate` 到下個月。
+- 月結帳務、分校月收報表與調課入口均以課程 `StartDate`／`EndDate` 為邊界；堂數制與明確的整體停課順延流程維持原規則。
+- 補上月末、最後一堂、多次請假、跨月帳務與月結越界調課回歸測試；本次不需資料庫 migration 或 production 資料修補。
+
+## 2026-09-04 — ci: harden npm audit network retries
+<!-- release-notes: silent_ship=silent-2026-09-04-ci-npm-audit-reliability -->
+- npm audit now uses bounded retries and timeouts; registry unavailability remains a blocking security result and emits machine-readable degraded evidence for recovery.
+- Internal CI control only; no AllTrue product behavior or production deployment changed.
+
+## 2026-09-04 — fix(deploy): explicitly activate admissions flags
+<!-- release-notes: silent_ship=silent-2026-09-04-admissions-activation-control -->
+- Deployment control now makes admissions feature-flag activation explicit and testable instead of inferring activation from a generic deploy.
+- This records the protected activation path only; it does not enable the production flag, run a migration, or mutate production data.
+
+## 2026-09-04 — feat(admissions): 新生問班招生閉環 V1
+<!-- release-notes: silent_ship=silent-2026-09-04-admissions-funnel-v1 -->
+- 新增家長公開「問班 → 試聽 → 報名」guided interview，以及主任的新詢問佇列與狀態工作流。
+- 問班資料以加密 PII 與去重 hash 保存；試聽沿用既有排課／老師／課程流程，報名沿用既有 StudentClass 流程，不重複建立正式學生。
+- 本次先以 dark launch 部署，前後端 `ADMISSIONS_FUNNEL_V1` 預設關閉；production 啟用仍需 Founder activation GO。
+
+## 2026-09-04 — feat(ux): 主任與老師角色新手教學
+<!-- release-notes: staff_update=staff-2026-09-04-role-onboarding -->
+- 主任與老師首次進入 AllTrue 時，會依角色看到四步驟 spotlight 導覽，帶著完成最常用的摘要、通知、出勤、評量與行事曆工作流程。
+- 導覽支援上一步、下一步、跳過與完成；完成狀態按角色與使用者保存，之後可從帳號選單重新觀看，既有使用者不會被重複打擾。
+
 ## 2026-09-03 — fix(parent): 學生頁家長欄與監護人 SSOT（去重）
 <!-- release-notes: staff_update=staff-2026-09-03-guardian-ssot-ui -->
 - 多監護人開啟時，編輯學生不再顯示重複的「家長姓名／家長手機」欄；改以「家長／監護人」為唯一維護入口，主要聯絡人即主要家長資訊。

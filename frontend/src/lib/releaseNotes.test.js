@@ -26,8 +26,8 @@ const latest = notesForRole('director')[0];
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
-assert.strictEqual(latest.publishedAt, '2026-09-03');
-assert.strictEqual(latest.id, 'staff-2026-09-03-multi-guardian-ga');
+assert.strictEqual(latest.publishedAt, '2026-09-05');
+assert.strictEqual(latest.id, 'staff-2026-09-05-admissions-funnel-v1');
   for (const id of [
     'staff-2026-08-27-teacher-assessment-engagement',
     'staff-2026-08-26-bug-report-image-paste',
@@ -70,6 +70,8 @@ assert.strictEqual(latest.id, 'staff-2026-09-03-multi-guardian-ga');
 }
 
 const directorNotes = notesForRole('director');
+assert.ok(directorNotes.some((note) => note.id === 'staff-2026-09-05-admissions-funnel-v1'));
+assert.ok(directorNotes.some((note) => note.id === 'staff-2026-09-05-search-and-bug-tracking'));
 for (let i = 1; i < directorNotes.length; i++) {
   assert.ok(directorNotes[i - 1].publishedAt >= directorNotes[i].publishedAt);
 }

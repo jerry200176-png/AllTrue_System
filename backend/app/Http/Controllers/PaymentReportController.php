@@ -963,6 +963,15 @@ class PaymentReportController extends Controller
                              ->whereDate('SessionDate', '<=', $monthEnd);
             }
 
+            if ($sc->ScheduleMode === 'date') {
+                if ($sc->StartDate) {
+                    $sessionQuery->whereDate('SessionDate', '>=', Carbon::parse($sc->StartDate)->toDateString());
+                }
+                if ($sc->EndDate) {
+                    $sessionQuery->whereDate('SessionDate', '<=', Carbon::parse($sc->EndDate)->toDateString());
+                }
+            }
+
             $attendedDates = $sessionQuery->pluck('SessionDate')
                 ->map(fn ($d) => Carbon::parse((string) $d)->format('Y/m/d'))
                 ->values()
