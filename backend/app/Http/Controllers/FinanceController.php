@@ -362,8 +362,10 @@ class FinanceController extends Controller
                 'one_on_three_hours'     => $o3,
                 'tutoring_hours'         => $tt,
                 'total_hours'            => round($total, 2),
-                'subject_count_with'     => round($wWith, 4),
-                'subject_count_without'  => round($wWithout, 4),
+                // Preserve the legacy string contract while exposing the
+                // weighted raw value (no payroll divisor in this read model).
+                'subject_count_with'     => substr(sprintf('%.4f', $wWith), 0),
+                'subject_count_without'  => substr(sprintf('%.4f', $wWithout), 0),
                 // share_pct continues to use the same weighted raw basis.
                 '_weighted_with'         => $wWith,
                 'share_pct'              => 0, // filled below
