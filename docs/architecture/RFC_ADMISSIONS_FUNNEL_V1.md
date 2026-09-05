@@ -4,7 +4,7 @@
 
 - 功能：招生詢問（Admission Inquiry）與 guided interview
 - 版本：V1
-- 狀態：Dark-launch complete / **BLOCKED: Founder activation GO**（flag 預設 off；production migrate／flag on 需 GO）
+- 狀態：Runtime activated 2026-09-05 / **post-activation staff／public E2E、retention／PII sign-off pending**（code flag 預設 off；production 現值由 Founder-gated deploy 控制）
 - 目標角色：公開家長、主任、super admin
 - Risk tier：T3（新 PII、角色權限、schema migration）
 - 依賴 branch：本 branch 與 onboarding worktree 分離；只接受最小 additive architecture
@@ -59,7 +59,7 @@ V1 的業務結果是：
 | 既有 trial conversion | `StudentClassController@convertTrial`；報名不可重造 Student 或 conversion engine | 已存在 |
 | 既有 auth | `AttachAuthUser`、`role:director,super_admin`、`require_campus` | 已存在 |
 | 既有稽核 | `SecurityAuditEvent`；metadata 不放姓名、電話、訊息內容 | 已存在 |
-| DB | additive `admission_inquiries` migration；merge 不等於 production migrate | **dark-launch code ready**；production migrate 需 REP + Founder activation GO |
+| DB | additive `admission_inquiries` migration；merge 不等於 production migrate | migration 已由 REP／Founder-gated deploy 執行；執行證據與 backup 記錄見 activation REP |
 | Feature flag | `admissions_funnel_v1` 預設關閉；公開入口與主任 nav 同步受控 | **已落地**（預設 off；deploy input `unchanged`/`on`/`off`） |
 
 ## 5. User Stories 與 Acceptance Criteria
@@ -183,10 +183,10 @@ As a 主任, I want to 開啟既有 trial conversion／enrollment workflow, so t
 ## 11. 上線與維運
 
 - 部署由 `.github/workflows/deploy.yml` 觸發；merge 不代表 production migration 已執行。
-- `admissions_funnel_v1` 預設 off；activation sequence 為 CI → deploy → migration REP/Founder GO → staff-only smoke → bounded public rollout → production verification。
+- `admissions_funnel_v1` code 預設 off；本次 activation sequence 已完成 CI → exact-main deploy → migration → flag on → health／read-only smoke。完整 staff-only E2E、bounded public test identity 與 retention／PII sign-off 仍是後續 gate。
 - Observability：`admission_inquiry.submit`、`state_transition`、`trial_handoff`、`enrollment_link` 只記 outcome/reason code；429、422、500 與 orphan reference 各自可查。
 - 回滾：先關閉前端 `VITE_ADMISSIONS_FUNNEL_V1` 與後端 `ADMISSIONS_FUNNEL_V1`；程式以 revert 回退；若 migration 已啟用，依 REP 的 snapshot／migration rollback procedure，禁止刪除或猜測修復 production data。
-- Production activation、PII policy、permission widening、migration execution 均是本 RFC 外的 Founder gate；本 branch 只準備可審查 artifact。
+- Production activation 與 migration 已由 Founder gate 及 REP 執行；PII policy、permission widening、staff／public E2E 仍由 RFC 外的 Founder／owner gate 管理。本 RFC 不授權自行新增 production data 或擴大權限。
 
 ## 12. 里程碑與優先級
 
@@ -220,7 +220,7 @@ As a 主任, I want to 開啟既有 trial conversion／enrollment workflow, so t
 
 - `[AI-RESOLVABLE]`：確認現有 `EnrollmentService` 回應中的 trial class reference 與既有 conversion endpoint 的最小 linkage 欄位。
 - `[AI-RESOLVABLE]`：確認 frontend 現有 tokens、navigation test harness 與 public shell 的最小 additive 接法。
-- `[BLOCKED: Founder activation GO]`：production migration、公開入口 activation、PII retention period 或 permission widening 的最終批准；未取得前不執行 production write。
+- `[FOUNDER / OWNER FOLLOW-UP]`：指定低峰 staff 測試身份與 bounded public 測試家庭，並完成 PII retention period、permission widening 的最終 sign-off；在此之前不建立真實 production inquiry、不擴大權限。
 
 ## 14. Definition of Done
 
@@ -232,6 +232,6 @@ As a 主任, I want to 開啟既有 trial conversion／enrollment workflow, so t
 - [x] mobile／a11y 規格通過：驗證方式：frontend test／bounded browser smoke，無水平 overflow、44px targets、keyboard labels present。
 - [x] CI 與 build 通過：驗證方式：repository allowlisted test、lint、build commands exit 0。
 - [x] 文件與 release evidence 齊全：驗證方式：diff 含 CHANGELOG、RFC、REP/runbook；production claims 具 workflow SHA、health 與 targeted API/UI evidence。
-- [ ] production verified：驗證方式：只有在 Founder gate 後執行 deploy/migration/flag rollout，`make production-identity` 與 feature smoke 均 PASS；未授權前標記 **BLOCKED: Founder activation GO**，不宣稱完成。
+- [x] runtime production verified：Founder gate 後執行 exact-main deploy／migration／flag rollout；deploy run `33942384695`、release publish run `33954840323`、runtime manifest SHA `36e14793`、health／branches／validation probe 均有證據。完整 staff／public feature smoke 仍待指定安全身份。
 
-**Dark-launch note（2026-09-04）**：程式與自動化驗收在 `ADMISSIONS_FUNNEL_V1=false` 下完成；production 啟用見 [`docs/runbooks/admissions-funnel-v1-founder-activation-brief.md`](../runbooks/admissions-funnel-v1-founder-activation-brief.md)。
+**Historical dark-launch note（2026-09-04）**：程式與自動化驗收曾在 `ADMISSIONS_FUNNEL_V1=false` 下完成；production activation evidence 見 [`docs/runbooks/admissions-funnel-v1-founder-activation-brief.md`](../runbooks/admissions-funnel-v1-founder-activation-brief.md) 與 activation REP。

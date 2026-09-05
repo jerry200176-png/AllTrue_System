@@ -11,6 +11,8 @@ exemptions:
     changelog_date: "2026-09-05"
     changelog_title: "feat(admissions): 補齊負責人、追蹤與詢問歷程"
     reason: 新生問班 owner／follow-up／history 先隨 dark-launch code 交付；flag 仍關閉，不執行 production migration 或 activation，待 Founder GO 後再發布 staff update。
+    resolved_at: "2026-09-05"
+    resolution: 已由 staff_update=staff-2026-09-05-admissions-funnel-v1 取代；Founder activation 與 production evidence 見 admissions activation REP 及 deploy runs 33942384695／33954840323。
 
   - id: silent-2026-09-05-xindian-capacity-diagnose
     changelog_date: "2026-09-05"
