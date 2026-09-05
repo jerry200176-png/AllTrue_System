@@ -70,6 +70,8 @@ assert.strictEqual(latest.id, 'staff-2026-09-05-admissions-funnel-v1');
 }
 
 const directorNotes = notesForRole('director');
+assert.ok(directorNotes.some((note) => note.id === 'staff-2026-09-05-admissions-funnel-v1'));
+assert.ok(directorNotes.some((note) => note.id === 'staff-2026-09-05-search-and-bug-tracking'));
 for (let i = 1; i < directorNotes.length; i++) {
   assert.ok(directorNotes[i - 1].publishedAt >= directorNotes[i].publishedAt);
 }

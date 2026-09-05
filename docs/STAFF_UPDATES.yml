@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-05-search-and-bug-tracking
+    published_at: "2026-09-05"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 搜尋更穩定，Bug 回報可直接追蹤
+    summary: 查找時不再閃爍，送出 Bug 後可直接開啟該筆進度。
+    items:
+      - category: improved
+        text: 老師與課程查找在輸入或切換篩選時會保留目前列表，連續快速搜尋也只顯示最新條件的結果。
+      - category: improved
+        text: Bug 回報送出後點「查看回報進度」，會直接開啟剛送出的回報詳情與目前狀態。
+    source_refs:
+      - "changelog:2026-09-05:search-and-bug-tracking"
+
   - id: staff-2026-09-05-admissions-funnel-v1
     published_at: "2026-09-05"
     audiences:
@@ -37,6 +53,7 @@ updates:
         text: 正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。
     source_refs:
       - "changelog:2026-09-05:subject-units-timeline"
+
   - id: staff-2026-09-04-contract-amended-unpaid-tuition
     published_at: "2026-09-04"
     audiences:
