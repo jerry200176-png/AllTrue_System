@@ -23,6 +23,7 @@ export const BRANCH_PREFIXES = Object.freeze({
   'td-batch': { status: 'accepted', riskHint: 'R1' },
   dependabot: { status: 'accepted', riskHint: 'R1' },
   'cubelv-cli': { status: 'accepted', riskHint: 'R1' },
+  exo: { status: 'accepted', riskHint: 'R1' },
   agent: { status: 'rejected', note: 'use feat|fix|chore|cursor|sec' },
   ops: { status: 'rejected', note: 'use chore|ci|fix' },
   tmp: { status: 'rejected' },
