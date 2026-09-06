@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.07",
     "date": "2026-09-07",
     "title": "2026.09.07 草稿（未發布）",
-    "summary": "手機更多功能可搜尋；跨頁工作可接續",
+    "summary": "教室管理錯誤回復更清楚；手機更多功能可搜尋",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "教室管理錯誤回復更清楚",
           "手機更多功能可搜尋",
           "跨頁工作可接續",
           "側欄更多功能漸進搜尋與快捷鍵"
@@ -25,6 +26,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "教室管理錯誤回復更清楚",
       "手機更多功能可搜尋",
       "跨頁工作可接續",
       "側欄更多功能漸進搜尋與快捷鍵"

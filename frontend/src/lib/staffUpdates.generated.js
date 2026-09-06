@@ -115,6 +115,43 @@ export const staffUpdates = [
     "version": "2026.09.07"
   },
   {
+    "id": "staff-2026-09-07-classroom-recovery",
+    "publishedAt": "2026-09-07",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "教室清單載入可重試",
+    "summary": "載入失敗會清楚提示並可立即重試，空分校與錯誤狀態不再混淆。",
+    "items": [
+      "教室清單暫時載入失敗時會顯示原因與「重試」，不再誤顯示為沒有教室。",
+      "教室表格操作會帶上教室名稱，更容易找到正確的編輯、啟用或刪除動作。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "教室清單暫時載入失敗時會顯示原因與「重試」，不再誤顯示為沒有教室。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "教室表格操作會帶上教室名稱，更容易找到正確的編輯、啟用或刪除動作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-07:classroom-recovery"
+    ],
+    "date": "2026-09-07",
+    "version": "2026.09.07"
+  },
+  {
     "id": "staff-2026-09-06-unified-role-onboarding",
     "publishedAt": "2026-09-06",
     "effectiveAt": null,

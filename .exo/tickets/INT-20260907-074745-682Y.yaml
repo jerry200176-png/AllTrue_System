@@ -1,0 +1,56 @@
+id: INT-20260907-074745-682Y
+title: Classroom management recovery states
+intent: Classroom management recovery states
+kind: intent
+brain_dump: 'Improve director classroom management UX: distinguish loading, failed
+  loading, and empty states; provide a retry action and accessible row-specific actions.
+  Keep the classroom API contract, permissions, persistence, and branch isolation
+  unchanged. Add focused contract coverage and a bounded opt-in Playwright interaction
+  test.'
+boundary: Only change frontend classroom management presentation and its focused/unit/E2E
+  regression coverage plus session governance artifacts. Do not change backend APIs,
+  validation rules, permissions, branch isolation, persistence semantics, authentication,
+  production data, or unrelated pages.
+success_condition: A failed rooms request is announced in plain Traditional Chinese
+  with an actionable retry button instead of looking like an empty branch; successful
+  empty and populated states remain distinct; table headers and row actions are accessible;
+  staff-facing release records are updated; focused tests, the opt-in Playwright interaction
+  test, lint, and build pass.
+risk: low
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - .exo/**
+  - frontend/src/pages/ClassroomManagement.vue
+  - frontend/src/components/__tests__/ClassroomManagementAccessibility.test.js
+  - frontend/e2e/classroom-management-recovery.spec.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/src/supabase*
+budgets:
+  max_files_changed: 9
+  max_loc_changed: 340
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-07T07:47:45+08:00'
+children: []
+resource_profile: default
