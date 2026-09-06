@@ -23,9 +23,9 @@
       title="回報系統問題"
       size="md"
       panel-class="bug-report-dialog"
-      :close-on-backdrop="!submitting"
+      :close-on-backdrop="!submitting && !isDirty"
       close-label="關閉回報視窗"
-      @close="!submitting && closeForm()"
+      @close="requestCloseForm"
     >
       <div class="bug-report-form" @paste="onPaste">
         <template v-if="!submitSuccess">
@@ -124,7 +124,7 @@
           <button type="button" class="btn-cancel" @click="closeForm">關閉</button>
         </template>
         <template v-else>
-          <button type="button" class="btn-cancel" :disabled="submitting" @click="closeForm">取消</button>
+          <button type="button" class="btn-cancel" :disabled="submitting" @click="requestCloseForm">取消</button>
           <button type="button" class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
             {{ submitting ? '提交中...' : '提交回報' }}
           </button>
@@ -171,7 +171,49 @@ let attachmentSequence = 0;
 
 const emit = defineEmits(['open-bugs']);
 
-const canSubmit = computed(() => description.value.trim() && props.branchId);
+function getAuthorizedCampuses() {
+  try {
+    const raw = localStorage.getItem('alltrue_session');
+    if (!raw) return [];
+    const s = JSON.parse(raw);
+    const user = s?.user;
+    const campuses = user?.campuses || user?.campus_ids || user?.branch_ids || [];
+    return Array.isArray(campuses) ? campuses.map(Number).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+const effectiveBranchId = computed(() => {
+  const propId = Number(props.branchId);
+  const authorized = getAuthorizedCampuses();
+  if (authorized.length > 0) {
+    if (propId && authorized.includes(propId)) {
+      return propId;
+    }
+    return authorized[0];
+  }
+  if (propId) return propId;
+  const saved = Number(localStorage.getItem('app_branch'));
+  return saved || 1;
+});
+
+const canSubmit = computed(() => Boolean(description.value.trim() && effectiveBranchId.value));
+
+const isDirty = computed(() => Boolean(
+  title.value.trim() || description.value.trim() || occurrenceAt.value || relatedReference.value.trim() || attachmentFiles.value.length > 0
+));
+
+function requestCloseForm() {
+  if (submitting.value) return;
+  if (!submitSuccess.value && isDirty.value) {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      const ok = window.confirm('尚未送出的回報內容將會遺失，確定要關閉嗎？');
+      if (!ok) return;
+    }
+  }
+  closeForm();
+}
 
 const FAB_SIZE = 52;
 const FAB_MARGIN = 8;
@@ -305,6 +347,9 @@ function removeAttachment(index) {
   const entry = attachmentFiles.value[index];
   releasePreview(entry);
   attachmentFiles.value = attachmentFiles.value.filter((_, i) => i !== index);
+  if (attachmentFiles.value.length <= maxFiles) {
+    attachmentError.value = '';
+  }
 }
 
 function openForm() {
@@ -429,17 +474,17 @@ async function doSubmit() {
   submitError.value = '';
 
   try {
-    const clientInfo = JSON.stringify({
+    const rawClientInfo = JSON.stringify({
       userAgent: navigator.userAgent,
       screenSize: `${window.innerWidth}x${window.innerHeight}`,
       timestamp: new Date().toISOString(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
       occurrenceAt: occurrenceAt.value || null,
-      relatedReference: relatedReference.value.trim() || null,
+      relatedReference: (relatedReference.value.trim() || '').slice(0, 300) || null,
     });
+    const clientInfo = rawClientInfo.length > 1950 ? rawClientInfo.slice(0, 1950) : rawClientInfo;
 
-    const result = await submitBugReport({
-      branch_id: Number(props.branchId),
+    const basePayload = {
       title: title.value.trim() || `[${props.currentPageKey || '未知頁面'}] ${new Date().toLocaleString('zh-TW')}`,
       description: description.value.trim(),
       severity: severity.value,
@@ -447,7 +492,24 @@ async function doSubmit() {
       url: window.location.href,
       client_info: clientInfo,
       files: attachmentFiles.value.map((entry) => entry.file),
-    });
+    };
+
+    let result;
+    try {
+      result = await submitBugReport({
+        ...basePayload,
+        branch_id: Number(effectiveBranchId.value),
+      });
+    } catch (err) {
+      if (err.code === 'campus_not_authorized' && Array.isArray(err.allowed_campus_ids) && err.allowed_campus_ids.length > 0) {
+        result = await submitBugReport({
+          ...basePayload,
+          branch_id: Number(err.allowed_campus_ids[0]),
+        });
+      } else {
+        throw err;
+      }
+    }
 
     submittedBugId.value = result?.id ?? null;
     submitSuccess.value = true;
@@ -459,7 +521,7 @@ async function doSubmit() {
     clearAttachments();
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
-    submitError.value = '提交失敗：' + e.message;
+    submitError.value = '提交失敗：' + (e.message || '請稍後再試');
   } finally {
     submitting.value = false;
   }

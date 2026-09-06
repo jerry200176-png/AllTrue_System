@@ -21,7 +21,16 @@ function headers() {
 async function json(res) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `HTTP ${res.status}`);
+    let msg = err.message;
+    if (err.errors && typeof err.errors === 'object') {
+      const details = Object.values(err.errors).flat().filter(Boolean).join('；');
+      if (details) msg = details;
+    }
+    const error = new Error(msg || `HTTP ${res.status}`);
+    if (err.code) error.code = err.code;
+    if (err.allowed_campus_ids) error.allowed_campus_ids = err.allowed_campus_ids;
+    if (err.branch_id) error.branch_id = err.branch_id;
+    throw error;
   }
   return res.json();
 }

@@ -151,6 +151,53 @@ class BugReportApiTest extends TestCase
         ]);
     }
 
+    public function test_unauthorized_campus_cannot_succeed_via_client_fallback_or_retry(): void
+    {
+        [$token] = $this->createUserToken([1], 'bugAuthzRetry@test.com', 'T');
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+
+        // 1. Initial attempt with unauthorized campus #99
+        $res1 = $this->withHeaders($headers)->postJson('/api/v1/bugs', [
+            'title' => '未授權分校嘗試 #1',
+            'description' => '嘗試提交非授權分校 #99',
+            'branch_id' => 99,
+        ]);
+        $res1->assertStatus(403)->assertJson([
+            'code' => 'campus_not_authorized',
+            'branch_id' => 99,
+            'allowed_campus_ids' => [1],
+        ]);
+        $this->assertDatabaseMissing('bug_reports', ['title' => '未授權分校嘗試 #1']);
+
+        // 2. Erroneous or forged client retry with another unauthorized campus #88
+        $res2 = $this->withHeaders($headers)->postJson('/api/v1/bugs', [
+            'title' => '未授權分校重試 #2',
+            'description' => '客戶端 fallback 重試仍為未授權分校 #88',
+            'branch_id' => 88,
+        ]);
+        $res2->assertStatus(403)->assertJson([
+            'code' => 'campus_not_authorized',
+            'branch_id' => 88,
+            'allowed_campus_ids' => [1],
+        ]);
+        $this->assertDatabaseMissing('bug_reports', ['title' => '未授權分校重試 #2']);
+
+        // 3. Legitimate retry with verified authorized campus #1 succeeds
+        $res3 = $this->withHeaders($headers)->postJson('/api/v1/bugs', [
+            'title' => '合法分校重試 #3',
+            'description' => '切換至實際授權分校 #1',
+            'branch_id' => 1,
+        ]);
+        $res3->assertCreated();
+        $this->assertDatabaseHas('bug_reports', [
+            'title' => '合法分校重試 #3',
+            'CampusID' => 1,
+        ]);
+    }
+
     public function test_submit_bug_report_with_screenshot(): void
     {
         Storage::fake('public');

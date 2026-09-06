@@ -46,9 +46,9 @@ function makeEvent(type, dataTransfer) {
   return event;
 }
 
-async function openLauncher() {
+async function openLauncher(props = {}) {
   const wrapper = mount(BugReportLauncher, {
-    props: { branchId: 9, currentPageKey: 'attendance' },
+    props: { branchId: 9, currentPageKey: 'attendance', ...props },
   });
   await wrapper.find('.fab').trigger('click');
   return wrapper;
@@ -227,6 +227,81 @@ describe('bug report attachments', () => {
     await nextTick();
 
     expect(document.body.querySelector('.success-msg')).toBeNull();
+    wrapper.unmount();
+  });
+
+  it('falls back to session authorized campus when props.branchId is missing', async () => {
+    localStorage.setItem('alltrue_session', JSON.stringify({ user: { campuses: [2] } }));
+    const wrapper = await openLauncher({ branchId: null });
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '分校未帶入時回報';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await flushPromises();
+
+    expect(submitBugReport).toHaveBeenCalledWith(expect.objectContaining({ branch_id: 2 }));
+    localStorage.removeItem('alltrue_session');
+    wrapper.unmount();
+  });
+
+  it('auto-retries submission with allowed campus when receiving campus_not_authorized 403', async () => {
+    const forbiddenErr = new Error('無法存取分校 #99');
+    forbiddenErr.code = 'campus_not_authorized';
+    forbiddenErr.allowed_campus_ids = [2];
+    submitBugReport.mockRejectedValueOnce(forbiddenErr).mockResolvedValueOnce({ id: 88, status: 'open' });
+
+    const wrapper = await openLauncher({ branchId: 99 });
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '跨分校錯誤自動恢復';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await flushPromises();
+
+    expect(submitBugReport).toHaveBeenCalledTimes(2);
+    expect(submitBugReport.mock.calls[0][0].branch_id).toBe(99);
+    expect(submitBugReport.mock.calls[1][0].branch_id).toBe(2);
+    expect(bodyElement('.submission-success').textContent).toContain('編號 #88');
+    wrapper.unmount();
+  });
+
+  it('prompts confirmation when closing dirty form and aborts if user cancels', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const wrapper = await openLauncher();
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '未儲存的草稿';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-cancel').click();
+    await nextTick();
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(document.body.querySelector('.bug-report-dialog')).not.toBeNull();
+
+    confirmSpy.mockReturnValue(true);
+    bodyElement('.btn-cancel').click();
+    await nextTick();
+    expect(document.body.querySelector('.at-dialog-overlay')).toBeNull();
+    confirmSpy.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('displays readable submission error message on failure', async () => {
+    submitBugReport.mockRejectedValueOnce(new Error('圖片不可超過 5MB；請填寫問題描述'));
+    const wrapper = await openLauncher();
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '失敗測試';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+
+    bodyElement('.btn-submit').click();
+    await flushPromises();
+
+    expect(bodyElement('.error-msg').textContent).toContain('提交失敗：圖片不可超過 5MB；請填寫問題描述');
     wrapper.unmount();
   });
 });
