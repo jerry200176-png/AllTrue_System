@@ -385,19 +385,6 @@
           </div>
         </details>
       </div>
-      <button
-        class="global-guide-btn"
-        type="button"
-        title="開啟本頁導覽（可拖移，放開後靠齊最近邊）"
-        aria-label="開啟本頁導覽"
-        :class="{ 'is-dragging': guideFabDragging }"
-        :style="guideFabStyle"
-        @pointerdown="onGuideFabPointerDown"
-        @pointermove="onGuideFabPointerMove"
-        @pointerup="onGuideFabPointerUp"
-        @pointercancel="onGuideFabPointerUp"
-        @click="onGuideFabClick"
-      >?</button>
       <!-- 手機版：頂部分校選擇列（小螢幕時側欄分校區塊會被隱藏，改由此選擇） -->
       <div v-if="isDirector && branches.length > 0" class="mobile-branch-bar">
         <label class="mobile-branch-label" for="mobile-branch-select">分校</label>
@@ -602,6 +589,7 @@
           </div>
           <div class="onboarding-launch-actions">
             <button type="button" class="guide-tour-btn" @click="deferRoleOnboarding">稍後再看</button>
+            <button v-if="onboardingPromptIsResume" type="button" class="guide-tour-btn" @click="restartRoleOnboarding">從頭開始</button>
             <button type="button" class="guide-tour-btn guide-tour-btn-primary" @click="beginPendingRoleOnboarding">
               {{ onboardingPromptIsResume ? '繼續導覽' : '開始導覽' }}
             </button>
@@ -1309,6 +1297,17 @@ const buildTimeDisplay = computed(() => formatBuildTime(__APP_BUILD_TIME__));
 const { updateAvailable, dismissed: updateDismissed, dismiss: dismissUpdate, reload: reloadForUpdate } = useUpdateChecker();
 
 function startGuideTour() {
+  if (isDirector.value || isTeacher.value) {
+    if (guideTour.isOpen.value && guideTour.mode.value === 'onboarding') {
+      if (guideTour.isPracticing.value) {
+        guideTour.resumeStep();
+        return;
+      }
+      return;
+    }
+    startRoleOnboarding({ force: true });
+    return;
+  }
   guideTour.startTour(currentGuidePage.value, { role: role.value });
 }
 
@@ -1339,6 +1338,12 @@ function beginPendingRoleOnboarding() {
   return launchRoleOnboarding({ steps, state });
 }
 
+function restartRoleOnboarding() {
+  const steps = onboardingPromptSteps.value;
+  clearOnboardingPrompt();
+  return launchRoleOnboarding({ steps, force: true });
+}
+
 function deferRoleOnboarding() {
   const state = onboardingPromptState.value;
   saveRoleOnboardingState('deferred', state?.status === 'in_progress' ? state.stepIndex : 0);
@@ -1348,6 +1353,10 @@ function deferRoleOnboarding() {
 
 function dismissOnboardingCompletion() {
   onboardingCompletionVisible.value = false;
+  const homePage = isTeacher.value ? 'teacher-home' : 'director';
+  if (active.value !== homePage) {
+    setActivePage(homePage);
+  }
 }
 
 function launchRoleOnboarding({ steps = getRoleOnboardingSteps(role.value), state = null, force = false } = {}) {
@@ -1400,7 +1409,7 @@ function startRoleOnboarding({ force = false } = {}) {
   }
   document.querySelector('.account-menu')?.removeAttribute('open');
   onboardingPromptSteps.value = steps;
-  onboardingPromptState.value = null;
+  onboardingPromptState.value = state;
   onboardingLaunchOpen.value = true;
   return true;
 }
