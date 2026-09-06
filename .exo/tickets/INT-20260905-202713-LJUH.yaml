@@ -1,0 +1,67 @@
+id: INT-20260905-202713-LJUH
+title: "\u4FEE\u6B63\u79D1\u76EE\u6578\u7D71\u8A08\u539F\u59CB\u503C\u8207\u6708\u5E95\
+  \u6838\u85AA\u63DB\u7B97"
+intent: "\u4FEE\u6B63\u79D1\u76EE\u6578\u7D71\u8A08\u539F\u59CB\u503C\u8207\u6708\u5E95\
+  \u6838\u85AA\u63DB\u7B97"
+kind: intent
+brain_dump: "\u4FEE\u6B63 AllTrue \u79D1\u76EE\u6578\u7D71\u8A08\uFF1A\u660E\u7D30\
+  \u5217\u8868\u3001\u6BCF\u65E5/\u5340\u9593\u7D71\u8A08\u7684\u6B63\u8AB2\u3001\u8F14\
+  \u5C0E/\u8A66\u807D\u3001\u8A08\u85AA\u79D1\u76EE\u6578\u986F\u793A\u539F\u59CB\u79D1\
+  \u76EE\u6578\uFF1B\u53EA\u6709\u6708\u5E95\u6838\u85AA\u7E3D\u79D1\u76EE\u6578\u5C07\
+  \u6574\u6708\u7B26\u5408\u65E2\u6709\u6838\u85AA\u898F\u5247\u7684\u539F\u59CB\u79D1\
+  \u76EE\u6578\u52A0\u7E3D\u5F8C\u9664\u4EE5 8\uFF1B\u4E0D\u6539\u6838\u85AA\u8CC7\
+  \u683C\u8207\u6392\u9664\u898F\u5247\uFF1B\u540C\u6B65 backend/API/frontend/tests\uFF0C\
+  \u907F\u514D\u9010\u7B46 rounding \u8AA4\u5DEE\u3002"
+boundary: "\u53EA\u6539\u79D1\u76EE\u6578\u7D71\u8A08 API/\u670D\u52D9\u3001\u6B63\
+  \u8077\u6708\u5E95\u6838\u85AA\u79D1\u76EE\u6578\u8B80\u53D6\u3001\u5C0D\u61C9\u524D\
+  \u7AEF\u986F\u793A\u8207\u56DE\u6B78\u6E2C\u8A66\uFF1B\u4E0D\u6539\u65E2\u6709\u6838\
+  \u85AA\u8CC7\u683C\u3001\u6392\u9664\u3001\u51FA\u52E4\u53BB\u91CD\u3001\u6B0A\u9650\
+  \u3001\u4ED8\u6B3E\u6216 production DB\u3002"
+success_condition: timeline entry/day/range fields are raw weighted subject counts;
+  monthly payroll divides the full eligible raw monthly total once; focused backend/frontend
+  tests pass.
+risk: medium
+priority: 1
+labels:
+- bug
+scope:
+  allow:
+  - backend/app/Services/SubjectUnitsTimelineService.php
+  - backend/app/Http/Controllers/FinanceController.php
+  - backend/app/Http/Controllers/TeacherEligibilityController.php
+  - backend/app/Support/FulltimePayrollLockStore.php
+  - backend/tests/Feature/FinanceSubjectUnitsTimelineTest.php
+  - backend/tests/Feature/FinanceSubjectUnitsTest.php
+  - backend/tests/Feature/FulltimePayrollLockTest.php
+  - frontend/src/pages/SubjectUnitsTimelinePage.vue
+  - frontend/src/components/__tests__/SubjectUnitsAccessibility.test.js
+  - frontend/src/lib/subjectUnitsDisplay.js
+  - frontend/src/lib/subjectUnitsDisplay.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/staffUpdates.generated.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- bash scripts/phpunit-isolated.sh
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: review
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-05T20:27:14+08:00'
+children: []
+resource_profile: default
+commits:
+- 94434a5cdf2157744a73c61a7935685b39038489

@@ -165,14 +165,12 @@ final class SubjectUnitsTimelineService
             $entry['teacher_name'] = $teacherNames[$entry['teacher_id']] ?? '未知老師';
             $entry['campus_name'] = $campusNames[$entry['campus_id']] ?? ('分校 #' . $entry['campus_id']);
             $entry['subject_name'] = $subjectNames[$entry['subject_id']] ?? '未命名科目';
-            $entry['regular_subject_count'] = round($entry['regular_weighted'] / 8, 4);
-            $entry['tutoring_trial_subject_count'] = round($entry['tutoring_trial_weighted'] / 8, 4);
-            $entry['payroll_subject_count'] = round(($entry['regular_weighted'] + $entry['tutoring_trial_weighted']) / 8, 4);
-            $entry['regular_weighted'] = round($entry['regular_weighted'], 4);
-            $entry['tutoring_trial_weighted'] = round($entry['tutoring_trial_weighted'], 4);
-            $entry['regular_hours'] = round($entry['regular_hours'], 2);
-            $entry['tutoring_trial_hours'] = round($entry['tutoring_trial_hours'], 2);
-            $entry['total_hours'] = round($entry['regular_hours'] + $entry['tutoring_trial_hours'], 2);
+            // The timeline is a raw-count surface. Keep the weighted subject
+            // values unrounded until after day/range aggregates are built;
+            // dividing by 8 belongs only to the month-end payroll total.
+            $entry['regular_subject_count'] = $entry['regular_weighted'];
+            $entry['tutoring_trial_subject_count'] = $entry['tutoring_trial_weighted'];
+            $entry['payroll_subject_count'] = $entry['regular_weighted'] + $entry['tutoring_trial_weighted'];
             return $entry;
         }, $entries));
 
@@ -189,7 +187,7 @@ final class SubjectUnitsTimelineService
         foreach ($normalised as $entry) $this->mergeAggregate($totals, $entry);
 
         return [
-            'entries' => $normalised,
+            'entries' => array_map(fn (array $entry) => $this->publicEntry($entry), $normalised),
             'days' => array_values(array_map(fn (array $day) => $this->publicAggregate($day), $days)),
             'totals' => $this->publicAggregate($totals),
         ];
@@ -273,16 +271,38 @@ final class SubjectUnitsTimelineService
             $aggregate[$field] += (float) $entry[$field];
         }
         $aggregate['session_count'] += (int) $entry['session_count'];
-        $aggregate['regular_subject_count'] = round($aggregate['regular_weighted'] / 8, 4);
-        $aggregate['tutoring_trial_subject_count'] = round($aggregate['tutoring_trial_weighted'] / 8, 4);
-        $aggregate['payroll_subject_count'] = round(($aggregate['regular_weighted'] + $aggregate['tutoring_trial_weighted']) / 8, 4);
+        $aggregate['regular_subject_count'] = $aggregate['regular_weighted'];
+        $aggregate['tutoring_trial_subject_count'] = $aggregate['tutoring_trial_weighted'];
+        $aggregate['payroll_subject_count'] = $aggregate['regular_weighted'] + $aggregate['tutoring_trial_weighted'];
     }
 
     private function publicAggregate(array $aggregate): array
     {
-        foreach (['regular_hours', 'tutoring_trial_hours', 'regular_weighted', 'tutoring_trial_weighted'] as $field) {
+        foreach (['regular_hours', 'tutoring_trial_hours'] as $field) {
             $aggregate[$field] = round($aggregate[$field], 2);
         }
+        $aggregate['regular_weighted'] = round($aggregate['regular_weighted'], 4);
+        $aggregate['tutoring_trial_weighted'] = round($aggregate['tutoring_trial_weighted'], 4);
+        $aggregate['regular_subject_count'] = $aggregate['regular_weighted'];
+        $aggregate['tutoring_trial_subject_count'] = $aggregate['tutoring_trial_weighted'];
+        $aggregate['payroll_subject_count'] = round(
+            $aggregate['regular_weighted'] + $aggregate['tutoring_trial_weighted'],
+            4
+        );
         return $aggregate;
+    }
+
+    private function publicEntry(array $entry): array
+    {
+        foreach (['regular_hours', 'tutoring_trial_hours'] as $field) {
+            $entry[$field] = round($entry[$field], 2);
+        }
+        $entry['regular_weighted'] = round($entry['regular_weighted'], 4);
+        $entry['tutoring_trial_weighted'] = round($entry['tutoring_trial_weighted'], 4);
+        $entry['regular_subject_count'] = round($entry['regular_subject_count'], 4);
+        $entry['tutoring_trial_subject_count'] = round($entry['tutoring_trial_subject_count'], 4);
+        $entry['payroll_subject_count'] = round($entry['payroll_subject_count'], 4);
+        $entry['total_hours'] = round($entry['regular_hours'] + $entry['tutoring_trial_hours'], 2);
+        return $entry;
     }
 }

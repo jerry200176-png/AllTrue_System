@@ -19,6 +19,7 @@
 <!-- release-notes: staff_update=staff-2026-09-05-subject-units-timeline -->
 - 科目數頁改以「老師 × 日期 × 分校 × 科目」呈現，主任可在授權分校內比較老師與每日變化，老師只會看到自己的資料。
 - 正課、輔導／試聽與核薪科目數拆開顯示；跨分校、跨日期與同堂出勤去重沿用既有核薪資料規則，不需 migration 或 production 資料修補。
+- 明細、每日與區間統計顯示加權後原始科目數；只有完整月結算才將符合既有規則的整月原始總數合計後除以 8，避免逐筆 rounding 誤差。
 
 ## 2026-09-05 — ops: Xindian capacity read-only diagnose workflow
 <!-- release-notes: silent_ship=silent-2026-09-05-xindian-capacity-diagnose -->
