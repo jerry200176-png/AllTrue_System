@@ -60,7 +60,7 @@ class AlertController extends Controller
             ->all();
 
         $pendingReportPkgIds = !empty($pendingReportClassIds)
-            ? DB::table('student_classes')
+            ? StudentClass::query()
                 ->whereIn('ID', $pendingReportClassIds)
                 ->whereNotNull('PackageID')
                 ->pluck('PackageID')
