@@ -1352,7 +1352,10 @@ function startGuideTour() {
     startRoleOnboarding({ force: true });
     return;
   }
-  guideTour.startTour(currentGuidePage.value, { role: role.value });
+  const started = guideTour.startTour(currentGuidePage.value, { role: role.value });
+  if (!started) {
+    guideTour.startTour('role-home', { role: role.value });
+  }
 }
 
 function onboardingUserId() {
