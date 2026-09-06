@@ -1,32 +1,32 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: INT-20260907-063735-M93H | actor: agent:codex║
+║  ticket: INT-20260907-071544-9K2N | actor: agent:codex║
 ║  model: gpt-5                                        ║
-║  branch: exo/INT-20260907-063735-M93H                ║
+║  branch: exo/INT-20260907-071544-9K2N                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260907063741-C315A7A5
+session_id: SES-20260907071549-7D208BD9
 actor: agent:codex
 vendor: openai
 model: gpt-5
 mode: work
 context_window_tokens: unknown
-ticket_id: INT-20260907-063735-M93H
-ticket_title: Preserve top-level page context across SPA navigation
+ticket_id: INT-20260907-071544-9K2N
+ticket_title: Improve mobile More navigation search
 ticket_status: todo
-ticket_priority: 1
+ticket_priority: 2
 topic_id: repo:default
 lock_owner: agent:codex
-git_branch: exo/INT-20260907-063735-M93H
-lock_branch: codex/INT-20260907-063735-M93H
-lock_expires_at: 2026-09-07T08:37:41+08:00
+git_branch: exo/INT-20260907-071544-9K2N
+lock_branch: codex/INT-20260907-071544-9K2N
+lock_expires_at: 2026-09-07T09:15:49+08:00
 
 ## Scope
-- allow: ["frontend/src/App.vue", "frontend/src/lib/appNavigationHistory.js", "frontend/src/lib/appNavigationHistory.test.js", "frontend/e2e/navigation-history.spec.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
-- deny: []
+- allow: ["frontend/src/App.vue", "frontend/src/components/__tests__/SidebarNavigationUx.test.js", "frontend/e2e/navigation-more-search.spec.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- deny: ["backend/**", "frontend/src/lib/navigationRegistry.js", ".github/workflows/**"]
 
 ## Checks
 - ["npm run test:unit", "npm run lint:no-undef", "npm run build"]
@@ -38,14 +38,15 @@ lock_expires_at: 2026-09-07T08:37:41+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 1.0
-- ram: 6.0GB available / 7.8GB total
+- load_avg_1m: 1.4
+- ram: 5.0GB available / 7.8GB total
 
 ## Sibling Sessions (other agents working concurrently)
-- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=145.6h)
+- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=146.3h)
 
 ## Start Advisories
-- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: frontend/src/**, frontend/src/lib/**, frontend/**, docs/CHANGELOG.md, docs/**, docs/STAFF_UPDATES.yml, frontend/src/lib/changelogDraft.generated.js, frontend/src/lib/staffUpdates.generated.js, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: frontend/src/**, frontend/src/components/__tests__/**, frontend/**, docs/CHANGELOG.md, docs/**, docs/STAFF_UPDATES.yml, frontend/src/lib/**, frontend/src/lib/changelogDraft.generated.js, frontend/src/lib/staffUpdates.generated.js, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [INFO] Unmerged work on branch exo/INT-20260907-063735-M93H (ticket=INT-20260907-063735-M93H, actor=agent:codex) — Implemented role-authorized SPA page history with preserved notification deep-li
 - [INFO] Unmerged work on branch chore/task-onboarding-v1-convergence-20260905 (ticket=TKT-20260905-214801-DDDN, actor=agent:codex) — Implemented and locally verified role onboarding UI journeys; PR 2485 open, remo
 - [INFO] Unmerged work on branch chore/task-transfer-contract-integrity-20260903 (ticket=TKT-20260903-165120-IGVX, actor=agent:codex) — Implemented canonical transfer capacity preflight, orphan schedule exclusion, co
 - [INFO] Unmerged work on branch chore/task-contract-session-date-overlap-20260903-final (ticket=TKT-20260903-155417-MUVF, actor=agent:codex) — Fixed student slot conflict queries to ignore ClassSession and schedule residue 
@@ -103,6 +104,10 @@ The following patterns have been learned from prior sessions. Heed these to avoi
   -> A bounded scheduled reconciler can query exact-main CI/deploy runs and dispatch only the existing CI workflow when no active or downstream evidence exists; normal main request-file pushes then restore read-only evidence workflows, while non-deployable control-plane changes remain activation-gated and do not deploy.
   (ref: REF-20260831-081032-6RTU, scope: global)
 
+- [MEDIUM]! SPA top-level navigation loses browser context
+  -> For a Vue shell without a router, keep role-authorized page IDs in a namespaced query key and let popstate apply state without pushing; preserve existing workflow deep-link parameters only for their authorized target.
+  (ref: REF-20260907-064813-6D03, scope: global)
+
 ## Tool Reuse Protocol
 
 Before writing new utility functions, SEARCH the tool registry:
@@ -119,10 +124,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-T1 UX: preserve authorized top-level page navigation in URL and browser history for predictable cross-page workflow recovery; no API, data, permission, billing, or production mutation changes.
+Implement mobile More navigation search and interaction tests within the low-risk scoped UX ticket.
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id INT-20260907-063735-M93H --owner agent:codex
+- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id INT-20260907-071544-9K2N --owner agent:codex
 - run worker once: EXO_ACTOR=agent:codex python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=agent:codex python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260907-063735-M93H
+- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260907-071544-9K2N

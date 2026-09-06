@@ -81,6 +81,40 @@ export const staffUpdates = [
     "version": "2026.09.07"
   },
   {
+    "id": "staff-2026-09-07-mobile-more-search",
+    "publishedAt": "2026-09-07",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "手機更多功能可搜尋",
+    "summary": "手機底部「更多功能」支援即時搜尋與空結果清除，低頻工具更容易找到。",
+    "items": [
+      "在手機「更多功能」輸入功能名稱即可依角色可用範圍即時過濾，不必逐項掃描長清單。",
+      "找不到結果時可一鍵清除搜尋；選擇功能會關閉抽屜，按 Esc 後焦點回到「更多」按鈕。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "在手機「更多功能」輸入功能名稱即可依角色可用範圍即時過濾，不必逐項掃描長清單。",
+          "找不到結果時可一鍵清除搜尋；選擇功能會關閉抽屜，按 Esc 後焦點回到「更多」按鈕。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-07:mobile-more-search"
+    ],
+    "date": "2026-09-07",
+    "version": "2026.09.07"
+  },
+  {
     "id": "staff-2026-09-06-unified-role-onboarding",
     "publishedAt": "2026-09-06",
     "effectiveAt": null,

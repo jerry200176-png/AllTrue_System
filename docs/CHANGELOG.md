@@ -1,3 +1,9 @@
+## 2026-09-07 — improved(ux): 手機更多功能可搜尋
+<!-- release-notes: staff_update=staff-2026-09-07-mobile-more-search -->
+- 手機底部「更多功能」新增即時搜尋，依目前角色與底部導覽未固定的功能即時過濾，減少在長串清單中逐項掃描。
+- 搜尋沒有結果時提供明確的清除入口；選擇功能後關閉抽屜，按 Esc 關閉後焦點回到「更多」按鈕。
+- 沿用既有導覽 registry、角色權限與分校範圍，不改 API、資料或頁面路由。
+
 ## 2026-09-07 — improved(ux): 跨頁工作可接續
 <!-- release-notes: staff_update=staff-2026-09-07-navigation-history-context -->
 - 主任與老師在學生、課表、出缺勤等頁面間切換時，瀏覽器上一頁／下一頁會回到正確的工作頁，不再只停留在 SPA 的最後畫面。
