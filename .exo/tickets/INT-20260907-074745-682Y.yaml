@@ -46,7 +46,7 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: review
 parent_id: null
 spec_ref: null
 notes: []
@@ -54,3 +54,5 @@ blockers: []
 created_at: '2026-09-07T07:47:45+08:00'
 children: []
 resource_profile: default
+commits:
+- d003173d87e11d028df401963767000fbe794d0d
