@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -232,6 +233,67 @@ class TuitionAlertMixedScenarioTest extends TestCase
         $ids = collect($res->json())->pluck('id')->map(fn ($id) => (int) $id)->all();
         $this->assertContains((int) $mathCourse->ID, $ids, '數學計次制課程應出現在提醒');
         $this->assertContains((int) $engCourse->ID, $ids, '英文計次制課程應出現在提醒');
+    }
+
+    public function test_paid_package_with_non_anchor_pending_report_appears_in_tuition_alerts(): void
+    {
+        $token = $this->makeDirectorToken('dir-pending-pkg@test.com');
+        $student = $this->makeStudent();
+
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id,
+            'campus_id' => 1,
+            'name' => '共用方案 16 堂',
+            'billing_mode' => CoursePackage::BILLING_MODE_SESSION,
+            'total_sessions' => 16,
+            'remaining_sessions' => 12,
+            'used_sessions' => 4,
+            'rate' => 1500,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_one',
+            'paid' => true,
+            'paid_at' => '2026-08-30',
+            'stop' => false,
+            'enabled' => true,
+        ]);
+
+        $math = $this->makeCountModeClass($student->id, [
+            'SubjectID' => 1,
+            'PackageID' => $pkg->id,
+            'Paid' => 1,
+            'PayDate' => '2026-08-30',
+            'RemainingSessions' => 6,
+        ]);
+        $english = $this->makeCountModeClass($student->id, [
+            'SubjectID' => 2,
+            'PackageID' => $pkg->id,
+            'Paid' => 1,
+            'PayDate' => '2026-08-30',
+            'RemainingSessions' => 6,
+        ]);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $english->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-09-01',
+            'payment_method' => 'transfer',
+            'reported_amount' => 36000,
+            'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'pkg-non-anchor-pending'),
+            'token_expires_at' => now()->addDay(),
+        ]);
+
+        $res = $this->getAlerts($token);
+        $res->assertOk();
+
+        $rows = collect($res->json());
+        $match = $rows->firstWhere('package_id', $pkg->id);
+        $this->assertNotNull($match, '已繳清但有待處理回報之共用方案必須出現在提醒列表');
+        $this->assertSame('pending_report', $match['payment_status'], '方案有 pending 回報時應為 pending_report 狀態');
+        $this->assertSame($report->id, $match['latest_payment_report_id'], '非 anchor 成員之回報 ID 必須正確掛載到方案列');
+        $this->assertContains((int) $math->ID, $match['member_class_ids']);
+        $this->assertContains((int) $english->ID, $match['member_class_ids']);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────

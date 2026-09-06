@@ -12,7 +12,12 @@ export function resolveTuitionFocusRow(rows = [], { studentId, courseId } = {}) 
   const cid = normalizeNavigationId(courseId);
   const list = Array.isArray(rows) ? rows : [];
   if (cid) {
-    const exact = list.find((row) => courseIdOf(row) === cid && (!sid || normalizeNavigationId(row?.student_id) === sid));
+    const exact = list.find((row) => {
+      const matchCourse = courseIdOf(row) === cid
+        || (Array.isArray(row?.member_class_ids) && row.member_class_ids.includes(cid))
+        || (Array.isArray(row?.all_member_class_ids) && row.all_member_class_ids.includes(cid));
+      return matchCourse && (!sid || normalizeNavigationId(row?.student_id) === sid);
+    });
     if (exact) return exact;
   }
   if (sid) return list.find((row) => normalizeNavigationId(row?.student_id) === sid) || null;

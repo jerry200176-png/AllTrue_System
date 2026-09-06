@@ -367,6 +367,10 @@
                       <span :class="['small', 'btn-status', paymentStatusButtonClass(c)]">{{ paymentStatusButtonLabel(c) }}</span>
                       <button type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">帳務</button>
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
+                      <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
+                        已繳清；另有回報待核對。
+                        <button type="button" class="small ghost" @click="emit('navigate', buildTuitionCollectNav(c, { intent: 'pending' }))">查看待核對回報</button>
+                      </div>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }">
                       <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="c.PackageID" class="tag-package-hint">（方案共用）</span></template>
@@ -793,6 +797,8 @@
             :package-info="editPackageInfo"
             :context-title="editContextTitle"
             :editability="editability"
+            :payment-state-unavailable="editabilityLoading || !!editabilityError"
+            @open-billing="openEditabilityAction('void_payment')"
           />
         </div>
         <div
@@ -1140,6 +1146,7 @@
       :student-class-id="ledgerStudentClassId"
       :branch-id="props.branchId"
       @close="ledgerOpen = false"
+      @changed="loadCourses(pagination.page)"
     />
 
     <!-- 帳單記錄 Modal -->
@@ -2014,6 +2021,7 @@ const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);
 const editFormRef = ref(null);
 const editForm = ref({});
+const editFormSnapshot = ref('');
 const editSaveError = ref(null);
 const editability = ref(null);
 const editabilityLoading = ref(false);
@@ -2079,6 +2087,11 @@ const navigateToStudentCourse = (course) => {
 function openEditabilityAction(action) {
   const course = editingCourseRaw.value;
   if (!course) return;
+  if (editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value) {
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm('編輯內容尚未儲存，前往帳務更正將捨棄目前的修改，確定要前往嗎？')) {
+      return;
+    }
+  }
   showEditModal.value = false;
   if (action === 'billing_correction') {
     openBillingCorrectionModal(course);
@@ -4593,6 +4606,7 @@ const editCourse = (c) => {
     original_paid_at: c.paid_at || c.last_paid_at || ''
   };
   originalFirstClassDate.value = c.first_class_date || '';
+  editFormSnapshot.value = JSON.stringify(editForm.value);
   loadRoomsForBranch();
   showEditModal.value = true;
   if (editingCourseFromLaravel.value) void loadCourseEditability(c.id);

@@ -526,15 +526,15 @@ class StudentClassController extends Controller
             $invoicePaidAt = $paidAtMap[(int) $class->ID] ?? null;
             $invoicePaidAmount = (int) (($invoiceAggMap[(int) $class->ID]['paid_amount'] ?? 0));
             $pendingReportId = $pendingReportByClassId[(int) $class->ID] ?? null;
-            // A pending report must remain distinct from both paid and unpaid (R94 / TD-083 B1).
-            // It takes priority here so course lists do not invite the same report repeatedly.
-            $class->payment_status = $pendingReportId !== null
-                ? 'pending_report'
-                : (StudentClass::isFullyPaid(
-                    (int) ($class->Paid ?? 0) === 1,
-                    $invoicePaidAmount,
-                    $effectiveCharge
-                ) ? 'paid' : 'unpaid');
+            // Settlement and report review are independent facts (#249). Package
+            // confirmation already synchronizes Paid; an older pending report must
+            // not undo that projection. Keep its ID/summary for explicit review,
+            // never silently confirm/reject it from this read-only endpoint.
+            $class->payment_status = StudentClass::isFullyPaid(
+                (int) ($class->Paid ?? 0) === 1,
+                $invoicePaidAmount,
+                $effectiveCharge
+            ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : 'unpaid');
             $class->latest_payment_report_id = $pendingReportId;
             $class->latest_payment_summary = $latestPaymentSummaryByClassId[(int) $class->ID] ?? null;
             $class->paid_at = $directPaidAt;

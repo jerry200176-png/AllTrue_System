@@ -28,6 +28,16 @@ describe('director payment shortcuts', () => {
     expect(resolveCalendarFocusCourse(rows, { studentId: 99, courseId: 999 })).toBeNull();
   });
 
+  it('resolves tuition focus row by package member_class_ids (#249)', () => {
+    const pkgRows = [
+      { id: 'pkg-1', package_id: 101, student_id: 5, member_class_ids: [201, 202] },
+      { id: 'single-1', student_class_id: 203, student_id: 6 },
+    ];
+    expect(resolveTuitionFocusRow(pkgRows, { courseId: 202 })).toBe(pkgRows[0]);
+    expect(resolveTuitionFocusRow(pkgRows, { courseId: 201 })).toBe(pkgRows[0]);
+    expect(resolveTuitionFocusRow(pkgRows, { courseId: 203 })).toBe(pkgRows[1]);
+  });
+
   it('exposes notification and payment-detail actions from each alert', () => {
     expect(dashboard).toContain('PaymentSlipModal');
     expect(dashboard).toContain('AccountingLedgerModal');

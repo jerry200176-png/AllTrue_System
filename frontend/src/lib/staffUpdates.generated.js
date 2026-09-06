@@ -40,6 +40,38 @@ export const staffUpdates = [
     "version": "2026.09.06"
   },
   {
+    "id": "staff-2026-09-06-payment-status-and-correction",
+    "publishedAt": "2026-09-06",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "方案收款狀態與繳費日期更正",
+    "summary": "結清款項與待審回報獨立呈現，誤填繳費日期提供安全的未繳費按鈕與帳務更正。",
+    "items": [
+      "共用方案已收款科目不因待核對回報誤標待對帳，狀態保持一致。",
+      "排課與編輯表單新增「改為未繳費」；已有收款引導至帳務更正。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "共用方案已收款科目不因待核對回報誤標待對帳，狀態保持一致。",
+          "排課與編輯表單新增「改為未繳費」；已有收款引導至帳務更正。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-06:payment-status-and-correction"
+    ],
+    "date": "2026-09-06",
+    "version": "2026.09.06"
+  },
+  {
     "id": "staff-2026-09-05-admissions-funnel-v1",
     "publishedAt": "2026-09-05",
     "effectiveAt": null,

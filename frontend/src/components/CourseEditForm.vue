@@ -172,13 +172,13 @@
           </div>
         </template>
 
-        <div class="form-group">
-          <label>繳費日期（選填）</label>
-          <input v-model="form.paid_at" type="date" :disabled="lockedFields.has('paid_at')" />
-          <p v-if="form.paid_at" class="field-hint field-hint--success">已填寫繳費日期，儲存後將自動標示為已繳費</p>
-          <p v-else-if="lockedFields.has('paid_at')" class="field-hint field-hint--warning">已有收款紀錄，請到收費頁作廢帳單後再處理付款狀態。</p>
-          <p v-else class="field-hint field-hint--warning">清空繳費日期儲存後，將改為未繳費</p>
-        </div>
+        <CoursePaymentDateField
+          v-model="form.paid_at"
+          :locked="lockedFields.has('paid_at') || !!paymentLockMessage"
+          :lock-message="paymentLockMessage"
+          :unavailable="paymentStateUnavailable"
+          @open-billing="emit('open-billing')"
+        />
 
         <div v-if="showRemaining && !packageInfo" class="form-group">
           <label>剩餘堂數</label>
@@ -296,6 +296,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
+import CoursePaymentDateField from './CoursePaymentDateField.vue';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -312,9 +313,10 @@ const props = defineProps({
   packageInfo: { type: Object, default: null },
   contextTitle: { type: String, default: '' },
   editability: { type: Object, default: null },
+  paymentStateUnavailable: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'open-billing']);
 
 const defaultForm = {
   subject: 'Math',
@@ -350,6 +352,13 @@ let lastEmittedModel = null;
 const teacherSchedule = ref([]);
 const teacherScheduleLoading = ref(false);
 const lockedFields = computed(() => new Set(props.editability?.locked_fields || []));
+const paymentLockMessage = computed(() => {
+  if (props.packageInfo) return '共用方案的付款不可只更改單一科目，請至帳務中心確認整個方案的收款。';
+  if (props.editability?.reasons?.some((reason) => reason.code === 'payment_report_locked')) {
+    return '已有繳費回報，清空日期不會取消回報。請至帳務中心核對或更正。';
+  }
+  return '';
+});
 
 const teacherScheduleDisplay = computed(() => {
   const dayNames = ['', '一', '二', '三', '四', '五', '六', '日'];

@@ -2234,7 +2234,7 @@ watch(() => props.branchId, () => {
 
 watch(() => props.initialTab, (tab) => {
   if (!tab) return;
-  if (tab === 'pending') {
+  if (tab === 'pending' || tab === 'pending_report') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'pending_report';
   } else if (tab === 'unpaid') {
@@ -2243,6 +2243,13 @@ watch(() => props.initialTab, (tab) => {
   } else if (tab === 'renewal') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'renewal';
+  } else if (tab === 'all') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'all';
+  } else if (tab === 'receipts' || tab === 'payments') {
+    activeAccountingTab.value = 'payments';
+  } else if (tab === 'settled') {
+    activeAccountingTab.value = 'settled';
   }
   emit('clear-initial-tab');
 }, { immediate: true });

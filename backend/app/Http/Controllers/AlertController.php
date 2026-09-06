@@ -50,13 +50,36 @@ class AlertController extends Controller
 
         $today = Carbon::today();
 
+        $pendingReportClassIds = DB::table('payment_reports')
+            ->where('status', 'pending')
+            ->pluck('StudentClassID')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $pendingReportPkgIds = !empty($pendingReportClassIds)
+            ? StudentClass::whereIn('ID', $pendingReportClassIds)
+                ->whereNotNull('PackageID')
+                ->pluck('PackageID')
+                ->filter()
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all()
+            : [];
+
         $countQuery = StudentClass::query()
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
-            ->where(function ($q) {
+            ->where(function ($q) use ($pendingReportClassIds) {
                 $q->where('Paid', 0)
                   ->orWhereNull('Paid')
                   ->orWhere('RemainingSessions', '<=', 2);
+                if (!empty($pendingReportClassIds)) {
+                    $q->orWhereIn('ID', $pendingReportClassIds);
+                }
             });
         if ($studentIds !== null) {
             $countQuery->whereIn('StudentID', $studentIds);
@@ -98,10 +121,13 @@ class AlertController extends Controller
         $countPkgQuery = CoursePackage::query()
             ->where('billing_mode', CoursePackage::BILLING_MODE_SESSION)
             ->where('stop', false)
-            ->where(function ($q) {
+            ->where(function ($q) use ($pendingReportPkgIds) {
                 $q->where('paid', false)
                   ->orWhereNull('paid')
                   ->orWhere('remaining_sessions', '<=', 2);
+                if (!empty($pendingReportPkgIds)) {
+                    $q->orWhereIn('id', $pendingReportPkgIds);
+                }
             });
         if ($studentIds !== null) {
             $countPkgQuery->whereIn('student_id', $studentIds);
@@ -109,21 +135,22 @@ class AlertController extends Controller
         $countPkgs = $countPkgQuery->with('student')->get();
         $countPkgMemberIds = collect();
         $countPkgAnchorById = collect();
+        $countPkgMembersByPkgId = collect();
         if ($countPkgs->isNotEmpty()) {
             $members = StudentClass::whereIn('PackageID', $countPkgs->pluck('id'))
                 ->orderBy('Stop')
                 ->orderBy('ID')
                 ->get(['ID', 'PackageID', 'Stop']);
             $countPkgMemberIds = $members->pluck('ID');
-            $countPkgAnchorById = $members
-                ->groupBy('PackageID')
+            $countPkgMembersByPkgId = $members->groupBy('PackageID');
+            $countPkgAnchorById = $countPkgMembersByPkgId
                 ->map(fn ($items) => $items->first());
         }
 
         $allClassIds = $countResults->pluck('ID')
             ->merge($dateResults->pluck('ID'))
             ->merge($pendingSettlementResults->pluck('ID'))
-            ->merge($countPkgAnchorById->pluck('ID'))
+            ->merge($countPkgMemberIds)
             ->unique()
             ->values()
             ->all();
@@ -215,6 +242,7 @@ class AlertController extends Controller
 
         $countPkgAlerts = $countPkgs->map(function (CoursePackage $pkg) use (
             $countPkgAnchorById,
+            $countPkgMembersByPkgId,
             $paidAtMap,
             $invoiceAggMap,
             $pendingReportMap
@@ -228,12 +256,23 @@ class AlertController extends Controller
             $invoiceAgg = $invoiceAggMap[$anchorId] ?? null;
             $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
             $isPaid = $this->isFullyPaid((bool) $pkg->paid, $paidAmount, $charge);
-            $pendingReportId = $pendingReportMap[$anchorId] ?? null;
+
+            $pkgMembers = $countPkgMembersByPkgId->get($pkg->id, collect());
+            $pkgMemberIds = $pkgMembers->pluck('ID')->map(fn ($id) => (int) $id)->all();
+            $pendingReportId = null;
+            foreach ($pkgMemberIds as $mid) {
+                if (isset($pendingReportMap[$mid])) {
+                    $pendingReportId = $pendingReportMap[$mid];
+                    break;
+                }
+            }
+
             $remaining = max(0, (int) ($pkg->remaining_sessions ?? 0));
 
             return [
                 'id'                 => $anchorId,
                 'package_id'         => (int) $pkg->id,
+                'member_class_ids'   => $pkgMemberIds,
                 'student_id'         => (int) $pkg->student_id,
                 'student_name'       => $pkg->student->name ?? 'Unknown',
                 'campus_id'          => (int) ($pkg->student->CampusID ?? $pkg->campus_id ?? 0),

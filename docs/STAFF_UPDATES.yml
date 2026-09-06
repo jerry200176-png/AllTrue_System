@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-06-payment-status-and-correction
+    published_at: "2026-09-06"
+    audiences:
+      - director
+    importance: major
+    title: 方案收款狀態與繳費日期更正
+    summary: 結清款項與待審回報獨立呈現，誤填繳費日期提供安全的未繳費按鈕與帳務更正。
+    items:
+      - category: fixed
+        text: 共用方案已收款科目不因待核對回報誤標待對帳，狀態保持一致。
+      - category: fixed
+        text: 排課與編輯表單新增「改為未繳費」；已有收款引導至帳務更正。
+    source_refs:
+      - "changelog:2026-09-06:payment-status-and-correction"
+
   - id: staff-2026-09-06-unified-role-onboarding
     published_at: "2026-09-06"
     audiences:

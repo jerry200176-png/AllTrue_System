@@ -1602,3 +1602,20 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因層級**：非同步重載狀態與「尚未有任何成功資料」共用同一個 render branch，且 SessionViewModel 到工作台 event 的映射漏掉既有導向契約欄位。
 - **強制規則**：第一次載入才顯示 skeleton；後續刷新保留 last-known-good projection，以 busy／可重試狀態呈現更新。課程格必須使用既有 session 導向，不能另造只改文字的 click handler；TeacherHome 變更不得改變 admin／director 的 mount guard。
 - **測試必補**：成功後刷新不顯示 skeleton、失敗保留課表並可重試、課程格帶完整 session target、sticky 標題在手機／桌面規則一致，以及 admin／director mount guard 維持原狀。
+
+### R135. 付款結清與待核對回報狀態應各自獨立，且誤填日期必須有安全更正入口（in-app #249, #252，2026-09-06）
+
+- **現象**：
+  1. 共用方案已完成收款（Paid=1）的課程，若存在一筆尚未審核的待處理回報（pending_report），課程列表會被 `pending_report` 覆蓋而顯示為未結清，導致同方案科目付款狀態不一致（#249）。
+  2. 排課或編輯課程時，若誤填了繳費日期，畫面上缺少直接清空改為未繳費的安全操作；而若已有正式收款台帳，直接清空又會破壞稽核紀錄（#252）。
+- **根因層級**：
+  1. 結清事實（Settlement fact）與回報審核流程（Report review workflow）被耦合在單一屬性賦值上；讀取端直接把 `pending_report` 優先於 `isFullyPaid`，遮蔽了已結清狀態。且提醒列表僅以 anchor class 查詢回報，漏掉同方案非 anchor 成員的回報。
+  2. 日期輸入欄位在前端缺少 draft 狀態的清空按鈕，且與帳務台帳鎖定（locked）狀態未區分引導，缺少前往帳務更正的直接連結。
+- **強制規則**：
+  1. 結清事實優先（`isFullyPaid` 成立時為 `paid`），同時保留 `latest_payment_report_id` 與摘要供顯式審核；方案下任一成員有待審回報時，提醒列表與導向必須能辨識整個方案與所有成員。
+  2. 前端繳費日期欄位提供獨立的草稿清空能力；當處於帳務鎖定時，明確提示不可直接清空並提供「前往帳務更正」按鈕，且在切換前防範未存草稿遺失。
+- **測試必補**：
+  - `StudentClassPaidStatusTest::test_paid_course_keeps_pending_report_visible_without_losing_paid_status`
+  - `TuitionAlertMixedScenarioTest::test_paid_package_with_non_anchor_pending_report_appears_in_tuition_alerts`
+  - `CoursePaymentDateField.test.js` 覆蓋草稿清空、鎖定時引導更正與未就緒時 fail-closed。
+

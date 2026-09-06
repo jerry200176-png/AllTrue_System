@@ -612,6 +612,7 @@
           :branch-id="props.branchId"
           :package-info="editPackageInfo"
           :context-title="editContextTitle"
+          @open-billing="handleOpenBillingFromEdit"
         />
 
         <div v-if="courseForm.payment_type === 'session'" class="quick-add-session-link" style="margin: 12px 0 4px; text-align: right;">
@@ -972,6 +973,7 @@ const isLaravelCourse = (course) => (
   || course?.room_name != null
   || course?.settlement_day != null
 );
+const courseFormSnapshot = ref('');
 const courseForm = ref({
   subject: 'Math',
   teacher_id: '',
@@ -2550,8 +2552,10 @@ const editCourse = (course) => {
     first_class_date: course.first_class_date || '',
     room_id: course.room_id ?? null,
     memo: course.memo || '',
-    paid_at: course.paid_at || course.last_paid_at || ''
+    paid_at: course.paid_at || course.last_paid_at || '',
+    original_paid_at: course.paid_at || course.last_paid_at || ''
   };
+  courseFormSnapshot.value = JSON.stringify(courseForm.value);
   loadRoomsForBranch();
   showCourseModal.value = true;
 };
@@ -2583,6 +2587,18 @@ const closeCourseModal = () => {
   editingCourseId.value = null;
   editingCourseRaw.value = null;
   editingCourseFromLaravel.value = false;
+};
+
+const handleOpenBillingFromEdit = () => {
+  const course = editingCourseRaw.value;
+  if (!course) return;
+  if (courseFormSnapshot.value && JSON.stringify(courseForm.value) !== courseFormSnapshot.value) {
+    if (typeof window !== 'undefined' && window.confirm && !window.confirm('編輯內容尚未儲存，前往帳務更正將捨棄目前的修改，確定要前往嗎？')) {
+      return;
+    }
+  }
+  closeCourseModal();
+  goToTuitionBilling(course);
 };
 
 const handleUniversalSchedulerSuccess = async () => {
