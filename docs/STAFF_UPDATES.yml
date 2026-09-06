@@ -69,6 +69,8 @@ updates:
         text: 科目數現在按日期、分校、科目與老師拆開顯示，可直接看出每日變化與跨分校差異。
       - category: improved
         text: 正課、輔導／試聽與核薪科目數分開統計；主任看授權範圍，老師只看自己的明細。
+      - category: improved
+        text: 明細、每日與區間統計顯示加權後原始科目數，完整月結算才將整月原始總數合計後除以 8。
     source_refs:
       - "changelog:2026-09-05:subject-units-timeline"
 
