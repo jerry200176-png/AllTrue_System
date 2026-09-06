@@ -45,6 +45,42 @@ export const staffUpdates = [
     "version": "2026.09.07"
   },
   {
+    "id": "staff-2026-09-07-navigation-history-context",
+    "publishedAt": "2026-09-07",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "跨頁導航可接續",
+    "summary": "切換功能頁後可用上一頁返回，重新整理也會保留目前工作位置。",
+    "items": [
+      "切換學生、課表與出缺勤後，瀏覽器上一頁可回到原工作頁。",
+      "重新整理頁面會保留目前功能頁；無權限連結會安全回到角色首頁。",
+      "通知深連結仍保留原本定位與分校範圍。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "切換學生、課表與出缺勤後，瀏覽器上一頁可回到原工作頁。",
+          "重新整理頁面會保留目前功能頁；無權限連結會安全回到角色首頁。",
+          "通知深連結仍保留原本定位與分校範圍。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-07:navigation-history-context"
+    ],
+    "date": "2026-09-07",
+    "version": "2026.09.07"
+  },
+  {
     "id": "staff-2026-09-06-unified-role-onboarding",
     "publishedAt": "2026-09-06",
     "effectiveAt": null,

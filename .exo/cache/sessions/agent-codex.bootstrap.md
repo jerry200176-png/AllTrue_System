@@ -1,35 +1,35 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260905-214801-DDDN | actor: agent:codex║
-║  model: gpt-6                                        ║
-║  branch: exo/TKT-20260905-214801-DDDN                ║
+║  ticket: INT-20260907-063735-M93H | actor: agent:codex║
+║  model: gpt-5                                        ║
+║  branch: exo/INT-20260907-063735-M93H                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260905214810-03B6F746
+session_id: SES-20260907063741-C315A7A5
 actor: agent:codex
 vendor: openai
-model: gpt-6
+model: gpt-5
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260905-214801-DDDN
-ticket_title: Enable hands-on role onboarding with resumable mission coach
+ticket_id: INT-20260907-063735-M93H
+ticket_title: Preserve top-level page context across SPA navigation
 ticket_status: todo
-ticket_priority: 3
+ticket_priority: 1
 topic_id: repo:default
 lock_owner: agent:codex
-git_branch: exo/TKT-20260905-214801-DDDN
-lock_branch: codex/TKT-20260905-214801-DDDN
-lock_expires_at: 2026-09-05T23:48:10+08:00
+git_branch: exo/INT-20260907-063735-M93H
+lock_branch: codex/INT-20260907-063735-M93H
+lock_expires_at: 2026-09-07T08:37:41+08:00
 
 ## Scope
-- allow: ["frontend/src/App.vue", "frontend/src/lib/usePageGuideTour.js", "frontend/src/lib/__tests__/usePageGuideTour.test.js", "docs/CHANGELOG.md", ".exo/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: ["frontend/src/App.vue", "frontend/src/lib/appNavigationHistory.js", "frontend/src/lib/appNavigationHistory.test.js", "frontend/e2e/navigation-history.spec.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: []
 
 ## Checks
-- ["npm run test:unit"]
+- ["npm run test:unit", "npm run lint:no-undef", "npm run build"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -38,14 +38,15 @@ lock_expires_at: 2026-09-05T23:48:10+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 5.0
-- ram: 2.7GB available / 4.8GB total
+- load_avg_1m: 1.0
+- ram: 6.0GB available / 7.8GB total
 
 ## Sibling Sessions (other agents working concurrently)
-- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=112.8h)
+- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=145.6h)
 
 ## Start Advisories
-- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: frontend/src/**, frontend/src/lib/**, docs/CHANGELOG.md, docs/**, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: frontend/src/**, frontend/src/lib/**, frontend/**, docs/CHANGELOG.md, docs/**, docs/STAFF_UPDATES.yml, frontend/src/lib/changelogDraft.generated.js, frontend/src/lib/staffUpdates.generated.js, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [INFO] Unmerged work on branch chore/task-onboarding-v1-convergence-20260905 (ticket=TKT-20260905-214801-DDDN, actor=agent:codex) — Implemented and locally verified role onboarding UI journeys; PR 2485 open, remo
 - [INFO] Unmerged work on branch chore/task-transfer-contract-integrity-20260903 (ticket=TKT-20260903-165120-IGVX, actor=agent:codex) — Implemented canonical transfer capacity preflight, orphan schedule exclusion, co
 - [INFO] Unmerged work on branch chore/task-contract-session-date-overlap-20260903-final (ticket=TKT-20260903-155417-MUVF, actor=agent:codex) — Fixed student slot conflict queries to ignore ClassSession and schedule residue 
 - [INFO] Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) — Refresh paired read-only evidence requests for in-app bug 247 after restoring ma
@@ -118,10 +119,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-Continue existing onboarding UI; enable hands-on mission collapse/resume without business changes
+T1 UX: preserve authorized top-level page navigation in URL and browser history for predictable cross-page workflow recovery; no API, data, permission, billing, or production mutation changes.
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260905-214801-DDDN --owner agent:codex
+- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id INT-20260907-063735-M93H --owner agent:codex
 - run worker once: EXO_ACTOR=agent:codex python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=agent:codex python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260905-214801-DDDN
+- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260907-063735-M93H

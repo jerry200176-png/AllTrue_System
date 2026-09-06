@@ -185,3 +185,14 @@ failure_modes:
       deploy.
   severity: medium
   frequency: recurring
+- id: FM-20260907-064813-A7KM
+  name: SPA top-level navigation loses browser context
+  detection:
+    signal: SPA top-level navigation loses browser context
+    source: reflection:REF-20260907-064813-6D03
+  mitigation:
+    practice: For a Vue shell without a router, keep role-authorized page IDs in a
+      namespaced query key and let popstate apply state without pushing; preserve
+      existing workflow deep-link parameters only for their authorized target.
+  severity: medium
+  frequency: recurring
