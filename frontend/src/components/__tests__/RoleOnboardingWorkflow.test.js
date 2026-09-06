@@ -85,4 +85,30 @@ describe('hands-on role missions', () => {
     expect(skip).not.toHaveBeenCalled();
     await nextTick();
   });
+
+  it('resumes from mid-progress initial index and completes properly', async () => {
+    const steps = getRoleOnboardingSteps('director');
+    const completed = vi.fn();
+    const progress = vi.fn();
+    const navigate = vi.fn((page) => {
+      const step = steps.find((entry) => entry.page === page);
+      document.body.innerHTML = `<button data-guide="${step.target.match(/"(.+)"/)[1]}">操作</button>`;
+    });
+    navigate(steps[2].page);
+    tour.startOnboarding(steps, {
+      initialIndex: 2,
+      onNavigate: navigate,
+      onProgress: progress,
+      onComplete: completed,
+    });
+    await nextTick();
+
+    expect(tour.stepIndex.value).toBe(2);
+    expect(tour.progressText.value).toBe('3 / 4');
+    await tour.nextStep();
+    expect(tour.stepIndex.value).toBe(3);
+    await tour.nextStep();
+    expect(completed).toHaveBeenCalledOnce();
+    expect(tour.isOpen.value).toBe(false);
+  });
 });

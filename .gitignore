@@ -8,6 +8,7 @@
 vendor/
 vendor.bak/
 node_modules/
+node_modules
 
 # Data / cache
 /data/postgres

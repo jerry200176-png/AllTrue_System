@@ -46,4 +46,14 @@ describe('role onboarding spotlight anchors', () => {
     expect(pageSource('DirectorDashboard.vue')).toContain('<EngagementRankStrip');
     expect(pageSource('TeacherHomePage.vue')).toContain('<EngagementRankStrip');
   });
+
+  it('unifies onboarding entry in account menu and eliminates duplicate authenticated guide FAB', () => {
+    expect(appSource).toContain('重新觀看新手教學');
+    expect(appSource).toContain('startRoleOnboarding({ force: true })');
+    expect(appSource).toContain('restartRoleOnboarding');
+    expect(appSource).toContain('從頭開始');
+    // Main authenticated template must not have the floating ? FAB
+    const authenticatedShell = appSource.split('<div v-else class="app-layout">')[1] || '';
+    expect(authenticatedShell).not.toContain('class="global-guide-btn"');
+  });
 });

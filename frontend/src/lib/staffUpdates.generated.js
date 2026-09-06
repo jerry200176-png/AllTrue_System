@@ -4,6 +4,42 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-06-unified-role-onboarding",
+    "publishedAt": "2026-09-06",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "統一新手教學入口，聚焦每日工作流程",
+    "summary": "移除畫面重複問號，教學收斂為真實工作流程，支援隨時重看與接續上次進度。",
+    "items": [
+      "移除畫面懸浮問號按鈕，避免逐頁介紹按鈕與角色教學兩套並存；帳號選單保留「重新觀看新手教學」作為唯一標準入口。",
+      "新手教學聚焦真實工作順序（主任巡檢、老師教學收尾），支援「繼續導覽」與「從頭開始」重播。",
+      "完成教學後自動引導回首頁（主任今日工作台／教學工作台），方便立即開始實際操作。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "移除畫面懸浮問號按鈕，避免逐頁介紹按鈕與角色教學兩套並存；帳號選單保留「重新觀看新手教學」作為唯一標準入口。",
+          "新手教學聚焦真實工作順序（主任巡檢、老師教學收尾），支援「繼續導覽」與「從頭開始」重播。",
+          "完成教學後自動引導回首頁（主任今日工作台／教學工作台），方便立即開始實際操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-06:unified-role-onboarding"
+    ],
+    "date": "2026-09-06",
+    "version": "2026.09.06"
+  },
+  {
     "id": "staff-2026-09-05-admissions-funnel-v1",
     "publishedAt": "2026-09-05",
     "effectiveAt": null,
