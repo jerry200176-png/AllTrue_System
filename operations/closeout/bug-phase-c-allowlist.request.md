@@ -1,5 +1,7 @@
 # Request: Phase-C allowlist resolve
 
+# kickoff 2026-09-07T00:15:00Z — Phase C write-back for in-app #253: teacher slot capacity guard across enrollment, add-session, and course update merged as `6716ddb66b50912009ad7a352adfb46bc5b1c65f` (PR #2502), Deploy to Pi run `34067575564` succeeded, Pi health run `34067870709` passed, target evidence verified in probe_253 run `34067757794` (decision_grade: true). No production data mutation; public reply requests reporter verification.
+
 # kickoff 2026-09-07T00:00:00Z — Phase C write-back for in-app #249 and #252: billing settlement decoupled from pending report review (#249) and course payment date correction with draft clearance (#252) merged as `c46e8af24da2c03100c4f6100f36e89e69dd283b` (PR #2495), Deploy to Pi run `34044190417` succeeded, production target evidence verified in run `34044645208` (probe_249 decision_grade: true). No production billing data mutation; public replies request reporter verification.
 
 # kickoff 2026-09-04T15:53:00Z — Phase C write-back for in-app #251: unpaid contract_amended tuition visibility fix merged as `ff177339d9d7b1cdf35c059ef87f5cc6c9cda946` (PR #2462), Deploy to Pi run `33891742470` succeeded, Calendar/Course Production Acceptance (read-only) run `33891824518` succeeded. Root cause: tuition alerts only listed settled_pending closed unpaid courses, so early-settle contract_amended unpaid rows vanished from 帳務中心. No production billing data mutation; public reply requests reporter verification.
