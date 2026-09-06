@@ -1,0 +1,39 @@
+id: INT-20260905-200220-8PG4
+title: fix branch hygiene symbolic HEAD candidate
+intent: fix branch hygiene symbolic HEAD candidate
+kind: intent
+brain_dump: "\u4FEE\u6B63 AllTrue \u65E2\u6709 branch-hygiene dry-run \u5C07 symbolic\
+  \ remote ref HEAD -> origin/main \u8AA4\u5217\u70BA\u53EF\u522A\u9664\u5019\u9078\
+  \uFF1B\u4FDD\u6301 dry-run default\uFF0C\u4E0D\u57F7\u884C\u4EFB\u4F55 branch deletion\u3002\
+  \u65B0\u589E\u6700\u5C0F regression test\u3002"
+boundary: Do not delete branches/worktrees/issues/PRs, push --delete, merge, deploy,
+  mutate production, alter permissions/history, or touch product logic.
+success_condition: Dry-run excludes symbolic HEAD refs; no real branch candidates
+  are lost; focused regression test passes.
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - scripts/branch-hygiene.sh
+  - scripts/tests/test_branch_hygiene.py
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-05T20:02:20+08:00'
+children: []
+resource_profile: default
