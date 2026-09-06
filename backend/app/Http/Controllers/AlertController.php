@@ -60,7 +60,8 @@ class AlertController extends Controller
             ->all();
 
         $pendingReportPkgIds = !empty($pendingReportClassIds)
-            ? StudentClass::whereIn('ID', $pendingReportClassIds)
+            ? DB::table('student_classes')
+                ->whereIn('ID', $pendingReportClassIds)
                 ->whereNotNull('PackageID')
                 ->pluck('PackageID')
                 ->filter()
@@ -257,7 +258,7 @@ class AlertController extends Controller
             $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
             $isPaid = $this->isFullyPaid((bool) $pkg->paid, $paidAmount, $charge);
 
-            $pkgMembers = $countPkgMembersByPkgId->get($pkg->id, collect());
+            $pkgMembers = $countPkgMembersByPkgId->get($anchor->PackageID, collect());
             $pkgMemberIds = $pkgMembers->pluck('ID')->map(fn ($id) => (int) $id)->all();
             $pendingReportId = null;
             foreach ($pkgMemberIds as $mid) {
