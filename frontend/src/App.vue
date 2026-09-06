@@ -346,6 +346,15 @@
               v-if="isDirector || isTeacher"
               type="button"
               class="account-menu-btn"
+              @click="openFeatureMapModal"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">map</span>
+              <span>功能地圖</span>
+            </button>
+            <button
+              v-if="isDirector || isTeacher"
+              type="button"
+              class="account-menu-btn"
               @click="startRoleOnboarding({ force: true })"
             >
               <span class="material-symbols-outlined" aria-hidden="true">school</span>
@@ -691,12 +700,21 @@
         <img :src="learningCompanionUrl" alt="" class="onboarding-complete-art" />
         <span class="onboarding-launch-kicker">任務完成</span>
         <h2>{{ roleLabel }}新手教學完成</h2>
-        <p>你已經掌握最常用的工作路線，接下來可以直接開始今天的任務。</p>
+        <p>你已經掌握最常用的工作路線，接下來可以直接開始今天的任務，或探索下方功能地圖。</p>
         <div v-if="onboardingCompletionEngagement" class="onboarding-complete-rank">
           <EngagementRankStrip :engagement="onboardingCompletionEngagement" :reduced-motion="onboardingReducedMotion" :overlay-z-index="2147483200" />
           <span>{{ onboardingPromptMission.rankNote }}</span>
         </div>
-        <button type="button" class="guide-tour-btn guide-tour-btn-primary" @click="dismissOnboardingCompletion">開始工作</button>
+
+        <RoleFeatureMapSection
+          :role="role"
+          :admissions-enabled="perfFlags.ADMISSIONS_FUNNEL_V1"
+          @select-page="onFeatureMapNavigate"
+        />
+
+        <div class="onboarding-complete-actions">
+          <button type="button" class="guide-tour-btn guide-tour-btn-primary" @click="dismissOnboardingCompletion">開始工作（返回工作台）</button>
+        </div>
       </div>
     </div>
   </Transition>
@@ -769,6 +787,7 @@ const NightlyReconcilePanel  = defineAsyncComponent(() => import('./pages/Nightl
 const DuplicateSessionReviewPage = defineAsyncComponent(() => import('./pages/DuplicateSessionReviewPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import EngagementRankStrip from './components/EngagementRankStrip.vue';
+import RoleFeatureMapSection from './components/RoleFeatureMapSection.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
@@ -1357,6 +1376,18 @@ function dismissOnboardingCompletion() {
   if (active.value !== homePage) {
     setActivePage(homePage);
   }
+}
+
+function onFeatureMapNavigate(targetPage) {
+  onboardingCompletionVisible.value = false;
+  if (targetPage && active.value !== targetPage) {
+    setActivePage(targetPage);
+  }
+}
+
+function openFeatureMapModal() {
+  document.querySelector('.account-menu')?.removeAttribute('open');
+  onboardingCompletionVisible.value = true;
 }
 
 function launchRoleOnboarding({ steps = getRoleOnboardingSteps(role.value), state = null, force = false } = {}) {
@@ -3712,16 +3743,24 @@ function formatBuildTime(rawIso) {
 .guide-tour-checklist ol { gap: 5px; margin-top: 8px; }
 .guide-tour-checklist li { font-size: 11px; }
 
-.onboarding-complete-layer { z-index: 2147483100; }
+.onboarding-complete-layer {
+  z-index: 2147483100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
 
 .onboarding-complete-card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(420px, 100%);
+  width: min(880px, 100%);
+  max-height: min(92vh, 940px);
   padding: 30px 28px 26px;
-  overflow: hidden;
+  overflow-y: auto;
   border: 1px solid var(--ds-primary-wash);
   border-radius: 24px;
   background: var(--ds-canvas);
@@ -3730,7 +3769,15 @@ function formatBuildTime(rawIso) {
 }
 
 .onboarding-complete-card h2 { font-size: 24px; }
-.onboarding-complete-card .guide-tour-btn { margin-top: 20px; }
+.onboarding-complete-card .guide-tour-btn { margin-top: 0; }
+.onboarding-complete-actions {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ds-primary-wash, rgba(0, 0, 0, 0.08));
+}
 
 .onboarding-complete-art {
   width: 120px;
@@ -3828,7 +3875,7 @@ function formatBuildTime(rawIso) {
   .onboarding-launch-content { padding: 22px 20px 20px; }
   .onboarding-launch-actions { justify-content: stretch; }
   .onboarding-launch-actions .guide-tour-btn { flex: 1; }
-  .onboarding-complete-card { padding: 26px 20px 22px; }
+  .onboarding-complete-card { padding: 24px 16px 20px; max-height: calc(100vh - 20px); width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

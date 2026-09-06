@@ -56,4 +56,12 @@ describe('role onboarding spotlight anchors', () => {
     const authenticatedShell = appSource.split('<div v-else class="app-layout">')[1] || '';
     expect(authenticatedShell).not.toContain('class="global-guide-btn"');
   });
+
+  it('integrates role feature map in onboarding completion modal and account menu', () => {
+    expect(appSource).toContain('<RoleFeatureMapSection');
+    expect(appSource).toContain('openFeatureMapModal');
+    expect(appSource).toContain('onFeatureMapNavigate');
+    expect(appSource).toContain('功能地圖');
+    expect(appSource).toContain('開始工作（返回工作台）');
+  });
 });
