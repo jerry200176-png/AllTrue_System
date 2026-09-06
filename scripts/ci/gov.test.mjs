@@ -36,11 +36,13 @@ test('branch policy accepts sec/design/cursor/claude/revert; rejects agent/ops',
   assert.equal(validateBranchName('design/ui').ok, true);
   assert.equal(validateBranchName('cursor/ci-gov-1ff7').ok, true);
   assert.equal(validateBranchName('claude/course-management-display-issue-ji5tq1').ok, true);
+  assert.equal(validateBranchName('exo/INT-20260905-200220-8PG4').ok, true);
   assert.equal(validateBranchName('revert/x').ok, true);
   assert.equal(validateBranchName('agent/x').ok, false);
   assert.equal(validateBranchName('ops/x').ok, false);
   assert.match(slashPrefixRegexSource(), /sec/);
   assert.match(slashPrefixRegexSource(), /claude/);
+  assert.match(slashPrefixRegexSource(), /exo/);
 });
 
 test('inherited session files are not a claim; only diff paths bind', () => {
