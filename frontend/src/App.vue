@@ -830,6 +830,7 @@ import {
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
 import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
+import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
@@ -1421,12 +1422,12 @@ function openFeatureMapModal() {
 function launchRoleOnboarding({ steps = getRoleOnboardingSteps(role.value), state = null, force = false } = {}) {
   const initialIndex = force ? 0 : onboardingStartIndex(state, steps.length);
   if (active.value !== steps[initialIndex]?.page) {
-    setActivePage(steps[initialIndex].page);
+    setActivePage(steps[initialIndex].page, { history: 'replace' });
   }
   const started = guideTour.startOnboarding(steps, {
     initialIndex,
     onNavigate: (page) => {
-      if (active.value !== page) setActivePage(page);
+      if (active.value !== page) setActivePage(page, { history: 'replace' });
     },
     onProgress: (index) => saveRoleOnboardingState('in_progress', index),
     onComplete: (_step, index) => {
@@ -1495,10 +1496,39 @@ function onNavigateToSchedule({ teacherId, target }) {
   }
   initialTeacherIdForNav.value = teacherId ?? null;
   if (target === 'calendar') {
-    calendarResetToken.value += 1;
-    active.value = 'calendar';
+    setActivePage('calendar');
+  } else {
+    setActivePage('course-mgmt');
   }
-  else active.value = 'course-mgmt';
+}
+
+const INBOX_DEEP_LINK_KEYS = ['page', 'section', 'workflow_id', 'branch_id'];
+
+function authorizedNavigationPages() {
+  const pages = new Set(['profile', 'release-notes']);
+  sidebarNavGroups.value.forEach((group) => {
+    group.items.forEach((item) => pages.add(item.page));
+  });
+  return pages;
+}
+
+function syncAppPageUrl(page, { mode = 'replace', preserveInboxContext = false } = {}) {
+  if (typeof window === 'undefined' || !window.history || !page) return;
+  const params = new URLSearchParams(window.location.search);
+  if (!preserveInboxContext) {
+    INBOX_DEEP_LINK_KEYS.forEach((key) => params.delete(key));
+  }
+  const nextUrl = buildAppPageUrl({
+    pathname: window.location.pathname,
+    search: params.toString(),
+    hash: window.location.hash,
+    page,
+  });
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (currentUrl === nextUrl) return;
+  const state = { ...(window.history.state || {}), appPage: page };
+  const update = mode === 'push' ? window.history.pushState : window.history.replaceState;
+  update.call(window.history, state, '', nextUrl);
 }
 
 function applyDeepLinkFromUrl() {
@@ -1508,12 +1538,24 @@ function applyDeepLinkFromUrl() {
       const safe = resolveAuthorizedBranchId(branchId, branches.value.map((b) => b.id), { allowAny: role.value === 'super_admin' });
       if (safe) currentBranch.value = safe;
     }
-    if (page === 'notifications' || page === 'director') active.value = page;
-    if (page === 'director' || workflowId) {
+    const authorizedPages = authorizedNavigationPages();
+    const appPage = parseAppPage(window.location.search, authorizedPages);
+    let resolvedPage = appPage;
+    if ((page === 'notifications' || page === 'director') && authorizedPages.has(page)) resolvedPage = page;
+    if (authorizedPages.has('director') && (page === 'director' || workflowId)) {
       directorFocusSection.value = section || (workflowId ? 'exception-workflows' : null);
       directorFocusWorkflowId.value = workflowId;
-      if (workflowId) active.value = 'director';
+      if (workflowId && authorizedPages.has('director')) resolvedPage = 'director';
+    } else {
+      directorFocusSection.value = null;
+      directorFocusWorkflowId.value = null;
     }
+    if (resolvedPage) active.value = resolvedPage;
+    syncAppPageUrl(active.value, {
+      mode: 'replace',
+      preserveInboxContext: authorizedPages.has('director')
+        && (page === 'notifications' || page === 'director' || Boolean(workflowId)),
+    });
   } catch { /* ignore */ }
 }
 
@@ -1635,12 +1677,15 @@ function onNavigateFromNotifications(payload = {}) {
     directorFocusWorkflowId.value = null;
   }
   profileFocusTab.value = (target === 'profile' && section === 'notifications') ? 'notifications' : null;
-  active.value = target;
+  setActivePage(target, {
+    history: target === 'director' ? 'replace' : 'push',
+    preserveInboxContext: target === 'director',
+  });
 }
 
 function onNavigateFromCourseManagement(payload) {
   if (typeof payload === 'string') {
-    active.value = payload;
+    setActivePage(payload);
     return;
   }
   onNavigateFromNotifications(payload || {});
@@ -1701,7 +1746,7 @@ function clearBugNavigationContext() {
   focusBugId.value = null;
 }
 
-function setActivePage(page) {
+function setActivePage(page, { history = 'push', preserveInboxContext = false } = {}) {
   closeSidebarMore(false);
   closeMoreMenu(false);
   dashboardReturnContext.value = null;
@@ -1713,6 +1758,7 @@ function setActivePage(page) {
   const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';
+    syncAppPageUrl('profile', { mode: 'replace' });
     if (isTeacher.value && prev !== 'profile') {
       if (skipTeacherNavSfxOnce) {
         skipTeacherNavSfxOnce = false;
@@ -1726,6 +1772,9 @@ function setActivePage(page) {
     calendarResetToken.value += 1;
   }
   active.value = page;
+  if (history !== 'none') {
+    syncAppPageUrl(page, { mode: history, preserveInboxContext });
+  }
   if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
     try {
       window.scrollTo({ top: 0, behavior: 'instant' });
@@ -2102,7 +2151,7 @@ onMounted(async () => {
     _startBadgePolling();
     document.addEventListener('visibilitychange', _onVisibilityChangeForPolling);
     await refreshUnreadNotifications();
-    if (session.value && isDirector.value) applyDeepLinkFromUrl();
+    if (session.value && (isDirector.value || isTeacher.value)) applyDeepLinkFromUrl();
 
     window.addEventListener('resize', onWindowResizeGuideFab);
     window.addEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
@@ -2181,6 +2230,7 @@ const fetchProfile = async (_uid) => {
         if (mustChangePassword) return;
         if (me.role === 'teacher') {
             ensureTeacherBranch();
+            applyDeepLinkFromUrl();
         } else if (me.role === 'director' || me.role === 'admin' || me.role === 'super_admin') {
             applyDeepLinkFromUrl();
         }
@@ -2202,7 +2252,10 @@ const handleLoginSuccess = async ({ user, profile }) => {
     }
 
     if (mustChangePassword) active.value = 'profile';
-    else if ((profile?.role ?? session.value?.user?.role) === 'teacher') active.value = 'teacher-home';
+    else if ((profile?.role ?? session.value?.user?.role) === 'teacher') {
+      active.value = 'teacher-home';
+      applyDeepLinkFromUrl();
+    }
     else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') {
       active.value = 'director'; applyDeepLinkFromUrl();
     }

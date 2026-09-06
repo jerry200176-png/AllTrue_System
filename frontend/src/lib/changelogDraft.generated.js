@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.07",
     "date": "2026-09-07",
     "title": "2026.09.07 草稿（未發布）",
-    "summary": "側欄更多功能漸進搜尋與快捷鍵",
+    "summary": "跨頁工作可接續；側欄更多功能漸進搜尋與快捷鍵",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "跨頁工作可接續",
           "側欄更多功能漸進搜尋與快捷鍵"
         ]
       }
     ],
     "items": [
+      "跨頁工作可接續",
       "側欄更多功能漸進搜尋與快捷鍵"
     ]
   },

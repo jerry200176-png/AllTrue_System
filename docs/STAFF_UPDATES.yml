@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-07-navigation-history-context
+    published_at: "2026-09-07"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 跨頁導航可接續
+    summary: 切換功能頁後可用上一頁返回，重新整理也會保留目前工作位置。
+    items:
+      - category: improved
+        text: 切換學生、課表與出缺勤後，瀏覽器上一頁可回到原工作頁。
+      - category: improved
+        text: 重新整理頁面會保留目前功能頁；無權限連結會安全回到角色首頁。
+      - category: improved
+        text: 通知深連結仍保留原本定位與分校範圍。
+    source_refs:
+      - "changelog:2026-09-07:navigation-history-context"
+
   - id: staff-2026-09-07-sidebar-search-and-shortcuts
     published_at: "2026-09-07"
     audiences:

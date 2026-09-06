@@ -1,3 +1,9 @@
+## 2026-09-07 — improved(ux): 跨頁工作可接續
+<!-- release-notes: staff_update=staff-2026-09-07-navigation-history-context -->
+- 主任與老師在學生、課表、出缺勤等頁面間切換時，瀏覽器上一頁／下一頁會回到正確的工作頁，不再只停留在 SPA 的最後畫面。
+- 重新整理或複製目前頁面後會保留已授權的功能頁；無效或未授權的頁面參數會安全回到角色首頁，不改後端權限與分校隔離。
+- 通知中心既有的工作單 deep link 仍優先保留目標分校與待處理定位，避免一般頁面 history 改善破壞既有流程。
+
 ## 2026-09-07 — improved(ux): 側欄更多功能漸進搜尋與快捷鍵
 <!-- release-notes: staff_update=staff-2026-09-07-sidebar-search-and-shortcuts -->
 - 參考成熟企業級系統（Linear、Notion、Twenty CRM）之 UX Benchmark，側欄「更多功能」抽屜新增即時搜尋輸入框與鍵盤導航，減少肉眼掃描負擔。

@@ -1,0 +1,13 @@
+id: REF-20260907-064813-6D03
+pattern: SPA top-level navigation loses browser context
+insight: For a Vue shell without a router, keep role-authorized page IDs in a namespaced
+  query key and let popstate apply state without pushing; preserve existing workflow
+  deep-link parameters only for their authorized target.
+severity: medium
+scope: global
+actor: agent:codex
+session_id: SES-20260907063741-C315A7A5
+created_at: '2026-09-07T06:48:13+08:00'
+status: active
+tags: []
+hit_count: 0
