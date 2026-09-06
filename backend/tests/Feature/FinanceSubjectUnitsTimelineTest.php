@@ -11,7 +11,9 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Support\FulltimePayrollLockStore;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -69,15 +71,19 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->assertSame((int) $campusA->id, $entries->firstWhere('date', '2026-08-03')['campus_id']);
 
         $approved = $entries->firstWhere('date', '2026-08-03');
-        $this->assertEqualsWithDelta(0.375, $approved['regular_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(3.0, $approved['regular_subject_count'], 0.0001);
         $this->assertSame(0.0, (float) $approved['tutoring_trial_subject_count']);
-        $this->assertEqualsWithDelta(0.375, $approved['payroll_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(3.0, $approved['payroll_subject_count'], 0.0001);
 
         $fallbackRow = $entries->first(fn ($row) => $row['date'] === '2026-08-04' && $row['campus_id'] === (int) $campusB->id);
         $this->assertSame((int) $campusB->id, $fallbackRow['campus_id']);
-        $this->assertEqualsWithDelta(0.1875, $fallbackRow['regular_subject_count'], 0.0001);
-        $this->assertEqualsWithDelta(0.125, $entries->filter(fn ($row) => $row['date'] === '2026-08-04')->sum('tutoring_trial_subject_count'), 0.0001);
-        $this->assertEqualsWithDelta(0.3125, $response->json('days.1.payroll_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(1.5, $fallbackRow['regular_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(1.0, $entries->filter(fn ($row) => $row['date'] === '2026-08-04')->sum('tutoring_trial_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(2.5, $response->json('days.1.payroll_subject_count'), 0.0001);
+
+        $this->assertEqualsWithDelta(4.5, $response->json('totals.regular_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(2.0, $response->json('totals.tutoring_trial_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(6.5, $response->json('totals.payroll_subject_count'), 0.0001);
     }
 
     public function test_timeline_deduplicates_approved_record_and_attendance_for_one_session(): void
@@ -106,7 +112,82 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
 
         $this->assertSame(1, $entry['session_count']);
         $this->assertSame(2.0, (float) $entry['regular_hours']);
-        $this->assertEqualsWithDelta(0.375, $entry['payroll_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(3.0, $entry['payroll_subject_count'], 0.0001);
+    }
+
+    public function test_timeline_keeps_raw_counts_through_range_without_per_entry_rounding_loss(): void
+    {
+        $campus = Campus::factory()->create(['name' => '原始科目數分校']);
+        $director = $this->createUser('director-timeline-raw@example.com', 'A', [$campus->id]);
+        $teacher = $this->createUser('teacher-timeline-raw@example.com', 'T', [$campus->id]);
+
+        foreach (['2026-08-10', '2026-08-11'] as $date) {
+            $course = $this->course($campus->id, $teacher['user_id'], 'one_on_two', 1);
+            $course->update(['SessionDuration' => 100]);
+            $session = $this->makeSession($course, $date, '16:00:00', '17:40:00', 'completed');
+            LearningRecord::create([
+                'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+                'TeacherID' => $teacher['user_id'], 'Content' => '原始值測試', 'Subject' => 'Math',
+                'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+                'SessionDate' => $date, 'StartTime' => '16:00:00', 'EndTime' => '17:40:00',
+                'SessionDeducted' => true,
+            ]);
+        }
+
+        $response = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/subject-units/timeline?start=2026-08-10&end=2026-08-11')
+            ->assertOk();
+
+        $this->assertSame([1.25, 1.25], collect($response->json('entries'))->pluck('regular_subject_count')->map(fn ($value) => (float) $value)->all());
+        $this->assertSame([1.25, 1.25], collect($response->json('days'))->pluck('regular_subject_count')->map(fn ($value) => (float) $value)->all());
+        $this->assertEqualsWithDelta(2.5, $response->json('totals.regular_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(2.5, $response->json('totals.payroll_subject_count'), 0.0001);
+    }
+
+    public function test_monthly_payroll_divides_the_full_raw_total_once(): void
+    {
+        $campus = Campus::factory()->create(['name' => '月底核薪分校']);
+        $director = $this->createUser('director-monthly-raw@example.com', 'A', [$campus->id]);
+        $teacher = $this->createUser('teacher-monthly-raw@example.com', 'T', [$campus->id]);
+
+        foreach (['2026-08-10', '2026-08-11'] as $date) {
+            $course = $this->course($campus->id, $teacher['user_id'], 'one_on_two', 1);
+            $course->update(['SessionDuration' => 100]);
+            $session = $this->makeSession($course, $date, '16:00:00', '17:40:00', 'completed');
+            LearningRecord::create([
+                'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+                'TeacherID' => $teacher['user_id'], 'Content' => '月底原始值測試', 'Subject' => 'Math',
+                'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+                'SessionDate' => $date, 'StartTime' => '16:00:00', 'EndTime' => '17:40:00',
+                'SessionDeducted' => true,
+            ]);
+        }
+
+        $settlement = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=' . $campus->id)
+            ->assertOk()
+            ->json('teachers.0.settlement');
+
+        $this->assertEqualsWithDelta(2.5, $settlement['regular_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(0.3125, $settlement['payroll_subject_count'], 0.0001);
+    }
+
+    public function test_locked_branch_total_also_sums_raw_subject_counts_before_dividing(): void
+    {
+        $runId = FulltimePayrollLockStore::lock(1, '2026-08', [
+            ['teacher_id' => 101, 'settlement' => [
+                'regular_subject_count' => 1.25, 'tutoring_trial_subject_count' => 0, 'payroll_subject_count' => 0.1563,
+            ]],
+            ['teacher_id' => 102, 'settlement' => [
+                'regular_subject_count' => 1.25, 'tutoring_trial_subject_count' => 0, 'payroll_subject_count' => 0.1563,
+            ]],
+        ], 1, 'test-policy');
+
+        $this->assertEqualsWithDelta(
+            0.3125,
+            (float) DB::table('fulltime_payroll_runs')->where('id', $runId)->value('branch_subject_total'),
+            0.0001
+        );
     }
 
     public function test_teacher_timeline_is_limited_to_self_and_authorized_campus(): void

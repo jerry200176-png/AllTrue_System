@@ -61,17 +61,21 @@ class FinanceSubjectUnitsTest extends TestCase
                 ]);
             }
 
-            $teachers = $this->withHeaders([
+            $response = $this->withHeaders([
                 'Authorization' => "Bearer {$director['token']}",
                 'Accept' => 'application/json',
             ])->getJson('/api/v1/finance/subject-units?branch_id=1')
-                ->assertOk()
-                ->json('teachers');
+                ->assertOk();
+            $teachers = $response->json('teachers');
 
             $row = collect($teachers)->firstWhere('teacher_id', $teacherId);
             $this->assertNotNull($row);
             $this->assertSame(2.0, (float) $row['one_on_one_hours']);
             $this->assertSame(2.0, (float) $row['tutoring_hours']);
+            $this->assertSame(3.0, (float) $row['subject_count_without']);
+            $this->assertSame(4.0, (float) $row['subject_count_with']);
+            $this->assertSame(3.0, (float) $response->json('totals.subject_count_without'));
+            $this->assertSame(4.0, (float) $response->json('totals.subject_count_with'));
         } finally {
             Carbon::setTestNow();
         }

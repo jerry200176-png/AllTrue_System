@@ -57,20 +57,20 @@
     <template v-else>
       <section class="summary-grid" data-guide="subject-units-summary" aria-label="科目數摘要">
         <AtMetric
-          label="核薪科目數"
+          label="核薪科目數（原始）"
           :value="formatCount(totals.payroll_subject_count)"
           :delta="`${totals.session_count} 堂 · ${days.length} 個有資料日`"
           delta-tone="positive"
           accent="var(--ds-cta)"
         />
         <AtMetric
-          label="正課科目數"
+          label="正課科目數（原始）"
           :value="formatCount(totals.regular_subject_count)"
           :delta="`${formatHours(totals.regular_hours)} 小時`"
           accent="var(--ds-primary)"
         />
         <AtMetric
-          label="輔導／試聽科目數"
+          label="輔導／試聽科目數（原始）"
           :value="formatCount(totals.tutoring_trial_subject_count)"
           :delta="`${formatHours(totals.tutoring_trial_hours)} 小時`"
           accent="var(--ds-warning)"
@@ -87,18 +87,18 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">每日變化</p>
-            <h3 id="daily-trend-title">每日核薪科目數</h3>
+            <h3 id="daily-trend-title">每日核薪科目數（原始）</h3>
           </div>
           <span class="section-hint">選一天可快速聚焦下方明細</span>
         </div>
-        <div v-if="days.length > 0" class="trend-grid" role="list" aria-label="每日核薪科目數趨勢">
+        <div v-if="days.length > 0" class="trend-grid" role="list" aria-label="每日核薪科目數（原始）趨勢">
           <button
             v-for="day in days"
             :key="day.date"
             type="button"
             class="trend-day"
             :class="{ 'trend-day--selected': focusedDate === day.date }"
-            :aria-label="`${formatDate(day.date)} 核薪科目數 ${formatCount(day.payroll_subject_count)}`"
+            :aria-label="`${formatDate(day.date)} 核薪科目數（原始） ${formatCount(day.payroll_subject_count)}`"
             @click="toggleFocusedDate(day.date)"
           >
             <span class="trend-value">{{ formatCount(day.payroll_subject_count) }}</span>
@@ -152,9 +152,9 @@
                 <th scope="col">老師</th>
                 <th scope="col">分校</th>
                 <th scope="col">科目</th>
-                <th scope="col" class="number-cell">正課</th>
-                <th scope="col" class="number-cell">輔導／試聽</th>
-                <th scope="col" class="number-cell highlight-cell">核薪</th>
+                <th scope="col" class="number-cell">正課（原始）</th>
+                <th scope="col" class="number-cell">輔導／試聽（原始）</th>
+                <th scope="col" class="number-cell highlight-cell">核薪（原始）</th>
                 <th scope="col" class="number-cell">堂數</th>
               </tr>
             </thead>
@@ -208,10 +208,10 @@
           class="disclosure-body"
           aria-labelledby="subject-units-calc-guide-title"
         >
-          <p>數字沿用既有核薪科目數規則；本頁只改成可按日、分校與科目追查的呈現方式。</p>
+          <p>本頁正課、輔導／試聽與核薪欄位都顯示加權後的原始科目數，方便按日、分校與科目追查；不在明細或區間統計逐筆除以 8。</p>
           <div class="formula-row"><span>正課</span><strong>一對一 × 1.5 ＋ 一對二 × 0.75 ＋ 一對三 × 0.5</strong></div>
           <div class="formula-row"><span>輔導／試聽</span><strong>已認列到班時數 × 0.5</strong></div>
-          <div class="formula-row"><span>核薪科目數</span><strong>（正課加權 ＋ 輔導／試聽加權）÷ 8</strong></div>
+          <div class="formula-row"><span>月底核薪總科目數</span><strong>整月符合既有核薪規則的原始科目數合計 ÷ 8</strong></div>
         </div>
       </section>
 
