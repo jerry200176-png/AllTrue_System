@@ -156,11 +156,7 @@
                   <option value="tutoring">輔導</option>
                 </select>
               </div>
-              <div class="form-group">
-                <label>繳費日期（選填）</label>
-                <input v-model="pkgForm.paid_at" type="date" />
-                <p v-if="pkgForm.paid_at" class="field-note" style="color:var(--ds-success);">已填寫繳費日期，儲存後將自動標示為已繳費</p>
-              </div>
+              <CoursePaymentDateField v-model="pkgForm.paid_at" />
 
               <transition name="pkg-fade-slide">
                 <div v-if="pkgForm.payment_type === 'monthly'" class="form-group">
@@ -491,11 +487,7 @@
                 </select>
               </div>
 
-              <div class="form-group">
-                <label>繳費日期（選填）</label>
-                <input v-model="form.paid_at" type="date" />
-                <p v-if="form.paid_at" class="field-note" style="color:var(--ds-success);">已填寫繳費日期，儲存後將自動標示為已繳費</p>
-              </div>
+              <CoursePaymentDateField v-model="form.paid_at" />
 
               <div class="form-group">
                 <label>開課日 *</label>
@@ -879,6 +871,7 @@ import {
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import SearchableSelect from './SearchableSelect.vue';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
+import CoursePaymentDateField from './CoursePaymentDateField.vue';
 
 const weekdayOptions = [
   { value: 1, label: '週一' },

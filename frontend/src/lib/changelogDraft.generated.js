@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.06",
     "date": "2026-09-06",
     "title": "2026.09.06 草稿（未發布）",
-    "summary": "統一主任與老師新手教學並清理重複入口",
+    "summary": "修正共用方案付款狀態與排課繳費日期更正安全機制；統一主任與老師新手教學並清理重複入口",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "修正共用方案付款狀態與排課繳費日期更正安全機制"
+        ]
+      },
       {
         "title": "其他改善",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "修正共用方案付款狀態與排課繳費日期更正安全機制",
       "統一主任與老師新手教學並清理重複入口"
     ]
   },

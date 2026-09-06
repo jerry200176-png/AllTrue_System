@@ -600,6 +600,43 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertSame($report->id, $match['latest_payment_report_id']);
     }
 
+    public function test_paid_course_keeps_pending_report_visible_without_losing_paid_status(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 1, 'PayDate' => '2026-08-30', 'Charge' => 24000,
+        ]);
+        $package = \App\Models\CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => 'Shared payment test',
+            'billing_mode' => 'session', 'total_sessions' => 16, 'remaining_sessions' => 16,
+            'used_sessions' => 0, 'rate' => 1500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'paid_at' => '2026-08-30',
+            'stop' => false, 'enabled' => true,
+        ]);
+        $sc->update(['PackageID' => $package->id]);
+        $sibling = $this->createStudentClass($student->id, [
+            'Paid' => 1, 'PayDate' => '2026-08-30', 'Charge' => 24000,
+            'PackageID' => $package->id, 'SubjectID' => 2,
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name, 'payment_date' => '2026-08-20',
+            'payment_method' => 'cash', 'reported_amount' => 36000,
+            'status' => 'pending', 'report_token_hash' => hash('sha256', 'paid-with-pending'),
+            'token_expires_at' => now()->addDay(),
+        ]);
+        $res = $this->getJson('/api/v1/student-classes?branch_id=1', [
+            'Authorization' => "Bearer {$token}",
+        ])->assertOk();
+        $row = collect($res->json('data'))->firstWhere('ID', $sc->ID);
+        $this->assertSame('paid', $row['payment_status']);
+        $this->assertSame('paid', collect($res->json('data'))->firstWhere('ID', $sibling->ID)['payment_status']);
+        $this->assertSame($report->id, $row['latest_payment_report_id']);
+        $this->assertSame('pending', $row['latest_payment_summary']['status']);
+        $this->assertSame('pending', $report->fresh()->status, 'Reading must not reconcile a report');
+    }
+
     public function test_index_includes_latest_payment_report_summary_for_course_card(): void
     {
         $token = $this->createDirectorToken([1]);
