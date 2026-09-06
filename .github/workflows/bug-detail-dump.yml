@@ -753,6 +753,53 @@ jobs:
               $probe249["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe253 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 253",
+          ];
+          if ($bugId === 253) {{
+            $probe253["applicable"] = true;
+            $probe253["case"] = "teacher_slot_capacity_guard_253";
+            $probe253["target_scope"] = ["campus_id" => 17, "date" => "2026-08-28", "time" => "18:00-20:00"];
+            try {{
+              $sessions253 = $db::table("ClassSession as cs")
+                ->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
+                ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->where("st.CampusID", 17)
+                ->whereDate("cs.SessionDate", "2026-08-28")
+                ->where("cs.StartTime", "<=", "20:00:00")
+                ->where("cs.EndTime", ">=", "18:00:00")
+                ->get([
+                  "cs.ID as session_id", "cs.StudentClassID as course_id",
+                  "cs.SessionDate", "cs.StartTime", "cs.EndTime", "cs.Status",
+                  "sc.TeacherID", "sc.ClassType", "sc.Stop",
+                ]);
+              $probe253["reported_slot_session_count"] = $sessions253->count();
+              $probe253["reported_slot_teacher_ids"] = $sessions253->pluck("TeacherID")->unique()->values()->all();
+              $probe253["reported_slot_class_types"] = $sessions253->pluck("ClassType")->values()->all();
+
+              $guard = app(\\App\\Services\\ScheduleGuardService::class);
+              $conflictResults = [];
+              foreach ($probe253["reported_slot_teacher_ids"] as $tId) {{
+                $conflicts = $guard->validateScheduleOccurrence([
+                  "teacher_id" => (int)$tId,
+                  "class_type" => "one_on_one",
+                  "branch_id" => 17,
+                  "schedule_date" => "2026-08-28",
+                  "start_time" => "18:00",
+                  "end_time" => "20:00",
+                ]);
+                $conflictResults[$tId] = count($conflicts);
+              }}
+              $probe253["guard_conflict_counts_by_teacher"] = $conflictResults;
+              $probe253["guard_blocks_over_capacity"] = collect($conflictResults)->contains(fn ($c) => $c > 0);
+              $probe253["decision_grade"] = $sessions253->count() > 0 && $probe253["guard_blocks_over_capacity"];
+              $probe253["error"] = null;
+            }} catch (\\Throwable $e) {{
+              $probe253["decision_grade"] = false;
+              $probe253["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -761,9 +808,10 @@ jobs:
             250 => $probe250,
             251 => $probe251,
             249 => $probe249,
+            253 => $probe253,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -802,6 +850,7 @@ jobs:
                 "probe_249_shared_subject_payment" => $probe249,
                 "probe_250_transfer_sessions" => $probe250,
                 "probe_251_contract_session_count_payment" => $probe251,
+                "probe_253_teacher_slot_capacity" => $probe253,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,

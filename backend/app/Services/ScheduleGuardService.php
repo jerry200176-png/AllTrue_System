@@ -108,8 +108,11 @@ class ScheduleGuardService
         $excludeStudentId = isset($payload['exclude_student_id']) && $payload['exclude_student_id']
             ? (int) $payload['exclude_student_id']
             : null;
+        $excludeCourseId = isset($payload['exclude_course_id']) && $payload['exclude_course_id']
+            ? (int) $payload['exclude_course_id']
+            : null;
 
-        $entries = $this->buildTeacherDateOccupancyEntries($teacherId, $branchId, $date, $excludeScheduleId, $excludeStudentId);
+        $entries = $this->buildTeacherDateOccupancyEntries($teacherId, $branchId, $date, $excludeScheduleId, $excludeStudentId, $excludeCourseId);
         $overlaps = array_values(array_filter($entries, function ($entry) use ($startTime, $endTime) {
             return $this->timesOverlap($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time']);
         }));
@@ -674,7 +677,8 @@ class ScheduleGuardService
         int $branchId,
         string $date,
         ?int $excludeScheduleId = null,
-        ?int $excludeStudentId = null
+        ?int $excludeStudentId = null,
+        ?int $excludeCourseId = null
     ): array {
         $scheduleRowsQuery = DB::table('schedules')
             ->where('branch_id', $branchId)
@@ -693,6 +697,9 @@ class ScheduleGuardService
 
         if ($excludeScheduleId) {
             $scheduleRowsQuery->where('id', '!=', $excludeScheduleId);
+        }
+        if ($excludeCourseId) {
+            $scheduleRowsQuery->where('student_course_id', '!=', $excludeCourseId);
         }
         $scheduleRows = $scheduleRowsQuery->get();
 
@@ -741,6 +748,9 @@ class ScheduleGuardService
         foreach ($classSessions as $row) {
             $courseId = (int) ($row->StudentClassID ?? 0);
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
+                continue;
+            }
+            if ($excludeCourseId && $courseId === $excludeCourseId) {
                 continue;
             }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {

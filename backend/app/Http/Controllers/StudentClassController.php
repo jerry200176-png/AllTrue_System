@@ -1703,6 +1703,85 @@ class StudentClassController extends Controller
             $oldRateUnitSnapshot = 'session';
         }
 
+        // ── Teacher timeslot capacity guard (ScheduleGuardService, in-app #253) ──
+        $newTeacherId = array_key_exists('TeacherID', $mapped) ? (int) $mapped['TeacherID'] : (int) ($studentClass->TeacherID ?? 0);
+        $teacherChanged = array_key_exists('TeacherID', $mapped) && $newTeacherId !== $oldTeacherSnapshot;
+        $scheduleFieldsPresent = $this->scheduleFieldsPresentInMapped($mapped);
+
+        if ($teacherChanged || $scheduleFieldsPresent) {
+            $studentCampusId = (int) (optional($studentClass->student)->getAttribute('CampusID') ?: 0);
+            if ($studentCampusId <= 0) {
+                $studentCampusId = (int) DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID');
+            }
+            $teacherToCheck = $teacherChanged ? $newTeacherId : (int) ($studentClass->getAttribute('TeacherID') ?: 0);
+
+            if ($scheduleFieldsPresent) {
+                $candidateClass = clone $studentClass;
+                $candidateClass->fill($mapped);
+                $slots = $this->resolveScheduleSlotsForRebuild($candidateClass, $scheduleSlotsForRebuild);
+                $normalizedSlots = [];
+                foreach ($slots as $sl) {
+                    $dow = (int) $sl['weekday'];
+                    $t = substr($sl['time'], 0, 5);
+                    $dur = (int) ($candidateClass->getAttribute('SessionDuration') ?: 120);
+                    if ($dow >= 1 && $dow <= 7 && $t !== '') {
+                        $endT = Carbon::createFromFormat('H:i', $t)->addMinutes(max(30, $dur))->format('H:i');
+                        $normalizedSlots[] = [
+                            'day_of_week' => $dow,
+                            'start_time' => $t,
+                            'end_time' => $endT,
+                        ];
+                    }
+                }
+                if (!empty($normalizedSlots) && $teacherToCheck > 0 && $studentCampusId > 0) {
+                    $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
+                        'teacher_id' => $teacherToCheck,
+                        'class_type' => (string) ($mapped['ClassType'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one'),
+                        'room_id' => !empty($mapped['room_id']) ? (int) $mapped['room_id'] : ($studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null),
+                        'branch_id' => $studentCampusId,
+                        'slots' => $normalizedSlots,
+                        'exclude_student_class_id' => (int) $studentClass->getKey(),
+                    ]);
+                    if (!empty($recurringConflicts)) {
+                        return response()->json([
+                            'message' => $recurringConflicts[0]['message'] ?? '新排課時段與老師既有課程衝突或已達人數上限',
+                            'code' => 'teacher_schedule_conflict',
+                            'conflicts' => $recurringConflicts,
+                        ], 409);
+                    }
+                }
+            }
+
+            if ($teacherChanged && $newTeacherId > 0 && $studentCampusId > 0) {
+                $futureSessions = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+                    ->where('Status', 'scheduled')
+                    ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
+                    ->get(['SessionDate', 'StartTime', 'EndTime']);
+                if ($futureSessions->isNotEmpty()) {
+                    $futureSessionsArray = $futureSessions->map(fn ($s) => [
+                        'SessionDate' => $s->SessionDate,
+                        'StartTime' => $s->StartTime,
+                        'EndTime' => $s->EndTime,
+                    ])->all();
+                    $teacherConflicts = $this->detectTeacherConflicts(
+                        $newTeacherId,
+                        $futureSessionsArray,
+                        (string) ($mapped['ClassType'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one'),
+                        !empty($mapped['room_id']) ? (int) $mapped['room_id'] : ($studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null),
+                        $studentCampusId,
+                        (int) $studentClass->getKey()
+                    );
+                    if (!empty($teacherConflicts)) {
+                        return response()->json([
+                            'message' => $teacherConflicts[0]['message'] ?? '更換的新老師在該時段已有其他課程或已達人數上限',
+                            'code' => 'teacher_schedule_conflict',
+                            'conflicts' => $teacherConflicts,
+                        ], 409);
+                    }
+                }
+            }
+        }
+
         $studentClass->update($mapped);
         $studentClass->refresh();
 
@@ -2974,6 +3053,28 @@ class StudentClassController extends Controller
                 'UsedSessions' => 0,
             ];
 
+            $studentCampusId = (int) (optional($studentClass->student)->getAttribute('CampusID') ?: 0);
+            if ($studentCampusId <= 0) {
+                $studentCampusId = (int) DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID');
+            }
+            if (!empty($periodSessions)) {
+                $conflicts = $this->detectTeacherConflicts(
+                    (int) $newPayload['TeacherID'],
+                    $periodSessions,
+                    (string) $newPayload['ClassType'],
+                    !empty($newPayload['room_id']) ? (int) $newPayload['room_id'] : null,
+                    $studentCampusId,
+                    (int) $studentClass->getKey()
+                );
+                if (!empty($conflicts)) {
+                    return response()->json([
+                        'message' => $conflicts[0]['message'] ?? '月結續報排課時段與老師既有課程衝突或已達人數上限',
+                        'code' => 'monthly_renewal_schedule_conflict',
+                        'conflicts' => $conflicts,
+                    ], 409);
+                }
+            }
+
             $newCourse = $this->createStudentClassRecordResilient($newPayload);
             $newCourse->refresh();
 
@@ -3348,6 +3449,25 @@ class StudentClassController extends Controller
                 (int) $newCourse->ID, $startDate, $sessions, $slots, $globalDur
             );
 
+            $studentCampusId = (int) (optional($studentClass->student)->getAttribute('CampusID') ?: 0);
+            if ($studentCampusId <= 0) {
+                $studentCampusId = (int) DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID');
+            }
+            $conflicts = $this->detectTeacherConflicts(
+                (int) $newPayload['TeacherID'],
+                $builtSessions,
+                $newClassType,
+                !empty($newPayload['room_id']) ? (int) $newPayload['room_id'] : null,
+                $studentCampusId
+            );
+            if (!empty($conflicts)) {
+                return response()->json([
+                    'message' => $conflicts[0]['message'] ?? '續購排課時段與老師既有課程衝突或已達人數上限',
+                    'code' => 'purchase_batch_schedule_conflict',
+                    'conflicts' => $conflicts,
+                ], 409);
+            }
+
             $createdSessions = 0;
             $lastSessionDate = null;
             foreach ($builtSessions as $sess) {
@@ -3672,6 +3792,34 @@ class StudentClassController extends Controller
 
             $existing = $conflict['_existing_session'];
 
+                if (!$existing) {
+                    $effectiveTeacherId = $teacherId > 0 ? $teacherId : (int) ($studentClass->getAttribute('TeacherID') ?: 0);
+                    $campusId = (int) (optional($studentClass->student)->getAttribute('CampusID') ?: 0);
+                    if ($campusId <= 0) {
+                        $campusId = (int) DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID');
+                    }
+                    if ($effectiveTeacherId > 0 && $campusId > 0) {
+                        $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
+                            'teacher_id' => $effectiveTeacherId,
+                            'class_type' => (string) ($studentClass->getAttribute('ClassType') ?: 'one_on_one'),
+                            'room_id' => $studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null,
+                            'branch_id' => $campusId,
+                            'schedule_date' => $sessionDate,
+                            'start_time' => substr($startTime, 0, 5),
+                            'end_time' => substr($endTime, 0, 5),
+                            'exclude_course_id' => (int) $studentClass->getKey(),
+                        ]);
+                        if (!empty($guardConflicts)) {
+                            return response()->json([
+                                'message' => $guardConflicts[0]['message'] ?? '老師此時段已有其他課程或人數已達上限，無法加課。',
+                                'code' => 'teacher_capacity_conflict',
+                                'conflict_type' => 'teacher_capacity',
+                                'conflicts' => $guardConflicts,
+                            ], 409);
+                        }
+                    }
+                }
+
             if ($existing) {
                 $classSession = $existing;
                 $classSession->EndTime = $endTime;
@@ -3877,6 +4025,32 @@ class StudentClassController extends Controller
                 ->addMinutes(max(30, (int) ($data['duration_minutes'] ?? 120)))
                 ->format('H:i:s');
         $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime);
+
+        if ($canAdd && empty($result['_existing_session'])) {
+            $teacherId = (int) ($studentClass->getAttribute('TeacherID') ?: 0);
+            $campusId = (int) (optional($studentClass->student)->getAttribute('CampusID') ?: 0);
+            if ($campusId <= 0) {
+                $campusId = (int) DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID');
+            }
+            if ($teacherId > 0 && $campusId > 0) {
+                $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
+                    'teacher_id' => $teacherId,
+                    'class_type' => (string) ($studentClass->getAttribute('ClassType') ?: 'one_on_one'),
+                    'room_id' => $studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null,
+                    'branch_id' => $campusId,
+                    'schedule_date' => $sessionDate,
+                    'start_time' => substr($startTime, 0, 5),
+                    'end_time' => substr($endTime, 0, 5),
+                    'exclude_course_id' => (int) $studentClass->getKey(),
+                ]);
+                if (!empty($guardConflicts)) {
+                    $canAdd = false;
+                    $result['conflict_type'] = 'teacher_capacity';
+                    $result['error_code'] = 'teacher_capacity_conflict';
+                    $result['message'] = $guardConflicts[0]['message'] ?? '老師此時段已有其他課程或人數已達上限，無法加課。';
+                }
+            }
+        }
 
         return response()->json([
             'can_add' => $canAdd,
@@ -5225,6 +5399,7 @@ class StudentClassController extends Controller
         $mappedData = [];
         if (isset($input['student_id'])) $mappedData['StudentID'] = $input['student_id'];
         if (isset($input['teacher_id'])) $mappedData['TeacherID'] = $input['teacher_id'];
+        elseif (isset($input['TeacherID'])) $mappedData['TeacherID'] = $input['TeacherID'];
         if (isset($input['subject'])) $mappedData['SubjectID'] = $subjectId;
         if (isset($input['class_type'])) $mappedData['ClassType'] = $input['class_type'];
         if (isset($input['payment_type'])) $mappedData['ScheduleMode'] = ($input['payment_type'] === 'session') ? 'count' : 'date';
@@ -7314,7 +7489,8 @@ class StudentClassController extends Controller
         array $proposedSessions,
         string $newClassType = 'one_on_one',
         ?int $roomId = null,
-        int $branchId = 0
+        int $branchId = 0,
+        ?int $excludeCourseId = null
     ): array
     {
         if ($teacherId <= 0 || $branchId <= 0 || empty($proposedSessions)) {
@@ -7339,6 +7515,7 @@ class StudentClassController extends Controller
                 'schedule_date' => $date,
                 'start_time' => $start,
                 'end_time' => $end,
+                'exclude_course_id' => $excludeCourseId,
             ]);
             if (empty($slotConflicts)) {
                 continue;

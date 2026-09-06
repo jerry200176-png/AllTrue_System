@@ -11,6 +11,7 @@ use App\Services\FrontendSubjectIdResolver;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\TeacherScopeService;
+use App\Services\ScheduleGuardService;
 use App\Support\MysqlCharsetRejection;
 use App\Services\StudentIdentityService;
 use Carbon\Carbon;
@@ -628,6 +629,54 @@ class EnrollmentService
             if ($forceGate !== null) {
                 return $forceGate;
             }
+        }
+
+        // ── Teacher timeslot capacity guard (ScheduleGuardService, in-app #253) ──
+        $guardService = app(ScheduleGuardService::class);
+        $teacherCapacityConflicts = [];
+        $newClassType = (string) ($data['class_type'] ?? 'one_on_one');
+        $roomId = !empty($data['room_id']) ? (int) $data['room_id'] : null;
+
+        foreach ($subjectGroups as $groupKey => $rowsForSubject) {
+            $groupTeacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
+
+            foreach ($rowsForSubject as $row) {
+                $date = $row['date'];
+                $slotStartRaw = (string) $row['start_time'];
+                $slotDur = (int) $row['duration_minutes'];
+                $slotStart = substr($slotStartRaw, 0, 5);
+                $slotEnd = substr($this->computeEndTime($slotStartRaw, $slotDur), 0, 5);
+                if ($date === '' || $slotStart === '' || $slotEnd === '') {
+                    continue;
+                }
+
+                $slotConflicts = $guardService->validateScheduleOccurrence([
+                    'teacher_id' => $groupTeacherId,
+                    'class_type' => $newClassType,
+                    'room_id' => $roomId,
+                    'branch_id' => $targetCampusId,
+                    'schedule_date' => $date,
+                    'start_time' => $slotStart,
+                    'end_time' => $slotEnd,
+                ]);
+
+                if (!empty($slotConflicts)) {
+                    foreach ($slotConflicts as $c) {
+                        $teacherCapacityConflicts[] = array_merge([
+                            'date' => $date,
+                            'proposed_time' => $slotStart . '-' . $slotEnd,
+                        ], $c);
+                    }
+                }
+            }
+        }
+
+        if (!empty($teacherCapacityConflicts)) {
+            return response()->json([
+                'message' => $teacherCapacityConflicts[0]['message'] ?? '老師此時段已有其他課程或人數已達上限，無法排課。',
+                'code' => 'teacher_schedule_conflict',
+                'conflicts' => $teacherCapacityConflicts,
+            ], 409);
         }
 
         // #1378: wrap transaction so utf8mb3 Memo rejects become a clean 422 (no half-baked rows).
@@ -1693,7 +1742,8 @@ class EnrollmentService
 
     private function computeEndTime(string $startTime, int $durationMinutes): string
     {
-        return Carbon::createFromFormat('H:i:s', $startTime)
+        $normalizedStart = strlen($startTime) === 5 ? $startTime . ':00' : $startTime;
+        return Carbon::createFromFormat('H:i:s', $normalizedStart)
             ->addMinutes($durationMinutes)
             ->format('H:i:s');
     }
