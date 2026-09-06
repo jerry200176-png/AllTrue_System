@@ -190,12 +190,13 @@ class FinanceController extends Controller
 
     /**
      * GET /api/v1/finance/subject-units
-     * Weighted subject-unit statistics per teacher for a given month.
+     * Weighted raw subject-unit statistics per teacher for a given range.
      *
      * Query params: start (YYYY-MM-DD), end (YYYY-MM-DD), branch_id (optional)
      *
      * Weights: one_on_one × 1.5, one_on_two × 0.75, one_on_three × 0.5, tutoring × 0.5
-     * 科目數 = weighted_total ÷ 8
+     * 科目數欄位回傳加權原始科目數；月底核薪總科目數才在整月 payroll
+     * read model 中將符合既有規則的原始總數除以 8。
      */
     public function subjectUnits(Request $request)
     {
@@ -361,9 +362,11 @@ class FinanceController extends Controller
                 'one_on_three_hours'     => $o3,
                 'tutoring_hours'         => $tt,
                 'total_hours'            => round($total, 2),
-                'subject_count_with'     => number_format($wWith    / 8, 2),
-                'subject_count_without'  => number_format($wWithout / 8, 2),
-                // Temp: share_pct uses same basis as subject_count_with (weighted ÷ 8).
+                // Preserve the legacy string contract while exposing the
+                // weighted raw value (no payroll divisor in this read model).
+                'subject_count_with'     => substr(sprintf('%.4f', $wWith), 0),
+                'subject_count_without'  => substr(sprintf('%.4f', $wWithout), 0),
+                // share_pct continues to use the same weighted raw basis.
                 '_weighted_with'         => $wWith,
                 'share_pct'              => 0, // filled below
             ];
@@ -400,8 +403,8 @@ class FinanceController extends Controller
                 'total_hours'                => round($grandTotals['total'],        2),
                 'weighted_with_tutoring'     => round($grandWeightedWith,           2),
                 'weighted_without_tutoring'  => round($grandWeightedWithout,        2),
-                'subject_count_with'         => round($grandWeightedWith    / 8,    2),
-                'subject_count_without'      => round($grandWeightedWithout / 8,    2),
+                'subject_count_with'         => round($grandWeightedWith,    4),
+                'subject_count_without'      => round($grandWeightedWithout, 4),
             ],
         ];
 
@@ -426,8 +429,8 @@ class FinanceController extends Controller
                         'one_on_three_hours' => $o3,
                         'tutoring_hours' => $tt,
                         'total_hours' => round($total, 2),
-                        'subject_count_with' => round($wWith / 8, 2),
-                        'subject_count_without' => round($wWithout / 8, 2),
+                        'subject_count_with' => round($wWith, 4),
+                        'subject_count_without' => round($wWithout, 4),
                     ];
                     $levelBreakdownByTeacher[$tid][] = $entry;
 
@@ -459,8 +462,8 @@ class FinanceController extends Controller
                     'one_on_three_hours' => round($lt['one_on_three'], 2),
                     'tutoring_hours' => round($lt['tutoring'], 2),
                     'total_hours' => round($lt['total'], 2),
-                    'subject_count_with' => round($lt['w_with'] / 8, 2),
-                    'subject_count_without' => round($lt['w_without'] / 8, 2),
+                    'subject_count_with' => round($lt['w_with'], 4),
+                    'subject_count_without' => round($lt['w_without'], 4),
                 ];
             }
             $response['level_breakdown_totals'] = $formattedLevelTotals;

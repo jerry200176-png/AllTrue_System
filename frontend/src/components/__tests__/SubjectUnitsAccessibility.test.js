@@ -44,7 +44,9 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(source).toContain('正課');
     expect(source).toContain('輔導／試聽');
     expect(source).toContain('核薪');
-    expect(source).toContain('每日核薪科目數');
+    expect(source).toContain('每日核薪科目數（原始）');
+    expect(source).toContain('不在明細或區間統計逐筆除以 8');
+    expect(source).toContain('整月符合既有核薪規則的原始科目數合計 ÷ 8');
     expect(source).toContain('<p class="eyebrow">每日變化</p>');
     expect(source).toContain('<p class="eyebrow">日明細</p>');
     expect(source).toContain('const showCalcGuide = ref(false);');
