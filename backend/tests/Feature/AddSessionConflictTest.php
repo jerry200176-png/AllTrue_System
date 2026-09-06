@@ -87,6 +87,64 @@ class AddSessionConflictTest extends TestCase
         $res->assertStatus(201);
     }
 
+    /**
+     * #253 regression: quick-add must use the same teacher/capacity guard as
+     * schedule creation, so a one-on-one occupant blocks a new shared lesson.
+     */
+    public function test_add_session_rejects_teacher_capacity_conflict(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $occupiedStudent = $this->createStudent(1);
+        $targetStudent = $this->createStudent(1);
+        $teacherId = 99;
+        $occupied = $this->createStudentClass($occupiedStudent->id, [
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one',
+        ]);
+        $target = $this->createStudentClass($targetStudent->id, [
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_two',
+        ]);
+
+        ClassSession::create([
+            'StudentClassID' => $occupied->ID,
+            'SessionDate' => '2026-03-25',
+            'StartTime' => '19:00:00',
+            'EndTime' => '21:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$target->ID}/add-session/check", [
+            'session_date' => '2026-03-25',
+            'start_time' => '19:00',
+        ])->assertOk()
+            ->assertJsonPath('can_add', false)
+            ->assertJsonPath('error_code', 'TEACHER_CAPACITY_CONFLICT')
+            ->assertJsonPath('conflict_type', 'teacher_capacity');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$target->ID}/add-session", [
+            'session_date' => '2026-03-25',
+            'start_time' => '19:00',
+            'duration_minutes' => 120,
+            'auto_approve' => false,
+        ]);
+
+        $res->assertStatus(409)
+            ->assertJsonPath('error_code', 'TEACHER_CAPACITY_CONFLICT')
+            ->assertJsonPath('conflict_type', 'teacher_capacity');
+        $this->assertDatabaseMissing('ClassSession', [
+            'StudentClassID' => $target->ID,
+            'SessionDate' => '2026-03-25',
+            'StartTime' => '19:00:00',
+        ]);
+    }
+
     public function test_check_endpoint_identifies_existing_scheduled_occurrence_as_idempotent(): void
     {
         $token = $this->createDirectorToken([1]);

@@ -1619,3 +1619,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - `TuitionAlertMixedScenarioTest::test_paid_package_with_non_anchor_pending_report_appears_in_tuition_alerts`
   - `CoursePaymentDateField.test.js` 覆蓋草稿清空、鎖定時引導更正與未就緒時 fail-closed。
 
+### R136. 老師容量與排程例外必須在所有寫入邊界共用，且物化堂次要精確到開始時間（in-app #253，2026-09-07）
+
+- **現象**：一對一與一對二課程在同一老師、同一時段重疊，行事曆顯示超過容量；同一天另一個開始時間已有堂次時，舊的同日代課例外檢查仍可能放行錯誤的孤立 scheduled row。
+- **根因層級**：批次建課、快速加課、課程編輯各自有寫入路徑，未全部呼叫同一個 teacher／class-type capacity guard；同日例外守衛只比對日期，將「同一天但不同開始時間」誤當成目標堂次已物化。
+- **強制規則**：所有建立或改動老師／時段的寫入都必須在 mutation 前呼叫共享容量守衛；同日代課例外只有在同一課程、同一日期、同一開始時間存在未取消的 `ClassSession` 時才能建立。讀側可隱藏歷史 orphan，但不得以資料修復取代新的寫入不變式。
+- **對標**：Google Calendar FreeBusy、Microsoft Graph `getSchedule` 都以具體時間區間查詢可用性；Cal.com 的 reservation／conflict tests 也使用半開區間與原子保留語意。本修復只採用這些邊界原則，不複製外部程式碼。
+- **測試必補**：批次 enrollment、add-session 與 check、course teacher update、同日不同開始時間的 substitute target 都必須證明衝突回應／無部分寫入；移除任一寫入邊界 guard 時對應測試必須失敗。

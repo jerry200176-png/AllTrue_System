@@ -34,6 +34,67 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     }
 
     /**
+     * #253 regression: changing a course's teacher must validate its existing
+     * future occurrences before StudentClass is mutated.
+     */
+    public function test_update_teacher_rejects_future_teacher_capacity_conflict(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+
+        $occupiedStudent = Student::create([
+            'name' => '更新容量既有學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $occupiedCourse = StudentClass::create([
+            'StudentID' => $occupiedStudent->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 100,
+            'ClassType' => 'one_on_one',
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 20,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'UsedSessions' => 4,
+            'week' => 7,
+            'time' => '15:00:00',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $occupiedCourse->ID,
+            'SessionDate' => '2026-04-19',
+            'StartTime' => '15:00:00',
+            'EndTime' => '17:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'teacher_id' => 100,
+        ]);
+
+        $res->assertStatus(409)
+            ->assertJsonPath('code', 'teacher_schedule_conflict')
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+        $course->refresh();
+        $this->assertSame(99, (int) $course->TeacherID);
+    }
+
+    /**
      * When immutable history exists and future sessions ARE scheduled,
      * syncFutureScheduledSessionTimes should update them, and reconcile
      * should run normally (times match the new value).
