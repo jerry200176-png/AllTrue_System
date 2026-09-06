@@ -13,6 +13,7 @@ const FALLBACK_POPOVER_WIDTH = 320;
 
 export function usePageGuideTour() {
   const isOpen = ref(false);
+  const isPracticing = ref(false);
   const mode = ref('page');
   const steps = ref([]);
   const stepIndex = ref(0);
@@ -24,6 +25,8 @@ export function usePageGuideTour() {
   let onProgress = null;
   let onComplete = null;
   let onSkip = null;
+  let ownsScrollLock = false;
+  let targetObserver = null;
 
   const currentStep = computed(() => steps.value[stepIndex.value] || null);
   const hasPrev = computed(() => stepIndex.value > 0);
@@ -38,8 +41,41 @@ export function usePageGuideTour() {
   };
 
   const onEscape = (event) => {
-    if (event.key === 'Escape') closeTour();
+    if (event.key !== 'Escape' || isPracticing.value) return;
+    if (mode.value === 'onboarding') practiceStep();
+    else closeTour();
   };
+
+  function releaseTourScroll() {
+    if (ownsScrollLock) unlockScroll();
+    ownsScrollLock = false;
+    document.body.classList.remove(BODY_OPEN_CLASS);
+  }
+
+  function acquireTourScroll() {
+    if (!ownsScrollLock) lockScroll();
+    ownsScrollLock = true;
+    document.body.classList.add(BODY_OPEN_CLASS);
+  }
+
+  function practiceStep() {
+    if (!isOpen.value || mode.value !== 'onboarding') return;
+    isPracticing.value = true;
+    targetObserver?.disconnect();
+    removeHighlight();
+    releaseTourScroll();
+  }
+
+  async function resumeStep() {
+    if (!isOpen.value || !isPracticing.value) return;
+    await navigateToPage?.(currentStep.value.page);
+    if (!isOpen.value) return;
+    isPracticing.value = false;
+    acquireTourScroll();
+    ensureListeners();
+    await nextTick();
+    await syncCurrentStep();
+  }
 
   function removeHighlight() {
     if (highlightedElement.value) {
@@ -56,6 +92,7 @@ export function usePageGuideTour() {
   }
 
   function cleanupListeners() {
+    targetObserver?.disconnect();
     window.removeEventListener('resize', onScrollOrResize);
     window.removeEventListener('scroll', onScrollOrResize, true);
     window.removeEventListener('keydown', onEscape);
@@ -65,6 +102,12 @@ export function usePageGuideTour() {
     window.addEventListener('resize', onScrollOrResize);
     window.addEventListener('scroll', onScrollOrResize, true);
     window.addEventListener('keydown', onEscape);
+    targetObserver?.disconnect();
+    targetObserver = new MutationObserver(() => {
+      if (!isOpen.value || isPracticing.value) return;
+      if (getTargetElement(currentStep.value) !== highlightedElement.value) syncCurrentStep();
+    });
+    targetObserver.observe(document.body, { childList: true, subtree: true });
   }
 
   function getTargetElement(step) {
@@ -146,6 +189,7 @@ export function usePageGuideTour() {
   }
 
   async function syncCurrentStep() {
+    if (!isOpen.value || isPracticing.value) return;
     removeHighlight();
     const step = currentStep.value;
     if (!step) {
@@ -159,6 +203,7 @@ export function usePageGuideTour() {
       highlightedElement.value.classList.add(HIGHLIGHT_CLASS);
       highlightedElement.value.scrollIntoView({ block: 'center', inline: 'nearest' });
       await nextTick();
+      if (!isOpen.value || isPracticing.value || highlightedElement.value !== element) return;
       const rect = highlightedElement.value.getBoundingClientRect();
       popoverStyle.value = calcPopoverStyle(rect, step.placement || 'bottom');
       popoverElement.value?.focus?.();
@@ -170,13 +215,14 @@ export function usePageGuideTour() {
 
   function closeTour() {
     isOpen.value = false;
+    isPracticing.value = false;
     steps.value = [];
     stepIndex.value = 0;
     popoverStyle.value = {};
     removeHighlight();
     clearAllHighlights();
     cleanupListeners();
-    unlockScroll();
+    releaseTourScroll();
     if (typeof document !== 'undefined') {
       document.body.classList.remove(BODY_OPEN_CLASS);
     }
@@ -200,8 +246,7 @@ export function usePageGuideTour() {
     steps.value = availableSteps;
     stepIndex.value = 0;
     isOpen.value = true;
-    lockScroll();
-    document.body.classList.add(BODY_OPEN_CLASS);
+    acquireTourScroll();
     ensureListeners();
     syncCurrentStep();
     return true;
@@ -225,15 +270,14 @@ export function usePageGuideTour() {
     onComplete = typeof options.onComplete === 'function' ? options.onComplete : null;
     onSkip = typeof options.onSkip === 'function' ? options.onSkip : null;
     isOpen.value = true;
-    lockScroll();
-    document.body.classList.add(BODY_OPEN_CLASS);
+    acquireTourScroll();
     ensureListeners();
     syncCurrentStep();
     return true;
   }
 
   function updatePopoverPosition() {
-    if (!isOpen.value) return;
+    if (!isOpen.value || isPracticing.value) return;
     const step = currentStep.value;
     if (!step) return;
     const element = getTargetElement(step);
@@ -300,6 +344,9 @@ export function usePageGuideTour() {
 
   return {
     isOpen,
+    isPracticing,
+    practiceStep,
+    resumeStep,
     mode,
     steps,
     stepIndex,
