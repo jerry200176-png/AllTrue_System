@@ -1,3 +1,9 @@
+## 2026-09-07 — improved(ux): 側欄更多功能漸進搜尋與快捷鍵
+<!-- release-notes: staff_update=staff-2026-09-07-sidebar-search-and-shortcuts -->
+- 參考成熟企業級系統（Linear、Notion、Twenty CRM）之 UX Benchmark，側欄「更多功能」抽屜新增即時搜尋輸入框與鍵盤導航，減少肉眼掃描負擔。
+- 支援全域快捷鍵 ⌘K / Ctrl+K 快速喚起更多功能與自動聚焦搜尋，Enter 鍵單一結果直達，Esc 鍵返回原焦點。
+- 切換分頁時平滑重置頂部捲動位置，保持清晰之工作視覺層次；不改動既有業務邏輯、權限模型與生產資料。
+
 ## 2026-09-06 — fix(billing): 修正共用方案付款狀態與排課繳費日期更正安全機制
 <!-- release-notes: staff_update=staff-2026-09-06-payment-status-and-correction -->
 - 修正已完成收款的課程在存在待核對回報時被錯誤顯示為待對帳的問題，確認款項與待審回報各自獨立呈現，並保持方案中所有科目的收款狀態一致（#249）。

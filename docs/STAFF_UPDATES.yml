@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-07-sidebar-search-and-shortcuts
+    published_at: "2026-09-07"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 更多功能即時搜尋與 ⌘K 快捷導航
+    summary: 側欄更多功能支援即時搜尋與 ⌘K 快捷鍵，降低低頻功能尋找成本，切換頁面平滑回頂。
+    items:
+      - category: added
+        text: 側欄「更多功能」面板新增即時關鍵字搜尋框與快速清空，輸入即時過濾工具並支援 Enter 直達。
+      - category: improved
+        text: 全域支援 ⌘K / Ctrl+K 快捷喚起更多功能並自動聚焦搜尋，Esc 快速返回原工作畫面。
+      - category: improved
+        text: 切換功能頁面時自動回到頂部，避免保留前一頁深層捲動位置，提升視覺層次與確定感。
+    source_refs:
+      - "changelog:2026-09-07:sidebar-search-and-shortcuts"
+
   - id: staff-2026-09-06-payment-status-and-correction
     published_at: "2026-09-06"
     audiences:

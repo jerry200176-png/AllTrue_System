@@ -26,8 +26,8 @@ const latest = notesForRole('director')[0];
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
-assert.strictEqual(latest.publishedAt, '2026-09-06');
-assert.strictEqual(latest.id, 'staff-2026-09-06-unified-role-onboarding');
+assert.strictEqual(latest.publishedAt, '2026-09-07');
+assert.strictEqual(latest.id, 'staff-2026-09-07-sidebar-search-and-shortcuts');
   for (const id of [
     'staff-2026-09-05-admissions-funnel-v1',
     'staff-2026-08-27-teacher-assessment-engagement',

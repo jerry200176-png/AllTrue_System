@@ -182,7 +182,7 @@
       >
         <div class="sidebar-more-header">
           <div>
-            <span class="sidebar-more-kicker">工作工具</span>
+            <span class="sidebar-more-kicker">工作工具 · ⌘K</span>
             <h2 id="sidebar-more-title">更多功能</h2>
           </div>
           <button
@@ -195,9 +195,34 @@
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </div>
-        <p class="sidebar-more-description">不常用的報表、教學工具與系統設定集中在這裡。</p>
-        <div class="sidebar-more-groups">
-          <div v-for="group in sidebarMoreGroups" :key="group.key" class="sidebar-more-group">
+        <div class="sidebar-more-search">
+          <span class="material-symbols-outlined sidebar-more-search-icon" aria-hidden="true">search</span>
+          <input
+            ref="sidebarMoreSearchInput"
+            v-model="sidebarMoreSearchQuery"
+            type="search"
+            class="sidebar-more-search-input"
+            placeholder="搜尋功能、報表或設定…"
+            aria-label="搜尋更多功能"
+            @keydown.enter="onSidebarMoreSearchEnter"
+          />
+          <button
+            v-if="sidebarMoreSearchQuery"
+            type="button"
+            class="sidebar-more-search-clear"
+            aria-label="清除搜尋"
+            @click="sidebarMoreSearchQuery = ''"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </div>
+        <p v-if="!sidebarMoreSearchQuery" class="sidebar-more-description">不常用的報表、教學工具與系統設定集中在這裡。</p>
+        <div v-if="sidebarMoreFilteredGroups.length === 0" class="sidebar-more-empty" role="status">
+          <p>找不到符合「{{ sidebarMoreSearchQuery }}」的功能</p>
+          <button type="button" class="sidebar-more-empty-reset" @click="sidebarMoreSearchQuery = ''">清除搜尋</button>
+        </div>
+        <div v-else class="sidebar-more-groups">
+          <div v-for="group in sidebarMoreFilteredGroups" :key="group.key" class="sidebar-more-group">
             <div class="sidebar-more-group-title">{{ group.title }}</div>
             <div class="sidebar-more-items">
               <button
@@ -1698,6 +1723,15 @@ function setActivePage(page) {
     calendarResetToken.value += 1;
   }
   active.value = page;
+  if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+    try {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    } catch {
+      // jsdom fallback
+    }
+    const mainEl = document.querySelector('.main-content');
+    if (mainEl) mainEl.scrollTop = 0;
+  }
   if (isTeacher.value && page !== prev) {
     if (skipTeacherNavSfxOnce) {
       skipTeacherNavSfxOnce = false;
@@ -1865,6 +1899,28 @@ const sidebarGroupOpen = ref({});
 const sidebarNavGroups = computed(() => getNavigationGroups(role.value, { admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1 }));
 const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
 const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
+const sidebarMoreSearchQuery = ref('');
+const sidebarMoreSearchInput = ref(null);
+const sidebarMoreFilteredGroups = computed(() => {
+  const q = sidebarMoreSearchQuery.value.trim().toLowerCase();
+  if (!q) return sidebarMoreGroups.value;
+  return sidebarMoreGroups.value
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item =>
+        item.label.toLowerCase().includes(q) ||
+        (group.title && group.title.toLowerCase().includes(q))
+      ),
+    }))
+    .filter(group => group.items.length > 0);
+});
+
+function onSidebarMoreSearchEnter() {
+  const allFilteredItems = sidebarMoreFilteredGroups.value.flatMap(g => g.items);
+  if (allFilteredItems.length === 1) {
+    setActivePage(allFilteredItems[0].page);
+  }
+}
 const activeInSidebarMore = computed(() => sidebarMoreGroups.value.some(
   group => group.items.some(item => item.page === active.value),
 ));
@@ -1879,11 +1935,16 @@ function toggleSidebarMore() {
     return;
   }
   showSidebarMore.value = true;
+  sidebarMoreSearchQuery.value = '';
+  nextTick(() => {
+    sidebarMoreSearchInput.value?.focus();
+  });
 }
 
 function closeSidebarMore(restoreFocus = true) {
   const wasOpen = showSidebarMore.value;
   showSidebarMore.value = false;
+  sidebarMoreSearchQuery.value = '';
   if (restoreFocus && wasOpen) {
     nextTick(() => document.querySelector('#sidebar-more-trigger')?.focus());
   }
@@ -2042,6 +2103,15 @@ onMounted(async () => {
 
     window.addEventListener('resize', onWindowResizeGuideFab);
     window.addEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
+    function handleGlobalKeydown(e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        if (session.value && !isStandaloneParent.value && (isDirector.value || isTeacher.value)) {
+          e.preventDefault();
+          toggleSidebarMore();
+        }
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeydown);
     ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach((eventName) => {
       window.addEventListener(eventName, onBrandActivity, { passive: true });
       window.addEventListener(eventName, onPinActivity, { passive: true });
