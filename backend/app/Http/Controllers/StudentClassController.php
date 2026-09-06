@@ -1703,6 +1703,86 @@ class StudentClassController extends Controller
             $oldRateUnitSnapshot = 'session';
         }
 
+        // Course edits are another authoritative scheduling writer. Validate
+        // the resulting recurring slots before mutating StudentClass; otherwise
+        // a teacher/time edit can create the same one-on-one + shared-class
+        // over-capacity state as a new enrollment (#253).
+        $scheduleFieldsPresent = $this->scheduleFieldsPresentInMapped($mapped);
+        $newTeacherId = array_key_exists('TeacherID', $mapped)
+            ? (int) $mapped['TeacherID']
+            : $oldTeacherSnapshot;
+        $newClassType = (string) ($mapped['ClassType'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one');
+        $newRoomId = !empty($mapped['room_id'])
+            ? (int) $mapped['room_id']
+            : ($studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null);
+        $studentCampusId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
+
+        if ($newTeacherId > 0 && $studentCampusId > 0) {
+            if ($scheduleFieldsPresent) {
+                $candidate = clone $studentClass;
+                $candidate->fill($mapped);
+                $slots = $this->resolveScheduleSlotsForRebuild($candidate, $scheduleSlotsForRebuild);
+                $recurringSlots = [];
+                foreach ($slots as $slot) {
+                    $weekday = (int) data_get($slot, 'weekday', 0);
+                    $start = substr((string) data_get($slot, 'time', ''), 0, 5);
+                    $duration = max(30, (int) data_get($slot, 'duration_minutes', $candidate->getAttribute('SessionDuration') ?: 120));
+                    if ($weekday < 1 || $weekday > 7 || $start === '') {
+                        continue;
+                    }
+                    $end = Carbon::createFromFormat('H:i', $start)
+                        ->addMinutes($duration)
+                        ->format('H:i');
+                    $recurringSlots[] = [
+                        'day_of_week' => $weekday,
+                        'start_time' => $start,
+                        'end_time' => $end,
+                    ];
+                }
+                $recurringConflicts = $this->scheduleGuardService->validateRecurringCourse([
+                    'teacher_id' => $newTeacherId,
+                    'class_type' => $newClassType,
+                    'room_id' => $newRoomId,
+                    'branch_id' => $studentCampusId,
+                    'slots' => $recurringSlots,
+                    'exclude_student_class_id' => (int) $studentClass->getAttribute('ID'),
+                ]);
+                if (!empty($recurringConflicts)) {
+                    return response()->json([
+                        'message' => $recurringConflicts[0]['message'] ?? '新排課時段與老師既有課程衝突或已達人數上限',
+                        'code' => 'teacher_schedule_conflict',
+                        'conflicts' => $recurringConflicts,
+                    ], 409);
+                }
+            } elseif ($newTeacherId !== $oldTeacherSnapshot) {
+                $futureSessions = DB::table('ClassSession')->where('StudentClassID', (int) $studentClass->getAttribute('ID'))
+                    ->where('Status', 'scheduled')
+                    ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
+                    ->get(['SessionDate', 'StartTime', 'EndTime'])
+                    ->map(fn ($session) => [
+                        'SessionDate' => $session->SessionDate,
+                        'StartTime' => $session->StartTime,
+                        'EndTime' => $session->EndTime,
+                    ])
+                    ->all();
+                $teacherConflicts = $this->detectTeacherConflicts(
+                    $newTeacherId,
+                    $futureSessions,
+                    $newClassType,
+                    $newRoomId,
+                    $studentCampusId,
+                    (int) $studentClass->getAttribute('ID')
+                );
+                if (!empty($teacherConflicts)) {
+                    return response()->json([
+                        'message' => $teacherConflicts[0]['message'] ?? '更換的新老師在該時段已有其他課程或已達人數上限',
+                        'code' => 'teacher_schedule_conflict',
+                        'conflicts' => $teacherConflicts,
+                    ], 409);
+                }
+            }
+        }
+
         $studentClass->update($mapped);
         $studentClass->refresh();
 
@@ -1803,8 +1883,6 @@ class StudentClassController extends Controller
                 $studentClass->refresh();
             }
         }
-
-        $scheduleFieldsPresent = $this->scheduleFieldsPresentInMapped($mapped);
 
         // 若 SessionCount 被縮減，取消超出新堂數的 scheduled 堂次；若增加，補建新堂次。
         // 如果堂數未變但只是調整固定時段，先讓後面的 schedule sync 處理，避免互相覆蓋。
@@ -3672,6 +3750,23 @@ class StudentClassController extends Controller
 
             $existing = $conflict['_existing_session'];
 
+            if (!$existing) {
+                $teacherConflicts = $this->teacherCapacityConflictsForSession(
+                    $studentClass,
+                    $sessionDate,
+                    $startTime,
+                    $endTime
+                );
+                if (!empty($teacherConflicts)) {
+                    return response()->json([
+                        'message' => $teacherConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法加課。',
+                        'error_code' => 'TEACHER_CAPACITY_CONFLICT',
+                        'conflict_type' => 'teacher_capacity',
+                        'conflicts' => $teacherConflicts,
+                    ], 409);
+                }
+            }
+
             if ($existing) {
                 $classSession = $existing;
                 $classSession->EndTime = $endTime;
@@ -3878,6 +3973,22 @@ class StudentClassController extends Controller
                 ->format('H:i:s');
         $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime);
 
+        if ($canAdd && empty($result['_existing_session'])) {
+            $teacherConflicts = $this->teacherCapacityConflictsForSession(
+                $studentClass,
+                $sessionDate,
+                $startTime,
+                $endTime
+            );
+            if (!empty($teacherConflicts)) {
+                $canAdd = false;
+                $result['conflict_type'] = 'teacher_capacity';
+                $result['error_code'] = 'TEACHER_CAPACITY_CONFLICT';
+                $result['message'] = $teacherConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法加課。';
+                $result['teacher_conflicts'] = $teacherConflicts;
+            }
+        }
+
         return response()->json([
             'can_add' => $canAdd,
             'conflict_type' => $result['conflict_type'],
@@ -3894,6 +4005,7 @@ class StudentClassController extends Controller
                 : null,
             'suggested_actions' => $result['suggested_actions'] ?? [],
             'package_planning' => $result['_package_planning'] ?? null,
+            'conflicts' => $result['teacher_conflicts'] ?? null,
             // R-quickadd-confirm: this slot's end time has already passed —
             // add-session will silently mark it completed + auto-approve the
             // evaluation when auto_approve stays true. FE must confirm explicitly
@@ -3987,6 +4099,38 @@ class StudentClassController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Return teacher/room conflicts for one new ClassSession.
+     * ClassSession writes are authoritative for quick-add; the schedule table
+     * alone is not sufficient because a course can already have a materialized
+     * session with no matching schedule exception.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function teacherCapacityConflictsForSession(
+        StudentClass $studentClass,
+        string $sessionDate,
+        string $startTime,
+        string $endTime
+    ): array {
+        $teacherId = (int) ($studentClass->getAttribute('TeacherID') ?? 0);
+        $branchId = (int) (DB::table('Student')->where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID') ?? 0);
+        if ($teacherId <= 0 || $branchId <= 0) {
+            return [];
+        }
+
+        return $this->scheduleGuardService->validateScheduleOccurrence([
+            'teacher_id' => $teacherId,
+            'class_type' => (string) ($studentClass->getAttribute('ClassType') ?: 'one_on_one'),
+            'room_id' => $studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null,
+            'branch_id' => $branchId,
+            'schedule_date' => $sessionDate,
+            'start_time' => substr($startTime, 0, 5),
+            'end_time' => substr($endTime, 0, 5),
+            'exclude_course_id' => (int) $studentClass->getAttribute('ID'),
+        ]);
     }
 
     /**
@@ -7314,7 +7458,8 @@ class StudentClassController extends Controller
         array $proposedSessions,
         string $newClassType = 'one_on_one',
         ?int $roomId = null,
-        int $branchId = 0
+        int $branchId = 0,
+        ?int $excludeCourseId = null
     ): array
     {
         if ($teacherId <= 0 || $branchId <= 0 || empty($proposedSessions)) {
@@ -7339,6 +7484,7 @@ class StudentClassController extends Controller
                 'schedule_date' => $date,
                 'start_time' => $start,
                 'end_time' => $end,
+                'exclude_course_id' => $excludeCourseId,
             ]);
             if (empty($slotConflicts)) {
                 continue;

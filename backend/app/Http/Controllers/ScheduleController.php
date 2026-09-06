@@ -249,6 +249,7 @@ class ScheduleController extends Controller
             if ($isSameDaySubstitute) {
                 $sessionExists = ClassSession::where('StudentClassID', $courseId)
                     ->whereDate('SessionDate', $data['schedule_date'])
+                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [substr((string) ($data['start_time'] ?? ''), 0, 5)])
                     ->whereNotIn('Status', ['cancelled', 'voided'])
                     ->exists();
                 if (!$sessionExists) {

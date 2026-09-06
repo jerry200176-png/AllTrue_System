@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
@@ -137,6 +139,80 @@ class EnrollmentApiTest extends TestCase
             'payment_type' => 'session',
             'total_classes' => 1,
         ])->assertStatus(403);
+    }
+
+    /**
+     * #253 regression: batch enrollment must not bypass the concrete-session
+     * capacity guard when the existing occupant is already materialized.
+     */
+    public function test_enrollment_rejects_teacher_capacity_conflict_before_creating_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-enrollment-capacity@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-enrollment-capacity@example.com');
+        $occupiedStudent = Student::create([
+            'name' => '既有佔用學生', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $newStudent = Student::create([
+            'name' => '新報名容量測試', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $occupiedCourse = StudentClass::create([
+            'StudentID' => $occupiedStudent->id,
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one',
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-04-01',
+            'TotalHours' => 4,
+            'SessionCount' => 1,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 1,
+            'UsedSessions' => 0,
+            'Charge' => 500,
+            'Pay' => 500,
+            'Paid' => 0,
+            'Rate' => 500,
+            'Stop' => 0,
+            'MDate' => now(),
+            'week' => 1,
+            'time' => '18:00:00',
+            'ScheduleMode' => 'count',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $occupiedCourse->ID,
+            'SessionDate' => '2026-04-13',
+            'StartTime' => '18:00:00',
+            'EndTime' => '20:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/enrollments', [
+            'student_id' => $newStudent->id,
+            'branch_id' => 1,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'one_on_two',
+            'confirmed_dates' => [],
+            'future_dates' => ['2026-04-13'],
+            'days_of_week' => [1],
+            'start_time' => '18:00',
+            'duration_minutes' => 120,
+            'price_per_session' => 500,
+            'payment_type' => 'session',
+            'total_classes' => 1,
+            'mode' => 'enrollment',
+        ]);
+
+        $res->assertStatus(409)
+            ->assertJsonPath('code', 'teacher_schedule_conflict')
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+        $this->assertDatabaseMissing('StudentClass', ['StudentID' => $newStudent->id]);
     }
 
     public function test_enrollment_with_per_day_duration_creates_varied_sessions(): void

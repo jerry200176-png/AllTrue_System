@@ -10,6 +10,7 @@ use App\Models\UserCampus;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\Scheduling\DeductionBasis;
 use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
+use App\Services\ScheduleGuardService;
 use App\Services\TeacherScopeService;
 use App\Support\MysqlCharsetRejection;
 use App\Services\StudentIdentityService;
@@ -628,6 +629,50 @@ class EnrollmentService
             if ($forceGate !== null) {
                 return $forceGate;
             }
+        }
+
+        // The schedule endpoint already guards single-row writes, but enrollment
+        // creates a course and its ClassSessions in one batch. Validate every
+        // concrete occurrence before that transaction so this path cannot bypass
+        // the teacher/class-size capacity rule (#253).
+        $scheduleGuard = app(ScheduleGuardService::class);
+        $capacityConflicts = [];
+        $classType = (string) ($data['class_type'] ?? 'one_on_one');
+        $roomId = !empty($data['room_id']) ? (int) $data['room_id'] : null;
+        foreach ($subjectGroups as $groupKey => $rowsForSubject) {
+            $teacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
+            foreach ($rowsForSubject as $row) {
+                $date = $row['date'];
+                $start = $row['start_time'];
+                $duration = max(30, (int) $row['duration_minutes']);
+                if (!$date || !$start) {
+                    continue;
+                }
+                $end = $this->computeEndTime((string) $start, $duration);
+                $conflicts = $scheduleGuard->validateScheduleOccurrence([
+                    'teacher_id' => $teacherId,
+                    'class_type' => $classType,
+                    'room_id' => $roomId,
+                    'branch_id' => $targetCampusId,
+                    'schedule_date' => $date,
+                    'start_time' => $start,
+                    'end_time' => $end,
+                    'exclude_student_id' => $studentId > 0 ? $studentId : null,
+                ]);
+                foreach ($conflicts as $conflict) {
+                    $capacityConflicts[] = array_merge([
+                        'date' => $date,
+                        'proposed_time' => substr((string) $start, 0, 5) . '-' . substr($end, 0, 5),
+                    ], $conflict);
+                }
+            }
+        }
+        if (!empty($capacityConflicts)) {
+            return response()->json([
+                'message' => $capacityConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法排課。',
+                'code' => 'teacher_schedule_conflict',
+                'conflicts' => $capacityConflicts,
+            ], 409);
         }
 
         // #1378: wrap transaction so utf8mb3 Memo rejects become a clean 422 (no half-baked rows).

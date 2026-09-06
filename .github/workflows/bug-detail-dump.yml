@@ -753,6 +753,56 @@ jobs:
               $probe249["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe253 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 253",
+          ];
+          if ($bugId === 253) {{
+            // #253-specific production acceptance probe. Emit aggregate slot
+            // shape only; no student, teacher, course, or schedule IDs.
+            $probe253["applicable"] = true;
+            $probe253["case"] = "teacher_capacity_orphan_exception_253";
+            $probe253["target_scope"] = [
+              "campus_id" => 16, "teacher_id" => 146,
+              "date" => "2026-09-07", "start" => "18:00", "end" => "20:00",
+            ];
+            try {{
+              $inactive253 = ["cancelled", "voided", "leave", "leave_adjusted", "excused"];
+              $slot253 = $db::table("ClassSession as cs")
+                ->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
+                ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->where("st.CampusID", 16)->where("sc.TeacherID", 146)
+                ->whereDate("cs.SessionDate", "2026-09-07")
+                ->whereRaw("SUBSTRING(cs.StartTime, 1, 5) = ?", ["18:00"])
+                ->whereNotIn("cs.Status", $inactive253)
+                ->get(["cs.StudentClassID as class_id", "sc.ClassType as class_type"]);
+              $classIds253 = $slot253->pluck("class_id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $typeCounts253 = $slot253->groupBy(fn ($row) => (string)($row->class_type ?: "one_on_one"))
+                ->map(fn ($rows) => $rows->pluck("class_id")->unique()->count())->all();
+              $scheduled253 = $db::table("schedules as s")
+                ->join("StudentClass as sc", "sc.ID", "=", "s.student_course_id")
+                ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->where("st.CampusID", 16)->where("sc.TeacherID", 146)
+                ->where("s.status", "scheduled")->whereNotNull("s.original_schedule_id")
+                ->whereDate("s.schedule_date", "2026-09-07")
+                ->whereRaw("SUBSTRING(s.start_time, 1, 5) = ?", ["18:00"])
+                ->pluck("s.student_course_id")->map(fn ($id) => (int)$id)->unique();
+              $orphan253 = $scheduled253->filter(fn ($id) => !in_array($id, $classIds253, true))->count();
+              $oneOnOne253 = (int)($typeCounts253["one_on_one"] ?? 0);
+              $shared253 = (int)($typeCounts253["one_on_two"] ?? 0);
+              $probe253["materialized_active_class_count"] = count($classIds253);
+              $probe253["class_counts_by_type"] = $typeCounts253;
+              $probe253["scheduled_exception_without_exact_materialized_session_count"] = $orphan253;
+              $probe253["one_on_one_class_count_at_target"] = $oneOnOne253;
+              $probe253["shared_class_count_at_target"] = $shared253;
+              $probe253["capacity_shape_safe"] = $oneOnOne253 === 0 && $shared253 <= 2;
+              $probe253["decision_grade"] = count($classIds253) > 0 && $probe253["capacity_shape_safe"];
+              $probe253["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe253["decision_grade"] = false;
+              $probe253["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -761,9 +811,10 @@ jobs:
             250 => $probe250,
             251 => $probe251,
             249 => $probe249,
+            253 => $probe253,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -802,6 +853,7 @@ jobs:
                 "probe_249_shared_subject_payment" => $probe249,
                 "probe_250_transfer_sessions" => $probe250,
                 "probe_251_contract_session_count_payment" => $probe251,
+                "probe_253_teacher_capacity_orphan_exception" => $probe253,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,

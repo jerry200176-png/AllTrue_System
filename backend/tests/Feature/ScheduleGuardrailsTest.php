@@ -75,6 +75,76 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * #253 regression: a same-day substitute target must have a materialized
+     * ClassSession at the target start time, not merely somewhere on that date.
+     */
+    public function test_same_day_substitute_rejects_session_at_different_start_time(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-exact-session@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-exact-session@example.com');
+        $student = $this->createStudent(1, '精確課堂時間測試');
+        $courseId = $this->createOneOnOneCourse($student->id, $teacherId, '18:00', '2026-06-01');
+        $date = '2026-06-08';
+
+        // A different occurrence on the same date must not satisfy the 18:00
+        // substitute target check.
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $date,
+            'StartTime' => '20:00',
+            'EndTime' => '22:00',
+            'Status' => 'scheduled',
+        ]);
+        $originalId = DB::table('schedules')->insertGetId([
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 1,
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+            'student_course_id' => $courseId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 1,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+            'student_course_id' => $courseId,
+            'original_schedule_id' => $originalId,
+        ]);
+
+        $res->assertStatus(422)->assertJsonPath('code', 'no_class_session');
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $courseId,
+            'original_schedule_id' => $originalId,
+            'status' => 'scheduled',
+            'start_time' => '18:00',
+        ]);
+    }
+
+    /**
      * #1889: a full 1-on-2 occupant must not block adding a 1-on-3 third seat.
      * Revert-proof: the old existing-type cap loop 409s the 1-on-3 add.
      */

@@ -119,7 +119,11 @@ class DailyScheduleMonthlyStudentTest extends TestCase
 
         // Student A: count-mode (session-based billing) — inserted directly to bypass enrollment validation
         $studentA = $this->makeStudent('計次制學生');
-        $this->createDirectSessionInDB($studentA->id, $targetDate, 'count');
+        // Keep this display-only fixture out of the teacher-capacity scenario;
+        // the test asserts two billing modes appear, not that one teacher can
+        // teach two one-on-one students in the same slot.
+        $displayTeacher = $this->makeTeacher();
+        $this->createDirectSessionInDB($studentA->id, $targetDate, 'count', $displayTeacher->id);
 
         // Student B (main student): monthly billing via enrollment API
         $this->postBatch([
@@ -241,13 +245,13 @@ class DailyScheduleMonthlyStudentTest extends TestCase
     }
 
     /** Directly insert a StudentClass + ClassSession for a given date (bypasses enrollment API). */
-    private function createDirectSessionInDB(int $studentId, string $date, string $scheduleMode): void
+    private function createDirectSessionInDB(int $studentId, string $date, string $scheduleMode, ?int $teacherId = null): void
     {
         $sc = StudentClass::create([
             'StudentID'      => $studentId,
             'GradeID'        => 1,
             'SubjectID'      => 1,
-            'TeacherID'      => $this->teacher->id,
+            'TeacherID'      => $teacherId ?: $this->teacher->id,
             'by1'            => 1,
             'Period'         => 4,
             'StartDate'      => now(),
