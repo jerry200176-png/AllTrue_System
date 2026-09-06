@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-07-mobile-more-search
+    published_at: "2026-09-07"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 手機更多功能可搜尋
+    summary: 手機底部「更多功能」支援即時搜尋與空結果清除，低頻工具更容易找到。
+    items:
+      - category: improved
+        text: 在手機「更多功能」輸入功能名稱即可依角色可用範圍即時過濾，不必逐項掃描長清單。
+      - category: improved
+        text: 找不到結果時可一鍵清除搜尋；選擇功能會關閉抽屜，按 Esc 後焦點回到「更多」按鈕。
+    source_refs:
+      - "changelog:2026-09-07:mobile-more-search"
+
   - id: staff-2026-09-07-navigation-history-context
     published_at: "2026-09-07"
     audiences:

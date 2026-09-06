@@ -1,0 +1,13 @@
+id: REF-20260907-072424-1OCG
+pattern: Mobile navigation More sheet hides low-frequency destinations in a long list
+insight: Reuse the role-scoped navigation registry and fixed-tab exclusion, but add
+  search and empty-state recovery at the mobile More surface; keep desktop behavior,
+  page IDs, and backend authorization unchanged.
+severity: medium
+scope: global
+actor: agent:codex
+session_id: SES-20260907071549-7D208BD9
+created_at: '2026-09-07T07:24:24+08:00'
+status: active
+tags: []
+hit_count: 0

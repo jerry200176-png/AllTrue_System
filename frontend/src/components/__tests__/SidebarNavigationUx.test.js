@@ -60,6 +60,11 @@ describe('sidebar navigation UX contract', () => {
     expect(appSource).toContain('sidebarMoreSearchQuery');
     expect(appSource).toContain('sidebarMoreFilteredGroups');
     expect(appSource).toContain('onSidebarMoreSearchEnter');
+    expect(appSource).toContain('mobileMoreSearchInput');
+    expect(appSource).toContain('mobileMoreSearchQuery');
+    expect(appSource).toContain('mobileMoreFilteredGroups');
+    expect(appSource).toContain('onMobileMoreSearchEnter');
+    expect(appSource).toContain('可搜尋所有未固定在底部導覽的功能。');
     expect(appSource).toContain('handleGlobalKeydown');
     expect(appSource).toContain("window.scrollTo({ top: 0, behavior: 'instant' })");
   });

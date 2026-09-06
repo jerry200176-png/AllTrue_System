@@ -196,3 +196,15 @@ failure_modes:
       existing workflow deep-link parameters only for their authorized target.
   severity: medium
   frequency: recurring
+- id: FM-20260907-072424-X91R
+  name: Mobile navigation More sheet hides low-frequency destinations in a long list
+  detection:
+    signal: Mobile navigation More sheet hides low-frequency destinations in a long
+      list
+    source: reflection:REF-20260907-072424-1OCG
+  mitigation:
+    practice: Reuse the role-scoped navigation registry and fixed-tab exclusion, but
+      add search and empty-state recovery at the mobile More surface; keep desktop
+      behavior, page IDs, and backend authorization unchanged.
+  severity: medium
+  frequency: recurring

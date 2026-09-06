@@ -297,24 +297,53 @@
           <span class="material-symbols-outlined" aria-hidden="true">close</span>
         </button>
       </div>
-      <div v-for="group in sidebarNavGroups" :key="group.key" class="more-group">
-        <div class="more-group-label">{{ group.title }}</div>
-        <div class="more-group-items">
-          <button
-            v-for="item in group.items.filter(i => !mobileTabPages.has(i.page))"
-            :key="item.page"
-            type="button"
-            :class="['more-item', { active: active === item.page }]"
-            :aria-current="active === item.page ? 'page' : undefined"
-            @click="setActivePage(item.page); closeMoreMenu(false)"
-          >
-            <span class="material-symbols-outlined">{{ item.icon }}</span>
-            <span>{{ item.label }}</span>
-            <span
-              v-if="getMoreSheetItemBadgeCount(item) > 0"
-              class="more-item-badge"
-            >{{ getMoreSheetItemBadgeCount(item) > 99 ? '99+' : getMoreSheetItemBadgeCount(item) }}</span>
-          </button>
+      <div class="sidebar-more-search">
+        <span class="material-symbols-outlined sidebar-more-search-icon" aria-hidden="true">search</span>
+        <input
+          ref="mobileMoreSearchInput"
+          v-model="mobileMoreSearchQuery"
+          type="search"
+          class="sidebar-more-search-input"
+          placeholder="搜尋更多功能…"
+          aria-label="搜尋更多功能"
+          @keydown.esc.prevent="closeMoreMenu()"
+          @keydown.enter="onMobileMoreSearchEnter"
+        />
+        <button
+          v-if="mobileMoreSearchQuery"
+          type="button"
+          class="sidebar-more-search-clear"
+          aria-label="清除搜尋"
+          @click="mobileMoreSearchQuery = ''"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </div>
+      <p v-if="!mobileMoreSearchQuery" class="sidebar-more-description">可搜尋所有未固定在底部導覽的功能。</p>
+      <div v-if="mobileMoreFilteredGroups.length === 0" class="sidebar-more-empty" role="status">
+        <p>找不到符合「{{ mobileMoreSearchQuery }}」的功能</p>
+        <button type="button" class="sidebar-more-empty-reset" @click="mobileMoreSearchQuery = ''">清除搜尋</button>
+      </div>
+      <div v-else>
+        <div v-for="group in mobileMoreFilteredGroups" :key="group.key" class="more-group">
+          <div class="more-group-label">{{ group.title }}</div>
+          <div class="more-group-items">
+            <button
+              v-for="item in group.items"
+              :key="item.page"
+              type="button"
+              :class="['more-item', { active: active === item.page }]"
+              :aria-current="active === item.page ? 'page' : undefined"
+              @click="setActivePage(item.page); closeMoreMenu(false)"
+            >
+              <span class="material-symbols-outlined">{{ item.icon }}</span>
+              <span>{{ item.label }}</span>
+              <span
+                v-if="getMoreSheetItemBadgeCount(item) > 0"
+                class="more-item-badge"
+              >{{ getMoreSheetItemBadgeCount(item) > 99 ? '99+' : getMoreSheetItemBadgeCount(item) }}</span>
+            </button>
+          </div>
         </div>
       </div>
     </section>
@@ -1239,6 +1268,8 @@ function toggleSidebarCollapsed() {
 
 // Mobile bottom nav: 5 tabs + More
 const showMoreMenu = ref(false);
+const mobileMoreSearchQuery = ref('');
+const mobileMoreSearchInput = ref(null);
 const showSidebarMore = ref(false);
 const mobileTabItems = computed(() => {
   return getMobileTabItems(role.value);
@@ -1949,6 +1980,20 @@ const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
 const sidebarGroupOpen = ref({});
 const sidebarNavGroups = computed(() => getNavigationGroups(role.value, { admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1 }));
+const mobileMoreFilteredGroups = computed(() => {
+  const q = mobileMoreSearchQuery.value.trim().toLowerCase();
+  return sidebarNavGroups.value
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => {
+        if (mobileTabPages.value.has(item.page)) return false;
+        if (!q) return true;
+        return item.label.toLowerCase().includes(q)
+          || (group.title && group.title.toLowerCase().includes(q));
+      }),
+    }))
+    .filter(group => group.items.length > 0);
+});
 const sidebarPrimaryGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary !== false));
 const sidebarMoreGroups = computed(() => sidebarNavGroups.value.filter(group => group.primary === false));
 const sidebarMoreSearchQuery = ref('');
@@ -2007,14 +2052,24 @@ function toggleMoreMenu() {
     closeMoreMenu();
     return;
   }
+  mobileMoreSearchQuery.value = '';
   showMoreMenu.value = true;
 }
 
 function closeMoreMenu(restoreFocus = true) {
   const wasOpen = showMoreMenu.value;
   showMoreMenu.value = false;
+  mobileMoreSearchQuery.value = '';
   if (restoreFocus && wasOpen) {
     nextTick(() => document.querySelector('#mobile-more-trigger')?.focus());
+  }
+}
+
+function onMobileMoreSearchEnter() {
+  const allFilteredItems = mobileMoreFilteredGroups.value.flatMap(g => g.items);
+  if (allFilteredItems.length === 1) {
+    setActivePage(allFilteredItems[0].page);
+    closeMoreMenu(false);
   }
 }
 
@@ -2305,7 +2360,13 @@ watch(showMoreMenu, (open) => {
   if (open) lockScroll();
   else unlockScroll();
   if (open) {
-    nextTick(() => document.querySelector('#mobile-more-sheet')?.focus());
+    nextTick(() => {
+      if (mobileMoreSearchInput.value) {
+        mobileMoreSearchInput.value.focus();
+      } else {
+        document.querySelector('#mobile-more-sheet')?.focus();
+      }
+    });
   }
 });
 
