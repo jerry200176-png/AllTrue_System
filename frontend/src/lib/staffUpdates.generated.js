@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-07-sidebar-search-and-shortcuts",
+    "publishedAt": "2026-09-07",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "更多功能即時搜尋與 ⌘K 快捷導航",
+    "summary": "側欄更多功能支援即時搜尋與 ⌘K 快捷鍵，降低低頻功能尋找成本，切換頁面平滑回頂。",
+    "items": [
+      "側欄「更多功能」面板新增即時關鍵字搜尋框與快速清空，輸入即時過濾工具並支援 Enter 直達。",
+      "全域支援 ⌘K / Ctrl+K 快捷喚起更多功能並自動聚焦搜尋，Esc 快速返回原工作畫面。",
+      "切換功能頁面時自動回到頂部，避免保留前一頁深層捲動位置，提升視覺層次與確定感。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "側欄「更多功能」面板新增即時關鍵字搜尋框與快速清空，輸入即時過濾工具並支援 Enter 直達。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "全域支援 ⌘K / Ctrl+K 快捷喚起更多功能並自動聚焦搜尋，Esc 快速返回原工作畫面。",
+          "切換功能頁面時自動回到頂部，避免保留前一頁深層捲動位置，提升視覺層次與確定感。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-07:sidebar-search-and-shortcuts"
+    ],
+    "date": "2026-09-07",
+    "version": "2026.09.07"
+  },
+  {
     "id": "staff-2026-09-06-unified-role-onboarding",
     "publishedAt": "2026-09-06",
     "effectiveAt": null,

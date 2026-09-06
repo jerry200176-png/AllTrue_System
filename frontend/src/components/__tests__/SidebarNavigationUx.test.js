@@ -54,4 +54,13 @@ describe('sidebar navigation UX contract', () => {
     const teachingGroup = getNavigationGroups('director').find(group => group.key === 'teaching');
     expect(teachingGroup.items.map(item => item.page)).not.toContain('course-mgmt');
   });
+
+  it('supports progressive search and keyboard navigation in sidebar more panel', () => {
+    expect(appSource).toContain('class="sidebar-more-search-input"');
+    expect(appSource).toContain('sidebarMoreSearchQuery');
+    expect(appSource).toContain('sidebarMoreFilteredGroups');
+    expect(appSource).toContain('onSidebarMoreSearchEnter');
+    expect(appSource).toContain('handleGlobalKeydown');
+    expect(appSource).toContain("window.scrollTo({ top: 0, behavior: 'instant' })");
+  });
 });
