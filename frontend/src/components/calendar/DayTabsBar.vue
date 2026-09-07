@@ -10,11 +10,14 @@
       v-for="(tab, idx) in tabs"
       :key="idx"
       type="button"
-      :class="['day-tab', { active: activeIdx === idx }]"
+      :class="['day-tab', { active: activeIdx === idx, 'day-tab-today': tab.isToday }]"
       @click="$emit('select', idx)"
     >
       <span class="day-tab-name">{{ tab.name }}</span>
-      <span class="day-tab-date">{{ tab.dateLabel }}</span>
+      <span class="day-tab-date">
+        {{ tab.dateLabel }}
+        <span v-if="tab.isToday" class="day-tab-today-pill">今天</span>
+      </span>
       <span v-if="tab.count > 0" class="day-tab-badge">{{ tab.count }}</span>
     </button>
   </div>
@@ -59,6 +62,22 @@ defineEmits(['select']);
   background: var(--ds-canvas);
   color: var(--primary, var(--ds-ink-mute));
   box-shadow: 0 -2px 0 var(--primary, var(--ds-ink-mute)) inset;
+}
+.day-tab-today:not(.active) {
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep, var(--ds-primary));
+}
+.day-tab-today-pill {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 4px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: var(--ds-primary);
+  color: var(--ds-canvas);
+  line-height: 1.2;
+  vertical-align: middle;
 }
 .day-tab-name { font-size: 13px; font-weight: 700; line-height: 1.3; }
 .day-tab-date { font-size: 11px; font-weight: 400; opacity: 0.8; line-height: 1.2; }

@@ -25,6 +25,7 @@ export default defineConfig({
     /learning-records-polish\.spec\.js$/,
     /learning-records-preview\.spec\.js$/,
     /teacher-daily-workflow\.spec\.js$/,
+    /teacher-calendar-ux\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },

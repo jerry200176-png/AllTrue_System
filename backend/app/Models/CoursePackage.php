@@ -75,4 +75,12 @@ class CoursePackage extends Model
         $this->used_sessions = max(0, $this->total_sessions - $remaining);
         $this->save();
     }
+
+    /**
+     * Check if this course package is settled (paid).
+     */
+    public function isSettled(): bool
+    {
+        return (bool) ($this->paid ?? false);
+    }
 }

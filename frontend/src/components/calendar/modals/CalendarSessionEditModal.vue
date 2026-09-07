@@ -6,8 +6,8 @@
 -->
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal session-edit-modal" style="width: 500px;">
-      <h3>單堂檢視</h3>
+    <div class="modal session-edit-modal" style="width: 500px; max-width: 92vw;">
+      <h3>{{ session.isTeacher ? '單堂詳細資訊' : '單堂檢視' }}</h3>
 
       <div v-if="session.actionDate" class="session-info-card">
         <div class="session-info-row">
@@ -18,7 +18,18 @@
           <span class="session-info-key">上課時間</span>
           <span class="session-info-val">{{ form.start_time }} ~ {{ session.endTime }}（{{ form.duration_hours }} 小時）</span>
         </div>
-        <div v-if="session.chargeDisplay" class="session-info-row">
+        <div v-if="session.branchName || session.roomName" class="session-info-row">
+          <span class="session-info-key">分校／教室</span>
+          <span class="session-info-val">{{ [session.branchName, session.roomName].filter(Boolean).join(' · ') }}</span>
+        </div>
+        <div v-if="session.rollCallStatus" class="session-info-row">
+          <span class="session-info-key">點名狀態</span>
+          <span class="session-info-val session-rc-val">
+            <span :class="['rc-tag', `rc-${session.rollCallStatus.kind}`]" style="position: static; margin-right: 6px;">{{ session.rollCallStatus.label }}</span>
+            <span>{{ session.rollCallStatus.text }}</span>
+          </span>
+        </div>
+        <div v-if="!session.isTeacher && session.chargeDisplay" class="session-info-row">
           <span class="session-info-key">本堂費用</span>
           <span class="session-info-val">
             <strong>NT$ {{ session.chargeDisplay.value.toLocaleString() }}</strong>
@@ -28,7 +39,7 @@
         </div>
       </div>
       <p class="hint occurrence-hint">
-        僅可進行單堂操作（請假／調課／加課）。如需修改整門課設定，請至「課程管理」。
+        {{ session.isTeacher ? '查看本堂課詳細設定。如需點名或填寫評量請使用下方按鈕。' : '僅可進行單堂操作（請假／調課／加課）。如需修改整門課設定，請至「課程管理」。' }}
       </p>
 
       <div v-if="session.conflictWarning" class="conflict-box conflict-box-prominent">
@@ -40,11 +51,14 @@
       </div>
 
       <div class="schedule-actions-box">
-        <div class="schedule-actions-title">單堂操作</div>
+        <div class="schedule-actions-title">{{ session.isTeacher ? '快速前往' : '單堂操作' }}</div>
         <div class="schedule-actions-btns">
-          <button class="action-btn leave" @click="$emit('leave')">📋 請假</button>
-          <button class="action-btn reschedule" @click="$emit('reschedule')">🔄 調課</button>
+          <template v-if="!session.isTeacher">
+            <button class="action-btn leave" @click="$emit('leave')">📋 請假</button>
+            <button class="action-btn reschedule" @click="$emit('reschedule')">🔄 調課</button>
+          </template>
           <button class="action-btn attendance" data-testid="calendar-goto-attendance" @click="$emit('goto-attendance')">✓ 出缺勤</button>
+          <button v-if="session.isTeacher" class="action-btn learning" data-testid="calendar-goto-learning" @click="$emit('goto-learning')">✎ 學習評量</button>
           <button
             v-if="!session.isTeacher"
             class="action-btn substitute"
@@ -56,7 +70,7 @@
             @click="$emit('show-cancel-confirm')"
           >🚫 取消本堂</button>
         </div>
-        <div v-if="session.cancelState.show" class="cancel-session-confirm">
+        <div v-if="!session.isTeacher && session.cancelState.show" class="cancel-session-confirm">
           <p>確定取消這堂課？<br><small>取消後仍可從本視窗安全復原；系統會先檢查是否有新變更或衝堂。</small></p>
           <div class="cancel-session-confirm-btns">
             <button class="action-btn" style="background:var(--ds-canvas-soft);color:var(--ds-ink);" @click="$emit('dismiss-cancel-confirm')">不取消</button>
@@ -65,22 +79,26 @@
             </button>
           </div>
         </div>
-        <div v-if="session.recovery?.loading" class="session-recovery session-recovery--loading">正在檢查是否可安全復原…</div>
-        <div v-else-if="session.recovery?.available" class="session-recovery" role="status">
-          <strong>這堂課可安全復原</strong>
-          <span>取消前狀態：{{ session.recovery.previousStatusLabel || session.recovery.previous_status }}</span>
-          <span class="session-recovery-impact">會同步排課、評量／點名與堂數</span>
-          <label for="session-recovery-reason">復原原因</label>
-          <input id="session-recovery-reason" v-model="session.recovery.reason" maxlength="255" placeholder="例如：主任誤取消" />
-          <button class="action-btn restore-session" :disabled="!session.recovery.reason?.trim() || session.recovery.submitting" @click="$emit('restore-session')">
-            {{ session.recovery.submitting ? '復原中...' : '↩ 復原上一個變更' }}
-          </button>
-        </div>
+        <template v-if="!session.isTeacher">
+          <div v-if="session.recovery?.loading" class="session-recovery session-recovery--loading">正在檢查是否可安全復原…</div>
+          <div v-else-if="session.recovery?.available" class="session-recovery" role="status">
+            <strong>這堂課可安全復原</strong>
+            <span>取消前狀態：{{ session.recovery.previousStatusLabel || session.recovery.previous_status }}</span>
+            <span class="session-recovery-impact">會同步排課、評量／點名與堂數</span>
+            <label for="session-recovery-reason">復原原因</label>
+            <input id="session-recovery-reason" v-model="session.recovery.reason" maxlength="255" placeholder="例如：主任誤取消" />
+            <button class="action-btn restore-session" :disabled="!session.recovery.reason?.trim() || session.recovery.submitting" @click="$emit('restore-session')">
+              {{ session.recovery.submitting ? '復原中...' : '↩ 復原上一個變更' }}
+            </button>
+          </div>
+        </template>
       </div>
 
       <div class="modal-form-sections course-ref-section">
         <div class="form-section-label">課程資料（僅供參考）</div>
-        <p class="course-ref-hint">以下為整門課設定，不可在此修改。如需調整請至「課程管理」。</p>
+        <p class="course-ref-hint">
+          {{ session.isTeacher ? '以下為基本課程設定。' : '以下為整門課設定，不可在此修改。如需調整請至「課程管理」。' }}
+        </p>
         <div class="ref-grid">
           <div class="form-group">
             <label>學生</label>
@@ -116,45 +134,47 @@
           </div>
         </div>
 
-        <div class="form-section-label">時段與費用</div>
-        <div class="ref-grid">
-          <div class="form-group">
-            <label>課程時長</label>
-            <p class="computed-time">{{ form.duration_hours }} 小時</p>
-          </div>
-          <div class="form-group">
-            <label>一堂課費用</label>
-            <p class="computed-time">${{ ratePer2h }}</p>
-          </div>
-        </div>
-
-        <div class="form-section-label">繳費狀態（僅供參考）</div>
-        <div class="ref-grid">
-          <div class="form-group">
-            <label>繳費方式</label>
-            <select v-model="form.payment_type" disabled>
-              <option value="session">堂數制</option>
-              <option value="monthly">月結</option>
-            </select>
-          </div>
-          <template v-if="form.payment_type === 'monthly'">
+        <template v-if="!session.isTeacher">
+          <div class="form-section-label">時段與費用</div>
+          <div class="ref-grid">
             <div class="form-group">
-              <label>結算日</label>
-              <select v-model.number="form.settlement_day" disabled>
-                <option :value="null">請選擇</option>
-                <option v-for="day in options.settlementDayOptions" :key="day" :value="day">每月 {{ day }} 號</option>
+              <label>課程時長</label>
+              <p class="computed-time">{{ form.duration_hours }} 小時</p>
+            </div>
+            <div class="form-group">
+              <label>一堂課費用</label>
+              <p class="computed-time">${{ ratePer2h }}</p>
+            </div>
+          </div>
+
+          <div class="form-section-label">繳費狀態（僅供參考）</div>
+          <div class="ref-grid">
+            <div class="form-group">
+              <label>繳費方式</label>
+              <select v-model="form.payment_type" disabled>
+                <option value="session">堂數制</option>
+                <option value="monthly">月結</option>
               </select>
             </div>
-            <div class="form-group">
-              <label>本月預排堂數</label>
-              <input v-model.number="form.monthly_sessions" type="number" min="1" disabled />
+            <template v-if="form.payment_type === 'monthly'">
+              <div class="form-group">
+                <label>結算日</label>
+                <select v-model.number="form.settlement_day" disabled>
+                  <option :value="null">請選擇</option>
+                  <option v-for="day in options.settlementDayOptions" :key="day" :value="day">每月 {{ day }} 號</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>本月預排堂數</label>
+                <input v-model.number="form.monthly_sessions" type="number" min="1" disabled />
+              </div>
+            </template>
+            <div v-if="form.payment_type === 'session'" class="form-group">
+              <label>剩餘堂數</label>
+              <input v-model.number="form.remaining_sessions" type="number" disabled />
             </div>
-          </template>
-          <div v-if="form.payment_type === 'session'" class="form-group">
-            <label>剩餘堂數</label>
-            <input v-model.number="form.remaining_sessions" type="number" disabled />
           </div>
-        </div>
+        </template>
       </div>
 
       <div v-if="session.evalRecords.length > 0" class="eval-summary-box">
@@ -181,9 +201,11 @@
       <div v-else class="eval-empty">（尚無評量紀錄）</div>
 
       <div class="actions">
-        <button v-if="session.editingException && session.editingExceptionIsExtra" class="danger" @click="$emit('cancel-makeup')">取消補課</button>
-        <button v-if="session.editingException && !session.editingExceptionIsExtra" class="danger" @click="$emit('delete-exception')">刪除此調課</button>
-        <button v-if="!session.editingException" class="danger" @click="$emit('delete-course')">刪除整門課</button>
+        <template v-if="!session.isTeacher">
+          <button v-if="session.editingException && session.editingExceptionIsExtra" class="danger" @click="$emit('cancel-makeup')">取消補課</button>
+          <button v-if="session.editingException && !session.editingExceptionIsExtra" class="danger" @click="$emit('delete-exception')">刪除此調課</button>
+          <button v-if="!session.editingException" class="danger" @click="$emit('delete-course')">刪除整門課</button>
+        </template>
         <div style="flex:1"></div>
         <button class="ghost" @click="$emit('close')">關閉</button>
       </div>
@@ -216,6 +238,9 @@ const props = defineProps({
       editingExceptionIsExtra: false,
       evalRecords: [],
       evalLoading: false,
+      roomName: '',
+      branchName: '',
+      rollCallStatus: null,
     }),
   },
   options: {
@@ -229,7 +254,7 @@ const props = defineProps({
   },
 });
 defineEmits([
-  'close', 'leave', 'reschedule', 'substitute', 'substitute-v2', 'goto-attendance',
+  'close', 'leave', 'reschedule', 'substitute', 'substitute-v2', 'goto-attendance', 'goto-learning',
   'show-cancel-confirm', 'dismiss-cancel-confirm', 'confirm-cancel',
   'restore-session',
   'delete-exception', 'delete-course', 'cancel-makeup', 'teacher-change',
@@ -397,6 +422,8 @@ defineEmits([
 .action-btn.leave:hover { background: var(--ds-warning-wash); }
 .action-btn.attendance { background: var(--ds-success-wash); color: var(--ds-success); border-color: var(--ds-success); }
 .action-btn.attendance:hover { background: var(--ds-success-wash); }
+.action-btn.learning { background: var(--ds-primary-wash); color: var(--ds-primary-deep, var(--ds-primary)); border-color: var(--ds-primary-wash); }
+.action-btn.learning:hover { background: var(--ds-canvas-soft); }
 .action-btn.reschedule { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); border-color: var(--ds-ink-mute); }
 .action-btn.reschedule:hover { background: var(--ds-canvas-soft); }
 .action-btn.substitute { background: var(--ds-canvas-soft); color: var(--ds-ink); border-color: var(--ds-ink-mute); }
@@ -404,6 +431,26 @@ defineEmits([
 .action-btn.cancel-session { background: var(--ds-danger-wash); color: var(--ds-danger); border-color: var(--ds-danger); }
 .action-btn.cancel-session:hover:not(:disabled) { background: var(--ds-danger-wash); }
 .action-btn.cancel-session:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.session-rc-val {
+  display: inline-flex;
+  align-items: center;
+}
+.rc-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.rc-done { background: var(--ds-success); color: var(--ds-canvas); }
+.rc-missed { background: var(--ds-warning); color: var(--ds-canvas); }
+.rc-leave { background: var(--ds-ink-mute); color: var(--ds-canvas); }
+.rc-cancelled { background: var(--ds-ink-secondary); color: var(--ds-canvas); }
+.rc-pending { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
 .cancel-session-confirm {
   margin-top: 10px;
   padding: 12px 14px;

@@ -61,7 +61,7 @@ class DunningService
 
     private function evaluateCountMode(?int $campusId, bool $persist): array
     {
-        $query = StudentClass::with('student')
+        $query = StudentClass::with(['student', 'coursePackage'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count');
 
@@ -71,7 +71,7 @@ class DunningService
 
         $events = [];
         foreach ($query->cursor() as $course) {
-            if ((int) ($course->Paid ?? 0) !== 1) {
+            if (!$course->isEffectivelyPaid()) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
                     (int) $course->ID,
@@ -105,7 +105,7 @@ class DunningService
 
     private function evaluateDateMode(?int $campusId, bool $persist): array
     {
-        $query = StudentClass::with('student')
+        $query = StudentClass::with(['student', 'coursePackage'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'date')
             ->whereNotNull('settlement_day')
@@ -128,7 +128,7 @@ class DunningService
                 $dueDate = $today->copy()->subMonth()->setDay(min($settlementDay, $today->copy()->subMonth()->endOfMonth()->day))->startOfDay();
             }
 
-            $isPaid = (int) ($course->Paid ?? 0) === 1;
+            $isPaid = $course->isEffectivelyPaid();
             $daysFromDue = $today->diffInDays($dueDate, false);
 
             // Paid date-mode courses may still show monthly_due_soon in director alerts,
