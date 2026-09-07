@@ -183,7 +183,7 @@
         <!-- #740 Step 4b：日分頁列剝離為 presentational 元件 DayTabsBar -->
         <DayTabsBar :tabs="dayTabs" :active-idx="selectedDayIdx" @select="selectedDayIdx = $event" />
         <div class="teacher-grid-wrapper" data-guide="calendar-grid">
-          <div v-if="visibleTeachers.length === 0" class="teacher-empty">
+          <div v-if="!calendarLoading && visibleTeachers.length === 0" class="teacher-empty">
             <template v-if="hideEmptyTeacherColumns && !isWeekOverview">
               <div style="font-weight:600;margin-bottom:6px;">今日無已排課老師</div>
               <div style="color:var(--ds-ink-mute);font-size:13px;margin-bottom:10px;">可關閉「只看有課老師」以顯示全部老師欄並快速排課。</div>
@@ -230,7 +230,12 @@
                   :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getTeacherCourseBlockStyle(course, teacher.id, h, cIdx)"
                   :draggable="!isTeacher"
-                  @click.stop="!isTeacher && onCourseClick(course, selectedDateStr)"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="getCourseAriaLabel(course, selectedDateStr)"
+                  @click.stop="onCourseClick(course, selectedDateStr)"
+                  @keydown.enter.stop="onCourseClick(course, selectedDateStr)"
+                  @keydown.space.stop.prevent="onCourseClick(course, selectedDateStr)"
                   @contextmenu.prevent="!isTeacher && onCourseRightClick(course, selectedDateStr, $event)"
                   @dragstart.stop="!isTeacher && onCourseDragStart(course, selectedDateStr, $event)"
                   @dragend="draggingCourse = null; dragOverSlot = null"
@@ -251,11 +256,18 @@
       <!-- ── Week Overview ── -->
       <template v-else>
         <div class="week-overview-grid-wrapper" data-guide="calendar-grid">
-          <div v-if="visibleTeachers.length === 0" class="teacher-empty week-overview-empty">
-            目前無符合條件的老師。請調整「教室」或「搜尋老師／學生」關鍵字。
+          <div v-if="!calendarLoading && (visibleTeachers.length === 0 || (isTeacher && filteredCourses.length === 0))" class="teacher-empty week-overview-empty">
+            <template v-if="isTeacher">
+              <div style="font-weight: 600; font-size: 15px; margin-bottom: 6px; color: var(--text-color, var(--ds-ink));">本週尚無排課紀錄</div>
+              <div style="color: var(--text-light, var(--ds-ink-mute)); font-size: 13px; margin-bottom: 12px;">若有授課安排需求，請聯繫分校行政或主任。</div>
+              <button type="button" class="btn-secondary" @click="focusCalendarToday">回到今天</button>
+            </template>
+            <template v-else>
+              目前無符合條件的老師。請調整「教室」或「搜尋老師／學生」關鍵字。
+            </template>
           </div>
           <div v-else class="week-overview-body">
-            <div class="week-overview-context-bar">
+            <div v-if="!isTeacher" class="week-overview-context-bar">
               <span class="week-overview-context-kicker">週檢視</span>
               <strong class="week-overview-context-name">{{ weekViewSelectedLabel }}</strong>
             </div>
@@ -264,10 +276,13 @@
               <div class="col-header-blank"></div>
               <div v-for="h in hours" :key="h" class="time-label">{{ String(h).padStart(2, '0') }}:00</div>
             </div>
-            <div v-for="(dayName, idx) in dayNames" :key="idx" class="day-col">
-              <div class="day-col-header" :class="{ 'day-col-today': selectedDayIdx === idx }">
+            <div v-for="(dayName, idx) in dayNames" :key="idx" class="day-col" :class="{ 'day-col-is-today': isDateToday(idx + 1) }">
+              <div class="day-col-header" :class="{ 'day-col-today': isDateToday(idx + 1), 'day-col-selected': selectedDayIdx === idx }">
                 <span class="day-col-name">{{ dayName }}</span>
-                <span class="day-col-date">{{ getDisplayDateString(idx + 1) }}</span>
+                <span class="day-col-date" :class="{ 'day-col-date--today': isDateToday(idx + 1) }">
+                  {{ getDisplayDateString(idx + 1) }}
+                  <span v-if="isDateToday(idx + 1)" class="day-col-today-pill">今天</span>
+                </span>
                 <span v-if="getWeekTeacherDayCount(idx + 1) > 0" class="day-col-badge">{{ getWeekTeacherDayCount(idx + 1) }}</span>
               </div>
               <div v-for="h in hours" :key="h" class="slot"
@@ -286,7 +301,12 @@
                   :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
                   :style="getWeekCourseBlockStyle(course, idx + 1, h, cIdx)"
                   :draggable="!isTeacher"
-                  @click.stop="!isTeacher && onCourseClick(course, getDisplayDateFull(idx + 1))"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="getCourseAriaLabel(course, getDisplayDateFull(idx + 1))"
+                  @click.stop="onCourseClick(course, getDisplayDateFull(idx + 1))"
+                  @keydown.enter.stop="onCourseClick(course, getDisplayDateFull(idx + 1))"
+                  @keydown.space.stop.prevent="onCourseClick(course, getDisplayDateFull(idx + 1))"
                   @contextmenu.prevent="!isTeacher && onCourseRightClick(course, getDisplayDateFull(idx + 1), $event)"
                   @dragstart.stop="!isTeacher && onCourseDragStart(course, getDisplayDateFull(idx + 1), $event)"
                   @dragend="draggingCourse = null; dragOverSlot = null"
@@ -436,6 +456,7 @@
       @cancel-makeup="cancelMakeupClass"
       @teacher-change="checkConflict"
       @goto-attendance="goToAttendanceFromSession"
+      @goto-learning="goToLearningFromSession"
     />
 
     <!-- #740 Modals：請假 -->
@@ -1111,6 +1132,21 @@ const getDisplayDateString = (dayOfWeek) => {
   return `${parseInt(m)}/${parseInt(d)}`;
 };
 
+const isDateToday = (dayOfWeek) => {
+  const full = getDisplayDateFull(dayOfWeek);
+  if (!full) return false;
+  return full === formatLocalDate(new Date());
+};
+
+const getCourseAriaLabel = (course, dateStr) => {
+  if (!course) return '課程';
+  const name = course.student_name || '學生';
+  const sub = getSubjectLabel(course.subject) || course.subject || '課程';
+  const time = course.start_time ? `${course.start_time}` : '';
+  const date = dateStr ? `${dateStr} ` : '';
+  return `${date}${time} ${name} ${sub}，點擊查看詳細資訊`;
+};
+
 const visibleWeekRangeLabel = computed(() => (
   formatCalendarRange(getDisplayDateFull(1), getDisplayDateFull(7))
 ));
@@ -1468,6 +1504,7 @@ const dayTabs = computed(() => dayNames.map((name, idx) => ({
   name,
   dateLabel: getDisplayDateString(idx + 1),
   count: getDayCourseCount(idx + 1),
+  isToday: isDateToday(idx + 1),
 })));
 
 // Week Overview helpers
@@ -2342,23 +2379,48 @@ const canCancelSelectedSession = computed(() => {
   return st !== 'cancelled' && st !== 'voided';
 });
 
+const currentRollCall = computed(() => {
+  if (!editingCourseId.value || !editingActionDate.value) return null;
+  const c = courses.value.find((item) => item.id === editingCourseId.value);
+  if (!c) return null;
+  const badge = rollCallBadge(c, editingActionDate.value);
+  if (!badge) return { kind: 'pending', label: '待', text: '待點名' };
+  const labelMap = {
+    done: '已點名',
+    missed: '待點名（已逾時）',
+    leave: '已請假',
+    cancelled: '已取消',
+  };
+  return { ...badge, text: labelMap[badge.kind] || badge.label };
+});
+
 // #740 Modals：sessionEdit 分組 props（display 類見 getStudentName 之後）
-const sessionEditSession = computed(() => ({
-  actionDate: editingActionDate.value,
-  dayName: dayNames[(modalForm.value.day_of_week || 1) - 1] || '',
-  endTime: computedMainEndTime.value,
-  chargeDisplay: currentSessionChargeDisplay.value,
-  conflictWarning: conflictWarning.value,
-  isTeacher: isTeacher.value,
-  featureSubstituteV2,
-  canCancelSession: canCancelSelectedSession.value,
-  cancelState: cancelState.value,
-  recovery: sessionRecovery.value,
-  editingException: !!editingException.value,
-  editingExceptionIsExtra: editingExceptionIsExtra.value,
-  evalRecords: courseEvalRecords.value,
-  evalLoading: evalRecordsLoading.value,
-}));
+const sessionEditSession = computed(() => {
+  const c = courses.value.find((item) => item.id === editingCourseId.value);
+  const roomId = c?.room_id || c?.RoomID || modalForm.value.room_id || '';
+  const roomName = roomId ? `教室 ${roomId}` : '';
+  const branchName = branchNameMap.value?.[String(props.branchId)] || '';
+
+  return {
+    actionDate: editingActionDate.value,
+    dayName: dayNames[(modalForm.value.day_of_week || 1) - 1] || '',
+    endTime: computedMainEndTime.value,
+    chargeDisplay: currentSessionChargeDisplay.value,
+    conflictWarning: conflictWarning.value,
+    isTeacher: isTeacher.value,
+    featureSubstituteV2,
+    canCancelSession: canCancelSelectedSession.value,
+    cancelState: cancelState.value,
+    recovery: sessionRecovery.value,
+    editingException: !!editingException.value,
+    editingExceptionIsExtra: editingExceptionIsExtra.value,
+    evalRecords: courseEvalRecords.value,
+    evalLoading: evalRecordsLoading.value,
+    roomName,
+    branchName,
+    rollCallStatus: currentRollCall.value,
+  };
+});
 const sessionEditOptions = computed(() => ({
   studentSelectOptions: studentSelectOptions.value,
   subjectOptions: subjectOptions.value,
@@ -2374,6 +2436,11 @@ const goToAttendanceFromSession = () => {
     courseId,
     date: editingActionDate.value || '',
   }));
+  showModal.value = false;
+};
+
+const goToLearningFromSession = () => {
+  emit('navigate', { target: 'learning' });
   showModal.value = false;
 };
 
@@ -3137,7 +3204,7 @@ onMounted(() => {
 .time-col {
   position: sticky;
   left: 0;
-  z-index: 5;
+  z-index: 15;
   border-right: 1px solid var(--border-color, var(--ds-canvas-soft));
   background: var(--bg-muted, var(--ds-canvas-soft));
 }
@@ -3148,7 +3215,7 @@ onMounted(() => {
   position: sticky;
   top: 0;
   left: 0;
-  z-index: 12;
+  z-index: 25;
   background: var(--bg-muted, var(--ds-canvas-soft));
 }
 .time-label {
@@ -3200,10 +3267,22 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
+  user-select: none;
+  min-height: 44px;
 }
 .course-block:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.22);
+  z-index: 5;
+}
+.course-block:focus-visible {
+  outline: 2px solid var(--ds-cta);
+  outline-offset: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 6;
+}
+.course-block:active {
+  transform: scale(0.98);
 }
 .course-block--focused {
   outline: 3px solid var(--ds-cta);
@@ -3487,9 +3566,10 @@ onMounted(() => {
 @media (max-width: 900px) {
   .week-overview-grid { min-width: 540px; }
   .day-col { min-width: 66px; }
-  .day-col-header { height: 50px; padding: 4px; }
-  .day-col-name { font-size: 11px; }
-  .day-col-date { font-size: 9px; }
+  .day-col-header { height: 52px; padding: 4px; }
+  .week-overview-grid .col-header-blank { height: 52px; }
+  .day-col-name { font-size: 12px; }
+  .day-col-date { font-size: 10px; }
   .day-col-badge { min-width: 14px; height: 14px; font-size: 8px; top: 3px; right: 3px; }
   /* 平板下固定欄寬避免壓縮，讓 wrapper 水平捲動 */
   .teacher-grid { min-width: max-content; }
@@ -3577,7 +3657,7 @@ onMounted(() => {
   .time-col { min-width: 36px; width: 36px; }
   .time-label { font-size: 9px; padding: 2px 1px 0 0; }
   .col-header-blank { height: 48px; }
-  .course-block { font-size: 9px; padding: 2px 3px; border-radius: 4px; }
+  .course-block { font-size: 9px; padding: 2px 3px; border-radius: 4px; min-height: 44px; }
   .teacher-card { padding: 10px; }
   .teacher-card h3 { font-size: 14px; }
 }
@@ -3702,6 +3782,7 @@ onMounted(() => {
   max-height: min(76vh, 820px);
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
 .week-overview-grid {
   display: grid;
@@ -3726,11 +3807,23 @@ onMounted(() => {
   position: sticky;
   top: 0;
   z-index: 10;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 .day-col-header.day-col-today {
+  background: var(--ds-primary-wash);
+  border-bottom-color: var(--ds-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.day-col-header.day-col-selected:not(.day-col-today) {
   background: var(--ds-canvas-soft);
-  box-shadow: 0 -3px 0 var(--primary, var(--ds-ink-mute)) inset;
+  box-shadow: 0 -3px 0 var(--ds-ink-mute) inset;
+}
+.day-col-today .day-col-name {
+  color: var(--ds-primary-deep, var(--ds-primary));
+}
+.day-col-today .day-col-date {
+  color: var(--ds-primary-deep, var(--ds-primary));
+  font-weight: 600;
 }
 .day-col-name {
   font-size: 13px;
@@ -3740,6 +3833,19 @@ onMounted(() => {
 .day-col-date {
   font-size: 11px;
   color: var(--text-light, var(--ds-ink-mute));
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.day-col-today-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--ds-primary);
+  color: var(--ds-canvas);
+  line-height: 1.2;
 }
 .day-col-badge {
   position: absolute;
@@ -3758,7 +3864,6 @@ onMounted(() => {
   padding: 0 4px;
   line-height: 1;
 }
-.day-col-header { position: relative; }
 
 /* ----- Room Full Slot Indicator ----- */
 .slot.slot-room-full {
@@ -3856,9 +3961,14 @@ onMounted(() => {
 @media (max-width: 768px) {
   .week-overview-grid { min-width: 460px; }
   .day-col { min-width: 56px; }
-  .day-col-header { height: 44px; padding: 3px; }
-  .day-col-name { font-size: 10px; }
-  .day-col-date { font-size: 8px; }
+  .day-col-header { height: 48px; padding: 3px; }
+  .week-overview-grid .col-header-blank { height: 48px; }
+  .day-col-name { font-size: 12px; font-weight: 700; }
+  .day-col-date { font-size: 10px; }
   .view-sub-toggle button { padding: 5px 10px; font-size: 12px; }
+}
+@media (max-width: 640px) {
+  .week-overview-grid .col-header-blank { height: 48px; }
+  .course-block { min-height: 44px; }
 }
 </style>
