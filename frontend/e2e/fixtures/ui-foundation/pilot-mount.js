@@ -105,7 +105,10 @@ createApp({
       return () => h(PageComponent, { standalone: true });
     }
     if (page === 'admissions') {
-      return () => h(PageComponent, { branchId: 1, token: 'e2e-foundation-token', standalone: mode === 'public' });
+      const searchParams = new URLSearchParams(window.location.search);
+      const branchIdParam = searchParams.get('branch');
+      const branchId = branchIdParam ? Number(branchIdParam) : 1;
+      return () => h(PageComponent, { branchId, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
     }
     return () => h(PageComponent, { branchId: 1 });
   },

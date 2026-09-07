@@ -30,6 +30,9 @@
               <option value="" disabled>請選擇方便的分校</option>
               <option v-for="branch in branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option>
             </select>
+            <small v-if="presetBranchInfo && publicForm.campus_id === presetBranchInfo.id" class="admission-branch-preset-hint">
+              已為您預選「{{ presetBranchInfo.name }}」
+            </small>
           </label>
           <label for="admission-parent-name">家長稱呼 <span>*</span><input id="admission-parent-name" v-model.trim="publicForm.parent_name" required maxlength="64" autocomplete="name" /></label>
           <label for="admission-parent-phone">聯絡電話 <span>*</span><input id="admission-parent-phone" v-model.trim="publicForm.parent_phone" required maxlength="32" inputmode="tel" autocomplete="tel" /></label>
@@ -519,12 +522,24 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { admissionAction, convertAdmissionTrial, getAdmissionBranches, getAdmissionInquiry, getAdmissionInquiries, getAdmissionTeachers, submitAdmissionInquiry } from '../api';
 import { GRADES, SUBJECTS } from '../lib/constants';
+import { buildPublicAdmissionsUrl, parsePublicAdmissionsContext, matchPresetCampus } from '../lib/admissionsUrl';
 import perfFlags from '../lib/perfFlags';
 
-const props = defineProps({ standalone: { type: Boolean, default: false }, branchId: { type: [Number, String], default: null }, token: { type: String, default: '' } });
+const props = defineProps({
+  standalone: { type: Boolean, default: false },
+  branchId: { type: [Number, String], default: null },
+  token: { type: String, default: '' },
+  enabled: { type: Boolean, default: null },
+});
 const standalone = computed(() => props.standalone);
-const clientEnabled = perfFlags.ADMISSIONS_FUNNEL_V1;
+const clientEnabled = computed(() => {
+  if (props.enabled !== null && props.enabled !== undefined) {
+    return Boolean(props.enabled);
+  }
+  return Boolean(perfFlags.ADMISSIONS_FUNNEL_V1);
+});
 const branches = ref([]);
+const presetBranchInfo = ref(null);
 const inquiries = ref([]);
 const teachers = ref([]);
 const detail = ref(null);
@@ -586,10 +601,10 @@ const formatDateTime = value => value ? new Date(value).toLocaleString('zh-TW', 
 const historyLabel = event => ({ submit: '收到問班需求', contacted: '已聯絡家長', owner_assigned: '認領負責', trial_scheduled: '已安排試聽', trial_completed: '已記錄試聽結果', enrolled: '已連結正式課程', lost: '已結案', follow_up_saved: '已更新追蹤' }[event.reason_code] || '更新詢問');
 
 const publicFormUrl = computed(() => {
-  if (typeof window === 'undefined') return '#/admissions';
+  if (typeof window === 'undefined') return buildPublicAdmissionsUrl({ branchId: props.branchId });
   const origin = window.location.origin || '';
   const pathname = window.location.pathname || '';
-  return `${origin}${pathname}#/admissions`;
+  return buildPublicAdmissionsUrl({ origin, pathname, branchId: props.branchId });
 });
 
 const unclaimedCount = computed(() => inquiries.value.filter(item => !item.owner_id && !['enrolled', 'lost'].includes(item.status)).length);
@@ -663,8 +678,31 @@ function advancePublicStep(event) {
   setPublicStep(2);
 }
 
+function applyPresetBranch() {
+  if (!branches.value.length) return;
+  const target = parsePublicAdmissionsContext({
+    hash: typeof window !== 'undefined' ? window.location.hash : '',
+    search: typeof window !== 'undefined' ? window.location.search : '',
+    propBranchId: props.branchId,
+  });
+  if (target) {
+    const matched = matchPresetCampus(branches.value, target);
+    if (matched) {
+      publicForm.value.campus_id = matched.id;
+      presetBranchInfo.value = matched;
+      return;
+    }
+  }
+  presetBranchInfo.value = null;
+}
+
 async function loadPublic() {
-  try { branches.value = await getAdmissionBranches(); } catch (error) { errorMessage.value = error.message; }
+  try {
+    branches.value = await getAdmissionBranches();
+    applyPresetBranch();
+  } catch (error) {
+    errorMessage.value = error.message;
+  }
 }
 
 async function submitPublic() {
@@ -673,7 +711,20 @@ async function submitPublic() {
 }
 
 function resetPublic() {
-  submitted.value = false; publicForm.value = { campus_id: '', parent_name: '', parent_phone: '', student_name: '', grade: '', school_name: '', subject: '', preferred_slots: [''], public_notes: '', consent: false }; setPublicStep(1);
+  submitted.value = false;
+  publicForm.value = {
+    campus_id: presetBranchInfo.value ? presetBranchInfo.value.id : '',
+    parent_name: '',
+    parent_phone: '',
+    student_name: '',
+    grade: '',
+    school_name: '',
+    subject: '',
+    preferred_slots: [''],
+    public_notes: '',
+    consent: false,
+  };
+  setPublicStep(1);
 }
 
 async function loadQueue() {
@@ -719,12 +770,17 @@ async function loadStaff() {
 
 onMounted(async () => { if (standalone.value) await loadPublic(); else await loadStaff(); });
 watch(() => props.branchId, async (value, previous) => {
-  if (!standalone.value && value && value !== previous) await loadStaff();
+  if (standalone.value) {
+    applyPresetBranch();
+  } else if (value && value !== previous) {
+    await loadStaff();
+  }
 });
 </script>
 
 <style scoped>
 .admission-page { min-height: 100%; color: var(--ds-ink); font-family: var(--font-ui, system-ui, sans-serif); }
+.admission-branch-preset-hint { display: block; margin-top: 4px; font-size: 13px; color: var(--ds-cta); font-weight: 500; }
 
 /* Public standalone layout */
 .admission-page-public { display: grid; place-items: center; padding: 24px 16px; background: linear-gradient(150deg, var(--ds-primary-wash), var(--ds-canvas)); }

@@ -52,4 +52,14 @@ describe('admission inquiry UI contract', () => {
     expect(source).toContain('待認領');
     expect(source).toContain('showDirectTrial');
   });
+
+  it('binds campus context to public admissions URL and preselects campus in public form', () => {
+    expect(source).toContain('buildPublicAdmissionsUrl');
+    expect(source).toContain('parsePublicAdmissionsContext');
+    expect(source).toContain('matchPresetCampus');
+    expect(source).toContain('applyPresetBranch');
+    expect(source).toContain('presetBranchInfo');
+    expect(source).toContain('admission-branch-preset-hint');
+    expect(source).toContain('已為您預選');
+  });
 });

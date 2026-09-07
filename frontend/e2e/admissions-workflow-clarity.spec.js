@@ -389,15 +389,44 @@ test.describe('Admissions Workflow Clarity Browser Verification', () => {
     }
   });
 
-  test('Public link copy feedback works and copies expected admissions route', async ({ page, context }) => {
+  test('Public link copy feedback works and copies expected campus-specific route', async ({ page, context }) => {
     await installAdmissionsMock(page, { empty: true });
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 
-    await page.goto('http://127.0.0.1:5177/pilot-mount.html?page=admissions&mode=empty');
+    await page.goto('http://127.0.0.1:5177/pilot-mount.html?page=admissions&mode=empty&branch=1');
     await page.waitForSelector('.admission-empty');
 
     const copyBtn = page.locator('.admission-empty-actions').getByRole('button', { name: '複製公開問班連結' });
     await copyBtn.click();
     await expect(page.locator('.admission-empty-actions').getByRole('button', { name: '已複製問班連結！' })).toBeVisible();
+
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboardText).toContain('#/admissions?branch=1');
+    expect(clipboardText).not.toContain('token');
+    expect(clipboardText).not.toContain('jwt');
+    expect(clipboardText).not.toContain('director');
+  });
+
+  test('Standalone public page consumes branch context and preselects campus', async ({ page }) => {
+    await installAdmissionsMock(page, { empty: true });
+
+    // Open standalone public page with branch=2 (木柵分校)
+    await page.goto('http://127.0.0.1:5177/pilot-mount.html?page=admissions&mode=public&branch=2#/admissions?branch=2');
+    await page.waitForSelector('#admission-campus');
+
+    // Verify campus select is preselected with branch 2
+    const campusSelect = page.locator('#admission-campus');
+    await expect(campusSelect).toHaveValue('2');
+
+    // Verify helper hint is visible
+    const hint = page.locator('.admission-branch-preset-hint');
+    await expect(hint).toBeVisible();
+    await expect(hint).toContainText('已為您預選「木柵分校」');
+
+    // Open standalone public page with branch=1 (大安分校)
+    await page.goto('http://127.0.0.1:5177/pilot-mount.html?page=admissions&mode=public&branch=1#/admissions?branch=1');
+    await page.waitForSelector('#admission-campus');
+    await expect(page.locator('#admission-campus')).toHaveValue('1');
+    await expect(page.locator('.admission-branch-preset-hint')).toContainText('已為您預選「大安分校」');
   });
 });

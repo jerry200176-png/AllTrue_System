@@ -11,7 +11,7 @@
 
   <!-- Standalone parent portal (accessible without login via #/parent or ?parent=1) -->
   <div v-if="isStandaloneAdmission" class="standalone-admission-shell">
-    <AdmissionInquiriesPage :standalone="true" />
+    <AdmissionInquiriesPage :standalone="true" :branch-id="publicAdmissionBranchId" />
   </div>
 
   <div v-else-if="isStandaloneParent" class="standalone-parent-shell">
@@ -896,9 +896,21 @@ const isStandaloneParent = computed(() => {
   return hash === '#/parent' || params.get('parent') === '1' || liffParentOverride.value;
 });
 const isStandaloneAdmission = computed(() => {
-  const hash = window.location.hash;
+  const hash = window.location.hash || '';
   const params = new URLSearchParams(window.location.search);
-  return hash === '#/admissions' || params.get('admissions') === '1';
+  const hashPath = hash.split('?')[0];
+  return hashPath === '#/admissions' || params.get('admissions') === '1';
+});
+const publicAdmissionBranchId = computed(() => {
+  try {
+    const hash = window.location.hash || '';
+    const hashQuery = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '';
+    const hashParams = new URLSearchParams(hashQuery);
+    const searchParams = new URLSearchParams(window.location.search);
+    return hashParams.get('branch') || hashParams.get('campus_id') || searchParams.get('branch') || searchParams.get('campus_id') || null;
+  } catch {
+    return null;
+  }
 });
 
 // Auto-detect LIFF environment: only when truly opened inside LINE app via LIFF URL
