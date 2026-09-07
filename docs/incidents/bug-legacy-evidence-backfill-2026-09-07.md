@@ -1,17 +1,19 @@
 # Legacy in-app bug evidence backfill — Founder decision packet
 
 **Date:** 2026-09-07 (Asia/Taipei)
-**Status:** Blocked at the schema / audit-semantics gate; no production write was
-performed for this packet.
+**Status:** Completed for the approved minimal evidence model and bounded
+backfill. One of the nine candidates (#114) met the evidence gate and was
+backfilled and closed through the existing timeout path; the other eight remain
+unresolved legacy classifications.
 
 ## Current production snapshot
 
 The fresh, paginated in-app Bug inventory contained 253 records:
 
-Production evidence anchor for the related code audit was the observed
-production head `a4d2be72446fc87b6f068537d6ef8d0ae97f176b`. This packet records
-inventory classification only; it is not a claim that every historical PR was
-independently behavior-tested at that revision.
+The initial inventory anchor for the related code audit was
+`a4d2be72446fc87b6f068537d6ef8d0ae97f176b`. The evidence-grade probe ran after
+the protected deployment at production backend revision
+`4de6b39de6048d5abd0c019eef3209d24ff9dbe2`.
 
 | Status | Count |
 |---|---:|
@@ -97,28 +99,60 @@ transitions. See the [Jira audit records API](https://developer.atlassian.com/cl
 [GitLab Notes API](https://docs.gitlab.com/api/notes/), and
 [Spatie activitylog documentation](https://spatie.be/index.php/docs/laravel-activitylog/v5/introduction).
 
-## Proposed safe implementation after Founder GO
+## Shipped implementation and execution record
 
-1. Add a dedicated append-only resolution-evidence relation/table with the
-   bug ID, evidence source, source reference, production revision, deploy run,
-   public comment ID, verifier actor/time, manifest ID, and immutable payload.
-2. Add a manifest-driven command and manual workflow with dry-run first,
-   explicit confirmation, row locks, exact production-SHA checks, and an
-   idempotency key. It must fail closed on changed status, missing public reply,
-   contradictory source history, or a non-matching production revision.
-3. Backfill only evidence; do not change Bug status, reporter identity,
-   comments, attachments, billing, sessions, permissions, or production code.
-4. Update timeout eligibility to consume the dedicated evidence relation while
-   preserving the existing seven-day and no-reply rules.
-5. Run targeted tests and CI, then perform a dry-run. Production migration and
-   apply remain separate protected actions with a rollback plan.
+1. PRs #2518, #2520, #2521, and #2530 shipped the additive model, command, and
+   bounded read-only probe workflow. The final operational manifest/workflow
+   was merged by PR #2533 at `f739b85835641fc3f215d855d62539e5638168a5`.
+2. `bug_report_evidence` contains the approved fields, foreign key,
+   bug/type/verified-time and type/revision indexes, and the unique
+   bug/type/source idempotency key. `BugReportEvidence` rejects update/delete.
+   Existing status logs remain status-transition history.
+3. Protected deploy run `34083538684` applied the one pending migration with
+   pre-migration DB backup, passed DB probe, health, smoke, exact Pi HEAD, and
+   rollback-readiness checks. A later protected deploy run `34112543025`
+   verified the current production revision used by the probe; it had no
+   pending migration.
+4. Probe run `34113146974` performed the approved nine bounded read-only
+   candidate probes. It observed health `ok` and verified only #114: the named
+   student/classes resolved and the bounded calendar read returned zero
+   occurrences. It recorded this as current-state verification, without
+   fabricating historical deploy provenance.
+5. Backfill dry-run `34114039124` validated one insert. Apply run
+   `34114112625` appended evidence row `1` for #114. The post-apply check found
+   the row at the exact production revision and status-log count unchanged at
+   `3`.
+6. Existing timeout dry-run `34114181379` found only #114 eligible under the
+   seven-day policy. Existing timeout apply run `34114244243` closed #114 and
+   its post-apply dry-run reported `eligible=0`.
 
-## Founder decisions required
+## Nine-case probe and backfill result
 
-1. Approve or reject the dedicated append-only evidence table and its migration.
-2. If approved, authorize the bounded candidate set above for read-only
-   production re-verification, with contradictory and protected items excluded.
-3. Confirm that a historical public comment plus current production probe is
-   sufficient evidence for the backfill, or specify any additional proof.
-4. Separately decide the protected billing/data-repair items and the known
-   reconciliation residuals; this packet does not authorize those writes.
+| Bug | Probe result | Backfill / timeout result |
+|---:|---|---|
+| #94 | Inconclusive: public context exists, but no safe case-specific current target | No backfill |
+| #105 | Inconclusive: no concrete historical target for a mutation-free probe | No backfill |
+| #114 | Verified: named target resolved; zero bounded current calendar occurrences | Evidence row 1; closed by existing timeout path |
+| #115 | Inconclusive: no safe case-specific current target | No backfill |
+| #116 | Inconclusive: no safe case-specific current target | No backfill |
+| #124 | Inconclusive: no safe case-specific current target | No backfill |
+| #126 | Inconclusive: same-name student found, but historical class identity is ambiguous | No backfill |
+| #143 | Inconclusive: no safe case-specific current target | No backfill |
+| #174 | Inconclusive: no safe case-specific current target | No backfill |
+
+The probe artifact and operational logs are retained by the linked GitHub
+Actions runs. No billing, entitlement, historical-data, permission, or other
+financial production mutation was performed.
+
+## Remaining Founder decisions / unresolved categories
+
+1. The approved table, migration, candidate probe set, and evidence rule are
+   now implemented and executed. No additional evidence should be mass-created
+   for the eight inconclusive candidates.
+2. #122/#123 remain contradictory against PR #446; #180 lacks historical deploy
+   evidence; #19/#98 lack sufficient public resolution context; and positive
+   words in #13/#18/#26/#30 are not reporter verification actions.
+3. Billing / entitlement / historical-data items (#92, #95, #96, #97, #149,
+   #158, #159, #189, #190, #191) and Pi reconciliation residuals remain
+   read-only findings. Any production financial or historical-row mutation
+   still requires separate Founder approval.

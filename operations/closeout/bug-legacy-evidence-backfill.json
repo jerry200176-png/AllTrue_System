@@ -1,0 +1,36 @@
+{
+  "kind": "bug_resolution_evidence_backfill",
+  "manifest_id": "legacy-evidence-2026-09-07-probe-34113146974",
+  "decision_reference": "Founder approval: legacy bug evidence backfill and minimal append-only evidence model (2026-09-07)",
+  "evidence_type": "resolution_production_verification",
+  "approved_bug_ids": [
+    114
+  ],
+  "items": [
+    {
+      "bug_id": 114,
+      "production_revision": "4de6b39de6048d5abd0c019eef3209d24ff9dbe2",
+      "deploy_run_id": "34112543025",
+      "source_ref": "https://github.com/jerry200176-png/AllTrue_System/actions/runs/34113146974",
+      "verified_by": 4,
+      "verified_at": "2026-09-07T10:46:11.442630+00:00",
+      "metadata": {
+        "manifest_id": "legacy-evidence-2026-09-07-probe-34113146974",
+        "public_resolution_comment_id": 171,
+        "probe": {
+          "type": "targeted_current_production",
+          "verdict": "verified",
+          "health_only": false,
+          "observed": "target student/classes resolved; 0 current calendar occurrences in bounded window",
+          "evidence_ref": "https://github.com/jerry200176-png/AllTrue_System/actions/runs/34113146974",
+          "target_student_count": 1,
+          "target_class_ids": [
+            814,
+            209
+          ],
+          "target_occurrence_count": 0
+        }
+      }
+    }
+  ]
+}

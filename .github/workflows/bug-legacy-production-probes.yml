@@ -91,7 +91,10 @@ jobs:
           run_url = os.environ["RUN_URL"]
 
           def get(path, authenticated=True):
-              headers = {"Accept": "application/json"}
+              headers = {
+                  "Accept": "application/json",
+                  "User-Agent": "AllTrue-bug-legacy-production-probe/1.0",
+              }
               if authenticated:
                   headers["Authorization"] = "Bearer " + token
               req = Request(BASE + path, headers=headers)
