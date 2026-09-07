@@ -695,15 +695,27 @@
                   v-if="canRequestLeave(s)"
                   type="button"
                   class="pp-link-btn"
+                  :class="{ 'pp-link-btn--late': isLateLeave(s) }"
                   @click="openLeaveBox(s)"
-                >請假</button>
+                >{{ isLateLeave(s) ? '臨時請假' : '請假' }}</button>
+                <small
+                  v-else-if="isSessionStartedOrPast(s) && ['scheduled', 'rescheduled'].includes(String(s?.Status || '').toLowerCase())"
+                  class="pp-leave-contact-notice"
+                >已超過開課時間，請聯絡分校</small>
               </div>
               <div v-if="leaveSessionId === s.id" class="pp-leave-box">
-                <label>請假原因（選填）</label>
-                <textarea v-model="leaveReason" rows="2" maxlength="500" placeholder="例如：身體不適、學校活動、臨時有事"></textarea>
+                <div v-if="isLateLeave(s)" class="pp-late-leave-banner">
+                  <span class="material-symbols-outlined pp-late-icon" aria-hidden="true">warning</span>
+                  <div>
+                    <strong>臨時請假提醒</strong>
+                    <p>已超過一般請假期限（開課前 24 小時），補課／扣堂處理需由分校主任確認。</p>
+                  </div>
+                </div>
+                <label>{{ isLateLeave(s) ? '臨時請假原因' : '請假原因（選填）' }}</label>
+                <textarea v-model="leaveReason" rows="2" maxlength="500" :placeholder="isLateLeave(s) ? '請說明請假原因，供主任審核' : '例如：身體不適、學校活動、臨時有事'"></textarea>
                 <div class="pp-leave-actions">
                   <button class="pp-btn pp-btn-primary pp-btn-small" type="button" :disabled="leaveSubmitting" @click="submitLeaveRequest(s)">
-                    {{ leaveSubmitting ? '送出中…' : '送出請假' }}
+                    {{ leaveSubmitting ? '送出中…' : (isLateLeave(s) ? '送出臨時請假' : '送出請假') }}
                   </button>
                   <button class="pp-btn pp-btn-ghost pp-btn-small" type="button" :disabled="leaveSubmitting" @click="closeLeaveBox">取消</button>
                 </div>
@@ -890,6 +902,7 @@ import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 import { buildParentActionItems } from '../lib/parentActionItems';
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
+import { isSessionStartedOrPast, isLateLeave, canRequestParentLeave } from '../lib/parentLeavePolicy';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -1268,8 +1281,7 @@ const crossCampusActionsEnabled = computed(() => {
   return !dashboard.value?.identity_group_id || mode === 'actions';
 });
 
-const canRequestLeave = (session) => crossCampusActionsEnabled.value
-  && ['scheduled', 'rescheduled'].includes(String(session?.Status || '').toLowerCase());
+const canRequestLeave = (session) => canRequestParentLeave(session, crossCampusActionsEnabled.value);
 
 const openLeaveBox = (session) => {
   leaveSessionId.value = session?.id ?? null;
@@ -1286,18 +1298,26 @@ const closeLeaveBox = () => {
 
 const submitLeaveRequest = async (session) => {
   if (!session?.id || leaveSubmitting.value) return;
+  if (isSessionStartedOrPast(session)) {
+    leaveError.value = '已達或超過開課時間，無法於家長端線上請假，請直接聯絡分校處理。';
+    return;
+  }
   leaveSubmitting.value = true;
   leaveError.value = '';
   leaveSuccess.value = '';
   try {
+    const isLate = isLateLeave(session);
     const result = await parentRequestLeave(token.value, session.id, { reason: leaveReason.value });
     session.Status = result?.session?.status || 'leave_requested';
     session.LeaveWorkflowStatus = 'open';
     session.LeaveWorkflowReason = null;
-    leaveSuccess.value = '請假申請已送出，補習班會安排補課時段。';
+    leaveSuccess.value = result?.message || (isLate
+      ? '臨時請假申請已送出。已超過一般請假期限，補課／扣堂處理需由分校主任確認。'
+      : '請假申請已送出。');
     trackParentPortalEvent(token.value, 'parent.leave_submitted', {
       session_id: session.id,
       status: session.Status,
+      is_late: isLate,
     });
     closeLeaveBox();
   } catch (e) {
@@ -2512,6 +2532,45 @@ onMounted(async () => {
 .pp-status-dot.leave_requested { background: var(--ds-ink-mute); }
 .pp-status-text { font-size: 0.78em; color: var(--ds-ink-mute); }
 .pp-leave-rejected { flex-basis: 100%; color: var(--ds-danger); font-size: 0.72em; }
+.pp-link-btn--late {
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border: 1px solid var(--ds-warning);
+}
+.pp-leave-contact-notice {
+  font-size: 0.75em;
+  color: var(--ds-ink-mute);
+  font-weight: 600;
+  padding: 2px 6px;
+  line-height: 1.3;
+}
+.pp-late-leave-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--ds-warning-wash);
+  border: 1px solid var(--ds-warning);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  color: var(--ds-warning);
+  font-size: 0.82em;
+  line-height: 1.4;
+}
+.pp-late-leave-banner strong {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.pp-late-leave-banner p {
+  margin: 0;
+  color: var(--ds-warning);
+}
+.pp-late-icon {
+  font-size: 18px;
+  color: var(--ds-warning);
+  flex-shrink: 0;
+}
 .pp-leave-box {
   flex: 1 0 100%;
   margin-left: 56px;
