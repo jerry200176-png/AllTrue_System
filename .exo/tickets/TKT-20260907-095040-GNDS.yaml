@@ -35,7 +35,7 @@ checks:
 - vendor/bin/phpunit
 - bash scripts/phpunit-isolated.sh
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes: []
 blockers: []
@@ -44,3 +44,5 @@ brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- b403d673204704d6bbf4ae9a759fa9976d3d5fea
