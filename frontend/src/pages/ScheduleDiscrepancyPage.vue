@@ -28,14 +28,20 @@
       </button>
     </nav>
 
-    <section class="sdp-sop-card" aria-label="處理流程說明">
-      <h3>快速處理 SOP（建議流程）</h3>
-      <ol>
-        <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
-        <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
-        <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
-      </ol>
-    </section>
+    <details class="sdp-sop-card">
+      <summary>
+        <span class="material-symbols-outlined sdp-sop-icon" aria-hidden="true">help_outline</span>
+        <span class="sdp-sop-title">快速處理 SOP（建議流程）</span>
+        <span class="material-symbols-outlined sdp-sop-arrow" aria-hidden="true">expand_more</span>
+      </summary>
+      <div class="sdp-sop-body">
+        <ol>
+          <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
+          <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
+          <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
+        </ol>
+      </div>
+    </details>
 
     <section :id="`sdp-panel-${activeTab}`" class="sdp-list-wrap" role="tabpanel" :aria-labelledby="`sdp-tab-${activeTab}`" :aria-busy="loading">
       <div v-if="!hasBranch" class="sdp-state sdp-state-empty sdp-state-no-branch">
@@ -76,8 +82,8 @@
               <td>
                 <div class="sdp-ts">{{ formatDateTime(row.created_at) }}</div>
               </td>
-              <td>{{ row.reporter_name || `#${row.reporter_id}` }}</td>
-              <td>{{ row.branch_name || `#${row.branch_id}` }}</td>
+              <td>{{ row.reporter_name || '未提供老師姓名' }}</td>
+              <td>{{ row.branch_name || '未指定分校' }}</td>
               <td>
                 <div class="sdp-cell-main">
                   <span class="sdp-type-pill">{{ row.discrepancy_type_label }}</span>
@@ -126,7 +132,7 @@
                       <div class="sdp-detail-value">{{ row.notes || '（無）' }}</div>
                     </div>
                     <div>
-                      <div class="sdp-detail-label">堂次 ID</div>
+                      <div class="sdp-detail-label">堂次編號</div>
                       <div class="sdp-detail-value">{{ row.class_session_id ? `#${row.class_session_id}` : '— 無對應堂次 —' }}</div>
                     </div>
                     <div>
@@ -217,8 +223,8 @@
             <span class="sdp-status" :class="`sdp-status-${row.status}`">{{ statusLabel(row.status) }}</span>
           </header>
           <div class="sdp-mcard-meta">
-            <div><span class="sdp-mcard-label">老師</span> {{ row.reporter_name || `#${row.reporter_id}` }}</div>
-            <div><span class="sdp-mcard-label">分校</span> {{ row.branch_name || `#${row.branch_id}` }}</div>
+            <div><span class="sdp-mcard-label">老師</span> {{ row.reporter_name || '未提供老師姓名' }}</div>
+            <div><span class="sdp-mcard-label">分校</span> {{ row.branch_name || '未指定分校' }}</div>
             <div v-if="row.student_name"><span class="sdp-mcard-label">學生</span> {{ row.student_name }}</div>
             <div v-if="row.session_date || row.time_range">
               <span class="sdp-mcard-label">時段</span>
@@ -614,12 +620,41 @@ onBeforeUnmount(() => {
   border: 1px solid var(--info-border, #bfdbfe);
   background: var(--info-soft, #eff6ff);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 10px 14px;
 }
-.sdp-sop-card h3 {
-  margin: 0 0 8px;
+.sdp-sop-card summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--info-strong, #1d4ed8);
+  list-style: none;
+  user-select: none;
+}
+.sdp-sop-card summary::-webkit-details-marker {
+  display: none;
+}
+.sdp-sop-icon {
+  font-size: 18px;
+}
+.sdp-sop-title {
   font-size: 13px;
   color: var(--info-strong, #1d4ed8);
+}
+.sdp-sop-arrow {
+  margin-left: auto;
+  font-size: 18px;
+  transition: transform 0.2s ease;
+}
+.sdp-sop-card[open] .sdp-sop-arrow {
+  transform: rotate(180deg);
+}
+.sdp-sop-body {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--info-border, #bfdbfe);
 }
 .sdp-sop-card ol {
   margin: 0;

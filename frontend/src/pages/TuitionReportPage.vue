@@ -34,7 +34,11 @@
       載入中…
     </div>
 
-    <div v-else-if="error" class="tr-error">{{ error }}</div>
+    <div v-else-if="error" class="tr-error" role="alert">
+      <span class="material-symbols-outlined tr-error-icon" aria-hidden="true">error</span>
+      <span class="tr-error-msg">{{ error }}</span>
+      <button type="button" class="tr-retry-btn" @click="loadData">再試一次</button>
+    </div>
 
     <template v-else>
       <div class="tr-stats" v-if="rows.length">
@@ -273,7 +277,40 @@ loadData();
 .spin { animation: rotate 1s linear infinite; }
 @keyframes rotate { to { transform: rotate(360deg); } }
 
-.tr-error { color: var(--danger); padding: 16px 0; }
+.tr-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--danger-soft, #fef2f2);
+  color: var(--danger, #dc2626);
+  border: 1px solid var(--danger-border, #fecaca);
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+.tr-error-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.tr-error-msg {
+  flex: 1;
+}
+.tr-retry-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ffffff;
+  border: 1px solid var(--danger, #dc2626);
+  color: var(--danger, #dc2626);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tr-retry-btn:hover {
+  background: var(--danger, #dc2626);
+  color: #ffffff;
+}
 .tr-empty {
   text-align: center;
   padding: 48px 0;
