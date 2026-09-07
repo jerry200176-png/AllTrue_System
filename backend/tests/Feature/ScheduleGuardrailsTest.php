@@ -1342,4 +1342,54 @@ class ScheduleGuardrailsTest extends TestCase
         $this->assertNotEmpty($conflicts, 'Partially overlapping intra-course session must trigger conflict');
         $this->assertSame('teacher_capacity', $conflicts[0]['type']);
     }
+
+    public function test_recurring_validation_blocks_when_own_exception_shares_start_time_but_has_different_duration(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-rec-d@example.com');
+        $studentA = $this->createStudent(1, '學生RecD');
+        $nextWed = Carbon::now()->next(Carbon::WEDNESDAY)->toDateString();
+
+        $courseA = StudentClass::create([
+            'StudentID' => $studentA->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one',
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-03-30',
+            'TotalHours' => 10,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'week' => 1,
+            'time' => '17:00:00',
+        ]);
+
+        // Future session for Course A on next Wednesday 17:00-18:30 (shares start time, but end time differs)
+        ClassSession::create([
+            'StudentClassID' => $courseA->ID,
+            'SessionDate' => $nextWed,
+            'StartTime' => '17:00:00',
+            'EndTime' => '18:30:00',
+            'Status' => 'scheduled',
+            'IsContractException' => 1,
+        ]);
+
+        $guard = app(ScheduleGuardService::class);
+        $conflicts = $guard->validateRecurringCourse([
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_one',
+            'branch_id' => 1,
+            'slots' => [
+                ['day_of_week' => 3, 'start_time' => '17:00', 'end_time' => '18:00'],
+            ],
+            'exclude_student_class_id' => (int) $courseA->ID,
+        ]);
+
+        $this->assertNotEmpty($conflicts, 'Session with different duration/end_time must trigger teacher capacity conflict');
+        $this->assertSame('teacher_capacity', $conflicts[0]['type']);
+    }
 }

@@ -257,6 +257,149 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame($firstIds, $secondIds, 'Repeated request must preserve identical session IDs');
     }
 
+    /**
+     * Requirement 6a: Existing exception 17:00–18:30 with new recurring slot 17:00–18:00
+     * MUST NOT be regularized, and MUST NOT produce duplicates or silent reflow.
+     */
+    public function test_exception_with_different_duration_is_not_regularized_and_no_duplicate_or_silent_reflow(): void
+    {
+        [$token, $course, $teacherId] = $this->seedMondayCourseWithWednesdayException();
+
+        // Adjust the Wednesday 2026-04-15 exception session to 17:00–18:30 (90 min duration)
+        $wednesdaySession = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-04-15')
+            ->firstOrFail();
+        $wednesdaySession->EndTime = '18:30:00';
+        $wednesdaySession->IsContractException = 1;
+        $wednesdaySession->save();
+
+        $initialTotalCount = ClassSession::where('StudentClassID', $course->ID)->count();
+
+        // Attempt to add Wednesday 17:00-18:00 (duration 60 min)
+        $response = $this->updateFixedSlots($token, $course, [1, 3], [
+            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
+            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
+        ]);
+
+        // Must fail with 409 because 17:00-18:30 does NOT exact-match 17:00-18:00
+        $response->assertStatus(409);
+        $this->assertSame('teacher_schedule_conflict', $response->json('code'));
+
+        // The exception session must NOT be regularized: IsContractException must remain 1
+        $freshSession = $wednesdaySession->fresh();
+        $this->assertSame(1, (int) $freshSession->IsContractException, 'Exception with different duration must retain IsContractException=1');
+        $this->assertSame('17:00:00', (string) $freshSession->StartTime, 'StartTime must remain untouched');
+        $this->assertSame('18:30:00', (string) $freshSession->EndTime, 'EndTime must remain untouched (no silent reflow)');
+        $this->assertSame('2026-04-15', substr((string) $freshSession->SessionDate, 0, 10));
+
+        // No duplicate sessions created
+        $afterTotalCount = ClassSession::where('StudentClassID', $course->ID)->count();
+        $this->assertSame($initialTotalCount, $afterTotalCount, 'No duplicate sessions created');
+        $wedCount = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-04-15')
+            ->count();
+        $this->assertSame(1, $wedCount, 'Must only have one session on Wednesday');
+    }
+
+    /**
+     * Requirement 6b: Direct syncFutureScheduledSessionTimes call does not regularize
+     * an exception with different duration (17:00–18:30 vs 17:00–18:00), preserving
+     * exception flag and slot protection.
+     */
+    public function test_direct_sync_does_not_regularize_exception_with_different_duration(): void
+    {
+        [$token, $course, $teacherId] = $this->seedMondayCourseWithWednesdayException();
+
+        $wednesdaySession = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-04-15')
+            ->firstOrFail();
+        $wednesdaySession->EndTime = '18:30:00';
+        $wednesdaySession->IsContractException = 1;
+        $wednesdaySession->save();
+
+        $controller = app(\App\Http\Controllers\StudentClassController::class);
+        $method = new \ReflectionMethod($controller, 'syncFutureScheduledSessionTimes');
+        $method->setAccessible(true);
+
+        // Invoke sync directly with recurring slots including Wednesday 17:00 (dur 60)
+        $method->invoke(
+            $controller,
+            (int) $course->ID,
+            [
+                ['weekday' => 1, 'time' => '17:00', 'duration_minutes' => 60],
+                ['weekday' => 3, 'time' => '17:00', 'duration_minutes' => 60],
+            ],
+            60,
+            []
+        );
+
+        // The session must still have IsContractException = 1 and EndTime = 18:30:00
+        $freshSession = $wednesdaySession->fresh();
+        $this->assertSame(1, (int) $freshSession->IsContractException, 'Direct sync must not regularize different duration exception');
+        $this->assertSame('18:30:00', (string) $freshSession->EndTime);
+        $this->assertSame('17:00:00', (string) $freshSession->StartTime);
+    }
+
+    /**
+     * Requirement 6c: Transaction atomicity: if subsequent reflow throws an exception,
+     * any exception regularization in the same sync invocation is rolled back.
+     */
+    public function test_regularization_and_reflow_are_atomic_rolling_back_on_failure(): void
+    {
+        [$token, $course, $teacherId] = $this->seedMondayCourseWithWednesdayException();
+
+        // Add an unlocked session on Friday (not in contract days 1, 3) to trigger remap/reflow
+        ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-04-17',
+            'StartTime' => '17:00:00',
+            'EndTime' => '18:00:00',
+            'Status' => 'scheduled',
+            'IsContractException' => 0,
+        ]);
+
+        $wednesdaySession = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-04-15')
+            ->firstOrFail();
+        $this->assertSame(1, (int) $wednesdaySession->IsContractException);
+
+        // Mock ClassSessionContractReflowService to throw SlotOccupiedException during move
+        $mockReflow = \Mockery::mock(\App\Services\ClassSessionContractReflowService::class);
+        $mockReflow->shouldReceive('move')
+            ->once()
+            ->andThrow(new \App\Exceptions\SlotOccupiedException(
+                (int) $course->ID,
+                '2026-04-20',
+                '17:00:00',
+                (int) $wednesdaySession->id
+            ));
+        $this->app->instance(\App\Services\ClassSessionContractReflowService::class, $mockReflow);
+
+        $controller = app(\App\Http\Controllers\StudentClassController::class);
+        $method = new \ReflectionMethod($controller, 'syncFutureScheduledSessionTimes');
+        $method->setAccessible(true);
+
+        try {
+            $method->invoke(
+                $controller,
+                (int) $course->ID,
+                [
+                    ['weekday' => 1, 'time' => '17:00', 'duration_minutes' => 60],
+                    ['weekday' => 3, 'time' => '17:00', 'duration_minutes' => 60],
+                ],
+                60,
+                []
+            );
+            $this->fail('Expected SlotOccupiedException was not thrown');
+        } catch (\App\Exceptions\SlotOccupiedException $e) {
+            // Expected exception caught
+        }
+
+        // In DB, IsContractException must have been rolled back to 1!
+        $freshSession = $wednesdaySession->fresh();
+        $this->assertSame(1, (int) $freshSession->IsContractException, 'Transaction rollback must restore IsContractException=1');
+    }
+
     private function updateFixedSlots(string $token, StudentClass $course, array $days, array $slots)
     {
         return $this->withHeaders([

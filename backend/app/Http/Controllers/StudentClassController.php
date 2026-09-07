@@ -6710,223 +6710,235 @@ class StudentClassController extends Controller
             return 0;
         }
 
-        $lockedBySessionId = LearningRecord::where('StudentClassID', $studentClassId)
-            ->where('Status', 'approved')
-            ->whereNotNull('ClassSessionID')
-            ->pluck('ClassSessionID')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->flip()
-            ->all();
-        $signInLocked = StudentSignIn::where('StudentClassID', $studentClassId)
-            ->whereNotNull('ClassSessionID')
-            ->pluck('ClassSessionID')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->all();
-        foreach ($signInLocked as $sid) {
-            $lockedBySessionId[(int) $sid] = true;
-        }
+        return DB::transaction(function () use (
+            $studentClassId,
+            $slots,
+            $durationMinutes,
+            $slotsByWeekday
+        ) {
+            $lockedBySessionId = LearningRecord::where('StudentClassID', $studentClassId)
+                ->where('Status', 'approved')
+                ->whereNotNull('ClassSessionID')
+                ->pluck('ClassSessionID')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->flip()
+                ->all();
+            $signInLocked = StudentSignIn::where('StudentClassID', $studentClassId)
+                ->whereNotNull('ClassSessionID')
+                ->pluck('ClassSessionID')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->all();
+            foreach ($signInLocked as $sid) {
+                $lockedBySessionId[(int) $sid] = true;
+            }
 
-        $today = Carbon::today()->toDateString();
-        $sessions = ClassSession::where('StudentClassID', $studentClassId)
-            ->where('Status', 'scheduled')
-            ->whereDate('SessionDate', '>=', $today)
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->get();
+            $today = Carbon::today()->toDateString();
+            $sessions = ClassSession::where('StudentClassID', $studentClassId)
+                ->where('Status', 'scheduled')
+                ->whereDate('SessionDate', '>=', $today)
+                ->orderBy('SessionDate')
+                ->orderBy('StartTime')
+                ->get();
 
-        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+                foreach ($sessions as $session) {
+                    if (empty($session->IsContractException)) {
+                        continue;
+                    }
+                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    if (!$date || empty($session->StartTime) || empty($session->EndTime)) {
+                        continue;
+                    }
+                    $sessionStartHm = substr($this->normalizeSessionTime($session->StartTime), 0, 5);
+                    $sessionEndHm = substr($this->normalizeSessionTime($session->EndTime), 0, 5);
+                    $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+                    $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
+                    $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($sessionStartHm, $sessionEndHm, $durationMinutes) {
+                        $slotStartFull = $this->normalizeSessionTime($s['time'] ?? '', '16:00:00');
+                        $slotStartHm = substr($slotStartFull, 0, 5);
+                        $dur = max(30, (int) ($s['dur'] ?? $durationMinutes));
+                        $expectedEndHm = Carbon::createFromFormat('H:i:s', $slotStartFull)->addMinutes($dur)->format('H:i');
+                        return $sessionStartHm === $slotStartHm && $sessionEndHm === $expectedEndHm;
+                    });
+                    if ($matchesSlot) {
+                        // Safe adoption / regularization: this session was an exception,
+                        // but the new fixed schedule now covers its weekday, start time, AND end time!
+                        // Clear the exception flag and adopt it into regular contract.
+                        $session->IsContractException = 0;
+                        $session->save();
+                    }
+                }
+            }
+
+            $unlocked = $sessions->filter(function ($session) use ($lockedBySessionId) {
+                if (isset($lockedBySessionId[(int) $session->id])) {
+                    return false;
+                }
+                if (!empty($session->IsContractException)) {
+                    return false;
+                }
+                return true;
+            })->values();
+
+            $needsRemap = false;
+            $sessionWeekdays = [];
+            $unlockedCountByDate = [];
+            foreach ($unlocked as $session) {
+                $date = $this->normalizeDateString($session->SessionDate ?? null);
+                if (!$date) {
+                    continue;
+                }
+                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+                $sessionWeekdays[$isoDow] = true;
+                $unlockedCountByDate[$date] = ($unlockedCountByDate[$date] ?? 0) + 1;
+                if (!isset($slotsByWeekday[$isoDow])) {
+                    $needsRemap = true;
+                    break;
+                }
+            }
+
+            if (!$needsRemap && $unlocked->isNotEmpty()) {
+                foreach ($unlockedCountByDate as $date => $countOnDate) {
+                    $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+                    $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
+                    if (!empty($contractSlotsForDay) && count($contractSlotsForDay) > $countOnDate) {
+                        $needsRemap = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$needsRemap && $unlocked->isNotEmpty()) {
+                foreach (array_keys($slotsByWeekday) as $contractDay) {
+                    if (!isset($sessionWeekdays[$contractDay])) {
+                        $needsRemap = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($needsRemap && $unlocked->isNotEmpty()) {
+                $unlockedIds = $unlocked->mapWithKeys(fn ($s) => [(int) $s->id => true])->all();
+                $lockedTargetKeys = $sessions->filter(function ($session) use ($unlockedIds) {
+                    return !isset($unlockedIds[(int) $session->id]);
+                })->mapWithKeys(function ($session) {
+                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                    return $date && $start ? ["{$date}|{$start}" => true] : [];
+                })->all();
+
+                $contractStartDate = $this->normalizeDateString(
+                    DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
+                );
+
+                return $this->remapFutureScheduledSessionsToContract(
+                    $unlocked,
+                    $slots,
+                    $durationMinutes,
+                    $lockedTargetKeys,
+                    $contractStartDate
+                );
+            }
+
+            $sessionsByDate = [];
             foreach ($sessions as $session) {
-                if (empty($session->IsContractException)) {
+                if (!empty($session->IsContractException)) {
                     continue;
                 }
                 $date = $this->normalizeDateString($session->SessionDate ?? null);
-                $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                if (!$date || $start === '') {
-                    continue;
+                if ($date) {
+                    $sessionsByDate[$date][] = $session;
                 }
+            }
+
+            // Build a permutation-safe move list. Same-day time shifts under
+            // uq_class_session_slot 1062 if we update in place onto a sibling's
+            // not-yet-vacated StartTime (Sentry PHP-LARAVEL-25 / #1384). Also avoid
+            // assigning two unlocked rows onto the identical contract slot.
+            $moves = [];
+            $reflowIds = [];
+            $claimedTargets = [];
+
+            foreach ($sessionsByDate as $date => $dateSessions) {
                 $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
-                $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($start) {
-                    return substr((string) ($s['time'] ?? ''), 0, 5) === $start;
-                });
-                if ($matchesSlot) {
-                    // Safe adoption / regularization: this session was an exception,
-                    // but the new fixed schedule now covers its weekday and time!
-                    // Clear the exception flag and adopt it into regular contract.
-                    $session->IsContractException = 0;
-                    $session->save();
-                }
-            }
-        }
-
-        $unlocked = $sessions->filter(function ($session) use ($lockedBySessionId) {
-            if (isset($lockedBySessionId[(int) $session->id])) {
-                return false;
-            }
-            if (!empty($session->IsContractException)) {
-                return false;
-            }
-            return true;
-        })->values();
-
-        $needsRemap = false;
-        $sessionWeekdays = [];
-        $unlockedCountByDate = [];
-        foreach ($unlocked as $session) {
-            $date = $this->normalizeDateString($session->SessionDate ?? null);
-            if (!$date) {
-                continue;
-            }
-            $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-            $sessionWeekdays[$isoDow] = true;
-            $unlockedCountByDate[$date] = ($unlockedCountByDate[$date] ?? 0) + 1;
-            if (!isset($slotsByWeekday[$isoDow])) {
-                $needsRemap = true;
-                break;
-            }
-        }
-
-        if (!$needsRemap && $unlocked->isNotEmpty()) {
-            foreach ($unlockedCountByDate as $date => $countOnDate) {
-                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
-                if (!empty($contractSlotsForDay) && count($contractSlotsForDay) > $countOnDate) {
-                    $needsRemap = true;
-                    break;
-                }
-            }
-        }
-
-        if (!$needsRemap && $unlocked->isNotEmpty()) {
-            foreach (array_keys($slotsByWeekday) as $contractDay) {
-                if (!isset($sessionWeekdays[$contractDay])) {
-                    $needsRemap = true;
-                    break;
-                }
-            }
-        }
-
-        if ($needsRemap && $unlocked->isNotEmpty()) {
-            $unlockedIds = $unlocked->mapWithKeys(fn ($s) => [(int) $s->id => true])->all();
-            $lockedTargetKeys = $sessions->filter(function ($session) use ($unlockedIds) {
-                return !isset($unlockedIds[(int) $session->id]);
-            })->mapWithKeys(function ($session) {
-                $date = $this->normalizeDateString($session->SessionDate ?? null);
-                $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                return $date && $start ? ["{$date}|{$start}" => true] : [];
-            })->all();
-
-            $contractStartDate = $this->normalizeDateString(
-                DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
-            );
-
-            return $this->remapFutureScheduledSessionsToContract(
-                $unlocked,
-                $slots,
-                $durationMinutes,
-                $lockedTargetKeys,
-                $contractStartDate
-            );
-        }
-
-        $sessionsByDate = [];
-        foreach ($sessions as $session) {
-            if (!empty($session->IsContractException)) {
-                continue;
-            }
-            $date = $this->normalizeDateString($session->SessionDate ?? null);
-            if ($date) {
-                $sessionsByDate[$date][] = $session;
-            }
-        }
-
-        // Build a permutation-safe move list. Same-day time shifts under
-        // uq_class_session_slot 1062 if we update in place onto a sibling's
-        // not-yet-vacated StartTime (Sentry PHP-LARAVEL-25 / #1384). Also avoid
-        // assigning two unlocked rows onto the identical contract slot.
-        $moves = [];
-        $reflowIds = [];
-        $claimedTargets = [];
-
-        foreach ($sessionsByDate as $date => $dateSessions) {
-            $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
-            $daySlots = $slotsByWeekday[$isoDow] ?? [];
-            if (empty($daySlots)) {
-                continue;
-            }
-
-            usort($dateSessions, fn ($a, $b) => strcmp((string) $a->StartTime, (string) $b->StartTime));
-
-            foreach ($dateSessions as $idx => $session) {
-                $sessionId = (int) $session->id;
-                if (isset($lockedBySessionId[$sessionId])) {
-                    continue;
-                }
-                // One unlocked row per contract slot on this date; extras keep
-                // their current time rather than collapsing onto the last slot.
-                if ($idx >= count($daySlots)) {
-                    continue;
-                }
-                $slot = $daySlots[$idx];
-
-                $newStartFull = $this->normalizeSessionTime($slot['time'], '16:00:00');
-                $newEndFull = Carbon::createFromFormat('H:i:s', $newStartFull)
-                    ->addMinutes(max(30, $slot['dur']))
-                    ->format('H:i:s');
-
-                $targetKey = $date . '|' . $newStartFull;
-                if (isset($claimedTargets[$targetKey])) {
-                    continue;
-                }
-                $claimedTargets[$targetKey] = $sessionId;
-
-                if (
-                    (string) $session->StartTime === $newStartFull
-                    && (string) $session->EndTime === $newEndFull
-                ) {
+                $daySlots = $slotsByWeekday[$isoDow] ?? [];
+                if (empty($daySlots)) {
                     continue;
                 }
 
-                $oldDate = $this->normalizeDateString($session->SessionDate ?? null);
-                $moves[] = [
-                    'session'       => $session,
-                    'oldDate'       => $oldDate,
-                    'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
-                    'newDate'       => $date,
-                    'newStart'      => $newStartFull,
-                    'newEnd'        => $newEndFull,
-                ];
-                $reflowIds[$sessionId] = true;
-            }
-        }
+                usort($dateSessions, fn ($a, $b) => strcmp((string) $a->StartTime, (string) $b->StartTime));
 
-        if (empty($moves)) {
-            return 0;
-        }
+                foreach ($dateSessions as $idx => $session) {
+                    $sessionId = (int) $session->id;
+                    if (isset($lockedBySessionId[$sessionId])) {
+                        continue;
+                    }
+                    // One unlocked row per contract slot on this date; extras keep
+                    // their current time rather than collapsing onto the last slot.
+                    if ($idx >= count($daySlots)) {
+                        continue;
+                    }
+                    $slot = $daySlots[$idx];
 
-        $courseId = (int) ($moves[0]['session']->StudentClassID ?? 0);
-        try {
-            return $this->contractSessionReflowService->move($courseId, $reflowIds, $moves);
-        } catch (\App\Exceptions\SlotOccupiedException $e) {
-            // Soft sync must not 500 the course update: skip colliding moves
-            // one-by-one so compatible rows still realign.
-            $updated = 0;
-            foreach ($moves as $move) {
-                $sid = (int) $move['session']->id;
-                try {
-                    $updated += $this->contractSessionReflowService->move(
-                        $courseId,
-                        [$sid => true],
-                        [$move]
-                    );
-                } catch (\App\Exceptions\SlotOccupiedException $ignored) {
-                    continue;
+                    $newStartFull = $this->normalizeSessionTime($slot['time'], '16:00:00');
+                    $newEndFull = Carbon::createFromFormat('H:i:s', $newStartFull)
+                        ->addMinutes(max(30, $slot['dur']))
+                        ->format('H:i:s');
+
+                    $targetKey = $date . '|' . $newStartFull;
+                    if (isset($claimedTargets[$targetKey])) {
+                        continue;
+                    }
+                    $claimedTargets[$targetKey] = $sessionId;
+
+                    if (
+                        (string) $session->StartTime === $newStartFull
+                        && (string) $session->EndTime === $newEndFull
+                    ) {
+                        continue;
+                    }
+
+                    $oldDate = $this->normalizeDateString($session->SessionDate ?? null);
+                    $moves[] = [
+                        'session'       => $session,
+                        'oldDate'       => $oldDate,
+                        'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
+                        'newDate'       => $date,
+                        'newStart'      => $newStartFull,
+                        'newEnd'        => $newEndFull,
+                    ];
+                    $reflowIds[$sessionId] = true;
                 }
             }
-            return $updated;
-        }
+
+            if (empty($moves)) {
+                return 0;
+            }
+
+            $courseId = (int) ($moves[0]['session']->StudentClassID ?? 0);
+            try {
+                return $this->contractSessionReflowService->move($courseId, $reflowIds, $moves);
+            } catch (\App\Exceptions\SlotOccupiedException $e) {
+                // Soft sync must not 500 the course update: skip colliding moves
+                // one-by-one so compatible rows still realign.
+                $updated = 0;
+                foreach ($moves as $move) {
+                    $sid = (int) $move['session']->id;
+                    try {
+                        $updated += $this->contractSessionReflowService->move(
+                            $courseId,
+                            [$sid => true],
+                            [$move]
+                        );
+                    } catch (\App\Exceptions\SlotOccupiedException $ignored) {
+                        continue;
+                    }
+                }
+                return $updated;
+            }
+        });
     }
 
     private function hasSessionStartDateMismatch(int $studentClassId, string $startDate): bool
