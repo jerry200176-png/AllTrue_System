@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-07-students-list-recovery
+    published_at: "2026-09-07"
+    audiences:
+      - director
+    importance: digest
+    title: 學生管理載入狀態更清楚
+    summary: 學生清單載入失敗可重試，篩選無結果也能直接回到完整清單。
+    items:
+      - category: improved
+        text: 學生管理會分開顯示首次載入、重新整理、載入失敗與篩選後無結果，避免把連線問題誤認為沒有學生。
+      - category: improved
+        text: 重新整理失敗時保留上次成功資料並提供重試；篩選沒有結果時可清除條件回到在學學生清單。
+    source_refs:
+      - "changelog:2026-09-07:students-list-recovery"
+
   - id: staff-2026-09-07-classroom-recovery
     published_at: "2026-09-07"
     audiences:

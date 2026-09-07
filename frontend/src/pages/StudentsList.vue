@@ -89,7 +89,24 @@
       </AtFilterBar>
 
       <!-- Student Table -->
-      <div v-if="displayStudents.length" class="table-scroll-wrap">
+      <div v-if="studentsLoading && !studentsLoaded" class="students-list-state students-list-state--loading" role="status" aria-live="polite">
+        <span class="material-symbols-outlined" aria-hidden="true">progress_activity</span>
+        <strong>正在載入學生清單…</strong>
+        <span>資料準備好後會顯示本分校學生。</span>
+      </div>
+      <div v-else-if="!displayStudents.length && studentsLoadError" class="students-list-state students-list-state--error" role="alert">
+        <span class="material-symbols-outlined" aria-hidden="true">cloud_off</span>
+        <strong>學生清單暫時無法載入</strong>
+        <span>{{ studentsLoadError }}</span>
+        <button type="button" class="students-list-state__action" @click="loadStudents">重試</button>
+      </div>
+      <div v-else-if="displayStudents.length" class="table-scroll-wrap" :aria-busy="studentsLoading ? 'true' : 'false'">
+        <div v-if="studentsLoading || studentsLoadError" class="students-refresh-state" :class="{ 'students-refresh-state--error': studentsLoadError }" role="status" aria-live="polite">
+          <span class="material-symbols-outlined" aria-hidden="true">{{ studentsLoadError ? 'cloud_off' : 'sync' }}</span>
+          <span v-if="studentsLoadError">更新失敗，仍顯示上次成功載入的學生資料。</span>
+          <span v-else>正在更新學生清單…</span>
+          <button type="button" class="students-refresh-state__action" @click="loadStudents">重試</button>
+        </div>
       <table data-guide="students-table">
         <thead>
           <tr>
@@ -456,6 +473,22 @@
         </tbody>
       </table>
       </div>
+      <AtEmpty
+        v-else-if="!hasStudentBranch"
+        icon="domain"
+        title="請先選擇分校"
+        description="選擇分校後，這裡會顯示該分校的學生資料。"
+      />
+      <AtEmpty
+        v-else-if="hasStudentFilters"
+        icon="search_off"
+        title="找不到符合條件的學生"
+        description="請調整搜尋或篩選條件，或清除篩選查看全部在學學生。"
+      >
+        <template #action>
+          <AtButton shape="rect" variant="ghost" @click="clearStudentFilters">清除篩選</AtButton>
+        </template>
+      </AtEmpty>
       <AtEmpty
         v-else
         icon="school"
@@ -916,6 +949,10 @@ const goToBindingManagement = (student) => {
 // --- State ---
 const subjectOptions = ref([...SUBJECTS]);
 const students = ref([]);
+const studentsLoading = ref(true);
+const studentsLoaded = ref(false);
+const studentsLoadError = ref('');
+let studentsRequestSequence = 0;
 const branchStudentTotal = ref(0);
 const studentCourses = ref({}); // { studentId: [courses] }
 const teachers = ref([]);
@@ -1439,6 +1476,12 @@ const getLaravelStudentId = (student) => {
   return Number.isFinite(id) && id > 0 ? id : null;
 };
 const displayStudents = computed(() => students.value);
+const hasStudentBranch = computed(() => Number(props.branchId) > 0);
+const hasStudentFilters = computed(() => Boolean(
+  String(filters.value.name || '').trim()
+  || filters.value.grade
+  || filters.value.status !== 'active'
+));
 const visibleStudentLaravelIds = computed(() => displayStudents.value.map(getLaravelStudentId).filter(id => id != null));
 const selectedStudentCount = computed(() => selectedStudentIds.value.length);
 const hasSelectedStudents = computed(() => selectedStudentCount.value > 0);
@@ -1469,6 +1512,10 @@ const clearSelectedStudents = () => {
 };
 const toggleHistoricalCourses = () => {
   showHistoricalCourses.value = !showHistoricalCourses.value;
+};
+const clearStudentFilters = () => {
+  filters.value = { name: '', grade: '', status: 'active' };
+  loadStudents();
 };
 const syncSelectedStudentIdsWithCurrentList = () => {
   const visible = new Set(visibleStudentLaravelIds.value);
@@ -1548,80 +1595,99 @@ const loadBranchStudentTotal = async () => {
 };
 
 const loadStudents = async () => {
-  if (!props.branchId) {
-    branchStudentTotal.value = 0;
-    selectedStudentIds.value = [];
-    return;
-  }
-  loadBranchStudentTotal();
+  const requestSequence = ++studentsRequestSequence;
+  studentsLoading.value = true;
+  studentsLoadError.value = '';
   try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (token) {
-      const params = new URLSearchParams({
-        branch_id: String(props.branchId),
-        per_page: '500'
-      });
-      if (filters.value.name) params.set('name', filters.value.name);
-      if (filters.value.status) params.set('status', filters.value.status || '');
-      const gradeToClassId = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
-      if (filters.value.grade && gradeToClassId[filters.value.grade]) params.set('class_id', gradeToClassId[filters.value.grade]);
-      const res = await fetch(`/api/v1/students?${params}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const laravelList = json?.data ?? json;
-        const arr = Array.isArray(laravelList) ? laravelList : (laravelList?.data || []);
-        students.value = arr.map(s => ({
-          ...s,
-          rfid: s.rfid ?? s.RFID ?? '',
-          _laravelId: s.id
-        }));
-        syncSelectedStudentIdsWithCurrentList();
-        return;
-      }
+    if (!props.branchId) {
+      branchStudentTotal.value = 0;
+      selectedStudentIds.value = [];
+      students.value = [];
+      studentsLoaded.value = true;
+      return;
     }
-  } catch (_) {}
+    loadBranchStudentTotal();
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (token) {
+        const params = new URLSearchParams({
+          branch_id: String(props.branchId),
+          per_page: '500'
+        });
+        if (filters.value.name) params.set('name', filters.value.name);
+        if (filters.value.status) params.set('status', filters.value.status || '');
+        const gradeToClassId = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
+        if (filters.value.grade && gradeToClassId[filters.value.grade]) params.set('class_id', gradeToClassId[filters.value.grade]);
+        const res = await fetch(`/api/v1/students?${params}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const laravelList = json?.data ?? json;
+          const arr = Array.isArray(laravelList) ? laravelList : (laravelList?.data || []);
+          if (requestSequence !== studentsRequestSequence) return;
+          students.value = arr.map(s => ({
+            ...s,
+            rfid: s.rfid ?? s.RFID ?? '',
+            _laravelId: s.id
+          }));
+          syncSelectedStudentIdsWithCurrentList();
+          studentsLoaded.value = true;
+          return;
+        }
+      }
+    } catch (_) {}
 
-  // Fallback: Supabase list + merge Laravel RFID / _laravelId
-  let query = supabase.from('students').select('*').eq('branch_id', props.branchId).order('name');
-  if (filters.value.name) query = query.ilike('name', `%${filters.value.name}%`);
-  if (filters.value.grade) query = query.eq('grade', filters.value.grade);
-  if (filters.value.status) query = query.eq('status', filters.value.status);
-  const { data } = await query;
-  let list = data || [];
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (token) {
-      const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=500`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const laravelList = json?.data ?? json;
-        const arr = Array.isArray(laravelList) ? laravelList : (laravelList?.data || []);
-        const rfidMap = {};
-        const laravelIdMap = {};
-        arr.forEach(s => {
-          const key = `${(s.name || '').trim()}_${props.branchId}`;
-          if (s.RFID) rfidMap[key] = s.RFID;
-          if (s.id) laravelIdMap[key] = s.id;
+    // Fallback: Supabase list + merge Laravel RFID / _laravelId
+    let query = supabase.from('students').select('*').eq('branch_id', props.branchId).order('name');
+    if (filters.value.name) query = query.ilike('name', `%${filters.value.name}%`);
+    if (filters.value.grade) query = query.eq('grade', filters.value.grade);
+    if (filters.value.status) query = query.eq('status', filters.value.status);
+    const { data, error } = await query;
+    if (error) throw error;
+    let list = data || [];
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (token) {
+        const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=500`, {
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-        list = list.map(st => {
-          const key = `${(st.name || '').trim()}_${props.branchId}`;
-          return {
-            ...st,
-            rfid: st.rfid || rfidMap[key] || '',
-            _laravelId: laravelIdMap[key]
-          };
-        });
+        if (res.ok) {
+          const json = await res.json();
+          const laravelList = json?.data ?? json;
+          const arr = Array.isArray(laravelList) ? laravelList : (laravelList?.data || []);
+          const rfidMap = {};
+          const laravelIdMap = {};
+          arr.forEach(s => {
+            const key = `${(s.name || '').trim()}_${props.branchId}`;
+            if (s.RFID) rfidMap[key] = s.RFID;
+            if (s.id) laravelIdMap[key] = s.id;
+          });
+          list = list.map(st => {
+            const key = `${(st.name || '').trim()}_${props.branchId}`;
+            return {
+              ...st,
+              rfid: st.rfid || rfidMap[key] || '',
+              _laravelId: laravelIdMap[key]
+            };
+          });
+        }
       }
+    } catch (_) {}
+    if (requestSequence !== studentsRequestSequence) return;
+    students.value = list;
+    syncSelectedStudentIdsWithCurrentList();
+    studentsLoaded.value = true;
+  } catch (error) {
+    if (requestSequence === studentsRequestSequence) {
+      studentsLoadError.value = '請檢查網路連線後再試。';
+      console.warn('StudentsList: failed to load students', error);
     }
-  } catch (_) {}
-  students.value = list;
-  syncSelectedStudentIdsWithCurrentList();
+  } finally {
+    if (requestSequence === studentsRequestSequence) studentsLoading.value = false;
+  }
 };
 
 const loadTeachers = async () => {
@@ -3425,6 +3491,48 @@ table th { font-size: 12.5px; }
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+.students-list-state,
+.students-refresh-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ds-ink-mute);
+  font-size: 13px;
+}
+.students-list-state {
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 24px 16px;
+  border: 1px dashed var(--ds-hairline);
+  border-radius: var(--ds-radius-md, 6px);
+  background: var(--ds-surface-0, var(--ds-canvas-soft));
+}
+.students-list-state strong { color: var(--ds-ink); font-size: 14px; }
+.students-list-state .material-symbols-outlined { color: var(--ds-primary); }
+.students-list-state--error .material-symbols-outlined,
+.students-refresh-state--error .material-symbols-outlined { color: var(--ds-danger); }
+.students-list-state__action,
+.students-refresh-state__action {
+  border: 1px solid var(--ds-cta);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ds-cta);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.students-list-state__action { margin-top: 4px; padding: 7px 12px; }
+.students-refresh-state {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas-soft);
+}
+.students-refresh-state__action { margin-left: auto; padding: 4px 9px; font-size: 12px; }
+.students-list-state__action:hover,
+.students-refresh-state__action:hover { background: var(--ds-primary-wash); }
+.students-list-state__action:focus-visible,
+.students-refresh-state__action:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
 .table-scroll-wrap th {
   font-size: 12px;
   color: var(--ds-text-tertiary, var(--ds-ink-mute));
