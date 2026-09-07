@@ -1626,3 +1626,9 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：所有建立或改動老師／時段的寫入都必須在 mutation 前呼叫共享容量守衛；同日代課例外只有在同一課程、同一日期、同一開始時間存在未取消的 `ClassSession` 時才能建立。讀側可隱藏歷史 orphan，但不得以資料修復取代新的寫入不變式。
 - **對標**：Google Calendar FreeBusy、Microsoft Graph `getSchedule` 都以具體時間區間查詢可用性；Cal.com 的 reservation／conflict tests 也使用半開區間與原子保留語意。本修復只採用這些邊界原則，不複製外部程式碼。
 - **測試必補**：批次 enrollment、add-session 與 check、course teacher update、同日不同開始時間的 substitute target 都必須證明衝突回應／無部分寫入；移除任一寫入邊界 guard 時對應測試必須失敗。
+
+### R137. Bug follow-up 幂等键不能只用共享 issue URL（2026-09-07）
+
+- **現象**：Phase-A acknowledgement 與 Phase-C follow-up 都包含同一個 GitHub issue URL；若 workflow 只用 URL 判斷「已留言」，post-deploy 的公開驗收留言會被錯誤跳過。
+- **強制規則**：同一 bug 的不同生命週期留言必須以完整、精確的留言 payload（或明確的事件 marker）區分；shared URL 只能驗證連結存在，不能作為留言幂等鍵。
+- **測試必補**：已有相同 issue URL 的舊留言時，follow-up workflow 仍必須新增一次精確 payload；同一 payload 重跑才可安全 skip。
