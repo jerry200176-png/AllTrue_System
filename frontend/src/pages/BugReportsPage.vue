@@ -3,18 +3,18 @@
     <AtPageHeader
       :title="pageTitle"
       :description="pageDesc"
-      icon="bug_report"
+      icon="rate_review"
       data-guide="bugs-header"
     />
 
     <div v-if="branchId == null" class="card empty-card">
-      請先選擇分校後再查看 Bug 回報。
+      請先選擇分校後再查看意見與建議。
     </div>
 
     <template v-else>
 
-      <!-- Super Admin: 頁面層級 Tab（Bug 回報 / 家長回饋）-->
-      <div v-if="isSuperAdmin" class="bugs-page-tabs" role="tablist" aria-label="Bug 回報與家長回饋">
+      <!-- Super Admin: 頁面層級 Tab（意見與建議 / 家長回饋）-->
+      <div v-if="isSuperAdmin" class="bugs-page-tabs" role="tablist" aria-label="意見與建議與家長回饋">
         <button
           id="bugs-tab"
           type="button"
@@ -24,8 +24,8 @@
           :class="['bugs-page-tab', { active: pageTab === 'bugs' }]"
           @click="pageTab = 'bugs'"
         >
-          <span class="material-symbols-outlined">bug_report</span>
-          Bug 回報
+          <span class="material-symbols-outlined">rate_review</span>
+          意見與建議
         </button>
         <button
           id="feedback-tab"
@@ -121,12 +121,12 @@
         class="bugs-tab-panel"
         role="tabpanel"
         :aria-labelledby="isSuperAdmin ? 'bugs-tab' : undefined"
-        :aria-label="isSuperAdmin ? undefined : 'Bug 回報'"
+        :aria-label="isSuperAdmin ? undefined : '意見與建議'"
         tabindex="0"
       >
-      <!-- Quick filter buttons（Bug 回報；篩選狀態而非頁面分頁） -->
+      <!-- Quick filter buttons（意見與建議；篩選狀態而非頁面分頁） -->
       <div class="card quick-filter-card" data-guide="bugs-quick-filter">
-        <div class="quick-tabs" role="group" aria-label="Bug 狀態篩選">
+        <div class="quick-tabs" role="group" aria-label="意見與建議狀態篩選">
           <!-- Super admin tabs: 待處理 first (their default action queue) -->
           <template v-if="isSuperAdmin">
             <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'pending'" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
@@ -259,17 +259,17 @@
         </div>
       </div>
 
-      <!-- Bug list（只在 Bug Tab 顯示）-->
+      <!-- 意見與建議列表（只在主要頁籤顯示）-->
       <div v-if="!isSuperAdmin || pageTab === 'bugs'" class="card" data-guide="bugs-list" ref="listCardRef">
         <div v-if="listError" class="att-msg error bugs-error-banner" style="margin-bottom:12px">
           {{ listError }}
           <button type="button" class="btn-sm btn-ghost" style="margin-left:8px" @click="loadBugs">重試</button>
         </div>
-        <div v-if="loading" class="loading-box">載入中...</div>
+        <div v-if="loading" class="loading-box">載入中…</div>
         <div v-else-if="!listError && bugs.length === 0" class="empty-box">
           <span class="material-symbols-outlined empty-icon">check_circle</span>
-          <p v-if="hasActiveFilters">沒有符合篩選條件的 Bug</p>
-          <p v-else>目前沒有 Bug 回報</p>
+          <p v-if="hasActiveFilters">沒有符合篩選條件的意見與建議</p>
+          <p v-else>目前沒有意見與建議</p>
           <button v-if="hasActiveFilters" class="btn-sm btn-ghost" @click="clearAllFilters">清除篩選</button>
         </div>
         <template v-else>
@@ -622,7 +622,7 @@ async function doReporterVerify(verdict) {
   }
 }
 
-// ─── 頁面層級 Tab（super_admin：Bug 回報 / 家長回饋）──────────────
+// ─── 頁面層級 Tab（super_admin：意見與建議 / 家長回饋）──────────────
 const pageTab = ref('bugs');
 
 // ─── 家長回饋列表狀態 ─────────────────────────────────────────────
@@ -696,8 +696,8 @@ const resolutionNote = computed(() => {
 const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
 
 const pageTitle = computed(() => {
-  if (isSuperAdmin.value) return 'Bug 回報（處理中心）';
-  return '我的 Bug 回報';
+  if (isSuperAdmin.value) return '意見與建議（處理中心）';
+  return '我的意見與建議';
 });
 const pageDesc = computed(() => {
   if (isSuperAdmin.value) {
@@ -866,7 +866,7 @@ async function loadBugs() {
     }
   } catch (e) {
     console.error('[Bugs] loadBugs:', e);
-    listError.value = bugLoadErrorMessage(e, '無法載入 Bug 列表，請稍後再試');
+    listError.value = bugLoadErrorMessage(e, '無法載入意見與建議，請稍後再試');
     bugs.value = [];
   } finally {
     loading.value = false;

@@ -71,7 +71,7 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
       key: 'communication', title: '訊息與回報', defaultOpen: false, primary: false,
       items: [
         { page: 'chat', label: '內部訊息', icon: 'forum', badgeTypes: ['chat'] },
-        { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
+        { page: 'bugs', label: '意見與建議', icon: 'rate_review', badgeTypes: ['bugs'] },
       ],
     },
     {
@@ -110,7 +110,7 @@ function teacherGroups() {
     key: 'communication', title: '訊息與回報', defaultOpen: false, primary: false,
     items: [
       { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
-      { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
+      { page: 'bugs', label: '意見與建議', icon: 'rate_review', badgeTypes: ['bugs'] },
     ],
   }];
 }

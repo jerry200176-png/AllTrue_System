@@ -450,9 +450,9 @@ const pageGuideConfig = {
   bugs: [
     {
       target: '[data-guide="bugs-header"]',
-      icon: 'bug_report',
-      title: 'Bug 回報追蹤',
-      description: '記錄與追蹤系統問題。一般使用者可用右下角的「回報問題」按鈕新增；主任可在這裡查看所有回報並更新狀態。',
+      icon: 'rate_review',
+      title: '意見與建議',
+      description: '記錄與追蹤使用上的問題或新想法。可用右下角的「提供意見與建議」新增，主任可在這裡查看處理進度。',
       placement: 'bottom',
     },
     {
@@ -465,8 +465,8 @@ const pageGuideConfig = {
     {
       target: '[data-guide="bugs-list"]',
       icon: 'edit_note',
-      title: 'Bug 清單',
-      description: '每筆 Bug 顯示嚴重度色點、標題、狀態標籤與提交時間。點進去可查看完整描述、截圖，並更新處理狀態。',
+      title: '意見與建議列表',
+      description: '每筆回報顯示影響程度、標題、處理狀態與提交時間。點進去可查看完整描述、截圖，並更新處理狀態。',
       placement: 'top',
     },
   ],
