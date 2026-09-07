@@ -1560,10 +1560,8 @@ class ParentPortalController extends Controller
             }
         }
 
-        /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $classes */
-        $classes = StudentClass::query()
+        $classes = StudentClass::where('StudentID', $student->id)
             ->with('coursePackage')
-            ->where('StudentID', $student->id)
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             ->where(fn ($q) => $q->effectivelyUnpaid())
@@ -1596,7 +1594,7 @@ class ParentPortalController extends Controller
 
             $lineItems[] = [
                 'subject' => $subject,
-                'start_date' => $this->formatRocDate($c->StartDate),
+                'start_date' => $this->formatRocDate($c->getAttribute('StartDate')),
                 'session_count' => $sessionCount,
                 'unit_price' => $unitPrice,
                 'subtotal' => $subtotal,

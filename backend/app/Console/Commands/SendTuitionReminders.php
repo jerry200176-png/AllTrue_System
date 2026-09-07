@@ -58,10 +58,11 @@ class SendTuitionReminders extends Command
             $campusId = (int) ($student->CampusID ?? 0);
             if (!$campusId) continue;
 
-            $byCampus[$campusId][] = $student->name ?? 'Unknown';
+            $studentName = (string) ($student->getAttribute('name') ?? 'Unknown');
+            $byCampus[$campusId][] = $studentName;
 
             // Fan-out to every verified LINE binding (dad + mom), not first() only.
-            $bindings = StudentLineBinding::where('student_id', $student->id)
+            $bindings = StudentLineBinding::where('student_id', $student->getKey())
                 ->verified()
                 ->where('campus_id', $campusId)
                 ->get();
@@ -77,13 +78,13 @@ class SendTuitionReminders extends Command
 
             $subjectLabel = $this->subjectLabel($course);
             $msg = "親愛的家長您好，\n\n"
-                . "提醒您：{$student->name} 同學的「{$subjectLabel}」課程尚未完成繳費。\n\n"
+                . "提醒您：{$studentName} 同學的「{$subjectLabel}」課程尚未完成繳費。\n\n"
                 . "請盡速聯繫補習班完成繳費，以確保課程正常進行。\n\n"
                 . "如已繳費請忽略此訊息，謝謝！";
 
             foreach ($bindings as $binding) {
                 if ($dryRun) {
-                    $this->line("[dry-run] Would send LINE to {$binding->line_user_id} ({$student->name}): {$msg}");
+                    $this->line("[dry-run] Would send LINE to {$binding->line_user_id} ({$studentName}): {$msg}");
                     continue;
                 }
 
@@ -91,7 +92,7 @@ class SendTuitionReminders extends Command
                 SecurityAuditEvent::append('notification.delivery', $delivered ? 'success' : 'failure', [
                     'campus_id' => $campusId,
                     'subject_type' => 'student',
-                    'subject_id' => $student->id,
+                    'subject_id' => $student->getKey(),
                     'binding_id' => $binding->getKey(),
                 ], [
                     'method' => 'line_push',

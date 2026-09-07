@@ -14,12 +14,6 @@ use Illuminate\Support\Facades\DB;
  *           `fixed_session` when the column is null (see the accessor below).
  * @property \App\Models\Student|null $student
  * @property \App\Models\CoursePackage|null $coursePackage
- * @property int|null $PackageID
- * @property int|null $Paid
- * @property int|null $ID
- * @property string|null $StartDate
- * @method static \Illuminate\Database\Eloquent\Builder|StudentClass effectivelyPaid()
- * @method static \Illuminate\Database\Eloquent\Builder|StudentClass effectivelyUnpaid()
  */
 class StudentClass extends Model
 {
