@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "f015ba007b214bbd90eb96e109a10235",
+  "session_id": "1651e1da1eb849cb97b41fd68d640a9d",
   "project": "alltrue",
-  "task_id": "bug-254-parent-leave-cutoff",
+  "task_id": "fix-exception-recurring-guard",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "5c1357487cc86f22d6faea67ac17223b2b66e19a",
-  "branch": "chore/task-bug-254-parent-leave-cutoff",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/bug-254-parent-leave-cutoff",
-  "started_at": "2026-09-07T08:05:11Z",
+  "base_sha": "a0b46a97dab503042107fe374018f13f84d027dd",
+  "branch": "chore/task-fix-exception-recurring-guard",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/fix-exception-recurring-guard",
+  "started_at": "2026-09-07T07:29:16Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "cursor",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

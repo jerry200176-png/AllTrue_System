@@ -1749,6 +1749,10 @@ class StudentClassController extends Controller
                     'branch_id' => $studentCampusId,
                     'slots' => $recurringSlots,
                     'exclude_student_class_id' => (int) $studentClass->getAttribute('ID'),
+                    'start_date' => $this->normalizeDateString($candidate->getAttribute('StartDate')),
+                    'end_date' => $candidate->getAttribute('ScheduleMode') === 'date'
+                        ? $this->normalizeDateString($candidate->getAttribute('EndDate'))
+                        : null,
                 ]);
                 if (!empty($recurringConflicts)) {
                     return response()->json([
@@ -1786,6 +1790,24 @@ class StudentClassController extends Controller
             }
         }
 
+        [$sessionSync, $billingModeConversion, $earlyResponse] = DB::transaction(function () use (
+            $studentClass,
+            $mapped,
+            $oldScheduleMode,
+            $request,
+            $oldSessionCountSnapshot,
+            $oldRemainingSessionsSnapshot,
+            $oldTeacherSnapshot,
+            $rawInput,
+            $oldRateUnitSnapshot,
+            $oldRateSnapshot,
+            $oldTotalHoursSnapshot,
+            $oldChargeSnapshot,
+            $previousStartDate,
+            $scheduleSlotsForRebuild,
+            $previousScheduleSlots,
+            $scheduleFieldsPresent
+        ) {
         $studentClass->update($mapped);
         $studentClass->refresh();
 
@@ -1912,12 +1934,12 @@ class StudentClassController extends Controller
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
             if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
-                return response()->json(array_merge($studentClass->fresh()->toArray(), [
+                return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt' => false,
                         'reason' => 'manual_occurrence_policy',
                     ],
-                ]));
+                ]))];
             }
             $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlotsForRebuild);
             if (!empty($slots)) {
@@ -1928,14 +1950,14 @@ class StudentClassController extends Controller
                     $durationMinutes,
                     $previousScheduleSlots
                 );
-                return response()->json(array_merge($studentClass->fresh()->toArray(), [
+                return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
                         'reason'                  => 'force_partial_rebuild',
                         'updated_future_sessions' => $updatedCount,
                         'reconcile_skipped'       => true,
                     ],
-                ]));
+                ]))];
             }
         }
 
@@ -1969,6 +1991,13 @@ class StudentClassController extends Controller
         $monthlySessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
         if (($monthlySessionSync['created_sessions'] ?? 0) > 0) {
             $sessionSync['monthly_future_sessions_created'] = (int) $monthlySessionSync['created_sessions'];
+        }
+
+        return [$sessionSync, $billingModeConversion, null];
+        });
+
+        if ($earlyResponse !== null) {
+            return $earlyResponse;
         }
 
         $payload = $studentClass->toArray();
@@ -6390,28 +6419,6 @@ class StudentClassController extends Controller
     }
 
     /**
-     * Return true only when every submitted fixed slot is an unchanged old
-     * slot and at least one old slot was removed. Any added or moved slot must
-     * retain the normal conflict validation path.
-     *
-     * @param  array<int, array{weekday:int,time:string}>  $previousSlots
-     * @param  array<int, array{weekday:int,time:string}>  $newSlots
-     */
-    private function isPureFixedSlotRemoval(array $previousSlots, array $newSlots): bool
-    {
-        if (empty($previousSlots) || empty($newSlots) || count($newSlots) >= count($previousSlots)) {
-            return false;
-        }
-
-        $slotKey = static fn (array $slot): string => (int) ($slot['weekday'] ?? 0)
-            . '|' . substr((string) ($slot['time'] ?? ''), 0, 5);
-        $oldKeys = array_values(array_unique(array_map($slotKey, $previousSlots)));
-        $newKeys = array_values(array_unique(array_map($slotKey, $newSlots)));
-
-        return count(array_diff($newKeys, $oldKeys)) === 0;
-    }
-
-    /**
      * When SessionCount is reduced, cancel scheduled sessions beyond the new limit.
      * Only cancels sessions whose Status is 'scheduled'; attended/late/absent sessions are untouched.
      *
@@ -6724,6 +6731,12 @@ class StudentClassController extends Controller
             return 0;
         }
 
+        return DB::transaction(function () use (
+            $studentClassId,
+            $slots,
+            $durationMinutes,
+            $slotsByWeekday
+        ) {
         $lockedBySessionId = LearningRecord::where('StudentClassID', $studentClassId)
             ->where('Status', 'approved')
             ->whereNotNull('ClassSessionID')
@@ -6749,6 +6762,36 @@ class StudentClassController extends Controller
             ->orderBy('SessionDate')
             ->orderBy('StartTime')
             ->get();
+
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            foreach ($sessions as $session) {
+                if (empty($session->IsContractException)) {
+                    continue;
+                }
+                $date = $this->normalizeDateString($session->SessionDate ?? null);
+                if (!$date || empty($session->StartTime) || empty($session->EndTime)) {
+                    continue;
+                }
+                $sessionStartHm = substr($this->normalizeSessionTime($session->StartTime), 0, 5);
+                $sessionEndHm = substr($this->normalizeSessionTime($session->EndTime), 0, 5);
+                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
+                $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($sessionStartHm, $sessionEndHm, $durationMinutes) {
+                    $slotStartFull = $this->normalizeSessionTime($s['time'] ?? '', '16:00:00');
+                    $slotStartHm = substr($slotStartFull, 0, 5);
+                    $dur = max(30, (int) ($s['dur'] ?? $durationMinutes));
+                    $expectedEndHm = Carbon::createFromFormat('H:i:s', $slotStartFull)->addMinutes($dur)->format('H:i');
+                    return $sessionStartHm === $slotStartHm && $sessionEndHm === $expectedEndHm;
+                });
+                if ($matchesSlot) {
+                    // Safe adoption / regularization: this session was an exception,
+                    // but the new fixed schedule now covers its weekday, start time, AND end time!
+                    // Clear the exception flag and adopt it into regular contract.
+                    $session->IsContractException = 0;
+                    $session->save();
+                }
+            }
+        }
 
         $unlocked = $sessions->filter(function ($session) use ($lockedBySessionId) {
             if (isset($lockedBySessionId[(int) $session->id])) {
@@ -6798,26 +6841,14 @@ class StudentClassController extends Controller
         }
 
         if ($needsRemap && $unlocked->isNotEmpty()) {
-            $removalOnly = $this->isPureFixedSlotRemoval($previousScheduleSlots, $slots);
-            $lockedTargetKeys = $removalOnly
-                ? $sessions->filter(function ($session) use ($lockedBySessionId, $slotsByWeekday) {
-                    if (!isset($lockedBySessionId[(int) $session->id]) || !empty($session->IsContractException)) {
-                        return false;
-                    }
-                    $date = $this->normalizeDateString($session->SessionDate ?? null);
-                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                    if (!$date || $start === '') {
-                        return false;
-                    }
-                    $weekday = (int) Carbon::parse($date)->dayOfWeekIso;
-                    return collect($slotsByWeekday[$weekday] ?? [])
-                        ->contains(fn ($slot) => substr((string) ($slot['time'] ?? ''), 0, 5) === $start);
-                })->mapWithKeys(function ($session) {
-                    $date = $this->normalizeDateString($session->SessionDate ?? null);
-                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                    return $date && $start ? ["{$date}|{$start}" => true] : [];
-                })->all()
-                : [];
+            $unlockedIds = $unlocked->mapWithKeys(fn ($s) => [(int) $s->id => true])->all();
+            $lockedTargetKeys = $sessions->filter(function ($session) use ($unlockedIds) {
+                return !isset($unlockedIds[(int) $session->id]);
+            })->mapWithKeys(function ($session) {
+                $date = $this->normalizeDateString($session->SessionDate ?? null);
+                $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                return $date && $start ? ["{$date}|{$start}" => true] : [];
+            })->all();
 
             $contractStartDate = $this->normalizeDateString(
                 DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
@@ -6928,6 +6959,7 @@ class StudentClassController extends Controller
             }
             return $updated;
         }
+        });
     }
 
     private function hasSessionStartDateMismatch(int $studentClassId, string $startDate): bool
