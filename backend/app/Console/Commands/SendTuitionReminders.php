@@ -29,11 +29,13 @@ class SendTuitionReminders extends Command
 
             // Prefer created_at when present; legacy rows / test schemas use MDate.
             $overdueColumn = Schema::hasColumn('StudentClass', 'created_at') ? 'created_at' : 'MDate';
-            $unpaidCourses = StudentClass::with(['student'])
-            ->where('Stop', 0)
-            ->where('Paid', 0)
-            ->whereDate($overdueColumn, '<=', $cutoff)
-            ->get();
+            /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $unpaidCourses */
+            $unpaidCourses = StudentClass::query()
+                ->with(['student', 'coursePackage'])
+                ->where('Stop', 0)
+                ->where(fn ($q) => $q->effectivelyUnpaid())
+                ->whereDate($overdueColumn, '<=', $cutoff)
+                ->get();
 
         if ($unpaidCourses->isEmpty()) {
             $this->info('No overdue unpaid courses found.');
@@ -46,6 +48,10 @@ class SendTuitionReminders extends Command
         $byCampus = [];
 
         foreach ($unpaidCourses as $course) {
+            if ($course->isEffectivelyPaid()) {
+                continue;
+            }
+
             $student = $course->student;
             if (!$student) continue;
 

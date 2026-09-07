@@ -145,11 +145,11 @@ class NotificationSyncService
     private static function buildTuitionNotifications(array $campusIds): array
     {
         $query = StudentClass::query()
-            ->with(['student', 'subjectRecord'])
+            ->with(['student', 'subjectRecord', 'coursePackage'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             // Keep tuition notifications focused on unpaid classes only.
-            ->where('Paid', 0);
+            ->where(fn ($q) => $q->effectivelyUnpaid());
 
         if (!empty($campusIds)) {
             $query->whereHas('student', function ($sub) use ($campusIds) {
@@ -209,10 +209,10 @@ class NotificationSyncService
     {
         // 已繳費但剩 1–2 堂：續課／加購提醒。未繳費者已由 buildTuitionNotifications 處理，避免同一課程兩則通知。
         $query = StudentClass::query()
-            ->with(['student', 'subjectRecord'])
+            ->with(['student', 'subjectRecord', 'coursePackage'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
-            ->where('Paid', 1)
+            ->where(fn ($q) => $q->effectivelyPaid())
             ->where('RemainingSessions', '<=', 2)
             ->where('RemainingSessions', '>', 0); // 僅提醒 1–2 堂（0 堂不列入低堂數推播）
 

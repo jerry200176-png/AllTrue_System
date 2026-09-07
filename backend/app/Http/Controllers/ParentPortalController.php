@@ -730,8 +730,8 @@ class ParentPortalController extends Controller
         //   - 堂數制：剩餘 > 0 才顯示（已用完或已停課+已繳不列）
         //   - 月結制：保留已繳結案課程，前端以「已繳費・課程已結束」降低家長誤解
         $perCourse = $classes
-            ->filter(function ($c) use ($sessionMetrics) {
-                $paid    = (bool) $c->Paid;
+            ->filter(function ($c) use ($sessionMetrics, $paidAtMap) {
+                $paid    = $this->isClassPaid($c, $paidAtMap);
                 $stopped = (bool) $c->Stop;
                 $isCount = (string) ($c->ScheduleMode ?? 'count') === 'count';
 
@@ -877,11 +877,11 @@ class ParentPortalController extends Controller
             })
             ->values();
 
-        $upcomingClassIds = $classes->filter(function ($c) use ($sessionMetrics) {
+        $upcomingClassIds = $classes->filter(function ($c) use ($sessionMetrics, $paidAtMap) {
             if ((string) ($c->ScheduleMode ?? 'count') === 'count') {
                 return (int) $sessionMetrics($c)['remaining'] > 0;
             }
-            if ((bool) $c->Stop && (bool) $c->Paid) {
+            if ((bool) $c->Stop && $this->isClassPaid($c, $paidAtMap)) {
                 return false;
             }
 
@@ -1560,10 +1560,13 @@ class ParentPortalController extends Controller
             }
         }
 
-        $classes = StudentClass::where('StudentID', $student->id)
+        /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $classes */
+        $classes = StudentClass::query()
+            ->with('coursePackage')
+            ->where('StudentID', $student->id)
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
-            ->where('Paid', 0)
+            ->where(fn ($q) => $q->effectivelyUnpaid())
             ->orderBy('StartDate')
             ->orderBy('ID')
             ->get();
@@ -1575,6 +1578,9 @@ class ParentPortalController extends Controller
         $lineItems = [];
         $totalAmount = 0;
         foreach ($classes as $c) {
+            if ($c->isEffectivelyPaid()) {
+                continue;
+            }
             $subject = $this->resolveSubjectName($c);
             $sessionCount = (int) ($c->SessionCount ?? 0);
             if ($sessionCount <= 0) {
@@ -1998,7 +2004,7 @@ class ParentPortalController extends Controller
 
     private function isClassPaid(StudentClass $class, array $paidAtMap): bool
     {
-        return (bool) ($class->Paid ?? false) || array_key_exists((int) $class->ID, $paidAtMap);
+        return $class->isEffectivelyPaid() || array_key_exists((int) $class->ID, $paidAtMap);
     }
 
     private function resolveMonthlyDisplayPeriod(StudentClass $class, $invoiceRows): string

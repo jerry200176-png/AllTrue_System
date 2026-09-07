@@ -4,6 +4,23 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $student_id
+ * @property int $campus_id
+ * @property string $name
+ * @property int $total_sessions
+ * @property int $remaining_sessions
+ * @property int $used_sessions
+ * @property float $rate
+ * @property bool $paid
+ * @property string|null $paid_at
+ * @property bool $stop
+ * @property string|null $closed_reason
+ * @property bool $enabled
+ * @method static \Illuminate\Database\Eloquent\Builder|CoursePackage query()
+ * @method static \Illuminate\Database\Eloquent\Builder|CoursePackage where($column, $operator = null, $value = null, $boolean = 'and')
+ */
 class CoursePackage extends Model
 {
     protected $table = 'course_packages';
@@ -74,5 +91,13 @@ class CoursePackage extends Model
         $this->remaining_sessions = $remaining;
         $this->used_sessions = max(0, $this->total_sessions - $remaining);
         $this->save();
+    }
+
+    /**
+     * Check if this course package is settled (paid).
+     */
+    public function isSettled(): bool
+    {
+        return (bool) ($this->paid ?? false);
     }
 }
