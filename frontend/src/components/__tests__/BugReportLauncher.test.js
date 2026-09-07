@@ -183,7 +183,28 @@ describe('bug report attachments', () => {
     expect(JSON.parse(payload.client_info)).toMatchObject({
       occurrenceAt: '2026-08-29T14:30',
       relatedReference: '學生 271／課堂 32570',
+      feedbackType: 'bug',
     });
+    wrapper.unmount();
+  });
+
+  it('offers friendly feedback directions and preserves the internal category', async () => {
+    const wrapper = await openLauncher();
+    expect(document.body.textContent).toContain('使用上有問題');
+    expect(document.body.textContent).toContain('希望更好用');
+    expect(document.body.textContent).toContain('想要新功能');
+
+    const featureOption = bodyElement('input[type="radio"][value="feature"]');
+    featureOption.click();
+    const textarea = bodyElement('#bug-report-description');
+    textarea.value = '希望依月份查看老師統計';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    bodyElement('.btn-submit').click();
+    await flushPromises();
+
+    expect(JSON.parse(submitBugReport.mock.calls.at(-1)[0].client_info)).toMatchObject({ feedbackType: 'feature' });
+    expect(document.body.textContent).not.toContain('Bug');
     wrapper.unmount();
   });
 
@@ -318,8 +339,9 @@ describe('bug report composer accessibility', () => {
   });
 
   it('gives the attachment trigger and submit feedback explicit semantics', () => {
-    expect(source).toContain('aria-label="回報系統問題"');
+    expect(source).toContain('aria-label="提供意見與建議"');
     expect(source).toContain('aria-label="新增截圖"');
+    expect(source).toContain('不用判斷是不是問題');
     expect(source).toContain('class="success-msg" role="status" aria-live="polite"');
     expect(source).toContain('class="error-msg" role="alert"');
   });

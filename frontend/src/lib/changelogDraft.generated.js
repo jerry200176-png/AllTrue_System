@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.08",
+    "date": "2026-09-08",
+    "title": "2026.09.08 草稿（未發布）",
+    "summary": "意見與建議入口更容易使用",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "其他改善",
+        "items": [
+          "意見與建議入口更容易使用"
+        ]
+      }
+    ],
+    "items": [
+      "意見與建議入口更容易使用"
+    ]
+  },
+  {
     "version": "2026.09.07",
     "date": "2026-09-07",
     "title": "2026.09.07 草稿（未發布）",
@@ -646,32 +668,6 @@ export const changelogDraftNotes = [
       "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
       "未收款課程堂數與費用更正",
       "DB credential mismatch recovered"
-    ]
-  },
-  {
-    "version": "2026.08.21",
-    "date": "2026-08-21",
-    "title": "2026.08.21 草稿（未發布）",
-    "summary": "家長端檢測進度與補強狀態；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "家長端檢測進度與補強狀態",
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "學習檢測與補強追蹤"
-        ]
-      }
-    ],
-    "items": [
-      "家長端檢測進度與補強狀態",
-      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-      "學習檢測與補強追蹤"
     ]
   }
 ];

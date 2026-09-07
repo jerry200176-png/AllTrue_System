@@ -11,16 +11,16 @@
       @pointerup="onFabPointerUp"
       @pointercancel="onFabPointerUp"
       @click="onFabClick"
-      aria-label="回報系統問題"
-      title="回報問題（可拖曳）"
+      aria-label="提供意見與建議"
+      title="意見與建議（可拖曳）"
     >
-      <span class="material-symbols-outlined">bug_report</span>
+      <span class="material-symbols-outlined">rate_review</span>
     </button>
 
     <!-- Submit dialog -->
     <AtDialog
       :open="showForm"
-      title="回報系統問題"
+      title="意見與建議"
       size="md"
       panel-class="bug-report-dialog"
       :close-on-backdrop="!submitting && !isDirty"
@@ -30,12 +30,30 @@
       <div class="bug-report-form" @paste="onPaste">
         <template v-if="!submitSuccess">
 
-        <label for="bug-report-title">問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
-        <input id="bug-report-title" v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
+        <label for="bug-report-title">一句話說明 <span class="optional">（選填，自動帶入頁面）</span></label>
+        <input id="bug-report-title" v-model="title" class="form-input" placeholder="簡述你想告訴我們的事（留空則自動填入）" maxlength="200" />
 
-        <label for="bug-report-description">詳細描述 <span class="required">*</span></label>
-        <textarea id="bug-report-description" v-model="description" class="form-textarea" placeholder="請描述：做了什麼、實際看到什麼、原本預期什麼？" rows="4" maxlength="5000" aria-required="true"></textarea>
-        <p class="description-hint">若問題只在特定資料出現，請在下方補充時間或資料編號；請勿填寫密碼。</p>
+        <fieldset class="feedback-type">
+          <legend>想告訴我們什麼？</legend>
+          <div class="feedback-type-options">
+            <label
+              v-for="option in feedbackTypeOptions"
+              :key="option.value"
+              class="feedback-type-option"
+              :class="{ selected: feedbackType === option.value }"
+            >
+              <input v-model="feedbackType" type="radio" name="feedback-type" :value="option.value" />
+              <span>
+                <strong>{{ option.label }}</strong>
+                <small>{{ option.description }}</small>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <label for="bug-report-description">請告訴我們發生了什麼 <span class="required">*</span></label>
+        <textarea id="bug-report-description" v-model="description" class="form-textarea" :placeholder="descriptionPlaceholder" rows="4" maxlength="5000" aria-required="true"></textarea>
+        <p class="description-hint">不用判斷是不是問題，照你看到的情況寫就可以。若只在特定資料出現，再補充時間或資料編號；請勿填寫密碼。</p>
 
         <div class="triage-context" aria-label="協助定位問題的補充資訊">
           <label for="bug-occurrence-at">發生時間 <span class="optional">（選填）</span></label>
@@ -93,12 +111,12 @@
         </div>
         <div class="attachment-count" aria-live="polite">已加入 {{ attachmentFiles.length }} / {{ maxFiles }} 張</div>
 
-        <label for="bug-report-severity">嚴重程度</label>
+        <label for="bug-report-severity">影響程度</label>
         <select id="bug-report-severity" v-model="severity" class="form-select">
-          <option value="low">低 — 不影響使用</option>
-          <option value="medium">中 — 有些不方便</option>
-          <option value="high">高 — 影響工作</option>
-          <option value="critical">嚴重 — 完全無法使用</option>
+          <option value="low">不影響工作</option>
+          <option value="medium">有些不方便</option>
+          <option value="high">影響目前工作</option>
+          <option value="critical">目前無法繼續</option>
         </select>
 
         <div class="context-info">
@@ -111,7 +129,7 @@
           <div class="submission-success">
             <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
             <strong>已提交<span v-if="submittedBugId">（編號 #{{ submittedBugId }}）</span></strong>
-            <p class="success-description">你可以到 Bug 回報查看處理進度與後續回覆。</p>
+            <p class="success-description">你可以到「意見與建議」查看處理進度與後續回覆。</p>
             <button type="button" class="btn-submit success-track-button" @click="openSubmittedReport">
               查看回報進度
             </button>
@@ -126,7 +144,7 @@
         <template v-else>
           <button type="button" class="btn-cancel" :disabled="submitting" @click="requestCloseForm">取消</button>
           <button type="button" class="btn-submit" :disabled="!canSubmit || submitting" @click="doSubmit">
-            {{ submitting ? '提交中...' : '提交回報' }}
+            {{ submitting ? '提交中…' : '送出意見' }}
           </button>
         </template>
       </template>
@@ -163,6 +181,7 @@ const submittedBugId = ref(null);
 const submitError = ref('');
 const attachmentError = ref('');
 const attachmentFiles = ref([]);
+const feedbackType = ref('bug');
 const fileInputRef = ref(null);
 const maxFiles = MAX_BUG_ATTACHMENTS;
 const attachmentDragging = ref(false);
@@ -170,6 +189,18 @@ let attachmentDragDepth = 0;
 let attachmentSequence = 0;
 
 const emit = defineEmits(['open-bugs']);
+
+const feedbackTypeOptions = [
+  { value: 'bug', label: '使用上有問題', description: '哪一步卡住、畫面不如預期' },
+  { value: 'ux', label: '希望更好用', description: '哪個步驟希望更順手' },
+  { value: 'feature', label: '想要新功能', description: '想新增什麼，能幫你完成哪件事' },
+];
+
+const descriptionPlaceholder = computed(() => ({
+  bug: '例如：我在「出缺勤」按下儲存後，畫面沒有更新。',
+  ux: '例如：我每天要重複找同一位學生，希望能更快找到。',
+  feature: '例如：希望可以依月份查看每位老師的授課統計。',
+}[feedbackType.value]));
 
 function getAuthorizedCampuses() {
   try {
@@ -407,6 +438,7 @@ function closeForm() {
   submittedBugId.value = null;
   submitSuccess.value = false;
   severity.value = 'medium';
+  feedbackType.value = 'bug';
   submitError.value = '';
   attachmentError.value = '';
 }
@@ -481,6 +513,7 @@ async function doSubmit() {
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null,
       occurrenceAt: occurrenceAt.value || null,
       relatedReference: (relatedReference.value.trim() || '').slice(0, 300) || null,
+      feedbackType: feedbackType.value,
     });
     const clientInfo = rawClientInfo.length > 1950 ? rawClientInfo.slice(0, 1950) : rawClientInfo;
 
@@ -518,6 +551,7 @@ async function doSubmit() {
     occurrenceAt.value = '';
     relatedReference.value = '';
     severity.value = 'medium';
+    feedbackType.value = 'bug';
     clearAttachments();
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
@@ -553,6 +587,53 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
   border-radius: 8px; font-size: 14px; font-family: inherit;
 }
 .form-textarea { resize: vertical; }
+.feedback-type {
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+}
+.feedback-type legend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.feedback-type-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.feedback-type-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 70px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  cursor: pointer;
+}
+.feedback-type-option.selected {
+  border-color: var(--ds-primary);
+  background: var(--ds-primary-wash);
+}
+.feedback-type-option input {
+  margin-top: 2px;
+  accent-color: var(--ds-primary);
+}
+.feedback-type-option span {
+  display: grid;
+  gap: 3px;
+}
+.feedback-type-option strong { font-size: 13px; }
+.feedback-type-option small {
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+}
 .description-hint {
   margin: 5px 0 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5;
 }
@@ -634,5 +715,7 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
 
 @media (max-width: 768px) {
   .fab { width: 48px; height: 48px; }
+  .feedback-type-options { grid-template-columns: 1fr; }
+  .feedback-type-option { min-height: 0; }
 }
 </style>

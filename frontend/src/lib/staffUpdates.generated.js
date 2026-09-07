@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-08-feedback-entry-ux",
+    "publishedAt": "2026-09-08",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "意見與建議入口更好用",
+    "summary": "不用判斷是不是系統問題，也能直接告訴我們遇到的情況或想法。",
+    "items": [
+      "原本的問題回報與清單改稱「意見與建議」，並換成中性的回饋圖示。",
+      "送出前可選擇使用上有問題、希望更好用或想要新功能，描述方式更自然。",
+      "仍會保留目前頁面、發生時間、相關資料與截圖，幫助團隊更快了解情況。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "原本的問題回報與清單改稱「意見與建議」，並換成中性的回饋圖示。",
+          "仍會保留目前頁面、發生時間、相關資料與截圖，幫助團隊更快了解情況。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "送出前可選擇使用上有問題、希望更好用或想要新功能，描述方式更自然。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-08:feedback-entry-ux"
+    ],
+    "date": "2026-09-08",
+    "version": "2026.09.08"
+  },
+  {
     "id": "staff-2026-09-07-sidebar-search-and-shortcuts",
     "publishedAt": "2026-09-07",
     "effectiveAt": null,
