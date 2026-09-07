@@ -19,7 +19,7 @@
 | 現在的工程主線是什麼？ | [`architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md`](architecture/ALLTRUE_ENGINEERING_NORTH_STAR.md) → 排課根治 [`architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md`](architecture/RFC_SCHEDULE_OCCURRENCE_IDENTITY.md)（TD-076；**非**整包重構） |
 | 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
 | production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
-| 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
+| 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) (revert commit → main CI → Founder-approved exact-main deploy; data repairs use Repair Manifest rollback) |
 | 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`/Cursor) |
 | 哪些只是歷史？ | Paths under `docs/archive/` + files marked Historical; radar `runs/` = generated evidence |
 | bug 如何追溯到 production？ | [`878-release-deploy-trace.md`](runbooks/878-release-deploy-trace.md) → in-app bug → PR → deploy Actions → `version.json` / repair run → KG row ([`knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)) |

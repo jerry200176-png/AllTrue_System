@@ -74,7 +74,7 @@ Policy MUST NOT replace `deploy.yml`. Runbooks describe steps; they do not execu
 
 **If the system cannot be stabilized OR root cause cannot be identified within 15 minutes → mandatory rollback** — unless [Rollback Safety Exception](#rollback-safety-exception) applies.
 
-Rollback = revert bad commit on `main` and redeploy via `deploy.yml`, OR re-run last successful `Deploy to Pi` workflow. Investigate after service is stable.
+Rollback = revert bad commit on `main` → main CI → Founder-approved exact-main deployment via `deploy.yml`. (Note: `deploy.yml` strictly enforces `target_sha == current main`; historical-SHA dispatch or re-running prior deploy runs fails closed). Investigate after service is stable.
 
 Log `T0` = first alert or user report. At `T0 + 15 min`, if still impaired → **rollback now** (or recovery mode if safety exception applies).
 
@@ -159,11 +159,11 @@ Rollback Safety Exception (DB corruption / irreversible migration / data loss am
 Site down or Unknown (and not stable by T+15)?
   └─ Deploy-related (recent merge/deploy)?
        YES → Rollback via deploy.yml path (below) — incident decision triggers deploy execution
-       NO  → RUNBOOK_ROLLBACK §3b OR §3c if DB; at T+15 still unknown → rollback unless safety exception
+       NO  → RUNBOOK_ROLLBACK §3a (code) OR §3c if DB; at T+15 still unknown → rollback unless safety exception
 
 CI broken?
   └─ Production OK → fix CI (runner, fix/* branch); P1
-  └─ Production down + CI blocks hotfix → rollback via §3b if needed; bypass only per OPERATIONS_RUNBOOK §B2-12 + document
+  └─ Production down + CI blocks hotfix → emergency ops per OPERATIONS_RUNBOOK §B2-12 + document
 
 DB issue?
   └─ Backup → migrate:rollback if deploy migration (RUNBOOK §3c)
@@ -173,25 +173,32 @@ DB issue?
 
 ### Deploy-related → rollback via `deploy.yml` path
 
-**Preferred (main has bad commit):**
+**Supported path (bad commit merged/deployed):**
 
+Because `deploy.yml` strictly enforces `target_sha == current main`, historical-SHA dispatch or re-running past deploy runs is rejected by GitHub Actions gates. The only supported post-success rollback path is:
+
+1. Create a revert branch and commit:
 ```bash
 cd <safe-task-worktree>  # never /home/jerry/alltrue — WORKTREE_POLICY.md
 git fetch origin main && git checkout -b fix/rollback-<slug> origin/main
 git revert --no-edit <bad-commit-hash>
 git push -u origin HEAD
 gh pr create --title "revert: hotfix rollback" --body "Incident rollback"
-# CI green → merge → deploy.yml redeploys
 ```
-
-**Faster (CI unavailable, site down):**
-
+2. Merge revert PR to `main` (fast-track merge via standard gates).
+3. Ensure `CI — PHPUnit Tests` succeeds on `main` for the new revert SHA (`$REVERT_SHA`).
+4. Trigger production deployment targeting current `main`:
+   - Auto-deploy (if eligible): `deploy.yml` deploys `$REVERT_SHA`.
+   - Manual/protected activation:
 ```bash
-gh run list --workflow="Deploy to Pi" --limit 10
-# Re-run last SUCCESSFUL deploy, OR RUNBOOK_ROLLBACK.md §3b
+gh workflow run deploy.yml \
+  --ref main \
+  -f phase=application-deploy \
+  -f target_sha="$REVERT_SHA" \
+  -f confirm="ACTIVATE_PRODUCTION:$REVERT_SHA"
 ```
 
-**Auto-rollback:** If latest deploy failed with rollback success in log, wait before manual action unless health still bad at T+5.
+**Auto-rollback (in-flight only):** If a deployment run itself fails health or smoke checks, `deploy.yml` automatically resets Pi to `PREV_COMMIT` before concluding failed. Check Actions log for rollback status.
 
 Full detail: [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md)
 

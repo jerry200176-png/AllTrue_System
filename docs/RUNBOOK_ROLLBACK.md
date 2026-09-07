@@ -11,7 +11,9 @@ last_reviewed: 2026-06-07
 > 對應自動化：`.github/workflows/rollback-readiness.yml` + `scripts/rollback-readiness.sh`（非破壞性就緒度檢查，#733）。
 >
 > 前置認知：本系統部署是 **git-commit 為基礎**（非 Docker image）。
-> Pi `/home/admin` 跟隨 `origin/main`；回滾 = 把 main 回到良好 commit，再讓 **`deploy.yml`**（`Deploy to Pi`）重佈。
+> Pi `/home/admin` 跟隨 `origin/main`；`deploy.yml` 設有嚴格的 **exact-main 閘門**（`target_sha == current main SHA`）。
+> 因此：**不支援**直接用歷史 SHA 跑 `workflow_dispatch` 或 re-run 過去的 deploy run。
+> 生產部署完成後的回滾（Post-success rollback）= **建立 revert commit 推進 main → main CI 通過 → Founder 批准之 exact-main `deploy.yml` 部署**。
 
 ---
 
@@ -19,9 +21,9 @@ last_reviewed: 2026-06-07
 
 | 情境 | 最快動作 | 章節 |
 |---|---|---|
-| deploy 後 health/smoke 自己失敗 | **不用動**——`deploy.yml` 已自動回滾到上一 commit | §2 |
-| 自動回滾沒救起來 / 已過一陣子才發現 | 開 **revert PR**（`git revert <hash>` → PR → merge → 自動重佈） | §3a |
-| 站全掛、等不及 CI | 走 §3b **緊急 Pi 重佈**（re-run 上一個成功 deploy） | §3b |
+| deploy 執行中 health/smoke 失敗 | **不用動**——`deploy.yml` 內建自動回滾（重設回 `PREV_COMMIT`） | §2 |
+| deploy 成功後才發現異常 / 壞版已上線 | 開 **revert PR** → merge 到 main → main CI 綠 → Founder 批准 exact-main `deploy.yml` | §3a |
+| 欲輸入歷史 SHA 或 re-run 舊 deploy？ | **不支援**——`deploy.yml` 嚴格限制 `target_sha == current main`，歷史 SHA dispatch 會 fail-closed | §3b |
 | 資料被寫壞 / migration 有破壞性 | §3c **DB 回滾 + 還原備份**（先備份再動） | §3c |
 
 ⛔ 紅線：**禁止**直接 SSH 進 Pi 改程式碼（事故 B/C/E）。回滾一律走 git + **`deploy.yml`**。
@@ -56,35 +58,76 @@ last_reviewed: 2026-06-07
 
 ## 3. 手動回滾 SOP
 
-### 3a. 程式碼回滾（正規路徑，首選）
+### 3a. 程式碼回滾（支援之正規路徑，首選）
 
-適用：壞版已 merge 進 main、但站還活著（或自動回滾已把 Pi 拉回舊版，但 main 仍是壞的）。
+適用：壞版已 merge 進 main 並完成部署，需要將 production 程式碼回退到先前的良好狀態。
 
+> **核心機制**：因為 `deploy.yml` 強制驗證 `target_sha == current main SHA`，且 GitHub Ruleset 禁止 force-push，回滾必須透過建立「revert commit」前進 main，走正規部署路徑重佈。
+
+步驟：
+1. **建立 revert 分支與 commit**（在安全 task worktree 內操作，見 `docs/governance/WORKTREE_POLICY.md`）：
 ```bash
-# 在安全 task worktree（見 docs/governance/WORKTREE_POLICY.md）
 git fetch origin main && git checkout -b fix/rollback-<slug> origin/main
 git revert --no-edit <壞掉的 merge commit hash>     # squash merge 為一般 commit，免 -m
-# 若 revert 出衝突 → 手動解 → git revert --continue
+# 若 revert 出衝突 → 手動解衝突 → git revert --continue
 git push -u origin HEAD
 gh pr create --title "revert: 回滾 <壞功能>（hotfix）" --body "Closes/Refs #<issue>"
 ```
-
-→ CI 綠 → merge → `deploy.yml` 自動把 production 重佈到 revert 後的良好狀態。
 這條路徑可被 `scripts/rollback-readiness.sh` 的 CHECK 3 預先驗證（最新 commit 是否可乾淨 revert）。
 
-### 3b. 緊急 Pi 重佈（站全掛、等不及 CI）
+2. **Merge 到 main 並等待 main CI**：
+   - 通過 PR CI checks 後，依照合規流程 squash-merge 回 `main`。
+   - 取得 merge 後在 `main` 上的全新 commit SHA（記為 `$REVERT_SHA`）。
+   - 等待 `main` 上的 `CI — PHPUnit Tests` 成功跑完（`deploy.yml` 要求 target SHA 必須有成功的 main CI 記錄）。
 
-優先用「重跑上一個成功的 deploy run」而非手動 SSH：
-
+3. **觸發 Production 部署（Founder-approved exact-main deployment）**：
+   - 若為 T1（auto-deploy 模式）：`deploy.yml` 會在 main CI 成功後由 `workflow_run` 自動觸發並部署 `$REVERT_SHA`。
+   - 若為 T2/T3 或處於 `merged-awaiting-activation`：由 Founder 透過 `workflow_dispatch` 執行 exact-main 啟動：
 ```bash
-# 找上一個 deployable 成功的 commit / run
-gh run list --workflow="Deploy to Pi" --limit 10
-# 對上一個成功的 commit 重新觸發部署（最安全：把 main 指到該 commit 走正規流程）
+gh workflow run deploy.yml \
+  --ref main \
+  -f phase=application-deploy \
+  -f target_sha="$REVERT_SHA" \
+  -f confirm="ACTIVATE_PRODUCTION:$REVERT_SHA"
 ```
 
-若連 GitHub Actions 都不可用，才走 `docs/DEPLOYMENT.md` 緊急手動前端部署路徑；
-完成後**仍要補 PR/CI**，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄此例外（見 §B2 規則 12）。
-⛔ 不在 Pi 直接編輯程式碼；緊急重佈也只做 `git fetch + reset 到良好 commit + optimize`（等同 `deploy.yml` 動作）。
+4. **驗證回滾結果**：
+```bash
+curl -fsS https://daan.lifenet.com.tw/api/v1/health
+curl -fsS https://daan.lifenet.com.tw/version.json
+```
+確認 `version.json` 的 `build_sha` 為 `$REVERT_SHA`，且 health 為 `ok`。
+
+### 3b. 為什麼不能「re-run 舊 deploy」或「workflow_dispatch 歷史 SHA」？
+
+許多工程師在出事時直覺想「找上一個成功的 GitHub Actions run 點 re-run」或「在 `deploy.yml` 的 `target_sha` 輸入上一版的 commit hash」。**這兩者在 AllTrue 系統中都會被嚴格阻擋並失敗：**
+
+1. **`resolve-target` 閘門攔截**：
+   `deploy.yml` 的 `resolve-target` 步驟會呼叫 GitHub API 比對目前 `main` 的最新 commit：
+   ```bash
+   MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+   if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
+     echo "::error::Manual activation must target the current main SHA; requested ${TARGET_SHA}, current ${MAIN_SHA}."
+     exit 1
+   fi
+   ```
+   若輸入歷史 SHA，workflow 在前 30 秒內就會直接 `exit 1` 失敗，根本不會進入部署階段。
+
+2. **`Final exact-main gate before production executor` 攔截**：
+   即使 re-run 過去的 workflow_run，在進入 production executor 前仍會再次查驗 GitHub API，確認目標仍是當前 main HEAD；若 main 已推進，舊 run 會被判定為 stale target 立即中斷。
+
+3. **Pi 部署腳本遠端防線**：
+   Pi 上的 deploy 執行器亦會檢驗 `origin/main == TARGET_SHA`。若 main 在 activation 後前進，部署立刻中止。
+
+**為何維持此一嚴格限制（不放寬 exact-main gate）：**
+- 防止 production 與 git 歷史分岔（lineage drift）。
+- 防止跳過 CI 測試直接覆蓋生產環境。
+- 確保所有生產狀態都能在 `main` 完整追溯，且受 GitHub ruleset 保護。
+
+因此：**發生線上事故時，唯一支援的標準程式碼回滾路徑就是 §3a（revert commit → merge to main → main CI 綠 → Founder 批准 exact-main deploy）**。
+
+若連 GitHub Actions 基礎設施本身完全癱瘓不可用：
+才得在 Founder 明確授權下參考 `docs/DEPLOYMENT.md` 與 `docs/DANGEROUS_OPERATIONS.md` 走極端離線維運程序，且恢復後仍**必須立即補齊 PR/CI 與 CHANGELOG 記錄**（見 `OPERATIONS_RUNBOOK.md` §B2 規則 12）。⛔ 嚴禁在 Pi 上直接編輯程式碼。
 
 ### 3c. DB / Migration 回滾（資料層，最謹慎）
 

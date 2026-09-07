@@ -80,7 +80,7 @@ Independent review and required checks do not authorize protected execution. The
 
 ## Rollback
 
-Every R1+ PR must state rollback in one of: revert commit, feature flag off, prior deploy SHA, or data rollback command (R3).
+Every R1+ PR must state rollback in one of: revert commit (advancing main), feature flag off, or data rollback command (R3). (Historical-SHA dispatch is blocked by deploy.yml exact-main gate).
 
 ## Review topology (#876)
 

@@ -94,8 +94,8 @@
 
 | Check | Pass |
 |-------|------|
-| R6.1 | Auto-rollback = inside `deploy.yml` |
-| R6.2 | Manual rollback = revert PR → CI → `deploy.yml` OR re-run successful deploy |
+| R6.1 | Auto-rollback = inside `deploy.yml` (in-flight deploy failure only) |
+| R6.2 | Manual rollback = revert commit → merge to main → main CI → Founder-approved exact-main deploy.yml (historical-SHA dispatch rejected by exact-main gate) |
 | R6.3 | `RUNBOOK_ROLLBACK.md` = execution helper only; matches R6.1–R6.2 |
 
 ---
