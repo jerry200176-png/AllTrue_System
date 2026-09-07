@@ -508,8 +508,10 @@ class StudentClassController extends Controller
             $class->remaining_minutes = $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null;
             $this->attachPreciseBalanceFields($class);
 
-            if ($class->isPartOfPackage() && isset($packageMap[$class->PackageID])) {
-                $pkg = $packageMap[$class->PackageID];
+            $pkg = ($class->isPartOfPackage() && isset($packageMap[$class->PackageID]))
+                ? $packageMap[$class->PackageID]
+                : null;
+            if ($pkg !== null) {
                 $planning = $packagePlanningMap[(int) $class->PackageID] ?? [];
                 $class->package_remaining_sessions = $planning['remaining_sessions'] ?? max(0, (int) $pkg->remaining_sessions);
                 $class->package_total_sessions     = (int) $pkg->total_sessions;
@@ -530,8 +532,9 @@ class StudentClassController extends Controller
             // confirmation already synchronizes Paid; an older pending report must
             // not undo that projection. Keep its ID/summary for explicit review,
             // never silently confirm/reject it from this read-only endpoint.
+            $effectivePaid = $class->isEffectivelyPaid($pkg);
             $class->payment_status = StudentClass::isFullyPaid(
-                (int) ($class->Paid ?? 0) === 1,
+                $effectivePaid,
                 $invoicePaidAmount,
                 $effectiveCharge
             ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : 'unpaid');
@@ -7764,7 +7767,7 @@ class StudentClassController extends Controller
     private function courseNeedsPaymentReconciliation(StudentClass $studentClass): bool
     {
         $charge = (int) ($studentClass->Charge ?? 0);
-        if ($charge <= 0 || (int) ($studentClass->Paid ?? 0) === 1) {
+        if ($charge <= 0 || $studentClass->isEffectivelyPaid()) {
             return false;
         }
 

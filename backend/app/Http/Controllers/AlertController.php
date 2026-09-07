@@ -331,7 +331,8 @@ class AlertController extends Controller
                     : $this->countModeCharge($sc);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
-                $scIsPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);
+                $rawPaid = (int) ($sc->Paid ?? 0) === 1;
+                $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
                 $outstanding = $scIsPaid ? 0 : max(0, $charge - $paidAmount);
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
@@ -387,7 +388,7 @@ class AlertController extends Controller
     private function mapCountModeAlert(StudentClass $c, array $subjectNameMap = []): ?array
     {
         $remaining = max(0, (int) ($c->RemainingSessions ?? 0));
-        $isPaid = (int) ($c->Paid ?? 0) === 1;
+        $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
         $isUnpaid = !$isPaid;
         $isLowSessions = $remaining <= 2;
 
@@ -498,7 +499,7 @@ class AlertController extends Controller
             return $this->monthlyAlertRow($c, $invoiceDue, $daysUntilDue, $openInvoice, $subjectNameMap);
         }
 
-        $isPaid = (int) ($c->Paid ?? 0) === 1;
+        $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
         $thisDue = $this->settlementDateInMonth((int) $today->year, (int) $today->month, $settlementDay);
 
         if (!$isPaid) {
@@ -537,7 +538,7 @@ class AlertController extends Controller
 
     private function monthlyAlertRow(StudentClass $c, Carbon $dueDate, int $daysUntilSettlement, ?array $invoice = null, array $subjectNameMap = []): array
     {
-        $isPaid = (int) ($c->Paid ?? 0) === 1;
+        $isPaid = (int) ($c->Paid ?? 0) === 1 || $c->isEffectivelyPaid();
 
         $row = [
             'id'                 => $c->ID,
@@ -631,9 +632,9 @@ class AlertController extends Controller
      */
     public function tuitionSlipData(Request $request, int $studentClassId)
     {
-        $sc = StudentClass::with('student')->findOrFail($studentClassId);
+        $sc = StudentClass::with(['student', 'coursePackage'])->findOrFail($studentClassId);
 
-        if ((int) ($sc->Paid ?? 0) === 1) {
+        if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
 
@@ -861,7 +862,7 @@ class AlertController extends Controller
         }
 
         $closedReason = (string) ($sc->getAttribute('closed_reason') ?? '');
-        $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1, $paidAmount, $charge);
+        $isPaid = $this->isFullyPaid((int) ($sc->Paid ?? 0) === 1 || $sc->isEffectivelyPaid(), $paidAmount, $charge);
 
         // Closed-but-unpaid settlements stay in the tuition actionable queue.
         if (!$isPaid && in_array($closedReason, ['settled_pending', 'contract_amended'], true)) {

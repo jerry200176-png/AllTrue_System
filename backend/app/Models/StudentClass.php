@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
  * @property string $deduction_basis One of DeductionBasis::all(); always reads as
  *           `fixed_session` when the column is null (see the accessor below).
  * @property \App\Models\Student|null $student
+ * @property \App\Models\CoursePackage|null $coursePackage
  */
 class StudentClass extends Model
 {
@@ -107,7 +108,88 @@ class StudentClass extends Model
 
     public function isPartOfPackage(): bool
     {
-        return !empty($this->PackageID) && (int) $this->PackageID > 0;
+        $packageId = (int) ($this->getAttribute('PackageID') ?? 0);
+        return $packageId > 0;
+    }
+
+    /**
+     * Non-financial effective-paid predicate for display, alerts, dunning, and notifications.
+     *
+     * A course is effectively paid if:
+     * 1. StudentClass.Paid == 1 (explicit course-level paid flag)
+     * 2. OR it belongs to a CoursePackage whose billing is settled (CoursePackage.paid == true).
+     *
+     * @param CoursePackage|null $package Optional preloaded or caller-supplied package instance
+     * @param bool|null $rawPaidFlag Optional override for raw Paid flag
+     * @return bool
+     */
+    public function isEffectivelyPaid(?CoursePackage $package = null, ?bool $rawPaidFlag = null): bool
+    {
+        $paid = $rawPaidFlag !== null ? $rawPaidFlag : ((int) ($this->Paid ?? 0) === 1);
+        if ($paid) {
+            return true;
+        }
+
+        if (!$this->isPartOfPackage()) {
+            return false;
+        }
+
+        if ($package !== null) {
+            return (bool) ($package->paid ?? false);
+        }
+
+        if ($this->relationLoaded('coursePackage')) {
+            return (bool) ($this->coursePackage->paid ?? false);
+        }
+
+        $packageId = (int) ($this->getAttribute('PackageID') ?? 0);
+        if ($packageId <= 0) {
+            return false;
+        }
+
+        return CoursePackage::query()->where('id', $packageId)->where('paid', true)->exists();
+    }
+
+    /**
+     * Scope a query to only include courses that are effectively paid.
+     * Paid=1 OR belongs to a settled CoursePackage (paid=1).
+     */
+    public function scopeEffectivelyPaid($query)
+    {
+        return $query->where(function ($q) {
+            $q->where($this->qualifyColumn('Paid'), 1)
+              ->orWhere(function ($q2) {
+                  $q2->whereNotNull($this->qualifyColumn('PackageID'))
+                     ->where($this->qualifyColumn('PackageID'), '>', 0)
+                     ->whereExists(function ($sub) {
+                         $sub->select(DB::raw(1))
+                             ->from('course_packages')
+                             ->whereColumn('course_packages.id', $this->qualifyColumn('PackageID'))
+                             ->where('course_packages.paid', 1);
+                     });
+              });
+        });
+    }
+
+    /**
+     * Scope a query to only include courses that are effectively unpaid for dunning/reminders.
+     * Paid!=1 AND does NOT belong to a settled CoursePackage (paid=1).
+     */
+    public function scopeEffectivelyUnpaid($query)
+    {
+        return $query->where(function ($q) {
+            $q->where($this->qualifyColumn('Paid'), 0)
+              ->orWhereNull($this->qualifyColumn('Paid'));
+        })->where(function ($q) {
+            $q->whereNull($this->qualifyColumn('PackageID'))
+              ->orWhere($this->qualifyColumn('PackageID'), '<=', 0)
+              ->orWhereNotExists(function ($sub) {
+                  $sub->select(DB::raw(1))
+                      ->from('course_packages')
+                      ->whereColumn('course_packages.id', $this->qualifyColumn('PackageID'))
+                      ->where('course_packages.paid', 1);
+              });
+        });
     }
 
     /**
@@ -129,7 +211,7 @@ class StudentClass extends Model
     {
         $charge ??= (int) ($this->Charge ?? 0);
 
-        return self::isFullyPaid((int) ($this->Paid ?? 0) === 1, $paidAmount, $charge);
+        return self::isFullyPaid($this->isEffectivelyPaid(), $paidAmount, $charge);
     }
 
     /**
