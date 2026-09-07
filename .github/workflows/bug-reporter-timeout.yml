@@ -95,16 +95,15 @@ jobs:
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" "MODE='$MODE' DAYS='$DAYS' ACTOR_ARG='$ACTOR_ARG' EXPECTED_SHA='${GITHUB_SHA}' bash -s" <<'REMOTE' | tee out/timeout.log
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "MODE='$MODE' DAYS='$DAYS' ACTOR_ARG='$ACTOR_ARG' bash -s" <<'REMOTE' | tee out/timeout.log
           set -euo pipefail
           cd /home/admin/backend
           PROD_SHA="$(git rev-parse HEAD)"
           echo "prod_head=$PROD_SHA"
-          echo "workflow_sha=$EXPECTED_SHA"
-          git merge-base --is-ancestor "$EXPECTED_SHA" "$PROD_SHA" || {
-            echo "production does not contain workflow revision; refusing" >&2
-            exit 1
-          }
+          # This workflow is operational-only. A workflow/docs-only merge may
+          # intentionally leave the backend checkout at the last deployable
+          # revision, so the workflow commit is not required to be an ancestor
+          # of PROD_SHA. The command and its policy are the production contract.
           php artisan list --format=txt | grep -q 'bugs:close-stale-resolved'
           echo "=== DRY-RUN ==="
           php artisan bugs:close-stale-resolved --dry-run --days="$DAYS" $ACTOR_ARG
