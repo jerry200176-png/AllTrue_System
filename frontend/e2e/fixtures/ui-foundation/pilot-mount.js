@@ -38,6 +38,7 @@ const pageModules = {
   course: () => import('../../../src/pages/CourseManagement.vue'),
   calendar: () => import('../../../src/pages/SmartCalendar.vue'),
   discrepancy: () => import('../../../src/pages/ScheduleDiscrepancyPage.vue'),
+  'tuition-report': () => import('../../../src/pages/TuitionReportPage.vue'),
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
