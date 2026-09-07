@@ -45,7 +45,10 @@ class AccountingCourseClarity
         if ($reason === 'completed') {
             return ['code' => 'history_completed', 'label' => '已完課', 'is_history' => true];
         }
-        if ($stop && $mode !== 'date' && (int) ($sc->getAttribute('Paid') ?? 0) === 1 && (int) ($sc->getAttribute('RemainingSessions') ?? 0) <= 0) {
+        $isPaid = $sc instanceof \App\Models\StudentClass
+            ? $sc->isEffectivelyPaid()
+            : ((int) ($sc->getAttribute('Paid') ?? 0) === 1);
+        if ($stop && $mode !== 'date' && $isPaid && (int) ($sc->getAttribute('RemainingSessions') ?? 0) <= 0) {
             return ['code' => 'history_completed', 'label' => '已完課', 'is_history' => true];
         }
         if ($stop && $mode === 'date') {
