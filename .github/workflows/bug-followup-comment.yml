@@ -91,8 +91,12 @@ jobs:
           $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
               ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
           $actor = $admin ? (int)$admin : 1;
+          // The Phase-A acknowledgement already contains the same GitHub URL.
+          // Idempotency must therefore match this exact follow-up payload,
+          // not merely the shared issue link, or the requested post-deploy
+          // verification message is silently skipped.
           $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)
-              ->where("body", "like", "%".$issueUrl."%")->exists();
+              ->where("body", $reply)->exists();
           $comment = $already ? ["ok" => true, "skipped" => true] : \App\Services\BugReportService::addComment($bugId, $actor, $reply, false);
           $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
           if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
