@@ -694,7 +694,7 @@ jobs:
                 ->get([
                   "sc.ID as class_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id",
                   "sc.PackageID as package_id", "sc.Charge as charge", "sc.Paid as paid",
-                  "sc.PayDate as pay_date", "sc.Stop as stop", "sc.created_at as created_at", "sub.Subject_Name as subject_name",
+                  "sc.PayDate as pay_date", "sc.Stop as stop", "sub.Subject_Name as subject_name",
                 ]);
               $classes249 = $classes249->filter(fn ($row) => in_array($subjectKey249($row->subject_name ?? ""), ["english", "math"], true))->values();
               $classIds249 = $classes249->pluck("class_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
@@ -758,7 +758,6 @@ jobs:
                 "paid" => (int)$r->paid,
                 "pay_date" => $r->pay_date ? (string)$r->pay_date : null,
                 "stop" => (int)$r->stop,
-                "created_at" => (string)$r->created_at,
               ])->values()->all();
 
               $probe249["course_packages"] = $packageIds249 === [] ? [] : $db::table("course_packages")
