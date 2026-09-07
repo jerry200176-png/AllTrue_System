@@ -35,4 +35,21 @@ describe('admission inquiry UI contract', () => {
     expect(source).toContain('詢問歷程');
     expect(source).toContain(':aria-pressed="selectedId === item.id"');
   });
+
+  it('provides a guided empty state with public form actions and offline guidance', () => {
+    expect(source).toContain('目前沒有新詢問');
+    expect(source).toContain('查看公開問班表單');
+    expect(source).toContain('複製公開問班連結');
+    expect(source).toContain('招生處理流程');
+    expect(source).toContain('家長若透過 LINE、電話或現場來訪？');
+  });
+
+  it('provides visual pipeline stages and follow-up urgency handling', () => {
+    expect(source).toContain('PIPELINE_STAGES');
+    expect(source).toContain('getFollowUpMeta');
+    expect(source).toContain('逾期');
+    expect(source).toContain('今日需追蹤');
+    expect(source).toContain('待認領');
+    expect(source).toContain('showDirectTrial');
+  });
 });
