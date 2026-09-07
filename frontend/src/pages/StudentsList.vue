@@ -151,7 +151,7 @@
                 @change="toggleStudentSelection(student, $event.target.checked)"
               />
             </td>
-            <td class="expand-icon">
+            <td class="expand-icon" :title="expandedId === student.id ? '收合課程與購課明細' : '點擊展開課程與購課明細'">
               <span class="material-symbols-outlined expand-chevron" :class="{ rotated: expandedId === student.id }">expand_more</span>
             </td>
             <td>
@@ -207,6 +207,17 @@
             </td>
             <td @click.stop @keydown.stop class="action-cell">
               <div class="action-cell-buttons">
+                <button
+                  type="button"
+                  class="btn-course-disclosure"
+                  :class="{ 'is-active': expandedId === student.id }"
+                  :aria-expanded="expandedId === student.id"
+                  :title="expandedId === student.id ? '收合課程與加購明細' : '展開課程、排課與購課詳情'"
+                  @click="toggleExpand(student, $event)"
+                >
+                  <span class="material-symbols-outlined" style="font-size:15px;" aria-hidden="true">menu_book</span>
+                  <span>{{ expandedId === student.id ? '收合' : '課程/購課' }}</span>
+                </button>
                 <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
                 <AtIconButton icon="delete" label="刪除" variant="danger" @click="deleteStudent(student)" />
               </div>
@@ -3603,6 +3614,29 @@ table th { font-size: 12.5px; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.btn-course-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-primary, var(--primary));
+  background: var(--ds-primary-wash, rgba(232, 121, 36, 0.08));
+  border: 1px solid var(--ds-primary-wash, rgba(232, 121, 36, 0.25));
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+.btn-course-disclosure:hover {
+  background: var(--ds-primary, var(--primary));
+  color: var(--ds-canvas);
+}
+.btn-course-disclosure.is-active {
+  background: var(--ds-primary, var(--primary));
+  color: var(--ds-canvas);
 }
 .icon-btn {
   display: inline-flex !important;

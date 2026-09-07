@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { usePageGuideTour } from '../../lib/usePageGuideTour';
 import { getRoleOnboardingSteps } from '../../lib/roleOnboarding';
+import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
 import { forceUnlockScroll, lockScroll, unlockScroll } from '../../lib/useScrollLock';
 
 let wrapper;
@@ -110,5 +111,27 @@ describe('hands-on role missions', () => {
     await tour.nextStep();
     expect(completed).toHaveBeenCalledOnce();
     expect(tour.isOpen.value).toBe(false);
+  });
+
+  it('verifies step upon receiving role-based adoption telemetry event', async () => {
+    const steps = getRoleOnboardingSteps('teacher');
+    tour.startOnboarding(steps);
+    expect(tour.isStepVerified.value).toBe(false);
+
+    // Step 0 is 'teacher-home', expecting completionEvents: ['dashboard_opened', 'teacher_task_opened']
+    trackAdoptionEvent('unrelated_event', 1);
+    expect(tour.isStepVerified.value).toBe(false);
+
+    trackAdoptionEvent('dashboard_opened', 1);
+    expect(tour.isStepVerified.value).toBe(true);
+
+    // Advancing step resets verification
+    await tour.nextStep();
+    expect(tour.stepIndex.value).toBe(1);
+    expect(tour.isStepVerified.value).toBe(false);
+
+    // Step 1 is 'teacher-attendance', expecting 'attendance_marked'
+    trackAdoptionEvent('attendance_marked', 1);
+    expect(tour.isStepVerified.value).toBe(true);
   });
 });
