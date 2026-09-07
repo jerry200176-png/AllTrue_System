@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.08",
     "date": "2026-09-08",
     "title": "2026.09.08 草稿（未發布）",
-    "summary": "意見與建議入口更容易使用",
+    "summary": "意見與建議入口更容易使用；導覽搜尋範圍與高頻查找提示更清楚",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
-          "意見與建議入口更容易使用"
+          "意見與建議入口更容易使用",
+          "導覽搜尋範圍與高頻查找提示更清楚"
         ]
       }
     ],
     "items": [
-      "意見與建議入口更容易使用"
+      "意見與建議入口更容易使用",
+      "導覽搜尋範圍與高頻查找提示更清楚"
     ]
   },
   {

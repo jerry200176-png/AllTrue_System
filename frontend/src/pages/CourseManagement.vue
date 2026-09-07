@@ -64,7 +64,7 @@
       <div class="filter-bar grid" data-guide="course-mgmt-filters">
         <div class="filter-field">
           <label for="course-filter-student">搜尋學生</label>
-          <input id="course-filter-student" v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
+          <input id="course-filter-student" v-model="filters.name" type="search" autocomplete="off" placeholder="搜尋學生姓名…" @input="debouncedLoad" />
         </div>
         <div class="filter-field">
           <label for="course-filter-type">上課類型</label>
@@ -79,7 +79,7 @@
         </div>
         <div class="filter-field">
           <label for="course-filter-teacher">搜尋老師</label>
-          <input id="course-filter-teacher" v-model="filters.teacher_name" placeholder="輸入老師姓名..." @input="debouncedLoad" />
+          <input id="course-filter-teacher" v-model="filters.teacher_name" type="search" autocomplete="off" placeholder="搜尋老師姓名…" @input="debouncedLoad" />
         </div>
         <div class="filter-field">
           <label for="course-filter-status">課程狀態</label>
