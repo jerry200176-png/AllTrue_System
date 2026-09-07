@@ -34,6 +34,11 @@ class BugReport extends Model
         return $this->hasMany(BugReportStatusLog::class, 'bug_report_id');
     }
 
+    public function evidence()
+    {
+        return $this->hasMany(BugReportEvidence::class, 'bug_report_id');
+    }
+
     public function attachments()
     {
         return $this->hasMany(BugReportAttachment::class, 'bug_report_id');

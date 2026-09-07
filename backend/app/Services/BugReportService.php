@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BugReport;
 use App\Models\BugReportAttachment;
 use App\Models\BugReportComment;
+use App\Models\BugReportEvidence;
 use App\Models\BugReportStatusLog;
 use App\Models\BugReportUserRead;
 use App\Models\User;
@@ -177,6 +178,24 @@ class BugReportService
             'is_internal_note' => $isInternal,
             'created_at' => Carbon::now(),
         ]);
+    }
+
+    /**
+     * Determine whether a current production verification event can satisfy
+     * the reporter-timeout evidence gate for a historical resolve.
+     */
+    public static function hasValidAppendOnlyResolutionEvidence(int $bugId, Carbon $resolvedAt): bool
+    {
+        return BugReportEvidence::query()
+            ->where('bug_report_id', $bugId)
+            ->where('evidence_type', BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION)
+            ->whereNotNull('production_revision')
+            ->where('verified_at', '>=', $resolvedAt)
+            ->get()
+            ->contains(static function (BugReportEvidence $evidence): bool {
+                return preg_match('/^[0-9a-f]{7,40}$/i', (string) $evidence->production_revision) === 1
+                    && $evidence->verified_at !== null;
+            });
     }
 
     public static function updateCommentVisibility(int $bugId, int $commentId, bool $isInternal): ?BugReportComment
@@ -586,8 +605,9 @@ class BugReportService
 
     /**
      * Bugs eligible for Evidence Contract reporter-verify timeout.
-     * Requires status=resolved, last resolve ≥ $days ago, and resolve log contains
-     * machine [resolution_evidence] (do not timeout unverified "text-only" resolves).
+     * Requires status=resolved, last resolve ≥ $days ago, and either the legacy
+     * machine [resolution_evidence] marker or a valid append-only production
+     * verification event (do not timeout unverified "text-only" resolves).
      *
      * @return list<array{bug_id:int,resolved_at:string,days_resolved:int}>
      */
@@ -612,7 +632,9 @@ class BugReportService
                 continue;
             }
             $note = (string) ($resolveLog->note ?? '');
-            if (!str_contains($note, '[resolution_evidence]')) {
+            $hasLegacyEvidence = str_contains($note, '[resolution_evidence]');
+            $hasAppendOnlyEvidence = self::hasValidAppendOnlyResolutionEvidence($bugId, $resolveLog->created_at);
+            if (!$hasLegacyEvidence && !$hasAppendOnlyEvidence) {
                 // Exclusion: production-unverified resolve (legacy / pre-enforcement)
                 continue;
             }
