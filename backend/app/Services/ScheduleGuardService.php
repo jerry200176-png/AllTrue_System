@@ -45,13 +45,15 @@ class ScheduleGuardService
         $excludeStudentClassId = isset($payload['exclude_student_class_id']) && $payload['exclude_student_class_id']
             ? (int) $payload['exclude_student_class_id']
             : null;
+        $startDate = isset($payload['start_date']) && $payload['start_date'] ? (string) $payload['start_date'] : null;
+        $endDate = isset($payload['end_date']) && $payload['end_date'] ? (string) $payload['end_date'] : null;
 
         $teacherCourses = $this->loadTeacherRecurringCourses($teacherId, $branchId, $excludeStudentClassId);
         $conflicts = [];
 
         foreach ($slots as $slot) {
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
-            $concreteOverlaps = $this->collectConcreteRecurringOverlaps($teacherId, $branchId, $slot, $excludeStudentClassId);
+            $concreteOverlaps = $this->collectConcreteRecurringOverlaps($teacherId, $branchId, $slot, $excludeStudentClassId, $startDate, $endDate);
             $overlaps = array_merge($recurringOverlaps, $concreteOverlaps);
 
             $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
@@ -314,7 +316,9 @@ class ScheduleGuardService
         int $teacherId,
         int $branchId,
         array $slot,
-        ?int $excludeStudentClassId = null
+        ?int $excludeStudentClassId = null,
+        ?string $startDate = null,
+        ?string $endDate = null
     ): array {
         $dow = (int) ($slot['day_of_week'] ?? 0);
         $slotStart = (string) ($slot['start_time'] ?? '');
@@ -324,13 +328,16 @@ class ScheduleGuardService
         }
 
         $today = Carbon::today()->toDateString();
+        $horizonStart = ($startDate && $startDate > $today) ? $startDate : $today;
+        if ($endDate && $endDate < $horizonStart) {
+            return [];
+        }
 
-        $scheduleRows = DB::table('schedules')
-            ->where('branch_id', $branchId)
-            ->where('teacher_id', $teacherId)
-            ->whereDate('schedule_date', '>=', $today)
-            ->select(['id', 'student_id', 'schedule_date', 'status', 'start_time', 'end_time', 'class_type', 'student_course_id', 'original_schedule_id'])
-            ->get();
+        $scheduleRowsQuery = DB::table('schedules')->where('branch_id', $branchId)->where('teacher_id', $teacherId)->whereDate('schedule_date', '>=', $horizonStart);
+        if ($endDate) {
+            $scheduleRowsQuery->whereDate('schedule_date', '<=', $endDate);
+        }
+        $scheduleRows = $scheduleRowsQuery->select(['id', 'student_id', 'schedule_date', 'status', 'start_time', 'end_time', 'class_type', 'student_course_id', 'original_schedule_id'])->get();
 
         $leaveOrRescheduled = [];
         $scheduledByDate = [];
@@ -353,16 +360,16 @@ class ScheduleGuardService
             }
         }
 
-        $classSessions = DB::table('ClassSession as cs')
+        $classSessionsQuery = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->where('sc.TeacherID', $teacherId)
-            ->where('sc.Stop', 0)
-            ->where('st.CampusID', $branchId)
-            ->whereDate('cs.SessionDate', '>=', $today)
-            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
-            ->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])
-            ->get();
+            ->where('sc.TeacherID', $teacherId)->where('sc.Stop', 0)->where('st.CampusID', $branchId)
+            ->whereDate('cs.SessionDate', '>=', $horizonStart)
+            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+        if ($endDate) {
+            $classSessionsQuery->whereDate('cs.SessionDate', '<=', $endDate);
+        }
+        $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
 
         $overlaps = [];
         $seenKeys = [];

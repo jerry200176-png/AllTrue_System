@@ -1749,6 +1749,10 @@ class StudentClassController extends Controller
                     'branch_id' => $studentCampusId,
                     'slots' => $recurringSlots,
                     'exclude_student_class_id' => (int) $studentClass->getAttribute('ID'),
+                    'start_date' => $this->normalizeDateString($candidate->getAttribute('StartDate')),
+                    'end_date' => $candidate->getAttribute('ScheduleMode') === 'date'
+                        ? $this->normalizeDateString($candidate->getAttribute('EndDate'))
+                        : null,
                 ]);
                 if (!empty($recurringConflicts)) {
                     return response()->json([

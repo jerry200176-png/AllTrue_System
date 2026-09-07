@@ -40,14 +40,10 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_exception_session_covered_by_new_fixed_schedule_succeeds_without_409_and_regularizes(): void
     {
         [$token, $course] = $this->seedMondayCourseWithWednesdayException();
-
         $wedSession = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-15')->firstOrFail();
         $this->assertSame(1, (int) $wedSession->IsContractException);
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertOk();
 
         $this->assertSame(0, (int) $wedSession->fresh()->IsContractException, 'Exception must be regularized');
@@ -63,14 +59,10 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_adoption_does_not_create_duplicate_class_session(): void
     {
         [$token, $course] = $this->seedMondayCourseWithWednesdayException();
-
         $initialTotalCount = ClassSession::where('StudentClassID', $course->ID)->count();
         $initialWedSession = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-15')->firstOrFail();
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertOk();
 
         $wedSessions = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-15')->get();
@@ -85,15 +77,11 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_genuine_external_conflict_still_returns_409(): void
     {
         [$token, $course, $teacherId] = $this->seedMondayCourseWithWednesdayException();
-
         $extStudent = Student::create(['name' => '外部衝突學生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
         $extCourse = $this->createCourseRecord($extStudent->id, $teacherId, ['week' => 5]);
         $this->createSessionRecord($extCourse->ID, '2026-04-22', '17:00:00', '18:00:00');
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertStatus(409);
         $this->assertSame('teacher_schedule_conflict', $response->json('code'));
         $this->assertNotEmpty($response->json('conflicts'));
@@ -105,13 +93,9 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_non_corresponding_exception_at_different_time_is_not_absorbed(): void
     {
         [$token, $course] = $this->seedMondayCourseWithWednesdayException();
-
         $eveningException = $this->createSessionRecord($course->ID, '2026-04-22', '19:00:00', '20:00:00', 'scheduled', 1);
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertOk();
         $this->assertSame(1, (int) $eveningException->fresh()->IsContractException);
     }
@@ -122,14 +106,10 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_partially_overlapping_exception_is_rejected_as_conflict(): void
     {
         [$token, $course] = $this->seedMondayCourseWithWednesdayException();
-
         ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-15')->delete();
         $this->createSessionRecord($course->ID, '2026-04-15', '16:30:00', '17:30:00', 'scheduled', 1);
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertStatus(409);
         $this->assertSame('teacher_schedule_conflict', $response->json('code'));
     }
@@ -140,15 +120,11 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_repeated_request_is_idempotent_and_creates_no_duplicate_data(): void
     {
         [$token, $course] = $this->seedMondayCourseWithWednesdayException();
-        $payload = [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ];
 
-        $this->updateFixedSlots($token, $course, [1, 3], $payload)->assertOk();
+        $this->updateFixedSlots($token, $course, [1, 3])->assertOk();
         $firstIds = ClassSession::where('StudentClassID', $course->ID)->orderBy('id')->pluck('id')->all();
 
-        $this->updateFixedSlots($token, $course, [1, 3], $payload)->assertOk();
+        $this->updateFixedSlots($token, $course, [1, 3])->assertOk();
         $secondIds = ClassSession::where('StudentClassID', $course->ID)->orderBy('id')->pluck('id')->all();
 
         $this->assertSame($firstIds, $secondIds);
@@ -160,15 +136,11 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_exception_with_different_duration_is_not_regularized_and_no_duplicate_or_silent_reflow(): void
     {
         [$token, $course] = $this->seedMondayCourseWithWednesdayException();
-
         $wedSession = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-15')->firstOrFail();
         $wedSession->update(['EndTime' => '18:30:00', 'IsContractException' => 1]);
         $initialTotalCount = ClassSession::where('StudentClassID', $course->ID)->count();
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertStatus(409);
         $this->assertSame('teacher_schedule_conflict', $response->json('code'));
 
@@ -186,7 +158,6 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     public function test_direct_sync_does_not_regularize_exception_with_different_duration(): void
     {
         [$token, $course] = $this->seedMondayCourseWithWednesdayException();
-
         $wedSession = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-15')->firstOrFail();
         $wedSession->update(['EndTime' => '18:30:00', 'IsContractException' => 1]);
 
@@ -216,16 +187,10 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertNull($course->week1);
 
         $mockReflow = Mockery::mock(ClassSessionContractReflowService::class);
-        $mockReflow->shouldReceive('move')->andThrow(
-            new SlotOccupiedException((int) $course->ID, '2026-04-20', '17:00:00', (int) $wedSession->id)
-        );
+        $mockReflow->shouldReceive('move')->andThrow(new SlotOccupiedException((int) $course->ID, '2026-04-20', '17:00:00', (int) $wedSession->id));
         $this->app->instance(ClassSessionContractReflowService::class, $mockReflow);
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
-
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertStatus(422);
 
         // 1. Session state rolls back
@@ -251,23 +216,12 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
 
         $student = Student::find($course->StudentID);
         $signIn = StudentSignIn::create([
-            'StudentClassID' => $course->ID,
-            'StudentID' => $student->id,
-            'TeacherID' => $teacherId,
-            'GradeID' => 1,
-            'SubjectID' => 1,
-            'CampusID' => 1,
-            'SignInDT' => '2026-04-15 17:00:00',
-            'MDT' => now(),
-            'ClassSessionID' => $wedSession->id,
-            'Status' => 'present',
-            'SessionDeducted' => 1,
+            'StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => $teacherId,
+            'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-15 17:00:00',
+            'MDT' => now(), 'ClassSessionID' => $wedSession->id, 'Status' => 'present', 'SessionDeducted' => 1,
         ]);
 
-        $response = $this->updateFixedSlots($token, $course, [1, 3], [
-            ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-            ['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60],
-        ]);
+        $response = $this->updateFixedSlots($token, $course, [1, 3]);
         $response->assertOk();
 
         $this->assertSame(0, (int) $wedSession->fresh()->IsContractException);
@@ -278,8 +232,47 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame((int) $wedSession->id, (int) $signIn->fresh()->ClassSessionID);
     }
 
-    private function updateFixedSlots(string $token, StudentClass $course, array $days, array $slots)
+    /**
+     * Requirement: Bounded horizon audit:
+     * A concrete session of another student after contract EndDate must NOT block contract update.
+     * But an external session within contract horizon must still block.
+     */
+    public function test_concrete_session_after_contract_end_date_does_not_block_recurring_update(): void
     {
+        $token = $this->createDirectorToken([1]);
+        $teacherId = 159;
+        $studentA = Student::create(['name' => '學生A', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $courseA = $this->createCourseRecord($studentA->id, $teacherId, ['ScheduleMode' => 'date', 'StartDate' => '2026-04-01', 'EndDate' => '2026-04-30']);
+
+        $studentB = Student::create(['name' => '學生B', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $courseB = $this->createCourseRecord($studentB->id, $teacherId, ['week' => 5]);
+        $this->createSessionRecord($courseB->ID, '2026-05-13', '17:00:00', '18:00:00');
+
+        $payload = [
+            'subject' => 'English', 'class_type' => 'one_on_one', 'duration_hours' => 1,
+            'days_of_week' => [3], 'start_time' => '17:00', 'payment_type' => 'period', 'end_date' => '2026-04-30',
+            'day_time_slots' => [['day' => 3, 'start_time' => '17:00', 'duration_minutes' => 60]],
+        ];
+
+        // 1. External session after EndDate does NOT block
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$courseA->ID}", $payload);
+        $response->assertOk();
+
+        // 2. External session within EndDate MUST block
+        $studentC = Student::create(['name' => '學生C', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $courseC = $this->createCourseRecord($studentC->id, $teacherId, ['week' => 5]);
+        $this->createSessionRecord($courseC->ID, '2026-04-22', '17:00:00', '18:00:00');
+
+        $conflictResponse = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$courseA->ID}", $payload);
+        $conflictResponse->assertStatus(409);
+        $this->assertSame('teacher_schedule_conflict', $conflictResponse->json('code'));
+    }
+
+    private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
+    {
+        $slots = $slots ?? array_map(fn ($d) => ['day' => $d, 'start_time' => '17:00', 'duration_minutes' => 60], $days);
         return $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->putJson("/api/v1/student-classes/{$course->ID}", [
                 'subject' => 'English', 'class_type' => 'one_on_one', 'duration_hours' => 1,
@@ -299,10 +292,9 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     private function createCourseRecord(int $studentId, int $teacherId, array $overrides = []): StudentClass
     {
         return StudentClass::create(array_merge([
-            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacherId,
-            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01', 'TotalHours' => 10, 'Charge' => 0,
-            'Paid' => 0, 'Rate' => 500, 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count',
-            'SessionCount' => 6, 'SessionDuration' => 60, 'RemainingSessions' => 5, 'UsedSessions' => 1,
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacherId, 'by1' => 1, 'Period' => 4,
+            'StartDate' => '2026-04-01', 'TotalHours' => 10, 'Charge' => 0, 'Paid' => 0, 'Rate' => 500, 'MDate' => now(), 'Stop' => 0,
+            'ScheduleMode' => 'count', 'SessionCount' => 6, 'SessionDuration' => 60, 'RemainingSessions' => 5, 'UsedSessions' => 1,
             'ClassType' => 'one_on_one', 'week' => 1, 'time' => '17:00:00',
         ], $overrides));
     }
@@ -311,28 +303,20 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     {
         $token = $this->createDirectorToken([1]);
         $teacherId = 159;
-
         $student = Student::create(['name' => '排課吸收測試學生', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
         $course = $this->createCourseRecord($student->id, $teacherId);
-
         $past = $this->createSessionRecord($course->ID, '2026-04-06', '17:00:00', '18:00:00', 'attended', 0);
         StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => $teacherId, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-06 17:00:00', 'MDT' => now(), 'ClassSessionID' => $past->id, 'Status' => 'present', 'SessionDeducted' => 1]);
-
-        $this->createSessionRecord($course->ID, '2026-04-13', '17:00:00', '18:00:00', 'scheduled', 0);
+        foreach (['2026-04-13', '2026-04-20', '2026-04-27', '2026-05-04'] as $d) {
+            $this->createSessionRecord($course->ID, $d, '17:00:00', '18:00:00', 'scheduled', 0);
+        }
         $this->createSessionRecord($course->ID, '2026-04-15', '17:00:00', '18:00:00', 'scheduled', 1);
-        $this->createSessionRecord($course->ID, '2026-04-20', '17:00:00', '18:00:00', 'scheduled', 0);
-        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00', 'scheduled', 0);
-        $this->createSessionRecord($course->ID, '2026-05-04', '17:00:00', '18:00:00', 'scheduled', 0);
-
         return [$token, $course, $teacherId];
     }
 
     private function createDirectorToken(array $campusIds): string
     {
-        $user = User::create([
-            'LoginName' => 'dir-rec-absorb-' . bin2hex(random_bytes(4)), 'Name' => '主任測試',
-            'PSW' => 'secret', 'type' => 'A', 'phone' => '0912345678',
-        ]);
+        $user = User::create(['LoginName' => 'dir-rec-absorb-' . bin2hex(random_bytes(4)), 'Name' => '主任測試', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0912345678']);
         foreach ($campusIds as $cid) {
             UserCampus::create(['UserID' => $user->id, 'CampusID' => $cid]);
         }
