@@ -8,7 +8,7 @@
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260907074750-9E2951D5
+session_id: SES-20260907090908-213D7FBF
 actor: agent:codex
 vendor: openai
 model: gpt-5
@@ -16,16 +16,16 @@ mode: work
 context_window_tokens: unknown
 ticket_id: INT-20260907-074745-682Y
 ticket_title: Classroom management recovery states
-ticket_status: todo
+ticket_status: review
 ticket_priority: 2
 topic_id: repo:default
 lock_owner: agent:codex
 git_branch: exo/INT-20260907-074745-682Y
 lock_branch: codex/INT-20260907-074745-682Y
-lock_expires_at: 2026-09-07T09:47:50+08:00
+lock_expires_at: 2026-09-07T11:09:08+08:00
 
 ## Scope
-- allow: [".exo/**", "frontend/src/pages/ClassroomManagement.vue", "frontend/src/components/__tests__/ClassroomManagementAccessibility.test.js", "frontend/e2e/classroom-management-recovery.spec.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: [".exo/**", "frontend/src/pages/ClassroomManagement.vue", "frontend/src/components/__tests__/ClassroomManagementAccessibility.test.js", "frontend/e2e/classroom-management-recovery.spec.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: ["backend/**", "frontend/src/supabase*"]
 
 ## Checks
@@ -38,14 +38,14 @@ lock_expires_at: 2026-09-07T09:47:50+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 2.0
-- ram: 5.1GB available / 7.8GB total
+- load_avg_1m: 1.2
+- ram: 5.9GB available / 7.8GB total
 
 ## Sibling Sessions (other agents working concurrently)
-- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=146.8h)
+- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=148.2h)
 
 ## Start Advisories
-- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: .exo/**, frontend/src/pages/**, frontend/src/**, frontend/src/components/__tests__/**, frontend/**, .agent-session/manifest.json, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: .exo/**, frontend/src/pages/**, frontend/src/**, frontend/src/components/__tests__/**, frontend/**, docs/CHANGELOG.md, docs/**, docs/STAFF_UPDATES.yml, frontend/src/lib/**, frontend/src/lib/changelogDraft.generated.js, frontend/src/lib/staffUpdates.generated.js, .agent-session/manifest.json, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
 - [INFO] Unmerged work on branch exo/INT-20260907-071544-9K2N (ticket=INT-20260907-071544-9K2N, actor=agent:codex) — Implemented mobile More navigation search, role-scoped filtering, empty-state re
 - [INFO] Unmerged work on branch exo/INT-20260907-063735-M93H (ticket=INT-20260907-063735-M93H, actor=agent:codex) — Implemented role-authorized SPA page history with preserved notification deep-li
 - [INFO] Unmerged work on branch chore/task-onboarding-v1-convergence-20260905 (ticket=TKT-20260905-214801-DDDN, actor=agent:codex) — Implemented and locally verified role onboarding UI journeys; PR 2485 open, remo
@@ -68,7 +68,7 @@ lock_expires_at: 2026-09-07T09:47:50+08:00
 - [INFO] Unmerged work on branch chore/task-teacher-overdue-partial-failure-20260830 (ticket=TKT-20260830-055433-A4MH, actor=agent:codex) — Fixed TeacherHome partial-failure classification: attendance and weekly projecti
 
 ## Prior Session Memento
-(none)
+Implemented classroom loading/error/empty-state recovery, contextual row action names, release records, focused accessibility coverage, and opt-in Playwright verification. lint, build, design guard, and release-note coverage passed.
 
 ## Operational Learnings
 The following patterns have been learned from prior sessions. Heed these to avoid repeating known mistakes.
@@ -131,7 +131,7 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-Implement classroom management loading/error/empty-state recovery and accessible row actions within the ticket scope.
+Resume delivery: reconcile latest origin/main and prepare the existing classroom UX ticket for governed push.
 
 ## Lifecycle Commands
 - heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id INT-20260907-074745-682Y --owner agent:codex
