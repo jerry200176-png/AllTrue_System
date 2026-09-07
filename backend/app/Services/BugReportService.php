@@ -193,8 +193,12 @@ class BugReportService
             ->where('verified_at', '>=', $resolvedAt)
             ->get()
             ->contains(static function (BugReportEvidence $evidence): bool {
-                return preg_match('/^[0-9a-f]{7,40}$/i', (string) $evidence->production_revision) === 1
-                    && $evidence->verified_at !== null;
+                $revision = $evidence->getAttribute('production_revision');
+                $verifiedAt = $evidence->getAttribute('verified_at');
+
+                return is_string($revision)
+                    && preg_match('/^[0-9a-f]{7,40}$/i', $revision) === 1
+                    && $verifiedAt instanceof Carbon;
             });
     }
 
