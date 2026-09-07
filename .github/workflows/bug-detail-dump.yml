@@ -694,7 +694,7 @@ jobs:
                 ->get([
                   "sc.ID as class_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id",
                   "sc.PackageID as package_id", "sc.Charge as charge", "sc.Paid as paid",
-                  "sc.PayDate as pay_date", "sc.Stop as stop", "sub.Subject_Name as subject_name",
+                  "sc.PayDate as pay_date", "sc.Stop as stop", "sc.created_at as created_at", "sub.Subject_Name as subject_name",
                 ]);
               $classes249 = $classes249->filter(fn ($row) => in_array($subjectKey249($row->subject_name ?? ""), ["english", "math"], true))->values();
               $classIds249 = $classes249->pluck("class_id")->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
@@ -758,11 +758,12 @@ jobs:
                 "paid" => (int)$r->paid,
                 "pay_date" => $r->pay_date ? (string)$r->pay_date : null,
                 "stop" => (int)$r->stop,
+                "created_at" => (string)$r->created_at,
               ])->values()->all();
 
               $probe249["course_packages"] = $packageIds249 === [] ? [] : $db::table("course_packages")
                 ->whereIn("id", $packageIds249)
-                ->get(["id", "name", "total_sessions", "remaining_sessions", "used_sessions", "rate", "rate_unit", "class_type", "paid", "paid_at", "stop", "closed_reason"])
+                ->get(["id", "name", "total_sessions", "remaining_sessions", "used_sessions", "rate", "rate_unit", "class_type", "paid", "paid_at", "stop", "closed_reason", "created_at"])
                 ->map(fn ($r) => [
                   "id" => (int)$r->id,
                   "name" => (string)$r->name,
@@ -776,16 +777,18 @@ jobs:
                   "paid_at" => $r->paid_at ? (string)$r->paid_at : null,
                   "stop" => (bool)$r->stop,
                   "closed_reason" => $r->closed_reason,
+                  "created_at" => (string)$r->created_at,
                 ])->values()->all();
 
               $rawReports249 = $classIds249 === [] ? collect() : $db::table("payment_reports")
                 ->whereIn("StudentClassID", $classIds249)
                 ->orderBy("id")
-                ->get(["id", "StudentID", "StudentClassID", "InvoiceID", "payment_date", "payment_method", "reported_amount", "account_last5", "status", "confirmed_by", "confirmed_at", "note", "rejection_note", "payment_id", "created_at"]);
+                ->get(["id", "StudentID", "StudentClassID", "InvoiceID", "reported_by_name", "payment_date", "payment_method", "reported_amount", "account_last5", "status", "confirmed_by", "confirmed_at", "note", "rejection_note", "payment_id", "created_at"]);
               $probe249["payment_reports_detail"] = $rawReports249->map(fn ($r) => [
                 "id" => (int)$r->id,
                 "class_id" => (int)$r->StudentClassID,
                 "invoice_id" => $r->InvoiceID ? (int)$r->InvoiceID : null,
+                "reported_by_name" => $redact($r->reported_by_name ?? ""),
                 "payment_date" => (string)$r->payment_date,
                 "payment_method" => (string)$r->payment_method,
                 "reported_amount" => (float)$r->reported_amount,
@@ -793,8 +796,8 @@ jobs:
                 "status" => (string)$r->status,
                 "confirmed_by" => $r->confirmed_by ? (int)$r->confirmed_by : null,
                 "confirmed_at" => $r->confirmed_at ? (string)$r->confirmed_at : null,
-                "note" => (string)($r->note ?? ""),
-                "rejection_note" => (string)($r->rejection_note ?? ""),
+                "note" => $redact($r->note ?? ""),
+                "rejection_note" => $redact($r->rejection_note ?? ""),
                 "payment_id" => $r->payment_id ? (int)$r->payment_id : null,
                 "created_at" => (string)$r->created_at,
               ])->values()->all();
@@ -810,6 +813,7 @@ jobs:
                 "total_amount" => (float)$r->TotalAmount,
                 "paid_amount" => (float)$r->PaidAmount,
                 "reconciled_at" => $r->reconciled_at ? (string)$r->reconciled_at : null,
+                "note" => $redact($r->Note ?? ""),
                 "created_at" => (string)$r->created_at,
               ])->values()->all();
 
@@ -817,13 +821,15 @@ jobs:
                 ->join("Invoice as i", "i.id", "=", "p.InvoiceID")
                 ->whereIn("i.StudentClassID", $classIds249)
                 ->orderBy("p.id")
-                ->get(["p.id", "i.StudentClassID as class_id", "p.InvoiceID as invoice_id", "p.Amount as amount", "p.PayDate as pay_date", "p.payment_report_id", "p.created_at"]);
+                ->get(["p.id", "i.StudentClassID as class_id", "p.InvoiceID as invoice_id", "p.Amount as amount", "p.PaidAt as pay_date", "p.Method as method", "p.Note as note", "p.payment_report_id", "p.created_at"]);
               $probe249["payments_detail"] = $rawPayments249->map(fn ($r) => [
                 "id" => (int)$r->id,
                 "class_id" => (int)$r->class_id,
                 "invoice_id" => (int)$r->invoice_id,
                 "amount" => (float)$r->amount,
                 "pay_date" => (string)$r->pay_date,
+                "method" => (string)$r->method,
+                "note" => $redact($r->note ?? ""),
                 "payment_report_id" => $r->payment_report_id ? (int)$r->payment_report_id : null,
                 "created_at" => (string)$r->created_at,
               ])->values()->all();
