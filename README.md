@@ -125,7 +125,7 @@ graph TD
 更詳細的系統架構文件、資料表關係與控制面契約請參閱：
 - [`docs/architecture/README.md`](docs/architecture/README.md) — 系統架構全貌與模組設計
 - [`docs/CONTROL_PLANE_CONTRACT.md`](docs/CONTROL_PLANE_CONTRACT.md) — 控制面契約與維運規範
-- [`docs/MEMPALACE_OPERATIONS_HANDBOOK.md`](docs/MEMPALACE_OPERATIONS_HANDBOOK.md) — 本地輔助系統說明（非生產無權威）
+- [`docs/MEMPALACE_OPERATIONS_HANDBOOK.md`](docs/MEMPALACE_OPERATIONS_HANDBOOK.md) — 本地輔助系統說明。MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.
 
 ---
 
