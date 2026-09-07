@@ -1,0 +1,276 @@
+name: PaymentReport 1489 guarded reject (Pi)
+
+# ONE-TIME, narrowly-scoped repair for in-app bug #249.
+# Target: payment_reports.id = 1489 ONLY.
+# Authorized by Founder decision: marks duplicate/superseded aggregate report as rejected.
+# Checks every precondition atomically — if any precondition fails, NO write happens.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/payment-report-1489-reject.request.md'
+      - '.github/workflows/ops-payment-report-1489-reject.yml'
+
+concurrency:
+  group: payment-report-1489-reject
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Check preconditions and reject PaymentReport 1489 (atomic, single run)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "RUN_ID='${RUN_ID}' bash -s" <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $runId = getenv("RUN_ID") ?: "unknown";
+          $prodHead = trim((string)@shell_exec("git rev-parse HEAD"));
+          $db = \Illuminate\Support\Facades\DB::class;
+
+          // Target record: PaymentReport #1489
+          $pr1489 = $db::table("payment_reports")->where("id", 1489)->first();
+
+          // Canonical records for student #2219
+          $pr1490 = $db::table("payment_reports")->where("id", 1490)->first();
+          $inv1559 = $db::table("Invoice")->where("id", 1559)->first();
+          $pay1563 = $db::table("Payment")->where("id", 1563)->first();
+
+          $pr1605 = $db::table("payment_reports")->where("id", 1605)->first();
+          $inv1628 = $db::table("Invoice")->where("id", 1628)->first();
+          $pay1615 = $db::table("Payment")->where("id", 1615)->first();
+
+          $pkg170 = $db::table("course_packages")->where("id", 170)->first();
+          $sc2655 = $db::table("StudentClass")->where("ID", 2655)->first();
+          $sc3327 = $db::table("StudentClass")->where("ID", 3327)->first();
+          $sc3328 = $db::table("StudentClass")->where("ID", 3328)->first();
+
+          $expectedNote = "重複/已被取代之 NT$36,000 總額回報：學生應繳費用已由正式入帳款項全額結清，包含 2026-08-20 現金 12,000 元（回報單 #1490 / 發票 #1559）及 2026-08-30 轉帳 24,000 元（回報單 #1605 / 發票 #1628）。依 Founder 決策作廢/退回此筆重複回報，保留稽核軌跡。";
+
+          $checks = [
+            "pr1489_exists" => (bool) $pr1489,
+            "pr1489_student_2219" => $pr1489 && (int) $pr1489->StudentID === 2219,
+            "pr1489_class_3328" => $pr1489 && (int) $pr1489->StudentClassID === 3328,
+            "pr1489_amount_36000" => $pr1489 && (float) $pr1489->reported_amount === 36000.0,
+            "pr1489_reported_payment_date_20260820" => $pr1489 && (string) $pr1489->payment_date === "2026-08-20",
+            "pr1489_no_invoice" => $pr1489 && empty($pr1489->InvoiceID),
+            "pr1489_no_payment" => $pr1489 && empty($pr1489->payment_id),
+            "pr1489_status_legal" => $pr1489 && in_array((string) $pr1489->status, ["pending", "rejected"], true),
+
+            "pr1490_confirmed" => $pr1490 && (string) $pr1490->status === "confirmed" && (float) $pr1490->reported_amount === 12000.0,
+            "inv1559_paid" => $inv1559 && (string) $inv1559->Status === "paid" && (float) $inv1559->PaidAmount === 12000.0,
+            "pay1563_amount_12000" => $pay1563 && (float) $pay1563->Amount === 12000.0,
+
+            "pr1605_confirmed" => $pr1605 && (string) $pr1605->status === "confirmed" && (float) $pr1605->reported_amount === 24000.0,
+            "inv1628_paid" => $inv1628 && (string) $inv1628->Status === "paid" && (float) $inv1628->PaidAmount === 24000.0,
+            "pay1615_amount_24000" => $pay1615 && (float) $pay1615->Amount === 24000.0,
+
+            "pkg170_paid" => $pkg170 && (bool) $pkg170->paid === true,
+            "sc2655_paid" => $sc2655 && (int) $sc2655->Paid === 1,
+            "sc3327_paid" => $sc3327 && (int) $sc3327->Paid === 1,
+            "sc3328_paid" => $sc3328 && (int) $sc3328->Paid === 1,
+          ];
+
+          $allPass = !in_array(false, $checks, true);
+
+          if (!$allPass) {
+            echo "---RESULT---", PHP_EOL;
+            echo json_encode([
+              "ok" => false,
+              "aborted" => true,
+              "reason" => "precondition_mismatch",
+              "checks" => $checks,
+              "prod_head" => $prodHead,
+              "run_id" => $runId,
+              "timestamp" => gmdate("c"),
+              "no_write_performed" => true,
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+            return;
+          }
+
+          // Idempotency: if already rejected with the expected note, do not re-write
+          if ((string) $pr1489->status === "rejected") {
+            echo "---RESULT---", PHP_EOL;
+            echo json_encode([
+              "ok" => true,
+              "aborted" => false,
+              "action" => "skip_already_rejected",
+              "checks" => $checks,
+              "report_id" => 1489,
+              "status" => "rejected",
+              "rejection_note" => (string) $pr1489->rejection_note,
+              "confirmed_by" => (int) $pr1489->confirmed_by,
+              "confirmed_at" => (string) $pr1489->confirmed_at,
+              "prod_head" => $prodHead,
+              "run_id" => $runId,
+              "timestamp" => gmdate("c"),
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+            return;
+          }
+
+          // Resolve actor: founder Jerry (62) or approved admin of Campus 17
+          $founderUser = $db::table("users")->where("id", 62)->value("id");
+          $campusAdmin = $db::table("UserCampus")->where("CampusID", 17)->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
+          $actorId = $founderUser ? (int)$founderUser : ($campusAdmin ? (int)$campusAdmin : 62);
+
+          $before = [
+            "id" => (int) $pr1489->id,
+            "status" => (string) $pr1489->status,
+            "confirmed_by" => $pr1489->confirmed_by ? (int) $pr1489->confirmed_by : null,
+            "confirmed_at" => $pr1489->confirmed_at ? (string) $pr1489->confirmed_at : null,
+            "rejection_note" => $pr1489->rejection_note ? (string) $pr1489->rejection_note : null,
+          ];
+
+          $now = \Carbon\Carbon::now();
+
+          // Atomic execution within transaction
+          $mutationResult = $db::transaction(function () use ($db, $actorId, $now, $expectedNote) {
+            $locked = \App\Models\PaymentReport::query()->lockForUpdate()->findOrFail(1489);
+            if ((string) $locked->status !== "pending") {
+              throw new \RuntimeException("PaymentReport 1489 status shifted during lock: " . $locked->status);
+            }
+            $locked->update([
+              "status" => "rejected",
+              "confirmed_by" => $actorId,
+              "confirmed_at" => $now,
+              "rejection_note" => $expectedNote,
+            ]);
+
+            \Illuminate\Support\Facades\Log::info("PaymentReport rejected via approved maintenance", [
+              "report_id" => 1489,
+              "actor_id" => $actorId,
+              "reason" => $expectedNote,
+            ]);
+
+            return [
+              "id" => (int) $locked->id,
+              "status" => (string) $locked->status,
+              "confirmed_by" => (int) $locked->confirmed_by,
+              "confirmed_at" => (string) $locked->confirmed_at,
+              "rejection_note" => (string) $locked->rejection_note,
+            ];
+          });
+
+          // Post-mutation verifications
+          $fresh1489 = $db::table("payment_reports")->where("id", 1489)->first();
+          $fresh1490 = $db::table("payment_reports")->where("id", 1490)->first();
+          $fresh1605 = $db::table("payment_reports")->where("id", 1605)->first();
+          $freshInv1559 = $db::table("Invoice")->where("id", 1559)->first();
+          $freshInv1628 = $db::table("Invoice")->where("id", 1628)->first();
+          $freshPay1563 = $db::table("Payment")->where("id", 1563)->first();
+          $freshPay1615 = $db::table("Payment")->where("id", 1615)->first();
+          $freshPkg170 = $db::table("course_packages")->where("id", 170)->first();
+          $freshSc3328 = $db::table("StudentClass")->where("ID", 3328)->first();
+
+          // Check if class 3328 has any pending report left
+          $remainingPendingCount = $db::table("payment_reports")
+            ->where("StudentClassID", 3328)
+            ->where("status", "pending")
+            ->count();
+
+          $postVerifications = [
+            "pr1489_status_rejected" => $fresh1489 && (string) $fresh1489->status === "rejected",
+            "pr1489_confirmed_by_set" => $fresh1489 && (int) $fresh1489->confirmed_by === $actorId,
+            "pr1489_confirmed_at_set" => $fresh1489 && !empty($fresh1489->confirmed_at),
+            "pr1489_rejection_note_exact" => $fresh1489 && (string) $fresh1489->rejection_note === $expectedNote,
+            "pr1489_invoice_untouched" => $fresh1489 && empty($fresh1489->InvoiceID),
+            "pr1489_payment_untouched" => $fresh1489 && empty($fresh1489->payment_id),
+
+            "inv1559_untouched" => $freshInv1559 && (string) $freshInv1559->Status === "paid" && (float) $freshInv1559->PaidAmount === 12000.0,
+            "inv1628_untouched" => $freshInv1628 && (string) $freshInv1628->Status === "paid" && (float) $freshInv1628->PaidAmount === 24000.0,
+            "pay1563_untouched" => $freshPay1563 && (float) $freshPay1563->Amount === 12000.0,
+            "pay1615_untouched" => $freshPay1615 && (float) $freshPay1615->Amount === 24000.0,
+
+            "pkg170_remains_paid" => $freshPkg170 && (bool) $freshPkg170->paid === true,
+            "sc3328_remains_paid" => $freshSc3328 && (int) $freshSc3328->Paid === 1,
+            "class_3328_zero_pending_reports" => $remainingPendingCount === 0,
+          ];
+
+          $postAllPass = !in_array(false, $postVerifications, true);
+
+          echo "---RESULT---", PHP_EOL;
+          echo json_encode([
+            "ok" => $postAllPass,
+            "aborted" => false,
+            "action" => "rejected",
+            "checks" => $checks,
+            "before" => $before,
+            "mutation_result" => $mutationResult,
+            "post_verifications" => $postVerifications,
+            "actor_id" => $actorId,
+            "prod_head" => $prodHead,
+            "run_id" => $runId,
+            "timestamp" => gmdate("c"),
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+
+          if (!$postAllPass) {
+            throw new \RuntimeException("Post-mutation verification failed: " . json_encode($postVerifications));
+          }
+          '
+          REMOTE
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          text = Path("out/repair.log").read_text(encoding="utf-8", errors="replace")
+          obj = None
+          for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("{") and '"ok"' in line:
+              try:
+                obj = json.loads(line)
+              except Exception:
+                pass
+          Path("out/repair-result.json").write_text(json.dumps(obj or {"ok": False, "raw_tail": text[-3000:]}, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("parsed", bool(obj is not None))
+          print("ok", obj.get("ok") if obj else None)
+          print("aborted", obj.get("aborted") if obj else None)
+          PY
+
+      - name: Upload repair artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: payment-report-1489-reject-evidence
+          path: out/
+          retention-days: 90
