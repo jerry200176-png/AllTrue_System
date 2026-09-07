@@ -90,11 +90,11 @@ jobs:
           verified_by = int(session["user_id"])
           run_url = os.environ["RUN_URL"]
 
-          def get(path):
-              req = Request(BASE + path, headers={
-                  "Authorization": "Bearer " + token,
-                  "Accept": "application/json",
-              })
+          def get(path, authenticated=True):
+              headers = {"Accept": "application/json"}
+              if authenticated:
+                  headers["Authorization"] = "Bearer " + token
+              req = Request(BASE + path, headers=headers)
               with urlopen(req, timeout=25) as response:
                   return json.loads(response.read().decode("utf-8"))
 
@@ -114,7 +114,7 @@ jobs:
               "schema": 1,
               "kind": "bug_legacy_targeted_production_probe",
               "read_only": True,
-              "production": get("/deployment.json"),
+              "production": get("/deployment.json", authenticated=False),
               "health_observed": get("/api/v1/health").get("status"),
               "verified_by": verified_by,
               "verified_at": datetime.now(timezone.utc).isoformat(),
