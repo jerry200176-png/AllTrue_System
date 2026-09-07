@@ -1,0 +1,46 @@
+id: TKT-20260907-095040-GNDS
+title: Implement production classroom-management smoke spec
+intent: Implement production classroom-management smoke spec
+kind: task
+parent_id: INT-20260907-095029-Y6PO
+boundary: Only add read-only production classroom-management smoke coverage and minimal
+  existing UI Smoke wiring; do not modify runtime/API/permissions/secrets/production
+  data/deployment logic.
+success_condition: The production UI Smoke workflow runs a director-authenticated
+  classroom-management check that verifies heading and successful table or empty state
+  without mutating data.
+priority: 1
+labels:
+- production-smoke
+scope:
+  allow:
+  - frontend/e2e/classroom-management-production-smoke.spec.js
+  - .github/workflows/ui-smoke.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - frontend/src/**
+  - backend/**
+  - migrations/**
+budgets:
+  max_files_changed: 2
+  max_loc_changed: 160
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-07T09:50:40+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
