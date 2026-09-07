@@ -177,7 +177,7 @@ class BackfillBugResolutionEvidenceCommand extends Command
         }
 
         $verifiedAt = $this->parseVerifiedAt($item['verified_at'] ?? null, $bugId);
-        $deployRunId = isset($item['deploy_run_id']) && $item['deploy_run_id'] !== null
+        $deployRunId = isset($item['deploy_run_id'])
             ? trim((string) $item['deploy_run_id'])
             : null;
         if ($deployRunId === '') {
@@ -198,7 +198,7 @@ class BackfillBugResolutionEvidenceCommand extends Command
         $metadata['manifest_id'] = $manifest['manifest_id'];
 
         $bug = BugReport::query()->find($bugId);
-        if (!$bug) {
+        if (!$bug instanceof BugReport) {
             throw new RuntimeException("bug #{$bugId}: bug not found");
         }
         $context = $this->assertResolutionContext($bug, $bugId, $metadata);
@@ -255,7 +255,7 @@ class BackfillBugResolutionEvidenceCommand extends Command
     /** @param array<string,mixed> $metadata */
     private function assertResolutionContext(BugReport $bug, int $bugId, array $metadata): array
     {
-        if ((string) $bug->status !== 'resolved') {
+        if ((string) $bug->getAttribute('status') !== 'resolved') {
             throw new RuntimeException("bug #{$bugId}: status is not resolved");
         }
         $resolveLog = BugReportStatusLog::query()
@@ -284,9 +284,9 @@ class BackfillBugResolutionEvidenceCommand extends Command
     /** @param array<string,mixed> $item @param array<string,mixed> $manifest */
     private function recordItem(array $item, array $manifest, string $productionHead): array
     {
-        return DB::transaction(function () use ($item, $manifest, $productionHead): array {
+        return DB::transaction(function () use ($item, $productionHead): array {
             $bug = BugReport::query()->whereKey($item['bug_id'])->lockForUpdate()->first();
-            if (!$bug) {
+            if (!$bug instanceof BugReport) {
                 throw new RuntimeException("bug #{$item['bug_id']}: bug not found during apply");
             }
             $this->assertResolutionContext($bug, (int) $item['bug_id'], $item['metadata']);
@@ -300,18 +300,19 @@ class BackfillBugResolutionEvidenceCommand extends Command
                 ->where('source_ref', $item['source_ref'])
                 ->first();
             if ($existing) {
-                if ((string) $existing->production_revision !== (string) $item['production_revision']
-                    || (int) $existing->verified_by !== (int) $item['verified_by']) {
+                if ((string) $existing->getAttribute('production_revision') !== (string) $item['production_revision']
+                    || (int) $existing->getAttribute('verified_by') !== (int) $item['verified_by']) {
                     throw new RuntimeException("bug #{$item['bug_id']}: idempotency key already exists with different evidence");
                 }
                 return [
                     'bug_id' => $item['bug_id'],
                     'action' => 'already_recorded',
-                    'evidence_id' => $existing->id,
+                    'evidence_id' => $existing->getKey(),
                 ];
             }
 
-            $evidence = BugReportEvidence::create([
+            $evidence = new BugReportEvidence();
+            $evidence->fill([
                 'bug_report_id' => $item['bug_id'],
                 'evidence_type' => $item['evidence_type'],
                 'production_revision' => $item['production_revision'],
@@ -322,11 +323,12 @@ class BackfillBugResolutionEvidenceCommand extends Command
                 'metadata' => $item['metadata'],
                 'created_at' => Carbon::now(),
             ]);
+            $evidence->save();
 
             return [
                 'bug_id' => $item['bug_id'],
                 'action' => 'recorded',
-                'evidence_id' => $evidence->id,
+                'evidence_id' => $evidence->getKey(),
             ];
         });
     }
