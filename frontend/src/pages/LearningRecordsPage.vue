@@ -1504,6 +1504,7 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
+import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 import { formatParentFeedbackTime } from '../lib/parentFeedbackFormat';
 import {
   fetchClassSessions,
@@ -3841,6 +3842,7 @@ const submitForm = async () => {
     if (isTeacher.value) {
       await fetchTeacherClasses();
     }
+    trackAdoptionEvent('learning_saved', props.branchId, { role: props.userRole });
     closeModal();
   } else if (res.status === 409) {
     const errBody = await res.json().catch(() => ({}));
@@ -3905,6 +3907,7 @@ const approveRecord = async (record) => {
   });
 
   if (res.ok) {
+    trackAdoptionEvent('learning_approved', props.branchId, { role: props.userRole, record_id: record.id });
     fetchRecords();
     fetchStatusCounts();
   } else {

@@ -44,4 +44,11 @@ describe('AttendancePage workspace accessibility', () => {
     expect(nativeButtonTags.length).toBeGreaterThan(20);
     expect(nativeButtonTags.filter((tag) => !/\btype\s*=\s*["']button["']/.test(tag))).toEqual([]);
   });
+
+  it('provides a prominent next action to learning records upon completion', () => {
+    expect(source).toContain('data-test="attendance-next-action"');
+    expect(source).toContain('goToLearningRecords');
+    expect(source).toContain('下一步：填寫課堂評量');
+    expect(source).toContain('emit(\'navigate-learning\'');
+  });
 });

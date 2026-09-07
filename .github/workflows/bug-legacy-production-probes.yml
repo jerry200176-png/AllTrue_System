@@ -1,0 +1,201 @@
+name: Bug legacy production probes (read-only)
+
+# Bounded, case-specific verification for the Founder-approved nine candidates.
+# This workflow performs only GET requests and SELECTs. It never creates a
+# course/session/chat message, uploads a file, changes a bug, or writes evidence.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: bug-legacy-production-probes
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Setup SSH for short-lived read-only session lookup
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Fetch short-lived super-admin session
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          session_json="$({
+            ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "$PI_SSH_USER@$PI_SSH_HOST" bash <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --no-ansi --execute='
+          $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
+            ->join("User as u", "u.id", "=", "t.user_id")
+            ->where("u.type", "S")
+            ->where("t.expires_at", ">", now())
+            ->orderByDesc("t.expires_at")
+            ->select("t.token", "u.id", "u.type")
+            ->first();
+          if (!$row) { throw new \RuntimeException("no valid super-admin smoke session"); }
+          echo json_encode(["access_token" => $row->token, "user_id" => (int) $row->id, "role" => "super_admin"]);
+          '
+          REMOTE
+          })"
+          test -n "$session_json"
+          session_b64="$(printf '%s' "$session_json" | base64 -w0)"
+          echo "::add-mask::$session_b64"
+          printf 'BUG_PROBE_SESSION_B64=%s\n' "$session_b64" >> "$GITHUB_ENV"
+
+      - name: Run nine bounded read-only probes
+        env:
+          BUG_PROBE_SESSION_B64: ${{ env.BUG_PROBE_SESSION_B64 }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from datetime import datetime, timezone
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          BASE = "https://daan.lifenet.com.tw"
+          CANDIDATES = [94, 105, 114, 115, 116, 124, 126, 143, 174]
+          session = json.loads(base64.b64decode(os.environ["BUG_PROBE_SESSION_B64"]))
+          token = session["access_token"]
+          verified_by = int(session["user_id"])
+          run_url = os.environ["RUN_URL"]
+
+          def get(path, authenticated=True):
+              headers = {"Accept": "application/json"}
+              if authenticated:
+                  headers["Authorization"] = "Bearer " + token
+              req = Request(BASE + path, headers=headers)
+              with urlopen(req, timeout=25) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          def rows(payload):
+              if isinstance(payload, list):
+                  return payload
+              return payload.get("data", []) if isinstance(payload, dict) else []
+
+          def public_resolution_comment(detail):
+              logs = [x for x in detail.get("status_logs", []) if x.get("to_status") == "resolved"]
+              latest = max((x.get("created_at") or "" for x in logs), default="")
+              comments = [x for x in detail.get("comments", [])
+                          if not x.get("is_internal_note") and (x.get("created_at") or "") >= latest]
+              return max(comments, key=lambda x: x.get("created_at") or "") if comments else None
+
+          result = {
+              "schema": 1,
+              "kind": "bug_legacy_targeted_production_probe",
+              "read_only": True,
+              "production": get("/deployment.json", authenticated=False),
+              "health_observed": get("/api/v1/health").get("status"),
+              "verified_by": verified_by,
+              "verified_at": datetime.now(timezone.utc).isoformat(),
+              "probe_run_url": run_url,
+              "cases": [],
+          }
+
+          for bug_id in CANDIDATES:
+              detail = get(f"/api/v1/bugs/{bug_id}")
+              comment = public_resolution_comment(detail)
+              case = {
+                  "bug_id": bug_id,
+                  "status": detail.get("status"),
+                  "public_resolution_comment_id": comment.get("id") if comment else None,
+                  "verdict": "inconclusive",
+                  "reason": "No safe case-specific current-production reproduction target was available.",
+              }
+
+              if bug_id == 114:
+                  # The public resolution names the student and calendar surface.
+                  # GET-only student/class/session-dates calls verify that the
+                  # current calendar projection has no occurrence for the target.
+                  students = rows(get("/api/v1/students?" + urlencode({"name": "陳詩翰", "per_page": "all"})))
+                  target_ids = [int(x["id"]) for x in students if x.get("id")]
+                  class_ids = []
+                  for sid in target_ids:
+                      class_ids += [int(x.get("ID") or x.get("id")) for x in rows(get("/api/v1/student-classes?" + urlencode({"student_id": sid, "per_page": "all"}))) if x.get("ID") or x.get("id")]
+                  dates = get("/api/v1/student-classes/session-dates?" + urlencode({
+                      "branch_id": 9, "range_start": "2026-06-01", "range_end": "2026-09-30",
+                  }))
+                  target_dates = []
+                  for cid in class_ids:
+                      payload = dates.get(str(cid), {}) if isinstance(dates, dict) else {}
+                      target_dates += payload.get("materialized", []) + payload.get("projected", [])
+                  case.update({
+                      "probe": {
+                          "type": "targeted_current_production",
+                          "health_only": False,
+                          "observed": f"target student/classes resolved; {len(target_dates)} current calendar occurrences in bounded window",
+                          "evidence_ref": run_url,
+                          "target_student_count": len(target_ids),
+                          "target_class_ids": class_ids,
+                          "target_occurrence_count": len(target_dates),
+                      },
+                  })
+                  if comment and target_ids and class_ids and not target_dates:
+                      case["verdict"] = "verified"
+                      case["reason"] = "Current bounded calendar read returns no occurrence for the named legacy target."
+
+              elif bug_id == 126:
+                  # A same-name current student exists, but no immutable historical
+                  # class identifier is present in the public report. Read it and
+                  # classify conservatively rather than treating a coincidental
+                  # current course as the historical target.
+                  students = rows(get("/api/v1/students?" + urlencode({"name": "施景媛", "per_page": "all"})))
+                  target_ids = [int(x["id"]) for x in students if x.get("id")]
+                  case["probe"] = {
+                      "type": "targeted_current_production",
+                      "health_only": False,
+                      "observed": "same-name current student found, but historical class identity is not public and no mutation-free replay is authorized",
+                      "evidence_ref": run_url,
+                      "target_student_count": len(target_ids),
+                  }
+                  case["reason"] = "Ambiguous historical target; no evidence backfill."
+
+              result["cases"].append(case)
+
+          with open("out/bug-legacy-probe-results.json", "w", encoding="utf-8") as stream:
+              json.dump(result, stream, ensure_ascii=False, indent=2)
+          print(json.dumps({
+              "kind": result["kind"],
+              "production_backend_sha": result["production"].get("backend_sha"),
+              "verified": [x["bug_id"] for x in result["cases"] if x["verdict"] == "verified"],
+              "inconclusive": [x["bug_id"] for x in result["cases"] if x["verdict"] != "verified"],
+              "read_only": True,
+          }))
+          PY
+
+      - name: Upload redacted probe results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bug-legacy-production-probes-${{ github.run_id }}
+          path: out/bug-legacy-probe-results.json
+          retention-days: 30

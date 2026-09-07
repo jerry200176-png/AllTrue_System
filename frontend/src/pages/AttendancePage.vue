@@ -211,6 +211,10 @@
         <p v-else class="att-snapshot-copy">今日點名已完成，沒有需要處理的堂次。</p>
       </div>
       <button v-if="pendingSessions.length" type="button" class="primary" @click="focusPendingList">開始點名</button>
+      <button v-else type="button" class="primary" data-test="btn-snapshot-learning" @click="goToLearningRecords">
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-2px">arrow_forward</span>
+        下一步：填寫課堂評量
+      </button>
     </section>
 
     <!-- Stats Summary -->
@@ -239,7 +243,19 @@
       </p>
       <div v-if="!isTeacher && !branchId" class="att-empty enterprise-empty">請先選擇分校</div>
       <div v-else-if="pendingLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
-      <div v-else-if="pendingSessions.length === 0" class="att-empty enterprise-empty">今日沒有待點名堂次</div>
+      <div v-else-if="pendingSessions.length === 0" class="att-completed-next-step" data-test="attendance-next-action">
+        <div class="att-completed-msg">
+          <span class="material-symbols-outlined att-completed-icon" aria-hidden="true">check_circle</span>
+          <div>
+            <strong>今日待點名堂次已全部完成</strong>
+            <p>{{ isTeacher ? '教學現場點名已記錄完畢。下一步請前往填寫課堂評量與進度。' : '本分校今日課堂均已點名。下一步可前往學習評量審核。' }}</p>
+          </div>
+        </div>
+        <button type="button" class="primary small att-completed-btn" @click="goToLearningRecords">
+          <span>{{ isTeacher ? '前往填寫評量' : '前往評量審核' }}</span>
+          <span class="material-symbols-outlined" style="font-size:16px" aria-hidden="true">arrow_forward</span>
+        </button>
+      </div>
       <template v-else>
         <!-- Batch action bar -->
         <div class="att-batch-bar">
@@ -1082,14 +1098,25 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 import { attendanceMarkConfirmHint } from '../lib/attendanceMarkConfirmHint';
+import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 
 const props = defineProps({
   branchId: [String, Number],
   userRole: String,
   userId: [String, Number],
 });
+const emit = defineEmits(['navigate', 'navigate-learning']);
+
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorOrAdmin = computed(() => props.userRole === 'director' || props.userRole === 'super_admin');
+
+function goToLearningRecords() {
+  if (isTeacher.value) {
+    emit('navigate-learning', { branchId: props.branchId, listOnly: true });
+  } else {
+    emit('navigate', 'learning');
+  }
+}
 
 // ── Tab state ──
 const activeTab = ref('student');
@@ -1909,6 +1936,7 @@ async function doSubmitPendingMark(s, status) {
         pendingMarkMsg.value = `已核課：${s.student_name} ${label}`;
       }
       pendingMarkMsgType.value = 'success';
+      trackAdoptionEvent('attendance_marked', props.branchId, { role: props.userRole, status });
       await Promise.all([fetchPendingSessions(), fetchRecords()]);
     } else {
       const err = await res.json().catch(() => ({}));
@@ -1979,6 +2007,7 @@ async function batchMarkAllPresent() {
     if (json.success_count > 0) {
       pendingMarkMsg.value = `批次完成：${json.success_count} 成功` + (json.fail_count > 0 ? `，${json.fail_count} 失敗` : '');
       pendingMarkMsgType.value = json.fail_count > 0 ? 'error' : 'success';
+      trackAdoptionEvent('attendance_batch_marked', props.branchId, { count: json.success_count, role: props.userRole });
     } else {
       pendingMarkMsg.value = '批次送出失敗';
       pendingMarkMsgType.value = 'error';
@@ -2608,6 +2637,59 @@ watch(() => props.branchId, () => {
 }
 .att-empty {
   padding: 24px; text-align: center; font-size: 14px; color: var(--ds-ink-mute);
+}
+.att-completed-next-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  background: var(--ds-primary-wash, rgba(232, 121, 36, 0.05));
+  border: 1px solid var(--ds-primary-wash, rgba(232, 121, 36, 0.2));
+  border-radius: 12px;
+  margin: 8px 0;
+}
+.att-completed-msg {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.att-completed-icon {
+  font-size: 28px;
+  color: var(--ds-success);
+  flex-shrink: 0;
+}
+.att-completed-msg strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ds-ink);
+  margin-bottom: 3px;
+}
+.att-completed-msg p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ds-ink-secondary);
+  line-height: 1.4;
+}
+.att-completed-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .att-completed-next-step {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px;
+  }
+  .att-completed-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 .att-required { color: var(--danger); }
 
