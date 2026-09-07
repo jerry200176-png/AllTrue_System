@@ -39,4 +39,10 @@ describe('StudentsList row disclosure accessibility', () => {
     expect(nativeButtonTags.length).toBeGreaterThan(20);
     expect(nativeButtonTags.filter((tag) => !/\btype\s*=\s*["']button["']/.test(tag))).toEqual([]);
   });
+
+  it('provides an explicit course and enrollment disclosure button in each row', () => {
+    expect(source).toContain('class="btn-course-disclosure"');
+    expect(source).toContain('課程/購課');
+    expect(source).toContain('收合課程與加購明細');
+  });
 });

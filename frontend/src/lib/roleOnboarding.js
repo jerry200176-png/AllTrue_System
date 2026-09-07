@@ -11,6 +11,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '登入後先看今日數據與提醒，再依優先順序處理分校工作。這裡只提供導覽，不會替你修改資料。',
       objective: '選定今天最需要你先處理的一項工作。',
       completionPrompt: '請先在「今天要處理的事」選定一項，再按「我完成了，下一步」。',
+      completionEvents: ['dashboard_opened', 'todo_card_clicked'],
       placement: 'bottom',
     },
     {
@@ -22,6 +23,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '通知中心集中顯示繳費、評量與出缺勤等待辦；先確認一則通知，再進入下一個任務。',
       objective: '確認一則通知的內容與下一個處理入口。',
       completionPrompt: '請先打開一則需要跟進的通知（或確認目前沒有待辦），再繼續。',
+      completionEvents: ['notification_viewed', 'inbox_viewed', 'notifications_viewed'],
       placement: 'bottom',
     },
     {
@@ -33,6 +35,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '用日期與篩選工具快速定位老師、教室或科目，再從課表查看需要處理的課程。',
       objective: '用日期或篩選找到一堂要追蹤的課。',
       completionPrompt: '請先用課表的日期／篩選工具定位一堂課，再繼續。',
+      completionEvents: ['calendar_viewed', 'workflow_calendar_started', 'schedule_navigated'],
       placement: 'bottom',
     },
     {
@@ -44,6 +47,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '最後到學習評量查看老師提交的紀錄與待審項目；需要寫入資料時，請依畫面提示確認後再操作。',
       objective: '完成一次評量審核判斷，讓主任巡檢有明確收尾。',
       completionPrompt: '請先查看一筆評量並完成核准／退回判斷；沒有待審時確認清單即可。',
+      completionEvents: ['learning_reviewed', 'learning_approved', 'learning_records_viewed'],
       placement: 'bottom',
     },
   ],
@@ -57,6 +61,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '教學工作台會把今天最重要的點名與評量待辦放在前面，登入後先從這裡開始。',
       objective: '從今日工作台選出第一堂要處理的課。',
       completionPrompt: '請先打開今日待辦中的第一個課務入口，再按「我完成了，下一步」。',
+      completionEvents: ['dashboard_opened', 'teacher_task_opened'],
       placement: 'bottom',
     },
     {
@@ -68,6 +73,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '到出缺勤管理查看今天的課堂，依課程逐堂完成點名；導覽不會替你送出出缺勤資料。',
       objective: '完成一堂課的點名，留下真實出缺勤紀錄。',
       completionPrompt: '請先完成一堂課的點名並確認送出；沒有待點名課堂時，確認清單即可繼續。',
+      completionEvents: ['attendance_marked', 'attendance_batch_marked'],
       placement: 'bottom',
     },
     {
@@ -79,6 +85,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '點名後可到學習評量查看學生紀錄、補填與待回覆項目，維持每日教學紀錄完整。',
       objective: '完成一筆學習評量或確認目前沒有待填紀錄。',
       completionPrompt: '請先填寫並送出一筆評量，或確認今天沒有待填項目，再繼續。',
+      completionEvents: ['learning_saved', 'learning_submitted', 'learning_records_viewed'],
       placement: 'bottom',
     },
     {
@@ -90,6 +97,7 @@ const ROLE_ONBOARDING_MISSIONS = {
       description: '最後回到課表確認接下來的課堂與學生清單，形成「待辦 → 點名 → 評量 → 課表」的日常流程。',
       objective: '確認下一堂課的時間與學生，完成每日教學收尾。',
       completionPrompt: '請先確認下一堂課的時間與學生清單，再完成這條任務。',
+      completionEvents: ['calendar_viewed', 'schedule_navigated'],
       placement: 'bottom',
     },
   ],
