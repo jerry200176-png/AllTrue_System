@@ -12,10 +12,8 @@ const viewports = [
   { name: 'desktop-1280', width: 1280, height: 800 },
 ];
 
-const MOCK_TEACHERS = [{ id: 10, name: '林立文 老師' }, { id: 11, name: '張雅婷 老師' }];
 const makeInq = (id, status, student_name, subject, owner_name, follow_up_at, next_action, extra = {}) => ({
-  id, campus_id: 1, status, student_name, parent_phone: '******5678', subject,
-  owner_id: owner_name ? 9001 : null, owner_name: owner_name || null,
+  id, campus_id: 1, status, student_name, parent_phone: '******5678', subject, owner_id: owner_name ? 9001 : null, owner_name: owner_name || null,
   follow_up_at, next_action, last_action_at: '2026-09-07T08:00:00Z', created_at: '2026-09-07T08:00:00Z', ...extra,
 });
 const MOCK_INQUIRIES = [
@@ -32,40 +30,22 @@ const MOCK_INQUIRIES = [
 
 function getMockDetail(id) {
   const item = MOCK_INQUIRIES.find(i => i.id === Number(id)) || MOCK_INQUIRIES[0];
-  const pMap = {
-    101: ['王小明', '王大同', '大安國中', 'J1', '希望加強因數分解與幾何圖形概念'],
-    102: ['林小涵', '林媽媽', '仁愛國中', 'J2', '想針對段考閱讀題加強練習'],
-    103: ['陳立志', '陳爸爸', '建國中學', 'H1', '高一物理力學單元需要加強'],
-    104: ['張庭宇', '張先生', '敦化國中', 'J3', '準備會考理化總複習'],
-    105: ['李子平', '李媽媽', '金華國小', 'P6', '小六升國中數學銜接'],
-    106: ['黃昱安', '黃爸爸', '中正高中', 'H2', '試聽當天臨時請假未到'],
-    107: ['趙敏安', '趙媽媽', '師大附中', 'H3', '學測英文衝刺班已順利轉正'],
-    108: ['孫博文', '孫先生', '和平高中', 'H1', '家長評估後先自行複習'],
-    109: ['歐陽長名測試學員超長名稱驗證不爆版', '歐陽長家長名稱', '國立臺灣師範大學附屬高級中學國中部名稱很長', 'J2', '這是一段很長很長的備註說明文字，用來測試在手機與平板上是否有橫向破版或內容重疊的問題，應當能夠自然折行顯示。'.repeat(2)],
-  };
-  const [student_name, parent_name, school_name, grade, public_notes] = pMap[item.id] || pMap[101];
   return {
-    ...item, student_name, parent_name, parent_phone: '0912-345-678', grade, school_name,
-    preferred_slots: ['平日晚上', '週六下午'], public_notes,
+    ...item, student_name: item.student_name.replace(/\*/g, '明'), parent_name: '家長家長', parent_phone: '0912-345-678', grade: 'J1', school_name: '大安國中',
+    preferred_slots: ['平日晚上', '週六下午'], public_notes: item.id === 109 ? '長備註說明文字測試手機排版。'.repeat(20) : '希望加強數學',
     staff_notes: item.status === 'contacted' ? '已與家長電訪確認時段' : '',
-    history: [
-      { event_type: 'admission_inquiry.submit', outcome: 'success', reason_code: 'submit', occurred_at: '2026-09-07T08:00:00Z' },
-      ...(item.owner_id ? [{ event_type: 'admission_inquiry.owner_assigned', outcome: 'success', reason_code: 'owner_assigned', occurred_at: '2026-09-07T08:30:00Z' }] : []),
-      ...(item.status !== 'new' ? [{ event_type: 'admission_inquiry.state_transition', outcome: 'success', reason_code: 'contacted', occurred_at: '2026-09-07T09:00:00Z' }] : []),
-    ],
+    history: [{ event_type: 'admission_inquiry.submit', outcome: 'success', reason_code: 'submit', occurred_at: '2026-09-07T08:00:00Z' }],
   };
 }
 
 async function installAdmissionsMock(page, { empty = false } = {}) {
   await page.route('**/api/v1/**', async (route) => {
-    const url = new URL(route.request().url());
-    const p = url.pathname;
-    const method = route.request().method();
+    const url = new URL(route.request().url()), p = url.pathname, method = route.request().method();
     if (p.includes('/branches') || p.includes('/branch')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 1, name: '大安分校' }, { id: 2, name: '木柵分校' }]) });
     }
     if (p.includes('/teachers')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_TEACHERS) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 10, name: '林立文 老師' }, { id: 11, name: '張雅婷 老師' }]) });
     }
     if (p.endsWith('/admission-inquiries') && method === 'GET') {
       const sf = url.searchParams.get('status');
@@ -120,32 +100,32 @@ test.describe('Admissions Workflow Clarity Browser Verification', () => {
       await expect(page.locator('.admission-queue-item')).toHaveCount(9);
       await expect(page.locator('.admission-queue-item').nth(0)).toContainText('王***');
       await expect(page.locator('.admission-queue-item').nth(0)).toContainText('******5678');
-      await expect(page.locator('.admission-stat-chip.urgent')).toContainText('今日需追蹤');
+      await expect(page.locator('.admission-stat-chip.urgent')).toContainText('需盡速聯絡');
       await expect(page.locator('.admission-stat-chip.unassigned')).toContainText('待認領');
 
-      await expect(page.locator('.admission-workflow-stepper')).toBeVisible();
-      await expect(page.locator('.admission-step').nth(0)).toHaveClass(/current/);
-
-      await page.locator('.admission-queue-item').nth(1).click();
-      await expect(page.locator('.admission-workflow-stepper')).toBeVisible();
-      await expect(page.locator('.admission-step').nth(1)).toHaveClass(/current/);
-      await expect(page.locator('.admission-workflow').getByRole('button', { name: '安排試聽' })).toBeVisible();
+      await expect(page.locator('.admission-pipeline-wrapper')).toBeVisible();
+      await expect(page.locator('.admission-pipeline-node').nth(0)).toHaveClass(/current/);
       await expect(page.locator('.admission-direct-trial-toggle')).toBeVisible();
 
+      await page.locator('.admission-queue-item').nth(1).click();
+      await expect(page.locator('.admission-pipeline-wrapper')).toBeVisible();
+      await expect(page.locator('.admission-pipeline-node').nth(1)).toHaveClass(/current/);
+      await expect(page.locator('.admission-action-buttons').getByRole('button', { name: '建立試聽（帶入學生資料）' })).toBeVisible();
+
       await page.locator('.admission-queue-item').nth(3).click();
-      await expect(page.locator('.admission-step').nth(2)).toHaveClass(/current/);
-      await expect(page.locator('.admission-workflow').getByRole('button', { name: '記錄試聽結果' })).toBeVisible();
+      await expect(page.locator('.admission-pipeline-node').nth(2)).toHaveClass(/current/);
+      await expect(page.locator('.admission-action-buttons').getByRole('button', { name: '儲存結果' })).toBeVisible();
 
       await page.locator('.admission-queue-item').nth(4).click();
-      await expect(page.locator('.admission-step').nth(3)).toHaveClass(/current/);
-      await expect(page.locator('.admission-workflow').getByRole('button', { name: '轉正式報名' })).toBeVisible();
+      await expect(page.locator('.admission-pipeline-node').nth(3)).toHaveClass(/current/);
+      await expect(page.locator('.admission-action-buttons').getByRole('button', { name: '轉正式報名' })).toBeVisible();
 
       await page.locator('.admission-queue-item').nth(6).click();
-      await expect(page.locator('.admission-step').nth(4)).toHaveClass(/current/);
-      await expect(page.locator('.admission-card').getByText('已連結正式課程')).toBeVisible();
+      await expect(page.locator('.admission-pipeline-node').nth(4)).toHaveClass(/current/);
+      await expect(page.locator('.admission-detail').getByText('已連結正式課程')).toBeVisible();
 
       await page.locator('.admission-queue-item').nth(7).click();
-      await expect(page.locator('.admission-card').getByText('此詢問已結案（暫不繼續）')).toBeVisible();
+      await expect(page.locator('.admission-detail').getByText('此詢問已結案（暫不繼續）')).toBeVisible();
 
       await page.locator('.admission-queue-item').nth(8).click();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2);
