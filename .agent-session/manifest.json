@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "SES-20260907-BUG-249-AUDIT",
+  "session_id": "SES-20260907095046-E50BB912",
   "project": "alltrue",
-  "task_id": "bug-249-reject-fix-20260907",
+  "task_id": "TKT-20260907-095040-GNDS",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "fde2e88fa960d31d2629fcdd6ac464e494f30982",
-  "branch": "chore/task-bug-249-reject-fix-20260907",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-253-calendar-capacity-20260907",
-  "started_at": "2026-09-07T01:30:00Z",
+  "branch": "exo/TKT-20260907-095040-GNDS",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INT-20260907-101500-prod-classroom-smoke",
+  "started_at": "2026-09-07T01:50:46Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "cursor",
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
