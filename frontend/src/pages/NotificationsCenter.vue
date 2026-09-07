@@ -195,10 +195,6 @@
                   <span>{{ formatDateTime(item.occurred_at) }}</span>
                   <span v-if="item.due_at">期限：{{ formatDateTime(item.due_at) }}</span>
                 </div>
-                <div class="leave-case-step">
-                  <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-                  <span>開啟後可選補課、核准不補課，或填寫原因退回請假。</span>
-                </div>
                 <div class="item-actions">
                   <AtButton shape="rect" size="sm" variant="primary" class="case-cta" @click="goToLeaveCase(item)">開啟主任處理頁<span aria-hidden="true">→</span></AtButton>
                 </div>
@@ -259,7 +255,7 @@
 
             <div class="meta-row">
               <span>{{ formatDateTime(item.OccurredAt || item.created_at) }}</span>
-              <span>來源：{{ item.SourceType || '-' }}</span>
+              <span>來源：{{ sourceTypeLabel(item.SourceType) }}</span>
             </div>
 
             <div class="item-actions">
@@ -376,6 +372,19 @@ const TYPE_META = {
 };
 
 const typeLabel = (type) => TYPE_META[type]?.label || type || '其他';
+
+const SOURCE_TYPE_LABELS = {
+  StudentClass: '課程合約',
+  Invoice: '學費帳單',
+  Attendance: '點名出缺席',
+  ClassSession: '課堂排程',
+  Schedule: '課表',
+  LeaveRequest: '請假申請',
+  BugReport: '問題回報',
+  Evaluation: '學習評量',
+};
+
+const sourceTypeLabel = (type) => SOURCE_TYPE_LABELS[type] || type || '系統通知';
 
 const typeTabs = computed(() => [
   { value: 'lane:case', id: 'notifications-tab-cases', panelId: 'notifications-panel-cases', label: '待辦案件', count: casesOpenCount.value },
