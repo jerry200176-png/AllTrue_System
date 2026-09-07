@@ -50,7 +50,9 @@ class ScheduleGuardService
         $conflicts = [];
 
         foreach ($slots as $slot) {
-            $overlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
+            $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
+            $concreteOverlaps = $this->collectConcreteRecurringOverlaps($teacherId, $branchId, $slot, $excludeStudentClassId);
+            $overlaps = array_merge($recurringOverlaps, $concreteOverlaps);
 
             $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
             if ($teacherConflict) {
@@ -118,7 +120,9 @@ class ScheduleGuardService
             $date,
             $excludeScheduleId,
             $excludeStudentId,
-            $excludeCourseId
+            $excludeCourseId,
+            $startTime,
+            $endTime
         );
         $overlaps = array_values(array_filter($entries, function ($entry) use ($startTime, $endTime) {
             return $this->timesOverlap($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time']);
@@ -291,6 +295,204 @@ class ScheduleGuardService
                     'end_time' => (string) $existingSlot['end_time'],
                 ];
             }
+        }
+
+        return $overlaps;
+    }
+
+    /**
+     * Collect concrete future session/schedule overlaps for a recurring slot.
+     * Enforces bounded self-exclusion: a session belonging to $excludeStudentClassId
+     * is excluded ONLY if its start_time and end_time match the recurring slot.
+     * Overlapping sessions at non-matching times, or sessions from other courses/students,
+     * are retained as true conflicts.
+     *
+     * @param  array<string, mixed>  $slot
+     * @return array<int, array<string, mixed>>
+     */
+    private function collectConcreteRecurringOverlaps(
+        int $teacherId,
+        int $branchId,
+        array $slot,
+        ?int $excludeStudentClassId = null
+    ): array {
+        $dow = (int) ($slot['day_of_week'] ?? 0);
+        $slotStart = (string) ($slot['start_time'] ?? '');
+        $slotEnd = (string) ($slot['end_time'] ?? '');
+        if ($dow < 1 || $dow > 7 || $slotStart === '' || $slotEnd === '') {
+            return [];
+        }
+
+        $today = Carbon::today()->toDateString();
+
+        $scheduleRowsQuery = DB::table('schedules')
+            ->where('branch_id', $branchId)
+            ->where('teacher_id', $teacherId)
+            ->whereDate('schedule_date', '>=', $today)
+            ->select([
+                'id',
+                'student_id',
+                'schedule_date',
+                'status',
+                'start_time',
+                'end_time',
+                'class_type',
+                'student_course_id',
+                'original_schedule_id',
+            ]);
+        $scheduleRows = $scheduleRowsQuery->get();
+
+        $leaveOrRescheduled = [];
+        $scheduledRows = [];
+        foreach ($scheduleRows as $row) {
+            $status = (string) ($row->status ?? '');
+            $courseId = (int) ($row->student_course_id ?? 0);
+            $d = $row->schedule_date ? Carbon::parse((string) $row->schedule_date)->toDateString() : '';
+            if ($d && $courseId > 0 && ($status === 'leave' || $status === 'rescheduled')) {
+                $leaveOrRescheduled[$courseId . '|' . $d] = true;
+                continue;
+            }
+            if ($status === 'scheduled') {
+                $scheduledRows[] = $row;
+            }
+        }
+
+        $staleFilter = app(StaleScheduleExceptionFilter::class);
+        $scheduledByDate = [];
+        foreach ($scheduledRows as $row) {
+            $d = $row->schedule_date ? Carbon::parse((string) $row->schedule_date)->toDateString() : '';
+            if ($d) {
+                $scheduledByDate[$d][] = $row;
+            }
+        }
+        $filteredScheduledRows = [];
+        foreach ($scheduledByDate as $d => $rowsOnDate) {
+            $clean = $staleFilter->rejectStale($rowsOnDate, $d);
+            foreach ($clean as $r) {
+                $filteredScheduledRows[] = $r;
+            }
+        }
+
+        $classSessions = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->where('sc.TeacherID', $teacherId)
+            ->where('sc.Stop', 0)
+            ->where('st.CampusID', $branchId)
+            ->whereDate('cs.SessionDate', '>=', $today)
+            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->select([
+                'cs.id as class_session_id',
+                'cs.StudentClassID',
+                'cs.SessionDate',
+                'cs.StartTime',
+                'cs.EndTime',
+                'sc.StudentID',
+                'sc.ClassType',
+                'sc.room_id',
+            ])
+            ->get();
+
+        $overlaps = [];
+        $seenKeys = [];
+
+        foreach ($classSessions as $row) {
+            $sessionDate = substr((string) ($row->SessionDate ?? ''), 0, 10);
+            if (!$sessionDate) {
+                continue;
+            }
+            $sessionDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
+            if ($sessionDow !== $dow) {
+                continue;
+            }
+
+            $courseId = (int) ($row->StudentClassID ?? 0);
+            if ($courseId > 0 && isset($leaveOrRescheduled[$courseId . '|' . $sessionDate])) {
+                continue;
+            }
+
+            $start = $this->normalizeTime($row->StartTime ?? null);
+            $end = $this->normalizeTime($row->EndTime ?? null);
+            if (!$start || !$end) {
+                continue;
+            }
+
+            if (!$this->timesOverlap($slotStart, $slotEnd, $start, $end)) {
+                continue;
+            }
+
+            // Bounded self-exclusion:
+            if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
+                // If the session matches the slot being added, it is the course's own
+                // exception session being regularized into this recurring slot. Safe to exclude.
+                if ($start === $slotStart && $end === $slotEnd) {
+                    continue;
+                }
+                // If start/end do not match, it represents an intra-course overlapping conflict.
+            }
+
+            $key = $courseId . '|' . $sessionDate . '|' . $start . '|' . $end;
+            if (isset($seenKeys[$key])) {
+                continue;
+            }
+            $seenKeys[$key] = true;
+
+            $overlaps[] = [
+                'source' => 'class_session',
+                'source_id' => $courseId,
+                'student_id' => (int) ($row->StudentID ?? 0),
+                'class_type' => (string) ($row->ClassType ?? 'one_on_one'),
+                'room_id' => $row->room_id ? (int) $row->room_id : null,
+                'start_time' => $start,
+                'end_time' => $end,
+                'schedule_date' => $sessionDate,
+            ];
+        }
+
+        foreach ($filteredScheduledRows as $row) {
+            $scheduleDate = substr((string) ($row->schedule_date ?? ''), 0, 10);
+            if (!$scheduleDate) {
+                continue;
+            }
+            $scheduleDow = (int) Carbon::parse($scheduleDate)->dayOfWeekIso;
+            if ($scheduleDow !== $dow) {
+                continue;
+            }
+
+            $courseId = (int) ($row->student_course_id ?? 0);
+            $start = $this->normalizeTime($row->start_time ?? null);
+            $end = $this->normalizeTime($row->end_time ?? null);
+            if (!$start || !$end) {
+                continue;
+            }
+
+            if (!$this->timesOverlap($slotStart, $slotEnd, $start, $end)) {
+                continue;
+            }
+
+            // Bounded self-exclusion for schedules:
+            if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
+                if ($start === $slotStart && $end === $slotEnd) {
+                    continue;
+                }
+            }
+
+            $key = $courseId . '|' . $scheduleDate . '|' . $start . '|' . $end;
+            if (isset($seenKeys[$key])) {
+                continue;
+            }
+            $seenKeys[$key] = true;
+
+            $overlaps[] = [
+                'source' => 'schedule',
+                'source_id' => (int) ($row->id ?? 0),
+                'student_id' => (int) ($row->student_id ?? 0),
+                'class_type' => (string) ($row->class_type ?? 'one_on_one'),
+                'room_id' => null,
+                'start_time' => $start,
+                'end_time' => $end,
+                'schedule_date' => $scheduleDate,
+            ];
         }
 
         return $overlaps;
@@ -685,7 +887,9 @@ class ScheduleGuardService
         string $date,
         ?int $excludeScheduleId = null,
         ?int $excludeStudentId = null,
-        ?int $excludeCourseId = null
+        ?int $excludeCourseId = null,
+        ?string $targetStartTime = null,
+        ?string $targetEndTime = null
     ): array {
         $scheduleRowsQuery = DB::table('schedules')
             ->where('branch_id', $branchId)
@@ -705,7 +909,7 @@ class ScheduleGuardService
         if ($excludeScheduleId) {
             $scheduleRowsQuery->where('id', '!=', $excludeScheduleId);
         }
-        if ($excludeCourseId) {
+        if ($excludeCourseId && ($targetStartTime === null || $targetEndTime === null)) {
             $scheduleRowsQuery->where('student_course_id', '!=', $excludeCourseId);
         }
         $scheduleRows = $scheduleRowsQuery->get();
@@ -757,9 +961,6 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
                 continue;
             }
-            if ($excludeCourseId && $courseId === $excludeCourseId) {
-                continue;
-            }
             if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
                 continue;
             }
@@ -768,6 +969,16 @@ class ScheduleGuardService
             $end = $this->normalizeTime($row->EndTime ?? null);
             if (!$start || !$end) {
                 continue;
+            }
+
+            if ($excludeCourseId && $courseId === $excludeCourseId) {
+                if ($targetStartTime !== null && $targetEndTime !== null) {
+                    if ($start === $targetStartTime && $end === $targetEndTime) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
             }
 
             $entries[] = [
@@ -812,6 +1023,15 @@ class ScheduleGuardService
             }
             if ($excludeStudentId && (int) ($row->student_id ?? 0) === $excludeStudentId) {
                 continue;
+            }
+            if ($excludeCourseId && $courseId === $excludeCourseId) {
+                if ($targetStartTime !== null && $targetEndTime !== null) {
+                    if ($start === $targetStartTime && $end === $targetEndTime) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
             }
             // If this course already has a concrete ClassSession on the date,
             // trust ClassSession as the source of truth and ignore stale schedule overrides.

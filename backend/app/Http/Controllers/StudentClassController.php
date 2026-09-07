@@ -6397,20 +6397,6 @@ class StudentClassController extends Controller
      * @param  array<int, array{weekday:int,time:string}>  $previousSlots
      * @param  array<int, array{weekday:int,time:string}>  $newSlots
      */
-    private function isPureFixedSlotRemoval(array $previousSlots, array $newSlots): bool
-    {
-        if (empty($previousSlots) || empty($newSlots) || count($newSlots) >= count($previousSlots)) {
-            return false;
-        }
-
-        $slotKey = static fn (array $slot): string => (int) ($slot['weekday'] ?? 0)
-            . '|' . substr((string) ($slot['time'] ?? ''), 0, 5);
-        $oldKeys = array_values(array_unique(array_map($slotKey, $previousSlots)));
-        $newKeys = array_values(array_unique(array_map($slotKey, $newSlots)));
-
-        return count(array_diff($newKeys, $oldKeys)) === 0;
-    }
-
     /**
      * When SessionCount is reduced, cancel scheduled sessions beyond the new limit.
      * Only cancels sessions whose Status is 'scheduled'; attended/late/absent sessions are untouched.
@@ -6750,6 +6736,31 @@ class StudentClassController extends Controller
             ->orderBy('StartTime')
             ->get();
 
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            foreach ($sessions as $session) {
+                if (empty($session->IsContractException)) {
+                    continue;
+                }
+                $date = $this->normalizeDateString($session->SessionDate ?? null);
+                $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                if (!$date || $start === '') {
+                    continue;
+                }
+                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
+                $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($start) {
+                    return substr((string) ($s['time'] ?? ''), 0, 5) === $start;
+                });
+                if ($matchesSlot) {
+                    // Safe adoption / regularization: this session was an exception,
+                    // but the new fixed schedule now covers its weekday and time!
+                    // Clear the exception flag and adopt it into regular contract.
+                    $session->IsContractException = 0;
+                    $session->save();
+                }
+            }
+        }
+
         $unlocked = $sessions->filter(function ($session) use ($lockedBySessionId) {
             if (isset($lockedBySessionId[(int) $session->id])) {
                 return false;
@@ -6798,26 +6809,14 @@ class StudentClassController extends Controller
         }
 
         if ($needsRemap && $unlocked->isNotEmpty()) {
-            $removalOnly = $this->isPureFixedSlotRemoval($previousScheduleSlots, $slots);
-            $lockedTargetKeys = $removalOnly
-                ? $sessions->filter(function ($session) use ($lockedBySessionId, $slotsByWeekday) {
-                    if (!isset($lockedBySessionId[(int) $session->id]) || !empty($session->IsContractException)) {
-                        return false;
-                    }
-                    $date = $this->normalizeDateString($session->SessionDate ?? null);
-                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                    if (!$date || $start === '') {
-                        return false;
-                    }
-                    $weekday = (int) Carbon::parse($date)->dayOfWeekIso;
-                    return collect($slotsByWeekday[$weekday] ?? [])
-                        ->contains(fn ($slot) => substr((string) ($slot['time'] ?? ''), 0, 5) === $start);
-                })->mapWithKeys(function ($session) {
-                    $date = $this->normalizeDateString($session->SessionDate ?? null);
-                    $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
-                    return $date && $start ? ["{$date}|{$start}" => true] : [];
-                })->all()
-                : [];
+            $unlockedIds = $unlocked->mapWithKeys(fn ($s) => [(int) $s->id => true])->all();
+            $lockedTargetKeys = $sessions->filter(function ($session) use ($unlockedIds) {
+                return !isset($unlockedIds[(int) $session->id]);
+            })->mapWithKeys(function ($session) {
+                $date = $this->normalizeDateString($session->SessionDate ?? null);
+                $start = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : '';
+                return $date && $start ? ["{$date}|{$start}" => true] : [];
+            })->all();
 
             $contractStartDate = $this->normalizeDateString(
                 DB::table('StudentClass')->where('ID', $studentClassId)->value('StartDate')
