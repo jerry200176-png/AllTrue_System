@@ -2,78 +2,40 @@
  * Public admissions URL construction and branch context parsing.
  * Preserves public route contract without leaking tokens, JWTs, or director identity.
  */
-
-export function buildPublicAdmissionsUrl({
-  origin = '',
-  pathname = '',
-  branchId = null,
-} = {}) {
+export function buildPublicAdmissionsUrl({ origin = '', pathname = '', branchId = null } = {}) {
   const base = `${origin}${pathname}#/admissions`;
-  if (branchId === null || branchId === undefined || branchId === '') {
-    return base;
-  }
+  if (branchId === null || branchId === undefined || branchId === '') return base;
   const cleanId = String(branchId).trim();
-  if (!cleanId) return base;
-  return `${base}?branch=${encodeURIComponent(cleanId)}`;
+  return cleanId ? `${base}?branch=${encodeURIComponent(cleanId)}` : base;
 }
 
-export function parsePublicAdmissionsContext({
-  hash = '',
-  search = '',
-  propBranchId = null,
-} = {}) {
+export function parsePublicAdmissionsContext({ hash = '', search = '', propBranchId = null } = {}) {
   if (propBranchId !== null && propBranchId !== undefined && propBranchId !== '') {
-    const rawProp = String(propBranchId).trim();
-    if (rawProp) {
-      const num = Number(rawProp);
-      return Number.isFinite(num) && num > 0 ? num : rawProp;
-    }
+    const raw = String(propBranchId).trim();
+    return (Number.isFinite(Number(raw)) && Number(raw) > 0) ? Number(raw) : (raw || null);
   }
-
-  // 1. Inspect hash query: e.g. #/admissions?branch=2 or #/admissions?campus_id=2
-  if (typeof hash === 'string' && hash.includes('?')) {
-    const hashQuery = hash.slice(hash.indexOf('?') + 1);
-    const params = new URLSearchParams(hashQuery);
-    const candidate = params.get('branch') || params.get('campus_id');
-    if (candidate) {
-      const trimmed = candidate.trim();
-      const num = Number(trimmed);
-      return Number.isFinite(num) && num > 0 ? num : trimmed;
-    }
+  const inspectQuery = (qs) => {
+    if (!qs) return null;
+    const clean = qs.startsWith('?') ? qs.slice(1) : qs;
+    const p = new URLSearchParams(clean);
+    const val = (p.get('branch') || p.get('campus_id') || '').trim();
+    return val ? ((Number.isFinite(Number(val)) && Number(val) > 0) ? Number(val) : val) : null;
+  };
+  if (hash && hash.includes('?')) {
+    const res = inspectQuery(hash.slice(hash.indexOf('?') + 1));
+    if (res) return res;
   }
-
-  // 2. Inspect search query: e.g. ?branch=2#/admissions
-  if (typeof search === 'string' && search) {
-    const cleanSearch = search.startsWith('?') ? search.slice(1) : search;
-    const params = new URLSearchParams(cleanSearch);
-    const candidate = params.get('branch') || params.get('campus_id');
-    if (candidate) {
-      const trimmed = candidate.trim();
-      const num = Number(trimmed);
-      return Number.isFinite(num) && num > 0 ? num : trimmed;
-    }
-  }
-
-  return null;
+  return inspectQuery(search);
 }
 
 export function matchPresetCampus(branches = [], targetBranch = null) {
-  if (!targetBranch || !Array.isArray(branches) || branches.length === 0) {
-    return null;
-  }
-
-  const isNumeric = Number.isFinite(Number(targetBranch)) && Number(targetBranch) > 0;
-  const numTarget = isNumeric ? Number(targetBranch) : null;
+  if (!targetBranch || !Array.isArray(branches) || !branches.length) return null;
+  const numTarget = (Number.isFinite(Number(targetBranch)) && Number(targetBranch) > 0) ? Number(targetBranch) : null;
   const strTarget = String(targetBranch).trim().toLowerCase();
-
-  // Match by id (number or string) or by campus code
-  const matched = branches.find(b => {
+  return branches.find(b => {
     if (!b) return false;
     if (numTarget !== null && Number(b.id) === numTarget) return true;
     if (String(b.id).trim() === strTarget) return true;
-    if (b.code && String(b.code).trim().toLowerCase() === strTarget) return true;
-    return false;
-  });
-
-  return matched || null;
+    return Boolean(b.code && String(b.code).trim().toLowerCase() === strTarget);
+  }) || null;
 }
