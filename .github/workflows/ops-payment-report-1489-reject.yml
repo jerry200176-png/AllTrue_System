@@ -6,11 +6,11 @@ name: PaymentReport 1489 guarded reject (Pi)
 # Checks every precondition atomically — if any precondition fails, NO write happens.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'operations/closeout/payment-report-1489-reject.request.md'
-      - '.github/workflows/ops-payment-report-1489-reject.yml'
+    inputs:
+      confirmation:
+        description: "Type REJECT_PAYMENT_REPORT_1489 only after Founder approval"
+        required: true
+        type: string
 
 concurrency:
   group: payment-report-1489-reject
@@ -53,8 +53,13 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           RUN_ID: ${{ github.run_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
+          [[ "$CONFIRMATION" == "REJECT_PAYMENT_REPORT_1489" ]] || {
+            echo "explicit Founder confirmation is required; no production access" >&2
+            exit 1
+          }
           mkdir -p out
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
