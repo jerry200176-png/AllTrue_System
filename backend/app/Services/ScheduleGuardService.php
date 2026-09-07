@@ -325,50 +325,30 @@ class ScheduleGuardService
 
         $today = Carbon::today()->toDateString();
 
-        $scheduleRowsQuery = DB::table('schedules')
+        $scheduleRows = DB::table('schedules')
             ->where('branch_id', $branchId)
             ->where('teacher_id', $teacherId)
             ->whereDate('schedule_date', '>=', $today)
-            ->select([
-                'id',
-                'student_id',
-                'schedule_date',
-                'status',
-                'start_time',
-                'end_time',
-                'class_type',
-                'student_course_id',
-                'original_schedule_id',
-            ]);
-        $scheduleRows = $scheduleRowsQuery->get();
+            ->select(['id', 'student_id', 'schedule_date', 'status', 'start_time', 'end_time', 'class_type', 'student_course_id', 'original_schedule_id'])
+            ->get();
 
         $leaveOrRescheduled = [];
-        $scheduledRows = [];
+        $scheduledByDate = [];
         foreach ($scheduleRows as $row) {
             $status = (string) ($row->status ?? '');
             $courseId = (int) ($row->student_course_id ?? 0);
             $d = $row->schedule_date ? Carbon::parse((string) $row->schedule_date)->toDateString() : '';
             if ($d && $courseId > 0 && ($status === 'leave' || $status === 'rescheduled')) {
                 $leaveOrRescheduled[$courseId . '|' . $d] = true;
-                continue;
-            }
-            if ($status === 'scheduled') {
-                $scheduledRows[] = $row;
+            } elseif ($d && $status === 'scheduled') {
+                $scheduledByDate[$d][] = $row;
             }
         }
 
         $staleFilter = app(StaleScheduleExceptionFilter::class);
-        $scheduledByDate = [];
-        foreach ($scheduledRows as $row) {
-            $d = $row->schedule_date ? Carbon::parse((string) $row->schedule_date)->toDateString() : '';
-            if ($d) {
-                $scheduledByDate[$d][] = $row;
-            }
-        }
         $filteredScheduledRows = [];
         foreach ($scheduledByDate as $d => $rowsOnDate) {
-            $clean = $staleFilter->rejectStale($rowsOnDate, $d);
-            foreach ($clean as $r) {
+            foreach ($staleFilter->rejectStale($rowsOnDate, $d) as $r) {
                 $filteredScheduledRows[] = $r;
             }
         }
@@ -381,16 +361,7 @@ class ScheduleGuardService
             ->where('st.CampusID', $branchId)
             ->whereDate('cs.SessionDate', '>=', $today)
             ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
-            ->select([
-                'cs.id as class_session_id',
-                'cs.StudentClassID',
-                'cs.SessionDate',
-                'cs.StartTime',
-                'cs.EndTime',
-                'sc.StudentID',
-                'sc.ClassType',
-                'sc.room_id',
-            ])
+            ->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])
             ->get();
 
         $overlaps = [];
@@ -972,11 +943,7 @@ class ScheduleGuardService
             }
 
             if ($excludeCourseId && $courseId === $excludeCourseId) {
-                if ($targetStartTime !== null && $targetEndTime !== null) {
-                    if ($start === $targetStartTime && $end === $targetEndTime) {
-                        continue;
-                    }
-                } else {
+                if ($targetStartTime === null || $targetEndTime === null || ($start === $targetStartTime && $end === $targetEndTime)) {
                     continue;
                 }
             }
@@ -1025,11 +992,7 @@ class ScheduleGuardService
                 continue;
             }
             if ($excludeCourseId && $courseId === $excludeCourseId) {
-                if ($targetStartTime !== null && $targetEndTime !== null) {
-                    if ($start === $targetStartTime && $end === $targetEndTime) {
-                        continue;
-                    }
-                } else {
+                if ($targetStartTime === null || $targetEndTime === null || ($start === $targetStartTime && $end === $targetEndTime)) {
                     continue;
                 }
             }

@@ -1786,6 +1786,24 @@ class StudentClassController extends Controller
             }
         }
 
+        [$sessionSync, $billingModeConversion, $earlyResponse] = DB::transaction(function () use (
+            $studentClass,
+            $mapped,
+            $oldScheduleMode,
+            $request,
+            $oldSessionCountSnapshot,
+            $oldRemainingSessionsSnapshot,
+            $oldTeacherSnapshot,
+            $rawInput,
+            $oldRateUnitSnapshot,
+            $oldRateSnapshot,
+            $oldTotalHoursSnapshot,
+            $oldChargeSnapshot,
+            $previousStartDate,
+            $scheduleSlotsForRebuild,
+            $previousScheduleSlots,
+            $scheduleFieldsPresent
+        ) {
         $studentClass->update($mapped);
         $studentClass->refresh();
 
@@ -1912,12 +1930,12 @@ class StudentClassController extends Controller
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
             if ((string) ($studentClass->scheduling_policy ?? 'auto_recurrence') === ManualSessionBookingService::POLICY) {
-                return response()->json(array_merge($studentClass->fresh()->toArray(), [
+                return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt' => false,
                         'reason' => 'manual_occurrence_policy',
                     ],
-                ]));
+                ]))];
             }
             $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlotsForRebuild);
             if (!empty($slots)) {
@@ -1928,14 +1946,14 @@ class StudentClassController extends Controller
                     $durationMinutes,
                     $previousScheduleSlots
                 );
-                return response()->json(array_merge($studentClass->fresh()->toArray(), [
+                return [null, null, response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
                         'reason'                  => 'force_partial_rebuild',
                         'updated_future_sessions' => $updatedCount,
                         'reconcile_skipped'       => true,
                     ],
-                ]));
+                ]))];
             }
         }
 
@@ -1969,6 +1987,13 @@ class StudentClassController extends Controller
         $monthlySessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
         if (($monthlySessionSync['created_sessions'] ?? 0) > 0) {
             $sessionSync['monthly_future_sessions_created'] = (int) $monthlySessionSync['created_sessions'];
+        }
+
+        return [$sessionSync, $billingModeConversion, null];
+        });
+
+        if ($earlyResponse !== null) {
+            return $earlyResponse;
         }
 
         $payload = $studentClass->toArray();
