@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "SES-20260907101736-E73DFB6B",
+  "session_id": "SES-20260907-TEACHER-CAL-UX-01",
   "project": "alltrue",
-  "task_id": "TKT-20260907-101729-OFOS",
+  "task_id": "teacher-schedule-ux-optimization",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "a0164aa7a59983685521c4a7f6a9aa87194d0914",
-  "branch": "exo/TKT-20260907-101729-OFOS",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INT-20260907-students-list-state-ux",
-  "started_at": "2026-09-07T02:17:36Z",
+  "base_sha": "00948ab58b20d9c33ada687e43c1ca61ba9ba9f0",
+  "branch": "feat/teacher-schedule-ux-optimization",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/training-readiness-p0-ux-20260907",
+  "started_at": "2026-09-07T05:15:00Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": "cursor",
   "gateway_version": "0.5.0"
 }

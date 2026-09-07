@@ -49,4 +49,37 @@ describe('SmartCalendar accessibility contracts', () => {
     expect(source).toContain('getSlotOccupancy');
     expect(source).toContain('onSlotClick');
   });
+
+  it('provides accessible interactive course cards with keyboard navigation for all roles', () => {
+    expect(source).toContain('role="button"');
+    expect(source).toContain('tabindex="0"');
+    expect(source).toContain(':aria-label="getCourseAriaLabel');
+    expect(source).toContain('@keydown.enter.stop="onCourseClick');
+    expect(source).toContain('@keydown.space.stop.prevent="onCourseClick');
+    // Ensure teacher clicks are enabled on course blocks
+    expect(source).not.toContain('!isTeacher && onCourseClick');
+  });
+
+  it('keeps weekday headers sticky and eliminates the relative override', () => {
+    expect(source).toContain('.day-col-header {\n  height: 64px;');
+    expect(source).toContain('position: sticky;\n  top: 0;\n  z-index: 10;');
+    expect(source).not.toContain('.day-col-header { position: relative; }');
+  });
+
+  it('guards calendar empty states against flash during loading', () => {
+    expect(source).toContain('v-if="!calendarLoading && visibleTeachers.length === 0"');
+  });
+
+  it('wires learning records navigation from session detail', () => {
+    expect(source).toContain('@goto-learning="goToLearningFromSession"');
+  });
+
+  it('guarantees touch targets >= 44px and prevents drag/right-click leak to teachers', () => {
+    expect(source).toContain('min-height: 44px;');
+    // Drag, right-click, and slot clicks are guarded against teacher role
+    expect(source).toContain(':draggable="!isTeacher"');
+    expect(source).toContain('@contextmenu.prevent="!isTeacher && onCourseRightClick');
+    expect(source).toContain('@dragstart.stop="!isTeacher && onCourseDragStart');
+    expect(source).toContain('@click="!isTeacher && onSlotClick');
+  });
 });

@@ -41,4 +41,14 @@ describe('DayTabsBar', () => {
     const withTabs = mount(DayTabsBar, { props: { tabs: sampleTabs } }); // activeIdx 預設 -1
     expect(withTabs.findAll('.active')).toHaveLength(0);
   });
+
+  it('renders today pill when tab is today', () => {
+    const tabsWithToday = [
+      { name: '週一', dateLabel: '9/7', count: 2, isToday: true },
+      { name: '週二', dateLabel: '9/8', count: 1, isToday: false },
+    ];
+    const wrapper = mount(DayTabsBar, { props: { tabs: tabsWithToday, activeIdx: 0 } });
+    expect(wrapper.find('.day-tab-today').exists()).toBe(true);
+    expect(wrapper.find('.day-tab-today-pill').text()).toBe('今天');
+  });
 });
