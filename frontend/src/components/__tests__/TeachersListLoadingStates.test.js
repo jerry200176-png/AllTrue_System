@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, shallowMount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import AtFilterBar from '../design-system/AtFilterBar.vue';
-import AtSkeleton from '../design-system/AtSkeleton.vue';
 
 const { getSession } = vi.hoisted(() => ({
   getSession: vi.fn(),
