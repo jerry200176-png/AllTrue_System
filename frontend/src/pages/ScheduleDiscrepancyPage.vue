@@ -629,7 +629,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: var(--info-strong, #1d4ed8);
+  color: var(--info-strong);
   list-style: none;
   user-select: none;
 }
@@ -641,7 +641,7 @@ onBeforeUnmount(() => {
 }
 .sdp-sop-title {
   font-size: 13px;
-  color: var(--info-strong, #1d4ed8);
+  color: var(--info-strong);
 }
 .sdp-sop-arrow {
   margin-left: auto;
@@ -654,7 +654,7 @@ onBeforeUnmount(() => {
 .sdp-sop-body {
   margin-top: 8px;
   padding-top: 6px;
-  border-top: 1px dashed var(--info-border, #bfdbfe);
+  border-top: 1px dashed var(--info-border);
 }
 .sdp-sop-card ol {
   margin: 0;

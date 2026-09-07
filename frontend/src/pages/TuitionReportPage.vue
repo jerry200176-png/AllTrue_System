@@ -281,9 +281,9 @@ loadData();
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--danger-soft, #fef2f2);
-  color: var(--danger, #dc2626);
-  border: 1px solid var(--danger-border, #fecaca);
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
   padding: 10px 14px;
   border-radius: 8px;
   margin-bottom: 16px;
@@ -300,16 +300,16 @@ loadData();
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
-  background: #ffffff;
-  border: 1px solid var(--danger, #dc2626);
-  color: var(--danger, #dc2626);
+  background: var(--surface);
+  border: 1px solid var(--danger);
+  color: var(--danger);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .tr-retry-btn:hover {
-  background: var(--danger, #dc2626);
-  color: #ffffff;
+  background: var(--danger);
+  color: var(--surface);
 }
 .tr-empty {
   text-align: center;
