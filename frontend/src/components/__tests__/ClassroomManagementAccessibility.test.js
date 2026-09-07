@@ -22,8 +22,24 @@ describe('ClassroomManagement form accessibility', () => {
   });
 
   it('declares row actions as non-submit buttons', () => {
-    expect(source).toContain('<button type="button" class="small" @click="openEdit(r)">');
-    expect(source).toContain('<button type="button" class="small" @click="toggleActive(r)">');
-    expect(source).toContain('<button type="button" class="small ghost" @click="confirmDelete(r)">');
+    expect(source).toMatch(/<button type="button" class="small"[^>]*openEdit\(r\)/);
+    expect(source).toMatch(/<button type="button" class="small"[^>]*toggleActive\(r\)/);
+    expect(source).toMatch(/<button type="button" class="small ghost"[^>]*confirmDelete\(r\)/);
+  });
+
+  it('keeps loading failures actionable and separate from an empty branch', () => {
+    expect(source).toContain('role="status" aria-live="polite">載入中…</div>');
+    expect(source).toContain('class="classroom-error" role="alert"');
+    expect(source).toContain('教室清單暫時無法載入，請重試。');
+    expect(source).toContain('@click="loadRooms">重試</button>');
+    expect(source).toContain('v-else-if="!loadError" class="empty-text" role="status"');
+  });
+
+  it('gives the room table and row actions contextual semantics', () => {
+    expect(source).toContain('<caption class="sr-only">目前分校教室清單</caption>');
+    expect(source).toContain('<th scope="col">教室名稱</th>');
+    expect(source).toContain(':aria-label="`編輯教室：${r.name}`"');
+    expect(source).toContain(':aria-label="`${r.is_active ? \'停用\' : \'啟用\'}教室：${r.name}`"');
+    expect(source).toContain(':aria-label="`刪除教室：${r.name}`"');
   });
 });
