@@ -1,0 +1,127 @@
+name: Bug reporter verification timeout (manual)
+
+# Evidence Contract: a manual, fail-closed operational path for resolved bugs
+# that have waited the reporter-verify timeout. This is never scheduled.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Dry-run first; apply only after reviewing the dry-run artifact"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+      days:
+        description: "Calendar days after resolved before timeout"
+        required: true
+        default: "7"
+        type: string
+      actor:
+        description: "Optional super_admin user id for the status log"
+        required: false
+        default: ""
+        type: string
+      confirmation:
+        description: "For apply only, enter CLOSE_STALE_RESOLVED"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: bug-reporter-timeout
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          test -n "$PI_SSH_HOST"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Run reporter timeout command
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          DAYS: ${{ inputs.days }}
+          ACTOR: ${{ inputs.actor }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" == "dry-run" || "$MODE" == "apply" ]] || { echo "invalid mode" >&2; exit 1; }
+          [[ "$DAYS" =~ ^[1-9][0-9]*$ ]] || { echo "days must be a positive integer" >&2; exit 1; }
+          if [[ "$MODE" == "apply" && "$CONFIRMATION" != "CLOSE_STALE_RESOLVED" ]]; then
+            echo "apply requires confirmation=CLOSE_STALE_RESOLVED" >&2
+            exit 1
+          fi
+          if [[ -n "$ACTOR" && ! "$ACTOR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "actor must be a positive integer" >&2
+            exit 1
+          fi
+          ACTOR_ARG=""
+          if [[ -n "$ACTOR" ]]; then ACTOR_ARG="--actor=$ACTOR"; fi
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "MODE='$MODE' DAYS='$DAYS' ACTOR_ARG='$ACTOR_ARG' EXPECTED_SHA='${GITHUB_SHA}' bash -s" <<'REMOTE' | tee out/timeout.log
+          set -euo pipefail
+          cd /home/admin/backend
+          PROD_SHA="$(git rev-parse HEAD)"
+          echo "prod_head=$PROD_SHA"
+          echo "workflow_sha=$EXPECTED_SHA"
+          git merge-base --is-ancestor "$EXPECTED_SHA" "$PROD_SHA" || {
+            echo "production does not contain workflow revision; refusing" >&2
+            exit 1
+          }
+          php artisan list --format=txt | grep -q 'bugs:close-stale-resolved'
+          echo "=== DRY-RUN ==="
+          php artisan bugs:close-stale-resolved --dry-run --days="$DAYS" $ACTOR_ARG
+          if [[ "$MODE" == "dry-run" ]]; then
+            echo "result=DRY_RUN_ONLY"
+            exit 0
+          fi
+          echo "=== APPLY ==="
+          php artisan bugs:close-stale-resolved --days="$DAYS" $ACTOR_ARG
+          echo "=== POST-APPLY DRY-RUN ==="
+          php artisan bugs:close-stale-resolved --dry-run --days="$DAYS" $ACTOR_ARG
+          echo "result=APPLIED_AND_RECHECKED"
+          REMOTE
+
+      - name: Upload timeout evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: bug-reporter-timeout-${{ github.run_id }}
+          path: out/timeout.log
+          if-no-files-found: error
