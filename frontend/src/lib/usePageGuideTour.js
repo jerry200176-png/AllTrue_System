@@ -1,6 +1,7 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import { resolvePageGuideSteps } from './pageGuideConfig';
 import { lockScroll, unlockScroll } from './useScrollLock';
+import { onAdoptionEvent } from './adoptionTelemetry';
 
 const HIGHLIGHT_CLASS = 'guide-tour-highlighted';
 const BODY_OPEN_CLASS = 'guide-tour-open';
@@ -14,6 +15,7 @@ const FALLBACK_POPOVER_WIDTH = 320;
 export function usePageGuideTour() {
   const isOpen = ref(false);
   const isPracticing = ref(false);
+  const isStepVerified = ref(false);
   const mode = ref('page');
   const steps = ref([]);
   const stepIndex = ref(0);
@@ -27,6 +29,7 @@ export function usePageGuideTour() {
   let onSkip = null;
   let ownsScrollLock = false;
   let targetObserver = null;
+  let unsubscribeAdoption = null;
 
   const currentStep = computed(() => steps.value[stepIndex.value] || null);
   const hasPrev = computed(() => stepIndex.value > 0);
@@ -214,6 +217,9 @@ export function usePageGuideTour() {
   }
 
   function closeTour() {
+    unsubscribeAdoption?.();
+    unsubscribeAdoption = null;
+    isStepVerified.value = false;
     isOpen.value = false;
     isPracticing.value = false;
     steps.value = [];
@@ -269,6 +275,16 @@ export function usePageGuideTour() {
     onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
     onComplete = typeof options.onComplete === 'function' ? options.onComplete : null;
     onSkip = typeof options.onSkip === 'function' ? options.onSkip : null;
+    unsubscribeAdoption?.();
+    unsubscribeAdoption = onAdoptionEvent((event) => {
+      if (mode.value !== 'onboarding' || !isOpen.value) return;
+      const step = currentStep.value;
+      if (!step?.completionEvents) return;
+      const expected = Array.isArray(step.completionEvents) ? step.completionEvents : [step.completionEvents];
+      if (expected.includes(event)) {
+        isStepVerified.value = true;
+      }
+    });
     isOpen.value = true;
     acquireTourScroll();
     ensureListeners();
@@ -290,6 +306,7 @@ export function usePageGuideTour() {
   }
 
   async function moveToStep(nextIndex) {
+    isStepVerified.value = false;
     const next = steps.value[nextIndex];
     if (mode.value === 'onboarding' && next?.page && navigateToPage) {
       await navigateToPage(next.page);
@@ -345,6 +362,7 @@ export function usePageGuideTour() {
   return {
     isOpen,
     isPracticing,
+    isStepVerified,
     practiceStep,
     resumeStep,
     mode,

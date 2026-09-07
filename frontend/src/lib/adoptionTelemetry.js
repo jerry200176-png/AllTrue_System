@@ -160,7 +160,28 @@ export function usedTrustProvidedPath(branchId) {
   }
 }
 
+const adoptionListeners = new Set();
+
+export function onAdoptionEvent(listener) {
+  if (typeof listener !== 'function') return () => {};
+  adoptionListeners.add(listener);
+  return () => {
+    adoptionListeners.delete(listener);
+  };
+}
+
+export function notifyAdoptionEvent(event, branchId, meta = {}) {
+  for (const listener of Array.from(adoptionListeners)) {
+    try {
+      listener(event, branchId, meta);
+    } catch {
+      // non-blocking
+    }
+  }
+}
+
 export async function trackAdoptionEvent(event, branchId, meta = {}) {
+  notifyAdoptionEvent(event, branchId, meta);
   try {
     const token = resolveAccessToken();
     const payload = {

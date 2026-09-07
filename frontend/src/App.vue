@@ -527,7 +527,14 @@
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
       />
-      <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
+      <AttendancePage
+        v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'"
+        :branch-id="currentBranch"
+        :user-role="role"
+        :user-id="session.user.id"
+        @navigate="setActivePage($event)"
+        @navigate-learning="onNavigateLearningFromTeacherHome"
+      />
       <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="refreshUnreadNotifications" />
       <AssessmentPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
       <QuestionBankPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
@@ -662,12 +669,24 @@
     </div>
   </Transition>
 
-  <aside v-if="guideTour.isOpen.value && guideTour.isPracticing.value" class="onboarding-coach" aria-label="進行中的新手任務">
+  <aside
+    v-if="guideTour.isOpen.value && guideTour.isPracticing.value"
+    class="onboarding-coach"
+    :class="{ 'is-verified': guideTour.isStepVerified.value }"
+    aria-label="進行中的新手任務"
+  >
     <img :src="learningCompanionUrl" alt="" />
     <div>
-      <span class="onboarding-launch-kicker">實作中 · {{ guideTour.progressText.value }}</span>
+      <span class="onboarding-launch-kicker">{{ guideTour.isStepVerified.value ? '已偵測完成 · ' : '實作中 · ' }}{{ guideTour.progressText.value }}</span>
       <strong>{{ guideTour.currentStep.value?.title }}</strong>
-      <button type="button" class="guide-tour-btn" @click="guideTour.resumeStep">查看提示／繼續任務</button>
+      <button
+        type="button"
+        class="guide-tour-btn"
+        :class="{ 'guide-tour-btn-primary': guideTour.isStepVerified.value }"
+        @click="guideTour.resumeStep"
+      >
+        {{ guideTour.isStepVerified.value ? '已完成！下一步' : '查看提示／繼續任務' }}
+      </button>
     </div>
   </aside>
 
@@ -706,6 +725,10 @@
       <p v-if="guideTour.mode.value === 'onboarding' && guideTour.currentStep.value?.completionPrompt" class="guide-tour-completion-prompt">
         {{ guideTour.currentStep.value.completionPrompt }}
       </p>
+      <div v-if="guideTour.mode.value === 'onboarding' && guideTour.isStepVerified.value" class="guide-tour-verified-badge">
+        <span class="material-symbols-outlined" style="font-size:16px;">check_circle</span>
+        <span>系統已確認您完成了此項操作！</span>
+      </div>
       <button v-if="guideTour.mode.value === 'onboarding'" type="button" class="guide-tour-btn guide-tour-practice" @click="guideTour.practiceStep">
         開始這一步 · 收起提示
       </button>
@@ -845,6 +868,7 @@ import RoleFeatureMapSection from './components/RoleFeatureMapSection.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
+import { useToast } from './composables/useToast';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import { buildInboxDeepLinkQuery, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';
 import perfFlags from './lib/perfFlags';
@@ -900,6 +924,7 @@ const isStandaloneAdmission = computed(() => {
 const session = ref(null);
 const userProfile = ref(null);
 const loading = ref(true);
+const toast = useToast();
 const guideTour = usePageGuideTour();
 const guidePopoverRef = ref(null);
 const hadAppSessionBeforeLoad = (() => {
@@ -2383,6 +2408,11 @@ watch(currentBranch, (value, previous) => {
     inboxNeedsAttentionCount.value = 0;
     inboxUrgentTotal.value = 0;
     inboxCountScopeKey.value = '';
+
+    const branchList = Array.isArray(branches.value) && branches.value.length ? branches.value : (teacherBranches.value || []);
+    const targetBranch = branchList.find((b) => Number(b.id) === Number(value));
+    const branchName = targetBranch ? targetBranch.name.split('(')[0].trim() : `分校 #${value}`;
+    toast.info(`目前查看與操作範圍：${branchName}`, { title: `已切換分校：${branchName}` });
   }
   refreshUnreadNotifications();
 });
@@ -3550,6 +3580,24 @@ function formatBuildTime(rawIso) {
   border-radius: 20px;
   background: var(--ds-canvas);
   box-shadow: 0 8px 24px rgba(0, 55, 112, .12);
+  transition: all 0.2s ease;
+}
+.onboarding-coach.is-verified {
+  border-color: var(--ds-success, #2e7d32);
+  box-shadow: 0 8px 24px rgba(46, 125, 50, 0.2);
+}
+.guide-tour-verified-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 16px 12px;
+  padding: 6px 10px;
+  background: var(--ds-success-wash, rgba(46, 125, 50, 0.1));
+  border: 1px solid var(--ds-success, #2e7d32);
+  border-radius: 8px;
+  color: var(--ds-success, #2e7d32);
+  font-size: 13px;
+  font-weight: 600;
 }
 .onboarding-coach img { width: 48px; height: 56px; object-fit: contain; }
 .onboarding-coach > div { display: grid; gap: 6px; }
