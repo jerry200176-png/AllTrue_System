@@ -43,6 +43,7 @@ const pageModules = {
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
+  admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -102,6 +103,12 @@ createApp({
     }
     if (page === 'parent') {
       return () => h(PageComponent, { standalone: true });
+    }
+    if (page === 'admissions') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const branchIdParam = searchParams.get('branch');
+      const branchId = branchIdParam ? Number(branchIdParam) : 1;
+      return () => h(PageComponent, { branchId, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
     }
     return () => h(PageComponent, { branchId: 1 });
   },

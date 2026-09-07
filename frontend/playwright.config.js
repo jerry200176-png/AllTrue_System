@@ -27,6 +27,7 @@ export default defineConfig({
     /teacher-daily-workflow\.spec\.js$/,
     /teacher-calendar-ux\.spec\.js$/,
     /product-clarity-browser\.spec\.js$/,
+    /admissions-workflow-clarity\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
