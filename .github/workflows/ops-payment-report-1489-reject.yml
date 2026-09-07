@@ -150,10 +150,8 @@ jobs:
             return;
           }
 
-          // Resolve actor: founder Jerry (62) or approved admin of Campus 17
-          $founderUser = $db::table("users")->where("id", 62)->value("id");
-          $campusAdmin = $db::table("UserCampus")->where("CampusID", 17)->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
-          $actorId = $founderUser ? (int)$founderUser : ($campusAdmin ? (int)$campusAdmin : 62);
+          // Resolve actor: founder Jerry (user 62, authorized by founder decision)
+          $actorId = 62;
 
           $before = [
             "id" => (int) $pr1489->id,
@@ -266,6 +264,10 @@ jobs:
           print("parsed", bool(obj is not None))
           print("ok", obj.get("ok") if obj else None)
           print("aborted", obj.get("aborted") if obj else None)
+          if not obj or not obj.get("ok"):
+            import sys
+            print("Repair failed or did not report ok: true", file=sys.stderr)
+            sys.exit(1)
           PY
 
       - name: Upload repair artifact
