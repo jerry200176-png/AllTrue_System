@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\SessionAlreadyStartedException;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
@@ -917,6 +918,21 @@ class ParentPortalController extends Controller
                 $session->LeaveWorkflowReason = is_array($workflow?->payload)
                     ? ($workflow->payload['rejection_reason'] ?? null)
                     : null;
+
+                $dateStr = is_string($session->SessionDate)
+                    ? substr($session->SessionDate, 0, 10)
+                    : (is_object($session->SessionDate) ? $session->SessionDate->format('Y-m-d') : '');
+                $timeStr = $session->StartTime ?: '00:00';
+                $tz = config('app.timezone', 'Asia/Taipei');
+                $sessionStart = Carbon::parse("{$dateStr} {$timeStr}", $tz);
+                $now = Carbon::now($tz);
+                $cutoff = $sessionStart->copy()->subHours(24);
+
+                $session->is_past_or_started = $now->greaterThanOrEqualTo($sessionStart);
+                $session->is_late_leave = !$session->is_past_or_started && $now->greaterThanOrEqualTo($cutoff);
+                $session->leave_cutoff_at = $cutoff->toIso8601String();
+                $session->session_start_at = $sessionStart->toIso8601String();
+
                 return $session;
             });
         }
@@ -1663,56 +1679,117 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Session cannot be altered.'], 422);
         }
 
-        [$workflow, $classSession] = DB::transaction(function () use ($classSession, $studentClass, $session, $data) {
-            /** @var ClassSession|null $classSession */
-            $classSession = ClassSession::query()
-                ->where('id', (int) $classSession->getKey())
-                ->lockForUpdate()
-                ->first();
-            if (!$classSession) {
-                throw new \Illuminate\Database\Eloquent\ModelNotFoundException();
-            }
-            if (!in_array(strtolower((string) $classSession->getAttribute('Status')), ['scheduled', 'rescheduled', 'leave_requested'], true)) {
-                throw new \InvalidArgumentException('Session cannot be altered.');
-            }
+        $dateStr = substr((string) $classSession->getAttribute('SessionDate'), 0, 10);
+        $timeStr = $this->trimToHM((string) $classSession->getAttribute('StartTime')) ?: '00:00';
+        $tz = config('app.timezone', 'Asia/Taipei');
+        $sessionStart = Carbon::parse("{$dateStr} {$timeStr}", $tz);
+        $now = Carbon::now($tz);
 
-            $workflow = app(ExceptionWorkflowService::class)->createOrGet([
-                'source_key' => "parent_leave:class_session:{$classSession->id}",
-                'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
-                'student_id' => (int) $studentClass->StudentID,
-                'student_class_id' => (int) $studentClass->ID,
-                'class_session_id' => (int) $classSession->id,
-                'type' => 'student_leave',
-                'status' => 'open',
-                'severity' => 'medium',
-                'source_type' => 'parent_portal',
-                'source_id' => (string) $classSession->id,
-                'parent_session_id' => (int) $session->id,
-                'due_at' => now()->addDay(),
-                'payload' => [
-                    'parent_student_id' => (int) $session->StudentID,
-                    'reason' => trim((string) ($data['reason'] ?? '')),
-                    'requested_at' => now()->toIso8601String(),
-                    'session_date' => (string) $classSession->SessionDate,
-                    'start_time' => $this->trimToHM($classSession->StartTime),
-                    'end_time' => $this->trimToHM($classSession->EndTime),
-                ],
-            ]);
+        if ($now->greaterThanOrEqualTo($sessionStart)) {
+            return response()->json([
+                'message' => '已達或超過開課時間，無法於家長端線上請假，請直接聯絡分校處理。',
+                'error_code' => 'SESSION_ALREADY_STARTED',
+            ], 422);
+        }
 
-            if ($classSession->getAttribute('Status') !== 'leave_requested') {
-                $classSession->setAttribute('Status', 'leave_requested');
-                $classSession->save();
+        try {
+            [$workflow, $classSession] = DB::transaction(function () use (
+                $classSession,
+                $studentClass,
+                $session,
+                $data
+            ) {
+                /** @var ClassSession|null $classSession */
+                $classSession = ClassSession::query()
+                    ->where('id', (int) $classSession->getKey())
+                    ->lockForUpdate()
+                    ->first();
+                if (!$classSession) {
+                    throw new \Illuminate\Database\Eloquent\ModelNotFoundException();
+                }
+                if (!in_array(strtolower((string) $classSession->getAttribute('Status')), ['scheduled', 'rescheduled', 'leave_requested'], true)) {
+                    throw new \InvalidArgumentException('Session cannot be altered.');
+                }
+
+                $lockedDateStr = substr((string) $classSession->getAttribute('SessionDate'), 0, 10);
+                $lockedTimeStr = $this->trimToHM((string) $classSession->getAttribute('StartTime')) ?: '00:00';
+                $tz = config('app.timezone', 'Asia/Taipei');
+                $lockedStart = Carbon::parse("{$lockedDateStr} {$lockedTimeStr}", $tz);
+                $lockedNow = Carbon::now($tz);
+                if ($lockedNow->greaterThanOrEqualTo($lockedStart)) {
+                    throw new SessionAlreadyStartedException('已達或超過開課時間，無法於家長端線上請假，請直接聯絡分校處理。');
+                }
+
+                $lockedCutoff = $lockedStart->copy()->subHours(24);
+                $lockedIsLate = $lockedNow->greaterThanOrEqualTo($lockedCutoff);
+                $lockedLeaveType = $lockedIsLate ? 'late' : 'standard';
+                $lockedNotice = $lockedIsLate ? '已超過一般請假期限（開課前 24 小時），補課／扣堂處理需由分校主任確認。' : null;
+
+                $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+                    'source_key' => "parent_leave:class_session:{$classSession->id}",
+                    'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
+                    'student_id' => (int) $studentClass->StudentID,
+                    'student_class_id' => (int) $studentClass->ID,
+                    'class_session_id' => (int) $classSession->id,
+                    'type' => 'student_leave',
+                    'status' => 'open',
+                    'severity' => $lockedIsLate ? 'high' : 'medium',
+                    'source_type' => 'parent_portal',
+                    'source_id' => (string) $classSession->id,
+                    'parent_session_id' => (int) $session->id,
+                    'due_at' => $lockedIsLate ? now()->addHours(12) : now()->addDay(),
+                    'payload' => [
+                        'parent_student_id' => (int) $session->StudentID,
+                        'reason' => trim((string) ($data['reason'] ?? '')),
+                        'leave_type' => $lockedLeaveType,
+                        'is_late' => $lockedIsLate,
+                        'notice' => $lockedNotice,
+                        'cutoff_at' => $lockedCutoff->toIso8601String(),
+                        'session_start_at' => $lockedStart->toIso8601String(),
+                        'requested_at' => $lockedNow->toIso8601String(),
+                        'session_date' => (string) $classSession->getAttribute('SessionDate'),
+                        'start_time' => $this->trimToHM((string) $classSession->getAttribute('StartTime')),
+                        'end_time' => $this->trimToHM((string) $classSession->getAttribute('EndTime')),
+                    ],
+                ]);
+
+                if ($classSession->getAttribute('Status') !== 'leave_requested') {
+                    $classSession->setAttribute('Status', 'leave_requested');
+                    $classSession->save();
+                }
+
+                return [$workflow, $classSession];
+            });
+        } catch (\Throwable $e) {
+            if ($e instanceof SessionAlreadyStartedException) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'error_code' => 'SESSION_ALREADY_STARTED',
+                ], 422);
             }
+            if ($e instanceof \InvalidArgumentException) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+            throw $e;
+        }
 
-            return [$workflow, $classSession];
-        });
+        $workflowPayload = is_array($workflow->payload) ? $workflow->payload : [];
+        $workflowIsLate = (bool) ($workflowPayload['is_late'] ?? false);
+        $workflowLeaveType = (string) ($workflowPayload['leave_type'] ?? 'standard');
 
         return response()->json([
-            'message' => 'Leave requested successfully.',
+            'message' => $workflowIsLate
+                ? '臨時請假申請已送出。已超過一般請假期限，補課／扣堂處理需由分校主任確認。'
+                : '請假申請已送出。',
+            'is_late' => $workflowIsLate,
+            'leave_type' => $workflowLeaveType,
+            'notice' => $workflowIsLate ? '已超過一般請假期限，補課／扣堂處理需由分校主任確認。' : null,
             'workflow' => [
                 'id' => $workflow->id,
                 'type' => $workflow->type,
                 'status' => $workflow->status,
+                'is_late' => $workflowIsLate,
+                'leave_type' => $workflowLeaveType,
             ],
             'session' => [
                 'id' => $classSession->id,
