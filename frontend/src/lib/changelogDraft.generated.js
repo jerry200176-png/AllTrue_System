@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.07",
     "date": "2026-09-07",
     "title": "2026.09.07 草稿（未發布）",
-    "summary": "學生管理載入與搜尋回復更清楚；教室管理錯誤回復更清楚",
+    "summary": "老師管理載入與篩選回復更清楚；學生管理載入與搜尋回復更清楚",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "老師管理載入與篩選回復更清楚",
           "學生管理載入與搜尋回復更清楚",
           "教室管理錯誤回復更清楚",
           "手機更多功能可搜尋",
@@ -27,6 +28,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "老師管理載入與篩選回復更清楚",
       "學生管理載入與搜尋回復更清楚",
       "教室管理錯誤回復更清楚",
       "手機更多功能可搜尋",
