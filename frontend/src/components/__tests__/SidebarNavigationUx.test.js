@@ -5,6 +5,7 @@ import { getNavigationGroups } from '../../lib/navigationRegistry';
 
 const appSource = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
 const registrySource = readFileSync(resolve(__dirname, '../../lib/navigationRegistry.js'), 'utf8');
+const pageSource = (name) => readFileSync(resolve(__dirname, '../../pages', name), 'utf8');
 
 describe('sidebar navigation UX contract', () => {
   it('uses work-oriented group names and keeps course lookup beside students', () => {
@@ -64,8 +65,26 @@ describe('sidebar navigation UX contract', () => {
     expect(appSource).toContain('mobileMoreSearchQuery');
     expect(appSource).toContain('mobileMoreFilteredGroups');
     expect(appSource).toContain('onMobileMoreSearchEnter');
-    expect(appSource).toContain('可搜尋所有未固定在底部導覽的功能。');
+    expect(appSource).toContain('導覽快速尋找 · ⌘K');
+    expect(appSource).toContain('只搜尋功能入口、報表與設定，不會搜尋學生或課程資料。');
+    expect(appSource).toContain('只搜尋未固定在底部導覽的功能，不會搜尋學生或課程資料。');
     expect(appSource).toContain('handleGlobalKeydown');
     expect(appSource).toContain("window.scrollTo({ top: 0, behavior: 'instant' })");
+  });
+
+  it('keeps high-frequency lookup affordances consistent', () => {
+    const course = pageSource('CourseManagement.vue');
+    const learning = pageSource('LearningRecordsPage.vue');
+    const attendance = pageSource('AttendancePage.vue');
+
+    expect(course).toContain('id="course-filter-student" v-model="filters.name" type="search"');
+    expect(course).toContain('id="course-filter-teacher" v-model="filters.teacher_name" type="search"');
+    expect(learning).toContain('v-model="filters.student_name"');
+    expect(learning).toContain('type="search"');
+    expect(learning).toContain('placeholder="搜尋學生姓名…"');
+    expect(attendance).toContain('placeholder="搜尋課程（學生／科目）…"');
+    expect(attendance).toContain('placeholder="搜尋學生姓名…"');
+    expect(attendance).not.toContain('placeholder="搜尋課程（學生/科目）..."');
+    expect(attendance).not.toContain('placeholder="搜尋學生姓名..."');
   });
 });

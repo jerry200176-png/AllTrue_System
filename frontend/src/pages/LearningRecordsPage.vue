@@ -476,9 +476,10 @@
           <label>搜尋學生</label>
           <input
             v-model="filters.student_name"
-            type="text"
+            type="search"
             class="lr-input"
-            placeholder="輸入學生姓名..."
+            autocomplete="off"
+            placeholder="搜尋學生姓名…"
             @keyup.enter="fetchRecords"
           >
         </div>

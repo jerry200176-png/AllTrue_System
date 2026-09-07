@@ -45,6 +45,40 @@ export const staffUpdates = [
     "version": "2026.09.08"
   },
   {
+    "id": "staff-2026-09-08-search-scope-clarity",
+    "publishedAt": "2026-09-08",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "導覽搜尋與高頻查找提示更清楚",
+    "summary": "Ctrl/Cmd-K 的搜尋範圍與課程、出缺勤、學習紀錄的查找提示更容易理解。",
+    "items": [
+      "導覽快速尋找明確標示只搜尋功能入口、報表與設定，不會搜尋學生或課程資料。",
+      "課程、出缺勤與學習紀錄的學生／老師查找欄位統一使用搜尋提示與 native search affordance。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "導覽快速尋找明確標示只搜尋功能入口、報表與設定，不會搜尋學生或課程資料。",
+          "課程、出缺勤與學習紀錄的學生／老師查找欄位統一使用搜尋提示與 native search affordance。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-08:search-scope-clarity"
+    ],
+    "date": "2026-09-08",
+    "version": "2026.09.08"
+  },
+  {
     "id": "staff-2026-09-07-sidebar-search-and-shortcuts",
     "publishedAt": "2026-09-07",
     "effectiveAt": null,

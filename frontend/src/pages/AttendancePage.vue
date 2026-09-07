@@ -476,7 +476,7 @@
                 v-else
                 v-model="quickForm.studentClassId"
                 :options="teacherCourseOptions"
-                placeholder="搜尋課程（學生/科目）..."
+                placeholder="搜尋課程（學生／科目）…"
               />
               <p v-if="teacherCoursesError" class="att-field-err">{{ teacherCoursesError }}</p>
             </div>
@@ -558,7 +558,7 @@
             <SearchableSelect
               v-model="dirForm.studentId"
               :options="studentOptions"
-              placeholder="搜尋學生姓名..."
+              placeholder="搜尋學生姓名…"
               @update:modelValue="onDirStudentChange"
             />
           </div>
@@ -616,7 +616,7 @@
             <SearchableSelect
               v-model="manualForm.personKey"
               :options="personOptions"
-              placeholder="搜尋學生姓名..."
+              placeholder="搜尋學生姓名…"
             />
           </div>
           <div class="form-group">

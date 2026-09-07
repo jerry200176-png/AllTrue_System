@@ -182,7 +182,7 @@
       >
         <div class="sidebar-more-header">
           <div>
-            <span class="sidebar-more-kicker">工作工具 · ⌘K</span>
+            <span class="sidebar-more-kicker">導覽快速尋找 · ⌘K</span>
             <h2 id="sidebar-more-title">更多功能</h2>
           </div>
           <button
@@ -216,7 +216,7 @@
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </div>
-        <p v-if="!sidebarMoreSearchQuery" class="sidebar-more-description">不常用的報表、教學工具與系統設定集中在這裡。</p>
+        <p v-if="!sidebarMoreSearchQuery" class="sidebar-more-description">只搜尋功能入口、報表與設定，不會搜尋學生或課程資料。</p>
         <div v-if="sidebarMoreFilteredGroups.length === 0" class="sidebar-more-empty" role="status">
           <p>找不到符合「{{ sidebarMoreSearchQuery }}」的功能</p>
           <button type="button" class="sidebar-more-empty-reset" @click="sidebarMoreSearchQuery = ''">清除搜尋</button>
@@ -319,7 +319,7 @@
           <span class="material-symbols-outlined" aria-hidden="true">close</span>
         </button>
       </div>
-      <p v-if="!mobileMoreSearchQuery" class="sidebar-more-description">可搜尋所有未固定在底部導覽的功能。</p>
+      <p v-if="!mobileMoreSearchQuery" class="sidebar-more-description">只搜尋未固定在底部導覽的功能，不會搜尋學生或課程資料。</p>
       <div v-if="mobileMoreFilteredGroups.length === 0" class="sidebar-more-empty" role="status">
         <p>找不到符合「{{ mobileMoreSearchQuery }}」的功能</p>
         <button type="button" class="sidebar-more-empty-reset" @click="mobileMoreSearchQuery = ''">清除搜尋</button>
