@@ -89,14 +89,14 @@
     {
       "id": "inapp_bug_post",
       "name": "In-app bug POST comment/status",
-      "status": "Partial",
+      "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-07-18",
-      "review_after": "2026-09-02",
-      "verification_method": "POST comments+status with token",
+      "last_verified_at": "2026-09-07",
+      "review_after": "2026-10-07",
+      "verification_method": "Approved Phase-C workflow dispatch: status+public comment write for verified in-app fixes",
       "environment": "prod",
-      "verifier": "cursor-agent",
-      "evidence": "Not re-verified in this session; requires a deliberate authenticated write verification before restoring Proven"
+      "verifier": "codex-agent",
+      "evidence": "Phase-C run 34068294398 resolved #252/#253 with public replies; follow-up run 34068333317 posted #249 public comment; production head 6716ddb66b50912009ad7a352adfb46bc5b1c65f"
     },
     {
       "id": "phpunit_isolated",
