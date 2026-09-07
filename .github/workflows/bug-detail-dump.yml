@@ -747,6 +747,216 @@ jobs:
               $probe249["decision_grade"] = count($studentIds249) === 1
                 && $probe249["target_class_count"] >= 2
                 && $probe249["target_subjects_present"];
+
+              // Detailed records for student #249 reconciliation
+              $probe249["student_classes"] = $classes249->map(fn ($r) => [
+                "class_id" => (int)$r->class_id,
+                "student_id" => (int)$r->student_id,
+                "subject_name" => (string)$r->subject_name,
+                "package_id" => $r->package_id ? (int)$r->package_id : null,
+                "charge" => (float)$r->charge,
+                "paid" => (int)$r->paid,
+                "pay_date" => $r->pay_date ? (string)$r->pay_date : null,
+                "stop" => (int)$r->stop,
+              ])->values()->all();
+
+              $probe249["course_packages"] = $packageIds249 === [] ? [] : $db::table("course_packages")
+                ->whereIn("id", $packageIds249)
+                ->get(["id", "name", "total_sessions", "remaining_sessions", "used_sessions", "rate", "rate_unit", "class_type", "paid", "paid_at", "stop", "closed_reason", "created_at"])
+                ->map(fn ($r) => [
+                  "id" => (int)$r->id,
+                  "name" => (string)$r->name,
+                  "total_sessions" => (int)$r->total_sessions,
+                  "remaining_sessions" => (int)$r->remaining_sessions,
+                  "used_sessions" => (int)$r->used_sessions,
+                  "rate" => (float)$r->rate,
+                  "rate_unit" => (string)$r->rate_unit,
+                  "class_type" => (string)$r->class_type,
+                  "paid" => (bool)$r->paid,
+                  "paid_at" => $r->paid_at ? (string)$r->paid_at : null,
+                  "stop" => (bool)$r->stop,
+                  "closed_reason" => $r->closed_reason,
+                  "created_at" => (string)$r->created_at,
+                ])->values()->all();
+
+              $rawReports249 = $classIds249 === [] ? collect() : $db::table("payment_reports")
+                ->whereIn("StudentClassID", $classIds249)
+                ->orderBy("id")
+                ->get(["id", "StudentID", "StudentClassID", "InvoiceID", "reported_by_name", "payment_date", "payment_method", "reported_amount", "account_last5", "status", "confirmed_by", "confirmed_at", "note", "rejection_note", "payment_id", "created_at"]);
+              $probe249["payment_reports_detail"] = $rawReports249->map(fn ($r) => [
+                "id" => (int)$r->id,
+                "class_id" => (int)$r->StudentClassID,
+                "invoice_id" => $r->InvoiceID ? (int)$r->InvoiceID : null,
+                "reported_by_name" => $redact($r->reported_by_name ?? ""),
+                "payment_date" => (string)$r->payment_date,
+                "payment_method" => (string)$r->payment_method,
+                "reported_amount" => (float)$r->reported_amount,
+                "account_last5" => (string)($r->account_last5 ?? ""),
+                "status" => (string)$r->status,
+                "confirmed_by" => $r->confirmed_by ? (int)$r->confirmed_by : null,
+                "confirmed_at" => $r->confirmed_at ? (string)$r->confirmed_at : null,
+                "note" => $redact($r->note ?? ""),
+                "rejection_note" => $redact($r->rejection_note ?? ""),
+                "payment_id" => $r->payment_id ? (int)$r->payment_id : null,
+                "created_at" => (string)$r->created_at,
+              ])->values()->all();
+
+              $rawInvoices249 = $classIds249 === [] ? collect() : $db::table("Invoice")
+                ->whereIn("StudentClassID", $classIds249)
+                ->orderBy("id")
+                ->get(["id", "StudentClassID", "Status", "TotalAmount", "PaidAmount", "reconciled_at", "reconciled_by", "Note", "created_at"]);
+              $probe249["invoices_detail"] = $rawInvoices249->map(fn ($r) => [
+                "id" => (int)$r->id,
+                "class_id" => (int)$r->StudentClassID,
+                "status" => (string)$r->Status,
+                "total_amount" => (float)$r->TotalAmount,
+                "paid_amount" => (float)$r->PaidAmount,
+                "reconciled_at" => $r->reconciled_at ? (string)$r->reconciled_at : null,
+                "note" => $redact($r->Note ?? ""),
+                "created_at" => (string)$r->created_at,
+              ])->values()->all();
+
+              $rawPayments249 = $classIds249 === [] ? collect() : $db::table("Payment as p")
+                ->join("Invoice as i", "i.id", "=", "p.InvoiceID")
+                ->whereIn("i.StudentClassID", $classIds249)
+                ->orderBy("p.id")
+                ->get(["p.id", "i.StudentClassID as class_id", "p.InvoiceID as invoice_id", "p.Amount as amount", "p.PaidAt as pay_date", "p.Method as method", "p.Note as note", "p.payment_report_id", "p.created_at"]);
+              $probe249["payments_detail"] = $rawPayments249->map(fn ($r) => [
+                "id" => (int)$r->id,
+                "class_id" => (int)$r->class_id,
+                "invoice_id" => (int)$r->invoice_id,
+                "amount" => (float)$r->amount,
+                "pay_date" => (string)$r->pay_date,
+                "method" => (string)$r->method,
+                "note" => $redact($r->note ?? ""),
+                "payment_report_id" => $r->payment_report_id ? (int)$r->payment_report_id : null,
+                "created_at" => (string)$r->created_at,
+              ])->values()->all();
+
+              // Cross-subject reconciliation check
+              $englishPendingReports = $rawReports249->filter(fn ($r) => $r->status === "pending" && in_array((int)$r->StudentClassID, $classes249->filter(fn ($c) => $subjectKey249($c->subject_name) === "english")->pluck("class_id")->all(), true))->values();
+              $mathConfirmedReports = $rawReports249->filter(fn ($r) => $r->status === "confirmed" && in_array((int)$r->StudentClassID, $classes249->filter(fn ($c) => $subjectKey249($c->subject_name) === "math")->pluck("class_id")->all(), true))->values();
+
+              $duplicateAnalysis = [];
+              foreach ($englishPendingReports as $ep) {{
+                $matches = [];
+                foreach ($mathConfirmedReports as $mc) {{
+                  $amtMatch = (float)$ep->reported_amount === (float)$mc->reported_amount;
+                  $dateMatch = (string)$ep->payment_date === (string)$mc->payment_date;
+                  $accMatch = !empty($ep->account_last5) && !empty($mc->account_last5) && (string)$ep->account_last5 === (string)$mc->account_last5;
+                  $matches[] = [
+                    "math_report_id" => (int)$mc->id,
+                    "math_class_id" => (int)$mc->StudentClassID,
+                    "math_amount" => (float)$mc->reported_amount,
+                    "math_date" => (string)$mc->payment_date,
+                    "math_account_last5" => (string)($mc->account_last5 ?? ""),
+                    "amount_match" => $amtMatch,
+                    "date_match" => $dateMatch,
+                    "account_last5_match" => $accMatch,
+                    "is_exact_match" => $amtMatch && $dateMatch && $accMatch,
+                  ];
+                }}
+                $duplicateAnalysis[] = [
+                  "english_pending_report_id" => (int)$ep->id,
+                  "english_class_id" => (int)$ep->StudentClassID,
+                  "english_amount" => (float)$ep->reported_amount,
+                  "english_date" => (string)$ep->payment_date,
+                  "english_account_last5" => (string)($ep->account_last5 ?? ""),
+                  "comparisons_with_math" => $matches,
+                ];
+              }}
+              $probe249["reconciliation_analysis"] = $duplicateAnalysis;
+
+              // Shared packages audit across the system
+              $totalPackages = $db::table("course_packages")->count();
+              $pkgClassCounts = $db::table("StudentClass")
+                ->whereNotNull("PackageID")
+                ->where("PackageID", ">", 0)
+                ->groupBy("PackageID")
+                ->selectRaw("PackageID as package_id, COUNT(*) as member_count")
+                ->get();
+              $multiMemberPkgIds = $pkgClassCounts->filter(fn ($r) => (int)$r->member_count > 1)->pluck("package_id")->map(fn ($id) => (int)$id)->all();
+
+              $probe249["shared_packages_stats"] = [
+                "total_packages_count" => $totalPackages,
+                "multi_member_packages_count" => count($multiMemberPkgIds),
+                "single_member_packages_count" => $pkgClassCounts->filter(fn ($r) => (int)$r->member_count === 1)->count(),
+              ];
+
+              // Sample up to 25 multi-member packages across campuses to audit billing patterns
+              $samplePkgIds = array_slice($multiMemberPkgIds, 0, 25);
+              $samplePackages = $samplePkgIds === [] ? collect() : $db::table("course_packages")
+                ->whereIn("id", $samplePkgIds)
+                ->get(["id", "campus_id", "total_sessions", "rate", "paid", "paid_at", "stop"]);
+              $sampleClasses = $samplePkgIds === [] ? collect() : $db::table("StudentClass as sc")
+                ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->whereIn("sc.PackageID", $samplePkgIds)
+                ->get(["sc.ID as class_id", "sc.PackageID as package_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id", "sub.Subject_Name as subject_name", "sc.Charge as charge", "sc.Paid as paid", "sc.PayDate as pay_date", "sc.Stop as stop"]);
+              $sampleClassIds = $sampleClasses->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+              $sampleReports = $sampleClassIds === [] ? collect() : $db::table("payment_reports")
+                ->whereIn("StudentClassID", $sampleClassIds)
+                ->get(["id", "StudentClassID as class_id", "reported_amount", "status", "payment_date"]);
+              $sampleInvoices = $sampleClassIds === [] ? collect() : $db::table("Invoice")
+                ->whereIn("StudentClassID", $sampleClassIds)
+                ->get(["id", "StudentClassID as class_id", "Status as status", "TotalAmount as total_amount", "PaidAmount as paid_amount"]);
+
+              $packageAudits = [];
+              $semanticsCounts = [
+                "single_class_billed_package_level" => 0,
+                "all_classes_billed_separately" => 0,
+                "single_payment_multiple_charges" => 0,
+                "all_unpaid" => 0,
+                "mixed_or_asymmetric" => 0,
+              ];
+              foreach ($samplePackages as $pkg) {{
+                $pkgClasses = $sampleClasses->where("package_id", (int)$pkg->id)->values();
+                $pkgClassIdList = $pkgClasses->pluck("class_id")->all();
+                $pkgReports = $sampleReports->whereIn("class_id", $pkgClassIdList)->values();
+                $pkgInvoices = $sampleInvoices->whereIn("class_id", $pkgClassIdList)->values();
+
+                $classesWithCharge = $pkgClasses->filter(fn ($c) => (float)$c->charge > 0)->count();
+                $classesWithPaid = $pkgClasses->filter(fn ($c) => (int)$c->paid === 1)->count();
+                $classesWithReports = $pkgReports->pluck("class_id")->unique()->count();
+                $classesWithInvoices = $pkgInvoices->pluck("class_id")->unique()->count();
+
+                $pattern = "mixed_or_asymmetric";
+                if ($classesWithCharge === 0 && $classesWithPaid === 0 && $pkgInvoices->count() === 0) {{
+                  $pattern = "all_unpaid";
+                }} elseif ($classesWithCharge === 1 && $classesWithInvoices <= 1) {{
+                  $pattern = "single_class_billed_package_level";
+                }} elseif ($classesWithCharge > 1 && $classesWithInvoices > 1) {{
+                  $pattern = "all_classes_billed_separately";
+                }} elseif ($classesWithCharge > 1 && $classesWithInvoices <= 1) {{
+                  $pattern = "single_payment_multiple_charges";
+                }}
+                $semanticsCounts[$pattern] = ($semanticsCounts[$pattern] ?? 0) + 1;
+
+                $packageAudits[] = [
+                  "package_id" => (int)$pkg->id,
+                  "campus_id" => (int)$pkg->campus_id,
+                  "member_count" => $pkgClasses->count(),
+                  "package_paid" => (bool)$pkg->paid,
+                  "classes_with_charge_count" => $classesWithCharge,
+                  "classes_with_paid_count" => $classesWithPaid,
+                  "classes_with_reports_count" => $classesWithReports,
+                  "classes_with_invoices_count" => $classesWithInvoices,
+                  "total_invoiced_amount" => (float)$pkgInvoices->sum("total_amount"),
+                  "total_paid_amount" => (float)$pkgInvoices->sum("paid_amount"),
+                  "observed_pattern" => $pattern,
+                  "members" => $pkgClasses->map(fn ($c) => [
+                    "class_id" => (int)$c->class_id,
+                    "subject" => (string)$c->subject_name,
+                    "charge" => (float)$c->charge,
+                    "paid" => (int)$c->paid,
+                    "pay_date" => $c->pay_date ? (string)$c->pay_date : null,
+                  ])->all(),
+                ];
+              }}
+              $probe249["shared_packages_audit"] = [
+                "sampled_packages_count" => count($packageAudits),
+                "pattern_distribution_in_sample" => $semanticsCounts,
+                "samples" => $packageAudits,
+              ];
               $probe249["error"] = null;
             }} catch (\Throwable $e) {{
               $probe249["decision_grade"] = false;
