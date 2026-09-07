@@ -78,7 +78,11 @@ AllTrue 針對四大核心角色設計專屬的操作情境與介面層級：
 
 > **資料隱私與展示規範說明**：  
 > AllTrue 正式環境涉及未成年學童之姓名、家長聯絡電話、校區歸屬與學費收據等高度機敏資訊（PII）。  
-> 為了維護真實學童隱私與資訊安全，本儲存庫嚴格禁止截取或上傳包含真實資料的生產畫面。正式的產品介面展示圖集將由專屬脫敏之展示環境（Sanitized Demo Environment）產出後統一部署於官方展示站點。
+> 為了維護真實學童隱私與資訊安全，本儲存庫嚴格禁止截取或上傳包含真實資料的生產畫面。以下展示畫面均由本地視覺驗證環境以合成測試資料（Sanitized Fixtures）生成，不包含任何正式環境機敏個資。
+
+| 主任收件匣與請假審核 | 課表異常回報與處理 | 當月學收與課時核算 |
+|:---:|:---:|:---:|
+| ![主任收件匣](docs/screenshots/notifications-center-desktop.png) | ![課表異常回報](docs/screenshots/schedule-discrepancy-desktop.png) | ![當月學收核算](docs/screenshots/tuition-report-desktop.png) |
 
 ---
 
