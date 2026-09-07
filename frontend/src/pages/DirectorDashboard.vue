@@ -276,8 +276,8 @@
                 <div v-else-if="!exceptionWorkflows.length" class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待處理的家長請假。</span></div>
                 <div v-else class="director-leave-list">
                   <article v-for="workflow in exceptionWorkflows" :key="workflow.id" :id="`exception-workflow-${workflow.id}`" class="director-leave-case">
-                    <header class="director-leave-case__header"><div><strong>{{ workflow.student?.name || '未命名學生' }}</strong><span>{{ workflowStatusLabel(workflow.status) }}</span></div><span>案件 #{{ workflow.id }}</span></header>
-                    <dl class="director-leave-case__details"><div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未提供日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div><div><dt>原因</dt><dd>{{ workflow.payload?.reason || '未提供原因' }}</dd></div></dl>
+                    <header class="director-leave-case__header"><div><strong>{{ workflow.student?.name || '未命名學生' }}</strong><span v-if="workflow.payload?.is_late" class="badge-amber" style="margin-left:6px;">臨時請假</span><span>{{ workflowStatusLabel(workflow.status) }}</span></div><span>案件 #{{ workflow.id }}</span></header>
+                    <dl class="director-leave-case__details"><div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未提供日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div><div><dt>原因</dt><dd><span v-if="workflow.payload?.is_late" style="color:var(--ds-warning);font-weight:700;margin-right:4px;">【臨時請假】</span>{{ workflow.payload?.reason || '未提供原因' }}</dd></div></dl>
                     <p class="director-leave-case__window">
                       <span class="material-symbols-outlined" aria-hidden="true">date_range</span>
                       補課候選範圍：{{ makeupWindowLabel(workflow) }}（原堂後一天起）

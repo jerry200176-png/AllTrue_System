@@ -158,10 +158,11 @@
           <div class="pending-leave-case__content">
             <div class="pending-leave-case__title-row">
               <strong>{{ workflow.student?.name || '未命名學生' }}</strong>
+              <span v-if="workflow.payload?.is_late" class="pending-leave-case__status" style="background:var(--ds-warning-wash);color:var(--ds-warning);border-color:var(--ds-warning);">臨時請假</span>
               <span class="pending-leave-case__status">{{ pendingLeaveStatusLabel(workflow.status) }}</span>
             </div>
             <p>{{ pendingLeaveSessionLabel(workflow) }}</p>
-            <p class="pending-leave-case__reason">原因：{{ workflow.payload?.reason || '家長未提供原因' }}</p>
+            <p class="pending-leave-case__reason">原因：<span v-if="workflow.payload?.is_late" style="color:var(--ds-warning);font-weight:700;margin-right:4px;">【臨時請假】</span>{{ workflow.payload?.reason || '家長未提供原因' }}</p>
           </div>
           <button class="pending-leave-case__cta" type="button" :aria-label="`處理這筆請假：${workflow.student?.name || '未命名學生'}`" @click="openPendingLeaveWorkflow(workflow)">處理這筆請假<span aria-hidden="true">→</span></button>
         </article>
