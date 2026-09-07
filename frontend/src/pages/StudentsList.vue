@@ -3632,11 +3632,11 @@ table th { font-size: 12.5px; }
 }
 .btn-course-disclosure:hover {
   background: var(--ds-primary, var(--primary));
-  color: var(--ds-canvas, #ffffff);
+  color: var(--ds-canvas);
 }
 .btn-course-disclosure.is-active {
   background: var(--ds-primary, var(--primary));
-  color: var(--ds-canvas, #ffffff);
+  color: var(--ds-canvas);
 }
 .icon-btn {
   display: inline-flex !important;

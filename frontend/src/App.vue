@@ -3583,7 +3583,7 @@ function formatBuildTime(rawIso) {
   transition: all 0.2s ease;
 }
 .onboarding-coach.is-verified {
-  border-color: var(--ds-success, #2e7d32);
+  border-color: var(--ds-success);
   box-shadow: 0 8px 24px rgba(46, 125, 50, 0.2);
 }
 .guide-tour-verified-badge {
@@ -3593,9 +3593,9 @@ function formatBuildTime(rawIso) {
   margin: 0 16px 12px;
   padding: 6px 10px;
   background: var(--ds-success-wash, rgba(46, 125, 50, 0.1));
-  border: 1px solid var(--ds-success, #2e7d32);
+  border: 1px solid var(--ds-success);
   border-radius: 8px;
-  color: var(--ds-success, #2e7d32);
+  color: var(--ds-success);
   font-size: 13px;
   font-weight: 600;
 }

@@ -2656,7 +2656,7 @@ watch(() => props.branchId, () => {
 }
 .att-completed-icon {
   font-size: 28px;
-  color: var(--ds-success, #2e7d32);
+  color: var(--ds-success);
   flex-shrink: 0;
 }
 .att-completed-msg strong {
