@@ -24,7 +24,7 @@ final class SubjectUnitsTimelineService
     ];
 
     /**
-     * @return array{entries: list<array<string,mixed>>, days: list<array<string,mixed>>, totals: array<string,mixed>}
+     * @return array{entries: list<array<string,mixed>>, days: list<array<string,mixed>>, totals: array<string,mixed>, teacher_contributions: list<array<string,mixed>>}
      */
     public function build(Carbon $start, Carbon $end, array $campusIds, ?int $teacherId = null): array
     {
