@@ -66,7 +66,9 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.trial_segments', 5);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 17);
         $response->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.meets_16_segments', true);
-        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 35500);
+        // one-to-three subject counts are now kept raw; the Founder-approved
+        // /8 divisor applies only after the complete applicable total is built.
+        $response->assertJsonPath('teachers.0.settlement.calculated_payout', 35700);
         $response->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $response->assertJsonPath('teachers.0.components.cash_adjustments.amount', 1500);
         $response->assertJsonPath('teachers.0.settlement.adjustments.1.label', '完整結算路徑測試');
@@ -81,7 +83,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         $monthResponse = $this->withHeaders($this->auth($director['token']))
             ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=1');
         $monthResponse->assertOk();
-        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 35500);
+        $monthResponse->assertJsonPath('teachers.0.settlement.calculated_payout', 35700);
         $monthResponse->assertJsonPath('teachers.0.settlement.calculation_status', 'calculated');
         $monthResponse->assertJsonPath('teachers.0.components.weekly_16_segments.metrics.total_segments', 17);
         $this->assertTrue(collect($monthResponse->json('teachers.0.components.weekly_16_segments.metrics.weeks'))

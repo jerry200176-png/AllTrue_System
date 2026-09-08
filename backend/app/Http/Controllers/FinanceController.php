@@ -585,7 +585,7 @@ class FinanceController extends Controller
                 'date' => null, 'regular_hours' => 0, 'tutoring_trial_hours' => 0,
                 'regular_weighted' => 0, 'tutoring_trial_weighted' => 0,
                 'regular_subject_count' => 0, 'tutoring_trial_subject_count' => 0,
-                'payroll_subject_count' => 0, 'session_count' => 0,
+                'payroll_subject_count' => 0, 'final_payroll_subject_count' => 0, 'session_count' => 0,
             ],
         ];
     }

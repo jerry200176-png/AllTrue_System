@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-08-subject-count-final-total",
+    "publishedAt": "2026-09-08",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "科目數總計依完整加總計算",
+    "summary": "明細保留原始科目數，完整區間總計只在最後除以 8。",
+    "items": [
+      "正課、輔導／試聽與一對三的中間數值保留原始加權結果，不會提前除以 8。",
+      "科目數摘要會另外顯示完整區間的核薪總計，先加總所有適用 raw 科目數後才除以 8。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "正課、輔導／試聽與一對三的中間數值保留原始加權結果，不會提前除以 8。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "科目數摘要會另外顯示完整區間的核薪總計，先加總所有適用 raw 科目數後才除以 8。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-08:subject-count-final-total"
+    ],
+    "date": "2026-09-08",
+    "version": "2026.09.08"
+  },
+  {
     "id": "staff-2026-09-08-global-search-v1",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,

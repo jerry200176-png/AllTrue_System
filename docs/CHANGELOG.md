@@ -4,6 +4,11 @@
 - 結果支援鍵盤上下選取、直接前往既有 canonical workflow，並補上搜尋中、找不到結果、失敗重試與快速連續輸入的最新結果保護。
 - 沿用既有角色、老師與分校授權查詢；不新增 payment、payroll、家長訊息、歷史全文、向量搜尋、migration 或資料寫入。
 
+## 2026-09-08 — fix(finance): 科目數完整加總後才除以 8
+<!-- release-notes: staff_update=staff-2026-09-08-subject-count-final-total -->
+- 科目數明細、每日與中間分類仍顯示原始加權值；完整區間摘要先加總正課與輔導／試聽 raw 科目數，再在最後除以 8。
+- 修正正職核薪的一對三科目數不應提前除以 8 的計算路徑，保留既有 API 欄位與資料來源。
+
 ## 2026-09-08 — improved(ux): 意見與建議入口更容易使用
 <!-- release-notes: staff_update=staff-2026-09-08-feedback-entry-ux -->
 - 將老師與主任看得到的 Bug 回報、Bug 清單等命名收斂為「意見與建議」，並改用中性的回饋圖示；既有路由、API 與資料分類不變。

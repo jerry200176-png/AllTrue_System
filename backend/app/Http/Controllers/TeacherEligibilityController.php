@@ -806,7 +806,11 @@ class TeacherEligibilityController extends Controller
             if (isset($unknown[$teacherId])) return [$teacherId => null];
             $regular = round($parts['regular'], 4);
             $tutoringTrial = round($parts['tutoring_trial'], 4);
-            $oneToThree = round($parts['one_to_three'] / 8, 4);
+            // Keep every subject-count bucket raw. The /8 divisor belongs only
+            // to the complete monthly payroll total below; applying it here
+            // makes the standalone one-to-three input disagree with the
+            // founder-approved final-aggregation rule.
+            $oneToThree = round($parts['one_to_three'], 4);
             $payrollRawTotal = $parts['regular'] + $parts['tutoring_trial'];
             return [$teacherId => [
                 'regular' => $regular,

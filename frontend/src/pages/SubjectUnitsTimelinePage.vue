@@ -57,9 +57,9 @@
     <template v-else>
       <section class="summary-grid" data-guide="subject-units-summary" aria-label="科目數摘要">
         <AtMetric
-          label="核薪科目數（原始）"
-          :value="formatCount(totals.payroll_subject_count)"
-          :delta="`${totals.session_count} 堂 · ${days.length} 個有資料日`"
+          label="完整區間核薪科目數"
+          :value="formatCount(totals.final_payroll_subject_count)"
+          :delta="`原始合計 ${formatCount(totals.payroll_subject_count)} · ${totals.session_count} 堂 · ${days.length} 個有資料日`"
           delta-tone="positive"
           accent="var(--ds-cta)"
         />
@@ -260,7 +260,7 @@ const loading = ref(true);
 const errorMessage = ref('');
 const entries = ref([]);
 const days = ref([]);
-const totals = ref({ regular_subject_count: 0, tutoring_trial_subject_count: 0, payroll_subject_count: 0, regular_hours: 0, tutoring_trial_hours: 0, session_count: 0 });
+const totals = ref({ regular_subject_count: 0, tutoring_trial_subject_count: 0, payroll_subject_count: 0, final_payroll_subject_count: 0, regular_hours: 0, tutoring_trial_hours: 0, session_count: 0 });
 const currentDate = ref(new Date());
 const startDate = ref(monthStart(currentDate.value));
 const endDate = ref(monthEnd(currentDate.value));
