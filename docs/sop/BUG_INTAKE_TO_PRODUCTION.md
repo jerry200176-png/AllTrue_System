@@ -90,13 +90,14 @@ exact commit. A green CI run proves only that the commit can be merged.
    ```text
    gh run view <deploy-run-id> --json status,conclusion,headSha,jobs,url
    curl --fail https://<production>/api/v1/health
+   curl --fail https://<production>/deployment.json
    curl --fail https://<production>/version.json
    ```
 
-   The version response's full `build_sha` must equal the merge SHA. If only
-   an abbreviated `hash` is exposed, it must match the SHA prefix and the
-   full deployment manifest must confirm the same revision. A healthy response
-   alone does not prove that the new build is live.
+   `deployment.json.backend_sha` must equal the target SHA for backend
+   identity. `deployment.json.frontend_build_sha` and `version.json.build_sha`
+   identify the frontend bundle when applicable. A healthy response alone does
+   not prove that the target build is live.
 
 ## The write-back step has no cloud-agent path — plan for a human
 

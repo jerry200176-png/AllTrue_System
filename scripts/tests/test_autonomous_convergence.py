@@ -1,4 +1,4 @@
-"""Regression contracts for the main-event convergence scheduler."""
+"""Regression contracts for the event-driven main convergence reconciler."""
 
 from pathlib import Path
 import unittest
@@ -33,6 +33,16 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertIn("bounded window", workflow)
         self.assertIn("Dispatch CI when current main has no downstream evidence", workflow)
         self.assertNotIn("ssh ", workflow)
+
+    def test_reconciliation_is_event_driven_with_manual_fallback(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("pull_request_target:", workflow)
+        self.assertIn("workflow_run:", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("  schedule:", workflow)
+        self.assertNotIn("github.event_name == 'schedule'", workflow)
+        self.assertIn("group: autonomous-main-convergence", workflow)
+        self.assertIn("cancel-in-progress: true", workflow)
 
     def test_dispatches_when_merge_left_no_exact_main_evidence(self):
         self.assertTrue(should_dispatch(active_ci=False, recent_dispatch=False, deploy_present=False))

@@ -95,7 +95,7 @@
 | Check | Pass |
 |-------|------|
 | R6.1 | Auto-rollback = inside `deploy.yml` |
-| R6.2 | Manual rollback = revert PR → CI → `deploy.yml` OR re-run successful deploy |
+| R6.2 | Manual rollback = revert PR → CI → `deploy.yml`; manual activation still uses current-main target SHA |
 | R6.3 | `RUNBOOK_ROLLBACK.md` = execution helper only; matches R6.1–R6.2 |
 
 ---

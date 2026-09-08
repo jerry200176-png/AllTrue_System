@@ -46,6 +46,16 @@ jobs:
           node scripts/ci-cost-guard.mjs
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
+          node scripts/governance/check-production-workflow-inventory.mjs
+          python3 scripts/tests/test_governance_simplification.py
+
+      - name: Test control plane lint catches violations
+        run: |
+          set +e
+          node scripts/control-plane-lint.mjs --self-test
+          status=$?
+          set -e
+          test "$status" -eq 1
 
       - name: Test credential fingerprint audit
         run: python3 scripts/credential-fingerprint-audit.test.py

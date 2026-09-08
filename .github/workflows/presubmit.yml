@@ -233,13 +233,9 @@ jobs:
             echo "✅ No deploy steps in CI workflows"
           fi
 
-      # ─────────────────────────────────────────────
-      # CHECK 6：Golden scenarios — path → §（全自動，取代人工勾選）
-      # ─────────────────────────────────────────────
-      - name: "[CHECK 6] Golden scenarios report (automated)"
-        run: |
-          chmod +x .github/scripts/golden-ci-report.sh
-          ./.github/scripts/golden-ci-report.sh
+      # Golden scenarios are emitted once by the canonical CI job
+      # `Golden scenarios report`; keeping the required context in CI avoids
+      # executing the same path-to-section report twice per pull request.
 
       # ─────────────────────────────────────────────
       # CHECK 7：Architecture fitness — fail-closed enforcement of architecture rules
@@ -275,7 +271,7 @@ jobs:
           echo "| alwaysApply rules | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| CHANGELOG | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| No deploy in CI | See step log |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Golden § report | CHECK 6 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Golden § report | CI — Golden scenarios report |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Runner topology | CHECK 8 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Smoke auth contract | CHECK 9 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Local PHPUnit isolation | CHECK 10 |" >> "$GITHUB_STEP_SUMMARY"

@@ -11,7 +11,7 @@ After merge, add this check to GitHub branch protection:
 
 | Check name (exact) | Source workflow | Purpose |
 |--------------------|-----------------|---------|
-| **Control Plane Contract Lint** | `CI — PHPUnit Tests` (first job) + `Control Plane Enforce` | Contract I1–I5 validation |
+| **Control Plane Contract Lint** | `CI — PHPUnit Tests` (`control_plane`, first job) | Contract I1–I5 validation |
 
 Existing required checks (keep):
 

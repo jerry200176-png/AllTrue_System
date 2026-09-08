@@ -5,7 +5,7 @@
 
 ## 怎麼用（零人工）
 
-1. **Presubmit** 與 **CI** 會跑 [`.github/scripts/golden-ci-report.sh`](../.github/scripts/golden-ci-report.sh)：依 `origin/main...HEAD` 的檔案路徑標記 §0～§4 是否被本次 PR 觸及，並寫入 GitHub Actions **Job summary**。
+1. **CI** 的 **Golden scenarios report** job 唯一執行 [`.github/scripts/golden-ci-report.sh`](../.github/scripts/golden-ci-report.sh)：依 `origin/main...HEAD` 的檔案路徑標記 §0～§4 是否被本次 PR 觸及，並寫入 GitHub Actions **Job summary**。Presubmit 保留其自身 gate，不重複執行同一報告。
 2. **後端**路徑觸及 § → `ci.yml` 的 **PHPUnit** job（全量 Feature／Unit）必須綠燈。
 3. **前端**路徑觸及 §3 → **Vite** job 內已含 `npm run test:calendar` + production build。
 4. **部署後**的 production smoke（health、真機刷卡）仍由維運 SOP 處理，無法在 PR CI 內 100% 模擬。
