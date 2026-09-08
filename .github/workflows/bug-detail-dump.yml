@@ -1051,7 +1051,7 @@ jobs:
                   ["week4", "time4"], ["week5", "time5"], ["week6", "time6"],
                 ];
                 foreach ($fields as [$day, $time]) {{
-                  if ((int)($row->{$day} ?? 0) === 2 && substr((string)($row->{$time} ?? ""), 0, 5) === "17:00") return true;
+                  if ((int)($row->{{$day}} ?? 0) === 2 && substr((string)($row->{{$time}} ?? ""), 0, 5) === "17:00") return true;
                 }}
                 return false;
               }})->values();
