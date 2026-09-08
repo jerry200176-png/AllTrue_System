@@ -30,6 +30,18 @@
       ],
       "replacement": "None; preserve the existing artisan command and feature tests as historical evidence.",
       "production_authority_removed": true
+    },
+    "bug-legacy-evidence-backfill.yml": {
+      "retired_at": "2026-09-08",
+      "reason": "The approved manifest contained only bug #114; its append-only evidence backfill and reporter-timeout close were completed and verified.",
+      "evidence": [
+        "Manifest legacy-evidence-2026-09-07-probe-34113146974 approved only bug #114.",
+        "Backfill dry-run 34114039124 and apply run 34114112625 succeeded; post-apply status-log count was unchanged.",
+        "Reporter-timeout dry-run 34114181379 found only #114 eligible; apply run 34114244243 closed #114 and left eligible=0.",
+        "The closeout records the other eight candidates as inconclusive and explicitly prohibits additional evidence backfill; no active workflow references this path."
+      ],
+      "replacement": "None; preserve BackfillBugResolutionEvidenceCommand, its manifest, feature tests, and closeout as historical evidence.",
+      "production_authority_removed": true
     }
   },
   "workflows": {
@@ -120,18 +132,6 @@
       "canonical": true,
       "required": "Current bug follow-up SOP exception",
       "future_state": "Retain as explicit in-app lifecycle writeback; do not broaden into arbitrary production mutation"
-    },
-    "bug-legacy-evidence-backfill.yml": {
-      "classification": "in-app-lifecycle-writeback",
-      "production_mutation": "confirmed",
-      "trigger": "workflow_dispatch",
-      "production_command_or_path": "bugs:backfill-resolution-evidence --apply",
-      "authorization": "Exact BACKFILL_BUG_RESOLUTION_EVIDENCE confirmation and pinned production SSH trust",
-      "concurrency": "bug-legacy-evidence-backfill; cancel-in-progress=false",
-      "rollback": "Idempotent append/update path; no automatic rollback",
-      "canonical": false,
-      "required": "legacy migration/backfill",
-      "future_state": "Retire after backfill or replace with an approved lifecycle executor"
     },
     "bug-legacy-production-probes.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Tinker probe is SELECT/report-only; no apply branch found."},
     "bug-phase-a-triage.yml": {
