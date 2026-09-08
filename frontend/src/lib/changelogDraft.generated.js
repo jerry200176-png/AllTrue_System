@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.08",
     "date": "2026-09-08",
     "title": "2026.09.08 草稿（未發布）",
-    "summary": "科目數完整加總後才除以 8；Cmd-K 可搜尋授權的學生、老師與課程",
+    "summary": "Portal V1 correctness and existing-data home summary；科目數完整加總後才除以 8",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "Portal V1 correctness and existing-data home summary",
           "科目數完整加總後才除以 8"
         ]
       },
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "Portal V1 correctness and existing-data home summary",
       "科目數完整加總後才除以 8",
       "Cmd-K 可搜尋授權的學生、老師與課程",
       "意見與建議入口更容易使用",

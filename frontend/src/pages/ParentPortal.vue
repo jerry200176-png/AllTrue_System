@@ -60,7 +60,7 @@
     </div>
 
     <!-- Skeleton loader while dashboard is loading (token exists but no data yet) -->
-    <template v-if="token && !dashboard && !liffLoading">
+    <template v-if="token && !dashboard && !dashboardError && !liffLoading">
       <div class="pp-card pp-skeleton-card">
         <div class="pp-skel-row pp-skel-row--avatar">
           <div class="pp-skel pp-skel--circle"></div>
@@ -83,6 +83,12 @@
         <div class="pp-skel" style="height: 44px; border-radius: 8px; margin-top: 8px;"></div>
       </div>
     </template>
+
+    <div v-if="token && dashboardError && !dashboard" class="pp-card pp-dashboard-error" role="alert">
+      <strong>目前無法載入家長資料</strong>
+      <p>{{ dashboardError }}</p>
+      <button type="button" class="pp-btn pp-btn-primary" @click="retryDashboard">重新載入</button>
+    </div>
 
     <!-- ═══ Dashboard (logged in) ═══ -->
     <template v-if="token && dashboard">
@@ -127,7 +133,7 @@
             <span class="material-symbols-outlined" style="font-size:16px;">account_balance</span>
             分校範圍
           </label>
-          <select id="parent-campus-scope" class="pp-campus-select" v-model="campusScope" @change="switchCampusScope">
+          <select id="parent-campus-scope" class="pp-campus-select" v-model="campusScope" :disabled="switchingCampus" @change="switchCampusScope">
             <option value="all">全部分校</option>
             <option v-for="enrollment in dashboard.enrollments" :key="enrollment.student_id" :value="String(enrollment.campus_id)">
               {{ enrollment.campus_name || `分校 ${enrollment.campus_id}` }}
@@ -194,6 +200,50 @@
           </span>
           <span class="material-symbols-outlined pp-hub-feedback-cta__chev">chevron_right</span>
         </button>
+      </div>
+
+      <!-- Parent Portal V1: answer the five parent questions using existing data only. -->
+      <section class="pp-card pp-home-v1" v-if="parentHomeSummary" aria-labelledby="parent-home-v1-title">
+        <div class="pp-home-v1__header">
+          <div>
+            <h2 id="parent-home-v1-title">本次學習重點</h2>
+            <p>從已核准的學習評量、老師建議與目前待辦整理。</p>
+          </div>
+          <span class="pp-home-v1__badge">家長摘要</span>
+        </div>
+        <div class="pp-home-v1__grid">
+          <article class="pp-home-v1__item pp-home-v1__item--wide">
+            <span class="pp-home-v1__label">最近學了什麼</span>
+            <strong v-if="parentHomeSummary.latestRecord">{{ parentHomeSummary.latestRecord.subject }} · {{ parentHomeSummary.latestRecord.date }}</strong>
+            <p>{{ parentHomeSummary.latestText || '目前尚無已核准的學習內容。' }}</p>
+          </article>
+          <article class="pp-home-v1__item">
+            <span class="pp-home-v1__label">本週重點</span>
+            <strong v-if="parentHomeSummary.focusText">{{ parentHomeSummary.focusText }}</strong>
+            <p v-else>目前沒有額外的重點提示。</p>
+          </article>
+          <article class="pp-home-v1__item">
+            <span class="pp-home-v1__label">老師建議／處理</span>
+            <p>{{ parentHomeSummary.teacherText || '老師尚未在這筆評量留下建議。' }}</p>
+          </article>
+          <article class="pp-home-v1__item">
+            <span class="pp-home-v1__label">回家要做什麼</span>
+            <p>{{ parentHomeSummary.homeworkText || '目前沒有記載回家作業。' }}</p>
+          </article>
+          <article class="pp-home-v1__item pp-home-v1__item--wide">
+            <span class="pp-home-v1__label">下一步／目前待辦</span>
+            <ul v-if="parentHomeSummary.nextSteps.length" class="pp-home-v1__next-list">
+              <li v-for="step in parentHomeSummary.nextSteps" :key="step">{{ step }}</li>
+            </ul>
+            <p v-else>目前沒有待處理事項。</p>
+          </article>
+        </div>
+      </section>
+
+      <div v-if="dashboardError" class="pp-card pp-dashboard-error" role="alert">
+        <strong>目前無法載入家長資料</strong>
+        <p>{{ dashboardError }}</p>
+        <button type="button" class="pp-btn pp-btn-primary" @click="retryDashboard">重新載入</button>
       </div>
 
       <div class="pp-card pp-attention-card" v-if="progressSummary" data-guide="parent-attention-card">
@@ -495,6 +545,10 @@
                     <div class="pp-feedback-reply-body">{{ rep.content }}</div>
                   </div>
                 </div>
+                <p v-if="record._threadError" class="pp-error pp-feedback-error" role="alert">
+                  {{ record._threadError }}
+                  <button type="button" class="pp-btn-small" @click.stop="loadFeedbackThread(record)">重試載入對話</button>
+                </p>
                 <div v-if="record.parent_feedback" class="pp-feedback-followup">
                   <textarea
                     v-model="record._replyDraft"
@@ -511,6 +565,10 @@
                     </button>
                   </div>
                   <p v-if="record._replyError" class="pp-error pp-feedback-error">{{ record._replyError }}</p>
+                  <p v-if="record._replyRefreshError" class="pp-error pp-feedback-error" role="alert">
+                    {{ record._replyRefreshError }}
+                    <button type="button" class="pp-btn-small" @click.stop="loadFeedbackThread(record)">重試載入對話</button>
+                  </p>
                 </div>
               </div>
             </div>
@@ -528,6 +586,10 @@
             載入更多（已顯示 {{ allLearningRecords.length }} / {{ lrTotal }} 筆）
           </template>
         </button>
+        <p v-if="lrError" class="pp-error pp-load-more-error" role="alert">
+          {{ lrError }}
+          <button type="button" class="pp-btn-small" @click="loadMoreRecords">重試載入</button>
+        </p>
         <div class="pp-empty enterprise-empty" v-if="!allLearningRecords.length">
           <span class="material-symbols-outlined">description</span>
           <p>尚無已核准的學習評量紀錄</p>
@@ -639,11 +701,14 @@
             <button
               type="button"
               class="pp-voice-submit"
-              :disabled="!fbCanSubmit"
+              :disabled="!fbCanSubmit || !crossCampusActionsEnabled"
               @click="submitFeedbackForm">
               <span class="material-symbols-outlined">send</span>
               {{ fbSubmitting ? '送出中…' : '送出建議' }}
             </button>
+            <p v-if="!crossCampusActionsEnabled" class="pp-hint pp-readonly-hint" role="status">
+              目前為跨分校唯讀狀態，意見送出功能暫未開放。
+            </p>
           </template>
         </div>
 
@@ -900,7 +965,7 @@ import { onMounted, ref, computed, reactive, nextTick, watch } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave, getParentNotificationPreferences, setParentNotificationPreferences } from '../api';
 import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
-import { buildParentActionItems } from '../lib/parentActionItems';
+import { buildParentActionItems, buildParentHomeSummary } from '../lib/parentActionItems';
 import { formatAssessmentProgressDate, assessmentProgressScoreLabel, assessmentProgressPercentLabel } from '../lib/parentAssessmentProgress';
 import { isSessionStartedOrPast, isLateLeave, canRequestParentLeave } from '../lib/parentLeavePolicy';
 
@@ -955,6 +1020,8 @@ const loginForm = ref({ Name: '', Phone: '' });
 const loginError = ref('');
 const loginLoading = ref(false);
 const dashboard = ref(null);
+const dashboardError = ref('');
+const dashboardRequestSequence = ref(0);
 const liffAvailable = ref(false);
 const liffLoading = ref(false);
 const autoLineMode = ref(false);
@@ -986,6 +1053,15 @@ const parentActionItems = computed(() => buildParentActionItems({
   upcomingSessions: dashboard.value?.upcoming_sessions,
   learningRecords: allLearningRecords.value,
 }));
+const parentHomeSummary = computed(() => {
+  if (!dashboard.value) return null;
+  return buildParentHomeSummary({
+    learningRecords: allLearningRecords.value,
+    assessmentItems: parentAssessmentProgress.value,
+    progressSummary: progressSummary.value,
+    actionItems: parentActionItems.value,
+  });
+});
 
 function parentNoteTeaser(note) {
   return parentReleaseNoteTeaser(note);
@@ -1001,10 +1077,10 @@ const paymentHubClass = computed(() => {
 
 const paymentHubLabel = computed(() => {
   const status = progressSummary.value?.payment?.status;
-  if (status === 'all_pending') return '前往繳費';
-  if (status === 'partial') return '部分待繳，前往查看';
-  if (status === 'all_clear') return '本期已全數繳清';
-  return '前往帳務';
+  if (status === 'all_pending') return '查看待繳帳務';
+  if (status === 'partial') return '查看部分待繳帳務';
+  if (status === 'all_clear') return '查看帳務明細';
+  return '查看帳務';
 });
 
 function formatHubDate(value) {
@@ -1065,7 +1141,7 @@ const fbCategories = [
   { key: 'other',    label: '其他建議' },
 ];
 
-const fbCanSubmit = computed(() => fbCategory.value && fbContent.value.length >= 10 && !fbSubmitting.value);
+const fbCanSubmit = computed(() => fbCategory.value && fbContent.value.trim().length >= 10 && !fbSubmitting.value);
 
 async function submitFeedbackForm() {
   if (!fbCanSubmit.value) return;
@@ -1096,6 +1172,7 @@ const studentsKey = 'parent_portal_students';
 try { localStorage.removeItem(studentsKey); } catch (_) {}
 const students = ref(null);
 const campusScope = ref('all');
+const appliedCampusScope = ref('all');
 const switchingCampus = ref(false);
 const switchingStudent = ref(false);
 
@@ -1110,6 +1187,7 @@ const lrPerPage = 10;
 const lrHasMore = ref(false);
 const lrTotal = ref(0);
 const lrLoading = ref(false);
+const lrError = ref('');
 const allLearningRecords = ref([]);
 const lrSubjectFilter = ref('');
 
@@ -1140,7 +1218,10 @@ const visibleLearningRecordGroups = computed(() => {
 
 /** 已載入的評量中，尚未填「給老師的回饋」的堂數（用於 Tab 角標／引導） */
 const lrRecordsMissingFeedbackCount = computed(
-  () => (allLearningRecords.value || []).filter((r) => !r.parent_feedback).length
+  () => {
+    const serverCount = Number(progressSummary.value?.pending_actions?.find((item) => item?.key === 'feedback')?.count);
+    return Number.isFinite(serverCount) ? Math.max(0, serverCount) : (allLearningRecords.value || []).filter((r) => !r.parent_feedback).length;
+  }
 );
 
 /** 降低空白恐懼：一鍵帶入禮貌開頭（可再改寫）— 類似 Slack / Intercom quick replies */
@@ -1191,6 +1272,7 @@ const submitFeedback = async (record) => {
 const submitParentReply = async (record) => {
   const content = String(record._replyDraft || '').trim();
   record._replyError = '';
+  record._replyRefreshError = '';
   if (!content) {
     record._replyError = '請輸入回覆內容';
     return;
@@ -1202,10 +1284,27 @@ const submitParentReply = async (record) => {
   const id = record.id ?? record.ID;
   record._replySaving = true;
   try {
-    await parentReplyLearningRecordFeedback(token.value, id, content);
+    const reply = await parentReplyLearningRecordFeedback(token.value, id, content);
     record._replyDraft = '';
-    const refreshed = await getParentLearningRecordFeedback(token.value, id);
-    if (refreshed) record.parent_feedback = refreshed;
+    const optimisticReply = {
+      id: reply?.id || `local-${Date.now()}`,
+      author_role: 'parent',
+      author_name: '我（家長）',
+      content,
+      created_at: reply?.created_at || new Date().toISOString(),
+    };
+    record.parent_feedback = {
+      ...(record.parent_feedback || {}),
+      replies: [...(record.parent_feedback?.replies || []), optimisticReply],
+      has_unread_reply: false,
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      const refreshed = await getParentLearningRecordFeedback(token.value, id);
+      if (refreshed) record.parent_feedback = refreshed;
+    } catch (refreshError) {
+      record._replyRefreshError = `回覆已送出，但最新對話暫時載入失敗：${refreshError?.message || '請稍後重試'}`;
+    }
     trackParentPortalEvent(token.value, 'parent.learning_feedback_reply', { record_id: id });
   } catch (e) {
     record._replyError = e?.message || '暫時無法送出，請稍後再試';
@@ -1227,11 +1326,15 @@ const onFeedbackBoxOpen = (record) => {
 const loadFeedbackThread = async (record) => {
   const id = record.id ?? record.ID;
   if (id == null || !record.parent_feedback) return;
+  record._threadError = '';
+  record._threadLoading = true;
   try {
     const refreshed = await getParentLearningRecordFeedback(token.value, id);
     if (refreshed) record.parent_feedback = refreshed;
   } catch (e) {
-    // 靜默：對話串載入失敗不影響評量本身顯示
+    record._threadError = e?.message || '對話暫時無法載入，請稍後重試';
+  } finally {
+    record._threadLoading = false;
   }
 };
 
@@ -1471,21 +1574,27 @@ watch(dashboard, (d) => {
   if (d && urlTabParam) applyTabFromUrl(urlTabParam);
 });
 
-const loadDashboard = async ({ resetRecords = true } = {}) => {
+const loadDashboard = async ({ resetRecords = true, campusScopeOverride = null, requestId = null } = {}) => {
   if (!token.value) return;
+  const activeRequestId = requestId || ++dashboardRequestSequence.value;
+  const requestedScope = campusScopeOverride == null ? campusScope.value : String(campusScopeOverride);
+  dashboardError.value = '';
   try {
     if (resetRecords) {
       lrPage.value = 1;
       lrSubjectFilter.value = '';
+      lrError.value = '';
     }
-    const campusId = campusScope.value !== 'all' ? campusScope.value : null;
+    const campusId = requestedScope !== 'all' ? requestedScope : null;
     const data = await getParentDashboard(token.value, {
       lrPage: resetRecords ? 1 : lrPage.value,
       lrPerPage,
-      scope: campusScope.value === 'all' ? 'all' : 'campus',
+      scope: requestedScope === 'all' ? 'all' : 'campus',
       campusId,
     });
+    if (activeRequestId !== dashboardRequestSequence.value) return false;
     dashboard.value = data;
+    appliedCampusScope.value = requestedScope;
     trackParentPortalEvent(token.value, 'parent.dashboard_opened', {
       student_id: data?.student?.id || null,
       pending_total: data?.progress_summary?.pending_total || 0,
@@ -1498,16 +1607,26 @@ const loadDashboard = async ({ resetRecords = true } = {}) => {
     lrHasMore.value = !!meta.has_more;
     lrTotal.value = meta.total || 0;
     await loadNotificationPreferences();
+    return true;
   } catch (e) {
+    if (activeRequestId !== dashboardRequestSequence.value) return false;
     // An expired parent token is an expected path for a public entry URL;
     // clear it quietly and let the login screen render without a console error.
     const status = Number(e?.status || e?.response?.status || 0);
     const isUnauthorized = status === 401 || /unauthorized/i.test(String(e?.message || ''));
-    if (!isUnauthorized) console.error('Dashboard load failed:', e);
-    token.value = '';
-    localStorage.removeItem(tokenKey);
+    if (isUnauthorized) {
+      token.value = '';
+      dashboard.value = null;
+      localStorage.removeItem(tokenKey);
+      return false;
+    }
+    console.warn('Dashboard load failed:', e);
+    dashboardError.value = e?.message || '資料暫時無法載入，請稍後重試';
+    return false;
   }
 };
+
+const retryDashboard = () => loadDashboard({ resetRecords: true });
 
 const loadNotificationPreferences = async () => {
   if (!token.value) return;
@@ -1542,6 +1661,7 @@ const onLearningFeedbackPushToggle = async (event) => {
 const loadMoreRecords = async () => {
   if (lrLoading.value || !lrHasMore.value) return;
   lrLoading.value = true;
+  lrError.value = '';
   try {
     const nextPage = lrPage.value + 1;
     const data = await getParentDashboard(token.value, {
@@ -1557,7 +1677,8 @@ const loadMoreRecords = async () => {
     lrTotal.value = meta.total || 0;
     lrPage.value = nextPage;
   } catch (e) {
-    console.error('Load more records failed:', e);
+    console.warn('Load more records failed:', e);
+    lrError.value = e?.message || '更多學習紀錄暫時無法載入';
   } finally {
     lrLoading.value = false;
   }
@@ -1577,6 +1698,7 @@ const login = async () => {
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
     campusScope.value = 'all';
+    appliedCampusScope.value = 'all';
     await loadDashboard();
   } catch (error) {
     loginError.value = error.message || '登入失敗，請確認學生姓名及手機號碼是否正確';
@@ -1606,6 +1728,7 @@ const loginWithLine = async () => {
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
     campusScope.value = 'all';
+    appliedCampusScope.value = 'all';
     autoLineNotBound.value = false;
     await loadDashboard();
   } catch (e) {
@@ -1674,6 +1797,7 @@ const switchStudent = async (studentId) => {
     allLearningRecords.value = [];
     lrPage.value = 1;
     campusScope.value = 'all';
+    appliedCampusScope.value = 'all';
     expandedRecords.clear();
     activeTab.value = 'learning';
     await loadDashboard();
@@ -1686,16 +1810,21 @@ const switchStudent = async (studentId) => {
 };
 
 const switchCampusScope = async () => {
-  if (switchingCampus.value || !token.value) return;
+  if (!token.value) return;
+  const requestedScope = String(campusScope.value || 'all');
+  const requestId = ++dashboardRequestSequence.value;
   switchingCampus.value = true;
   allLearningRecords.value = [];
   expandedRecords.clear();
   try {
-    await loadDashboard({ resetRecords: true });
+    const loaded = await loadDashboard({ resetRecords: true, campusScopeOverride: requestedScope, requestId });
+    if (!loaded && token.value && requestId === dashboardRequestSequence.value) {
+      campusScope.value = appliedCampusScope.value;
+    }
   } catch (e) {
-    console.error('Switch campus scope failed:', e);
+    console.warn('Switch campus scope failed:', e);
   } finally {
-    switchingCampus.value = false;
+    if (requestId === dashboardRequestSequence.value) switchingCampus.value = false;
   }
 };
 
@@ -1704,6 +1833,7 @@ const logout = () => {
   localStorage.removeItem(tokenKey);
   dashboard.value = null;
   campusScope.value = 'all';
+  appliedCampusScope.value = 'all';
   setStudents(null);
 };
 
@@ -2026,6 +2156,25 @@ onMounted(async () => {
 .pp-hub-cell--warn .pp-hub-cell-cta { color: var(--ds-danger); }
 .pp-hub-cell--ok { border-color: rgba(34, 197, 94, 0.4); background: var(--ds-success-wash); }
 .pp-hub-cell--ok .pp-hub-cell-cta { color: var(--ds-success); }
+
+.pp-home-v1 { padding: 16px 14px 14px; }
+.pp-home-v1__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.pp-home-v1__header h2 { margin: 0; font-size: 17px; color: var(--ds-ink); }
+.pp-home-v1__header p { margin: 4px 0 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5; }
+.pp-home-v1__badge { flex: 0 0 auto; border-radius: 999px; padding: 4px 8px; background: var(--ds-primary-wash); color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; }
+.pp-home-v1__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pp-home-v1__item { min-width: 0; padding: 11px; border: 1px solid var(--ds-border); border-radius: 10px; background: var(--ds-canvas-soft); }
+.pp-home-v1__item--wide { grid-column: 1 / -1; }
+.pp-home-v1__label { display: block; margin-bottom: 5px; color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; }
+.pp-home-v1__item strong { display: block; color: var(--ds-ink); font-size: 13px; line-height: 1.45; }
+.pp-home-v1__item p { margin: 0; color: var(--ds-ink); font-size: 13px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pp-home-v1__item strong + p { margin-top: 4px; }
+.pp-home-v1__next-list { margin: 0; padding-left: 18px; color: var(--ds-ink); font-size: 13px; line-height: 1.7; }
+.pp-dashboard-error { border: 1px solid var(--ds-danger); background: var(--ds-danger-wash); }
+.pp-dashboard-error strong { color: var(--ds-danger); }
+.pp-dashboard-error p { margin: 6px 0 10px; color: var(--ds-ink); line-height: 1.5; }
+.pp-readonly-hint { margin-top: 8px; }
+.pp-load-more-error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .pp-parent-update {
   margin-top: 10px;
   margin-bottom: 8px;
@@ -2134,6 +2283,8 @@ onMounted(async () => {
 @media (max-width: 480px) {
   .pp-hub-grid--home { grid-template-columns: 1fr; }
   .pp-hub-grid--home .pp-hub-cell--span-2 { grid-column: auto; }
+  .pp-home-v1__grid { grid-template-columns: 1fr; }
+  .pp-home-v1__item--wide { grid-column: auto; }
 }
 
 /* ═══ Tab Bar ═══ */

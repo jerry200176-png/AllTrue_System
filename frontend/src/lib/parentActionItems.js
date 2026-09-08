@@ -96,3 +96,44 @@ export function buildParentActionItems({
 
   return items.slice(0, 5);
 }
+
+/**
+ * Build the parent-facing home narrative from fields already projected by the
+ * parent dashboard. This is a presentation projection, not a new workflow or
+ * diagnosis model.
+ */
+export function buildParentHomeSummary({
+  learningRecords = [],
+  assessmentItems = [],
+  progressSummary = null,
+  actionItems = [],
+} = {}) {
+  const latest = Array.isArray(learningRecords) ? learningRecords[0] : null;
+  const assessment = Array.isArray(assessmentItems) ? assessmentItems[0] : null;
+  const latestText = String(latest?.Progress || latest?.Content || '').trim();
+  const latestSubject = String(latest?.Subject || latest?.subject || '課程').trim() || '課程';
+  const latestDate = String(latest?.SessionDate || latest?.session_date || '').trim();
+  const focusAreas = Array.isArray(assessment?.focus_areas)
+    ? assessment.focus_areas.filter(Boolean).join('、')
+    : '';
+  const focusText = [assessment?.outcome_label, focusAreas].filter(Boolean).join(' · ')
+    || String(latest?.NextWeekTestScope || '').trim();
+  const nextSession = progressSummary?.next_session;
+  const nextSteps = (Array.isArray(actionItems) ? actionItems : [])
+    .slice(0, 3)
+    .map((item) => `${String(item?.title || '待辦事項').trim()}：${String(item?.action || '查看').trim()}`);
+  if (nextSession?.date) {
+    const sessionText = [nextSession.date, nextSession.start_time, nextSession.subject]
+      .filter(Boolean).join(' ');
+    nextSteps.push(`下次課程：${sessionText}`);
+  }
+
+  return {
+    latestRecord: latest ? { subject: latestSubject, date: latestDate || '最近一筆' } : null,
+    latestText,
+    focusText: String(focusText || '').trim(),
+    teacherText: String(latest?.Comment || '').trim(),
+    homeworkText: String(latest?.NextHomework || '').trim(),
+    nextSteps,
+  };
+}

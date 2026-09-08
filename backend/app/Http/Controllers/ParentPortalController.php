@@ -1249,12 +1249,23 @@ class ParentPortalController extends Controller
                 'cta_target' => 'schedule',
             ];
         }
-        $unreadFeedback = collect($records)->filter(fn ($r) => empty($r->parent_feedback))->count();
-        if ($unreadFeedback > 0) {
+        // Learning records are paginated for the history view. The home action
+        // count must be calculated from the full visible approved set so it
+        // does not change when the parent loads another history page.
+        $progressClassIds = $classes->pluck('ID')->filter()->values()->all();
+        $unrepliedFeedbackCount = empty($progressClassIds)
+            ? 0
+            : LearningRecord::active()
+                ->whereIn('StudentClassID', $progressClassIds)
+                ->where('LearningRecord.Status', 'approved')
+                ->leftJoin('learning_record_feedbacks as lf', 'lf.learning_record_id', '=', 'LearningRecord.id')
+                ->whereNull('lf.id')
+                ->count('LearningRecord.id');
+        if ($unrepliedFeedbackCount > 0) {
             $pendingActions[] = [
                 'key'   => 'feedback',
                 'title' => '評量待回饋',
-                'count' => $unreadFeedback,
+                'count' => $unrepliedFeedbackCount,
                 'cta_target' => 'learning',
             ];
         }
