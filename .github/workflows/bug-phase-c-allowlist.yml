@@ -300,6 +300,16 @@ jobs:
               "rev" => "f1158cf8dbefdc9c9932d8b68be5745e028dab1b",
               "deploy" => "34192816500",
             ],
+            262 => [
+              "reply" => "已完成修正並上線：課程管理中的最近繳費摘要現在會較容易掃讀，付款狀態只作為狀態提示，不會再看起來像可以點擊的按鈕；真正的帳務入口會清楚顯示為「前往帳務中心」。請重新整理課程管理確認；若仍有特定欄位排版問題，請回覆這則訊息並附上畫面。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2569",
+              "rev" => "30d30c47d2de5a1ae7314cceea46cbb4471f4e2a",
+              "deploy" => "34203695848",
+            ],
+            263 => [
+              "reply" => "已完成修正並上線：未繳費等付款狀態現在會明確顯示為狀態提示，不會再讓人誤以為可以直接點擊；需要處理帳務時，請使用旁邊清楚標示的「前往帳務中心」。請重新整理課程管理確認；若仍有不清楚的地方，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2570",
+              "rev" => "30d30c47d2de5a1ae7314cceea46cbb4471f4e2a",
+              "deploy" => "34203695848",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
