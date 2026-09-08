@@ -20,6 +20,18 @@
     "rsync",
     "scp"
   ],
+  "retired_workflows": {
+    "234-renewal-overlap-repair.yml": {
+      "retired_at": "2026-09-08",
+      "reason": "The single case was completed and verified; GitHub issue #1740 is closed.",
+      "evidence": [
+        "Issue #1740 closed 2026-08-15 with production repair already executed and verified.",
+        "Deploy-independent workflow run 31685594666 (2026-08-13) used mode=execute and reported REPAIR_STATE=APPLIED_AND_VERIFIED."
+      ],
+      "replacement": "None; preserve the existing artisan command and feature tests as historical evidence.",
+      "production_authority_removed": true
+    }
+  },
   "workflows": {
     "1387-db-grant-repair.yml": {
       "classification": "legacy-case-specific-mutation",
@@ -66,18 +78,6 @@
       "authorization": "Manual exact phrase, actor, and pinned production SSH trust",
       "concurrency": "repair-173-supersede; cancel-in-progress=false",
       "rollback": "Command rollback with snapshot/preflight and post-verification",
-      "canonical": false,
-      "required": "case-specific repair",
-      "future_state": "Retire after case closure or migrate through Founder-approved POP"
-    },
-    "234-renewal-overlap-repair.yml": {
-      "classification": "legacy-case-specific-mutation",
-      "production_mutation": "confirmed",
-      "trigger": "workflow_dispatch",
-      "production_command_or_path": "repair:renewal-overlap-234 --execute/--rollback --force",
-      "authorization": "Manual exact mode/actor confirmation and pinned production SSH trust",
-      "concurrency": "repair-234-renewal-overlap; cancel-in-progress=false",
-      "rollback": "Snapshot/mysqldump plus command rollback and verification",
       "canonical": false,
       "required": "case-specific repair",
       "future_state": "Retire after case closure or migrate through Founder-approved POP"
