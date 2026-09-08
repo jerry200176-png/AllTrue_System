@@ -17,6 +17,7 @@ const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
 const CALENDAR_NAV_LABEL = '班級行事曆';
 const COURSE_NAV_LABEL = '課程查找';
+const SUBJECT_UNITS_NAV_LABEL = '科目數統計';
 const CALENDAR_PAGE_TITLE = '班級行事曆 / 課表';
 const COURSE_PAGE_TITLE = '課程查找';
 // Keep the returning-user fixture aligned with the same STAFF_UPDATES source
@@ -113,6 +114,67 @@ async function navigate(page, label) {
   await expect(button).toBeVisible({ timeout: 15_000 });
   await button.click();
   await expect(button).toHaveClass(/active/, { timeout: 15_000 });
+}
+
+async function navigateSubjectUnits(page) {
+  await dismissOverlays(page);
+  const sidebar = page.locator('nav.sidebar-nav');
+  const direct = sidebar.getByRole('button', { name: SUBJECT_UNITS_NAV_LABEL, exact: false }).first();
+  if (await direct.count() && await direct.isVisible().catch(() => false)) {
+    await direct.click();
+  } else {
+    const moreTrigger = sidebar.locator('.sidebar-more-trigger').first();
+    await expect(moreTrigger).toBeVisible({ timeout: 15_000 });
+    await moreTrigger.click();
+    const morePanel = page.locator('.sidebar-more-panel');
+    await expect(morePanel).toBeVisible({ timeout: 15_000 });
+    await morePanel.getByRole('button', { name: SUBJECT_UNITS_NAV_LABEL, exact: false }).first().click();
+  }
+  await expect(page.locator('[data-guide="subject-units-header"]')).toBeVisible({ timeout: 15_000 });
+}
+
+function subjectUnitsPath(start, end, branchId) {
+  const params = new URLSearchParams({ start, end, branch_id: String(branchId) });
+  return `/api/v1/finance/subject-units/timeline?${params}`;
+}
+
+function displayedNumber(text) {
+  return Number(String(text).replace('%', '').trim());
+}
+
+function monthEndFor(value) {
+  const [year, month] = String(value).slice(0, 7).split('-').map(Number);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+async function assertSubjectUnitsRenderedAgainstApi(page, request, token, start, end, branchId) {
+  const payload = await getJson(request, subjectUnitsPath(start, end, branchId), token);
+  expect(payload.scope?.role).toBe('director');
+  expect(payload.scope?.campus_ids).toContain(Number(branchId));
+  expect(payload.teacher_contributions.length, `no teacher row for ${branchId} ${start}—${end}`).toBeGreaterThan(0);
+
+  const rawDenominator = payload.teacher_contributions.reduce(
+    (total, teacher) => total + Number(teacher.raw_subject_count || 0),
+    0,
+  );
+  expect(rawDenominator).toBeGreaterThan(0);
+  for (const teacher of payload.teacher_contributions) {
+    expect(Number(teacher.campus_proportion_pct)).toBeCloseTo(
+      (Number(teacher.raw_subject_count) / rawDenominator) * 100,
+      4,
+    );
+  }
+
+  const firstApiTeacher = payload.teacher_contributions[0];
+  const row = page.locator('.contribution-table tbody tr').filter({ hasText: firstApiTeacher.teacher_name }).first();
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  const cells = row.locator('td');
+  await expect(cells).toHaveCount(3);
+  expect(displayedNumber(await cells.nth(0).innerText())).toBeCloseTo(Number(firstApiTeacher.raw_subject_count), 2);
+  expect(displayedNumber(await cells.nth(1).innerText())).toBeCloseTo(Number(firstApiTeacher.payroll_subject_count), 2);
+  expect(displayedNumber(await cells.nth(2).innerText())).toBeCloseTo(Number(firstApiTeacher.campus_proportion_pct), 2);
+
+  return { payload, rawDenominator };
 }
 
 async function assertResponsive(page, label) {
@@ -268,4 +330,57 @@ test.describe('production acceptance — calendar/course parity', () => {
       });
     });
   }
+
+  test('director: 科目數統計的分校占比與 API、分校及期間切換一致', async ({ page, request }) => {
+    test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
+      'missing controlled production director session');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const token = SESSION.access_token;
+
+    await page.addInitScript(({ session, branch, releaseVersion }) => {
+      localStorage.setItem('alltrue_session', JSON.stringify(session));
+      localStorage.setItem('app_branch', String(branch));
+      localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
+      sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
+    }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+    await page.goto('/');
+    await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+    await navigateSubjectUnits(page);
+
+    const branchSelect = page.locator('[data-guide="subject-units-header"] select').first();
+    await expect(branchSelect).toBeVisible({ timeout: 15_000 });
+    const branchIds = await branchSelect.locator('option').evaluateAll((options) => options
+      .map((option) => option.value)
+      .filter((value) => value !== 'all'));
+    expect(branchIds.length, 'director session must expose at least two campuses for the campus-switch check').toBeGreaterThan(1);
+
+    const initialBranch = branchIds.includes(String(BRANCH_ID)) ? String(BRANCH_ID) : branchIds[0];
+    await branchSelect.selectOption(initialBranch);
+    await page.waitForTimeout(250);
+    const periodStart = START;
+    const periodEnd = END;
+    const initial = await assertSubjectUnitsRenderedAgainstApi(page, request, token, periodStart, periodEnd, initialBranch);
+
+    const switchedBranch = branchIds.find((branchId) => branchId !== initialBranch);
+    const branchResponse = page.waitForResponse((response) => response.url().includes('/api/v1/finance/subject-units/timeline') && response.status() === 200);
+    await branchSelect.selectOption(switchedBranch);
+    await branchResponse;
+    await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    const switchedCampus = await assertSubjectUnitsRenderedAgainstApi(page, request, token, periodStart, periodEnd, switchedBranch);
+
+    const dateInputs = page.locator('[data-guide="subject-units-header"] input[type="date"]');
+    await expect(dateInputs).toHaveCount(2);
+    const widerStart = `${periodStart.slice(0, 7)}-01`;
+    const widerEnd = monthEndFor(periodStart);
+    await dateInputs.nth(0).fill(widerStart);
+    const periodResponse = page.waitForResponse((response) => response.url().includes('/api/v1/finance/subject-units/timeline') && response.status() === 200);
+    await dateInputs.nth(1).fill(widerEnd);
+    await dateInputs.nth(1).dispatchEvent('change');
+    await periodResponse;
+    await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
+    const switchedPeriod = await assertSubjectUnitsRenderedAgainstApi(page, request, token, widerStart, widerEnd, switchedBranch);
+
+    expect(switchedCampus.rawDenominator).not.toBe(initial.rawDenominator);
+    expect(switchedPeriod.rawDenominator).not.toBe(switchedCampus.rawDenominator);
+  });
 });

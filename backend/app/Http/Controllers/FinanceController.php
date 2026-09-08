@@ -564,6 +564,15 @@ class FinanceController extends Controller
             $teacherId,
         );
 
+        // Teachers are intentionally scoped to their own rows. That scope is
+        // not a valid campus denominator, so never expose a self-only
+        // percentage as if it were a campus contribution.
+        if ($role === 'teacher') {
+            $result['teacher_contributions'] = collect($result['teacher_contributions'])
+                ->map(fn (array $contribution): array => [...$contribution, 'campus_proportion_pct' => null])
+                ->values();
+        }
+
         return response()->json(array_merge([
             'period' => ['start' => $range['start'], 'end' => $range['end']],
             'scope' => [

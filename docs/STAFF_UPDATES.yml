@@ -37,6 +37,22 @@ updates:
     source_refs:
       - "changelog:2026-09-08:subject-count-final-total"
 
+  - id: staff-2026-09-08-subject-count-teacher-scope
+    published_at: "2026-09-08"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 科目數統計依角色顯示正確範圍
+    summary: 老師看到自己的科目數，主任才會看到完整分校占比。
+    items:
+      - category: fixed
+        text: 老師仍可查看自己的原始科目數與核薪科目數，但不會看到以自己資料當分母的分校占比。
+      - category: improved
+        text: 主任在可查看完整分校範圍時，分校占比會以同一分校、同一期間所有適用老師的原始科目數合計計算。
+    source_refs:
+      - "changelog:2026-09-08:subject-count-teacher-scope"
+
   - id: staff-2026-09-08-feedback-entry-ux
     published_at: "2026-09-08"
     audiences:

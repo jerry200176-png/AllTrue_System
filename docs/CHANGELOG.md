@@ -1,3 +1,8 @@
+## 2026-09-08 — fix(finance): 老師科目數不顯示自我分母占比
+<!-- release-notes: staff_update=staff-2026-09-08-subject-count-teacher-scope -->
+- 老師的科目數統計保留自己的原始科目數與核薪科目數；只有主任在可查看完整分校範圍時顯示分校占比，避免把老師自己的資料誤算成 100%。
+- 不改角色權限、資料寫入或既有 API 欄位形狀；老師的分校占比欄位改為不顯示／不提供數值。
+
 ## 2026-09-08 — fix(parent): Parent Portal V1 correctness and existing-data home summary
 <!-- release-notes: silent_ship=silent-2026-09-08-parent-portal-v1 -->
 - 修正家長端跨分校唯讀狀態的意見送出、校區切換舊回應覆蓋、非 401 載入錯誤誤清登入、家長回覆送出後重新載入失敗誤報，以及評量待回饋分頁計數問題。

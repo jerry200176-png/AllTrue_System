@@ -125,6 +125,45 @@ export const staffUpdates = [
     "version": "2026.09.08"
   },
   {
+    "id": "staff-2026-09-08-subject-count-teacher-scope",
+    "publishedAt": "2026-09-08",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "科目數統計依角色顯示正確範圍",
+    "summary": "老師看到自己的科目數，主任才會看到完整分校占比。",
+    "items": [
+      "老師仍可查看自己的原始科目數與核薪科目數，但不會看到以自己資料當分母的分校占比。",
+      "主任在可查看完整分校範圍時，分校占比會以同一分校、同一期間所有適用老師的原始科目數合計計算。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "老師仍可查看自己的原始科目數與核薪科目數，但不會看到以自己資料當分母的分校占比。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任在可查看完整分校範圍時，分校占比會以同一分校、同一期間所有適用老師的原始科目數合計計算。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-08:subject-count-teacher-scope"
+    ],
+    "date": "2026-09-08",
+    "version": "2026.09.08"
+  },
+  {
     "id": "staff-2026-09-08-search-scope-clarity",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,
