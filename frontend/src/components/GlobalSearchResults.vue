@@ -39,7 +39,7 @@ function emitSelection(kind, item) {
     <span>搜尋暫時無法完成，請再試一次。</span>
     <button type="button" class="global-search-retry" @click="emit('retry')">重試</button>
   </div>
-  <template v-else>
+  <template v-if="!isSearching || (!loading && !error)">
     <div v-for="(group, groupIndex) in entityGroups" :key="`entity-${group.key}`" class="global-search-group">
       <div class="global-search-group-title">{{ group.title }}</div>
       <div class="global-search-items">
@@ -86,7 +86,7 @@ function emitSelection(kind, item) {
         </button>
       </div>
     </div>
-    <div v-if="!hasResults" class="global-search-empty" role="status">
+    <div v-if="isSearching && !hasResults" class="global-search-empty" role="status">
       找不到符合「{{ normalizedQuery }}」的學生、老師、課程或功能
     </div>
   </template>
