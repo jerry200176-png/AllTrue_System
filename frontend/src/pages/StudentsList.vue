@@ -416,11 +416,10 @@
                     <details class="student-course-card__actions">
                       <summary>更多操作</summary>
                       <div class="student-course-card__actions-body">
-                        <span :class="['small', 'btn-status', paymentStatusButtonClass(course)]">{{ paymentStatusButtonLabel(course) }}</span>
-                        <button type="button" class="small ghost" @click="goToTuitionBilling(course)">前往帳務中心</button>
+                        <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
+                        <button type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
-                        <button type="button" class="small ghost" @click="goToTuitionBilling(course)">繳費資訊</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button type="button" class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -1128,6 +1127,12 @@ const paymentStatusButtonLabel = (course) => {
   if (course?.payment_status === 'partial') return '部分繳';
   return '未繳費';
 };
+const paymentNextActionLabel = (course) => {
+  if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
+  if (course?.payment_status === 'pending_report') return '查看待對帳';
+  return '前往帳務中心';
+};
+const paymentStatusHelpTitle = (course) => `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 
 // --- Helpers ---
 const getGradeLabel = (val) => GRADES.find(g => g.value === val)?.label || val;
@@ -4181,6 +4186,12 @@ table th { font-size: 12.5px; }
   flex-wrap: wrap;
   gap: 8px;
   padding-top: 10px;
+}
+.payment-status-badge {
+  cursor: default !important;
+  border-radius: 999px !important;
+  font-weight: 900 !important;
+  pointer-events: none;
 }
 .student-course-card__actions-body button {
   min-height: 44px;

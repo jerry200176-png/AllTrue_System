@@ -373,6 +373,15 @@ test.describe('production acceptance — calendar/course parity', () => {
     await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
     const initial = await assertSubjectUnitsRenderedAgainstApi(page, request, token, periodStart, periodEnd, initialBranch);
 
+    const rawSort = page.getByRole('button', { name: /原始科目數/ }).first();
+    await expect(rawSort).toBeVisible();
+    await rawSort.click();
+    const ascendingRaw = await page.locator('.contribution-table tbody tr td:nth-child(2)').evaluateAll((cells) => cells.map((cell) => Number(cell.textContent.replace(/[^0-9.-]/g, ''))));
+    expect(ascendingRaw).toEqual([...ascendingRaw].sort((a, b) => a - b));
+    await rawSort.click();
+    const descendingRaw = await page.locator('.contribution-table tbody tr td:nth-child(2)').evaluateAll((cells) => cells.map((cell) => Number(cell.textContent.replace(/[^0-9.-]/g, ''))));
+    expect(descendingRaw).toEqual([...descendingRaw].sort((a, b) => b - a));
+
     const switchedBranch = branchIds.find((branchId) => branchId !== initialBranch);
     const branchResponse = page.waitForResponse((response) => response.url().includes('/api/v1/finance/subject-units/timeline') && response.status() === 200);
     await branchSelect.selectOption(switchedBranch);
@@ -414,6 +423,6 @@ test.describe('production acceptance — calendar/course parity', () => {
     await expect(status).toHaveAttribute('role', 'status');
     await expect(status).toHaveCSS('cursor', 'default');
     await expect(page.locator('.btn-status')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '前往帳務中心', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true }).first()).toBeVisible();
   });
 });

@@ -368,9 +368,9 @@
                       <span
                         :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
                         role="status"
-                        title="付款狀態提示；請使用「前往帳務中心」處理"
+                        :title="paymentStatusHelpTitle(c)"
                       >{{ paymentStatusButtonLabel(c) }}</span>
-                      <button type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">前往帳務中心</button>
+                      <button type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">{{ paymentNextActionLabel(c) }}</button>
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                       <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
                         已繳清；另有回報待核對。
@@ -651,7 +651,22 @@
             <div v-else-if="studentBillingState[group.key]?.error" class="student-billing-state student-billing-error" role="alert">
               {{ studentBillingState[group.key].error }}
             </div>
-            <table v-else class="course-table student-billing-table" aria-label="帳務資料">
+            <div v-else class="student-billing-content">
+              <div v-if="studentBillingState[group.key]?.ledgerSummary" class="student-ledger-summary" role="status">
+                <div>
+                  <strong>學生歷史帳務</strong>
+                  <span v-if="Number(studentBillingState[group.key].ledgerSummary.outstanding_total || 0) > 0">
+                    尚有未結清 ${{ formatMoney(studentBillingState[group.key].ledgerSummary.outstanding_total) }}；各期帳務仍保留在原期間。
+                  </span>
+                  <span v-else>目前沒有未結清帳務；各期帳務仍保留在原期間。</span>
+                </div>
+                <button
+                  type="button"
+                  class="small primary"
+                  @click="goToTuitionBilling(studentBillingAnchorCourse(group))"
+                >{{ paymentNextActionLabel(studentBillingAnchorCourse(group)) }}</button>
+              </div>
+            <table class="course-table student-billing-table" aria-label="帳務資料">
               <caption v-if="hasMixedPackagePaymentStatuses(group.key)" class="student-billing-note">
                 <span class="material-symbols-outlined" aria-hidden="true">info</span>
                 <span>共用方案的繳費狀態按科目分開顯示；請以每一列狀態為準。待對帳項目請前往帳務中心確認。</span>
@@ -680,7 +695,7 @@
                     <span
                       :class="['small', 'payment-status-badge', paymentStatusButtonClass(row.course)]"
                       role="status"
-                      title="付款狀態提示；請使用「前往帳務中心」處理"
+                      :title="paymentStatusHelpTitle(row.course)"
                     >{{ paymentStatusButtonLabel(row.course) }}</span>
                   </td>
                   <td>
@@ -706,12 +721,13 @@
                         @click="openPaymentSlip(row.course)"
                       >繳費通知</button>
                       <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單（唯讀）</button>
-                      <button class="small primary" type="button" @click="goToTuitionBilling(row.course)">前往帳務中心</button>
+                      <button class="small primary" type="button" @click="goToTuitionBilling(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
                     </div>
                   </td>
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
         </section>
       </div>
@@ -4016,6 +4032,12 @@ const paymentStatusButtonLabel = (course) => {
   if (course?.payment_status === 'partial') return '部分繳';
   return '未繳費';
 };
+const paymentNextActionLabel = (course) => {
+  if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
+  if (course?.payment_status === 'pending_report') return '查看待對帳';
+  return '前往帳務中心';
+};
+const paymentStatusHelpTitle = (course) => `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 const reportStatusLabel = (status) => ({
   pending: '待對帳',
   confirmed: '已入帳',
@@ -4866,7 +4888,7 @@ const loadStudentGroupBilling = async (group) => {
   if (!key) return;
   studentBillingState.value = {
     ...studentBillingState.value,
-    [key]: { loading: true, error: '', rows: studentBillingState.value[key]?.rows || [] },
+    [key]: { loading: true, error: '', rows: studentBillingState.value[key]?.rows || [], ledgerSummary: null },
   };
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
@@ -4874,13 +4896,17 @@ const loadStudentGroupBilling = async (group) => {
     if (!token) {
       studentBillingState.value = {
         ...studentBillingState.value,
-        [key]: { loading: false, error: '請重新登入後再查看帳務。', rows: [] },
+        [key]: { loading: false, error: '請重新登入後再查看帳務。', rows: [], ledgerSummary: null },
       };
       return;
     }
     const courses = [...activeCourses(group), ...historyCourses(group)];
+    const anchorCourse = courses.find((course) => course?.id);
+    const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
+    const ledgerPromise = anchorCourse
+      ? fetch(`/api/v1/accounting/ledger?student_class_id=${anchorCourse.id}`, { credentials: 'include', headers })
+      : null;
     const rows = await Promise.all(courses.map(async (c) => {
-      const headers = { Accept: 'application/json', Authorization: `Bearer ${token}` };
       const [invRes, rptRes] = await Promise.all([
         fetch(`/api/v1/student-classes/${c.id}/invoices`, { credentials: 'include', headers }),
         fetch(`/api/v1/payment-reports?student_class_id=${c.id}`, { credentials: 'include', headers }),
@@ -4893,13 +4919,23 @@ const loadStudentGroupBilling = async (group) => {
         reports: Array.isArray(rptJson?.data) ? rptJson.data : [],
       };
     }));
-    studentBillingState.value = { ...studentBillingState.value, [key]: { loading: false, error: '', rows } };
+    const ledgerRes = await ledgerPromise;
+    const ledgerJson = ledgerRes ? await ledgerRes.json().catch(() => ({})) : {};
+    studentBillingState.value = {
+      ...studentBillingState.value,
+      [key]: { loading: false, error: '', rows, ledgerSummary: ledgerRes?.ok ? (ledgerJson?.summary || null) : null },
+    };
   } catch (e) {
     studentBillingState.value = {
       ...studentBillingState.value,
-      [key]: { loading: false, error: e?.message || '帳務載入失敗，請稍後再試。', rows: [] },
+      [key]: { loading: false, error: e?.message || '帳務載入失敗，請稍後再試。', rows: [], ledgerSummary: null },
     };
   }
+};
+
+const studentBillingAnchorCourse = (group) => {
+  const courses = [...activeCourses(group), ...historyCourses(group)];
+  return courses.find((course) => course?.id) || null;
 };
 
 const openLedgerForCourse = (course) => {
@@ -6602,6 +6638,21 @@ button.danger:disabled {
   font-weight: 900 !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
 }
+.student-ledger-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 10px;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
+  font-size: 13px;
+}
+.student-ledger-summary > div { display: grid; gap: 3px; }
+.student-ledger-summary strong { color: var(--ds-ink); }
 
 .btn-toggle {
   white-space: nowrap;

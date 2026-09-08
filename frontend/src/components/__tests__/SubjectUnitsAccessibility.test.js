@@ -62,4 +62,16 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(source).toContain("const showCampusProportion = computed(() => effectiveRole.value !== 'teacher');");
     expect(source).toContain('responseRole.value = payload?.scope?.role || props.userRole;');
   });
+
+  it('supports simple director-only single-column sorting for contribution metrics', () => {
+    expect(source).toContain('showContributionSorting');
+    expect(source).toContain('data-sort-key="teacher"');
+    expect(source).toContain('data-sort-key="raw"');
+    expect(source).toContain('data-sort-key="payroll"');
+    expect(source).toContain('data-sort-key="proportion"');
+    expect(source).toContain('sortedTeacherContributions');
+    expect(source).toContain("if (!showContributionSorting.value) return;");
+    expect(source).toContain("contributionSortDirection.value === 'asc' ? 'desc' : 'asc'");
+    expect(source).not.toContain('savedSort');
+  });
 });

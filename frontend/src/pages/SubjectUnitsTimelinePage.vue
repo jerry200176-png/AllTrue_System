@@ -100,14 +100,54 @@
             <caption class="sr-only">老師分校科目數貢獻</caption>
             <thead>
               <tr>
-                <th scope="col">老師</th>
-                <th scope="col" class="number-cell">原始科目數</th>
-                <th scope="col" class="number-cell">核薪科目數（÷ 8）</th>
-                <th v-if="showCampusProportion" scope="col" class="number-cell">占目前範圍</th>
+                <th scope="col">
+                  <button
+                    v-if="showContributionSorting"
+                    type="button"
+                    class="contribution-sort-button"
+                    data-sort-key="teacher"
+                    :aria-sort="contributionAriaSort('teacher')"
+                    @click="toggleContributionSort('teacher')"
+                  >老師 <span aria-hidden="true">{{ contributionSortIndicator('teacher') }}</span></button>
+                  <span v-else>老師</span>
+                </th>
+                <th scope="col" class="number-cell">
+                  <button
+                    v-if="showContributionSorting"
+                    type="button"
+                    class="contribution-sort-button contribution-sort-button--number"
+                    data-sort-key="raw"
+                    :aria-sort="contributionAriaSort('raw')"
+                    @click="toggleContributionSort('raw')"
+                  >原始科目數 <span aria-hidden="true">{{ contributionSortIndicator('raw') }}</span></button>
+                  <span v-else>原始科目數</span>
+                </th>
+                <th scope="col" class="number-cell">
+                  <button
+                    v-if="showContributionSorting"
+                    type="button"
+                    class="contribution-sort-button contribution-sort-button--number"
+                    data-sort-key="payroll"
+                    :aria-sort="contributionAriaSort('payroll')"
+                    @click="toggleContributionSort('payroll')"
+                  >核薪科目數（÷ 8） <span aria-hidden="true">{{ contributionSortIndicator('payroll') }}</span></button>
+                  <span v-else>核薪科目數（÷ 8）</span>
+                </th>
+                <th v-if="showCampusProportion" scope="col" class="number-cell">
+                  <button
+                    v-if="showContributionSorting"
+                    type="button"
+                    class="contribution-sort-button contribution-sort-button--number"
+                    data-sort-key="proportion"
+                    :aria-sort="contributionAriaSort('proportion')"
+                    @click="toggleContributionSort('proportion')"
+                  >占目前範圍 <span aria-hidden="true">{{ contributionSortIndicator('proportion') }}</span></button>
+                  <span v-else>占目前範圍</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="teacher in teacherContributions" :key="teacher.teacher_id">
+              <tr v-for="teacher in sortedTeacherContributions" :key="teacher.teacher_id">
                 <th scope="row">{{ teacher.teacher_name }}</th>
                 <td class="number-cell">{{ formatCount(teacher.raw_subject_count) }}</td>
                 <td class="number-cell highlight-cell"><strong>{{ formatCount(teacher.payroll_subject_count) }}</strong></td>
@@ -326,8 +366,49 @@ const selectedBranchName = computed(() => selectedBranchId.value === 'all'
   : branchOptions.value.find((branch) => String(branch.id) === String(selectedBranchId.value))?.name || '所選分校');
 const effectiveRole = computed(() => responseRole.value || props.userRole);
 const showCampusProportion = computed(() => effectiveRole.value !== 'teacher');
+const showContributionSorting = computed(() => effectiveRole.value !== 'teacher');
+const contributionSortKey = ref('');
+const contributionSortDirection = ref('asc');
 const scopeLabel = computed(() => effectiveRole.value === 'teacher' ? `只顯示我的資料 · ${selectedBranchName.value}` : `主任權限範圍 · ${selectedBranchName.value}`);
 const periodLabel = computed(() => `${formatDate(startDate.value)} 至 ${formatDate(endDate.value)}`);
+
+const contributionSortValue = (teacher, key) => {
+  if (key === 'teacher') return String(teacher?.teacher_name || '');
+  if (key === 'raw') return Number(teacher?.raw_subject_count || 0);
+  if (key === 'payroll') return Number(teacher?.payroll_subject_count || 0);
+  return Number(teacher?.campus_proportion_pct || 0);
+};
+const sortedTeacherContributions = computed(() => {
+  const rows = [...teacherContributions.value];
+  if (!showContributionSorting.value || !contributionSortKey.value) return rows;
+  const direction = contributionSortDirection.value === 'desc' ? -1 : 1;
+  const key = contributionSortKey.value;
+  return rows.sort((left, right) => {
+    const leftValue = contributionSortValue(left, key);
+    const rightValue = contributionSortValue(right, key);
+    const comparison = typeof leftValue === 'string'
+      ? leftValue.localeCompare(rightValue, 'zh-Hant')
+      : leftValue - rightValue;
+    return (comparison || String(left?.teacher_name || '').localeCompare(String(right?.teacher_name || ''), 'zh-Hant')) * direction;
+  });
+});
+function toggleContributionSort(key) {
+  if (!showContributionSorting.value) return;
+  if (contributionSortKey.value === key) {
+    contributionSortDirection.value = contributionSortDirection.value === 'asc' ? 'desc' : 'asc';
+  } else {
+    contributionSortKey.value = key;
+    contributionSortDirection.value = 'asc';
+  }
+}
+function contributionAriaSort(key) {
+  if (contributionSortKey.value !== key) return 'none';
+  return contributionSortDirection.value === 'desc' ? 'descending' : 'ascending';
+}
+function contributionSortIndicator(key) {
+  if (contributionSortKey.value !== key) return '↕';
+  return contributionSortDirection.value === 'desc' ? '↓' : '↑';
+}
 
 const filteredEntries = computed(() => {
   const query = searchQuery.value.toLowerCase();
@@ -410,7 +491,7 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .inline-empty, .table-empty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 100px; color: var(--ds-ink-mute); font-size: 13px; }
 .table-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }.search-field { display: flex; min-width: min(100%, 320px); flex: 1 1 260px; align-items: center; gap: 8px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); padding: 0 10px; }.search-field input { width: 100%; border: 0; outline: 0; padding-left: 0; }.search-field .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 19px; }.filter-field { display: flex; flex-direction: column; gap: 4px; }.clear-focus { margin-left: auto; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.detail-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; }.detail-table th, .detail-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.detail-table thead th { position: sticky; top: 0; z-index: 1; background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.detail-table tbody tr.detail-row:hover { background: var(--ds-canvas-soft); }.detail-table tbody tr:last-child td { border-bottom: 0; }.number-cell { text-align: right !important; font-variant-numeric: tabular-nums; }.highlight-cell { color: var(--ds-cta); }.day-summary-row { background: var(--ds-primary-wash); }.day-summary-row th { color: var(--ds-ink); font-weight: 700; }.day-summary-row th span { margin-left: 8px; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; }.day-summary-row td { border-bottom-color: var(--ds-hairline-input); font-weight: 700; }.date-cell { color: var(--ds-ink-mute); font-variant-numeric: tabular-nums; }.teacher-cell { min-width: 100px; }.subject-name { font-weight: 600; }.campus-pill { display: inline-flex; border: 1px solid var(--ds-hairline-input); border-radius: 999px; padding: 3px 8px; color: var(--ds-ink-secondary); background: var(--ds-canvas); font-size: 12px; }
-.contribution-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.contribution-table { width: 100%; border-collapse: collapse; font-size: 13px; }.contribution-table th, .contribution-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.contribution-table thead th { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.contribution-table tbody tr:last-child th, .contribution-table tbody tr:last-child td { border-bottom: 0; }
+.contribution-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.contribution-table { width: 100%; border-collapse: collapse; font-size: 13px; }.contribution-table th, .contribution-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.contribution-table thead th { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.contribution-table tbody tr:last-child th, .contribution-table tbody tr:last-child td { border-bottom: 0; }.contribution-sort-button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: inherit; padding: 0; font: inherit; font-weight: inherit; letter-spacing: inherit; cursor: pointer; }.contribution-sort-button:hover { color: var(--ds-primary); }.contribution-sort-button--number { justify-content: flex-end; width: 100%; }
 .disclosure-card { padding: 0; }.calc-guide-header, .level-breakdown-header { padding: 12px 16px; }.calc-guide-header h3, .level-breakdown-header h3 { margin: 0; }.calc-guide-toggle, .level-breakdown-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; }.disclosure-body { border-top: 1px solid var(--ds-hairline); padding: 16px; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.7; }.disclosure-body p { margin: 0 0 8px; }.disclosure-body p:last-child { margin-bottom: 0; }.formula-row { display: flex; gap: 16px; padding: 6px 0; border-top: 1px solid var(--ds-hairline); }.formula-row span { min-width: 100px; color: var(--ds-ink-mute); }.compact-copy { color: var(--ds-ink-mute); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); } @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.period-actions { flex-wrap: wrap; }.branch-field { width: 100%; }.branch-field select { width: 100%; } }
