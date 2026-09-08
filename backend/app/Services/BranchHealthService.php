@@ -235,7 +235,16 @@ class BranchHealthService
 
     private function activeStudents(int $branchId): int
     {
-        return (int) DB::table('Student')->where('CampusID', $branchId)->where('enable', 1)->count();
+        return (int) DB::table('Student as s')
+            ->where('s.CampusID', $branchId)
+            ->where('s.enable', 1)
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('Campus as c')
+                    ->whereColumn('c.id', 's.CampusID')
+                    ->where('c.is_test', true);
+            })
+            ->count();
     }
 
     /** @param list<array{key:string,label:string,value:int}> $signals */

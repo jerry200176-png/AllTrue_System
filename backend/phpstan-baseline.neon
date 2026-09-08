@@ -3048,12 +3048,6 @@ parameters:
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\Campus\:\:find\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 3
@@ -3092,19 +3086,13 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
-			path: app/Http/Controllers/ParentPortalController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:whereIn\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 1
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-

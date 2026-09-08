@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 460 api/* routes · generated 2026-09-08
+> Source: `php artisan route:list --json` · 462 api/* routes · generated 2026-09-08
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -38,7 +38,7 @@
 | GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
 
-## /api/v1/admin (19)
+## /api/v1/admin (21)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -51,6 +51,8 @@
 | DELETE | `api/v1/admin/campuses/{id}` | `AdminCampusController@destroy` | role |
 | GET | `api/v1/admin/duplicate-sessions/p2-review` | `AdminDuplicateSessionController@p2Review` | role+campus |
 | PATCH | `api/v1/admin/duplicate-sessions/p2-review/{groupId}` | `AdminDuplicateSessionController@patchP2Review` | role+campus |
+| POST | `api/v1/admin/qa/parent-fixture` | `ParentPortalTestFixtureController@ensure` | role |
+| POST | `api/v1/admin/qa/parent-fixture/session` | `ParentPortalTestFixtureController@session` | role |
 | GET | `api/v1/admin/reconcile` | `AdminReconcileController@index` | role |
 | GET | `api/v1/admin/reconcile/latest` | `AdminReconcileController@latest` | role |
 | POST | `api/v1/admin/reset-data` | `ResetDataController` | role |

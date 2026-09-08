@@ -24,6 +24,7 @@ use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StudentGuardianController;
+use App\Http\Controllers\ParentPortalTestFixtureController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TeacherBranchController;
@@ -312,6 +313,13 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/teachers/duplicates', [TeacherDuplicateController::class, 'index']);
         Route::post('admin/teachers/merge-preview', [TeacherDuplicateController::class, 'preview']);
         Route::post('admin/teachers/merge', [TeacherDuplicateController::class, 'merge']);
+
+        // Explicit privileged QA path. Test tenant rows never enter ordinary
+        // campus/student selectors or operational workflows.
+        Route::middleware(['require_auth', 'role:super_admin', 'require_password_change'])->prefix('admin/qa')->group(function () {
+            Route::post('parent-fixture', [ParentPortalTestFixtureController::class, 'ensure']);
+            Route::post('parent-fixture/session', [ParentPortalTestFixtureController::class, 'session']);
+        });
     });
 
     // ── GitHub Issues (director + super_admin) ──

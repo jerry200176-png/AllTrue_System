@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.08",
     "date": "2026-09-08",
     "title": "2026.09.08 草稿（未發布）",
-    "summary": "Parent Binding authentication and campus scope；老師科目數不顯示自我分母占比",
+    "summary": "修正超級管理員看不到版本更新內容的問題；Parent Binding authentication and campus scope",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "修正超級管理員看不到版本更新內容的問題"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -34,6 +40,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "修正超級管理員看不到版本更新內容的問題",
       "Parent Binding authentication and campus scope",
       "老師科目數不顯示自我分母占比",
       "Portal V1 correctness and existing-data home summary",

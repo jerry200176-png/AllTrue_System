@@ -14,6 +14,7 @@ class CampusFactory extends Factory
         return [
             'name' => mb_substr($this->faker->unique()->city() . '分校', 0, 32),
             'code' => $this->faker->unique()->lexify('branch???'),
+            'is_test' => false,
             'Current' => 0,
             'LineNotifyID' => '',
             'Client_ID' => '',

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Scopes\OperationalTenantScope;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -36,6 +37,11 @@ class Student extends Model
     ];
 
     public $timestamps = false;
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new OperationalTenantScope());
+    }
 
     public function classes()
     {
