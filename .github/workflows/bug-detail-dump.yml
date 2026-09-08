@@ -1124,6 +1124,7 @@ jobs:
                   "cs.SessionDate as session_date", "cs.StartTime as start_time", "cs.EndTime as end_time",
                   "cs.Status as status", "sc.StartDate as course_start_date", "sc.EndDate as course_end_date",
                   "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
+                  "sc.PackageID as package_id", "sc.TeacherID as teacher_id",
                   "sc.Stop as stop", "sc.ScheduleMode as schedule_mode", "sc.ClassType as class_type",
                 ]);
               $probe266["conflict_session"] = $conflict266 ? [
@@ -1139,6 +1140,8 @@ jobs:
                 "course_end_date" => $conflict266->course_end_date,
                 "session_count" => (int)$conflict266->session_count,
                 "remaining_sessions" => (int)$conflict266->remaining_sessions,
+                "package_id" => $conflict266->package_id !== null ? (int)$conflict266->package_id : null,
+                "teacher_id" => (int)$conflict266->teacher_id,
                 "stop" => (int)$conflict266->stop, "schedule_mode" => (string)$conflict266->schedule_mode,
                 "class_type" => (string)$conflict266->class_type,
               ] : null;
@@ -1153,6 +1156,7 @@ jobs:
                   "sc.ID as course_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id",
                   "sc.StartDate as course_start_date", "sc.EndDate as course_end_date",
                   "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
+                  "sc.PackageID as package_id", "sc.TeacherID as teacher_id",
                   "sc.Stop as stop", "sc.ScheduleMode as schedule_mode", "sc.ClassType as class_type",
                 ]) : collect();
               $probe266["candidate_courses"] = $candidate266->map(fn ($row) => [
@@ -1160,6 +1164,8 @@ jobs:
                 "subject_id" => (int)$row->subject_id,
                 "course_start_date" => $row->course_start_date, "course_end_date" => $row->course_end_date,
                 "session_count" => (int)$row->session_count, "remaining_sessions" => (int)$row->remaining_sessions,
+                "package_id" => $row->package_id !== null ? (int)$row->package_id : null,
+                "teacher_id" => (int)$row->teacher_id,
                 "stop" => (int)$row->stop, "schedule_mode" => (string)$row->schedule_mode,
                 "class_type" => (string)$row->class_type,
               ])->all();
