@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-08-parent-portal-v1
+    changelog_date: "2026-09-08"
+    changelog_title: "fix(parent): Parent Portal V1 correctness and existing-data home summary"
+    reason: 家長 Portal 正確性、可恢復錯誤處理與既有 authoritative data 首頁收斂；不新增 permission、migration、billing 或 payment semantics，無需教職員 staff update。
+
   - id: silent-2026-09-05-parent-binding-guardian-phone
     changelog_date: "2026-09-05"
     changelog_title: "fix(parent): guardian phone binding classifier parity"

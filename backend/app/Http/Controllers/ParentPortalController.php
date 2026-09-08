@@ -1255,7 +1255,8 @@ class ParentPortalController extends Controller
         $progressClassIds = $classes->pluck('ID')->filter()->values()->all();
         $unrepliedFeedbackCount = empty($progressClassIds)
             ? 0
-            : LearningRecord::active()
+            : (int) LearningRecord::query()
+                ->whereNull('VoidedAt')
                 ->whereIn('StudentClassID', $progressClassIds)
                 ->where('LearningRecord.Status', 'approved')
                 ->leftJoin('learning_record_feedbacks as lf', 'lf.learning_record_id', '=', 'LearningRecord.id')
