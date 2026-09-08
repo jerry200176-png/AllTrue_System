@@ -19,6 +19,9 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('studentGroupTab(group.key) === \'billing\'');
     expect(source).toContain('/api/v1/payment-reports?student_class_id=');
     expect(source).toContain('/api/v1/student-classes/${c.id}/invoices');
+    expect(source).toContain('/api/v1/accounting/ledger?student_class_id=');
+    expect(source).toContain('學生歷史帳務');
+    expect(source).toContain('各期帳務仍保留在原期間');
     expect(source).toContain('hasMixedPackagePaymentStatuses(group.key)');
     expect(source).toContain('共用方案的繳費狀態按科目分開顯示');
   });
@@ -26,6 +29,8 @@ describe('CourseManagement student billing tab', () => {
   it('labels pending reports as 待對帳 and deep-links billing mutations to tuition-collect', () => {
     expect(source).toContain("if (course?.payment_status === 'pending_report') return '待對帳'");
     expect(source).toContain('前往帳務中心');
+    expect(source).toContain('登記繳費回報');
+    expect(source).toContain('查看待對帳');
     expect(source).toContain('goToTuitionBilling');
     expect(source).not.toContain('PaymentEntryModal');
     expect(source).not.toContain('>登記已回報</button>');
@@ -55,7 +60,7 @@ describe('CourseManagement student billing tab', () => {
   it('keeps payment status non-interactive and names the real billing action', () => {
     expect(source).toContain("'payment-status-badge'");
     expect(source).toContain('role="status"');
-    expect(source).toContain('付款狀態提示；請使用「前往帳務中心」處理');
+    expect(source).toContain('付款狀態不可直接操作');
     expect(source).not.toContain("'btn-status'");
     expect(source).not.toContain('>帳務</button>');
   });
