@@ -462,6 +462,7 @@ jobs:
                   "sc.ID as class_id", "sc.SubjectID as subject_id", "sc.PackageID as package_id",
                   "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
                   "sc.UsedSessions as used_sessions", "sc.Charge as charge", "sc.Paid as paid",
+                  "sc.Rate as rate", "sc.PayDate as pay_date", "sc.MDate as modified_date", "sc.Period as period",
                   "sc.PayDate as pay_date", "sc.Stop as stop", "sc.ScheduleMode as schedule_mode",
                   "sc.closed_reason as closed_reason",
                   "sub.Subject_Name as subject_name",
@@ -1372,7 +1373,9 @@ jobs:
                 "start_date" => $row->start_date, "end_date" => $row->end_date,
                 "session_count" => (int)$row->session_count, "remaining_sessions" => (int)$row->remaining_sessions,
                 "used_sessions" => (int)$row->used_sessions, "charge" => (int)$row->charge,
-                "paid" => (int)$row->paid, "stop" => (int)$row->stop,
+                "paid" => (int)$row->paid, "rate" => (float)$row->rate,
+                "pay_date" => $row->pay_date, "modified_date" => $row->modified_date,
+                "period" => $row->period, "stop" => (int)$row->stop,
                 "schedule_mode" => (string)$row->schedule_mode, "class_type" => (string)$row->class_type,
               ])->all();
               $probe259["candidate_sessions"] = $courseIds259 === [] ? [] : $db::table("ClassSession")
@@ -1387,20 +1390,51 @@ jobs:
                 ])->all();
               $probe259["invoices"] = $courseIds259 === [] ? [] : $db::table("Invoice")
                 ->whereIn("StudentClassID", $courseIds259)->orderBy("id")
-                ->get(["id", "StudentClassID as course_id", "IssueDate as issue_date", "TotalAmount as total_amount", "PaidAmount as paid_amount", "Status as status"])
+                ->get(["id", "StudentID as student_id", "StudentClassID as course_id", "IssueDate as issue_date", "DueDate as due_date", "TotalAmount as total_amount", "PaidAmount as paid_amount", "Status as status", "billing_period", "reconciled_at"])
                 ->map(fn ($row) => [
-                  "invoice_id" => (int)$row->id, "course_id" => (int)$row->course_id,
-                  "issue_date" => $row->issue_date, "total_amount" => (int)$row->total_amount,
+                  "invoice_id" => (int)$row->id, "student_id" => (int)$row->student_id, "course_id" => (int)$row->course_id,
+                  "issue_date" => $row->issue_date, "due_date" => $row->due_date, "total_amount" => (int)$row->total_amount,
                   "paid_amount" => (int)$row->paid_amount, "status" => (string)$row->status,
+                  "billing_period" => $row->billing_period, "reconciled_at" => $row->reconciled_at,
+                ])->all();
+              $invoiceIds259 = collect($probe259["invoices"])->pluck("invoice_id")
+                ->map(fn ($id) => (int)$id)->filter()->unique()->values()->all();
+              $probe259["invoice_items"] = $invoiceIds259 === [] ? [] : $db::table("InvoiceItem")
+                ->whereIn("InvoiceID", $invoiceIds259)->orderBy("id")
+                ->get(["id", "InvoiceID as invoice_id", "StudentClassID as course_id", "Description as description", "Amount as amount", "PeriodStart as period_start", "PeriodEnd as period_end"])
+                ->map(fn ($row) => [
+                  "invoice_item_id" => (int)$row->id, "invoice_id" => (int)$row->invoice_id,
+                  "course_id" => $row->course_id !== null ? (int)$row->course_id : null,
+                  "description" => (string)$row->description, "amount" => (int)$row->amount,
+                  "period_start" => $row->period_start, "period_end" => $row->period_end,
+                ])->all();
+              $probe259["payments"] = $invoiceIds259 === [] ? [] : $db::table("Payment")
+                ->whereIn("InvoiceID", $invoiceIds259)->orderBy("id")
+                ->get(["id", "InvoiceID as invoice_id", "Amount as amount", "PaidAt as paid_at", "Method as method", "payment_report_id"])
+                ->map(fn ($row) => [
+                  "payment_id" => (int)$row->id, "invoice_id" => (int)$row->invoice_id,
+                  "amount" => (int)$row->amount, "paid_at" => $row->paid_at,
+                  "method" => $row->method, "payment_report_id" => $row->payment_report_id !== null ? (int)$row->payment_report_id : null,
                 ])->all();
               $probe259["payment_reports"] = $courseIds259 === [] ? [] : $db::table("payment_reports")
                 ->whereIn("StudentClassID", $courseIds259)->orderBy("id")
-                ->get(["id", "StudentClassID as course_id", "status", "reported_amount", "created_at", "updated_at"])
+                ->get(["id", "StudentID as student_id", "StudentClassID as course_id", "InvoiceID as invoice_id", "payment_id", "payment_date", "payment_method", "status", "reported_amount", "confirmed_at", "voided_at", "created_at", "updated_at"])
                 ->map(fn ($row) => [
-                  "payment_report_id" => (int)$row->id, "course_id" => (int)$row->course_id,
+                  "payment_report_id" => (int)$row->id, "student_id" => (int)$row->student_id, "course_id" => (int)$row->course_id,
+                  "invoice_id" => $row->invoice_id !== null ? (int)$row->invoice_id : null,
+                  "payment_id" => $row->payment_id !== null ? (int)$row->payment_id : null,
+                  "payment_date" => $row->payment_date, "payment_method" => $row->payment_method,
                   "status" => (string)$row->status, "reported_amount" => (float)$row->reported_amount,
+                  "confirmed_at" => $row->confirmed_at, "voided_at" => $row->voided_at,
                   "created_at" => $row->created_at, "updated_at" => $row->updated_at,
                 ])->all();
+              $probe259["reconciliation_scope"] = [
+                "target_course_ids" => [2885, 3361],
+                "target_course_ids_present" => array_values(array_intersect([2885, 3361], $courseIds259)),
+                "proposed_august" => ["course_id" => 2885, "session_count" => 5, "charge" => 9000, "keep_session_date" => "2026-08-29"],
+                "proposed_september" => ["course_id" => 3361, "session_date_consumed" => "2026-09-05", "session_count" => 5, "future_sessions_remaining" => 4],
+                "mutation_authorized" => false,
+              ];
               $subjectRefs259 = array_map(fn ($id) => \App\Models\SecurityAuditEvent::ref("student_class", (int)$id), $courseIds259);
               $probe259["audit_events"] = $subjectRefs259 === [] ? [] : $db::table("security_audit_events")
                 ->whereIn("subject_ref", $subjectRefs259)->orderBy("occurred_at")
