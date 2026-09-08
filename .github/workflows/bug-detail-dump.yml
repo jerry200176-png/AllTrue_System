@@ -1266,6 +1266,98 @@ jobs:
               $probe267["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe259 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 259",
+          ];
+          if ($bugId === 259) {{
+            // #259-specific read-only probe: use the report's immutable clues
+            // (student, subject, campus, 8/29 move, 8/9000 vs 4/7200) to
+            // identify candidate contracts and their accounting evidence.
+            // Never mutate billing, course ownership, or session history.
+            $probe259["applicable"] = true;
+            $probe259["report_clues"] = [
+              "campus_id" => (int)$bug->CampusID, "student_name" => "邱致元",
+              "subject_name" => "數學", "moved_session_date" => "2026-08-29",
+              "reported_count_amount" => ["count" => 5, "amount" => 9000],
+              "displayed_count_amount" => ["count" => 4, "amount" => 7200],
+            ];
+            try {{
+              $students259 = $db::table("Student")
+                ->where("CampusID", (int)$bug->CampusID)
+                ->where("name", "like", "%邱致元%")
+                ->get(["id", "CampusID"]);
+              $studentIds259 = $students259->pluck("id")->map(fn ($id) => (int)$id)->all();
+              $probe259["student_ids"] = $studentIds259;
+              $courses259 = $studentIds259 === [] ? collect() : $db::table("StudentClass as sc")
+                ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->whereIn("sc.StudentID", $studentIds259)
+                ->where("sc.SubjectID", ">", 0)
+                ->where("sub.Subject_Name", "數學")
+                ->orderBy("sc.StartDate")
+                ->get([
+                  "sc.ID as course_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id",
+                  "sc.TeacherID as teacher_id", "sc.StartDate as start_date", "sc.EndDate as end_date",
+                  "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
+                  "sc.UsedSessions as used_sessions", "sc.Charge as charge", "sc.Paid as paid",
+                  "sc.Stop as stop", "sc.ScheduleMode as schedule_mode", "sc.ClassType as class_type",
+                ]);
+              $courseIds259 = $courses259->pluck("course_id")->map(fn ($id) => (int)$id)->all();
+              $probe259["candidate_courses"] = $courses259->map(fn ($row) => [
+                "course_id" => (int)$row->course_id, "student_id" => (int)$row->student_id,
+                "subject_id" => (int)$row->subject_id, "teacher_id" => (int)$row->teacher_id,
+                "start_date" => $row->start_date, "end_date" => $row->end_date,
+                "session_count" => (int)$row->session_count, "remaining_sessions" => (int)$row->remaining_sessions,
+                "used_sessions" => (int)$row->used_sessions, "charge" => (int)$row->charge,
+                "paid" => (int)$row->paid, "stop" => (int)$row->stop,
+                "schedule_mode" => (string)$row->schedule_mode, "class_type" => (string)$row->class_type,
+              ])->all();
+              $probe259["candidate_sessions"] = $courseIds259 === [] ? [] : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $courseIds259)
+                ->orderBy("SessionDate")->orderBy("StartTime")->orderBy("id")
+                ->get(["id", "StudentClassID as course_id", "SessionDate as session_date", "StartTime as start_time", "EndTime as end_time", "Status as status"])
+                ->map(fn ($row) => [
+                  "class_session_id" => (int)$row->id, "course_id" => (int)$row->course_id,
+                  "session_date" => substr((string)$row->session_date, 0, 10),
+                  "start_time" => substr((string)$row->start_time, 0, 5),
+                  "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
+                ])->all();
+              $probe259["invoices"] = $courseIds259 === [] ? [] : $db::table("Invoice")
+                ->whereIn("StudentClassID", $courseIds259)->orderBy("id")
+                ->get(["id", "StudentClassID as course_id", "IssueDate as issue_date", "TotalAmount as total_amount", "PaidAmount as paid_amount", "Status as status"])
+                ->map(fn ($row) => [
+                  "invoice_id" => (int)$row->id, "course_id" => (int)$row->course_id,
+                  "issue_date" => $row->issue_date, "total_amount" => (int)$row->total_amount,
+                  "paid_amount" => (int)$row->paid_amount, "status" => (string)$row->status,
+                ])->all();
+              $probe259["payment_reports"] = $courseIds259 === [] ? [] : $db::table("payment_reports")
+                ->whereIn("StudentClassID", $courseIds259)->orderBy("id")
+                ->get(["id", "StudentClassID as course_id", "status", "reported_amount", "created_at", "updated_at"])
+                ->map(fn ($row) => [
+                  "payment_report_id" => (int)$row->id, "course_id" => (int)$row->course_id,
+                  "status" => (string)$row->status, "reported_amount" => (float)$row->reported_amount,
+                  "created_at" => $row->created_at, "updated_at" => $row->updated_at,
+                ])->all();
+              $subjectRefs259 = array_map(fn ($id) => \App\Models\SecurityAuditEvent::ref("student_class", (int)$id), $courseIds259);
+              $probe259["audit_events"] = $subjectRefs259 === [] ? [] : $db::table("security_audit_events")
+                ->whereIn("subject_ref", $subjectRefs259)->orderBy("occurred_at")
+                ->get(["event_type", "occurred_at", "outcome", "metadata"])
+                ->map(fn ($row) => [
+                  "event_type" => (string)$row->event_type, "occurred_at" => $row->occurred_at,
+                  "outcome" => (string)$row->outcome, "metadata" => $row->metadata,
+                ])->all();
+              $matchingCourseIds259 = $courses259->filter(function ($row) {{
+                return (int)$row->charge === 9000 || (int)$row->session_count === 5
+                  || ((int)$row->charge === 7200 && (int)$row->session_count === 4);
+              }})->pluck("course_id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $probe259["clue_matching_course_ids"] = $matchingCourseIds259;
+              $probe259["decision_grade"] = count($studentIds259) === 1 && $courses259->count() > 0;
+              $probe259["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe259["decision_grade"] = false;
+              $probe259["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1278,9 +1370,10 @@ jobs:
             265 => $probe265,
             266 => $probe266,
             267 => $probe267,
+            259 => $probe259,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 265, 266, 267], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 265, 266, 267, 259], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1322,6 +1415,7 @@ jobs:
                 "probe_265_teacher_capacity_slot" => $probe265,
                 "probe_266_transfer_conflict" => $probe266,
                 "probe_267_billing_correction" => $probe267,
+                "probe_259_billing_discrepancy" => $probe259,
                 "probe_253_teacher_capacity_orphan_exception" => $probe253,
               ],
               "evidence_generated_at" => gmdate("c"),
