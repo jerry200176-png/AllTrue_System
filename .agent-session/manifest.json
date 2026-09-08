@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "241521ae2a71422f987be6edcb7af4b9",
+  "session_id": "311e898993c1492385bd4848ccaaab5c",
   "project": "alltrue",
-  "task_id": "TKT-20260908-124907-ZSAC",
+  "task_id": "parent-binding-auth-20260908",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "eee7bb3515c911312de80c1f7d7ab4dd7d2be70f",
-  "branch": "exo/TKT-20260908-124907-ZSAC",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/parent-portal-v1-20260908",
-  "started_at": "2026-09-08T04:46:31Z",
+  "base_sha": "e65afd25e9dd6a388196b392b070518c853e0373",
+  "branch": "chore/task-parent-binding-auth-20260908",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/parent-binding-auth-20260908",
+  "started_at": "2026-09-08T09:12:59Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

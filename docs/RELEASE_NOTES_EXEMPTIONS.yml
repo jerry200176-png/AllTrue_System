@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-08-binding-api-authz
+    changelog_date: "2026-09-08"
+    changelog_title: "fix(authz): enforce Parent Binding API authentication and campus scope"
+    reason: 僅修正既有 Parent Binding 管理 API 的 AuthToken 認證閘門與主任分校隔離；不新增教職員流程、權限、billing、identity 或家長 Portal 行為。
+
   - id: silent-2026-09-08-parent-portal-v1
     changelog_date: "2026-09-08"
     changelog_title: "fix(parent): Parent Portal V1 correctness and existing-data home summary"
