@@ -90,6 +90,33 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
             ->contains(fn ($week) => ($week['metrics']['meets_16_segments'] ?? false) === true));
     }
 
+    public function test_same_teacher_payroll_subject_count_is_global_when_switching_campus(): void
+    {
+        $director = $this->createDirector();
+        $teacher = $this->createTeacher();
+        $otherCampus = Campus::factory()->create();
+        UserCampus::create(['CampusID' => $otherCampus->id, 'UserID' => $director['user_id'], 'Admin' => 1, 'Approved' => 1]);
+        UserCampus::create(['CampusID' => $otherCampus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+
+        // Campus 1 contributes 40.5 raw units and campus B contributes 6.
+        // The payroll row must use the company-level 46.5 / 8 in either view.
+        foreach (range(1, 9) as $day) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', sprintf('2026-08-%02d', $day), '08:00', 180, 'completed', 'present', 1);
+        }
+        foreach ([20, 21] as $day) {
+            $this->createAttendedSession($teacher->id, 'one_on_one', sprintf('2026-08-%02d', $day), '08:00', 120, 'completed', 'present', $otherCampus->id);
+        }
+
+        foreach ([1, $otherCampus->id] as $campusId) {
+            $response = $this->withHeaders($this->auth($director['token']))
+                ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=' . $campusId)
+                ->assertOk();
+            $this->assertEqualsWithDelta(46.5, $response->json('teachers.0.settlement.regular_subject_count'), 0.0001);
+            $this->assertEqualsWithDelta(5.8125, $response->json('teachers.0.settlement.payroll_subject_count'), 0.0001);
+            $this->assertEqualsWithDelta(5.8125, $response->json('branch_subject_total'), 0.0001);
+        }
+    }
+
     private function createDirector(): array
     {
         $user = User::create([
@@ -99,7 +126,7 @@ class TeacherEligibilityWeeklySegmentsTest extends TestCase
         UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
-        return ['token' => $token];
+        return ['user_id' => (int) $user->id, 'token' => $token];
     }
 
     private function createTeacher(): User

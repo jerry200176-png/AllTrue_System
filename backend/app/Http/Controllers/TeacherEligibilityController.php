@@ -235,7 +235,10 @@ class TeacherEligibilityController extends Controller
         $allowanceSourceAvailable = Schema::hasTable('teacher_payroll_admin_allowances');
         $pendingSalaryByTeacher = $this->pendingSalaryByTeacher($teacherIds, null);
         $eventsAvailable = $sessionCalendarAvailable || $events->isNotEmpty();
-        $subjectUnitsByTeacher = $this->subjectUnitsByTeacher($teacherIds, null, $effectiveStart, $period['end']);
+        // Payroll subject counts are company/teacher scoped. The selected
+        // campus only controls which teachers are listed; it must never
+        // partition a teacher's cross-campus subject inputs.
+        $subjectUnitsByTeacher = $this->globalSubjectUnitsByTeacher($teacherIds, $effectiveStart, $period['end']);
         $salaryByTeacher = $this->salaryProfilesByTeacher($teacherIds, null, $period['end']->toDateString());
         $manualMultiplierByTeacher = $this->manualMultiplierByTeacher($teacherIds, null, $period['end']->toDateString());
 
@@ -760,7 +763,7 @@ class TeacherEligibilityController extends Controller
             });
     }
 
-    private function subjectUnitsByTeacher(array $teacherIds, ?array $branchFilter, Carbon $start, Carbon $end): array
+    private function globalSubjectUnitsByTeacher(array $teacherIds, Carbon $start, Carbon $end): array
     {
         $hasLearningRecords = Schema::hasTable('LearningRecord');
         $hasAttendance = Schema::hasTable('ClassSession') && Schema::hasTable('StudentClass') && Schema::hasTable('StudentSingIn');

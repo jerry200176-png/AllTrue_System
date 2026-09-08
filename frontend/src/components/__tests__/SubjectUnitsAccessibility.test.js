@@ -51,6 +51,9 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(source).toContain('整月符合既有核薪規則的原始科目數合計 ÷ 8');
     expect(source).toContain('<p class="eyebrow">每日變化</p>');
     expect(source).toContain('<p class="eyebrow">日明細</p>');
+    expect(source).toContain('data-guide="subject-units-contributions"');
+    expect(source).toContain('teacherContributions');
+    expect(source).toContain('原始科目數先完整加總，最後總計才 ÷ 8');
     expect(source).toContain('const showCalcGuide = ref(false);');
   });
 });

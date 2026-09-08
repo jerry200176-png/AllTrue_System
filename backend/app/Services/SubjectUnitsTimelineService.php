@@ -193,10 +193,35 @@ final class SubjectUnitsTimelineService
             4
         );
 
+        $teacherRawTotals = [];
+        foreach ($normalised as $entry) {
+            $teacherId = (int) $entry['teacher_id'];
+            $teacherRawTotals[$teacherId] = ($teacherRawTotals[$teacherId] ?? 0.0)
+                + (float) $entry['payroll_subject_count'];
+        }
+        $campusRawTotal = (float) $publicTotals['payroll_subject_count'];
+        $teacherContributions = collect($teacherRawTotals)
+            ->map(function (float $rawTotal, int $teacherId) use ($teacherNames, $campusRawTotal): array {
+                $rawTotal = round($rawTotal, 4);
+                return [
+                    'teacher_id' => $teacherId,
+                    'teacher_name' => $teacherNames[$teacherId] ?? '未知老師',
+                    'raw_subject_count' => $rawTotal,
+                    'payroll_subject_count' => round($rawTotal / 8, 4),
+                    'campus_proportion_pct' => $campusRawTotal > 0
+                        ? round(($rawTotal / $campusRawTotal) * 100, 4)
+                        : 0.0,
+                ];
+            })
+            ->sortBy('teacher_name', SORT_NATURAL)
+            ->values()
+            ->all();
+
         return [
             'entries' => array_map(fn (array $entry) => $this->publicEntry($entry), $normalised),
             'days' => array_values(array_map(fn (array $day) => $this->publicAggregate($day), $days)),
             'totals' => $publicTotals,
+            'teacher_contributions' => $teacherContributions,
         ];
     }
 
