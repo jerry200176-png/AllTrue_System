@@ -103,6 +103,7 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         // only to each completed aggregate, never to an intermediate row.
         foreach (range(1, 9) as $day) {
             $course = $this->course($campus->id, $teacherA['user_id'], 'one_on_one', 1);
+            $course->update(['SessionDuration' => 180]);
             $session = $this->makeSession($course, sprintf('2026-08-%02d', $day), '16:00:00', '19:00:00', 'completed');
             LearningRecord::create([
                 'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
