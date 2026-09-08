@@ -1,7 +1,7 @@
 # Control Plane Enforcer
 
 > **Machine enforcement spec** for [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md).  
-> **Runner:** `node scripts/control-plane-lint.mjs` · **CI:** [`.github/workflows/control-plane-enforce.yml`](../.github/workflows/control-plane-enforce.yml)
+> **Runner:** `node scripts/control-plane-lint.mjs` · **Canonical CI:** [`ci.yml` control_plane job](../.github/workflows/ci.yml)
 
 ---
 
@@ -33,9 +33,26 @@ violations: N
 | E6 | — | `CONTRADICTION_REGISTRY.md` contains K1–K10 |
 | E7 | — | MemPalace frozen statement in 4 canonical files |
 | E8 | — | Contract modification in CI requires `CONTRACT_CHANGE=1` or PR title `[contract-change]` |
-| E9 | I1 | No tracked workflow other than `deploy.yml` performs production deploy (SSH + git reset origin/main) |
+| E9 | I1 | No tracked workflow other than `deploy.yml` performs the ordinary production deploy (SSH + git reset origin/main) |
 | E10 | I2 | INDEX must not contain governance logic phrases (`decision logic`, `must deploy`, …) |
 | E11 | I3/I4 | INCIDENT stack binds FINAL_ACTION execution to `deploy.yml` only |
+
+## Phase 1 gate mapping
+
+The consolidation keeps one executable source for each invariant. The old
+workflow names below are historical references, not additional required
+contexts.
+
+| Old executable path | Protected invariant | Canonical executable path | Equivalence evidence |
+|---|---|---|---|
+| `control-plane-enforce.yml` | Control-plane I1–I5 plus cost and lint self-tests | `ci.yml` → `control_plane` | Same `control-plane-lint`, cost guard, and self-test commands; CI runs on every PR/main push that the old workflow covered |
+| `presubmit.yml` CHECK 6 | Golden path-to-section traceability | `ci.yml` → `golden_scenarios` | Same `.github/scripts/golden-ci-report.sh`, same `origin/main...HEAD` diff inputs, same required job context |
+| Presubmit checks 0–5, 7–10 | Presubmit-specific branch, size, architecture, smoke, and isolation invariants | `presubmit.yml` → `gate` | Presubmit gate remains executable and unchanged except for removing the duplicate Golden invocation |
+
+Production-capable workflow classification is maintained in
+[`PRODUCTION_WORKFLOW_INVENTORY.json`](PRODUCTION_WORKFLOW_INVENTORY.json).
+The CI inventory check requires every current marker-bearing workflow to be
+classified and blocks new direct-write additions without a confirmed entry.
 
 ---
 

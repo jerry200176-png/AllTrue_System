@@ -74,7 +74,7 @@ Policy MUST NOT replace `deploy.yml`. Runbooks describe steps; they do not execu
 
 **If the system cannot be stabilized OR root cause cannot be identified within 15 minutes → mandatory rollback** — unless [Rollback Safety Exception](#rollback-safety-exception) applies.
 
-Rollback = revert bad commit on `main` and redeploy via `deploy.yml`, OR re-run last successful `Deploy to Pi` workflow. Investigate after service is stable.
+Rollback = revert bad commit on `main` and redeploy via `deploy.yml`. Manual activation must still target the current main SHA; historical deploy re-runs are refused by the deploy contract. Investigate after service is stable.
 
 Log `T0` = first alert or user report. At `T0 + 15 min`, if still impaired → **rollback now** (or recovery mode if safety exception applies).
 

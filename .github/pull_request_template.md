@@ -35,7 +35,7 @@
 <!-- 列出驗收步驟；PHPUnit / 前端測試由 CI 跑，有手動場景再寫 -->
 - [ ] 
 
-> **Golden**：無需人工勾選。Presubmit **CHECK 6** 與 CI job **Golden scenarios report** 會依 diff 對應 §0–§4；見 [`docs/QA_GOLDEN_SCENARIOS.md`](../docs/QA_GOLDEN_SCENARIOS.md)。
+> **Golden**：無需人工勾選。CI job **Golden scenarios report** 會依 diff 對應 §0–§4；見 [`docs/QA_GOLDEN_SCENARIOS.md`](../docs/QA_GOLDEN_SCENARIOS.md)。
 
 ## Migration Compatibility（有 DB migration 時必填）
 <!-- 見 docs/RULE_MIGRATION_COMPAT.md -->

@@ -74,7 +74,7 @@ deploy.yml / runbook (execution only)
 **Effect:**
 
 - **Skip TRIAGE** — compress loop: OBSERVE → INFER → **CONTAIN** directly
-- FINAL_ACTION = `rollback_deploy` (revert PR → deploy.yml **OR** re-run last successful deploy)
+- FINAL_ACTION = `rollback_deploy` (revert PR → deploy.yml; manual activation still targets current main)
 - Max path length: 5 steps (see SH-3)
 
 **Audit field:** `policy_applied=P1_fast_recovery`
@@ -159,7 +159,7 @@ If no policy matches → FINAL_ACTION = inference engine ACTION table for curren
 | FINAL_ACTION | Execution | deploy.yml? |
 |--------------|-----------|-------------|
 | `recover_db` | RUNBOOK §3c + OPERATIONS_RUNBOOK §P | Maybe (schema rollback only) |
-| `rollback_deploy` | revert PR → merge → deploy **OR** re-run successful deploy | **Yes** |
+| `rollback_deploy` | revert PR → merge → deploy; manual activation uses the current main target SHA | **Yes** |
 | `verify_only` | curl health + post-merge-smoke | No |
 | `contain_freeze` | freeze writes + CEO LINE | No |
 | fallback ACTION | per inference table | per STATE |

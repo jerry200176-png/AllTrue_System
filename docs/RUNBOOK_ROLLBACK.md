@@ -21,7 +21,7 @@ last_reviewed: 2026-06-07
 |---|---|---|
 | deploy 後 health/smoke 自己失敗 | **不用動**——`deploy.yml` 已自動回滾到上一 commit | §2 |
 | 自動回滾沒救起來 / 已過一陣子才發現 | 開 **revert PR**（`git revert <hash>` → PR → merge → 自動重佈） | §3a |
-| 站全掛、等不及 CI | 走 §3b **緊急 Pi 重佈**（re-run 上一個成功 deploy） | §3b |
+| 站全掛、等不及 CI | 走 §3b **緊急部署判斷**（仍只用 current-main target SHA） | §3b |
 | 資料被寫壞 / migration 有破壞性 | §3c **DB 回滾 + 還原備份**（先備份再動） | §3c |
 
 ⛔ 紅線：**禁止**直接 SSH 進 Pi 改程式碼（事故 B/C/E）。回滾一律走 git + **`deploy.yml`**。
@@ -72,19 +72,20 @@ gh pr create --title "revert: 回滾 <壞功能>（hotfix）" --body "Closes/Ref
 → CI 綠 → merge → `deploy.yml` 自動把 production 重佈到 revert 後的良好狀態。
 這條路徑可被 `scripts/rollback-readiness.sh` 的 CHECK 3 預先驗證（最新 commit 是否可乾淨 revert）。
 
-### 3b. 緊急 Pi 重佈（站全掛、等不及 CI）
+### 3b. 緊急部署判斷（站全掛、等不及 CI）
 
-優先用「重跑上一個成功的 deploy run」而非手動 SSH：
+先走 revert PR；若 Founder 已核准手動 activation，仍只能以目前 `main` 的
+target SHA 走 `deploy.yml`，不可重跑歷史 SHA：
 
 ```bash
-# 找上一個 deployable 成功的 commit / run
+# 取得目前 main 與 deploy 證據
+gh api repos/:owner/:repo/git/ref/heads/main --jq '.object.sha'
 gh run list --workflow="Deploy to Pi" --limit 10
-# 對上一個成功的 commit 重新觸發部署（最安全：把 main 指到該 commit 走正規流程）
+# 只有 current-main target SHA + 正規 activation confirmation 才可 dispatch
 ```
 
-若連 GitHub Actions 都不可用，才走 `docs/DEPLOYMENT.md` 緊急手動前端部署路徑；
-完成後**仍要補 PR/CI**，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄此例外（見 §B2 規則 12）。
-⛔ 不在 Pi 直接編輯程式碼；緊急重佈也只做 `git fetch + reset 到良好 commit + optimize`（等同 `deploy.yml` 動作）。
+若連 GitHub Actions 都不可用，停在升級/復原程序，不以 SSH 直接改 production
+程式碼，也不宣稱已部署；恢復後仍須補 PR/CI 與 deployment evidence。
 
 ### 3c. DB / Migration 回滾（資料層，最謹慎）
 
