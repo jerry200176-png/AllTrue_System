@@ -215,7 +215,7 @@ class ClassSessionBatchApiTest extends TestCase
             if (
                 (int) $fu1->dayOfWeekIso === 2
                 && $fu1->toDateString() > $confYmd
-                && $fu1->toDateString() >= $today->toDateString()
+                && $fu1->toDateString() > $today->toDateString()
             ) {
                 break;
             }
@@ -226,7 +226,7 @@ class ClassSessionBatchApiTest extends TestCase
             if (
                 (int) $fu2->dayOfWeekIso === 4
                 && $fu2->toDateString() > $confYmd
-                && $fu2->toDateString() >= $today->toDateString()
+                && $fu2->toDateString() > $today->toDateString()
             ) {
                 break;
             }
