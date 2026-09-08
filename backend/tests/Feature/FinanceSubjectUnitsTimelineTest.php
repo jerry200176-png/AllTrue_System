@@ -84,6 +84,7 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->assertEqualsWithDelta(4.5, $response->json('totals.regular_subject_count'), 0.0001);
         $this->assertEqualsWithDelta(2.0, $response->json('totals.tutoring_trial_subject_count'), 0.0001);
         $this->assertEqualsWithDelta(6.5, $response->json('totals.payroll_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(0.8125, $response->json('totals.final_payroll_subject_count'), 0.0001);
     }
 
     public function test_timeline_deduplicates_approved_record_and_attendance_for_one_session(): void
@@ -142,6 +143,7 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->assertSame([1.25, 1.25], collect($response->json('days'))->pluck('regular_subject_count')->map(fn ($value) => (float) $value)->all());
         $this->assertEqualsWithDelta(2.5, $response->json('totals.regular_subject_count'), 0.0001);
         $this->assertEqualsWithDelta(2.5, $response->json('totals.payroll_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(0.3125, $response->json('totals.final_payroll_subject_count'), 0.0001);
     }
 
     public function test_monthly_payroll_divides_the_full_raw_total_once(): void

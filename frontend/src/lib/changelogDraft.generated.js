@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.08",
     "date": "2026-09-08",
     "title": "2026.09.08 草稿（未發布）",
-    "summary": "意見與建議入口更容易使用；導覽搜尋範圍與高頻查找提示更清楚",
+    "summary": "科目數完整加總後才除以 8；意見與建議入口更容易使用",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "科目數完整加總後才除以 8"
+        ]
+      },
       {
         "title": "其他改善",
         "items": [
@@ -24,6 +30,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "科目數完整加總後才除以 8",
       "意見與建議入口更容易使用",
       "導覽搜尋範圍與高頻查找提示更清楚"
     ]
