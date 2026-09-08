@@ -1,0 +1,51 @@
+id: INT-20260908-123152-V6RE
+title: Retire completed legacy bug evidence backfill workflow
+intent: Retire completed legacy bug evidence backfill workflow
+kind: intent
+brain_dump: Continue Production Authority Convergence under Founder-approved bounded
+  policy. Retire bug-legacy-evidence-backfill.yml only if existing production evidence
+  proves the approved operation is complete and no active dependency remains. Do not
+  alter the command, manifest, production data, authorization model, business semantics,
+  identity, permissions, rulesets, billing, entitlement, attendance, or other workflows.
+boundary: Only modify the verified legacy backfill workflow, its production workflow
+  inventory retirement record, its evidence-preserving governance contract test, and
+  Exo provenance. No production execution or authorization changes.
+success_condition: Workflow is no longer active; inventory records applied/verified
+  evidence and completion; tests and required CI pass; no application or production
+  semantics change.
+risk: medium
+priority: 2
+labels:
+- governance
+scope:
+  allow:
+  - .github/workflows/bug-legacy-evidence-backfill.yml
+  - docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json
+  - scripts/tests/test_governance_simplification.py
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+  - .github/workflows/deploy.yml
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 100
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-08T12:31:52+08:00'
+children: []
+resource_profile: default

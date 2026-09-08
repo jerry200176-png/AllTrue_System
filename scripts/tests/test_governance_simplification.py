@@ -42,6 +42,14 @@ class GovernanceSimplificationTest(unittest.TestCase):
         self.assertIn("31685594666", inventory)
         self.assertFalse((ROOT / ".github/workflows/234-renewal-overlap-repair.yml").exists())
 
+    def test_completed_bug_evidence_backfill_is_retired_with_closeout_evidence(self):
+        inventory = self.read("docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json")
+        self.assertNotIn("bug-legacy-evidence-backfill.yml\": {\n      \"classification\"", inventory)
+        self.assertIn("bug-legacy-evidence-backfill.yml", inventory)
+        self.assertIn("34114112625", inventory)
+        self.assertIn("34114244243", inventory)
+        self.assertFalse((ROOT / ".github/workflows/bug-legacy-evidence-backfill.yml").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
