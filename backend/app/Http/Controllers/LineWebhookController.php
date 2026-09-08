@@ -27,6 +27,9 @@ class LineWebhookController extends Controller
         $host = $request->getHost(); // e.g. daan.lifenet.com.tw
         // Match against Campus.URL — strip scheme and trailing slash, compare host portion
         $campus = \Illuminate\Support\Facades\DB::table('Campus')
+            ->where(function ($q) {
+                $q->whereNull('is_test')->orWhere('is_test', false);
+            })
             ->whereNotNull('URL')
             ->where('URL', '!=', '')
             ->get()
@@ -44,8 +47,13 @@ class LineWebhookController extends Controller
             $appUrl = config('app.url', '');
             $appHost = parse_url($appUrl, PHP_URL_HOST);
             $campus = \Illuminate\Support\Facades\DB::table('Campus')
-                ->where('URL', 'LIKE', '%' . $host . '%')
-                ->orWhere('URL', 'LIKE', '%' . ($appHost ?? '') . '%')
+                ->where(function ($q) {
+                    $q->whereNull('is_test')->orWhere('is_test', false);
+                })
+                ->where(function ($q) use ($host, $appHost) {
+                    $q->where('URL', 'LIKE', '%' . $host . '%')
+                        ->orWhere('URL', 'LIKE', '%' . ($appHost ?? '') . '%');
+                })
                 ->first();
         }
 
@@ -411,7 +419,12 @@ class LineWebhookController extends Controller
 
     private function getCampus(int $campusId): ?object
     {
-        return DB::table('Campus')->where('id', $campusId)->first() ?: null;
+        return DB::table('Campus')
+            ->where('id', $campusId)
+            ->where(function ($q) {
+                $q->whereNull('is_test')->orWhere('is_test', false);
+            })
+            ->first() ?: null;
     }
 
     private function getDirectorCampusId(Request $request): ?int

@@ -19,7 +19,11 @@ class SeedCampusTokens extends Command
             return 1;
         }
 
-        $campuses = DB::table('Campus')->get(['id', 'name', 'code']);
+        $campuses = DB::table('Campus')
+            ->where(function ($q) {
+                $q->whereNull('is_test')->orWhere('is_test', false);
+            })
+            ->get(['id', 'name', 'code']);
         if ($campuses->isEmpty()) {
             $this->warn('尚無分校資料');
             return 0;

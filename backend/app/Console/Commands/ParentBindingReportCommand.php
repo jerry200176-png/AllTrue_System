@@ -87,7 +87,12 @@ class ParentBindingReportCommand extends Command
     {
         $tz = (string) config('parent_binding.timezone', 'Asia/Taipei');
         $rows = [];
-        foreach (DB::table('Campus')->when($campusId !== null, fn ($q) => $q->where('id', $campusId))->orderBy('id')->get(['id', 'name']) as $campus) {
+        foreach (DB::table('Campus')
+            ->where(function ($q) {
+                $q->whereNull('is_test')->orWhere('is_test', false);
+            })
+            ->when($campusId !== null, fn ($q) => $q->where('id', $campusId))
+            ->orderBy('id')->get(['id', 'name']) as $campus) {
             $students = DB::table('Student')->where('CampusID', $campus->id)->where('enable', 1)
                 ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '')->orWhereIn('status', ['active', 'paused']))
                 ->get(['parent_phone', 'Phone']);

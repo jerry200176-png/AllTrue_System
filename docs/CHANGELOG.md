@@ -1,3 +1,9 @@
+## 2026-09-08 — feat(parent): isolated synthetic Parent Portal production smoke fixture
+<!-- release-notes: silent_ship=silent-2026-09-08-parent-portal-test-tenant -->
+- 新增以 `Campus.is_test` 為唯一機器可判斷隔離標記的 TEST／SYNTHETIC Parent Portal smoke fixture；fixture 只能由受保護的 super_admin QA path 建立／重用，重複執行沿用同一校區、學生、監護人與綁定資料，僅輪替 parent session。
+- TEST 校區與學生從一般校區選擇器、學生搜尋、LINE 路由、通知 token、分校健康與家長綁定盤點等 operational reads 排除；Parent Portal 僅接受 QA path 發出的 parent session 讀取 synthetic row，公開 parent login 不會枚舉 TEST fixture。
+- migration `2026_09_08_120000_add_is_test_to_campus_table`／`2026_09_08_121000_backfill_campus_is_test` 只新增並回填 `Campus.is_test`（既有資料設為 `false`）；不建立課程、排課、出席、評量、帳務、LINE binding、通知或付款資料。Production fixture 尚待受保護 smoke phase 啟用。
+
 ## 2026-09-08 — fix(authz): enforce Parent Binding API authentication and campus scope
 <!-- release-notes: silent_ship=silent-2026-09-08-binding-api-authz -->
 - Parent binding management now explicitly enforces the existing AuthToken authentication path and is limited to directors and super admins; directors remain scoped to their assigned campuses.

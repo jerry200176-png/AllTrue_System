@@ -28,6 +28,9 @@ class NotificationLineDispatcher
 
         $token = DB::table('Campus')
             ->where('id', $campusId)
+            ->where(function ($q) {
+                $q->whereNull('is_test')->orWhere('is_test', false);
+            })
             ->value('messaging_channel_token');
 
         if (empty($token)) {

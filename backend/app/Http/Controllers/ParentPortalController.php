@@ -18,6 +18,7 @@ use App\Models\StudentGuardian;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentSignIn;
+use App\Models\Scopes\OperationalTenantScope;
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
 use App\Models\CoursePackage;
@@ -42,6 +43,16 @@ use Illuminate\Support\Facades\Validator;
 
 class ParentPortalController extends Controller
 {
+    private function portalStudents()
+    {
+        return Student::withoutGlobalScope(OperationalTenantScope::class);
+    }
+
+    private function portalCampuses()
+    {
+        return \App\Models\Campus::withoutGlobalScope(OperationalTenantScope::class);
+    }
+
     private function identityService(): StudentIdentityService
     {
         return app(StudentIdentityService::class);
@@ -88,6 +99,9 @@ class ParentPortalController extends Controller
         $method = $hasStudentId ? ParentBindingCodes::METHOD_STUDENT_ID : ParentBindingCodes::METHOD_NAME;
 
         if ($hasStudentId) {
+            // Public login must not be an opt-in path for the isolated TEST
+            // tenant. Synthetic rows are reachable only with a session issued
+            // by the explicit privileged QA fixture path.
             $candidate = Student::find((int) $data['StudentID']);
             if ($candidate
                 && StudentContactPhone::matchesNormalizedInput($candidate, $phoneNorm)
@@ -211,6 +225,9 @@ class ParentPortalController extends Controller
         if ($requestedCampusId > 0) {
             $byCampus = \Illuminate\Support\Facades\DB::table('Campus')
                 ->where('id', $requestedCampusId)
+                ->where(function ($query) {
+                    $query->whereNull('is_test')->orWhere('is_test', false);
+                })
                 ->whereNotNull('LIFFID')
                 ->where('LIFFID', '!=', '')
                 ->first();
@@ -241,7 +258,12 @@ class ParentPortalController extends Controller
             if ($r['status'] !== 'ok') {
                 return response()->json(['liff_id' => null]);
             }
-            $campus = \Illuminate\Support\Facades\DB::table('Campus')->where('id', $r['campus_id'])->first(['id', 'name']);
+            $campus = \Illuminate\Support\Facades\DB::table('Campus')
+                ->where('id', $r['campus_id'])
+                ->where(function ($query) {
+                    $query->whereNull('is_test')->orWhere('is_test', false);
+                })
+                ->first(['id', 'name']);
             return response()->json([
                 'liff_id'     => $r['liff_id'],
                 'campus_id'   => $r['campus_id'],
@@ -253,6 +275,9 @@ class ParentPortalController extends Controller
         // only, ambiguity (shared URL) fails loud instead of silently serving the
         // first/wrong campus's LIFF — the root cause of the 2026-06-27 mis-binding.
         $campusRows = \Illuminate\Support\Facades\DB::table('Campus')
+            ->where(function ($query) {
+                $query->whereNull('is_test')->orWhere('is_test', false);
+            })
             ->whereNotNull('LIFFID')
             ->where('LIFFID', '!=', '')
             ->whereNotNull('URL')
@@ -376,7 +401,7 @@ class ParentPortalController extends Controller
             'student_id' => 'required|integer',
         ]);
 
-        $targetStudent = Student::find($data['student_id']);
+        $targetStudent = $this->portalStudents()->find($data['student_id']);
         if (!$targetStudent) {
             SecurityAuditEvent::append('parent.sibling_switch', 'failure', [
                 'subject_type' => 'student', 'subject_id' => $data['student_id'],
@@ -384,7 +409,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        $currentStudent = Student::find($session->StudentID);
+        $currentStudent = $this->portalStudents()->find($session->StudentID);
         $allowed = false;
         $targetGroup = $this->identityService()->groupForStudent((int) $targetStudent->id);
         if ($session->getAttribute('identity_group_id')
@@ -453,7 +478,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $student = Student::find($session->StudentID);
+        $student = $this->portalStudents()->find($session->StudentID);
         if (!$student) {
             return response()->json(['message' => 'Student not found'], 404);
         }
@@ -483,7 +508,7 @@ class ParentPortalController extends Controller
         $studentIds = $memberRows->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all();
         $campusIds = $memberRows->pluck('campus_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
         $activeScope = $crossCampusEnabled && $requestedScope === 'campus' ? 'campus' : ($crossCampusEnabled ? 'all' : 'campus');
-        $campusMap = \App\Models\Campus::query()->whereIn('id', $campusIds)->get()->keyBy('id');
+        $campusMap = $this->portalCampuses()->whereIn('id', $campusIds)->get()->keyBy('id');
         $studentCampusMap = $memberRows->keyBy('student_id')->map(fn ($m) => [
             'campus_id' => (int) $m->campus_id,
             'campus_name' => optional($campusMap->get((int) $m->campus_id))->getAttribute('name'),
@@ -977,7 +1002,7 @@ class ParentPortalController extends Controller
 
         $campusName = null;
         try {
-            $campus = \App\Models\Campus::find($student->CampusID);
+            $campus = $this->portalCampuses()->find($student->CampusID);
             $campusName = $campus ? $campus->getAttribute('name') : null;
         } catch (\Exception $e) {}
 
@@ -997,7 +1022,7 @@ class ParentPortalController extends Controller
             : collect();
 
         $siblingStudents = $siblingIdsByLine->isNotEmpty()
-            ? Student::whereIn('id', $siblingIdsByLine)->get()
+            ? $this->portalStudents()->whereIn('id', $siblingIdsByLine)->get()
             : collect();
         $siblingStudents = $siblingStudents->reject(fn ($s) => in_array((int) $s->id, $studentIds, true));
         $allStudents = collect([['id' => $student->id, 'name' => $student->name]])
@@ -1923,7 +1948,7 @@ class ParentPortalController extends Controller
                     'id' => (int) $group->id,
                     'name' => (string) ($group->display_name ?: ($members->first()?->student?->getAttribute('name') ?? '學生')),
                     'members' => $members->map(function ($member) {
-                        $campus = \App\Models\Campus::query()->find($member->campus_id);
+                        $campus = $this->portalCampuses()->find($member->campus_id);
                         return [
                             'student_id' => (int) $member->student_id,
                             'campus_id' => (int) $member->campus_id,
@@ -1941,7 +1966,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $student = Student::find($session->StudentID);
+        $student = $this->portalStudents()->find($session->StudentID);
         if (!$student) {
             return response()->json(['message' => 'Student not found'], 404);
         }
@@ -1950,7 +1975,7 @@ class ParentPortalController extends Controller
             ? $this->identityService()->parentContext((int) $student->id)
             : [null, StudentIdentityService::MODE_OFF, collect()];
         $studentIds = $identityMembers->pluck('student_id')->map(fn ($id) => (int) $id)->values()->all() ?: [(int) $student->id];
-        $billingCampusMap = \App\Models\Campus::query()->whereIn('id', Student::query()->whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
+        $billingCampusMap = $this->portalCampuses()->whereIn('id', $this->portalStudents()->whereIn('id', $studentIds)->pluck('CampusID')->unique()->all())->get()->keyBy('id');
         $classes = StudentClass::query()->whereIn('StudentID', $studentIds)
             ->where('Charge', '>', 0)
             ->orderByDesc('StartDate')
@@ -1999,6 +2024,14 @@ class ParentPortalController extends Controller
             ->where('ExpiresAt', '>', Carbon::now())
             ->first();
         if (!$session) {
+            return null;
+        }
+
+        // Parent sessions are the explicit opt-in boundary for the isolated
+        // test tenant. Ordinary staff/public queries remain scope-hidden.
+        if (!$this->portalStudents()->whereKey((int) $session->StudentID)->exists()) {
+            $session->ExpiresAt = Carbon::now();
+            $session->save();
             return null;
         }
 
@@ -2052,7 +2085,7 @@ class ParentPortalController extends Controller
 
     private function studentCampusId(int $studentId): int
     {
-        return (int) (Student::where('id', $studentId)->value('CampusID') ?? 0);
+        return (int) ($this->portalStudents()->where('id', $studentId)->value('CampusID') ?? 0);
     }
 
     /**
