@@ -141,35 +141,41 @@ final class ParentPortalTestFixtureService
     public function createReusableSession(array $fixture): array
     {
         return DB::transaction(function () use ($fixture): array {
-            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
-            $student = Student::withoutGlobalScope(OperationalTenantScope::class)
+            $student = Student::query()->withoutGlobalScope(OperationalTenantScope::class)
                 ->whereKey((int) $fixture['student_id'])
                 ->where('CampusID', (int) $fixture['campus_id'])
                 ->firstOrFail();
+            if (!$student instanceof Student) {
+                throw new \RuntimeException('fixture_student_lookup_invalid_model');
+            }
 
-            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
-            $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)
-                ->whereKey((int) $student->CampusID)
+            $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)
+                ->whereKey((int) $student->getAttribute('CampusID'))
                 ->where('is_test', true)
                 ->firstOrFail();
+            if (!$campus instanceof Campus) {
+                throw new \RuntimeException('fixture_campus_lookup_invalid_model');
+            }
 
             // This is the isolated fixture only. Revoke old smoke sessions so
             // repeated CI runs do not accumulate active ParentSession rows.
-            ParentSession::query()->where('StudentID', $student->id)->delete();
+            ParentSession::query()->where('StudentID', $student->getKey())->delete();
 
             $token = Str::random(48);
-            $session = ParentSession::query()->create([
-                'StudentID' => $student->id,
+            $expiresAt = now()->addHours(12);
+            $session = new ParentSession([
+                'StudentID' => $student->getKey(),
                 'TokenHash' => hash('sha256', $token),
-                'ExpiresAt' => now()->addHours(12),
+                'ExpiresAt' => $expiresAt,
             ]);
+            $session->save();
 
             return [
-                'campus_id' => (int) $campus->id,
-                'student_id' => (int) $student->id,
-                'parent_session_id' => (int) $session->id,
+                'campus_id' => (int) $campus->getKey(),
+                'student_id' => (int) $student->getKey(),
+                'parent_session_id' => (int) $session->getKey(),
                 'token' => $token,
-                'expires_at' => $session->ExpiresAt?->toIso8601String(),
+                'expires_at' => $expiresAt->toIso8601String(),
             ];
         });
     }
