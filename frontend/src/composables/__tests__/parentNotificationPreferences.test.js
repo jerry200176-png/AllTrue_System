@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  getParentDashboard,
   getParentNotificationPreferences,
   setParentNotificationPreferences,
 } from '../../api.js';
@@ -58,5 +59,15 @@ describe('parent notification preferences API', () => {
     await expect(
       setParentNotificationPreferences('parent-token', { learningFeedbackPush: true }),
     ).rejects.toThrow('綁定 LINE 後才可開啟推播通知');
+  });
+
+  it('preserves HTTP status for parent dashboard recovery decisions', async () => {
+    fetch.mockResolvedValueOnce(jsonResponse(
+      { message: '服務暫時無法使用' },
+      { ok: false, status: 503 },
+    ));
+
+    await expect(getParentDashboard('parent-token'))
+      .rejects.toMatchObject({ name: 'ParentApiError', status: 503 });
   });
 });

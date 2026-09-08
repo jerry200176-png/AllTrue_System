@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -107,6 +108,51 @@ class ParentPortalProgressSummaryTest extends TestCase
         ], [
             'Authorization' => 'Bearer ' . $token,
         ])->assertOk()->assertJson(['ok' => true]);
+    }
+
+    public function test_pending_feedback_count_is_not_limited_by_learning_history_page(): void
+    {
+        $student = $this->createStudent(1, '分頁回饋學生', '0913000333');
+        $course = $this->createStudentClass($student->id);
+
+        for ($i = 0; $i < 11; $i++) {
+            $sessionDate = Carbon::today()->subDays($i)->toDateString();
+            $session = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => $sessionDate,
+                'StartTime' => '18:00',
+                'EndTime' => '19:00',
+                'Status' => 'attended',
+            ]);
+
+            DB::table('LearningRecord')->insert([
+                'StudentID' => $student->id,
+                'StudentClassID' => $course->ID,
+                'ClassSessionID' => $session->id,
+                'TeacherID' => 1,
+                'Subject' => '英文',
+                'SessionDate' => $sessionDate,
+                'StartTime' => '18:00',
+                'EndTime' => '19:00',
+                'Content' => '第 ' . ($i + 1) . ' 筆已核准評量',
+                'Status' => 'approved',
+                'ApprovedBy' => 1,
+                'ApprovedAt' => now()->subDays($i),
+                'created_at' => now()->subDays($i),
+                'updated_at' => now()->subDays($i),
+            ]);
+        }
+
+        $token = $this->parentLogin('分頁回饋學生', '0913000333');
+        $res = $this->getJson('/api/v1/parent/dashboard?lr_page=1&lr_per_page=10', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $pendingFeedback = collect($res->json('progress_summary.pending_actions'))
+            ->firstWhere('key', 'feedback');
+        $this->assertSame(11, (int) ($pendingFeedback['count'] ?? 0));
+        $this->assertCount(10, $res->json('learning_records'));
     }
 
     private function createStudent(int $campusId, string $name, ?string $phone = null): Student

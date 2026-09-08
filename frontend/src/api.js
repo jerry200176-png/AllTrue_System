@@ -2,6 +2,21 @@ import { supabase } from './supabase';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 
+export class ParentApiError extends Error {
+  constructor(message, status = 0, data = null) {
+    super(message);
+    this.name = 'ParentApiError';
+    this.status = Number(status) || 0;
+    this.data = data;
+  }
+}
+
+async function readParentResponse(res, fallback) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ParentApiError(data?.message || fallback, res.status, data);
+  return data;
+}
+
 // --- Parent Portal (使用後端 /api/v1/parent/*) ---
 export async function parentLogin(credentials) {
   const payload = { Phone: String(credentials.Phone || '').trim() };
@@ -14,8 +29,7 @@ export async function parentLogin(credentials) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '登入失敗');
+  const data = await readParentResponse(res, '登入失敗');
   return { token: data.token, student: data.student, students: data.students || null, identityGroups: data.identity_groups || [] };
 }
 
@@ -26,8 +40,7 @@ export async function getParentDashboard(token, { lrPage = 1, lrPerPage = 10, sc
   const res = await fetch(`${API_BASE}/parent/dashboard?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '無法取得資料');
+  const data = await readParentResponse(res, '無法取得資料');
   return data;
 }
 
@@ -39,8 +52,7 @@ export async function parentLoginLine(accessToken, campusId = null) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || 'LINE 登入失敗');
+  const data = await readParentResponse(res, 'LINE 登入失敗');
   return { token: data.token, student: data.student, students: data.students || null, identityGroups: data.identity_groups || [] };
 }
 
@@ -50,8 +62,7 @@ export async function parentSwitchStudent(token, studentId) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ student_id: studentId }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '切換學生失敗');
+  const data = await readParentResponse(res, '切換學生失敗');
   return data;
 }
 
@@ -61,8 +72,7 @@ export async function parentRequestLeave(token, sessionId, { reason = '' } = {})
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ reason: String(reason || '').trim() }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '請假申請失敗');
+  const data = await readParentResponse(res, '請假申請失敗');
   return data;
 }
 
@@ -70,8 +80,7 @@ export async function getParentNotificationPreferences(token) {
   const res = await fetch(`${API_BASE}/parent/notification-preferences`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '無法讀取通知設定');
+  const data = await readParentResponse(res, '無法讀取通知設定');
   return data;
 }
 
@@ -85,8 +94,7 @@ export async function setParentNotificationPreferences(token, { learningFeedback
     },
     body: JSON.stringify({ learning_feedback_push: !!learningFeedbackPush }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '無法更新通知設定');
+  const data = await readParentResponse(res, '無法更新通知設定');
   return data;
 }
 
@@ -162,8 +170,7 @@ export async function upsertParentLearningRecordFeedback(token, learningRecordId
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ content }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '回饋送出失敗');
+  const data = await readParentResponse(res, '回饋送出失敗');
   return data.feedback;
 }
 
@@ -172,8 +179,7 @@ export async function getParentLearningRecordFeedback(token, learningRecordId) {
   const res = await fetch(`${API_BASE}/parent/learning-records/${learningRecordId}/feedback`, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '載入回饋失敗');
+  const data = await readParentResponse(res, '載入回饋失敗');
   return data.feedback;
 }
 
@@ -184,8 +190,7 @@ export async function parentReplyLearningRecordFeedback(token, learningRecordId,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ content }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '送出失敗');
+  const data = await readParentResponse(res, '送出失敗');
   return data.reply;
 }
 
@@ -217,8 +222,7 @@ export async function submitParentFeedback(token, { category, content, rating })
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ category, content, rating: rating || null }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.message || '送出失敗，請稍後再試');
+  const data = await readParentResponse(res, '送出失敗，請稍後再試');
   return data;
 }
 

@@ -31,4 +31,20 @@ describe('parent portal navigation accessibility contract', () => {
     expect(source).toMatch(/document\.getElementById\(`parent-tab-\$\{nextTab\}`\)\?\.focus\(\)/);
     expect(source).toMatch(/<button type="button" class="pp-btn pp-btn-primary" @click="login"/);
   });
+
+  it('keeps parent actions aligned with capability and recovery contracts', () => {
+    expect(source).toContain("if (status === 'all_pending') return '查看待繳帳務';");
+    expect(source).toContain(':disabled="!fbCanSubmit || !crossCampusActionsEnabled"');
+    expect(source).toContain('const requestId = ++dashboardRequestSequence.value;');
+    expect(source).toContain('if (isUnauthorized) {');
+    expect(source).toContain('回覆已送出，但最新對話暫時載入失敗');
+    expect(source).toContain('重試載入');
+  });
+
+  it('exposes the existing-data V1 home questions without adding a new data contract', () => {
+    for (const label of ['最近學了什麼', '本週重點', '老師建議／處理', '回家要做什麼', '下一步／目前待辦']) {
+      expect(source).toContain(label);
+    }
+    expect(source).toContain('buildParentHomeSummary');
+  });
 });
