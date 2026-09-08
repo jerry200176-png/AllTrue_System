@@ -126,6 +126,7 @@ class ParentPortalProgressSummaryTest extends TestCase
             ]);
 
             DB::table('LearningRecord')->insert([
+                'StudentID' => $student->id,
                 'StudentClassID' => $course->ID,
                 'ClassSessionID' => $session->id,
                 'TeacherID' => 1,
