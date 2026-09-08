@@ -45,12 +45,12 @@ class ParentPortalController extends Controller
 {
     private function portalStudents()
     {
-        return Student::withoutGlobalScope(OperationalTenantScope::class);
+        return Student::query()->withoutGlobalScope(OperationalTenantScope::class);
     }
 
     private function portalCampuses()
     {
-        return \App\Models\Campus::withoutGlobalScope(OperationalTenantScope::class);
+        return \App\Models\Campus::query()->withoutGlobalScope(OperationalTenantScope::class);
     }
 
     private function identityService(): StudentIdentityService

@@ -22,7 +22,7 @@ final class ParentPortalTestFixtureService
         }
 
         return DB::transaction(function (): array {
-            $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)
+            $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)
                 ->where('code', config('parent_portal_test.campus_code'))
                 ->lockForUpdate()
                 ->first();
@@ -32,7 +32,7 @@ final class ParentPortalTestFixtureService
             }
 
             if (!$campus) {
-                $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)->create([
+                $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)->create([
                     'name' => config('parent_portal_test.campus_name'),
                     'code' => config('parent_portal_test.campus_code'),
                     'active' => false,
@@ -53,7 +53,7 @@ final class ParentPortalTestFixtureService
                 ]);
             }
 
-            $students = Student::withoutGlobalScope(OperationalTenantScope::class)
+            $students = Student::query()->withoutGlobalScope(OperationalTenantScope::class)
                 ->where('CampusID', $campus->id)
                 ->get();
             if ($students->count() > 1) {
@@ -62,7 +62,7 @@ final class ParentPortalTestFixtureService
 
             $student = $students->first();
             if (!$student) {
-                $student = Student::withoutGlobalScope(OperationalTenantScope::class)->create([
+                $student = Student::query()->withoutGlobalScope(OperationalTenantScope::class)->create([
                     'name' => config('parent_portal_test.student_name'),
                     'CampusID' => $campus->id,
                     'ClassID' => 7,
@@ -137,22 +137,22 @@ final class ParentPortalTestFixtureService
     public function createReusableSession(array $fixture): array
     {
         return DB::transaction(function () use ($fixture): array {
-            $student = Student::withoutGlobalScope(OperationalTenantScope::class)
+            $student = Student::query()->withoutGlobalScope(OperationalTenantScope::class)
                 ->whereKey((int) $fixture['student_id'])
                 ->where('CampusID', (int) $fixture['campus_id'])
                 ->firstOrFail();
 
-            $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)
+            $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)
                 ->whereKey((int) $student->CampusID)
                 ->where('is_test', true)
                 ->firstOrFail();
 
             // This is the isolated fixture only. Revoke old smoke sessions so
             // repeated CI runs do not accumulate active ParentSession rows.
-            ParentSession::where('StudentID', $student->id)->delete();
+            ParentSession::query()->where('StudentID', $student->id)->delete();
 
             $token = Str::random(48);
-            $session = ParentSession::create([
+            $session = ParentSession::query()->create([
                 'StudentID' => $student->id,
                 'TokenHash' => hash('sha256', $token),
                 'ExpiresAt' => now()->addHours(12),
