@@ -1147,7 +1147,7 @@ jobs:
                 ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
                 ->where("sc.StudentID", (int)$conflict266->student_id)
                 ->where("st.CampusID", (int)$bug->CampusID)
-                ->where("sub.Subject_Name", "English")
+                ->where("sc.SubjectID", (int)$conflict266->subject_id)
                 ->orderBy("sc.StartDate")
                 ->get([
                   "sc.ID as course_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id",
