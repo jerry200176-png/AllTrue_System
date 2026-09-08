@@ -83,6 +83,41 @@
         />
       </section>
 
+      <section class="card contribution-card" data-guide="subject-units-contributions" aria-labelledby="contribution-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">分校貢獻</p>
+            <h3 id="contribution-title">老師在目前範圍的科目數貢獻</h3>
+          </div>
+          <span class="section-hint">原始科目數先完整加總，最後總計才 ÷ 8</span>
+        </div>
+        <div v-if="teacherContributions.length === 0" class="inline-empty">
+          <span class="material-symbols-outlined" aria-hidden="true">groups</span>
+          <span>這段期間沒有可列出的老師貢獻。</span>
+        </div>
+        <div v-else class="contribution-wrap">
+          <table class="contribution-table">
+            <caption class="sr-only">老師分校科目數貢獻</caption>
+            <thead>
+              <tr>
+                <th scope="col">老師</th>
+                <th scope="col" class="number-cell">原始科目數</th>
+                <th scope="col" class="number-cell">核薪科目數（÷ 8）</th>
+                <th scope="col" class="number-cell">占目前範圍</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="teacher in teacherContributions" :key="teacher.teacher_id">
+                <th scope="row">{{ teacher.teacher_name }}</th>
+                <td class="number-cell">{{ formatCount(teacher.raw_subject_count) }}</td>
+                <td class="number-cell highlight-cell"><strong>{{ formatCount(teacher.payroll_subject_count) }}</strong></td>
+                <td class="number-cell">{{ formatPercent(teacher.campus_proportion_pct) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="card daily-trend-card" aria-labelledby="daily-trend-title">
         <div class="section-heading">
           <div>
@@ -260,6 +295,7 @@ const loading = ref(true);
 const errorMessage = ref('');
 const entries = ref([]);
 const days = ref([]);
+const teacherContributions = ref([]);
 const totals = ref({ regular_subject_count: 0, tutoring_trial_subject_count: 0, payroll_subject_count: 0, final_payroll_subject_count: 0, regular_hours: 0, tutoring_trial_hours: 0, session_count: 0 });
 const currentDate = ref(new Date());
 const startDate = ref(monthStart(currentDate.value));
@@ -314,6 +350,7 @@ function monthStart(date) { return `${date.getFullYear()}-${String(date.getMonth
 function monthEnd(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()).padStart(2, '0')}`; }
 function emptyDay(date) { return { date, regular_subject_count: 0, tutoring_trial_subject_count: 0, payroll_subject_count: 0, session_count: 0 }; }
 function formatCount(value) { const number = Number(value ?? 0); return (Number.isFinite(number) ? number : 0).toFixed(2); }
+function formatPercent(value) { return `${formatCount(value)}%`; }
 function formatHours(value) { const number = Number(value ?? 0); return (Number.isFinite(number) ? number : 0).toFixed(1); }
 function formatDate(value) { if (!value) return '—'; const [, month, day] = String(value).slice(0, 10).split('-'); return `${month}/${day}`; }
 function shortDate(value) { return formatDate(value); }
@@ -339,10 +376,11 @@ async function loadData() {
     if (serial !== requestSerial) return;
     entries.value = Array.isArray(payload.entries) ? payload.entries : [];
     days.value = Array.isArray(payload.days) ? payload.days : [];
+    teacherContributions.value = Array.isArray(payload.teacher_contributions) ? payload.teacher_contributions : [];
     totals.value = { ...totals.value, ...(payload.totals || {}) };
   } catch (error) {
     if (serial !== requestSerial) return;
-    entries.value = []; days.value = []; errorMessage.value = error?.message || '網路連線逾時，請確認網路後重試。';
+    entries.value = []; days.value = []; teacherContributions.value = []; errorMessage.value = error?.message || '網路連線逾時，請確認網路後重試。';
   } finally { if (serial === requestSerial) loading.value = false; }
 }
 
@@ -363,13 +401,14 @@ input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px s
 .state-card { display: flex; align-items: center; gap: 12px; min-height: 150px; justify-content: center; color: var(--ds-ink-mute); }.state-card--error { justify-content: flex-start; padding: 24px; color: var(--ds-danger); }.state-card--error p { margin: 6px 0 12px; color: var(--ds-ink-mute); }
 .state-icon { font-size: 24px; }.loading-icon { animation: spin 1.1s linear infinite; color: var(--ds-primary); }
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-.daily-trend-card, .detail-card, .disclosure-card { padding: 20px; margin-bottom: 16px; }.section-heading, .detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }.eyebrow { margin: 0 0 4px; color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; } h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }.section-hint, .row-count { color: var(--ds-ink-mute); font-size: 12px; }
+.daily-trend-card, .detail-card, .contribution-card, .disclosure-card { padding: 20px; margin-bottom: 16px; }.section-heading, .detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }.eyebrow { margin: 0 0 4px; color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; } h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }.section-hint, .row-count { color: var(--ds-ink-mute); font-size: 12px; }
 .trend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: 6px; align-items: end; min-height: 144px; }.trend-day { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--ds-ink-mute); padding: 4px 2px; cursor: pointer; }.trend-day:hover, .trend-day--selected { background: var(--ds-primary-wash); color: var(--ds-ink); }.trend-value, .trend-date { font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }.trend-track { display: flex; width: 100%; height: 88px; align-items: flex-end; justify-content: center; border-bottom: 1px solid var(--ds-hairline); }.trend-bar { width: min(22px, 70%); min-height: 5px; border-radius: 6px 6px 2px 2px; background: var(--ds-primary); transition: height .22s ease, background .22s ease; }.trend-day--selected .trend-bar { background: var(--ds-cta); }
 .inline-empty, .table-empty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 100px; color: var(--ds-ink-mute); font-size: 13px; }
 .table-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }.search-field { display: flex; min-width: min(100%, 320px); flex: 1 1 260px; align-items: center; gap: 8px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); padding: 0 10px; }.search-field input { width: 100%; border: 0; outline: 0; padding-left: 0; }.search-field .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 19px; }.filter-field { display: flex; flex-direction: column; gap: 4px; }.clear-focus { margin-left: auto; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.detail-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; }.detail-table th, .detail-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.detail-table thead th { position: sticky; top: 0; z-index: 1; background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.detail-table tbody tr.detail-row:hover { background: var(--ds-canvas-soft); }.detail-table tbody tr:last-child td { border-bottom: 0; }.number-cell { text-align: right !important; font-variant-numeric: tabular-nums; }.highlight-cell { color: var(--ds-cta); }.day-summary-row { background: var(--ds-primary-wash); }.day-summary-row th { color: var(--ds-ink); font-weight: 700; }.day-summary-row th span { margin-left: 8px; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; }.day-summary-row td { border-bottom-color: var(--ds-hairline-input); font-weight: 700; }.date-cell { color: var(--ds-ink-mute); font-variant-numeric: tabular-nums; }.teacher-cell { min-width: 100px; }.subject-name { font-weight: 600; }.campus-pill { display: inline-flex; border: 1px solid var(--ds-hairline-input); border-radius: 999px; padding: 3px 8px; color: var(--ds-ink-secondary); background: var(--ds-canvas); font-size: 12px; }
+.contribution-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.contribution-table { width: 100%; border-collapse: collapse; font-size: 13px; }.contribution-table th, .contribution-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.contribution-table thead th { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.contribution-table tbody tr:last-child th, .contribution-table tbody tr:last-child td { border-bottom: 0; }
 .disclosure-card { padding: 0; }.calc-guide-header, .level-breakdown-header { padding: 12px 16px; }.calc-guide-header h3, .level-breakdown-header h3 { margin: 0; }.calc-guide-toggle, .level-breakdown-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; }.disclosure-body { border-top: 1px solid var(--ds-hairline); padding: 16px; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.7; }.disclosure-body p { margin: 0 0 8px; }.disclosure-body p:last-child { margin-bottom: 0; }.formula-row { display: flex; gap: 16px; padding: 6px 0; border-top: 1px solid var(--ds-hairline); }.formula-row span { min-width: 100px; color: var(--ds-ink-mute); }.compact-copy { color: var(--ds-ink-mute); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); } @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.period-actions { flex-wrap: wrap; }.branch-field { width: 100%; }.branch-field select { width: 100%; } }
-@media (max-width: 560px) { .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }.daily-trend-card, .detail-card, .disclosure-card { padding: 14px; }.section-heading, .detail-heading { flex-direction: column; gap: 6px; }.date-field input { max-width: 142px; }.date-separator { align-self: end; padding-bottom: 9px; }.clear-focus { margin-left: 0; }.formula-row { display: block; }.formula-row span { display: block; margin-bottom: 2px; } }
+@media (max-width: 560px) { .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }.daily-trend-card, .detail-card, .contribution-card, .disclosure-card { padding: 14px; }.section-heading, .detail-heading { flex-direction: column; gap: 6px; }.date-field input { max-width: 142px; }.date-separator { align-self: end; padding-bottom: 9px; }.clear-focus { margin-left: 0; }.formula-row { display: block; }.formula-row span { display: block; margin-bottom: 2px; } }
 </style>
