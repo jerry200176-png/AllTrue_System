@@ -131,6 +131,7 @@ jobs:
     outputs:
       deployable: ${{ steps.detect.outputs.deployable }}
       runtime_base_sha: ${{ steps.detect.outputs.runtime_base_sha }}
+      expected_deployed_application_sha: ${{ steps.detect.outputs.expected_deployed_application_sha }}
       detection_reason: ${{ steps.detect.outputs.detection_reason }}
       runtime_state: ${{ steps.detect.outputs.runtime_state }}
     steps:
@@ -155,6 +156,7 @@ jobs:
 
           from scripts.governance.autonomy_gate import (
               classify_production_runtime,
+              is_application_runtime_path,
               is_deployable_path,
           )
 
@@ -163,14 +165,22 @@ jobs:
           output = os.environ["GITHUB_OUTPUT"]
           manifest_source = None
 
-          def emit(deployable, base_sha, reason, runtime_state="invalid-evidence"):
+          def emit(
+              deployable,
+              base_sha,
+              reason,
+              runtime_state="invalid-evidence",
+              expected_deployed_application_sha="unknown",
+          ):
               with open(output, "a", encoding="utf-8") as stream:
                   stream.write(f"deployable={str(deployable).lower()}\n")
                   stream.write(f"runtime_base_sha={base_sha}\n")
+                  stream.write(f"expected_deployed_application_sha={expected_deployed_application_sha}\n")
                   stream.write(f"detection_reason={reason}\n")
                   stream.write(f"runtime_state={runtime_state}\n")
 
           def successful_deploy_provenance(sha):
+              candidates = []
               try:
                   runs = json.loads(subprocess.check_output(
                       [
@@ -199,8 +209,10 @@ jobs:
                       and job.get("conclusion") == "success"
                       for job in jobs
                   ):
-                      return str(run.get("head_sha") or "").strip().lower()
-              return None
+                      provenance_sha = str(run.get("head_sha") or "").strip().lower()
+                      if provenance_sha == sha:
+                          candidates.append((str(run.get("created_at") or ""), provenance_sha))
+              return max(candidates, key=lambda item: item[0])[1] if candidates else None
 
           try:
               manifest_process = subprocess.run(
@@ -242,13 +254,55 @@ jobs:
               raise SystemExit(0)
 
           if os.environ.get("PHASE") == "parent-portal-smoke":
-              # Explicit protected verification must run even when production
-              # already matches the requested main SHA.
+              # The smoke workflow revision may be newer than the deployed
+              # application revision. Reuse canonical deployment provenance
+              # and the existing path classifier before any fixture/session
+              # call. Only control-plane-only deltas are safe to smoke.
+              comparison_process = subprocess.run(
+                  ["gh", "api", f"/repos/{repo}/compare/{deployed}...{head}"],
+                  text=True,
+                  capture_output=True,
+              )
+              if comparison_process.returncode != 0:
+                  emit(True, deployed, "parent smoke runtime comparison unavailable; fail closed", "invalid-evidence")
+                  raise SystemExit(0)
+              try:
+                  comparison = json.loads(comparison_process.stdout)
+              except ValueError:
+                  emit(True, deployed, "parent smoke runtime comparison was invalid; fail closed", "invalid-evidence")
+                  raise SystemExit(0)
+              expected_application_sha = successful_deploy_provenance(deployed) or "unknown"
+              runtime = classify_production_runtime(
+                  production_sha=deployed,
+                  target_sha=head,
+                  comparison_status=comparison.get("status"),
+                  provenance_sha=expected_application_sha,
+                  manifest_source=manifest_source,
+              )
+              runtime_state = str(runtime["state"])
+              if runtime_state not in {"current", "normal-version-lag"}:
+                  emit(True, deployed, str(runtime["reason"]), runtime_state, expected_application_sha)
+                  raise SystemExit(0)
+              files = [item.get("filename", "") for item in comparison.get("files", [])]
+              application_files = [path for path in files if is_application_runtime_path(path)]
+              if application_files:
+                  print("Application/runtime paths changed after the deployed application revision:")
+                  for path in application_files:
+                      print(f"- {path}")
+                  emit(
+                      True,
+                      deployed,
+                      "parent smoke blocked: application/runtime changes require deployment",
+                      "application-runtime-delta",
+                      expected_application_sha,
+                  )
+                  raise SystemExit(0)
               emit(
                   True,
                   deployed,
-                  "explicit authenticated Parent Portal smoke requested",
-                  "parent-portal-smoke",
+                  "parent smoke provenance verified; workflow/governance-only delta",
+                  "parent-portal-safe",
+                  expected_application_sha,
               )
               raise SystemExit(0)
 
@@ -361,6 +415,10 @@ jobs:
           fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "parent-portal-smoke" ]]; then
+            if [[ "$RUNTIME_STATE" != "parent-portal-safe" ]]; then
+              hold "protected" "manual" "parent smoke provenance is not safe: ${RUNTIME_STATE}; no fixture/session action"
+              exit 0
+            fi
             {
               echo "mode=manual"
               echo "tier=protected"
@@ -1157,7 +1215,10 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           BASE_URL: https://daan.lifenet.com.tw
-          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          WORKFLOW_REVISION: ${{ needs.resolve-target.outputs.target_sha }}
+          PRODUCTION_RUNTIME_SHA: ${{ needs.detect-deployable.outputs.runtime_base_sha }}
+          EXPECTED_DEPLOYED_APPLICATION_SHA: ${{ needs.detect-deployable.outputs.expected_deployed_application_sha }}
+          PROVENANCE_STATE: ${{ needs.detect-deployable.outputs.runtime_state }}
         run: |
           set -euo pipefail
           ssh_dir="$RUNNER_TEMP/parent-portal-smoke-ssh"
@@ -1168,10 +1229,23 @@ jobs:
 
           manifest="$(curl -fsSL --proto '=https' --tlsv1.2 "$BASE_URL/deployment.json")"
           manifest_sha="$(printf '%s' "$manifest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
-          test "$manifest_sha" = "$TARGET_SHA" || {
-            echo "::error::production runtime SHA drifted: manifest=$manifest_sha expected=$TARGET_SHA"
+          test "$PROVENANCE_STATE" = "parent-portal-safe"
+          test "$manifest_sha" = "$PRODUCTION_RUNTIME_SHA" || {
+            echo "::error::production runtime SHA drifted: manifest=$manifest_sha expected_runtime=$PRODUCTION_RUNTIME_SHA"
             exit 1
           }
+          test "$EXPECTED_DEPLOYED_APPLICATION_SHA" = "$PRODUCTION_RUNTIME_SHA" || {
+            echo "::error::canonical application deployment provenance does not match production runtime"
+            exit 1
+          }
+          {
+            echo "## Parent Portal smoke provenance"
+            echo ""
+            echo "- workflow revision: \`$WORKFLOW_REVISION\`"
+            echo "- production runtime SHA: \`$PRODUCTION_RUNTIME_SHA\`"
+            echo "- expected deployed application SHA: \`$EXPECTED_DEPLOYED_APPLICATION_SHA\`"
+            echo "- provenance decision: \`$PROVENANCE_STATE\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           fetch_admin_token() {
             ssh -i "$ssh_dir/deploy_key" \

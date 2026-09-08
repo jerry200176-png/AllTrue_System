@@ -22,6 +22,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_manual_activation,
     environment_protection_is_valid,
     effective_tier,
+    is_application_runtime_path,
     is_deployable_path,
     is_production_activation_sensitive_path,
     parse_declaration,
@@ -132,6 +133,24 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
 """
         scope = classify_activation_scope(paths, patch)
         self.assertEqual(scope["tier_name"], "T1")
+
+    def test_parent_smoke_application_runtime_paths_reuse_deployability_classifier(self):
+        for path in (
+            ".github/workflows/deploy.yml",
+            "scripts/governance/autonomy_gate.py",
+            "scripts/tests/test_deploy_activation_state.py",
+            "frontend/e2e/parent-portal-production.spec.js",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(is_application_runtime_path(path))
+        for path in (
+            "backend/app/Http/Controllers/ParentPortalController.php",
+            "backend/database/migrations/2026_09_08_120000_add_is_test_to_campus_table.php",
+            "frontend/src/pages/ParentPortal.vue",
+            "frontend/package-lock.json",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(is_application_runtime_path(path))
 
     def test_deploy_queue_uses_runtime_manifest_and_full_undeployed_range(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -419,6 +438,10 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
         self.assertIn("unexpected-production-sha", policy)
         self.assertIn("provenance-unknown", policy)
+        self.assertIn("is_application_runtime_path", policy)
+        self.assertIn("expected_deployed_application_sha", self.workflow)
+        self.assertIn("parent-portal-safe", self.workflow)
+        self.assertIn("application-runtime-delta", self.workflow)
 
     def test_admissions_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
         self.assertIn("admissions_funnel_v1:", self.workflow)
