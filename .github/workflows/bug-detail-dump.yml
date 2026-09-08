@@ -1222,12 +1222,14 @@ jobs:
               $rows267 = $db::table("ClassSession as cs")
                 ->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
                 ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->leftJoin("User as teacher", "teacher.id", "=", "sc.TeacherID")
                 ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
                 ->whereIn("cs.id", $affectedIds267)
                 ->orderBy("cs.id")
                 ->get([
                   "cs.id as class_session_id", "cs.StudentClassID as course_id", "sc.StudentID as student_id",
                   "st.CampusID as campus_id", "sc.SubjectID as subject_id", "sub.Subject_Name as subject_name",
+                  "sc.TeacherID as teacher_id", "teacher.Name as teacher_name",
                   "cs.SessionDate as session_date", "cs.StartTime as start_time", "cs.EndTime as end_time",
                   "cs.Status as status", "sc.StartDate as course_start_date", "sc.EndDate as course_end_date",
                   "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
@@ -1238,6 +1240,7 @@ jobs:
                 "class_session_id" => (int)$row->class_session_id, "course_id" => (int)$row->course_id,
                 "student_id" => (int)$row->student_id, "campus_id" => (int)$row->campus_id,
                 "subject_id" => (int)$row->subject_id, "subject_name" => (string)$row->subject_name,
+                "teacher_id" => (int)$row->teacher_id, "teacher_name" => (string)$row->teacher_name,
                 "session_date" => substr((string)$row->session_date, 0, 10),
                 "start_time" => substr((string)$row->start_time, 0, 5),
                 "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
@@ -1284,11 +1287,16 @@ jobs:
             ];
             try {{
               $students259 = $db::table("Student")
-                ->where("CampusID", (int)$bug->CampusID)
                 ->where("name", "like", "%邱致元%")
+                ->orderBy("id")
                 ->get(["id", "CampusID"]);
               $studentIds259 = $students259->pluck("id")->map(fn ($id) => (int)$id)->all();
               $probe259["student_ids"] = $studentIds259;
+              $probe259["student_campus_ids"] = $students259->pluck("CampusID")
+                ->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $probe259["metadata_campus_matches_student"] = $students259->every(
+                fn ($row) => (int)$row->CampusID === (int)$bug->CampusID
+              );
               $courses259 = $studentIds259 === [] ? collect() : $db::table("StudentClass as sc")
                 ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
                 ->whereIn("sc.StudentID", $studentIds259)
