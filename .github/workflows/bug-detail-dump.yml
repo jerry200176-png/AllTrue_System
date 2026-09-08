@@ -1182,6 +1182,16 @@ jobs:
                   "start_time" => substr((string)$row->start_time, 0, 5),
                   "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
                 ])->all();
+              $probe266["candidate_sessions"] = $candidateIds266 === [] ? [] : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateIds266)
+                ->orderBy("SessionDate")->orderBy("StartTime")->orderBy("id")
+                ->get(["id", "StudentClassID as course_id", "SessionDate as session_date", "StartTime as start_time", "EndTime as end_time", "Status as status"])
+                ->map(fn ($row) => [
+                  "class_session_id" => (int)$row->id, "course_id" => (int)$row->course_id,
+                  "session_date" => substr((string)$row->session_date, 0, 10),
+                  "start_time" => substr((string)$row->start_time, 0, 5),
+                  "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
+                ])->all();
               $probe266["decision_grade"] = $conflict266 !== null
                 && (int)$conflict266->campus_id === (int)$bug->CampusID
                 && (string)$conflict266->status !== "cancelled";
