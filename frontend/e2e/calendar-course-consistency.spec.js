@@ -359,6 +359,14 @@ test.describe('production acceptance — calendar/course parity', () => {
     await page.waitForTimeout(250);
     const periodStart = START;
     const periodEnd = END;
+    const dateInputs = page.locator('[data-guide="subject-units-header"] input[type="date"]');
+    await expect(dateInputs).toHaveCount(2);
+    await dateInputs.nth(0).fill(periodStart);
+    const initialPeriodResponse = page.waitForResponse((response) => response.url().includes('/api/v1/finance/subject-units/timeline') && response.status() === 200);
+    await dateInputs.nth(1).fill(periodEnd);
+    await dateInputs.nth(1).dispatchEvent('change');
+    await initialPeriodResponse;
+    await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
     const initial = await assertSubjectUnitsRenderedAgainstApi(page, request, token, periodStart, periodEnd, initialBranch);
 
     const switchedBranch = branchIds.find((branchId) => branchId !== initialBranch);
@@ -368,8 +376,6 @@ test.describe('production acceptance — calendar/course parity', () => {
     await expect(page.locator('.contribution-table tbody tr').first()).toBeVisible({ timeout: 15_000 });
     const switchedCampus = await assertSubjectUnitsRenderedAgainstApi(page, request, token, periodStart, periodEnd, switchedBranch);
 
-    const dateInputs = page.locator('[data-guide="subject-units-header"] input[type="date"]');
-    await expect(dateInputs).toHaveCount(2);
     const widerStart = `${periodStart.slice(0, 7)}-01`;
     const widerEnd = monthEndFor(periodStart);
     await dateInputs.nth(0).fill(widerStart);
