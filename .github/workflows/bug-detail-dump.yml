@@ -1098,6 +1098,99 @@ jobs:
               $probe265["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe266 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 266",
+          ];
+          if ($bugId === 266) {{
+            // #266-specific read-only probe: identify the exact course/session
+            // behind screenshot conflict #35050 and compare it with the
+            // reporter's transfer candidates. Emit IDs and slot coordinates;
+            // never export names or free-form student data.
+            $probe266["applicable"] = true;
+            $probe266["target_scope"] = [
+              "campus_id" => (int)$bug->CampusID, "conflict_session_id" => 35050,
+              "source_session_date" => "2026-08-18", "target_start_date" => "2026-09-08",
+            ];
+            try {{
+              $conflict266 = $db::table("ClassSession as cs")
+                ->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
+                ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->where("cs.id", 35050)
+                ->first([
+                  "cs.id as class_session_id", "cs.StudentClassID as course_id", "sc.StudentID as student_id",
+                  "st.CampusID as campus_id", "sc.SubjectID as subject_id", "sub.Subject_Name as subject_name",
+                  "cs.SessionDate as session_date", "cs.StartTime as start_time", "cs.EndTime as end_time",
+                  "cs.Status as status", "sc.StartDate as course_start_date", "sc.EndDate as course_end_date",
+                  "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
+                  "sc.Stop as stop", "sc.ScheduleMode as schedule_mode", "sc.ClassType as class_type",
+                ]);
+              $probe266["conflict_session"] = $conflict266 ? [
+                "class_session_id" => (int)$conflict266->class_session_id,
+                "course_id" => (int)$conflict266->course_id, "student_id" => (int)$conflict266->student_id,
+                "campus_id" => (int)$conflict266->campus_id, "subject_id" => (int)$conflict266->subject_id,
+                "subject_name" => (string)$conflict266->subject_name,
+                "session_date" => substr((string)$conflict266->session_date, 0, 10),
+                "start_time" => substr((string)$conflict266->start_time, 0, 5),
+                "end_time" => substr((string)$conflict266->end_time, 0, 5),
+                "status" => (string)$conflict266->status,
+                "course_start_date" => $conflict266->course_start_date,
+                "course_end_date" => $conflict266->course_end_date,
+                "session_count" => (int)$conflict266->session_count,
+                "remaining_sessions" => (int)$conflict266->remaining_sessions,
+                "stop" => (int)$conflict266->stop, "schedule_mode" => (string)$conflict266->schedule_mode,
+                "class_type" => (string)$conflict266->class_type,
+              ] : null;
+              $candidate266 = $conflict266 ? $db::table("StudentClass as sc")
+                ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->where("sc.StudentID", (int)$conflict266->student_id)
+                ->where("st.CampusID", (int)$bug->CampusID)
+                ->where("sub.Subject_Name", "English")
+                ->orderBy("sc.StartDate")
+                ->get([
+                  "sc.ID as course_id", "sc.StudentID as student_id", "sc.SubjectID as subject_id",
+                  "sc.StartDate as course_start_date", "sc.EndDate as course_end_date",
+                  "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
+                  "sc.Stop as stop", "sc.ScheduleMode as schedule_mode", "sc.ClassType as class_type",
+                ]) : collect();
+              $probe266["candidate_courses"] = $candidate266->map(fn ($row) => [
+                "course_id" => (int)$row->course_id, "student_id" => (int)$row->student_id,
+                "subject_id" => (int)$row->subject_id,
+                "course_start_date" => $row->course_start_date, "course_end_date" => $row->course_end_date,
+                "session_count" => (int)$row->session_count, "remaining_sessions" => (int)$row->remaining_sessions,
+                "stop" => (int)$row->stop, "schedule_mode" => (string)$row->schedule_mode,
+                "class_type" => (string)$row->class_type,
+              ])->all();
+              $candidateIds266 = $candidate266->pluck("course_id")->map(fn ($id) => (int)$id)->all();
+              $probe266["source_date_sessions"] = $candidateIds266 === [] ? [] : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateIds266)->whereDate("SessionDate", "2026-08-18")
+                ->get(["id", "StudentClassID as course_id", "SessionDate as session_date", "StartTime as start_time", "EndTime as end_time", "Status as status"])
+                ->map(fn ($row) => [
+                  "class_session_id" => (int)$row->id, "course_id" => (int)$row->course_id,
+                  "session_date" => substr((string)$row->session_date, 0, 10),
+                  "start_time" => substr((string)$row->start_time, 0, 5),
+                  "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
+                ])->all();
+              $probe266["target_date_sessions"] = $candidateIds266 === [] ? [] : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateIds266)->whereDate("SessionDate", "2026-09-08")
+                ->get(["id", "StudentClassID as course_id", "SessionDate as session_date", "StartTime as start_time", "EndTime as end_time", "Status as status"])
+                ->map(fn ($row) => [
+                  "class_session_id" => (int)$row->id, "course_id" => (int)$row->course_id,
+                  "session_date" => substr((string)$row->session_date, 0, 10),
+                  "start_time" => substr((string)$row->start_time, 0, 5),
+                  "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
+                ])->all();
+              $probe266["decision_grade"] = $conflict266 !== null
+                && (int)$conflict266->campus_id === (int)$bug->CampusID
+                && (string)$conflict266->status !== "cancelled";
+              $probe266["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe266["decision_grade"] = false;
+              $probe266["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1108,9 +1201,10 @@ jobs:
             249 => $probe249,
             253 => $probe253,
             265 => $probe265,
+            266 => $probe266,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 265], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 265, 266], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1150,6 +1244,7 @@ jobs:
                 "probe_250_transfer_sessions" => $probe250,
                 "probe_251_contract_session_count_payment" => $probe251,
                 "probe_265_teacher_capacity_slot" => $probe265,
+                "probe_266_transfer_conflict" => $probe266,
                 "probe_253_teacher_capacity_orphan_exception" => $probe253,
               ],
               "evidence_generated_at" => gmdate("c"),
