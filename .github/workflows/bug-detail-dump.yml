@@ -1254,10 +1254,12 @@ jobs:
               $probe267["course_session_status_counts"] = $courseIds267 === [] ? [] : $db::table("ClassSession")
                 ->whereIn("StudentClassID", $courseIds267)->get(["StudentClassID as course_id", "Status as status"])
                 ->groupBy("course_id")->map(fn ($items) => $items->groupBy(fn ($row) => (string)$row->status)->map->count()->all())->all();
+              $probe267["report_campus_id"] = (int)$bug->CampusID;
+              $probe267["record_campus_ids"] = $rows267->pluck("campus_id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $probe267["metadata_campus_matches_record"] = $rows267->every(fn ($row) => (int)$row->campus_id === (int)$bug->CampusID);
               $probe267["decision_grade"] = count($affectedIds267) === $rows267->count()
                 && count($studentIds267) === 1 && count($courseIds267) === 1
-                && $rows267->every(fn ($row) => (int)$row->campus_id === (int)$bug->CampusID
-                  && (string)$row->status === "scheduled");
+                && $rows267->every(fn ($row) => (string)$row->status === "scheduled");
               $probe267["error"] = null;
             }} catch (\Throwable $e) {{
               $probe267["decision_grade"] = false;
