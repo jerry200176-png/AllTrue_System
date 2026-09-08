@@ -197,13 +197,13 @@
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
-| GET | `api/v1/bindings` | `BindingController@index` | auth |
-| POST | `api/v1/bindings` | `BindingController@store` | auth |
+| GET | `api/v1/bindings` | `BindingController@index` | role+campus |
+| POST | `api/v1/bindings` | `BindingController@store` | role+campus |
 | GET | `api/v1/bindings/conflicts` | `BindingConflictController@index` | role+campus |
 | POST | `api/v1/bindings/conflicts/{id}/resolve` | `BindingConflictController@resolve` | role+campus |
-| GET | `api/v1/bindings/metrics` | `BindingController@metrics` | auth |
-| GET | `api/v1/bindings/{id}` | `BindingController@show` | auth |
-| DELETE | `api/v1/bindings/{id}` | `BindingController@destroy` | auth |
+| GET | `api/v1/bindings/metrics` | `BindingController@metrics` | role+campus |
+| GET | `api/v1/bindings/{id}` | `BindingController@show` | role+campus |
+| DELETE | `api/v1/bindings/{id}` | `BindingController@destroy` | role+campus |
 
 ## /api/v1/branches (1)
 
