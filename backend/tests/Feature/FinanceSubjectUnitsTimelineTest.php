@@ -172,6 +172,33 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->assertEqualsWithDelta(0.3125, $settlement['payroll_subject_count'], 0.0001);
     }
 
+    public function test_monthly_payroll_keeps_all_subject_buckets_raw_until_final_division(): void
+    {
+        $campus = Campus::factory()->create(['name' => '完整科目數分校']);
+        $director = $this->createUser('director-subject-buckets@example.com', 'A', [$campus->id]);
+        $teacher = $this->createUser('teacher-subject-buckets@example.com', 'T', [$campus->id]);
+
+        $regular = $this->course($campus->id, $teacher['user_id'], 'one_on_two', 1);
+        $this->sessionWithApprovedRecord($regular, $teacher['user_id'], '2026-08-10');
+
+        $tutoring = $this->course($campus->id, $teacher['user_id'], 'tutoring', 1);
+        $this->sessionWithApprovedRecord($tutoring, $teacher['user_id'], '2026-08-11');
+
+        $oneToThree = $this->course($campus->id, $teacher['user_id'], 'one_on_three', 1);
+        $this->sessionWithApprovedRecord($oneToThree, $teacher['user_id'], '2026-08-12');
+        $this->sessionWithApprovedRecord($oneToThree, $teacher['user_id'], '2026-08-13');
+
+        $settlement = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/teacher-eligibility?period=month&start=2026-08-01&end=2026-08-31&branch_id=' . $campus->id)
+            ->assertOk()
+            ->json('teachers.0.settlement');
+
+        $this->assertEqualsWithDelta(1.5, $settlement['regular_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(1.0, $settlement['tutoring_trial_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(0.3125, $settlement['payroll_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(2.0, $settlement['one_to_three_count'], 0.0001);
+    }
+
     public function test_locked_branch_total_also_sums_raw_subject_counts_before_dividing(): void
     {
         $runId = FulltimePayrollLockStore::lock(1, '2026-08', [
