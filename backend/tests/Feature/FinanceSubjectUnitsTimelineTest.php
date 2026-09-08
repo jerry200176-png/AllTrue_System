@@ -85,6 +85,58 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->assertEqualsWithDelta(2.0, $response->json('totals.tutoring_trial_subject_count'), 0.0001);
         $this->assertEqualsWithDelta(6.5, $response->json('totals.payroll_subject_count'), 0.0001);
         $this->assertEqualsWithDelta(0.8125, $response->json('totals.final_payroll_subject_count'), 0.0001);
+        $contribution = $response->json('teacher_contributions.0');
+        $this->assertSame($teacher['user_id'], $contribution['teacher_id']);
+        $this->assertEqualsWithDelta(6.5, $contribution['raw_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(0.8125, $contribution['payroll_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(100.0, $contribution['campus_proportion_pct'], 0.0001);
+    }
+
+    public function test_timeline_reports_each_teachers_raw_campus_contribution_once(): void
+    {
+        $campus = Campus::factory()->create(['name' => '老師貢獻分校']);
+        $director = $this->createUser('director-timeline-contribution@example.com', 'A', [$campus->id]);
+        $teacherA = $this->createUser('teacher-timeline-contribution-a@example.com', 'T', [$campus->id]);
+        $teacherB = $this->createUser('teacher-timeline-contribution-b@example.com', 'T', [$campus->id]);
+
+        // 9 x 3h x 1.5 = 40.5; 2 x 2h x 1.5 = 6. The final /8 belongs
+        // only to each completed aggregate, never to an intermediate row.
+        foreach (range(1, 9) as $day) {
+            $course = $this->course($campus->id, $teacherA['user_id'], 'one_on_one', 1);
+            $course->update(['SessionDuration' => 180]);
+            $session = $this->makeSession($course, sprintf('2026-08-%02d', $day), '16:00:00', '19:00:00', 'completed');
+            LearningRecord::create([
+                'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+                'TeacherID' => $teacherA['user_id'], 'Content' => '老師貢獻正課', 'Subject' => 'Math',
+                'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+                'SessionDate' => sprintf('2026-08-%02d', $day), 'StartTime' => '16:00:00', 'EndTime' => '19:00:00',
+                'SessionDeducted' => true,
+            ]);
+        }
+        foreach ([20, 21] as $day) {
+            $course = $this->course($campus->id, $teacherB['user_id'], 'one_on_one', 1);
+            $session = $this->makeSession($course, sprintf('2026-08-%02d', $day), '16:00:00', '18:00:00', 'completed');
+            LearningRecord::create([
+                'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+                'TeacherID' => $teacherB['user_id'], 'Content' => '老師貢獻正課', 'Subject' => 'Math',
+                'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+                'SessionDate' => sprintf('2026-08-%02d', $day), 'StartTime' => '16:00:00', 'EndTime' => '18:00:00',
+                'SessionDeducted' => true,
+            ]);
+        }
+
+        $contributions = collect($this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/subject-units/timeline?start=2026-08-01&end=2026-08-31&branch_id=' . $campus->id)
+            ->assertOk()
+            ->json('teacher_contributions'))
+            ->keyBy('teacher_id');
+
+        $this->assertEqualsWithDelta(46.5, $contributions->sum('raw_subject_count'), 0.0001);
+        $this->assertEqualsWithDelta(40.5, $contributions[$teacherA['user_id']]['raw_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(5.0625, $contributions[$teacherA['user_id']]['payroll_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta((40.5 / 46.5) * 100, $contributions[$teacherA['user_id']]['campus_proportion_pct'], 0.0001);
+        $this->assertEqualsWithDelta(6.0, $contributions[$teacherB['user_id']]['raw_subject_count'], 0.0001);
+        $this->assertEqualsWithDelta(0.75, $contributions[$teacherB['user_id']]['payroll_subject_count'], 0.0001);
     }
 
     public function test_timeline_deduplicates_approved_record_and_attendance_for_one_session(): void

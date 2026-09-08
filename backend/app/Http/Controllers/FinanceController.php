@@ -580,7 +580,7 @@ class FinanceController extends Controller
         return [
             'period' => ['start' => $range['start'], 'end' => $range['end']],
             'scope' => ['role' => $role, 'branch_id' => null, 'campus_ids' => $campusIds, 'teacher_id' => null],
-            'entries' => [], 'days' => [],
+            'entries' => [], 'days' => [], 'teacher_contributions' => [],
             'totals' => [
                 'date' => null, 'regular_hours' => 0, 'tutoring_trial_hours' => 0,
                 'regular_weighted' => 0, 'tutoring_trial_weighted' => 0,
