@@ -898,7 +898,7 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── W31 Parent Binding Management ──
-    Route::middleware(['auth:sanctum', 'require_password_change'])->group(function () {
+    Route::middleware(['require_auth', 'role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('bindings', [BindingController::class, 'index']);
         Route::get('bindings/metrics', [BindingController::class, 'metrics']);
         Route::get('bindings/{id}', [BindingController::class, 'show'])->whereNumber('id');

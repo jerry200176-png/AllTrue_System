@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.08",
     "date": "2026-09-08",
     "title": "2026.09.08 草稿（未發布）",
-    "summary": "老師科目數不顯示自我分母占比；Portal V1 correctness and existing-data home summary",
+    "summary": "Parent Binding authentication and campus scope；老師科目數不顯示自我分母占比",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "Parent Binding authentication and campus scope",
           "老師科目數不顯示自我分母占比",
           "Portal V1 correctness and existing-data home summary",
           "科目數完整加總後才除以 8"
@@ -33,6 +34,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "Parent Binding authentication and campus scope",
       "老師科目數不顯示自我分母占比",
       "Portal V1 correctness and existing-data home summary",
       "科目數完整加總後才除以 8",

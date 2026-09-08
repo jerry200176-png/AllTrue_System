@@ -32,21 +32,33 @@ class BindingController extends Controller
             'limit'       => ['sometimes', 'integer', 'min:1', 'max:500'],
         ]);
 
+        $allowedCampusIds = $this->allowedCampusIds($request);
+        if ($allowedCampusIds !== null
+            && isset($validated['campus_id'])
+            && !in_array((int) $validated['campus_id'], $allowedCampusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         $bindings = $this->bindingService->listBindings(
             campusId: $validated['campus_id'] ?? null,
             studentId: $validated['student_id'] ?? null,
             lineUserId: $validated['line_user_id'] ?? null,
             limit: (int) ($validated['limit'] ?? 100),
+            allowedCampusIds: $allowedCampusIds,
         );
 
         return response()->json(['bindings' => $bindings, 'count' => $bindings->count()]);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
         $binding = $this->bindingService->findBinding($id);
         if (!$binding) {
             return response()->json(['error' => 'Binding not found'], 404);
+        }
+
+        if (!$this->campusIsAllowed($request, (int) $binding->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
         return response()->json(['binding' => $binding]);
@@ -60,6 +72,10 @@ class BindingController extends Controller
             'campus_id'     => ['required', 'integer', 'min:1'],
             'correlation_id' => ['sometimes', 'string', 'uuid'],
         ]);
+
+        if (!$this->campusIsAllowed($request, (int) $validated['campus_id'])) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
 
         $result = $this->bindingService->createBinding(
             studentId: (int) $validated['student_id'],
@@ -77,8 +93,16 @@ class BindingController extends Controller
         return response()->json($result, $status);
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
+        $binding = $this->bindingService->findBinding($id);
+        if (!$binding) {
+            return response()->json(['error' => 'Binding not found'], 404);
+        }
+        if (!$this->campusIsAllowed($request, (int) $binding->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         $deleted = $this->bindingService->deleteBinding($id);
         if (!$deleted) {
             return response()->json(['error' => 'Binding not found'], 404);
@@ -123,11 +147,41 @@ class BindingController extends Controller
             'days'      => ['sometimes', 'integer', 'min:1', 'max:90'],
         ]);
 
+        $allowedCampusIds = $this->allowedCampusIds($request);
+        if ($allowedCampusIds !== null
+            && isset($validated['campus_id'])
+            && !in_array((int) $validated['campus_id'], $allowedCampusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         $metrics = $this->bindingService->metrics(
             campusId: isset($validated['campus_id']) ? (int) $validated['campus_id'] : null,
             days: (int) ($validated['days'] ?? 7),
+            allowedCampusIds: $allowedCampusIds,
         );
 
         return response()->json($metrics);
+    }
+
+    /** @return int[]|null null means super_admin may access all campuses. */
+    private function allowedCampusIds(Request $request): ?array
+    {
+        if ($request->attributes->get('auth_role') === 'super_admin') {
+            return null;
+        }
+
+        return collect($request->attributes->get('auth_campus_ids', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function campusIsAllowed(Request $request, int $campusId): bool
+    {
+        $allowedCampusIds = $this->allowedCampusIds($request);
+
+        return $allowedCampusIds === null || in_array($campusId, $allowedCampusIds, true);
     }
 }

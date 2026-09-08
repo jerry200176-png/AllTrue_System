@@ -25,7 +25,7 @@ final class BindingService
     // ── Query ──────────────────────────────────────────────
 
     /** @return Collection<int, object> */
-    public function listBindings(?int $campusId = null, ?int $studentId = null, ?string $lineUserId = null, int $limit = 100): Collection
+    public function listBindings(?int $campusId = null, ?int $studentId = null, ?string $lineUserId = null, int $limit = 100, ?array $allowedCampusIds = null): Collection
     {
         $q = DB::table('student_line_bindings')
             ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
@@ -43,6 +43,9 @@ final class BindingService
 
         if ($campusId !== null) {
             $q->where('student_line_bindings.campus_id', $campusId);
+        }
+        if ($allowedCampusIds !== null) {
+            $q->whereIn('student_line_bindings.campus_id', $allowedCampusIds);
         }
         if ($studentId !== null) {
             $q->where('student_line_bindings.student_id', $studentId);
@@ -193,7 +196,7 @@ final class BindingService
     // ── Orphan Detection (P1-3) ────────────────────────────
 
     /** @return Collection<int, object> */
-    public function findOrphanBindings(): Collection
+    public function findOrphanBindings(?array $allowedCampusIds = null): Collection
     {
         // Orphans: bindings where student no longer exists or is disabled
         return DB::table('student_line_bindings')
@@ -211,6 +214,7 @@ final class BindingService
                 $q->whereNull('Student.id')
                   ->orWhere('Student.enable', 0);
             })
+            ->when($allowedCampusIds !== null, fn ($q) => $q->whereIn('student_line_bindings.campus_id', $allowedCampusIds))
             ->orderBy('student_line_bindings.bound_at', 'desc')
             ->get();
     }
@@ -236,7 +240,7 @@ final class BindingService
     // ── Cross-Campus Conflict Detection (P2-1) ─────────────
 
     /** @return Collection<int, object> */
-    public function findCrossCampusConflicts(): Collection
+    public function findCrossCampusConflicts(?array $allowedCampusIds = null): Collection
     {
         // Find line_user_ids with bindings in multiple campuses
         $conflictedLineUsers = DB::table('student_line_bindings')
@@ -266,6 +270,7 @@ final class BindingService
                 'pcca.mode as access_mode',
             ])
             ->whereIn('student_line_bindings.line_user_id', $conflictedLineUsers)
+            ->when($allowedCampusIds !== null, fn ($q) => $q->whereIn('student_line_bindings.campus_id', $allowedCampusIds))
             ->orderBy('student_line_bindings.line_user_id')
             ->orderBy('student_line_bindings.bound_at', 'desc')
             ->get();
@@ -274,23 +279,35 @@ final class BindingService
     // ── Metrics (P3-1) ─────────────────────────────────────
 
     /** @return array<string, mixed> */
-    public function metrics(?int $campusId = null, int $days = 7): array
+    public function metrics(?int $campusId = null, int $days = 7, ?array $allowedCampusIds = null): array
     {
         $end = now();
         $start = now()->subDays($days);
 
-        $totalBindings = DB::table('student_line_bindings')->count();
-        $activeBindings = DB::table('student_line_bindings')
+        $totalBindingsQuery = DB::table('student_line_bindings');
+        $activeBindingsQuery = DB::table('student_line_bindings')
             ->join('Student', 'student_line_bindings.student_id', '=', 'Student.id')
-            ->where('Student.enable', 1)
-            ->count();
-        $orphanCount = $this->findOrphanBindings()->count();
-        $crossCampusConflicts = $this->findCrossCampusConflicts()->groupBy('line_user_id')->count();
+            ->where('Student.enable', 1);
+        foreach ([$totalBindingsQuery, $activeBindingsQuery] as $query) {
+            if ($campusId !== null) {
+                $query->where('student_line_bindings.campus_id', $campusId);
+            }
+            if ($allowedCampusIds !== null) {
+                $query->whereIn('student_line_bindings.campus_id', $allowedCampusIds);
+            }
+        }
+        $totalBindings = $totalBindingsQuery->count();
+        $activeBindings = $activeBindingsQuery->count();
+        $orphanCount = $this->findOrphanBindings($allowedCampusIds)->when($campusId !== null, fn ($rows) => $rows->where('campus_id', $campusId))->count();
+        $crossCampusConflicts = $this->findCrossCampusConflicts($allowedCampusIds)
+            ->when($campusId !== null, fn ($rows) => $rows->where('campus_id', $campusId))
+            ->groupBy('line_user_id')->count();
 
         // Attempt stats from PB-00 log
         $attempts = DB::table('parent_binding_attempts')
             ->whereBetween('occurred_at', [$start, $end])
             ->when($campusId, fn ($q) => $q->where('campus_id', $campusId))
+            ->when($allowedCampusIds !== null && $campusId === null, fn ($q) => $q->whereIn('campus_id', $allowedCampusIds))
             ->selectRaw("
                 COUNT(*) as total,
                 SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as successes,

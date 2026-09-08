@@ -1,3 +1,8 @@
+## 2026-09-08 — fix(authz): enforce Parent Binding API authentication and campus scope
+<!-- release-notes: silent_ship=silent-2026-09-08-binding-api-authz -->
+- Parent binding management now explicitly enforces the existing AuthToken authentication path and is limited to directors and super admins; directors remain scoped to their assigned campuses.
+- Unauthenticated, teacher, parent-session, and cross-campus director requests are rejected without changing Sanctum, billing, identity, or Parent Portal behavior.
+
 ## 2026-09-08 — fix(finance): 老師科目數不顯示自我分母占比
 <!-- release-notes: staff_update=staff-2026-09-08-subject-count-teacher-scope -->
 - 老師的科目數統計保留自己的原始科目數與核薪科目數；只有主任在可查看完整分校範圍時顯示分校占比，避免把老師自己的資料誤算成 100%。
