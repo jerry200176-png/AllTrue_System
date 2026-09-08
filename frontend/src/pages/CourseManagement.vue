@@ -365,8 +365,12 @@
                       </template>
                     </td>
                     <td>
-                      <span :class="['small', 'btn-status', paymentStatusButtonClass(c)]">{{ paymentStatusButtonLabel(c) }}</span>
-                      <button type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">帳務</button>
+                      <span
+                        :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
+                        role="status"
+                        title="付款狀態提示；請使用「前往帳務中心」處理"
+                      >{{ paymentStatusButtonLabel(c) }}</span>
+                      <button type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">前往帳務中心</button>
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                       <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
                         已繳清；另有回報待核對。
@@ -673,7 +677,11 @@
                     <div class="price-line">應繳 ${{ formatMoney(row.course.Charge ?? row.course.charge ?? 0) }}</div>
                   </td>
                   <td>
-                    <span :class="['small', 'btn-status', paymentStatusButtonClass(row.course)]">{{ paymentStatusButtonLabel(row.course) }}</span>
+                    <span
+                      :class="['small', 'payment-status-badge', paymentStatusButtonClass(row.course)]"
+                      role="status"
+                      title="付款狀態提示；請使用「前往帳務中心」處理"
+                    >{{ paymentStatusButtonLabel(row.course) }}</span>
                   </td>
                   <td>
                     <template v-if="row.reports?.[0]">
@@ -6233,11 +6241,16 @@ onUnmounted(() => {
 }
 
 .payment-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 4px;
+  row-gap: 2px;
   margin-top: 4px;
   font-size: 12px;
   color: var(--ds-success);
   line-height: 1.45;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .payment-summary-label {
@@ -6583,8 +6596,8 @@ button.danger:disabled {
   border-top: 1px solid #e2e8f0;
 }
 
-.btn-status {
-  cursor: pointer;
+.payment-status-badge {
+  cursor: default;
   border-radius: 999px !important;
   font-weight: 900 !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
