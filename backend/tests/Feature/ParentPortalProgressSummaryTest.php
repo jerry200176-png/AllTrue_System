@@ -128,6 +128,7 @@ class ParentPortalProgressSummaryTest extends TestCase
             DB::table('LearningRecord')->insert([
                 'StudentClassID' => $course->ID,
                 'ClassSessionID' => $session->id,
+                'TeacherID' => 1,
                 'Subject' => '英文',
                 'SessionDate' => $sessionDate,
                 'StartTime' => '18:00',
