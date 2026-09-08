@@ -34,6 +34,14 @@ class GovernanceSimplificationTest(unittest.TestCase):
         self.assertIn("name: Golden scenarios report", ci)
         self.assertIn("name: Presubmit Checks", presubmit)
 
+    def test_verified_case_specific_workflow_is_retired_with_evidence(self):
+        inventory = self.read("docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json")
+        self.assertNotIn("234-renewal-overlap-repair.yml\": {\n      \"classification\"", inventory)
+        self.assertIn("\"retired_workflows\"", inventory)
+        self.assertIn("234-renewal-overlap-repair.yml", inventory)
+        self.assertIn("31685594666", inventory)
+        self.assertFalse((ROOT / ".github/workflows/234-renewal-overlap-repair.yml").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

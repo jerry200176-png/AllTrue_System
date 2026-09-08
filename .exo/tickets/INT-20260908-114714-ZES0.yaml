@@ -1,0 +1,51 @@
+id: INT-20260908-114714-ZES0
+title: 'Retire verified one-off #234 production repair workflow'
+intent: 'Retire verified one-off #234 production repair workflow'
+kind: intent
+brain_dump: 'Retire only .github/workflows/234-renewal-overlap-repair.yml after GitHub
+  issue #1740 closure and successful execute/post-verify run 31685594666. Preserve
+  the existing artisan command and tests as historical evidence. Do not change application
+  behavior, production data, authorization semantics, permissions, branch protection,
+  live rulesets, billing, scheduling, or session-counter semantics.'
+boundary: Only modify the retired workflow inventory record, an evidence-preserving
+  governance test, and the one verified one-off workflow. No production execution
+  or authorization changes.
+success_condition: 'The verified #234 workflow is no longer active; inventory and
+  tests prove active-marker coverage and retirement rationale; focused checks and
+  required CI pass.'
+risk: medium
+priority: 2
+labels:
+- governance
+scope:
+  allow:
+  - .github/workflows/234-renewal-overlap-repair.yml
+  - docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json
+  - scripts/tests/test_governance_simplification.py
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+  - .github/workflows/deploy.yml
+budgets:
+  max_files_changed: 3
+  max_loc_changed: 120
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-08T11:47:14+08:00'
+children: []
+resource_profile: default
