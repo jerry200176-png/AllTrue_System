@@ -22,7 +22,7 @@
 | 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
 | 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`/Cursor) |
 | 哪些只是歷史？ | Paths under `docs/archive/` + files marked Historical; radar `runs/` = generated evidence |
-| bug 如何追溯到 production？ | [`878-release-deploy-trace.md`](runbooks/878-release-deploy-trace.md) → in-app bug → PR → deploy Actions → `version.json` / repair run → KG row ([`knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)) |
+| bug 如何追溯到 production？ | [`878-release-deploy-trace.md`](runbooks/878-release-deploy-trace.md) → in-app bug → PR → target SHA/deploy Actions → `deployment.json` backend/frontend identity → health/smoke → repair run/KG row ([`knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)) |
 | 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
@@ -253,7 +253,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
 | `docs/archive/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
 | `docs/AI_DOC_LITERACY.md` | AI 讀檔協議 stub；速讀卡已整合進本 INDEX |
-| `docs/QA_GOLDEN_SCENARIOS.md` | Golden § ↔ CI（Presubmit CHECK 6 + `.github/scripts/golden-ci-report.sh`）|
+| `docs/QA_GOLDEN_SCENARIOS.md` | Golden § ↔ canonical CI job `.github/scripts/golden-ci-report.sh` |
 
 ### 業務規則
 | 檔案 | 一行說明 |

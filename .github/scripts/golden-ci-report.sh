@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Golden scenarios — path → § mapping for CI / Presubmit (no manual checkboxes).
+# Golden scenarios — path → § mapping for the canonical CI job (no manual checkboxes).
 # See docs/QA_GOLDEN_SCENARIOS.md
 set -euo pipefail
 

@@ -17,7 +17,6 @@ const contracts = {
   '.github/workflows/presubmit.yml': ['gate'],
   '.github/workflows/secret-scan.yml': ['block-secret-files', 'gitleaks'],
   '.github/workflows/ui-smoke.yml': ['ui-smoke'],
-  '.github/workflows/control-plane-enforce.yml': ['enforce'],
   '.github/workflows/high-risk-test-gate.yml': ['gate'],
   '.github/workflows/missing-tests-warn.yml': ['warn'],
 };
