@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 459 api/* routes · generated 2026-09-05
+> Source: `php artisan route:list --json` · 460 api/* routes · generated 2026-09-08
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -414,6 +414,12 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/github/issues` | `GitHubIssueController@index` | role |
+
+## /api/v1/global-search (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/global-search` | `GlobalSearchController@index` | role+campus |
 
 ## /api/v1/health (2)
 

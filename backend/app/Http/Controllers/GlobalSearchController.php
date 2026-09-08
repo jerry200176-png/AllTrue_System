@@ -87,13 +87,13 @@ class GlobalSearchController extends Controller
             ->pluck('name', 'id');
 
         return $query->map(fn (Student $student) => [
-            'id' => (int) $student->id,
+            'id' => (int) $student->getAttribute('id'),
             'type' => 'student',
-            'title' => (string) $student->name,
-            'subtitle' => $this->gradeLabel((int) $student->ClassID),
-            'meta' => $this->campusLabel($campuses[(int) $student->CampusID] ?? null),
-            'student_id' => (int) $student->id,
-            'campus_id' => (int) $student->CampusID,
+            'title' => (string) $student->getAttribute('name'),
+            'subtitle' => $this->gradeLabel((int) $student->getAttribute('ClassID')),
+            'meta' => $this->campusLabel($campuses[(int) $student->getAttribute('CampusID')] ?? null),
+            'student_id' => (int) $student->getAttribute('id'),
+            'campus_id' => (int) $student->getAttribute('CampusID'),
         ])->values()->all();
     }
 
@@ -146,14 +146,14 @@ class GlobalSearchController extends Controller
             ->pluck('name', 'id');
 
         return $query->map(fn (User $teacher) => [
-            'id' => (int) $teacher->id,
+            'id' => (int) $teacher->getAttribute('id'),
             'type' => 'teacher',
-            'title' => (string) $teacher->Name,
+            'title' => (string) $teacher->getAttribute('Name'),
             'subtitle' => '老師',
             'meta' => $this->campusLabel($this->joinLabels(
-                ($campusRows->get($teacher->id) ?? collect())->map(fn ($row) => $campuses[(int) $row->CampusID] ?? null)->filter()->all()
+                ($campusRows->get($teacher->getAttribute('id')) ?? collect())->map(fn ($row) => $campuses[(int) $row->CampusID] ?? null)->filter()->all()
             )),
-            'teacher_id' => (int) $teacher->id,
+            'teacher_id' => (int) $teacher->getAttribute('id'),
         ])->values()->all();
     }
 

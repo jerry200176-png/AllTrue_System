@@ -108,9 +108,7 @@ function emitSelection(kind, item) {
   text-align: center;
 }
 
-.global-search-status-error {
-  color: var(--ds-danger, #b42318);
-}
+.global-search-status-error { color: var(--ds-danger); }
 
 .global-search-retry {
   display: block;
@@ -159,17 +157,17 @@ function emitSelection(kind, item) {
 .global-search-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .global-search-item-subtitle,
 .global-search-item-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ds-ink-mute); font-size: 12px; }
-.global-search-item-badge { margin-left: auto; min-width: 22px; padding: 1px 6px; border-radius: 999px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; text-align: center; }
+.global-search-item-badge { margin-left: auto; min-width: 22px; padding: 1px 6px; border-radius: 999px; background: var(--ds-danger); color: var(--ds-on-primary); font-size: 10px; font-weight: 700; text-align: center; }
 
 :global(.more-sheet) .global-search-description,
 :global(.more-sheet) .global-search-status,
-:global(.more-sheet) .global-search-empty { color: #94a3b8; }
-:global(.more-sheet) .global-search-group-title { color: #64748b; }
-:global(.more-sheet) .global-search-item { color: #cbd5e1; background: rgba(148, 163, 184, 0.1); border-color: rgba(148, 163, 184, 0.15); }
+:global(.more-sheet) .global-search-empty { color: var(--ds-ink-mute); }
+:global(.more-sheet) .global-search-group-title { color: var(--ds-ink-mute); }
+:global(.more-sheet) .global-search-item { color: var(--ds-ink-secondary); background: rgba(148, 163, 184, 0.1); border-color: rgba(148, 163, 184, 0.15); }
 :global(.more-sheet) .global-search-item:hover,
-:global(.more-sheet) .global-search-item.active { color: #f8fafc; background: rgba(148, 163, 184, 0.2); }
+:global(.more-sheet) .global-search-item.active { color: var(--ds-ink); background: rgba(148, 163, 184, 0.2); }
 :global(.more-sheet) .global-search-item-subtitle,
-:global(.more-sheet) .global-search-item-meta { color: #94a3b8; }
+:global(.more-sheet) .global-search-item-meta { color: var(--ds-ink-mute); }
 
 @media (max-width: 480px) {
   .global-search-item { min-height: 52px; }
