@@ -17,6 +17,7 @@ on:
         type: choice
         options:
           - application-deploy
+          - parent-portal-smoke
           - pop-bootstrap
           - phase1-create
           - phase2-cutover
@@ -31,7 +32,7 @@ on:
         default: "9"
         type: string
       confirm:
-        description: "Type the phase-specific confirmation phrase; application deploy uses ACTIVATE_PRODUCTION:<target_sha>, POP bootstrap uses BOOTSTRAP_POP_MACHINE:<target_sha>:CAMPUS:<campus_id>"
+        description: "Type the phase-specific confirmation phrase; application deploy uses ACTIVATE_PRODUCTION:<target_sha>, parent smoke uses VERIFY_PARENT_PORTAL:<target_sha>, POP bootstrap uses BOOTSTRAP_POP_MACHINE:<target_sha>:CAMPUS:<campus_id>"
         required: true
         type: string
       admissions_funnel_v1:
@@ -66,7 +67,7 @@ jobs:
   resolve-target:
     name: Resolve exact activation target
     needs: contract-test
-    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy')) }}
+    if: ${{ needs.contract-test.result == 'success' && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch' && (inputs.phase == 'application-deploy' || inputs.phase == 'parent-portal-smoke' || inputs.phase == 'pop-bootstrap')) || (github.event_name == 'repository_dispatch' && github.event.action == 'autonomous-production-deploy')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
@@ -240,6 +241,17 @@ jobs:
               )
               raise SystemExit(0)
 
+          if os.environ.get("PHASE") == "parent-portal-smoke":
+              # Explicit protected verification must run even when production
+              # already matches the requested main SHA.
+              emit(
+                  True,
+                  deployed,
+                  "explicit authenticated Parent Portal smoke requested",
+                  "parent-portal-smoke",
+              )
+              raise SystemExit(0)
+
           comparison_process = subprocess.run(
               ["gh", "api", f"/repos/{repo}/compare/{deployed}...{head}"],
               text=True,
@@ -344,6 +356,16 @@ jobs:
               echo "tier=protected"
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "parent-portal-smoke" ]]; then
+            {
+              echo "mode=manual"
+              echo "tier=protected"
+              echo "pr_number=manual"
+              echo "reason=explicit authenticated Parent Portal fixture and smoke verification"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -608,6 +630,7 @@ jobs:
           fi
           case "$PHASE" in
             application-deploy) EXPECTED="ACTIVATE_PRODUCTION:${TARGET_SHA}" ;;
+            parent-portal-smoke) EXPECTED="VERIFY_PARENT_PORTAL:${TARGET_SHA}" ;;
             pop-bootstrap) EXPECTED="BOOTSTRAP_POP_MACHINE:${TARGET_SHA}:CAMPUS:${CAMPUS_ID}" ;;
             *) echo "::error::Unsupported activation phase; no production action was executed."; exit 1 ;;
           esac
@@ -656,7 +679,7 @@ jobs:
   deploy:
     name: Deploy to Production
     needs: [resolve-target, detect-deployable, classify-activation, production-activation]
-    if: ${{ always() && inputs.phase != 'pop-bootstrap' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success')) }}
+    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
     # Serialize only the side-effecting executor. Read-only preflight and
@@ -1105,6 +1128,176 @@ jobs:
           fi
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
+
+  parent-portal-smoke:
+    name: Authenticated Parent Portal production smoke
+    needs: [resolve-target, detect-deployable, classify-activation, production-activation]
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.phase == 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: alltrue-production-side-effects-v2
+      cancel-in-progress: false
+    steps:
+      - name: Checkout exact smoke revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-target.outputs.target_sha }}
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Provision/reuse synthetic fixture through canonical QA path
+        id: fixture
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BASE_URL: https://daan.lifenet.com.tw
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          ssh_dir="$RUNNER_TEMP/parent-portal-smoke-ssh"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+
+          manifest="$(curl -fsSL --proto '=https' --tlsv1.2 "$BASE_URL/deployment.json")"
+          manifest_sha="$(printf '%s' "$manifest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
+          test "$manifest_sha" = "$TARGET_SHA" || {
+            echo "::error::production runtime SHA drifted: manifest=$manifest_sha expected=$TARGET_SHA"
+            exit 1
+          }
+
+          fetch_admin_token() {
+            ssh -i "$ssh_dir/deploy_key" \
+              -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+              "$PI_SSH_USER@$PI_SSH_HOST" 'cd /home/admin/backend && php artisan tinker --no-ansi --execute='\''$row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")->join("User as u","u.id","=","t.user_id")->where("u.type","S")->where("t.expires_at",">",now())->orderByDesc("t.expires_at")->select("t.token")->first(); if (!$row) { throw new \RuntimeException("no valid super admin session"); } echo $row->token;'\'''
+          }
+
+          admin_token="$(fetch_admin_token)"
+          test -n "$admin_token"
+          echo "::add-mask::$admin_token"
+          qa_session() {
+            curl -fsSL --proto '=https' --tlsv1.2 \
+              -H "Authorization: Bearer $admin_token" \
+              -H 'Accept: application/json' \
+              -X POST "$BASE_URL/api/v1/admin/qa/parent-fixture/session"
+          }
+
+          first="$(qa_session)"
+          second="$(qa_session)"
+          summary="$(FIRST="$first" SECOND="$second" python3 - <<'PY'
+          import base64, json, os, re
+
+          first = json.loads(os.environ["FIRST"])
+          second = json.loads(os.environ["SECOND"])
+          f = first["fixture"]
+          s = second["fixture"]
+          required = ("campus_id", "student_id", "guardian_id", "student_guardian_id")
+          if any(key not in f for key in required):
+              raise SystemExit("fixture response missing required IDs")
+          if any(f[key] != s[key] for key in required):
+              raise SystemExit("repeated fixture run changed canonical IDs")
+          if f.get("is_test") is not True:
+              raise SystemExit("fixture campus is not marked is_test")
+          token = str(second["session"]["token"])
+          if not re.fullmatch(r"[A-Za-z0-9]{48}", token):
+              raise SystemExit("fixture session token shape was unexpected")
+          print(json.dumps({
+              "campus_id": int(f["campus_id"]),
+              "student_id": int(f["student_id"]),
+              "guardian_id": int(f["guardian_id"]),
+              "student_guardian_id": int(f["student_guardian_id"]),
+              "parent_session_id": int(second["session"]["parent_session_id"]),
+              "session_b64": base64.b64encode(token.encode()).decode(),
+          }))
+          PY
+          )"
+          campus_id="$(printf '%s' "$summary" | python3 -c 'import json,sys; print(json.load(sys.stdin)["campus_id"])')"
+          student_id="$(printf '%s' "$summary" | python3 -c 'import json,sys; print(json.load(sys.stdin)["student_id"])')"
+          guardian_id="$(printf '%s' "$summary" | python3 -c 'import json,sys; print(json.load(sys.stdin)["guardian_id"])')"
+          student_guardian_id="$(printf '%s' "$summary" | python3 -c 'import json,sys; print(json.load(sys.stdin)["student_guardian_id"])')"
+          parent_session_id="$(printf '%s' "$summary" | python3 -c 'import json,sys; print(json.load(sys.stdin)["parent_session_id"])')"
+          session_b64="$(printf '%s' "$summary" | python3 -c 'import json,sys; print(json.load(sys.stdin)["session_b64"])')"
+          parent_token="$(printf '%s' "$session_b64" | base64 -d)"
+          echo "::add-mask::$parent_token"
+          printf 'SMOKE_PARENT_SESSION_B64=%s\n' "$session_b64" >> "$GITHUB_ENV"
+          {
+            echo "## Synthetic Parent Portal fixture"
+            echo ""
+            echo "- runtime SHA: \`$manifest_sha\`"
+            echo "- campus_id: \`$campus_id\`"
+            echo "- student_id: \`$student_id\`"
+            echo "- guardian_id: \`$guardian_id\`"
+            echo "- student_guardian_id: \`$student_guardian_id\`"
+            echo "- parent_session_id: \`$parent_session_id\` (previous fixture session revoked by canonical service)"
+            echo "- repeated run: same campus/student/guardian/link IDs"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          branches="$(curl -fsSL --proto '=https' --tlsv1.2 "$BASE_URL/api/v1/branches")"
+          students_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/parent-students.json" -w '%{http_code}' -H "Authorization: Bearer $admin_token" "$BASE_URL/api/v1/students?per_page=all")"
+          test "$students_status" = 200 || { echo "::error::staff student selector returned HTTP $students_status"; exit 1; }
+          parent_binding_status="$(curl -sS --proto '=https' --tlsv1.2 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $parent_token" "$BASE_URL/api/v1/bindings")"
+          test "$parent_binding_status" = 401 || { echo "::error::parent token reached binding management with HTTP $parent_binding_status"; exit 1; }
+          admin_binding_status="$(curl -sS --proto '=https' --tlsv1.2 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $admin_token" "$BASE_URL/api/v1/bindings")"
+          test "$admin_binding_status" = 200 || { echo "::error::super_admin binding read returned HTTP $admin_binding_status"; exit 1; }
+          qa_parent_status="$(curl -sS --proto '=https' --tlsv1.2 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $parent_token" -X POST "$BASE_URL/api/v1/admin/qa/parent-fixture/session")"
+          test "$qa_parent_status" = 401 || { echo "::error::parent token reached QA fixture path with HTTP $qa_parent_status"; exit 1; }
+          CAMPUS_ID="$campus_id" STUDENT_ID="$student_id" BRANCHES="$branches" STUDENTS="$(cat "$RUNNER_TEMP/parent-students.json")" python3 - <<'PY'
+          import json, os
+          campus_id = int(os.environ["CAMPUS_ID"])
+          student_id = int(os.environ["STUDENT_ID"])
+          branches = json.loads(os.environ["BRANCHES"])
+          students = json.loads(os.environ["STUDENTS"])
+          rows = students.get("data", students) if isinstance(students, dict) else students
+          if campus_id in [int(row.get("id", 0)) for row in branches]:
+              raise SystemExit("synthetic campus leaked into public campus selector")
+          if student_id in [int(row.get("id", 0)) for row in rows]:
+              raise SystemExit("synthetic student leaked into staff student selector")
+          print("normal campus/student selectors exclude synthetic fixture")
+          PY
+          {
+            echo "- parent session → /api/v1/bindings: HTTP $parent_binding_status (expected 401)"
+            echo "- super_admin → /api/v1/bindings: HTTP $admin_binding_status (expected 200)"
+            echo "- parent session → QA fixture path: HTTP $qa_parent_status (expected 401)"
+            echo "- normal campus/student selectors: synthetic IDs absent"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run authenticated desktop/mobile Parent Portal smoke
+        working-directory: frontend
+        env:
+          CI: 'true'
+          SMOKE_BASE_URL: https://daan.lifenet.com.tw
+        run: npx playwright test e2e/parent-portal-production.spec.js --project=chromium
+
+      - name: Upload Parent Portal smoke report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: parent-portal-production-smoke-${{ github.run_id }}
+          path: frontend/playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
 
   pop-bootstrap:
     name: Bootstrap POP machine on Pi
