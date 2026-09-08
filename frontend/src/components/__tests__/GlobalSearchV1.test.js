@@ -52,4 +52,14 @@ describe('global search V1 contract', () => {
     await wrapper.get('.global-search-retry').trigger('click');
     expect(wrapper.emitted('retry')).toHaveLength(1);
   });
+
+  it('keeps navigation features visible before a search query is entered', () => {
+    const wrapper = mount(GlobalSearchResults, {
+      props: {
+        featureGroups: [{ key: 'teaching-tools', title: '教學工具', items: [{ page: 'subject-units', label: '科目數統計', icon: 'calculate' }] }],
+      },
+    });
+
+    expect(wrapper.find('button.global-search-item').text()).toContain('科目數統計');
+  });
 });
