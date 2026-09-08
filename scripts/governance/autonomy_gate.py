@@ -405,7 +405,7 @@ def environment_protection_is_valid(
 
     if event_name != "workflow_dispatch":
         return False
-    if phase not in {"application-deploy", "pop-bootstrap", "phase1-create", "phase2-cutover", "phase3-lock"}:
+    if phase not in {"application-deploy", "parent-portal-smoke", "pop-bootstrap", "phase1-create", "phase2-cutover", "phase3-lock"}:
         return False
     if required_reviewers_configured:
         return False
