@@ -285,9 +285,10 @@ jobs:
               "deploy" => "34067575564",
             ],
             255 => [
-              "reply" => "已完成修正並上線：正職老師的核薪科目總數現在會以公司／老師為完整範圍計算；切換分校不會把同一位老師在其他分校的科目漏掉。科目數統計頁也會顯示目前分校與日期範圍內各老師的原始貢獻、最終核薪值與占比，方便核對 5.8125 與 5.06（40.5 對應 5.0625）的差異。請重新整理正職薪資要件與科目數統計頁確認；若仍不一致，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2539",
-              "rev" => "e610eeb9711f4d60125be86dd9b5f16f04745368",
+              "reply" => "補充驗證：已再次核對正職老師的核薪科目總數與科目數統計，現在會保留完整公司／老師範圍及各老師原始貢獻，並在最後總額才計算核薪值。請重新整理正職薪資要件與科目數統計頁確認；若仍不一致，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2539",
+              "rev" => "e610eeb9711f4d60125be86dd9b5f16b04745368",
               "deploy" => "34184824381",
+              "repair_resolved" => true,
             ],
             256 => [
               "reply" => "已完成修正並上線：科目數統計現在會先保留正課、輔導及其他適用類別的原始科目數，完整加總完成後才在最終總額除以 8，不會再把各類別或中間小計先除造成數字漂移；頁面也提供分校正職老師按月份查看的科目數摘要。請重新整理科目數統計頁確認；若仍不一致，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2540",
@@ -304,14 +305,17 @@ jobs:
             }
             $status = (string)$bug->status;
             if (in_array($status, ["resolved", "closed"], true)) {
-              $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
-              continue;
+              if ($status !== "resolved" || empty($cfg["repair_resolved"])) {
+                $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
+                continue;
+              }
             }
             // Walk legal transitions toward resolved
             $path = [];
             if ($status === "new") $path = ["triaged", "in_progress", "resolved"];
             elseif ($status === "triaged") $path = ["in_progress", "resolved"];
             elseif ($status === "in_progress") $path = ["resolved"];
+            elseif ($status === "resolved" && !empty($cfg["repair_resolved"])) $path = ["in_progress", "resolved"];
             else {
               $results[] = ["id" => $bugId, "action" => "unsupported_status", "status" => $status];
               continue;
