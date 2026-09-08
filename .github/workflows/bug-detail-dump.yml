@@ -1090,12 +1090,12 @@ jobs:
               ])->all();
               $probe265["log_files_checked"] = [];
               $probe265["matching_log_lines"] = [];
-              foreach (glob(storage_path("logs/laravel*.log")) ?: [] as $logFile265) {
+              foreach (glob(storage_path("logs/laravel*.log")) ?: [] as $logFile265) {{
                 $probe265["log_files_checked"][] = basename($logFile265);
                 $size265 = @filesize($logFile265) ?: 0;
                 $offset265 = max(0, $size265 - 200000);
                 $tail265 = @file_get_contents($logFile265, false, null, $offset265, 200000) ?: "";
-                foreach (preg_split('/\\R/', $tail265) ?: [] as $line265) {
+                foreach (preg_split('/\\R/', $tail265) ?: [] as $line265) {{
                   if (strpos($line265, "2026-09-08") === false) continue;
                   if (!preg_match('/substitute\\.availability_decision|capacity_conflict|TEACHER_CAPACITY_CONFLICT|上限/i', $line265)) continue;
                   $probe265["matching_log_lines"][] = [
@@ -1104,8 +1104,8 @@ jobs:
                     "excerpt" => substr($line265, 0, 1000),
                   ];
                   if (count($probe265["matching_log_lines"]) >= 40) break 2;
-                }
-              }
+                }}
+              }}
               $concreteIds265 = $sessions265->pluck("student_id")
                 ->merge($schedules265->pluck("student_id"))->map(fn ($id) => (int)$id)->unique()->values()->all();
               $probe265["concrete_unique_student_count"] = count($concreteIds265);
