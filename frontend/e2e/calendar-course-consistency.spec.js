@@ -142,6 +142,10 @@ function displayedNumber(text) {
   return Number(String(text).replace('%', '').trim());
 }
 
+function displayedNumberAtTwoDecimals(value) {
+  return Number(Number(value).toFixed(2));
+}
+
 function monthEndFor(value) {
   const [year, month] = String(value).slice(0, 7).split('-').map(Number);
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
@@ -170,9 +174,9 @@ async function assertSubjectUnitsRenderedAgainstApi(page, request, token, start,
   await expect(row).toBeVisible({ timeout: 15_000 });
   const cells = row.locator('td');
   await expect(cells).toHaveCount(3);
-  expect(displayedNumber(await cells.nth(0).innerText())).toBeCloseTo(Number(firstApiTeacher.raw_subject_count), 2);
-  expect(displayedNumber(await cells.nth(1).innerText())).toBeCloseTo(Number(firstApiTeacher.payroll_subject_count), 2);
-  expect(displayedNumber(await cells.nth(2).innerText())).toBeCloseTo(Number(firstApiTeacher.campus_proportion_pct), 2);
+  expect(displayedNumber(await cells.nth(0).innerText())).toBe(displayedNumberAtTwoDecimals(firstApiTeacher.raw_subject_count));
+  expect(displayedNumber(await cells.nth(1).innerText())).toBe(displayedNumberAtTwoDecimals(firstApiTeacher.payroll_subject_count));
+  expect(displayedNumber(await cells.nth(2).innerText())).toBe(displayedNumberAtTwoDecimals(firstApiTeacher.campus_proportion_pct));
 
   return { payload, rawDenominator };
 }
