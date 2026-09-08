@@ -182,7 +182,7 @@
       >
         <div class="sidebar-more-header">
           <div>
-            <span class="sidebar-more-kicker">全域搜尋 · ⌘K</span>
+            <span class="sidebar-more-kicker">導覽快速尋找 · ⌘K</span>
             <h2 id="sidebar-more-title">更多功能</h2>
           </div>
           <button
@@ -202,9 +202,9 @@
             v-model="sidebarMoreSearchQuery"
             type="search"
             class="sidebar-more-search-input"
-            placeholder="搜尋學生、老師、課程或功能…"
-            aria-label="搜尋學生、老師、課程或功能"
-            @keydown="onGlobalSearchKeydown"
+            placeholder="搜尋功能、報表或設定…"
+            aria-label="搜尋更多功能"
+            @keydown.enter="onSidebarMoreSearchEnter"
           />
           <button
             v-if="sidebarMoreSearchQuery"
@@ -216,17 +216,35 @@
             <span class="material-symbols-outlined" aria-hidden="true">close</span>
           </button>
         </div>
-        <GlobalSearchResults
-          :query="sidebarMoreSearchQuery"
-          :entity-groups="globalSearchEntityGroups"
-          :feature-groups="activeGlobalSearchFeatureGroups"
-          :loading="globalSearchLoading"
-          :error="globalSearchError"
-          :active-index="globalSearchActiveIndex"
-          :get-badge-count="getItemBadgeCount"
-          @select="onGlobalSearchSelect"
-          @retry="retryGlobalSearch"
-        />
+        <p v-if="!sidebarMoreSearchQuery" class="sidebar-more-description">只搜尋功能入口、報表與設定，不會搜尋學生或課程資料。</p>
+        <div v-if="sidebarMoreFilteredGroups.length === 0" class="sidebar-more-empty" role="status">
+          <p>找不到符合「{{ sidebarMoreSearchQuery }}」的功能</p>
+          <button type="button" class="sidebar-more-empty-reset" @click="sidebarMoreSearchQuery = ''">清除搜尋</button>
+        </div>
+        <div v-else class="sidebar-more-groups">
+          <div v-for="group in sidebarMoreFilteredGroups" :key="group.key" class="sidebar-more-group">
+            <div class="sidebar-more-group-title">{{ group.title }}</div>
+            <div class="sidebar-more-items">
+              <button
+                v-for="item in group.items"
+                :key="item.page"
+                type="button"
+                class="sidebar-more-item"
+                :class="{ active: active === item.page }"
+                :disabled="isNavItemDisabled(item.page)"
+                :aria-current="active === item.page ? 'page' : undefined"
+                @click="setActivePage(item.page)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">{{ item.icon }}</span>
+                <span class="sidebar-more-item-label">{{ item.label }}</span>
+                <span
+                  v-if="getItemBadgeCount(item) > 0"
+                  :class="['sidebar-more-item-badge', { 'nav-badge-urgent': isItemBadgeUrgent(item) }]"
+                >{{ getItemBadgeCount(item) > 99 ? '99+' : getItemBadgeCount(item) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -286,9 +304,10 @@
           v-model="mobileMoreSearchQuery"
           type="search"
           class="sidebar-more-search-input"
-          placeholder="搜尋學生、老師、課程或功能…"
-          aria-label="搜尋學生、老師、課程或功能"
-          @keydown="onGlobalSearchKeydown"
+          placeholder="搜尋更多功能…"
+          aria-label="搜尋更多功能"
+          @keydown.esc.prevent="closeMoreMenu()"
+          @keydown.enter="onMobileMoreSearchEnter"
         />
         <button
           v-if="mobileMoreSearchQuery"
@@ -300,18 +319,33 @@
           <span class="material-symbols-outlined" aria-hidden="true">close</span>
         </button>
       </div>
-      <GlobalSearchResults
-        :query="mobileMoreSearchQuery"
-        :entity-groups="globalSearchEntityGroups"
-        :feature-groups="activeGlobalSearchFeatureGroups"
-        :loading="globalSearchLoading"
-        :error="globalSearchError"
-        :active-index="globalSearchActiveIndex"
-        :mobile="true"
-        :get-badge-count="getMoreSheetItemBadgeCount"
-        @select="onGlobalSearchSelect"
-        @retry="retryGlobalSearch"
-      />
+      <p v-if="!mobileMoreSearchQuery" class="sidebar-more-description">只搜尋未固定在底部導覽的功能，不會搜尋學生或課程資料。</p>
+      <div v-if="mobileMoreFilteredGroups.length === 0" class="sidebar-more-empty" role="status">
+        <p>找不到符合「{{ mobileMoreSearchQuery }}」的功能</p>
+        <button type="button" class="sidebar-more-empty-reset" @click="mobileMoreSearchQuery = ''">清除搜尋</button>
+      </div>
+      <div v-else>
+        <div v-for="group in mobileMoreFilteredGroups" :key="group.key" class="more-group">
+          <div class="more-group-label">{{ group.title }}</div>
+          <div class="more-group-items">
+            <button
+              v-for="item in group.items"
+              :key="item.page"
+              type="button"
+              :class="['more-item', { active: active === item.page }]"
+              :aria-current="active === item.page ? 'page' : undefined"
+              @click="setActivePage(item.page); closeMoreMenu(false)"
+            >
+              <span class="material-symbols-outlined">{{ item.icon }}</span>
+              <span>{{ item.label }}</span>
+              <span
+                v-if="getMoreSheetItemBadgeCount(item) > 0"
+                class="more-item-badge"
+              >{{ getMoreSheetItemBadgeCount(item) > 99 ? '99+' : getMoreSheetItemBadgeCount(item) }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Main Content -->
@@ -853,8 +887,6 @@ import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
-import GlobalSearchResults from './components/GlobalSearchResults.vue';
-import { createLatestRequestGuard, fetchGlobalSearch, MIN_QUERY_LENGTH } from './lib/globalSearchApi';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -1276,12 +1308,6 @@ const showMoreMenu = ref(false);
 const mobileMoreSearchQuery = ref('');
 const mobileMoreSearchInput = ref(null);
 const showSidebarMore = ref(false);
-const globalSearchSurface = ref('desktop');
-const globalSearchState = ref({ groups: [], loading: false, error: '' });
-const globalSearchActiveIndex = ref(-1);
-const globalSearchRequestGuard = createLatestRequestGuard();
-let globalSearchTimer = null;
-let globalSearchAbortController = null;
 const mobileTabItems = computed(() => {
   return getMobileTabItems(role.value);
 });
@@ -1644,14 +1670,12 @@ function onNavigateFromNotifications(payload = {}) {
   dashboardReturnContext.value = createDashboardReturnContext({ fromPage: active.value, target });
   if (target === 'calendar') {
     calendarResetToken.value += 1;
-    initialTeacherIdForNav.value = normalizeNavigationId(teacherId);
     calendarInitialIntent.value = intent || '';
     calendarInitialStudentId.value = normalizeNavigationId(studentId);
     calendarInitialCourseId.value = normalizeNavigationId(courseId);
     calendarInitialDate.value = typeof date === 'string' ? date.slice(0, 10) : '';
   } else {
     calendarInitialIntent.value = '';
-    initialTeacherIdForNav.value = null;
     clearCalendarNavigationContext();
   }
   if (target === 'tuition-collect') {
@@ -2025,137 +2049,12 @@ const sidebarMoreFilteredGroups = computed(() => {
     .filter(group => group.items.length > 0);
 });
 
-const activeGlobalSearchQuery = computed(() => globalSearchSurface.value === 'mobile'
-  ? mobileMoreSearchQuery.value
-  : sidebarMoreSearchQuery.value);
-const globalSearchEntityGroups = computed(() => globalSearchState.value.groups || []);
-const activeGlobalSearchFeatureGroups = computed(() => {
-  const query = activeGlobalSearchQuery.value.trim().toLowerCase();
-  if (!query) {
-    return globalSearchSurface.value === 'mobile'
-      ? mobileMoreFilteredGroups.value
-      : sidebarMoreFilteredGroups.value;
-  }
-  return sidebarNavGroups.value
-    .map(group => ({
-      ...group,
-      items: group.items.filter(item => item.label.toLowerCase().includes(query)
-        || (group.title && group.title.toLowerCase().includes(query))),
-    }))
-    .filter(group => group.items.length > 0);
-});
-const globalSearchLoading = computed(() => globalSearchState.value.loading);
-const globalSearchError = computed(() => globalSearchState.value.error);
-const globalSearchItems = computed(() => [
-  ...globalSearchEntityGroups.value.flatMap(group => (group.items || []).map(item => ({ kind: 'entity', item }))),
-  ...activeGlobalSearchFeatureGroups.value.flatMap(group => (group.items || []).map(item => ({ kind: 'feature', item }))),
-]);
-
-function clearGlobalSearchRequest() {
-  if (globalSearchTimer) {
-    clearTimeout(globalSearchTimer);
-    globalSearchTimer = null;
-  }
-  if (globalSearchAbortController) {
-    globalSearchAbortController.abort();
-    globalSearchAbortController = null;
+function onSidebarMoreSearchEnter() {
+  const allFilteredItems = sidebarMoreFilteredGroups.value.flatMap(g => g.items);
+  if (allFilteredItems.length === 1) {
+    setActivePage(allFilteredItems[0].page);
   }
 }
-
-function scheduleGlobalSearch(query, { immediate = false } = {}) {
-  clearGlobalSearchRequest();
-  const requestId = globalSearchRequestGuard.next();
-  const normalized = String(query || '').trim();
-  globalSearchActiveIndex.value = -1;
-  if (normalized.length < MIN_QUERY_LENGTH || !session.value?.access_token) {
-    globalSearchState.value = { groups: [], loading: false, error: '' };
-    return;
-  }
-
-  const run = async () => {
-    const controller = new AbortController();
-    globalSearchAbortController = controller;
-    globalSearchState.value = { groups: [], loading: true, error: '' };
-    try {
-      const result = await fetchGlobalSearch(normalized, session.value.access_token, { signal: controller.signal });
-      if (!globalSearchRequestGuard.isCurrent(requestId)) return;
-      globalSearchState.value = { groups: result.groups, loading: false, error: '' };
-    } catch (error) {
-      if (error?.name === 'AbortError' || !globalSearchRequestGuard.isCurrent(requestId)) return;
-      globalSearchState.value = { groups: [], loading: false, error: 'search_failed' };
-    } finally {
-      if (globalSearchRequestGuard.isCurrent(requestId)) globalSearchAbortController = null;
-    }
-  };
-  if (immediate) run();
-  else globalSearchTimer = window.setTimeout(run, 220);
-}
-
-function retryGlobalSearch() {
-  scheduleGlobalSearch(activeGlobalSearchQuery.value, { immediate: true });
-}
-
-function onGlobalSearchKeydown(event) {
-  if (event.key === 'Escape') {
-    if (globalSearchSurface.value === 'mobile') closeMoreMenu();
-    else closeSidebarMore();
-    return;
-  }
-  if (!['ArrowDown', 'ArrowUp', 'Enter'].includes(event.key)) return;
-  const items = globalSearchItems.value;
-  if (items.length === 0) return;
-  event.preventDefault();
-  if (event.key === 'ArrowDown') {
-    globalSearchActiveIndex.value = (globalSearchActiveIndex.value + 1) % items.length;
-    return;
-  }
-  if (event.key === 'ArrowUp') {
-    globalSearchActiveIndex.value = (globalSearchActiveIndex.value - 1 + items.length) % items.length;
-    return;
-  }
-  const index = globalSearchActiveIndex.value >= 0 ? globalSearchActiveIndex.value : (items.length === 1 ? 0 : -1);
-  if (index >= 0) onGlobalSearchSelect(items[index]);
-}
-
-function onGlobalSearchSelect(selection) {
-  const kind = selection?.kind;
-  const item = selection?.item;
-  if (!item) return;
-  if (kind === 'feature') {
-    setActivePage(item.page);
-    return;
-  }
-  const calendarTarget = { target: 'calendar' };
-  if (item.type === 'student') {
-    onNavigateFromNotifications(isDirector.value
-      ? { target: 'students', studentId: item.student_id }
-      : { ...calendarTarget, studentId: item.student_id });
-    return;
-  }
-  if (item.type === 'teacher') {
-    onNavigateFromNotifications({ ...calendarTarget, teacherId: item.teacher_id });
-    return;
-  }
-  if (item.type === 'course') {
-    const payload = {
-      ...calendarTarget,
-      studentId: item.student_id,
-      courseId: item.course_id,
-      teacherId: item.teacher_id,
-      date: item.session_date || '',
-    };
-    onNavigateFromNotifications(isDirector.value
-      ? { target: 'course-mgmt', studentId: item.student_id, studentName: item.student_name, teacherId: item.teacher_id }
-      : payload);
-  }
-}
-
-watch(sidebarMoreSearchQuery, (query) => {
-  if (globalSearchSurface.value === 'desktop') scheduleGlobalSearch(query);
-});
-watch(mobileMoreSearchQuery, (query) => {
-  if (globalSearchSurface.value === 'mobile') scheduleGlobalSearch(query);
-});
 const activeInSidebarMore = computed(() => sidebarMoreGroups.value.some(
   group => group.items.some(item => item.page === active.value),
 ));
@@ -2169,7 +2068,6 @@ function toggleSidebarMore() {
     closeSidebarMore();
     return;
   }
-  globalSearchSurface.value = 'desktop';
   showSidebarMore.value = true;
   sidebarMoreSearchQuery.value = '';
   nextTick(() => {
@@ -2191,7 +2089,6 @@ function toggleMoreMenu() {
     closeMoreMenu();
     return;
   }
-  globalSearchSurface.value = 'mobile';
   mobileMoreSearchQuery.value = '';
   showMoreMenu.value = true;
 }
@@ -2202,6 +2099,14 @@ function closeMoreMenu(restoreFocus = true) {
   mobileMoreSearchQuery.value = '';
   if (restoreFocus && wasOpen) {
     nextTick(() => document.querySelector('#mobile-more-trigger')?.focus());
+  }
+}
+
+function onMobileMoreSearchEnter() {
+  const allFilteredItems = mobileMoreFilteredGroups.value.flatMap(g => g.items);
+  if (allFilteredItems.length === 1) {
+    setActivePage(allFilteredItems[0].page);
+    closeMoreMenu(false);
   }
 }
 

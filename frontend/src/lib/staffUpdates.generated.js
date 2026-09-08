@@ -43,47 +43,6 @@ export const staffUpdates = [
     "version": "2026.09.08"
   },
   {
-    "id": "staff-2026-09-08-global-search-v1",
-    "publishedAt": "2026-09-08",
-    "effectiveAt": null,
-    "audiences": [
-      "director",
-      "teacher"
-    ],
-    "audience": [
-      "director",
-      "teacher"
-    ],
-    "importance": "major",
-    "title": "Ctrl/Cmd-K 全域搜尋",
-    "summary": "從同一個搜尋入口找到已授權的學生、老師、課程與功能。",
-    "items": [
-      "搜尋結果會分成學生、老師、課程／堂次與功能，並顯示分校、科目、老師或下一堂時間等辨識線索。",
-      "點選結果會直接前往既有工作頁；也可用鍵盤上下選取與 Enter 開啟。",
-      "只會顯示目前帳號原本就能查看的資料，找不到或暫時失敗時會清楚提示並可重試。"
-    ],
-    "sections": [
-      {
-        "title": "你現在可以",
-        "items": [
-          "搜尋結果會分成學生、老師、課程／堂次與功能，並顯示分校、科目、老師或下一堂時間等辨識線索。"
-        ]
-      },
-      {
-        "title": "操作更順手",
-        "items": [
-          "點選結果會直接前往既有工作頁；也可用鍵盤上下選取與 Enter 開啟。",
-          "只會顯示目前帳號原本就能查看的資料，找不到或暫時失敗時會清楚提示並可重試。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "changelog:2026-09-08:global-search-v1"
-    ],
-    "date": "2026-09-08",
-    "version": "2026.09.08"
-  },
-  {
     "id": "staff-2026-09-08-feedback-entry-ux",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,
