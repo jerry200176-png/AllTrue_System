@@ -22,7 +22,8 @@ final class ParentPortalTestFixtureService
         }
 
         return DB::transaction(function (): array {
-            $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)
+            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+            $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)
                 ->where('code', config('parent_portal_test.campus_code'))
                 ->lockForUpdate()
                 ->first();
@@ -32,7 +33,8 @@ final class ParentPortalTestFixtureService
             }
 
             if (!$campus) {
-                $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)->create([
+                // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+                $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)->create([
                     'name' => config('parent_portal_test.campus_name'),
                     'code' => config('parent_portal_test.campus_code'),
                     'active' => false,
@@ -53,7 +55,8 @@ final class ParentPortalTestFixtureService
                 ]);
             }
 
-            $students = Student::query()->withoutGlobalScope(OperationalTenantScope::class)
+            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+            $students = Student::withoutGlobalScope(OperationalTenantScope::class)
                 ->where('CampusID', $campus->id)
                 ->get();
             if ($students->count() > 1) {
@@ -62,7 +65,8 @@ final class ParentPortalTestFixtureService
 
             $student = $students->first();
             if (!$student) {
-                $student = Student::query()->withoutGlobalScope(OperationalTenantScope::class)->create([
+                // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+                $student = Student::withoutGlobalScope(OperationalTenantScope::class)->create([
                     'name' => config('parent_portal_test.student_name'),
                     'CampusID' => $campus->id,
                     'ClassID' => 7,
@@ -137,12 +141,14 @@ final class ParentPortalTestFixtureService
     public function createReusableSession(array $fixture): array
     {
         return DB::transaction(function () use ($fixture): array {
-            $student = Student::query()->withoutGlobalScope(OperationalTenantScope::class)
+            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+            $student = Student::withoutGlobalScope(OperationalTenantScope::class)
                 ->whereKey((int) $fixture['student_id'])
                 ->where('CampusID', (int) $fixture['campus_id'])
                 ->firstOrFail();
 
-            $campus = Campus::query()->withoutGlobalScope(OperationalTenantScope::class)
+            // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+            $campus = Campus::withoutGlobalScope(OperationalTenantScope::class)
                 ->whereKey((int) $student->CampusID)
                 ->where('is_test', true)
                 ->firstOrFail();

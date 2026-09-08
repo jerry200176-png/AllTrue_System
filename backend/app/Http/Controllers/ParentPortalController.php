@@ -45,20 +45,14 @@ class ParentPortalController extends Controller
 {
     private function portalStudents()
     {
-        return Student::query()->withoutGlobalScope(OperationalTenantScope::class);
+        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+        return Student::withoutGlobalScope(OperationalTenantScope::class);
     }
 
     private function portalCampuses()
     {
-        return \App\Models\Campus::query()->withoutGlobalScope(OperationalTenantScope::class);
-    }
-
-    private function findPortalStudent(int $studentId): ?Student
-    {
-        /** @var Student|null $student */
-        $student = $this->portalStudents()->find($studentId);
-
-        return $student;
+        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
+        return \App\Models\Campus::withoutGlobalScope(OperationalTenantScope::class);
     }
 
     private function identityService(): StudentIdentityService
@@ -409,7 +403,7 @@ class ParentPortalController extends Controller
             'student_id' => 'required|integer',
         ]);
 
-        $targetStudent = $this->findPortalStudent((int) $data['student_id']);
+        $targetStudent = $this->portalStudents()->find($data['student_id']);
         if (!$targetStudent) {
             SecurityAuditEvent::append('parent.sibling_switch', 'failure', [
                 'subject_type' => 'student', 'subject_id' => $data['student_id'],
@@ -417,7 +411,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        $currentStudent = $this->findPortalStudent((int) $session->StudentID);
+        $currentStudent = $this->portalStudents()->find($session->StudentID);
         $allowed = false;
         $targetGroup = $this->identityService()->groupForStudent((int) $targetStudent->id);
         if ($session->getAttribute('identity_group_id')
@@ -486,7 +480,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $student = $this->findPortalStudent((int) $session->StudentID);
+        $student = $this->portalStudents()->find($session->StudentID);
         if (!$student) {
             return response()->json(['message' => 'Student not found'], 404);
         }
@@ -1974,7 +1968,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $student = $this->findPortalStudent((int) $session->StudentID);
+        $student = $this->portalStudents()->find($session->StudentID);
         if (!$student) {
             return response()->json(['message' => 'Student not found'], 404);
         }
