@@ -1207,6 +1207,63 @@ jobs:
               $probe266["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          $probe267 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 267",
+          ];
+          if ($bugId === 267) {{
+            // #267-specific read-only probe: verify the exact scheduled rows
+            // named by the screenshot's billing-correction error. Emit course
+            // and status metadata only; do not export student names or amounts.
+            $probe267["applicable"] = true;
+            $affectedIds267 = [25574, 28341, 31054, 35051];
+            $probe267["affected_session_ids"] = $affectedIds267;
+            try {{
+              $rows267 = $db::table("ClassSession as cs")
+                ->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
+                ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->leftJoin("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->whereIn("cs.id", $affectedIds267)
+                ->orderBy("cs.id")
+                ->get([
+                  "cs.id as class_session_id", "cs.StudentClassID as course_id", "sc.StudentID as student_id",
+                  "st.CampusID as campus_id", "sc.SubjectID as subject_id", "sub.Subject_Name as subject_name",
+                  "cs.SessionDate as session_date", "cs.StartTime as start_time", "cs.EndTime as end_time",
+                  "cs.Status as status", "sc.StartDate as course_start_date", "sc.EndDate as course_end_date",
+                  "sc.SessionCount as session_count", "sc.RemainingSessions as remaining_sessions",
+                  "sc.UsedSessions as used_sessions", "sc.Paid as paid", "sc.Charge as charge",
+                  "sc.Stop as stop", "sc.ScheduleMode as schedule_mode", "sc.ClassType as class_type",
+                ]);
+              $probe267["affected_sessions"] = $rows267->map(fn ($row) => [
+                "class_session_id" => (int)$row->class_session_id, "course_id" => (int)$row->course_id,
+                "student_id" => (int)$row->student_id, "campus_id" => (int)$row->campus_id,
+                "subject_id" => (int)$row->subject_id, "subject_name" => (string)$row->subject_name,
+                "session_date" => substr((string)$row->session_date, 0, 10),
+                "start_time" => substr((string)$row->start_time, 0, 5),
+                "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
+                "course_start_date" => $row->course_start_date, "course_end_date" => $row->course_end_date,
+                "session_count" => (int)$row->session_count, "remaining_sessions" => (int)$row->remaining_sessions,
+                "used_sessions" => (int)$row->used_sessions, "paid" => (int)$row->paid,
+                "charge" => (int)$row->charge, "stop" => (int)$row->stop,
+                "schedule_mode" => (string)$row->schedule_mode, "class_type" => (string)$row->class_type,
+              ])->all();
+              $studentIds267 = $rows267->pluck("student_id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $courseIds267 = $rows267->pluck("course_id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $probe267["student_count"] = count($studentIds267);
+              $probe267["course_count"] = count($courseIds267);
+              $probe267["course_session_status_counts"] = $courseIds267 === [] ? [] : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $courseIds267)->get(["StudentClassID as course_id", "Status as status"])
+                ->groupBy("course_id")->map(fn ($items) => $items->groupBy(fn ($row) => (string)$row->status)->map->count()->all())->all();
+              $probe267["decision_grade"] = count($affectedIds267) === $rows267->count()
+                && count($studentIds267) === 1 && count($courseIds267) === 1
+                && $rows267->every(fn ($row) => (int)$row->campus_id === (int)$bug->CampusID
+                  && (string)$row->status === "scheduled");
+              $probe267["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe267["decision_grade"] = false;
+              $probe267["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1218,9 +1275,10 @@ jobs:
             253 => $probe253,
             265 => $probe265,
             266 => $probe266,
+            267 => $probe267,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 265, 266], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 265, 266, 267], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1261,6 +1319,7 @@ jobs:
                 "probe_251_contract_session_count_payment" => $probe251,
                 "probe_265_teacher_capacity_slot" => $probe265,
                 "probe_266_transfer_conflict" => $probe266,
+                "probe_267_billing_correction" => $probe267,
                 "probe_253_teacher_capacity_orphan_exception" => $probe253,
               ],
               "evidence_generated_at" => gmdate("c"),
