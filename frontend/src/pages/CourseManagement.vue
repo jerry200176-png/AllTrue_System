@@ -6597,7 +6597,7 @@ button.danger:disabled {
 }
 
 .payment-status-badge {
-  cursor: default;
+  cursor: default !important;
   border-radius: 999px !important;
   font-weight: 900 !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
