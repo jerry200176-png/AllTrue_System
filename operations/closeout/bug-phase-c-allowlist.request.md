@@ -4,6 +4,8 @@
 
 # correction 2026-09-08T04:10:00Z — Phase C re-verification for in-app #255: corrected the production revision typo in the prior allowlist entry and re-recorded the resolved evidence against the exact observed production head `e610eeb9711f4d60125be86dd9b5f16b04745368`. This is an evidence/status-log correction only; no application or production business-data change.
 
+# correction 2026-09-08T04:25:00Z — Phase C re-verification for in-app #255: production subsequently advanced through the normal deploy workflow to `c431b9d08b165d37e911f4801acb2bfc884f306d` (Deploy to Pi run `34186501865`, successful). The allowlist now records this exact current production revision and repeats the protected evidence correction; no application or production business-data change.
+
 # kickoff 2026-09-04T15:53:00Z — Phase C write-back for in-app #251: unpaid contract_amended tuition visibility fix merged as `ff177339d9d7b1cdf35c059ef87f5cc6c9cda946` (PR #2462), Deploy to Pi run `33891742470` succeeded, Calendar/Course Production Acceptance (read-only) run `33891824518` succeeded. Root cause: tuition alerts only listed settled_pending closed unpaid courses, so early-settle contract_amended unpaid rows vanished from 帳務中心. No production billing data mutation; public reply requests reporter verification.
 
 # kickoff 2026-09-03T02:42:00Z — Phase C write-back for in-app #247: minimal availability observability merged in `d21ed8de1a2a80034aee50d214ac68b7944f3251`, Deploy to Pi run `33707145582` succeeded, and target-specific read-only evidence confirms the exact slot remains selectable with two seats remaining. No capacity semantics or production data changed; public reply requests reporter verification.
