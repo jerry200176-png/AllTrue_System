@@ -288,11 +288,14 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         $this->sessionWithApprovedRecord($courseA, $teacherA['user_id'], '2026-08-07');
         $this->sessionWithApprovedRecord($courseB, $teacherB['user_id'], '2026-08-07');
 
-        $rows = $this->withHeaders($this->authHeaders($teacherA['token']))
+        $response = $this->withHeaders($this->authHeaders($teacherA['token']))
             ->getJson('/api/v1/finance/subject-units/timeline?start=2026-08-07&end=2026-08-07')
-            ->assertOk()->json('entries');
+            ->assertOk();
+        $rows = $response->json('entries');
         $this->assertCount(1, $rows);
         $this->assertSame($teacherA['user_id'], $rows[0]['teacher_id']);
+        $this->assertSame('teacher', $response->json('scope.role'));
+        $this->assertNull($response->json('teacher_contributions.0.campus_proportion_pct'));
 
         $this->withHeaders($this->authHeaders($teacherA['token']))
             ->getJson('/api/v1/finance/subject-units/timeline?branch_id=' . $outside->id . '&start=2026-08-07&end=2026-08-07')

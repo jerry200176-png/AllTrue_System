@@ -103,7 +103,7 @@
                 <th scope="col">老師</th>
                 <th scope="col" class="number-cell">原始科目數</th>
                 <th scope="col" class="number-cell">核薪科目數（÷ 8）</th>
-                <th scope="col" class="number-cell">占目前範圍</th>
+                <th v-if="showCampusProportion" scope="col" class="number-cell">占目前範圍</th>
               </tr>
             </thead>
             <tbody>
@@ -111,7 +111,7 @@
                 <th scope="row">{{ teacher.teacher_name }}</th>
                 <td class="number-cell">{{ formatCount(teacher.raw_subject_count) }}</td>
                 <td class="number-cell highlight-cell"><strong>{{ formatCount(teacher.payroll_subject_count) }}</strong></td>
-                <td class="number-cell">{{ formatPercent(teacher.campus_proportion_pct) }}</td>
+                <td v-if="showCampusProportion" class="number-cell">{{ formatPercent(teacher.campus_proportion_pct) }}</td>
               </tr>
             </tbody>
           </table>
@@ -306,6 +306,7 @@ const categoryFilter = ref('all');
 const focusedDate = ref('');
 const showCalcGuide = ref(false);
 const showLevelBreakdown = ref(false);
+const responseRole = ref('');
 let requestSerial = 0;
 
 const sessionCampusIds = computed(() => {
@@ -323,7 +324,9 @@ const branchOptions = computed(() => (branches.value || []).filter((branch) => {
 const selectedBranchName = computed(() => selectedBranchId.value === 'all'
   ? '全部可見分校'
   : branchOptions.value.find((branch) => String(branch.id) === String(selectedBranchId.value))?.name || '所選分校');
-const scopeLabel = computed(() => props.userRole === 'teacher' ? `只顯示我的資料 · ${selectedBranchName.value}` : `主任權限範圍 · ${selectedBranchName.value}`);
+const effectiveRole = computed(() => responseRole.value || props.userRole);
+const showCampusProportion = computed(() => effectiveRole.value !== 'teacher');
+const scopeLabel = computed(() => effectiveRole.value === 'teacher' ? `只顯示我的資料 · ${selectedBranchName.value}` : `主任權限範圍 · ${selectedBranchName.value}`);
 const periodLabel = computed(() => `${formatDate(startDate.value)} 至 ${formatDate(endDate.value)}`);
 
 const filteredEntries = computed(() => {
@@ -374,6 +377,7 @@ async function loadData() {
     if (!response.ok) throw new Error(response.status === 403 ? '您沒有查看此分校資料的權限。' : '請稍後再試。');
     const payload = await response.json();
     if (serial !== requestSerial) return;
+    responseRole.value = payload?.scope?.role || props.userRole;
     entries.value = Array.isArray(payload.entries) ? payload.entries : [];
     days.value = Array.isArray(payload.days) ? payload.days : [];
     teacherContributions.value = Array.isArray(payload.teacher_contributions) ? payload.teacher_contributions : [];

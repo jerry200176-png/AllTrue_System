@@ -56,4 +56,10 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(source).toContain('原始科目數先完整加總，最後總計才 ÷ 8');
     expect(source).toContain('const showCalcGuide = ref(false);');
   });
+
+  it('does not expose a self-only campus percentage to teacher users', () => {
+    expect(source).toContain('v-if="showCampusProportion"');
+    expect(source).toContain("const showCampusProportion = computed(() => effectiveRole.value !== 'teacher');");
+    expect(source).toContain('responseRole.value = payload?.scope?.role || props.userRole;');
+  });
 });
