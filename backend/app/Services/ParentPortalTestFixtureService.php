@@ -80,7 +80,7 @@ final class ParentPortalTestFixtureService
                 throw new \RuntimeException('fixture_student_campus_mismatch');
             }
 
-            if (StudentClass::where('StudentID', $student->id)->exists()) {
+            if (StudentClass::query()->where('StudentID', $student->id)->exists()) {
                 throw new \RuntimeException('fixture_has_operational_course_data');
             }
 

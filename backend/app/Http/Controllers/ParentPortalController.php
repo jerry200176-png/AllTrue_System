@@ -43,11 +43,13 @@ use Illuminate\Support\Facades\Validator;
 
 class ParentPortalController extends Controller
 {
+    /** @return \Illuminate\Database\Eloquent\Builder<\App\Models\Student> */
     private function portalStudents()
     {
         return Student::query()->withoutGlobalScope(OperationalTenantScope::class);
     }
 
+    /** @return \Illuminate\Database\Eloquent\Builder<\App\Models\Campus> */
     private function portalCampuses()
     {
         return \App\Models\Campus::query()->withoutGlobalScope(OperationalTenantScope::class);
