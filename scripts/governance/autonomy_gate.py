@@ -77,6 +77,12 @@ _DEPLOYABLE_EXACT = {
     ".github/workflows/deploy.yml",
 }
 
+_WORKFLOW_ONLY_PREFIXES = (
+    ".github/",
+    "scripts/governance/",
+    "scripts/tests/",
+)
+
 _T3_MARKERS = (
     "billing",
     "payment",
@@ -171,6 +177,21 @@ def is_deployable_path(path: str) -> bool:
     if _is_non_runtime_path(path):
         return False
     return path in _DEPLOYABLE_EXACT or path.startswith(("backend/", "frontend/", "scripts/"))
+
+
+def is_application_runtime_path(path: str) -> bool:
+    """Identify paths that require the deployed application revision to move.
+
+    This reuses the deployability classifier while treating workflow and
+    governance-only changes as control-plane revisions. It is intentionally
+    narrower than ``is_deployable_path`` for the protected Parent Portal
+    smoke provenance check.
+    """
+
+    normalized = path.replace("\\", "/")
+    if normalized.startswith(_WORKFLOW_ONLY_PREFIXES):
+        return False
+    return is_deployable_path(normalized)
 
 
 def is_production_activation_sensitive_path(path: str) -> bool:
@@ -438,6 +459,7 @@ __all__ = [
     "classify_production_runtime",
     "environment_protection_is_valid",
     "effective_tier",
+    "is_application_runtime_path",
     "is_deployable_path",
     "is_production_activation_sensitive_path",
     "parse_declaration",
