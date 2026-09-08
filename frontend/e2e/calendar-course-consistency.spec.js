@@ -393,4 +393,27 @@ test.describe('production acceptance — calendar/course parity', () => {
     expect(switchedCampus.rawDenominator).not.toBe(initial.rawDenominator);
     expect(switchedPeriod.rawDenominator).not.toBe(switchedCampus.rawDenominator);
   });
+
+  test('director: 課程付款狀態不是按鈕且帳務入口清楚', async ({ page }) => {
+    test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
+      'missing controlled production director session');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(({ session, branch, releaseVersion }) => {
+      localStorage.setItem('alltrue_session', JSON.stringify(session));
+      localStorage.setItem('app_branch', String(branch));
+      localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
+      sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
+    }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+    await page.goto('/');
+    await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+    await navigate(page, COURSE_NAV_LABEL);
+    await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
+
+    const status = page.locator('.payment-status-badge').first();
+    await expect(status).toBeVisible({ timeout: 15_000 });
+    await expect(status).toHaveAttribute('role', 'status');
+    await expect(status).toHaveCSS('cursor', 'default');
+    await expect(page.locator('.btn-status')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '前往帳務中心', exact: true }).first()).toBeVisible();
+  });
 });

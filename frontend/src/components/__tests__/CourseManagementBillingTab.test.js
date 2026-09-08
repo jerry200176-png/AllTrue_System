@@ -52,6 +52,14 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain('summary.account_last5');
   });
 
+  it('keeps payment status non-interactive and names the real billing action', () => {
+    expect(source).toContain("'payment-status-badge'");
+    expect(source).toContain('role="status"');
+    expect(source).toContain('付款狀態提示；請使用「前往帳務中心」處理');
+    expect(source).not.toContain("'btn-status'");
+    expect(source).not.toContain('>帳務</button>');
+  });
+
   it('uses the persisted rate unit for edit round-trip and course lookup pricing', () => {
     expect(source).toContain("import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';");
     expect(source).toContain('rate_unit: c.rate_unit || \'session\'');
