@@ -185,6 +185,12 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
 
         $tutoring = $this->course($campus->id, $teacher['user_id'], 'tutoring', 1);
         $this->sessionWithApprovedRecord($tutoring, $teacher['user_id'], '2026-08-11');
+        $tutoringSession = ClassSession::query()->where('StudentClassID', $tutoring->ID)->latest('id')->firstOrFail();
+        StudentSignIn::create([
+            'StudentClassID' => $tutoring->ID, 'StudentID' => $tutoring->StudentID,
+            'TeacherID' => $teacher['user_id'], 'ClassSessionID' => $tutoringSession->id,
+            'Status' => 'tutoring', 'SignInDT' => '2026-08-11 16:00:00',
+        ]);
 
         $oneToThree = $this->course($campus->id, $teacher['user_id'], 'one_on_three', 1);
         $this->sessionWithApprovedRecord($oneToThree, $teacher['user_id'], '2026-08-12');
