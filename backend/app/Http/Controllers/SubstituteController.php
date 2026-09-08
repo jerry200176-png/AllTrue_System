@@ -104,19 +104,45 @@ class SubstituteController extends Controller
             'remaining_capacity' => (int) ($s['remaining_capacity'] ?? 0),
         ], $busy);
 
-        // #247: preserve enough decision context to diagnose a future
-        // capacity mismatch. Do not log student/course identifiers or names;
-        // the middleware already assigns the response's X-Trace-Id.
+        // #265: preserve enough decision context to reconstruct a future
+        // capacity mismatch. The diagnostic IDs stay in the existing log only;
+        // the public response remains free of student/course identifiers.
+        $diagnosticSlots = array_map(static fn ($s) => [
+            'start_time'          => $s['start_time'],
+            'end_time'            => $s['end_time'],
+            'campus_id'           => (int) $s['campus_id'],
+            'class_type'          => (string) ($s['class_type'] ?? 'one_on_one'),
+            'configured_capacity' => (int) ($s['configured_capacity'] ?? 0),
+            'occupied_capacity'   => (int) ($s['occupied_capacity'] ?? $s['student_count'] ?? 0),
+            'remaining_capacity'  => (int) ($s['remaining_capacity'] ?? 0),
+            'course_ids'          => array_values(array_map('intval', $s['course_ids'] ?? [])),
+            'class_session_ids'   => array_values(array_map('intval', $s['class_session_ids'] ?? [])),
+            'schedule_ids'        => array_values(array_map('intval', $s['schedule_ids'] ?? [])),
+            'source_types'        => array_values(array_map('strval', $s['source_types'] ?? [])),
+        ], $busy);
+        $campusIds = array_values(array_unique(array_map(
+            static fn (array $slot): int => (int) $slot['campus_id'],
+            $diagnosticSlots
+        )));
+        sort($campusIds, SORT_NUMERIC);
         Log::info('substitute.availability_decision', [
             'trace_id' => $request->attributes->get('trace_id'),
             'teacher_id' => $teacherId,
             'date' => Carbon::parse($data['date'])->toDateString(),
+            'campus_ids' => $campusIds,
+            'period' => [
+                'date' => Carbon::parse($data['date'])->toDateString(),
+                'start_time' => $data['start_time'] ?? null,
+                'end_time' => $data['end_time'] ?? null,
+            ],
             'requested_class_type' => $data['class_type'] ?? null,
             'requested_start_time' => $data['start_time'] ?? null,
             'requested_end_time' => $data['end_time'] ?? null,
             'exclude_student_present' => $excludeStudentId !== null,
+            'decision' => count($diagnosticSlots) > 0 ? 'occupied_slots_found' : 'no_occupied_slot',
+            'result' => 'ok',
             'busy_slot_count' => count($response),
-            'busy_slots' => $response,
+            'busy_slots' => $diagnosticSlots,
         ]);
 
         return response()->json([
