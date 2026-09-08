@@ -133,7 +133,7 @@ class SubstituteService
      *
      * @param  int[]  $excludeScheduleIds
      * @param  int|null  $excludeStudentId
-     * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,remaining_capacity:int}>
+     * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,configured_capacity:int,occupied_capacity:int,remaining_capacity:int,course_ids:int[],class_session_ids:int[],schedule_ids:int[],source_types:string[]}>
      */
     public function collectTeacherBusySlotsWithCapacity(int $teacherId, string $date, array $excludeScheduleIds = [], ?int $excludeStudentId = null): array
     {
@@ -170,6 +170,7 @@ class SubstituteService
                 'cs.StartTime as start_time',
                 'cs.EndTime as end_time',
                 'cs.id as class_session_id',
+                'sc.ID as course_id',
                 'sc.StudentID as student_id',
                 'sc.ClassType as class_type',
                 'st.CampusID as campus_id'
@@ -219,6 +220,10 @@ class SubstituteService
                 'campus_id'  => (int) ($row->campus_id ?? 0),
                 'class_type' => (string) ($row->class_type ?: 'one_on_one'),
                 'student_id' => (int) ($row->student_id ?? 0),
+                'course_id' => (int) ($row->course_id ?? 0),
+                'class_session_id' => (int) ($row->class_session_id ?? 0),
+                'schedule_id' => 0,
+                'source' => 'class_session',
                 'occupancy_key' => 'class_session:' . (int) ($row->class_session_id ?? 0),
             ];
         }
@@ -234,6 +239,10 @@ class SubstituteService
                 'campus_id'  => (int) ($row->branch_id ?? 0),
                 'class_type' => (string) ($row->class_type ?: 'one_on_one'),
                 'student_id' => (int) ($row->student_id ?? 0),
+                'course_id' => (int) ($row->student_course_id ?? 0),
+                'class_session_id' => 0,
+                'schedule_id' => (int) ($row->id ?? 0),
+                'source' => 'schedule',
                 'occupancy_key' => 'schedule:' . (int) ($row->id ?? 0),
             ];
         }
@@ -259,17 +268,59 @@ class SubstituteService
             $studentCount = count($occupants);
             $capacity          = $this->capacityForClassType($slot['class_type']);
             $remainingCapacity = max(0, $capacity - $studentCount);
+            $overlappingSources = array_values(array_filter(
+                $rawSlots,
+                fn (array $other): bool => $this->overlaps(
+                    $slot['start_time'],
+                    $slot['end_time'],
+                    $other['start_time'],
+                    $other['end_time']
+                )
+            ));
             $result[] = [
                 'start_time'         => $slot['start_time'],
                 'end_time'           => $slot['end_time'],
                 'campus_id'          => $slot['campus_id'],
                 'class_type'         => $slot['class_type'],
                 'student_count'      => $studentCount,
+                'configured_capacity'=> $capacity,
+                'occupied_capacity'  => $studentCount,
                 'remaining_capacity' => $remainingCapacity,
+                'course_ids'         => $this->uniquePositiveIds($overlappingSources, 'course_id'),
+                'class_session_ids'  => $this->uniquePositiveIds($overlappingSources, 'class_session_id'),
+                'schedule_ids'       => $this->uniquePositiveIds($overlappingSources, 'schedule_id'),
+                'source_types'       => array_values(array_unique(array_map(
+                    static fn (array $source): string => (string) $source['source'],
+                    $overlappingSources
+                ))),
             ];
         }
 
         return $result;
+    }
+
+    /**
+     * Return distinct positive identifiers for internal capacity diagnostics.
+     * These identifiers are logged only; the public availability response
+     * remains deliberately free of course/session details.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return int[]
+     */
+    private function uniquePositiveIds(array $rows, string $key): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row[$key] ?? 0);
+            if ($id > 0) {
+                $ids[$id] = true;
+            }
+        }
+
+        $ids = array_keys($ids);
+        sort($ids, SORT_NUMERIC);
+
+        return array_map('intval', $ids);
     }
 
     /**

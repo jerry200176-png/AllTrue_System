@@ -176,6 +176,14 @@ class AvailabilityCapacityTest extends TestCase
                 $this->assertSame('13:00', $context['requested_start_time']);
                 $this->assertSame('15:00', $context['requested_end_time']);
                 $this->assertFalse($context['exclude_student_present']);
+                $this->assertSame('no_occupied_slot', $context['decision']);
+                $this->assertSame('ok', $context['result']);
+                $this->assertSame([], $context['campus_ids']);
+                $this->assertSame([
+                    'date' => '2026-05-17',
+                    'start_time' => '13:00',
+                    'end_time' => '15:00',
+                ], $context['period']);
                 $this->assertArrayNotHasKey('student_id', $context);
                 foreach ($context['busy_slots'] as $slot) {
                     $this->assertArrayNotHasKey('student_id', $slot);
@@ -184,6 +192,58 @@ class AvailabilityCapacityTest extends TestCase
                 return true;
             })
         );
+    }
+
+    /**
+     * #265 regression: record enough non-PII source and capacity evidence to
+     * reconstruct a future availability decision without changing the API.
+     */
+    public function test_availability_log_contains_capacity_and_source_ids_without_student_identity(): void
+    {
+        $teacher = $this->createTeacher('teacher-avail-diagnostics@example.com');
+        $student = $this->createStudent('容量診斷學生');
+        $course = $this->createStudentClass($student->id, $teacher->id, 'one_on_three');
+        $session = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-05-19',
+            'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        Log::spy();
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$this->dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/teachers/{$teacher->id}/availability?date=2026-05-19&start_time=16:00&end_time=18:00");
+
+        $response->assertOk();
+        Log::shouldHaveReceived('info')->once()->with(
+            'substitute.availability_decision',
+            Mockery::on(function (array $context) use ($teacher, $course, $session): bool {
+                $this->assertSame($teacher->id, $context['teacher_id']);
+                $this->assertSame([1], $context['campus_ids']);
+                $this->assertSame('occupied_slots_found', $context['decision']);
+                $this->assertSame('ok', $context['result']);
+                $slot = collect($context['busy_slots'])->firstWhere('class_session_ids', [$session->id]);
+                $this->assertNotNull($slot);
+                $this->assertSame(3, $slot['configured_capacity']);
+                $this->assertSame(1, $slot['occupied_capacity']);
+                $this->assertSame(2, $slot['remaining_capacity']);
+                $this->assertSame([$course->ID], $slot['course_ids']);
+                $this->assertSame([$session->id], $slot['class_session_ids']);
+                $this->assertSame([], $slot['schedule_ids']);
+                $this->assertSame(['class_session'], $slot['source_types']);
+                $this->assertArrayNotHasKey('student_id', $context);
+                $this->assertArrayNotHasKey('student_id', $slot);
+                return true;
+            })
+        );
+
+        $publicSlot = $response->json('busy_slots.0');
+        $this->assertIsArray($publicSlot);
+        $this->assertArrayNotHasKey('course_ids', $publicSlot);
+        $this->assertArrayNotHasKey('class_session_ids', $publicSlot);
     }
 
     /**
