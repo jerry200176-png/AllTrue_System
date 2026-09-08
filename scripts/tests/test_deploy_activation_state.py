@@ -279,6 +279,10 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             event_name="workflow_dispatch", phase="pop-bootstrap",
             required_reviewers_configured=False, prevent_self_review=False,
         ))
+        self.assertTrue(environment_protection_is_valid(
+            event_name="workflow_dispatch", phase="parent-portal-smoke",
+            required_reviewers_configured=False, prevent_self_review=False,
+        ))
         self.assertFalse(environment_protection_is_valid(
             event_name="workflow_dispatch", phase="application-deploy",
             required_reviewers_configured=True, prevent_self_review=True,
