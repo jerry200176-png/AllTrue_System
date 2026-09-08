@@ -116,10 +116,20 @@ class ParentPortalProgressSummaryTest extends TestCase
         $course = $this->createStudentClass($student->id);
 
         for ($i = 0; $i < 11; $i++) {
+            $sessionDate = Carbon::today()->subDays($i)->toDateString();
+            $session = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => $sessionDate,
+                'StartTime' => '18:00',
+                'EndTime' => '19:00',
+                'Status' => 'attended',
+            ]);
+
             DB::table('LearningRecord')->insert([
                 'StudentClassID' => $course->ID,
+                'ClassSessionID' => $session->id,
                 'Subject' => '英文',
-                'SessionDate' => Carbon::today()->subDays($i)->toDateString(),
+                'SessionDate' => $sessionDate,
                 'StartTime' => '18:00',
                 'EndTime' => '19:00',
                 'Content' => '第 ' . ($i + 1) . ' 筆已核准評量',
