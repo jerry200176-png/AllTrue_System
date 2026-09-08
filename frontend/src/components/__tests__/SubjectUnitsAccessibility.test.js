@@ -44,6 +44,8 @@ describe('SubjectUnitsPage disclosure accessibility', () => {
     expect(source).toContain('正課');
     expect(source).toContain('輔導／試聽');
     expect(source).toContain('核薪');
+    expect(source).toContain('final_payroll_subject_count');
+    expect(source).toContain('原始合計');
     expect(source).toContain('每日核薪科目數（原始）');
     expect(source).toContain('不在明細或區間統計逐筆除以 8');
     expect(source).toContain('整月符合既有核薪規則的原始科目數合計 ÷ 8');

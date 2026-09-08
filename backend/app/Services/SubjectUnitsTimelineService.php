@@ -185,11 +185,18 @@ final class SubjectUnitsTimelineService
 
         $totals = $this->emptyAggregate(null);
         foreach ($normalised as $entry) $this->mergeAggregate($totals, $entry);
+        $publicTotals = $this->publicAggregate($totals);
+        // The timeline entries and intermediate aggregates stay raw. Only
+        // the complete selected-period total receives the payroll divisor.
+        $publicTotals['final_payroll_subject_count'] = round(
+            ($publicTotals['regular_subject_count'] + $publicTotals['tutoring_trial_subject_count']) / 8,
+            4
+        );
 
         return [
             'entries' => array_map(fn (array $entry) => $this->publicEntry($entry), $normalised),
             'days' => array_values(array_map(fn (array $day) => $this->publicAggregate($day), $days)),
-            'totals' => $this->publicAggregate($totals),
+            'totals' => $publicTotals,
         ];
     }
 
