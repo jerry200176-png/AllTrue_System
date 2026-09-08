@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-08-global-search-v1
+    published_at: "2026-09-08"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: Ctrl/Cmd-K 全域搜尋
+    summary: 從同一個搜尋入口找到已授權的學生、老師、課程與功能。
+    items:
+      - category: added
+        text: 搜尋結果會分成學生、老師、課程／堂次與功能，並顯示分校、科目、老師或下一堂時間等辨識線索。
+      - category: improved
+        text: 點選結果會直接前往既有工作頁；也可用鍵盤上下選取與 Enter 開啟。
+      - category: improved
+        text: 只會顯示目前帳號原本就能查看的資料，找不到或暫時失敗時會清楚提示並可重試。
+    source_refs:
+      - "changelog:2026-09-08:global-search-v1"
+
   - id: staff-2026-09-08-subject-count-final-total
     published_at: "2026-09-08"
     audiences:

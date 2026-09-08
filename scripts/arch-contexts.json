@@ -14,6 +14,7 @@
     { "context": "engagement",     "match": "Engagement|Xp|Badge|Rank|Adoption" },
     { "context": "communication",  "match": "Chat|Notification|Announcement|NotificationSync|FeedbackPush|Telegram|Alert|ActionInbox" },
     { "context": "parent-portal",  "match": "Parent|Line|Liff|Routing|Binding|Guardian" },
+    { "context": "platform",       "match": "GlobalSearch" },
     { "context": "support",        "match": "BugReport|GitHubIssue" },
     { "context": "curriculum",     "match": "Subject|Room|Grade|BaseData" },
     { "context": "analytics",      "match": "BusinessDigest|Analytics|Metric|Insight|Digest|Anomaly|OperationsTrust|DirectorOperations|BranchHealth" },
