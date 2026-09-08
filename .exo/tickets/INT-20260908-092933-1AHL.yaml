@@ -1,0 +1,55 @@
+id: INT-20260908-092933-1AHL
+title: AllTrue Global Search V1
+intent: AllTrue Global Search V1
+kind: intent
+brain_dump: Implement and production-launch permission-aware Ctrl/Cmd-K global search
+  for authorized students, teachers, courses or class sessions, and existing navigation
+  items. Reuse existing authorization and canonical routes; no new permission semantics,
+  migrations, billing, identity, or generic indexing platform.
+boundary: Do not change authentication, authorization policy, billing, payroll, scheduling
+  semantics, attendance semantics, schema or migrations, production data, external
+  integrations, secrets, or expand beyond students teachers courses class sessions
+  and navigation.
+success_condition: Targeted backend and frontend tests, relevant suites, build, CI
+  and PR merge pass; exact merged SHA deploys through deploy workflow; production
+  real browser verifies Ctrl/Cmd-K grouped search, canonical navigation, loading/empty/error
+  behavior, mobile and keyboard behavior, with permission evidence or explicit credential
+  gap.
+risk: medium
+priority: 1
+labels:
+- global-search
+scope:
+  allow:
+  - backend/**
+  - frontend/**
+  - docs/**
+  - .github/**
+  - tests/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/database/migrations/**
+  - backend/app/Policies/**
+  - backend/app/Auth/**
+budgets:
+  max_files_changed: 16
+  max_loc_changed: 1200
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-08T09:29:33+08:00'
+children:
+- TKT-20260908-092942-5Y58
+resource_profile: default

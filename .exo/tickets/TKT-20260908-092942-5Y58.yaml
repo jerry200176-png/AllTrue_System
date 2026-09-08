@@ -1,0 +1,52 @@
+id: TKT-20260908-092942-5Y58
+title: Global Search V1 vertical slice
+intent: Global Search V1 vertical slice
+kind: task
+parent_id: INT-20260908-092933-1AHL
+boundary: Only implement permission-aware read-only search for students, teachers,
+  courses or class sessions and existing navigation in the existing Ctrl/Cmd-K surface.
+  Reuse current authorization/query helpers and canonical navigation. No authz changes,
+  migration, billing, payroll, scheduling or attendance business-semantic changes,
+  production data mutation, secrets, or generic indexing.
+success_condition: Backend and frontend contract tests plus full relevant checks pass;
+  merged exact SHA deploys through official workflow; production verifies real search,
+  grouped rendering, canonical navigation, keyboard/mobile and permission behavior
+  to credential limits.
+priority: 1
+labels:
+- global-search
+scope:
+  allow:
+  - backend/**
+  - frontend/**
+  - docs/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/database/migrations/**
+  - backend/app/Policies/**
+  - backend/app/Auth/**
+budgets:
+  max_files_changed: 16
+  max_loc_changed: 1200
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- vendor/bin/phpunit
+type: feature
+status: todo
+spec_ref: null
+notes:
+- One bounded vertical slice spans the existing Ctrl/Cmd-K surface, one read-only API,
+  contract tests, and required release-note generated files; no new entity capability
+  or business semantic is included.
+blockers: []
+created_at: '2026-09-08T09:29:42+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

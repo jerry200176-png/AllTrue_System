@@ -65,6 +65,7 @@ use App\Http\Controllers\QuestionBankController;
 use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
 use App\Http\Controllers\AdmissionInquiryController;
+use App\Http\Controllers\GlobalSearchController;
 
 
 if (app()->environment('local')) {
@@ -545,6 +546,7 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('global-search', [GlobalSearchController::class, 'index']);
         // #768 教學日誌漏交追蹤（主任看本校各老師、老師看自己）。
         Route::get('teaching-logs/missing', [\App\Http\Controllers\TeachingLogController::class, 'missing']);
         Route::get('students', [StudentController::class, 'index']);

@@ -1,3 +1,9 @@
+## 2026-09-08 — improved(ux): Ctrl/Cmd-K 可搜尋授權的學生、老師與課程
+<!-- release-notes: staff_update=staff-2026-09-08-global-search-v1 -->
+- Ctrl/Cmd-K 與手機「更多功能」現在可依目前帳號已授權範圍搜尋學生、老師、課程／堂次與功能，結果分組並顯示分校、科目、老師與下一堂時間等辨識線索。
+- 結果支援鍵盤上下選取、直接前往既有 canonical workflow，並補上搜尋中、找不到結果、失敗重試與快速連續輸入的最新結果保護。
+- 沿用既有角色、老師與分校授權查詢；不新增 payment、payroll、家長訊息、歷史全文、向量搜尋、migration 或資料寫入。
+
 ## 2026-09-08 — improved(ux): 意見與建議入口更容易使用
 <!-- release-notes: staff_update=staff-2026-09-08-feedback-entry-ux -->
 - 將老師與主任看得到的 Bug 回報、Bug 清單等命名收斂為「意見與建議」，並改用中性的回饋圖示；既有路由、API 與資料分類不變。
