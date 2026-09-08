@@ -1198,6 +1198,43 @@ jobs:
                   "start_time" => substr((string)$row->start_time, 0, 5),
                   "end_time" => substr((string)$row->end_time, 0, 5), "status" => (string)$row->status,
                 ])->all();
+              $candidateSessionIds266 = collect($probe266["candidate_sessions"])
+                ->pluck("class_session_id")->map(fn ($id) => (int)$id)->values()->all();
+              $probe266["schedule_audit_logs"] = \Illuminate\Support\Facades\Schema::hasTable("schedule_audit_logs")
+                ? $db::table("schedule_audit_logs")
+                  ->whereIn("session_id", $candidateSessionIds266)->orderBy("id")
+                  ->get(["id", "session_id", "action_type", "operator_id", "branch_id", "old_data", "new_data", "created_at"])
+                  ->map(fn ($row) => [
+                    "id" => (int)$row->id, "session_id" => (int)$row->session_id,
+                    "action_type" => (string)$row->action_type, "operator_id" => $row->operator_id !== null ? (int)$row->operator_id : null,
+                    "branch_id" => $row->branch_id !== null ? (int)$row->branch_id : null,
+                    "old_data" => $row->old_data, "new_data" => $row->new_data, "created_at" => $row->created_at,
+                  ])->all()
+                : null;
+              $probe266["schedule_change_logs"] = \Illuminate\Support\Facades\Schema::hasTable("schedule_change_log")
+                ? $db::table("schedule_change_log")
+                  ->whereIn("student_course_id", $candidateIds266)->orderBy("id")
+                  ->get(["id", "schedule_id", "student_course_id", "original_schedule_date", "original_start_time", "from_date", "from_time", "to_date", "to_time", "actor_id", "reason", "created_at"])
+                  ->map(fn ($row) => [
+                    "id" => (int)$row->id, "schedule_id" => (int)$row->schedule_id,
+                    "student_course_id" => (int)$row->student_course_id,
+                    "original_schedule_date" => $row->original_schedule_date,
+                    "original_start_time" => $row->original_start_time, "from_date" => $row->from_date,
+                    "from_time" => $row->from_time, "to_date" => $row->to_date, "to_time" => $row->to_time,
+                    "actor_id" => $row->actor_id !== null ? (int)$row->actor_id : null,
+                    "reason" => $row->reason, "created_at" => $row->created_at,
+                  ])->all()
+                : null;
+              $courseRefs266 = array_map(fn ($id) => \App\Models\SecurityAuditEvent::ref("student_class", (int)$id), $candidateIds266);
+              $probe266["security_audit_events"] = \Illuminate\Support\Facades\Schema::hasTable("security_audit_events")
+                ? $db::table("security_audit_events")
+                  ->whereIn("subject_ref", $courseRefs266)->orderBy("occurred_at")
+                  ->get(["event_type", "occurred_at", "outcome", "metadata"])
+                  ->map(fn ($row) => [
+                    "event_type" => (string)$row->event_type, "occurred_at" => $row->occurred_at,
+                    "outcome" => (string)$row->outcome, "metadata" => $row->metadata,
+                  ])->all()
+                : null;
               $probe266["decision_grade"] = $conflict266 !== null
                 && (int)$conflict266->campus_id === (int)$bug->CampusID
                 && (string)$conflict266->status !== "cancelled";
