@@ -354,21 +354,23 @@ async function installApiMocks(page, mode, pageName = '') {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          data: mode === 'dialog' ? [{
+          data: mode === 'dialog' || mode === 'long' ? [{
             id: 'notification-tuition-1',
             Type: 'tuition',
-            Title: '測試繳費通知',
-            Body: '家長已回報繳費，請登記後等待對帳。',
+            Title: mode === 'long' ? '測試繳費通知超長標題用於驗證通知操作區在手機上仍然可讀且可操作' : '測試繳費通知',
+            Body: mode === 'long'
+              ? '家長已回報繳費，請登記後等待對帳。這段較長的內容用來驗證篩選、狀態與主要處理按鈕在長中文通知下不會被截斷或推出可視範圍。'
+              : '家長已回報繳費，請登記後等待對帳。',
             SourceType: 'Invoice',
             Severity: 'high',
             read_at: null,
             ResolvedAt: null,
             Payload: { student_id: 2000, student_name: '測試學生甲', subject: '數學', charge: 1200 },
           }] : [],
-          unread_count: mode === 'dashboard' || mode === 'dialog' ? 1 : 0,
+          unread_count: mode === 'dashboard' || mode === 'dialog' || mode === 'long' ? 1 : 0,
           current_page: 1,
           last_page: 1,
-          total: mode === 'dialog' ? 1 : 0,
+          total: mode === 'dialog' || mode === 'long' ? 1 : 0,
         }),
       });
     }
@@ -569,6 +571,57 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('role', 'tabpanel');
     await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('aria-labelledby', 'notifications-tab-ops');
   });
+
+  for (const vp of [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ]) {
+    test(`inbox operations controls remain reachable @${vp.name}`, async ({ page }) => {
+      fs.mkdirSync(outDir, { recursive: true });
+      const consoleErrors = [];
+      const failedRequests = [];
+      page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+      });
+      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+      await openPilot(page, {
+        pageName: 'inbox',
+        mode: 'long',
+        viewport: vp,
+      });
+      await page.getByRole('tab', { name: '營運通知' }).click();
+
+      await expect(page.getByTestId('at-filter-bar')).toBeVisible();
+      await expect(page.getByTestId('at-toolbar')).toBeVisible();
+      const controls = page.locator('.at-filter-bar select, .at-filter-bar label:has(input[type="checkbox"]), .at-toolbar button, .notification-action');
+      await expect(controls.first()).toBeVisible();
+      await expect(page.getByRole('button', { name: '前往帳務中心' }).first()).toBeVisible();
+
+      const dimensions = await controls.evaluateAll((elements) => elements.map((element) => ({
+        height: element.getBoundingClientRect().height,
+        visible: Boolean(element.offsetWidth || element.offsetHeight || element.getClientRects().length),
+      })));
+      expect(dimensions.every(({ visible }) => visible)).toBe(true);
+      if (vp.width <= 640) {
+        expect(dimensions.filter(({ height }) => height > 0).every(({ height }) => height >= 44)).toBe(true);
+      }
+
+      const firstAction = page.getByRole('button', { name: '前往帳務中心' }).first();
+      await firstAction.focus();
+      await expect(firstAction).toBeFocused();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
+      expect(consoleErrors).toEqual([]);
+      expect(failedRequests).toEqual([]);
+
+      await page.locator('.notifications-page').screenshot({
+        path: path.join(outDir, `vue-inbox-operations-long-${vp.name}.png`),
+      });
+    });
+  }
 
   test('inbox case pager reaches page 3 and item 51 after overlay dismissal', async ({ page }) => {
     await openPilot(page, {

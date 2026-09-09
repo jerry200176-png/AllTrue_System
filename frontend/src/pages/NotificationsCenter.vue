@@ -216,17 +216,19 @@
                 <span v-if="notificationSummary(item)" class="notification-context">{{ notificationSummary(item) }}</span>
               </div>
               <div class="urgent-actions">
-                <button v-if="!item.read_at" type="button" class="small" @click="markRead(item.id)">標記已讀</button>
-                <button
+                <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
+                <AtButton
                   v-if="canGoToTuitionBilling(item)"
-                  type="button"
-                  class="small primary"
+                  shape="rect"
+                  size="sm"
+                  variant="primary"
+                  class="notification-action"
                   @click="goToTarget(item.Type, item)"
                 >
                   前往帳務中心
-                </button>
-                <button v-if="canCopyTuition(item)" type="button" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
-                <button v-if="targetPage(item.Type)" type="button" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
+                </AtButton>
+                <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
+                <AtButton v-if="targetPage(item.Type)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="goToTarget(item.Type, item)">前往處理</AtButton>
               </div>
             </div>
           </div>
@@ -259,17 +261,19 @@
             </div>
 
             <div class="item-actions">
-              <button v-if="!item.read_at" type="button" class="small" @click="markRead(item.id)">標記已讀</button>
-              <button
+              <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
+              <AtButton
                 v-if="canGoToTuitionBilling(item)"
-                type="button"
-                class="small primary"
+                shape="rect"
+                size="sm"
+                variant="primary"
+                class="notification-action"
                 @click="goToTarget(item.Type, item)"
               >
                 前往帳務中心
-              </button>
-              <button v-if="canCopyTuition(item)" type="button" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
-              <button v-if="targetPage(item.Type)" type="button" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
+              </AtButton>
+              <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
+              <AtButton v-if="targetPage(item.Type)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="goToTarget(item.Type, item)">前往處理</AtButton>
             </div>
           </div>
           </template>
@@ -1159,6 +1163,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--ds-control-height-touch, 44px);
   margin-bottom: -1px;
   transition: color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease),
     border-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
@@ -1392,7 +1397,7 @@ onUnmounted(() => {
 .inbox-count-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 13px; color: var(--text-light); }
 .inbox-count-sep::before { content: '·'; margin-right: 10px; color: var(--border); }
 .inbox-stale { margin: 8px 0 0; color: var(--ds-warning); font-size: 13px; }
-.case-cta { min-width: 44px; min-height: var(--ds-control-height-md, 32px); }
+.case-cta { min-width: 44px; min-height: var(--ds-control-height-touch, 44px); }
 .at-ops-page { display: flex; flex-direction: column; gap: var(--ds-space-3, 12px); }
 .controls-card { margin: 0; }
 .list-card { margin: 0; }
@@ -1471,6 +1476,10 @@ onUnmounted(() => {
   justify-content: flex-end;
 }
 
+.notification-action {
+  min-width: 44px;
+}
+
 .pagination-row {
   border-top: 1px solid var(--border);
   margin-top: 8px;
@@ -1487,8 +1496,8 @@ onUnmounted(() => {
   }
 
   .type-tab {
-    padding: 4px 10px;
-    font-size: 12px;
+    padding: 8px 12px;
+    font-size: var(--ds-font-size-base, 14px);
   }
 
   .actions-row {
@@ -1498,6 +1507,18 @@ onUnmounted(() => {
 
   .actions-row button {
     flex: 1;
+  }
+
+  .urgent-actions,
+  .item-actions {
+    align-items: stretch;
+  }
+
+  .notification-action.at-btn {
+    flex: 1 1 100%;
+    min-height: var(--ds-control-height-touch, 44px);
+    white-space: normal;
+    line-height: var(--ds-line-base, 1.5);
   }
 
   .leave-case-list__intro { align-items: flex-start; flex-direction: column; }
