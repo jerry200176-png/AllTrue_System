@@ -236,8 +236,12 @@ jobs:
           $oldPayments = $db::table("Payment")->whereIn("id", [1377, 1418, 1422])->orderBy("id")->get(["id", "InvoiceID", "Amount", "Method"]);
           $field = static function ($row, array $names) {
             $values = $row ? get_object_vars($row) : [];
+            $serialized = $row ? json_decode(json_encode($row), true) : [];
             foreach ($names as $name) {
               if (array_key_exists($name, $values)) return $values[$name];
+            }
+            foreach ($names as $name) {
+              if (is_array($serialized) && array_key_exists($name, $serialized)) return $serialized[$name];
             }
             return null;
           };
@@ -255,9 +259,30 @@ jobs:
           $historyExact = $old && (string)$old->Status === "void" && (int)$old->TotalAmount === 6600 && (int)$old->PaidAmount === 0 && $oldReport && (string)$oldReport->status === "voided" && (int)$oldReport->InvoiceID === 1274 && $oldPaymentsExact;
           $alreadyExact = $sc && (int)$scStudentId === 24 && (int)$scSessionCount === 5 && (int)$scCharge === 9000 && (int)$scPaid === 1 && $endDate === "2026-08-29" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 1 && (string)$augustInvoices[0]->Status === "paid" && (int)$augustInvoices[0]->PaidAmount === 9000 && $confirmed->count() === 1 && $paid === 1 && $sept && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
           $initialExact = $sc && (int)$scStudentId === 24 && (string)$scScheduleMode === "date" && (int)$scSessionCount === 4 && (int)$scCharge === 7200 && (int)$scPaid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$septSessionCount === 5 && (int)$septCharge === 9000 && (string)$septScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
-          $initialExact = $sc && (int)$scStudentId === 24 && (string)$scScheduleMode === "date" && (int)$scSessionCount === 4 && (int)$scCharge === 7200 && (int)$scPaid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$septSessionCount === 5 && (int)$septCharge === 9000 && (string)$septScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
           if (!$sc || (int)$scStudentId !== 24 || (string)$scScheduleMode !== "date" || !$s || (int)$s->StudentClassID !== 2885 || (string)$s->SessionDate !== "2026-08-29") throw new \RuntimeException("business truth precondition mismatch");
-          if (!$alreadyExact && !$initialExact) throw new \RuntimeException("exact #259 precondition mismatch; no write permitted");
+          if (!$alreadyExact && !$initialExact) {
+            echo "#259 precondition diagnostic=" . json_encode([
+              "keys" => [
+                "student_class" => array_keys($sc ? get_object_vars($sc) : []),
+                "september_class" => array_keys($sept ? get_object_vars($sept) : []),
+                "september_invoice" => array_keys($sept ? get_object_vars($sept) : []),
+              ],
+              "captured" => [
+                "student_id" => $scStudentId,
+                "schedule_mode" => $scScheduleMode,
+                "session_count" => $scSessionCount,
+                "charge" => $scCharge,
+                "paid" => $scPaid,
+                "end_date" => $endDate,
+                "september_session_count" => $septSessionCount,
+                "september_charge" => $septCharge,
+                "september_schedule_mode" => $septScheduleMode,
+              ],
+              "checks" => ["history_exact" => (bool)$historyExact, "already_exact" => (bool)$alreadyExact, "initial_exact" => (bool)$initialExact],
+              "counts" => ["august_invoices" => $augustInvoices->count(), "positive_payments" => $paid, "confirmed_reports" => $confirmed->count()],
+            ], JSON_UNESCAPED_UNICODE) . PHP_EOL;
+            throw new \RuntimeException("exact #259 precondition mismatch; no write permitted");
+          }
           $state = json_encode(["backend_sha"=>getenv("DEPLOYED_SHA"),"already_exact"=>(bool)$alreadyExact,"session_count"=>(int)$scSessionCount,"charge"=>(int)$scCharge,"end_date"=>$endDate,"invoice_id"=>$invoice ? (int)$invoice->id : null,"invoice_status"=>$invoice ? (string)$invoice->Status : null,"invoice_total"=>$invoice ? (int)$invoice->TotalAmount : null,"active_invoice_count"=>$augustInvoices->count(),"positive_payment_count"=>(int)$paid,"confirmed_report_count"=>$confirmed->count()], JSON_UNESCAPED_UNICODE);
           echo "__INAPP259_STATE_START__" . base64_encode($state) . "__INAPP259_STATE_END__", PHP_EOL;
           '
@@ -323,8 +348,12 @@ jobs:
           $old = $db::table("Invoice")->where("id", 1274)->first();
           $field = static function ($row, array $names) {
             $values = $row ? get_object_vars($row) : [];
+            $serialized = $row ? json_decode(json_encode($row), true) : [];
             foreach ($names as $name) {
               if (array_key_exists($name, $values)) return $values[$name];
+            }
+            foreach ($names as $name) {
+              if (is_array($serialized) && array_key_exists($name, $serialized)) return $serialized[$name];
             }
             return null;
           };
