@@ -15,7 +15,8 @@
 
 ## Production Release Impact (required for deployable changes)
 <!-- Pick exactly one. This is machine-readable; publication still uses the existing CHANGELOG/STAFF_UPDATES flow. -->
-**Release-Impact:** user-visible | internal | no-user-facing-note
+Release-Impact: user-visible
+<!-- Replace the value with exactly one of: user-visible, internal, no-user-facing-note. -->
 
 > **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
 > ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用，**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  

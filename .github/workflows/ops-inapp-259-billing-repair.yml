@@ -1,4 +1,5 @@
 name: In-app #259 billing repair (protected one-off)
+# governance-capability: legacy-case-specific-mutation
 
 # One-case Data Repair Gate for the Founder-approved #259 correction.
 # The normal application billing/payment endpoints perform the mutation; this
