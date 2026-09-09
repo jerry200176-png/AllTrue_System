@@ -19,21 +19,19 @@
     <template v-else>
       <div class="chat-container">
         <div v-if="threadsLoadError" class="chat-inline-alert" role="alert">
-          {{ threadsLoadError }}
+          <span>{{ threadsLoadError }}</span>
+          <AtButton shape="rect" size="sm" variant="ghost" @click="loadThreads">重試</AtButton>
         </div>
         <div class="chat-panels-row">
 
           <!-- Thread list (left panel) -->
           <div class="thread-panel" :class="{ 'hidden-mobile': activeThread }">
             <div class="thread-panel-header">
-              <button class="btn-new-chat" @click="showNewChat = true; dmSearch = ''; selectedUserId = ''; groupMemberSearch = ''">
-                <span class="material-symbols-outlined">add</span>
-                新對話
-              </button>
+              <AtButton class="btn-new-chat" shape="rect" variant="primary" icon="add" @click="showNewChat = true; dmSearch = ''; selectedUserId = ''; groupMemberSearch = ''">新對話</AtButton>
             </div>
 
-            <div v-if="loadingThreads" class="loading-box">載入中...</div>
-            <div v-else-if="threads.length === 0" class="empty-threads">
+            <div v-if="loadingThreads" class="loading-box" role="status" aria-live="polite">載入聊天列表中…</div>
+            <div v-else-if="threads.length === 0" class="empty-threads" role="status">
               <span class="material-symbols-outlined empty-icon">chat_bubble_outline</span>
               <p>{{ superAdmin ? '尚無聊天記錄' : '此分校尚無聊天記錄' }}</p>
               <p class="hint">{{ superAdmin ? '按「新對話」開始。' : '按「新對話」開始，或切換左上角分校查看其他校區的對話。' }}</p>
@@ -72,41 +70,42 @@
           <!-- Messages (right panel) -->
           <div class="message-panel" :class="{ 'hidden-mobile': !activeThread }" data-guide="chat-message-area">
             <div v-if="!activeThread" class="no-thread-selected">
-              <span class="material-symbols-outlined big-icon">forum</span>
+              <span class="material-symbols-outlined big-icon" aria-hidden="true">forum</span>
               <p>選擇一個對話或建立新對話</p>
             </div>
             <template v-else>
               <div class="message-header">
-                <button class="btn-back-mobile" @click="activeThread = null">
-                  <span class="material-symbols-outlined">arrow_back</span>
-                </button>
+                <AtIconButton class="btn-back-mobile" icon="arrow_back" label="返回對話列表" @click="activeThread = null" />
                 <div class="message-header-avatar thread-avatar">
                   <img v-if="threadListAvatarUrl(activeThread)" :src="threadListAvatarUrl(activeThread)" alt="" class="thread-avatar-img" />
                   <span v-else class="material-symbols-outlined">{{ activeThread.type === 'group' ? 'groups' : 'person' }}</span>
                 </div>
                 <span class="message-header-name">{{ activeThread.name }}</span>
                 <!-- Group settings button -->
-                <button
+                <AtIconButton
                   v-if="activeThread.type === 'group'"
                   class="btn-header-action"
+                  icon="settings"
+                  label="群組設定"
                   @click="openGroupInfo"
-                  title="群組設定"
-                >
-                  <span class="material-symbols-outlined">settings</span>
-                </button>
+                />
                 <!-- DM delete button -->
-                <button
+                <AtIconButton
                   v-else
                   class="btn-header-action btn-danger-text"
+                  icon="delete"
+                  label="刪除對話"
+                  variant="danger"
                   @click="confirmDeleteThread = true"
-                  title="刪除對話"
-                >
-                  <span class="material-symbols-outlined">delete</span>
-                </button>
+                />
               </div>
 
               <div class="message-list" ref="messageListEl" @scroll="onMessageScroll">
-                <div v-if="loadingMessages" class="loading-box">載入中...</div>
+                <div v-if="loadingMessages" class="loading-box" role="status" aria-live="polite">載入訊息中…</div>
+                <div v-else-if="messagesLoadError" class="chat-message-error" role="alert">
+                  <span>{{ messagesLoadError }}</span>
+                  <AtButton shape="rect" size="sm" variant="ghost" @click="retryMessages">重試</AtButton>
+                </div>
                 <div
                   v-for="msg in sortedMessages"
                   :key="msg.id"
@@ -172,16 +171,12 @@
                   <span class="reply-bar-sender">回覆 {{ replyingTo.sender_name }}</span>
                   <span class="reply-bar-body">{{ replyingTo.is_deleted ? '此訊息已刪除' : (replyingTo.message_type !== 'text' ? '[附件]' : replyingTo.body) }}</span>
                 </div>
-                <button class="reply-bar-close" @click="replyingTo = null">
-                  <span class="material-symbols-outlined">close</span>
-                </button>
+                <AtIconButton class="reply-bar-close" icon="close" label="取消回覆" @click="replyingTo = null" />
               </div>
 
               <div class="message-input-bar">
                 <!-- Attach button -->
-                <button class="btn-attach" @click="fileInput?.click()" title="傳送附件">
-                  <span class="material-symbols-outlined">attach_file</span>
-                </button>
+                <AtIconButton class="btn-attach" icon="attach_file" label="傳送附件" @click="fileInput?.click()" />
                 <input
                   ref="fileInput"
                   type="file"
@@ -193,10 +188,11 @@
                   v-model="newMessage"
                   @keydown.enter.prevent="doSend"
                   placeholder="輸入訊息..."
+                  aria-label="訊息內容"
                   class="msg-input"
                   :disabled="sending || uploadingAttachment"
                 />
-                <button class="btn-send" @click="doSend" :disabled="!newMessage.trim() || sending || uploadingAttachment">
+                <button type="button" class="btn-send" aria-label="傳送訊息" @click="doSend" :disabled="!newMessage.trim() || sending || uploadingAttachment">
                   <span class="material-symbols-outlined">send</span>
                 </button>
               </div>
@@ -207,12 +203,10 @@
     </template>
 
     <!-- ── New Chat Dialog ──────────────────────────────────────── -->
-    <div v-if="showNewChat" class="modal-overlay" @click.self="showNewChat = false">
-      <div class="modal-card">
-        <h3>新對話</h3>
-        <div class="new-chat-tabs">
-          <button :class="{ active: newChatTab === 'dm' }" @click="newChatTab = 'dm'">私訊</button>
-          <button :class="{ active: newChatTab === 'group' }" @click="newChatTab = 'group'">群組</button>
+    <AtDialog :open="showNewChat" title="新對話" panel-class="chat-dialog" @close="showNewChat = false">
+        <div class="new-chat-tabs" role="tablist" aria-label="新對話類型">
+          <button type="button" role="tab" :aria-selected="newChatTab === 'dm'" :class="{ active: newChatTab === 'dm' }" @click="newChatTab = 'dm'">私訊</button>
+          <button type="button" role="tab" :aria-selected="newChatTab === 'group'" :class="{ active: newChatTab === 'group' }" @click="newChatTab = 'group'">群組</button>
         </div>
 
         <div v-if="newChatTab === 'dm'">
@@ -236,7 +230,6 @@
             </div>
             <div v-if="filteredStaffList.length === 0" class="dm-staff-empty">找不到符合的人員</div>
           </div>
-          <button class="btn-primary" :disabled="!selectedUserId" @click="startDm">開始聊天</button>
         </div>
 
         <div v-if="newChatTab === 'group'">
@@ -258,17 +251,29 @@
             </label>
             <div v-if="filteredStaffForGroup.length === 0" class="member-pick-empty">找不到符合的人員</div>
           </div>
-          <button class="btn-primary" :disabled="!groupName.trim() || groupMemberIds.length === 0" @click="startGroup">建立群組</button>
         </div>
 
-        <button class="btn-cancel" @click="showNewChat = false">取消</button>
-      </div>
-    </div>
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" @click="showNewChat = false">取消</AtButton>
+          <AtButton
+            v-if="newChatTab === 'dm'"
+            shape="rect"
+            variant="primary"
+            :disabled="!selectedUserId"
+            @click="startDm"
+          >開始聊天</AtButton>
+          <AtButton
+            v-else
+            shape="rect"
+            variant="primary"
+            :disabled="!groupName.trim() || groupMemberIds.length === 0"
+            @click="startGroup"
+          >建立群組</AtButton>
+        </template>
+    </AtDialog>
 
     <!-- ── Group Info Dialog ────────────────────────────────────── -->
-    <div v-if="showGroupInfo" class="modal-overlay" @click.self="showGroupInfo = false">
-      <div class="modal-card">
-        <h3>群組設定</h3>
+    <AtDialog :open="showGroupInfo" title="群組設定" panel-class="chat-dialog" @close="showGroupInfo = false">
 
         <!-- Group name -->
         <div class="group-name-section">
@@ -352,21 +357,19 @@
           </button>
         </div>
 
-        <button class="btn-cancel" @click="showGroupInfo = false">關閉</button>
-      </div>
-    </div>
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" @click="showGroupInfo = false">關閉</AtButton>
+        </template>
+    </AtDialog>
 
     <!-- ── Confirm delete thread dialog ─────────────────────────── -->
-    <div v-if="confirmDeleteThread" class="modal-overlay" @click.self="confirmDeleteThread = false">
-      <div class="modal-card modal-card-sm">
-        <h3>確認刪除</h3>
+    <AtDialog :open="confirmDeleteThread" title="確認刪除" size="sm" panel-class="chat-dialog" @close="confirmDeleteThread = false">
         <p>{{ activeThread?.type === 'group' ? '確定要刪除此群組嗎？所有訊息將永久移除。' : '確定要刪除此對話嗎？所有訊息將永久移除。' }}</p>
-        <div class="btn-row">
-          <button class="btn-danger" @click="doDeleteThread">確認刪除</button>
-          <button class="btn-cancel" @click="confirmDeleteThread = false">取消</button>
-        </div>
-      </div>
-    </div>
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" @click="confirmDeleteThread = false">取消</AtButton>
+          <AtButton shape="rect" variant="danger" @click="doDeleteThread">確認刪除</AtButton>
+        </template>
+    </AtDialog>
 
     <!-- ── Message context menu ──────────────────────────────────── -->
     <div
@@ -415,6 +418,9 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
+import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import {
   fetchThreads, createDm, createGroup, fetchMessages,
@@ -442,6 +448,7 @@ const sending          = ref(false);
 const loadingThreads   = ref(false);
 const threadsLoadError = ref('');
 const loadingMessages  = ref(false);
+const messagesLoadError = ref('');
 
 // ── New chat dialog ─────────────────────────────────────────────
 const showNewChat    = ref(false);
@@ -636,22 +643,7 @@ async function selectThread(t) {
   activeThread.value   = t;
   messages.value       = [];
   replyingTo.value     = null;
-  loadingMessages.value = true;
-
-  try {
-    const data    = await fetchMessages(t.id);
-    messages.value = data.data || [];
-    await nextTick();
-    scrollToBottom();
-    if (t.unread_count > 0) {
-      await markThreadRead(t.id);
-      t.unread_count = 0;
-    }
-  } catch (e) {
-    console.error('[Chat] loadMessages:', e);
-  } finally {
-    loadingMessages.value = false;
-  }
+  await loadMessagesForThread(t);
 
   subscribeThread(t.id, (msg) => {
     if (!messages.value.find(m => m.id === msg.id)) {
@@ -670,6 +662,30 @@ async function selectThread(t) {
       if (idx >= 0) messages.value[idx] = msg;
     }
   }, () => pollNewMessages(t.id));
+}
+
+async function loadMessagesForThread(t) {
+  loadingMessages.value = true;
+  messagesLoadError.value = '';
+  try {
+    const data = await fetchMessages(t.id);
+    messages.value = data.data || [];
+    await nextTick();
+    scrollToBottom();
+    if (t.unread_count > 0) {
+      await markThreadRead(t.id);
+      t.unread_count = 0;
+    }
+  } catch (e) {
+    console.error('[Chat] loadMessages:', e);
+    messagesLoadError.value = e?.message || '無法載入訊息，請重試。';
+  } finally {
+    loadingMessages.value = false;
+  }
+}
+
+async function retryMessages() {
+  if (activeThread.value) await loadMessagesForThread(activeThread.value);
 }
 
 async function pollNewMessages(threadId) {
@@ -1031,6 +1047,7 @@ function formatTime(iso) {
   box-shadow: var(--shadow); overflow: hidden; min-height: 0;
 }
 .chat-inline-alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   flex-shrink: 0; padding: 10px 14px; font-size: 13px;
   background: #fff3cd; color: #664d03; border-bottom: 1px solid #e6d89c;
 }
@@ -1049,7 +1066,8 @@ function formatTime(iso) {
 }
 .btn-new-chat {
   display: flex; align-items: center; gap: 4px;
-  padding: 6px 14px; border: none; border-radius: 8px;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 0 14px; border: none; border-radius: 8px;
   background: var(--primary); color: #fff; cursor: pointer;
   font-size: 13px; font-weight: 500;
 }
@@ -1102,11 +1120,11 @@ function formatTime(iso) {
   padding: 12px 16px; border-bottom: 1px solid var(--border);
   font-weight: 600; font-size: 15px;
 }
-.btn-back-mobile { display: none; background: none; border: none; cursor: pointer; }
+.btn-back-mobile { display: none; min-width: 44px; min-height: 44px; cursor: pointer; }
 .message-header-name { flex: 1; }
 .btn-header-action {
-  background: none; border: none; cursor: pointer;
-  color: var(--text-light); padding: 4px; border-radius: 6px;
+  min-width: 44px; min-height: 44px;
+  cursor: pointer; color: var(--text-light); border-radius: 6px;
 }
 .btn-header-action:hover { background: var(--primary-bg); color: var(--primary); }
 .btn-danger-text:hover { color: var(--danger); background: #fee2e2; }
@@ -1180,7 +1198,7 @@ function formatTime(iso) {
 .reply-bar-content { flex: 1; min-width: 0; }
 .reply-bar-sender { font-weight: 600; color: var(--primary); display: block; }
 .reply-bar-body { color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.reply-bar-close { background: none; border: none; cursor: pointer; color: var(--text-light); padding: 2px; }
+.reply-bar-close { min-width: 44px; min-height: 44px; cursor: pointer; color: var(--text-light); }
 .reply-bar-close:hover { color: var(--danger); }
 
 .message-input-bar {
@@ -1188,13 +1206,13 @@ function formatTime(iso) {
   align-items: center; flex-shrink: 0;
 }
 .btn-attach {
-  background: none; border: none; cursor: pointer; color: var(--text-light);
-  padding: 6px; border-radius: 50%; display: flex; align-items: center;
+  min-width: 44px; min-height: 44px;
+  cursor: pointer; color: var(--text-light); border-radius: 50%;
   flex-shrink: 0;
 }
 .btn-attach:hover { background: var(--primary-bg); color: var(--primary); }
 .msg-input {
-  flex: 1; padding: 10px 16px; border: 1px solid var(--border);
+  flex: 1; min-height: 44px; padding: 10px 16px; border: 1px solid var(--border);
   border-radius: 24px; font-size: 14px; outline: none;
   font-family: inherit;
 }
@@ -1208,6 +1226,14 @@ function formatTime(iso) {
 .btn-send:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .loading-box { text-align: center; padding: 24px; color: var(--text-light); }
+.chat-message-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 16px;
+  color: var(--danger, #b91c1c);
+}
 
 /* Context menu */
 .context-menu {
@@ -1240,12 +1266,12 @@ function formatTime(iso) {
 .modal-card h3 { margin: 0 0 16px; }
 .new-chat-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 .new-chat-tabs button {
-  flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: 8px;
+  flex: 1; min-height: 44px; padding: 8px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--card-bg); cursor: pointer; font-size: 14px;
 }
 .new-chat-tabs button.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .form-select, .form-input {
-  width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+  width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border);
   border-radius: 8px; font-size: 14px; margin: 4px 0 12px; box-sizing: border-box;
 }
 .member-pick-list {
@@ -1397,6 +1423,18 @@ function formatTime(iso) {
 }
 .lightbox-close:hover { background: rgba(255,255,255,0.25); }
 
+.chat-page button,
+.chat-page :deep(.at-btn),
+.chat-page :deep(.at-icon-btn) {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+
+.chat-page button:focus-visible,
+.chat-page input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring, rgba(239, 108, 0, 0.28));
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .chat-panels-row { flex-direction: column; }
@@ -1405,5 +1443,6 @@ function formatTime(iso) {
   .message-panel.hidden-mobile { display: none; }
   .btn-back-mobile { display: block; }
   .message-header-name { flex: 1; }
+  .message-input-bar { padding: 10px 12px; gap: 6px; }
 }
 </style>
