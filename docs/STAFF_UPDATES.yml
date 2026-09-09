@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-09-inapp-259-accounting-correction
+    published_at: "2026-09-09"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 月結課程跨月更正會同步帳務
+    summary: 堂數、月結區間與費用會一起校正，作廢帳單不會重複入帳。
+    items:
+      - category: fixed
+        text: 月結課程發生跨月堂次更正時，帳務更正會同步堂數、月結區間與費用。
+      - category: improved
+        text: 現金回報沿用既有待對帳與確認流程，避免重複應收或遺失付款紀錄。
+    source_refs:
+      - "changelog:2026-09-09:inapp-259-accounting-correction"
+
   - id: staff-2026-09-08-global-search-v1
     published_at: "2026-09-08"
     audiences:

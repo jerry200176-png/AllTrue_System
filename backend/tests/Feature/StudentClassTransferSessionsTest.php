@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\LearningRecord;
+use App\Models\Invoice;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -16,11 +17,9 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-// Interim workaround for in-app #1901/#1902/#1904: move already-materialized
-// ClassSession rows (and their LearningRecord/StudentSignIn) to a different
-// StudentClass so a teacher does not have to refill evaluations after a
-// course split. Deliberately never touches SessionCount/Charge or billing
-// fields; derived usage follows the existing ledger/counter rules.
+// Records-only transfer for in-app #1901/#1902/#1904. Date-mode contracts are
+// intentionally rejected because moving a monthly occurrence also changes the
+// billing period boundary and must use billing correction instead.
 class StudentClassTransferSessionsTest extends TestCase
 {
     use RefreshDatabase;
@@ -184,6 +183,54 @@ class StudentClassTransferSessionsTest extends TestCase
         );
     }
 
+    public function test_rejects_date_mode_transfer_before_any_billing_or_payment_state_changes(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $source = $this->createCourse($student->id, 1, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-28',
+            'SessionCount' => 4,
+            'Charge' => 7200,
+            'Rate' => 1800,
+        ]);
+        $target = $this->createCourse($student->id, 1, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-08-29',
+            'EndDate' => '2026-09-27',
+            'SessionCount' => 5,
+            'Charge' => 9000,
+            'Rate' => 1800,
+        ]);
+        $sessionId = $this->createClassSession((int) $source->ID, '2026-08-29');
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $source->ID,
+            'IssueDate' => '2026-08-29',
+            'TotalAmount' => 6600,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+        ])->id;
+
+        $response = $this->postJson(
+            "/api/v1/student-classes/{$source->ID}/transfer-sessions",
+            ['session_ids' => [$sessionId], 'target_student_class_id' => $target->ID],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $response->assertStatus(422)->assertJsonPath('code', 'billing_correction_required');
+        $this->assertSame((int) $source->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+        $this->assertDatabaseHas('StudentClass', [
+            'ID' => $source->ID, 'SessionCount' => 4, 'Charge' => 7200, 'EndDate' => '2026-08-28',
+        ]);
+        $this->assertDatabaseHas('StudentClass', [
+            'ID' => $target->ID, 'SessionCount' => 5, 'Charge' => 9000, 'EndDate' => '2026-09-27',
+        ]);
+        $this->assertDatabaseHas('Invoice', ['id' => $invoice, 'Status' => 'void', 'TotalAmount' => 6600, 'PaidAmount' => 0]);
+        $this->assertSame(0, DB::table('Payment')->count());
+    }
+
     public function test_rejects_target_with_an_existing_active_slot_before_moving_anything(): void
     {
         $token = $this->createDirectorToken([1]);
@@ -302,7 +349,6 @@ class StudentClassTransferSessionsTest extends TestCase
     {
         return [
             'manual occurrence' => [['scheduling_policy' => 'manual_occurrence']],
-            'date mode' => [['ScheduleMode' => 'date']],
             'stopped course' => [['Stop' => 1]],
         ];
     }
