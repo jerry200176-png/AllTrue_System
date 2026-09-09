@@ -370,7 +370,8 @@
                         role="status"
                         :title="paymentStatusHelpTitle(c)"
                       >{{ paymentStatusButtonLabel(c) }}</span>
-                      <button type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">{{ paymentNextActionLabel(c) }}</button>
+                      <span v-if="isTutoringBillingAnomaly(c)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
+                      <button v-if="shouldShowPaymentAction(c)" type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">{{ paymentNextActionLabel(c) }}</button>
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                       <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
                         已繳清；另有回報待核對。
@@ -661,6 +662,7 @@
                   <span v-else>目前沒有未結清帳務；各期帳務仍保留在原期間。</span>
                 </div>
                 <button
+                  v-if="shouldShowPaymentAction(studentBillingAnchorCourse(group))"
                   type="button"
                   class="small primary"
                   @click="goToTuitionBilling(studentBillingAnchorCourse(group))"
@@ -721,7 +723,8 @@
                         @click="openPaymentSlip(row.course)"
                       >繳費通知</button>
                       <button class="small ghost btn-invoices" type="button" @click="openInvoiceModal(row.course)">帳單（唯讀）</button>
-                      <button class="small primary" type="button" @click="goToTuitionBilling(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <button v-if="shouldShowPaymentAction(row.course)" class="small primary" type="button" @click="goToTuitionBilling(row.course)">{{ paymentNextActionLabel(row.course) }}</button>
+                      <span v-if="isTutoringBillingAnomaly(row.course)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
                     </div>
                   </td>
                 </tr>
@@ -4048,22 +4051,34 @@ const courseLensMetrics = computed(() => {
 });
 
 const paymentStatusButtonClass = (course) => {
+  if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
+  if (isTutoringCourse(course)) return 'tag-no-payment';
   if (course?.payment_status === 'paid') return 'tag-paid';
   if (course?.payment_status === 'pending_report') return 'tag-pending-report';
   return 'tag-unpaid';
 };
 const paymentStatusButtonLabel = (course) => {
+  if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
+  if (isTutoringCourse(course)) return '無須繳費';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
   if (course?.payment_status === 'partial') return '部分繳';
   return '未繳費';
 };
 const paymentNextActionLabel = (course) => {
+  if (isTutoringCourse(course)) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
   if (course?.payment_status === 'pending_report') return '查看待對帳';
   return '前往帳務中心';
 };
-const paymentStatusHelpTitle = (course) => `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
+const isTutoringCourse = (course) => course?.class_type === 'tutoring';
+const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
+const shouldShowPaymentAction = (course) => !isTutoringCourse(course);
+const paymentStatusHelpTitle = (course) => {
+  if (isTutoringBillingAnomaly(course)) return '輔導課不應產生付款義務；帳務資料需由主任檢查。';
+  if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
+  return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
+};
 const reportStatusLabel = (status) => ({
   pending: '待對帳',
   confirmed: '已入帳',
@@ -4846,7 +4861,8 @@ const paymentSlipOpen = ref(false);
 const paymentSlipStudentClassId = ref(null);
 
 const isPaymentNoticeAvailable = (course) =>
-  ['unpaid', 'partial', 'pending_report'].includes(course?.payment_status);
+  shouldShowPaymentAction(course)
+  && ['unpaid', 'partial', 'pending_report'].includes(course?.payment_status);
 
 const openPaymentSlip = (course) => {
   const studentClassId = Number(course?.id || 0);
@@ -4961,7 +4977,9 @@ const loadStudentGroupBilling = async (group) => {
 
 const studentBillingAnchorCourse = (group) => {
   const courses = [...activeCourses(group), ...historyCourses(group)];
-  return courses.find((course) => course?.id) || null;
+  return courses.find((course) => course?.id && shouldShowPaymentAction(course))
+    || courses.find((course) => course?.id)
+    || null;
 };
 
 const openLedgerForCourse = (course) => {
@@ -6664,6 +6682,13 @@ button.danger:disabled {
   font-weight: 900 !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
 }
+.payment-anomaly-hint {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--ds-danger);
+  font-size: 12px;
+  font-weight: 700;
+}
 .student-ledger-summary {
   display: flex;
   align-items: center;
@@ -7884,6 +7909,24 @@ button.danger:disabled {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  padding: 3px 10px;
+}
+.tag-no-payment {
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
+  border: 1px solid var(--ds-success);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+}
+.tag-billing-anomaly {
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
+  border: 1px solid var(--ds-danger);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
   padding: 3px 10px;
 }
 .paid-date-hint { font-size: 11px; color: #2e7d32; margin-top: 2px; white-space: nowrap; }

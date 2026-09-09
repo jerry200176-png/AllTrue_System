@@ -377,6 +377,41 @@ class EnrollmentApiTest extends TestCase
         $this->assertEquals(1200, (int) $sc->Charge);
     }
 
+    public function test_tutoring_enrollment_never_creates_a_charge(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-enrollment-tutoring@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-enrollment-tutoring@example.com');
+
+        $tue = now()->addDays(1);
+        while ((int) $tue->dayOfWeekIso !== 2) { $tue->addDay(); }
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/enrollments', [
+            'branch_id' => 1,
+            'student' => ['name' => '輔導不收費測試', 'grade' => 'J1'],
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'tutoring',
+            'confirmed_dates' => [],
+            'future_dates' => [$tue->toDateString()],
+            'days_of_week' => [2],
+            'start_time' => '16:00',
+            'duration_minutes' => 120,
+            'price_per_session' => 600,
+            'payment_type' => 'session',
+            'total_classes' => 1,
+            'mode' => 'enrollment',
+        ]);
+
+        $response->assertCreated();
+        $course = StudentClass::find((int) $response->json('student_class_id'));
+        $this->assertNotNull($course);
+        $this->assertSame('tutoring', $course->ClassType);
+        $this->assertSame(0, (int) $course->Charge);
+    }
+
     /**
      * @param  array<int>  $campusIds
      */

@@ -1,3 +1,9 @@
+## 2026-09-09 — fix(finance): 輔導課明確標示無須繳費
+<!-- release-notes: staff_update=staff-2026-09-09-tutoring-payment-policy -->
+- 課程類型為「輔導」時，課程與學生管理會顯示「無須繳費」，不再提供繳費通知、登記繳費回報或其他付款 CTA；課程費用 projection 固定為 0。
+- 若歷史資料仍有收費、有效帳單、未結清金額或付款回報，畫面會 fail closed 顯示「帳務資料需修正」，不引導付款；一般付費／未繳課程維持原本帳務流程。
+- 後端同步阻擋輔導課建立付款回報、帳單、確認付款與收費續報；不修改既有帳務資料。
+
 ## 2026-09-09 — improved(parent): 家長首頁學習重點版本公告
 <!-- release-notes: staff_update=staff-2026-09-09-parent-learning-assessment-controls -->
 - 家長登入後可先看到最近學了什麼、本週重點、老師建議、回家要做什麼與目前下一步；已核准的學習評量仍可從「學習」分頁逐堂展開查看。

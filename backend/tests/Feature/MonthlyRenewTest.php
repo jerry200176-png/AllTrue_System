@@ -1148,7 +1148,7 @@ class MonthlyRenewTest extends TestCase
         $this->assertSame(1, (int) $course->Paid, '核帳後 StudentClass.Paid 應為 1');
     }
 
-    public function test_director_record_accepts_zero_amount_for_free_course(): void
+    public function test_director_record_rejects_payment_for_tutoring_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-record-zero@example.com');
         $student = $this->createStudent();
@@ -1182,36 +1182,15 @@ class MonthlyRenewTest extends TestCase
             'note'             => '免費課程結算',
         ]);
 
-        $res->assertOk();
+        $res->assertStatus(422)
+            ->assertJsonPath('code', 'tutoring_no_payment_obligation');
 
         $invoice->refresh();
         $this->assertSame('unpaid', $invoice->Status);
         $course->refresh();
         $this->assertSame(0, (int) $course->Paid);
-
-        $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept'        => 'application/json',
-        ])->putJson('/api/v1/payment-reports/' . $res->json('report_id') . '/confirm')
-            ->assertOk();
-
-        $invoice->refresh();
-        $this->assertSame('paid', $invoice->Status, '0 元 Invoice 應可核帳為 paid');
-        $this->assertSame(0, (int) $invoice->PaidAmount);
-
-        $course->refresh();
-        $this->assertSame(1, (int) $course->Paid, '0 元課程核帳後 StudentClass.Paid 應為 1');
-
-        $this->assertDatabaseHas('Payment', [
-            'InvoiceID' => $invoice->id,
-            'Amount'    => 0,
-            'Method'    => 'cash',
-        ]);
-        $this->assertDatabaseHas('payment_reports', [
-            'StudentClassID'  => $course->ID,
-            'InvoiceID'       => $invoice->id,
-            'reported_amount' => 0,
-            'status'          => 'confirmed',
+        $this->assertDatabaseMissing('payment_reports', [
+            'StudentClassID' => $course->ID,
         ]);
     }
 

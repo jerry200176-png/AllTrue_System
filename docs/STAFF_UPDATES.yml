@@ -19,6 +19,22 @@ updates:
     source_refs:
       - "changelog:2026-09-09:monthly-leave-invariant"
 
+  - id: staff-2026-09-09-tutoring-payment-policy
+    published_at: "2026-09-09"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 輔導課明確標示無須繳費
+    summary: 輔導課不再顯示付款操作；若歷史帳務資料異常，會先提示檢查而不引導付款。
+    items:
+      - category: fixed
+        text: 課程類型為「輔導」時顯示「無須繳費」，隱藏繳費通知、繳費回報與付款入口，課程費用 projection 為 0。
+      - category: improved
+        text: 若輔導課仍有收費或付款資料，畫面會顯示「帳務資料需修正」並 fail closed；一般付費與未繳課程維持原本流程。
+    source_refs:
+      - "changelog:2026-09-09:tutoring-payment-policy"
+
   - id: staff-2026-09-09-parent-learning-assessment-controls
     published_at: "2026-09-09"
     audiences:

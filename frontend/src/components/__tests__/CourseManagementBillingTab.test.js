@@ -65,6 +65,18 @@ describe('CourseManagement student billing tab', () => {
     expect(source).not.toContain('>帳務</button>');
   });
 
+  it('uses course type as the tutoring payment gate and fails closed on anomalies', () => {
+    expect(source).toContain("const isTutoringCourse = (course) => course?.class_type === 'tutoring';");
+    expect(source).toContain("if (isTutoringCourse(course)) return '無須繳費';");
+    expect(source).toContain("if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';");
+    expect(source).toContain('const shouldShowPaymentAction = (course) => !isTutoringCourse(course);');
+    expect(source).toContain('v-if="shouldShowPaymentAction(row.course)"');
+    expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
+    expect(source).toContain('輔導課不應產生付款義務');
+    expect(source).toContain("return 'tag-no-payment';");
+    expect(source).toContain("return 'tag-billing-anomaly';");
+  });
+
   it('uses the persisted rate unit for edit round-trip and course lookup pricing', () => {
     expect(source).toContain("import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';");
     expect(source).toContain('rate_unit: c.rate_unit || \'session\'');

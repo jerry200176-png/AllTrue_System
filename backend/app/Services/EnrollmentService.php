@@ -699,7 +699,8 @@ class EnrollmentService
             $identityGroupId,
             $identitySourceStudentId,
             $role,
-            $campusIds
+            $campusIds,
+            $classType
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
@@ -847,6 +848,12 @@ class EnrollmentService
                     }
                     $totalHours = (int) round($sumMinutes / 60);
                     $charge = (int) round($price * $chargeUnits);
+                }
+
+                // 輔導課永遠不產生收費義務；Rate 仍保留供既有課務／核薪語意使用，
+                // 但 StudentClass.Charge 不得因 enrollment 的輸入單價被算成應收款。
+                if ($classType === 'tutoring') {
+                    $charge = 0;
                 }
 
                 $studentClassPayload = array_merge([
