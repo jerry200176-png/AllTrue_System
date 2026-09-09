@@ -1,0 +1,36 @@
+id: TKT-20260909-100703-LMZH
+title: 'Complete in-app #271 Phase-C production writeback'
+intent: 'Complete in-app #271 Phase-C production writeback'
+kind: task
+parent_id: INT-20260826-113539-5KZM
+boundary: Only add the existing allowlisted Phase-C entry and append its auditable request record for confirmed in-app #271 after the deployed fix is verified; do not change application behavior, production business data, or invent lifecycle mechanisms.
+success_condition: The existing Phase-C workflow resolves only #271 with exact production revision and deploy evidence, and its artifact confirms the final in-app status.
+priority: 1
+labels:
+- in-app-feedback
+scope:
+  allow:
+  - .github/workflows/bug-phase-c-allowlist.yml
+  - operations/closeout/bug-phase-c-allowlist.request.md
+  - .agent-session/**
+  - .exo/tickets/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 120
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-09T10:07:03+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
