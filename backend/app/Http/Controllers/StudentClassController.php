@@ -2257,8 +2257,21 @@ class StudentClassController extends Controller
         $payload = $request->validate([
             'new_session_count' => ['required', 'integer', 'min:1'],
             'new_charge' => ['required', 'integer', 'min:0'],
+            'new_end_date' => ['nullable', 'date'],
             'reason' => ['required', 'string', 'max:255'],
         ]);
+
+        if ((string) ($studentClass->ScheduleMode ?? 'count') === 'date') {
+            return $this->correctUnpaidDateModeContract($studentClass, $payload);
+        }
+
+        if (!empty($payload['new_end_date'])) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_end_date_count_mode_only', 422);
+            return response()->json([
+                'message' => '只有月結課程可以在帳務更正時調整合約結束日。',
+                'code' => 'billing_correction_end_date_count_mode_only',
+            ], 422);
+        }
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
             $this->auditEditBlocked($studentClass, 'billing_correction_count_mode_only', 422);
@@ -2464,6 +2477,208 @@ class StudentClassController extends Controller
                 'new_session_count' => $newCount,
                 'old_charge' => $oldCharge,
                 'new_charge' => $newCharge,
+                'observed_used_sessions' => $observedUsed,
+                'remaining_sessions' => (int) ($fresh->RemainingSessions ?? 0),
+                'payment_status' => 'unpaid',
+                'reason' => $payload['reason'],
+                'adjusted_invoice_count' => $adjustedInvoiceCount,
+            ];
+        });
+
+        return response()->json($result);
+    }
+
+    /**
+     * Correct an unpaid date-mode contract when a materialized attended session
+     * was moved across the monthly boundary. The correction keeps the session
+     * row and payment history intact, then synchronizes the contract boundary,
+     * count, charge, counters, and any still-open invoice in one transaction.
+     */
+    private function correctUnpaidDateModeContract(StudentClass $studentClass, array $payload)
+    {
+        if ($studentClass->isPartOfPackage()) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_package_forbidden', 422);
+            return response()->json([
+                'message' => '共用課程包請使用方案調整流程，不可單獨更正月結課程。',
+                'code' => 'billing_correction_package_forbidden',
+            ], 422);
+        }
+
+        if ((int) ($studentClass->Paid ?? 0) === 1) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_paid_locked', 409);
+            return response()->json([
+                'message' => '此課程已標記收款，請先走帳務更正／作廢流程。',
+                'code' => 'billing_correction_paid_locked',
+            ], 409);
+        }
+
+        $classId = (int) $studentClass->getKey();
+        $activePayment = DB::table('Invoice')
+            ->leftJoin('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->where('Invoice.StudentClassID', $classId)
+            ->where(function ($q) {
+                $q->whereNull('Invoice.Status')->orWhereNotIn('Invoice.Status', ['void']);
+            })
+            ->where(function ($q) {
+                $q->where('Invoice.PaidAmount', '>', 0)
+                    ->orWhere(function ($payment) {
+                        $payment->where('Payment.Amount', '>', 0)
+                            ->where(function ($method) {
+                                $method->whereNull('Payment.Method')->orWhere('Payment.Method', '!=', 'void');
+                            });
+                    });
+            })
+            ->exists();
+        if ($activePayment) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_payment_locked', 409);
+            return response()->json([
+                'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                'code' => 'billing_correction_payment_locked',
+            ], 409);
+        }
+
+        if (PaymentReport::query()
+            ->where('StudentClassID', $classId)
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->exists()) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_payment_report_locked', 409);
+            return response()->json([
+                'message' => '此課程已有待處理或已確認的繳費回報，請先完成或作廢該筆回報。',
+                'code' => 'billing_correction_payment_report_locked',
+            ], 409);
+        }
+
+        $newCount = (int) $payload['new_session_count'];
+        $newCharge = (int) $payload['new_charge'];
+        $oldCount = (int) ($studentClass->SessionCount ?? 0);
+        $oldCharge = (int) ($studentClass->Charge ?? 0);
+        $oldEndDate = $studentClass->EndDate ? Carbon::parse($studentClass->EndDate)->toDateString() : null;
+        $newEndDate = !empty($payload['new_end_date'])
+            ? Carbon::parse($payload['new_end_date'])->toDateString()
+            : $oldEndDate;
+        $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
+        $rate = (float) ($studentClass->getAttribute('Rate') ?? 0);
+        $expectedCharge = (int) round($rate * $newCount);
+        if ($rateUnit !== 'session') {
+            $this->auditEditBlocked($studentClass, 'billing_correction_session_rate_only', 422);
+            return response()->json([
+                'message' => '只有按堂計費課程可以使用此更正流程。',
+                'code' => 'billing_correction_session_rate_only',
+            ], 422);
+        }
+        if ($newCharge !== $expectedCharge) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_charge_mismatch', 422);
+            return response()->json([
+                'message' => "更正金額必須等於單堂 {$rate} × {$newCount} 堂 = {$expectedCharge} 元。",
+                'code' => 'billing_correction_charge_mismatch',
+                'expected_charge' => $expectedCharge,
+            ], 422);
+        }
+
+        $usageDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
+        $observedUsed = max(
+            (int) ($usageDiagnostic['expected_used'] ?? 0),
+            (int) ($usageDiagnostic['uncapped_used'] ?? 0)
+        );
+        if ($newCount < $observedUsed) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_below_observed_usage', 422);
+            return response()->json([
+                'message' => "更正後堂數（{$newCount}）不可少於已使用 {$observedUsed} 堂；已發生的扣堂紀錄不會被改寫。",
+                'code' => 'billing_correction_below_observed_usage',
+                'observed_used_sessions' => $observedUsed,
+            ], 422);
+        }
+
+        $latestBillableDate = ClassSession::query()
+            ->where('StudentClassID', $classId)
+            ->whereIn('Status', ['attended', 'completed', 'late'])
+            ->max('SessionDate');
+        if ($latestBillableDate && $newEndDate && Carbon::parse($newEndDate)->lt(Carbon::parse($latestBillableDate))) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_end_before_billable_session', 422);
+            return response()->json([
+                'message' => '合約結束日不可早於已發生的計費堂次。',
+                'code' => 'billing_correction_end_before_billable_session',
+                'latest_billable_session_date' => Carbon::parse($latestBillableDate)->toDateString(),
+            ], 422);
+        }
+
+        $result = DB::transaction(function () use ($classId, $newCount, $newCharge, $newEndDate, $oldCount, $oldCharge, $oldEndDate, $payload, $studentClass, $observedUsed) {
+            $locked = StudentClass::query()->where('ID', $classId)->lockForUpdate()->first();
+            if (!$locked) {
+                abort(404);
+            }
+            if ((int) ($locked->Paid ?? 0) === 1) {
+                abort(response()->json([
+                    'message' => '此課程在處理期間已被標記收款，請重新整理後再操作。',
+                    'code' => 'billing_correction_paid_locked',
+                ], 409));
+            }
+
+            $locked->SessionCount = $newCount;
+            $locked->Charge = $newCharge;
+            if ($newEndDate !== null) {
+                $locked->EndDate = $newEndDate;
+            }
+            $locked->save();
+
+            $adjustedInvoiceCount = 0;
+            $openInvoices = Invoice::query()
+                ->where('StudentClassID', $classId)
+                ->where(function ($q) {
+                    $q->whereNull('Status')->orWhereNotIn('Status', ['void']);
+                })
+                ->lockForUpdate()
+                ->get();
+            foreach ($openInvoices as $invoice) {
+                if ((int) ($invoice->PaidAmount ?? 0) !== 0) {
+                    abort(response()->json([
+                        'message' => '此課程已有有效收款紀錄，請先至帳務流程作廢或更正帳單。',
+                        'code' => 'billing_correction_payment_locked',
+                    ], 409));
+                }
+                $invoice->TotalAmount = $newCharge;
+                $invoice->save();
+                InvoiceItem::query()
+                    ->where('InvoiceID', $invoice->id)
+                    ->where('StudentClassID', $classId)
+                    ->update(['Amount' => $newCharge]);
+                $adjustedInvoiceCount++;
+            }
+
+            SessionDeductionService::recomputeCounters($classId);
+            $fresh = $locked->fresh();
+            SecurityAuditEvent::append(
+                'student_class.billing_contract_correction',
+                'success',
+                [
+                    'campus_id' => $studentClass->student?->CampusID,
+                    'actor_type' => 'user',
+                    'actor_id' => request()->attributes->get('auth_user')?->id,
+                    'subject_type' => 'student_class',
+                    'subject_id' => $classId,
+                ],
+                [
+                    'old_session_count' => $oldCount,
+                    'new_session_count' => $newCount,
+                    'old_charge' => $oldCharge,
+                    'new_charge' => $newCharge,
+                    'old_end_date' => $oldEndDate,
+                    'new_end_date' => $newEndDate,
+                    'observed_used_sessions' => $observedUsed,
+                    'reason_hash' => hash('sha256', (string) $payload['reason']),
+                    'reason_code' => 'date_mode_transfer_billing_reconciliation',
+                    'outcome' => 'success',
+                ]
+            );
+
+            return [
+                'student_class_id' => $classId,
+                'old_session_count' => $oldCount,
+                'new_session_count' => $newCount,
+                'old_charge' => $oldCharge,
+                'new_charge' => $newCharge,
+                'old_end_date' => $oldEndDate,
+                'new_end_date' => $newEndDate,
                 'observed_used_sessions' => $observedUsed,
                 'remaining_sessions' => (int) ($fresh->RemainingSessions ?? 0),
                 'payment_status' => 'unpaid',
@@ -4310,7 +4525,9 @@ class StudentClassController extends Controller
     /**
      * 轉移堂次紀錄到另一門課程（interim workaround for in-app #1901/#1902/#1904）。
      *
-     * 只搬「已存在的 ClassSession 及其評量／點名紀錄」，完全不動任一課程的
+     * 只搬「已存在的 ClassSession 及其評量／點名紀錄」。月結課程拒絕走此
+     * records-only 路徑，必須改走可同步帳務邊界的 billing correction。
+     * 堂數制仍完全不動任一課程的
      * SessionCount／Charge／standard_lesson_minutes 等計費鎖定欄位 —— 那些欄位
      * 一旦有扣堂紀錄就由 BillingContractLockGuard 鎖死（RFC_NONSTANDARD_SESSION_
      * DURATION_BILLING，Founder-gated），此端點不繞過、也不嘗試重新詮釋。
@@ -4362,6 +4579,13 @@ class StudentClassController extends Controller
             if ((int) ($target->SubjectID ?? 0) !== (int) ($source->SubjectID ?? 0)) {
                 return response()->json([
                     'message' => '目標課程與來源課程的科目不一致，拒絕轉移。',
+                ], 422);
+            }
+            if (strtolower((string) ($source->ScheduleMode ?? 'count')) === 'date'
+                || strtolower((string) ($target->ScheduleMode ?? 'count')) === 'date') {
+                return response()->json([
+                    'code' => 'billing_correction_required',
+                    'message' => '月結課程不可使用只搬紀錄的堂次移轉；請先使用帳務更正流程同步堂數、費用與月結區間。',
                 ], 422);
             }
 

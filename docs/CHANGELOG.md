@@ -3,6 +3,11 @@
 - 修正手機開啟「意見與建議」時，回饋類型選項被拉寬、文字難以閱讀且送出按鈕不易操作的問題；三種選項現在會維持清楚可讀的版面。
 - 不改回報內容、附件、權限或既有回報狀態流程。
 
+## 2026-09-08 — fix(ux): 繳費狀態明確標示為非操作項目
+<!-- release-notes: staff_update=staff-2026-09-08-payment-status-affordance -->
+- 回補今天已完成 production 驗證但漏進教職員「版本更新」的課程繳費狀態 UX 修正：未繳費／待對帳是狀態，不會再呈現成可點擊按鈕。
+- 真正的下一步統一顯示「前往帳務中心」或對應的繳費回報入口；不改帳務規則、權限或既有資料。
+
 ## 2026-09-08 — feat(parent): isolated synthetic Parent Portal production smoke fixture
 <!-- release-notes: silent_ship=silent-2026-09-08-parent-portal-test-tenant -->
 - 新增以 `Campus.is_test` 為唯一機器可判斷隔離標記的 TEST／SYNTHETIC Parent Portal smoke fixture；fixture 只能由受保護的 super_admin QA path 建立／重用，重複執行沿用同一校區、學生、監護人與綁定資料，僅輪替 parent session。

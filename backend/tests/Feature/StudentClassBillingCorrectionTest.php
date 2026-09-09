@@ -313,6 +313,111 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->assertSame(hash('sha256', '主任確認八月五堂新制費用'), $metadata['reason_hash']);
     }
 
+    public function test_date_mode_transfer_reconciliation_syncs_contract_and_records_cash_without_reviving_void_invoice(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-28',
+            'SessionCount' => 4,
+            'RemainingSessions' => 0,
+            'UsedSessions' => 5,
+            'Charge' => 7200,
+            'Rate' => 1800,
+        ]);
+        foreach (['2026-08-01', '2026-08-08', '2026-08-15', '2026-08-22', '2026-08-29'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => $date,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'attended',
+            ]);
+        }
+        $voidInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-08-01',
+            'TotalAmount' => 6600,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+            'billing_period' => '2026-07',
+        ]);
+
+        $this->withToken($token)->postJson(
+            "/api/v1/student-classes/{$course->ID}/billing-correction",
+            [
+                'new_session_count' => 5,
+                'new_charge' => 9000,
+                'new_end_date' => '2026-08-29',
+                'reason' => 'in-app-259-august-session-transfer',
+            ]
+        )->assertOk()
+            ->assertJsonPath('new_session_count', 5)
+            ->assertJsonPath('new_charge', 9000)
+            ->assertJsonPath('new_end_date', '2026-08-29')
+            ->assertJsonPath('remaining_sessions', 0)
+            ->assertJsonPath('adjusted_invoice_count', 0);
+
+        $course->refresh();
+        $this->assertSame(5, (int) $course->SessionCount);
+        $this->assertSame(9000, (int) $course->Charge);
+        $this->assertSame('2026-08-29', substr((string) $course->EndDate, 0, 10));
+        $this->assertDatabaseHas('Invoice', [
+            'id' => $voidInvoice->id, 'Status' => 'void', 'TotalAmount' => 6600, 'PaidAmount' => 0,
+        ]);
+
+        $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID,
+            'invoice_id' => $voidInvoice->id,
+            'payment_date' => '2026-09-04',
+            'payment_method' => 'cash',
+            'amount' => 9000,
+        ])->assertStatus(422)->assertJsonPath('code', 'void_invoice_cannot_record');
+
+        $invoice = $this->withToken($token)->postJson('/api/v1/invoices', [
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-04',
+            'TotalAmount' => 9000,
+            'billing_period' => '2026-08',
+            'Items' => [[
+                'StudentClassID' => $course->ID,
+                'Description' => '2026 年 8 月數學',
+                'Amount' => 9000,
+                'PeriodStart' => '2026-08-01',
+                'PeriodEnd' => '2026-08-29',
+            ]],
+        ])->assertCreated()->json();
+
+        $record = $this->withToken($token)->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID,
+            'invoice_id' => $invoice['id'],
+            'payment_date' => '2026-09-04',
+            'payment_method' => 'cash',
+            'amount' => 9000,
+            'note' => '主任 9/4 現金收訖；in-app #259',
+        ])->assertOk()->json();
+
+        $this->withToken($token)->putJson('/api/v1/payment-reports/' . $record['report_id'] . '/confirm')
+            ->assertOk();
+
+        $this->assertDatabaseHas('Invoice', [
+            'id' => $invoice['id'], 'Status' => 'paid', 'TotalAmount' => 9000, 'PaidAmount' => 9000,
+        ]);
+        $this->assertDatabaseHas('Payment', [
+            'InvoiceID' => $invoice['id'], 'Amount' => 9000, 'Method' => 'cash',
+        ]);
+        $this->assertDatabaseHas('payment_reports', [
+            'id' => $record['report_id'], 'StudentClassID' => $course->ID, 'status' => 'confirmed',
+        ]);
+        $this->assertSame(2, Invoice::where('StudentClassID', $course->ID)->count());
+        $this->assertSame(0, (int) Invoice::where('StudentClassID', $course->ID)->where('Status', 'void')->sum('PaidAmount'));
+        $this->assertSame(1, (int) $course->fresh()->Paid);
+    }
+
     public function test_charge_correction_rejects_count_mode_courses(): void
     {
         [$token] = $this->director();

@@ -19,6 +19,22 @@ updates:
     source_refs:
       - "changelog:2026-09-09:feedback-mobile-layout"
 
+  - id: staff-2026-09-08-payment-status-affordance
+    published_at: "2026-09-08"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 繳費狀態不再像按鈕
+    summary: 狀態與真正的帳務下一步分開顯示。
+    items:
+      - category: improved
+        text: 未繳費與待對帳現在清楚呈現為狀態，不會讓人誤以為可以直接點擊處理。
+      - category: improved
+        text: 需要處理時會顯示前往帳務中心或登記繳費回報的明確入口。
+    source_refs:
+      - "changelog:2026-09-08:payment-status-affordance"
+
   - id: staff-2026-09-08-global-search-v1
     published_at: "2026-09-08"
     audiences:

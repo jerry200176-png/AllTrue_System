@@ -90,6 +90,7 @@ class BillingController extends Controller
             'IssueDate' => 'required|date',
             'DueDate' => 'nullable|date',
             'TotalAmount' => 'required|integer|min:0',
+            'billing_period' => 'nullable|date_format:Y-m',
             'Note' => 'nullable|string|max:255',
             'Items' => 'nullable|array',
             'Items.*.Description' => 'required_with:Items|string|max:255',
@@ -106,6 +107,20 @@ class BillingController extends Controller
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
                 : null;
+            if (!empty($data['StudentClassID']) && !empty($data['billing_period'])) {
+                $duplicate = Invoice::query()
+                    ->where('StudentClassID', $data['StudentClassID'])
+                    ->where('billing_period', $data['billing_period'])
+                    ->notVoided()
+                    ->lockForUpdate()
+                    ->exists();
+                if ($duplicate) {
+                    return response()->json([
+                        'message' => '此課程該月份已有有效帳單，請勿重複建立。',
+                        'code' => 'billing_period_invoice_exists',
+                    ], 409);
+                }
+            }
             $invoice = Invoice::create([
                 'StudentID' => $data['StudentID'],
                 'StudentClassID' => $data['StudentClassID'] ?? null,
@@ -116,6 +131,7 @@ class BillingController extends Controller
                 'Status' => 'unpaid',
                 'ScheduleModeAtIssue' => $scheduleModeAtIssue,
                 'Note' => $data['Note'] ?? '',
+                'billing_period' => $data['billing_period'] ?? null,
             ]);
 
             $items = $data['Items'] ?? [];

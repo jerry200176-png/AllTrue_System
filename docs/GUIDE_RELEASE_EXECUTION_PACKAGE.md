@@ -17,6 +17,24 @@
 
 ---
 
+## 1.1 Production release impact gate
+
+任何會進入 production deploy 判定的 PR，都必須在 PR body 宣告一個且只有一個
+machine-readable marker：
+
+```text
+Release-Impact: user-visible
+Release-Impact: internal
+Release-Impact: no-user-facing-note
+```
+
+Presubmit 會對 deployable path fail closed：`user-visible` 必須同時修改既有
+`docs/CHANGELOG.md`；`internal` 與 `no-user-facing-note` 不得新增
+`docs/STAFF_UPDATES.yml`。部署後仍由既有 Version Update sync 發布，不新增平台或
+治理框架。
+
+---
+
 ## 2. 套件章節（必填）
 
 複製以下模板至 `docs/runbooks/<slug>-execution-package.md` 或 `docs/incidents/<slug>-execution-package.md`。
