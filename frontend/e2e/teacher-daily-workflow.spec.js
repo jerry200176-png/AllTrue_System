@@ -110,6 +110,19 @@ test.describe('Teacher daily workflow real Vue page', () => {
     });
   }
 
+  test('keeps the teacher work queue explicit while data is loading', async ({ page }) => {
+    await installTeacherMocks(page);
+    await page.route('**/api/v1/**', async () => new Promise(() => {}));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/pilot-mount.html?page=teacher&mode=loading');
+    await expect(page.locator('.th-work-task--skeleton').first()).toBeVisible();
+    await expect(page.getByText('正在整理今天的任務，等一下就會顯示。')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
+    await page.locator('.th-page').screenshot({
+      path: '/tmp/alltrue-teacher-after-20260909/vue-teacher-loading-390.png',
+    });
+  });
+
   test('prioritizes actionable work and excludes leave-requested sessions', async ({ page }) => {
     await installTeacherMocks(page);
     const secondaryRequests = [];
