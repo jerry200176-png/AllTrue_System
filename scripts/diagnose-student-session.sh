@@ -115,46 +115,59 @@ echo "=== END ==="
 echo "--- in-app #276 effective instructor probe (read-only) ---"
 "${M[@]}" -e "
 SELECT CONCAT_WS('|',
-  lr.id,
-  lr.ClassSessionID,
-  lr.StudentClassID,
-  lr.TeacherID,
-  IFNULL(ltu.Name,'?'),
-  sc.TeacherID,
-  IFNULL(ctu.Name,'?'),
-  IFNULL(lr.SessionDate,''),
-  IFNULL(LEFT(lr.StartTime,5),'')
+  lr.id, lr.ClassSessionID, lr.StudentClassID,
+  lr.TeacherID, IFNULL(ltu.Name,'?'),
+  sc.TeacherID, IFNULL(ctu.Name,'?'),
+  IFNULL(LEFT(lr.Content,40),''),
+  IFNULL(lr.UpdatedByUserID,'null'),
+  IFNULL(ubu.Name,'?')
 )
 FROM LearningRecord lr
 JOIN StudentClass sc ON sc.ID=lr.StudentClassID
 LEFT JOIN User ltu ON ltu.id=lr.TeacherID
 LEFT JOIN User ctu ON ctu.id=sc.TeacherID
-WHERE lr.id=18968 OR lr.ClassSessionID=26509;"
+LEFT JOIN User ubu ON ubu.id=lr.UpdatedByUserID
+WHERE lr.id=18968;"
 
-echo "--- schedules substitute rows for StudentClass 2878 near date ---"
+echo "--- schedules substitute-like rows for course 2878 on 2026-09-09 ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',s.id,s.student_class_id,s.session_date,IFNULL(LEFT(s.start_time,5),''),s.teacher_id,IFNULL(u.Name,'?'),IFNULL(s.type,''),IFNULL(s.status,''))
+SELECT CONCAT_WS('|',s.id,s.student_course_id,s.schedule_date,IFNULL(LEFT(s.start_time,5),''),s.teacher_id,IFNULL(u.Name,'?'),IFNULL(s.status,''),IFNULL(s.original_schedule_id,'null'))
 FROM schedules s
 LEFT JOIN User u ON u.id=s.teacher_id
-WHERE s.student_class_id=2878
- AND s.session_date BETWEEN DATE_SUB('2026-09-09', INTERVAL 7 DAY) AND DATE_ADD('2026-09-09', INTERVAL 7 DAY)
-ORDER BY s.session_date,s.id;" || true
+WHERE s.student_course_id=2878 AND s.schedule_date='2026-09-09'
+ORDER BY s.id;" || echo "(no schedules rows or query soft-failed)"
 
-echo "--- deployed resolveEffectiveInstructorUserId + teacher_name (read-only) ---"
-php /home/admin/backend/artisan tinker --no-ansi --execute="<?php
-\$lr = App\Models\LearningRecord::with('studentClass')->find(18968);
-\$ctrl = app(App\Http\Controllers\LearningRecordController::class);
-\$m = new ReflectionMethod(\$ctrl, 'resolveEffectiveInstructorUserId');
-\$m->setAccessible(true);
-\$eff = (int) \$m->invoke(\$ctrl, \$lr);
-\$name = App\Support\TeacherProfileDirectory::nameFor(\$eff, '未指派');
-echo json_encode([
-  'lr_id' => (int)\$lr->id,
-  'lr_teacher_id' => (int)\$lr->TeacherID,
-  'sc_teacher_id' => (int)(\$lr->studentClass->TeacherID ?? 0),
-  'effective_teacher_id' => \$eff,
-  'teacher_name' => \$name,
-  'prod_head' => trim((string)@shell_exec('git -C /home/admin/backend rev-parse HEAD')),
-], JSON_UNESCAPED_UNICODE), PHP_EOL;
-"
+echo "--- SQL-emulated precedence (sub>LR>SC) for LR 18968 ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',
+  lr.id,
+  CASE
+    WHEN sub.teacher_id IS NOT NULL AND sub.teacher_id>0 THEN sub.teacher_id
+    WHEN lr.TeacherID IS NOT NULL AND lr.TeacherID>0 THEN lr.TeacherID
+    ELSE sc.TeacherID
+  END AS effective_id,
+  CASE
+    WHEN sub.teacher_id IS NOT NULL AND sub.teacher_id>0 THEN IFNULL(su.Name,'?')
+    WHEN lr.TeacherID IS NOT NULL AND lr.TeacherID>0 THEN IFNULL(ltu.Name,'?')
+    ELSE IFNULL(ctu.Name,'?')
+  END AS effective_name,
+  'source=' ,
+  CASE
+    WHEN sub.teacher_id IS NOT NULL AND sub.teacher_id>0 THEN 'substitute'
+    WHEN lr.TeacherID IS NOT NULL AND lr.TeacherID>0 THEN 'learning_record'
+    ELSE 'student_class'
+  END
+)
+FROM LearningRecord lr
+JOIN StudentClass sc ON sc.ID=lr.StudentClassID
+LEFT JOIN User ltu ON ltu.id=lr.TeacherID
+LEFT JOIN User ctu ON ctu.id=sc.TeacherID
+LEFT JOIN schedules sub ON sub.student_course_id=lr.StudentClassID
+  AND sub.schedule_date=lr.SessionDate
+  AND sub.status='scheduled'
+  AND sub.original_schedule_id IS NOT NULL
+  AND SUBSTRING(sub.start_time,1,5)=SUBSTRING(lr.StartTime,1,5)
+LEFT JOIN User su ON su.id=sub.teacher_id
+WHERE lr.id=18968;"
+
 echo "=== END #276 probe ==="
