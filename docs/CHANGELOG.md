@@ -7,7 +7,6 @@
 <!-- release-notes: staff_update=staff-2026-09-09-monthly-leave-invariant -->
 - attendance、行事曆、補請假、家長請假核准與批次流程共用月結請假 invariant：只改原堂狀態，不移動未來堂次、不補尾、不延長 `EndDate`；legacy `SessionCount` 不再改變此判定。
 - 月結跨期資料不再導向不存在的帳務更正流程；backend 回傳可操作的 action code，前端提供「前往帳務中心」與月結核准不補課入口。
-- 新增全分校 read-only historical inventory command／workflow，僅輸出 aggregate 與 bounded internal-ID anomaly list；本次不修改任何 historical production row。
 
 ## 2026-09-09 — fix(parent): 家長學習評量入口與空狀態可操作
 <!-- release-notes: staff_update=staff-2026-09-09-parent-learning-assessment-controls -->
