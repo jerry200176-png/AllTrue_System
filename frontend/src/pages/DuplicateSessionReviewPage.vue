@@ -15,7 +15,7 @@
     <div v-if="trustFocusLabel" class="dsr-focus-banner" role="status">
       <span class="material-symbols-outlined" aria-hidden="true">person_search</span>
       <span>已為您篩選：<strong>{{ trustFocusLabel }}</strong>（從可信度決策卡帶入）</span>
-      <button type="button" class="ghost xs" @click="clearTrustFocus">顯示全部</button>
+      <AtButton type="button" shape="rect" size="md" variant="ghost" @click="clearTrustFocus">顯示全部</AtButton>
     </div>
 
     <!-- FilterBar -->
@@ -42,25 +42,27 @@
 
       <!-- Status tabs -->
       <nav class="dsr-tabs" role="tablist" aria-label="審核狀態">
-        <button
+        <AtButton
           v-for="tab in statusTabs"
           :key="tab.value"
+          shape="rect"
+          size="md"
+          :variant="activeTab === tab.value ? 'secondary' : 'ghost'"
           role="tab"
-          :aria-selected="activeTab === tab.value"
-          :class="['dsr-tab', { active: activeTab === tab.value }]"
-          type="button"
+          :aria-selected="activeTab === tab.value ? 'true' : 'false'"
+          class="dsr-tab"
+          :icon="tab.value === 'pending' ? 'pending_actions' : 'list'"
           @click="setTab(tab.value)"
-        >
-          {{ tab.label }}
+        >{{ tab.label }}
           <span v-if="tabCount(tab.value) > 0" class="dsr-tab-badge" :class="`dsr-tab-badge-${tab.value}`">
             {{ tabCount(tab.value) }}
           </span>
-        </button>
+        </AtButton>
       </nav>
     </div>
 
     <!-- StatsBar -->
-    <div class="dsr-stats-bar">
+    <div v-if="!loading && !error" class="dsr-stats-bar">
       <div class="dsr-stat">
         <span class="dsr-stat-num">{{ total }}</span>
         <span class="dsr-stat-label">總組數</span>
@@ -76,20 +78,17 @@
     </div>
 
     <!-- Loading / Error / Empty states -->
-    <div v-if="loading" class="dsr-state dsr-state-loading">
-      <div class="dsr-spinner" aria-hidden="true"></div>
-      <span>載入中…</span>
-    </div>
-    <div v-else-if="error" class="dsr-state dsr-state-error">
-      <span class="material-symbols-outlined" aria-hidden="true">error</span>
-      <span>{{ error }}</span>
-      <button class="ghost xs" type="button" @click="refresh">重試</button>
-    </div>
-    <div v-else-if="filteredGroups.length === 0" class="dsr-state dsr-state-empty">
-      <span class="material-symbols-outlined dsr-empty-icon" aria-hidden="true">task_alt</span>
-      <div class="dsr-empty-title">沒有待審核的重複課程時段</div>
-      <div class="dsr-empty-sub">目前沒有需要在此狀態下審核的課程重疊案件。</div>
-    </div>
+    <AtSkeleton v-if="loading" :rows="6" />
+    <AtInlineAlert v-else-if="error" tone="danger" title="無法載入重複課程審核">
+      <p>{{ error }}</p>
+      <template #action><AtButton shape="rect" size="md" variant="ghost" @click="refresh">重試</AtButton></template>
+    </AtInlineAlert>
+    <AtEmpty
+      v-else-if="filteredGroups.length === 0"
+      icon="task_alt"
+      title="沒有待審核的重複課程時段"
+      description="目前沒有需要在此狀態下審核的課程重疊案件。"
+    />
 
     <!-- ReviewTable (desktop) -->
     <div v-else class="dsr-table-wrap">
@@ -432,7 +431,10 @@
     </div>
 
     <!-- Submit error -->
-    <div v-if="submitError" class="dsr-error" role="alert">{{ submitError }}</div>
+    <AtInlineAlert v-if="submitError" tone="danger" title="無法提交審核決策">
+      <p>{{ submitError }}</p>
+      <template #action><AtButton shape="rect" size="md" variant="ghost" @click="refresh">重新整理</AtButton></template>
+    </AtInlineAlert>
 
     <!-- Toast -->
     <Teleport to="body">
@@ -450,7 +452,10 @@
 
 <script setup>
 import AtButton from '../components/design-system/AtButton.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { ref, computed, watch, onMounted, reactive } from 'vue';
 import { branches } from '../lib/useBranches';
 import { useDuplicateReview, groupKey } from '../composables/useDuplicateReview';
@@ -666,6 +671,10 @@ onMounted(() => {
 
 <style scoped>
 .dsr-page { max-width: 1200px; margin: 0 auto; }
+.dsr-page :deep(.at-btn),
+.dsr-page button,
+.dsr-page select,
+.dsr-page input:not([type="radio"]):not([type="checkbox"]) { min-height: 44px; }
 
 .dsr-focus-banner {
   display: flex;
@@ -734,6 +743,7 @@ onMounted(() => {
 /* Tabs */
 .dsr-tabs {
   display: flex;
+  align-items: center;
   gap: 4px;
   border-bottom: 1px solid var(--border);
   flex: 1;
@@ -741,23 +751,8 @@ onMounted(() => {
   overflow-x: auto;
 }
 .dsr-tab {
-  background: transparent;
-  border: 0;
-  padding: 10px 16px;
-  min-height: 44px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-light);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.dsr-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  flex: 0 0 auto;
+  min-width: 112px;
 }
 .dsr-tab-badge {
   display: inline-flex;
@@ -894,6 +889,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 44px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
