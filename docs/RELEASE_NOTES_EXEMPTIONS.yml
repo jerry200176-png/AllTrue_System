@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-09-substitute-notification-idempotency
+    changelog_date: "2026-09-09"
+    changelog_title: "fix(ops): 代課通知併發重試不重複"
+    reason: 僅補強既有代課通知的唯一鍵競爭復原與回歸測試；不新增教職員操作流程，不改帳務、排課語意或 production 資料。
+
   - id: silent-2026-09-08-parent-portal-test-tenant
     changelog_date: "2026-09-08"
     changelog_title: "feat(parent): isolated synthetic Parent Portal production smoke fixture"
