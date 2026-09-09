@@ -165,7 +165,10 @@ jobs:
           echo (string) $row->token;
           ' > "$token_file"
           token="$(<"$token_file")"; rm -f "$token_file"
-          [[ "$token" =~ ^[A-Za-z0-9]{48}$ ]] || { echo '::error::session format check failed' >&2; exit 1; }
+          # AuthController issues alphanumeric Str::random tokens, but the
+          # length is an application contract that has changed over time.
+          # Reject empty/control-bearing output without assuming one length.
+          [[ "$token" =~ ^[A-Za-z0-9]+$ ]] || { echo '::error::session format check failed' >&2; exit 1; }
           echo '::add-mask::'"$token"
           api() {
             local method="$1" path="$2" body="$3" output="$4"
