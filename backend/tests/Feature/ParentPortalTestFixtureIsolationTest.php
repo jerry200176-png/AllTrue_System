@@ -136,6 +136,10 @@ class ParentPortalTestFixtureIsolationTest extends TestCase
         $this->assertDatabaseCount('student_line_bindings', 0);
         $this->assertDatabaseHas('Campus', ['id' => $fixture['campus_id'], 'is_test' => 1]);
         $this->assertDatabaseHas('Student', ['id' => $fixture['student_id'], 'CampusID' => $fixture['campus_id']]);
+        $this->assertDatabaseHas('Student', [
+            'id' => $fixture['student_id'],
+            'TelegramID' => '',
+        ]);
         $this->assertDatabaseHas('student_guardians', [
             'id' => $fixture['student_guardian_id'],
             'student_id' => $fixture['student_id'],
