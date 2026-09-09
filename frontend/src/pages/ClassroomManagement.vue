@@ -12,47 +12,69 @@
     </AtPageHeader>
 
     <div class="card" :aria-busy="loading ? 'true' : 'false'">
-      <div v-if="loading" class="hint" role="status" aria-live="polite">載入中…</div>
+      <AtSkeleton v-if="loading" :rows="4" />
       <div v-else>
-        <div v-if="loadError" class="classroom-error" role="alert">
+        <AtInlineAlert v-if="loadError" class="classroom-error" tone="danger" title="教室清單暫時無法載入，請重試。">
           <p>{{ loadError }}</p>
-          <button type="button" class="small" @click="loadRooms">重試</button>
-        </div>
-        <table v-if="rooms.length" class="room-table" data-guide="classroom-table">
-          <caption class="sr-only">目前分校教室清單</caption>
-          <thead>
-            <tr>
-              <th scope="col">教室名稱</th>
-              <th scope="col">容量</th>
-              <th scope="col">備註</th>
-              <th scope="col">狀態</th>
-              <th scope="col">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in rooms" :key="r.id">
-              <td><strong>{{ r.name }}</strong></td>
-              <td>{{ r.capacity }}</td>
-              <td><span class="memo-text">{{ r.memo || '—' }}</span></td>
-              <td>
-                <span :class="['status-tag', r.is_active ? 'active' : 'inactive']">
-                  {{ r.is_active ? '啟用' : '停用' }}
-                </span>
-              </td>
-              <td>
-                <button type="button" class="small" :aria-label="`編輯教室：${r.name}`" @click="openEdit(r)">編輯</button>
-                <button type="button" class="small" :aria-label="`${r.is_active ? '停用' : '啟用'}教室：${r.name}`" @click="toggleActive(r)">
+          <template #action><AtButton shape="rect" size="sm" variant="ghost" @click="loadRooms">重試</AtButton></template>
+        </AtInlineAlert>
+        <AtEmpty v-else-if="!rooms.length" class="empty-text" icon="meeting_room" title="目前此分校尚無教室" description="新增教室後，排課時就能直接選擇上課地點。">
+          <template #action><AtButton shape="rect" variant="primary" @click="openAdd">新增教室</AtButton></template>
+        </AtEmpty>
+        <template v-else>
+          <div class="room-table-wrap">
+            <table class="room-table" data-guide="classroom-table">
+              <caption class="sr-only">目前分校教室清單</caption>
+              <thead>
+                <tr>
+                  <th scope="col">教室名稱</th>
+                  <th scope="col">容量</th>
+                  <th scope="col">備註</th>
+                  <th scope="col">狀態</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in rooms" :key="r.id">
+                  <td><strong>{{ r.name }}</strong></td>
+                  <td>{{ r.capacity }}</td>
+                  <td><span class="memo-text">{{ r.memo || '—' }}</span></td>
+                  <td>
+                    <span :class="['status-tag', r.is_active ? 'active' : 'inactive']">
+                      {{ r.is_active ? '啟用' : '停用' }}
+                    </span>
+                  </td>
+                  <td class="room-actions">
+                    <AtButton shape="rect" size="sm" variant="ghost" :aria-label="`編輯教室：${r.name}`" @click="openEdit(r)">編輯</AtButton>
+                    <AtButton shape="rect" size="sm" variant="ghost" :aria-label="`${r.is_active ? '停用' : '啟用'}教室：${r.name}`" @click="toggleActive(r)">
+                      {{ r.is_active ? '停用' : '啟用' }}
+                    </AtButton>
+                    <AtButton shape="rect" size="sm" variant="ghost" :aria-label="`刪除教室：${r.name}`" @click="confirmDelete(r)">刪除</AtButton>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="room-mobile-list" aria-label="教室清單">
+            <article v-for="r in rooms" :key="r.id" class="room-mobile-card">
+              <div class="room-mobile-card__head">
+                <strong>{{ r.name }}</strong>
+                <span :class="['status-tag', r.is_active ? 'active' : 'inactive']">{{ r.is_active ? '啟用' : '停用' }}</span>
+              </div>
+              <dl class="room-mobile-details">
+                <div><dt>容量</dt><dd>{{ r.capacity }} 人</dd></div>
+                <div><dt>備註</dt><dd>{{ r.memo || '—' }}</dd></div>
+              </dl>
+              <div class="room-mobile-actions">
+                <AtButton block shape="rect" variant="ghost" :aria-label="`編輯教室：${r.name}`" @click="openEdit(r)">編輯</AtButton>
+                <AtButton block shape="rect" variant="ghost" :aria-label="`${r.is_active ? '停用' : '啟用'}教室：${r.name}`" @click="toggleActive(r)">
                   {{ r.is_active ? '停用' : '啟用' }}
-                </button>
-                <button type="button" class="small ghost" :aria-label="`刪除教室：${r.name}`" @click="confirmDelete(r)">刪除</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-else-if="!loadError" class="empty-text" role="status">
-          <p>目前此分校尚無教室。</p>
-          <button type="button" class="small" @click="openAdd">新增教室</button>
-        </div>
+                </AtButton>
+                <AtButton block shape="rect" variant="ghost" :aria-label="`刪除教室：${r.name}`" @click="confirmDelete(r)">刪除</AtButton>
+              </div>
+            </article>
+          </div>
+        </template>
       </div>
     </div>
 
@@ -112,7 +134,10 @@
 import { ref, watch, onMounted } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtDialog from '../components/design-system/AtDialog.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { supabase } from '../supabase';
 
 const props = defineProps({
@@ -275,17 +300,39 @@ onMounted(() => loadRooms());
 }
 .header-actions h2 { margin: 0 0 4px 0; }
 .ref-hint { color: var(--text-light); font-size: 0.9rem; margin: 0; }
+.room-table-wrap { overflow-x: auto; }
 .room-table { width: 100%; border-collapse: collapse; }
-.room-table th, .room-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }
-.room-table th { font-weight: 600; background: #f8f9fa; }
-.classroom-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; margin-bottom: 16px; color: var(--danger, var(--ds-danger)); background: var(--danger-bg, var(--ds-canvas-soft)); border: 1px solid currentColor; border-radius: 8px; }
+.room-table th, .room-table td { padding: 12px; text-align: left; border-bottom: 1px solid var(--ds-hairline); vertical-align: middle; }
+.room-table th { font-weight: 600; color: var(--ds-text-secondary); background: var(--ds-surface-0); }
+.room-actions { white-space: nowrap; }
+.classroom-error { margin: 10px 0; }
 .classroom-error p { margin: 0; }
-.memo-text { color: var(--text-light); font-size: 0.9rem; }
-.status-tag.active { background: #e8f5e9; color: #2e7d32; }
-.status-tag.inactive { background: #ffebee; color: #c62828; }
-.empty-text { padding: 24px; color: var(--text-light); text-align: center; }
-.empty-text p { margin: 0 0 12px; }
+.memo-text { color: var(--ds-text-tertiary); font-size: 13px; overflow-wrap: anywhere; }
+.status-tag { display: inline-flex; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 600; }
+.status-tag.active { background: var(--ds-success-wash); color: var(--ds-success); }
+.status-tag.inactive { background: var(--ds-danger-wash); color: var(--ds-danger); }
+.empty-text { margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .required { color: #c62828; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.room-mobile-list { display: none; }
+.room-mobile-card { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-canvas); }
+.room-mobile-card + .room-mobile-card { margin-top: 12px; }
+.room-mobile-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.room-mobile-details { display: grid; gap: 8px; margin: 16px 0; }
+.room-mobile-details > div { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; align-items: start; }
+.room-mobile-details dt { color: var(--ds-text-tertiary); font-size: 13px; font-weight: 600; }
+.room-mobile-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--ds-text-secondary); }
+.room-mobile-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.classroom-page :deep(.at-btn) { min-height: 44px; }
+.classroom-page input, .classroom-page textarea { min-height: 44px; }
+:global(.classroom-dialog input), :global(.classroom-dialog textarea) { width: 100%; margin-top: 6px; border: 1px solid var(--ds-hairline-input); border-radius: 7px; padding: 9px 10px; background: var(--ds-canvas); color: inherit; font: inherit; }
+:global(.classroom-dialog input) { min-height: 44px; }
+:global(.classroom-dialog textarea) { min-height: 96px; resize: vertical; }
+:global(.classroom-dialog .at-dialog__close), :global(.classroom-dialog .at-btn) { min-width: 44px; min-height: 44px; }
+@media (max-width: 720px) {
+  .room-table-wrap { display: none; }
+  .room-mobile-list { display: block; }
+  .room-mobile-actions { grid-template-columns: 1fr; }
+}
 </style>
