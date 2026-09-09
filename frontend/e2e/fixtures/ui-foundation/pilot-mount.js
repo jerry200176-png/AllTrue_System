@@ -44,6 +44,7 @@ const pageModules = {
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
+  'line-integration': () => import('../../../src/pages/LineIntegration.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -103,6 +104,9 @@ createApp({
     }
     if (page === 'parent') {
       return () => h(PageComponent, { standalone: true });
+    }
+    if (page === 'line-integration') {
+      return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'admissions') {
       const searchParams = new URLSearchParams(window.location.search);
