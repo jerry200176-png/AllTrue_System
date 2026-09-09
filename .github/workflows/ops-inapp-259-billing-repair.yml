@@ -189,29 +189,26 @@ jobs:
             local raw="$work_dir/tinker-raw"
             php artisan tinker --no-ansi --execute="$*" > "$raw"
             python3 - "$raw" "$output" <<'PY'
-          import json, sys
+          import base64, binascii, json, sys
 
           raw_path, output_path = sys.argv[1:]
           text = open(raw_path, encoding="utf-8").read()
-          decoder = json.JSONDecoder()
-          candidates = []
-          cursor = 0
-          while True:
-              start = text.find("{", cursor)
-              if start < 0:
-                  break
-              try:
-                  value, end = decoder.raw_decode(text, start)
-              except json.JSONDecodeError:
-                  cursor = start + 1
-                  continue
-              if isinstance(value, dict):
-                  candidates.append(value)
-              cursor = end
-          if len(candidates) != 1:
-              raise SystemExit("expected exactly one JSON object from production tinker")
+          start_marker = "__INAPP259_STATE_START__"
+          end_marker = "__INAPP259_STATE_END__"
+          starts = text.count(start_marker)
+          ends = text.count(end_marker)
+          if starts != 1 or ends != 1:
+              raise SystemExit("expected exactly one #259 state sentinel pair from production tinker")
+          start = text.index(start_marker) + len(start_marker)
+          end = text.index(end_marker, start)
+          try:
+              value = json.loads(base64.b64decode(text[start:end].strip(), validate=True))
+          except (ValueError, binascii.Error, json.JSONDecodeError) as exc:
+              raise SystemExit("invalid #259 state sentinel payload") from exc
+          if not isinstance(value, dict):
+              raise SystemExit("#259 state sentinel payload must be a JSON object")
           with open(output_path, "w", encoding="utf-8") as stream:
-              json.dump(candidates[0], stream, ensure_ascii=False, separators=(",", ":"))
+              json.dump(value, stream, ensure_ascii=False, separators=(",", ":"))
               stream.write("\n")
           PY
           }
@@ -236,7 +233,8 @@ jobs:
           $initialExact = $sc && (int)$sc->StudentID === 24 && (string)$sc->ScheduleMode === "date" && (int)$sc->SessionCount === 4 && (int)$sc->Charge === 7200 && (int)$sc->Paid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$sept->SessionCount === 5 && (int)$sept->Charge === 9000 && (string)$sept->ScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
           if (!$sc || (int)$sc->StudentID !== 24 || (string)$sc->ScheduleMode !== "date" || !$s || (int)$s->StudentClassID !== 2885 || (string)$s->SessionDate !== "2026-08-29") throw new \RuntimeException("business truth precondition mismatch");
           if (!$alreadyExact && !$initialExact) throw new \RuntimeException("exact #259 precondition mismatch; no write permitted");
-          echo json_encode(["backend_sha"=>getenv("DEPLOYED_SHA"),"already_exact"=>(bool)$alreadyExact,"session_count"=>(int)$sc->SessionCount,"charge"=>(int)$sc->Charge,"end_date"=>$endDate,"invoice_id"=>$invoice ? (int)$invoice->id : null,"invoice_status"=>$invoice ? (string)$invoice->Status : null,"invoice_total"=>$invoice ? (int)$invoice->TotalAmount : null,"active_invoice_count"=>$augustInvoices->count(),"positive_payment_count"=>(int)$paid,"confirmed_report_count"=>$confirmed->count()], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          $state = json_encode(["backend_sha"=>getenv("DEPLOYED_SHA"),"already_exact"=>(bool)$alreadyExact,"session_count"=>(int)$sc->SessionCount,"charge"=>(int)$sc->Charge,"end_date"=>$endDate,"invoice_id"=>$invoice ? (int)$invoice->id : null,"invoice_status"=>$invoice ? (string)$invoice->Status : null,"invoice_total"=>$invoice ? (int)$invoice->TotalAmount : null,"active_invoice_count"=>$augustInvoices->count(),"positive_payment_count"=>(int)$paid,"confirmed_report_count"=>$confirmed->count()], JSON_UNESCAPED_UNICODE);
+          echo "__INAPP259_STATE_START__" . base64_encode($state) . "__INAPP259_STATE_END__", PHP_EOL;
           '
           session_count="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["session_count"])' "$state")"
           charge="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["charge"])' "$state")"
