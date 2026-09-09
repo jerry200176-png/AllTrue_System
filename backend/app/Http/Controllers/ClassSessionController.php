@@ -3436,7 +3436,7 @@ class ClassSessionController extends Controller
                     ->where('Status', '!=', 'cancelled')
                     ->count();
                 if ($sessionsThatDay <= 1) {
-                    $leftoverIds = Schedule::query()->where('student_course_id', $courseId)
+                    $leftoverIds = Schedule::where('student_course_id', $courseId)
                         ->whereDate('schedule_date', $sessionDate)
                         ->where('status', 'scheduled')
                         ->whereNotNull('original_schedule_id')
@@ -3444,7 +3444,7 @@ class ClassSessionController extends Controller
                         ->pluck('id')
                         ->map(fn ($id) => (int) $id)
                         ->all();
-                    $leftoverAnchors = Schedule::query()->where('student_course_id', $courseId)
+                    $leftoverAnchors = Schedule::where('student_course_id', $courseId)
                         ->whereDate('schedule_date', $sessionDate)
                         ->where('status', 'scheduled')
                         ->whereNotNull('original_schedule_id')
