@@ -184,15 +184,26 @@ final class SessionContractRecoveryService
         }
         if (strtolower((string) ($source->ScheduleMode ?? 'count')) === 'date'
             || strtolower((string) ($target->ScheduleMode ?? 'count')) === 'date') {
-            $this->blocked('月結課程不可使用只搬紀錄的堂次移轉；請先使用帳務更正流程同步堂數、費用與月結區間。');
+            $this->blocked(
+                '月結課程不可只搬點名／評量紀錄。請先到帳務中心核對本期實上堂數與跨期歸屬；本次未移動任何堂次。',
+                [
+                    'code' => 'monthly_leave_period_review_required',
+                    'next_step' => 'open_tuition_collection',
+                    'next_actions' => [[
+                        'code' => 'open_tuition_collection',
+                        'label' => '前往帳務中心',
+                        'available' => true,
+                    ]],
+                ]
+            );
         }
         if ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled') {
             $this->blocked('來源課程已提前結清，堂次與紀錄已鎖定，無法恢復移轉。');
         }
     }
-    private function blocked(string $message): never
+    private function blocked(string $message, array $payload = []): never
     {
-        throw new SessionContractRecoveryException($message);
+        throw new SessionContractRecoveryException($message, $payload);
     }
 
     /** @return Collection<int, array{session_id: int, date: string, start_time: string}> */

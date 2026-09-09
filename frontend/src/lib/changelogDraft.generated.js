@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.09",
     "date": "2026-09-09",
     "title": "2026.09.09 草稿（未發布）",
-    "summary": "家長學習評量入口與空狀態可操作；修正手機行事曆單堂檢視操作",
+    "summary": "月結請假跨入口維持日期邊界；家長學習評量入口與空狀態可操作",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "月結請假跨入口維持日期邊界",
           "家長學習評量入口與空狀態可操作",
           "修正手機行事曆單堂檢視操作",
           "修正手機意見與建議表單排版"
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "月結請假跨入口維持日期邊界",
       "家長學習評量入口與空狀態可操作",
       "修正手機行事曆單堂檢視操作",
       "修正手機意見與建議表單排版",

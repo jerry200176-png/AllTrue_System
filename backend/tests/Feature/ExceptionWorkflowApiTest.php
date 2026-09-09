@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
+use App\Models\ExceptionWorkflowCandidate;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -586,6 +587,103 @@ class ExceptionWorkflowApiTest extends TestCase
         $this->assertSame($remainingBefore, (int) StudentClass::where('ID', $course->ID)->value('RemainingSessions'));
     }
 
+    public function test_monthly_parent_leave_waive_is_leave_only_and_voids_live_evidence(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(
+            1,
+            '月結家長請假學生',
+            '0912000021',
+            scheduleMode: 'date'
+        );
+        $future = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-06-03',
+            'StartTime' => '18:30',
+            'EndTime' => '20:30',
+            'Status' => 'scheduled',
+        ]);
+        $record = LearningRecord::create([
+            'StudentClassID' => $course->ID,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 1,
+            'Content' => '',
+            'Subject' => '測試科目',
+            'SessionDate' => $session->SessionDate,
+            'StartTime' => $session->StartTime,
+            'EndTime' => $session->EndTime,
+            'Status' => 'pending',
+        ]);
+        $token = $this->parentLogin('月結家長請假學生', '0912000021');
+        $this->postJson("/api/v1/parent/sessions/{$session->id}/leave", [
+            'reason' => '月結請假',
+        ], ['Authorization' => "Bearer {$token}"])->assertOk();
+
+        $workflow = ExceptionWorkflow::where('class_session_id', $session->id)->firstOrFail();
+        $directorToken = $this->createDirectorToken([1], 'director-monthly-waive@example.com');
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/waive", [], [
+            'Authorization' => "Bearer {$directorToken}",
+            'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk()->assertJsonPath('data.workflow.status', 'waived');
+        $session->refresh();
+        $course->refresh();
+        $record->refresh();
+        $this->assertSame('leave', strtolower((string) $session->Status));
+        $this->assertSame('2026-06-30', Carbon::parse($course->EndDate)->toDateString());
+        $this->assertSame(8, (int) $course->SessionCount, 'legacy SessionCount is not used to append monthly tail');
+        $this->assertSame('2026-06-03', Carbon::parse($future->fresh()->SessionDate)->toDateString());
+        $this->assertNotNull($record->VoidedAt);
+        $this->assertDatabaseCount('schedules', 0);
+        $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->count());
+    }
+
+    public function test_monthly_exception_workflow_cannot_generate_or_confirm_makeup_candidate(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(
+            1,
+            '月結候選阻擋學生',
+            '0912000022',
+            scheduleMode: 'date'
+        );
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-monthly-candidate@example.com');
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07', 'end_date' => '2026-05-07', 'limit' => 1,
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'monthly_leave_no_makeup')
+            ->assertJsonPath('next_step', 'waive_without_makeup');
+        $this->assertDatabaseCount('exception_workflow_candidates', 0);
+
+        $candidate = ExceptionWorkflowCandidate::create([
+            'workflow_id' => $workflow->id,
+            'rank' => 1,
+            'candidate_date' => '2026-05-07',
+            'start_time' => '09:00',
+            'end_time' => '11:00',
+            'status' => 'available',
+            'score' => 1,
+            'expires_at' => now()->addHour(),
+        ]);
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidate->id,
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'monthly_leave_no_makeup');
+        $this->assertDatabaseCount('schedules', 0);
+        $this->assertSame(1, ClassSession::where('StudentClassID', $course->ID)->count());
+    }
+
     public function test_director_can_reject_pending_parent_leave_and_restore_session(): void
     {
         [$student, $course, $session] = $this->makeStudentCourseSession(1, '退回請假學生', '0912000014');
@@ -666,7 +764,12 @@ class ExceptionWorkflowApiTest extends TestCase
         ]);
     }
 
-    private function makeStudentCourseSession(int $campusId, string $name, string $phone): array
+    private function makeStudentCourseSession(
+        int $campusId,
+        string $name,
+        string $phone,
+        string $scheduleMode = 'count'
+    ): array
     {
         $student = Student::create([
             'name' => $name,
@@ -693,7 +796,7 @@ class ExceptionWorkflowApiTest extends TestCase
             'Rate' => 1100,
             'MDate' => now(),
             'Stop' => 0,
-            'ScheduleMode' => 'count',
+            'ScheduleMode' => $scheduleMode,
             'SessionCount' => 8,
             'SessionDuration' => 120,
             'RemainingSessions' => 8,

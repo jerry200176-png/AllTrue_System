@@ -1,0 +1,89 @@
+name: Monthly leave/date boundary inventory (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_read_only:
+        description: "Type READ_ONLY_MONTHLY_LEAVE_INVENTORY to run"
+        required: true
+        type: string
+
+concurrency:
+  group: monthly-leave-boundary-inventory
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    name: All-campus production inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Guard read-only confirmation
+        run: test "${{ inputs.confirm_read_only }}" = "READ_ONLY_MONTHLY_LEAVE_INVENTORY"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Wait for deployed SHA and run read-only inventory
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          EXPECTED: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for i in $(seq 1 60); do
+            HEAD=$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              "$PI_SSH_USER@$PI_SSH_HOST" 'git -C /home/admin/backend rev-parse HEAD')
+            echo "attempt=$i deployed_sha=$HEAD expected_sha=$EXPECTED"
+            if [ "$HEAD" = "$EXPECTED" ]; then break; fi
+            if [ "$i" = 60 ]; then exit 1; fi
+            sleep 30
+          done
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" \
+            'cd /home/admin/backend && php artisan monthly:leave-boundary-inventory --limit=200 --json' \
+            | tee out/monthly-leave-boundary-inventory.json
+          grep -q '"read_only": true' out/monthly-leave-boundary-inventory.json
+
+      - name: Upload bounded inventory evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monthly-leave-boundary-inventory-${{ github.run_id }}
+          path: out/monthly-leave-boundary-inventory.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo '### Monthly leave/date boundary inventory'
+            echo 'All-campus, read-only, PII-minimized aggregate plus bounded internal-ID anomalies.'
+            echo '```json'
+            sed -n '1,240p' out/monthly-leave-boundary-inventory.json 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
