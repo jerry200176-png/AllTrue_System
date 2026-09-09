@@ -633,6 +633,7 @@ class AlertController extends Controller
     public function tuitionSlipData(Request $request, int $studentClassId)
     {
         $sc = StudentClass::with(['student', 'coursePackage'])->findOrFail($studentClassId);
+        /** @var StudentClass $sc */
 
         if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
