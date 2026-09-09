@@ -115,7 +115,8 @@ export const staffUpdates = [
       }
     ],
     "sourceRefs": [
-      "changelog:2026-09-09:parent-learning-assessment-controls"
+      "changelog:2026-09-09:parent-learning-assessment-controls",
+      "parent_update:parent-update-2026-09-09-learning-assessment"
     ],
     "date": "2026-09-09",
     "version": "2026.09.09"

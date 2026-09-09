@@ -18,6 +18,7 @@ updates:
         text: 跨分校唯讀狀態下，家長意見分類、星評與文字輸入會明確停用，不改權限或資料流程。
     source_refs:
       - "changelog:2026-09-09:parent-learning-assessment-controls"
+      - "parent_update:parent-update-2026-09-09-learning-assessment"
 
   - id: staff-2026-09-09-calendar-modal-mobile-reachability
     published_at: "2026-09-09"
