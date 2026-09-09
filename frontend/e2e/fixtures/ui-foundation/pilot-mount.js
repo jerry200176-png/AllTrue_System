@@ -48,6 +48,7 @@ const pageModules = {
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
   'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
   chat: () => import('../../../src/pages/ChatPage.vue'),
+  'subject-settings': () => import('../../../src/pages/SubjectSettingsPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -129,6 +130,9 @@ createApp({
       const branchIdParam = searchParams.get('branch');
       const branchId = branchIdParam ? Number(branchIdParam) : 1;
       return () => h(PageComponent, { branchId, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
+    }
+    if (page === 'subject-settings') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     return () => h(PageComponent, { branchId: 1 });
   },
