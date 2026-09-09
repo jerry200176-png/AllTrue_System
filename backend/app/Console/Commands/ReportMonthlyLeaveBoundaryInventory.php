@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -194,7 +195,7 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
             ->where('other_sc.StudentID', (int) $course->StudentID)
             ->where('ClassSession.StudentClassID', '!=', (int) $course->ID)
             ->whereDate('ClassSession.SessionDate', Carbon::parse((string) $session->SessionDate)->toDateString())
-            ->whereNotIn(DB::raw('LOWER(ClassSession.Status)'), ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->whereNotIn(DB::raw('LOWER(ClassSession.Status)'), SessionStatus::futureReservationExclusionStatuses())
             ->whereRaw('SUBSTRING(ClassSession.StartTime, 1, 5) < ?', [substr((string) $session->EndTime, 0, 5)])
             ->whereRaw('SUBSTRING(ClassSession.EndTime, 1, 5) > ?', [substr((string) $session->StartTime, 0, 5)])
             ->exists();
