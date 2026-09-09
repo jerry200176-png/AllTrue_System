@@ -187,7 +187,9 @@ jobs:
             local output="$1"
             shift
             local raw="$work_dir/tinker-raw"
-            php artisan tinker --quiet --no-interaction --no-ansi --execute="$*" > "$raw"
+            # Tinker --quiet suppresses user echo output even with exit 0; the
+            # sentinel is the bounded state transport used by this gate.
+            php artisan tinker --no-interaction --no-ansi --execute="$*" > "$raw"
             python3 - "$raw" "$output" <<'PY'
           import base64, binascii, json, sys
 
