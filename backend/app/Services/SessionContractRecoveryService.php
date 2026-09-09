@@ -182,6 +182,10 @@ final class SessionContractRecoveryService
         if ((int) ($source->SubjectID ?? 0) !== (int) ($target->SubjectID ?? 0)) {
             $this->blocked('目標課程與來源課程的科目不一致，拒絕恢復移轉。');
         }
+        if (strtolower((string) ($source->ScheduleMode ?? 'count')) === 'date'
+            || strtolower((string) ($target->ScheduleMode ?? 'count')) === 'date') {
+            $this->blocked('月結課程不可使用只搬紀錄的堂次移轉；請先使用帳務更正流程同步堂數、費用與月結區間。');
+        }
         if ($source->hasDeductionHistory() && (string) $source->getAttribute('closed_reason') === 'usage_settled') {
             $this->blocked('來源課程已提前結清，堂次與紀錄已鎖定，無法恢復移轉。');
         }
