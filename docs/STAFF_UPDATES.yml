@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-09-contract-adjustment-choice-ux
+    published_at: "2026-09-09"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 合約調整選項更清楚
+    summary: 用問題引導選流程，已繳費會停用堂數改少。
+    items:
+      - category: improved
+        text: 「合約／堂次調整」改成先問你要處理哪件事，再進入對應流程。
+      - category: improved
+        text: 已繳費或待對帳時不能選「堂數開錯」；不上了請選結束合約。
+      - category: action_required
+        text: 提前結束不會自動改金額或退費，差額請再到帳務中心處理。
+    source_refs:
+      - "changelog:2026-09-09:contract-adjustment-choice-ux"
+
   - id: staff-2026-09-08-global-search-v1
     published_at: "2026-09-08"
     audiences:

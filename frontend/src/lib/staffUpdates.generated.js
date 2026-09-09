@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-09-contract-adjustment-choice-ux",
+    "publishedAt": "2026-09-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "合約調整選項更清楚",
+    "summary": "用問題引導選流程，已繳費會停用堂數改少。",
+    "items": [
+      "「合約／堂次調整」改成先問你要處理哪件事，再進入對應流程。",
+      "已繳費或待對帳時不能選「堂數開錯」；不上了請選結束合約。",
+      "提前結束不會自動改金額或退費，差額請再到帳務中心處理。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「合約／堂次調整」改成先問你要處理哪件事，再進入對應流程。",
+          "已繳費或待對帳時不能選「堂數開錯」；不上了請選結束合約。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "提前結束不會自動改金額或退費，差額請再到帳務中心處理。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-09:contract-adjustment-choice-ux"
+    ],
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "staff-2026-09-08-subject-count-final-total",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,

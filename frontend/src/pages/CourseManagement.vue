@@ -437,7 +437,7 @@
                               :title="purchaseActionTitle(c)"
                               @click="openCommercialPurchaseEntry(c); closeActionMenu()"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(c) }}</button>
-                            <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
+                            <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依意圖選擇：堂數開錯、提前結束，或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
                             <p class="action-section-label">其他操作</p>
                             <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
@@ -900,6 +900,8 @@
       :show="showContractAdjustmentModal"
       :student-name="contractAdjustmentCourse?.student_name || ''"
       :subject="contractAdjustmentCourse?.subject_name || contractAdjustmentCourse?.subject || ''"
+      :payment-status="contractAdjustmentCourse?.payment_status || ''"
+      :billing-available="isBillingCorrectionStructureEligible(contractAdjustmentCourse)"
       @close="showContractAdjustmentModal = false"
       @choose="chooseContractAdjustment"
     />
@@ -2270,8 +2272,13 @@ function openBillingCorrectionModal(course) {
   showBillingCorrectionModal.value = true;
 }
 
+function isBillingCorrectionStructureEligible(course) {
+  return Boolean(course) && isSessionMode(course) && !course?.PackageID;
+}
+
 function isUnpaidCountCourse(course) {
-  return isSessionMode(course) && !course?.PackageID && course?.payment_status !== 'paid';
+  // Billing correction API only accepts unpaid, no pending report / partial payment.
+  return isBillingCorrectionStructureEligible(course) && course?.payment_status === 'unpaid';
 }
 
 function usageBalanceWarningTitle(course) {
@@ -2293,7 +2300,11 @@ function chooseContractAdjustment(action) {
   const course = contractAdjustmentCourse.value;
   showContractAdjustmentModal.value = false;
   if (!course) return;
-  if (action === 'billing') openBillingCorrectionModal(course);
+  if (action === 'billing') {
+    if (!isUnpaidCountCourse(course)) return;
+    openBillingCorrectionModal(course);
+    return;
+  }
   if (action === 'transfer') openTransferSessionsModal(course);
   if (action === 'amendment') openContractAmendmentModal(course);
 }

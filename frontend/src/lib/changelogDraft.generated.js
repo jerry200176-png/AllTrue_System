@@ -5,10 +5,10 @@
  */
 export const changelogDraftNotes = [
   {
-    "version": "2026.09.08",
-    "date": "2026-09-08",
-    "title": "2026.09.08 草稿（未發布）",
-    "summary": "修正超級管理員看不到版本更新內容的問題；Parent Binding authentication and campus scope",
+    "version": "2026.09.09",
+    "date": "2026-09-09",
+    "title": "2026.09.09 草稿（未發布）",
+    "summary": "修正超級管理員看不到版本更新內容的問題",
     "audience": [
       "teacher",
       "director"
@@ -16,11 +16,27 @@ export const changelogDraftNotes = [
     "draft": true,
     "sections": [
       {
-        "title": "新增內容",
+        "title": "體驗調整",
         "items": [
           "修正超級管理員看不到版本更新內容的問題"
         ]
-      },
+      }
+    ],
+    "items": [
+      "修正超級管理員看不到版本更新內容的問題"
+    ]
+  },
+  {
+    "version": "2026.09.08",
+    "date": "2026-09-08",
+    "title": "2026.09.08 草稿（未發布）",
+    "summary": "Parent Binding authentication and campus scope；老師科目數不顯示自我分母占比",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
       {
         "title": "修正內容",
         "items": [
@@ -40,7 +56,6 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
-      "修正超級管理員看不到版本更新內容的問題",
       "Parent Binding authentication and campus scope",
       "老師科目數不顯示自我分母占比",
       "Portal V1 correctness and existing-data home summary",
@@ -656,42 +671,6 @@ export const changelogDraftNotes = [
       "收斂主任的合約與堂次調整入口",
       "老師工作台新增評量待辦提醒，主任也能看到各老師評量填寫狀況",
       "第一批頁面載入優化"
-    ]
-  },
-  {
-    "version": "2026.08.22",
-    "date": "2026-08-22",
-    "title": "2026.08.22 草稿（未發布）",
-    "summary": "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。；未收款課程堂數與費用更正",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "未收款課程堂數與費用更正"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "DB credential mismatch recovered"
-        ]
-      }
-    ],
-    "items": [
-      "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
-      "未收款課程堂數與費用更正",
-      "DB credential mismatch recovered"
     ]
   }
 ];

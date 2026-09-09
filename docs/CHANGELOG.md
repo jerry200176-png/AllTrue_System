@@ -1,5 +1,9 @@
-## 2026-09-08 — feat(parent): isolated synthetic Parent Portal production smoke fixture
-<!-- release-notes: silent_ship=silent-2026-09-08-parent-portal-test-tenant -->
+## 2026-09-09 — improved(ux): 合約／堂次調整改用意圖引導
+<!-- release-notes: staff_update=staff-2026-09-09-contract-adjustment-choice-ux -->
+- 「合約／堂次調整」選擇畫面改成依意圖提問：課還要繼續只是堂數開錯、學生不上了要結束合約、或紀錄掛錯要搬移。
+- 已繳費／待對帳／部分收款時會停用「未付款堂數改少」，並提示改走提前結束或先處理帳務，避免選錯流程。
+- 不改後端 API、扣堂與帳務規則；僅前端引導與既有安全閘門對齊。
+
 - 新增以 `Campus.is_test` 為唯一機器可判斷隔離標記的 TEST／SYNTHETIC Parent Portal smoke fixture；fixture 只能由受保護的 super_admin QA path 建立／重用，重複執行沿用同一校區、學生、監護人與綁定資料，僅輪替 parent session。
 - TEST 校區與學生從一般校區選擇器、學生搜尋、LINE 路由、通知 token、分校健康與家長綁定盤點等 operational reads 排除；Parent Portal 僅接受 QA path 發出的 parent session 讀取 synthetic row，公開 parent login 不會枚舉 TEST fixture。
 - migration `2026_09_08_120000_add_is_test_to_campus_table`／`2026_09_08_121000_backfill_campus_is_test` 只新增並回填 `Campus.is_test`（既有資料設為 `false`）；不建立課程、排課、出席、評量、帳務、LINE binding、通知或付款資料。Production fixture 尚待受保護 smoke phase 啟用。
