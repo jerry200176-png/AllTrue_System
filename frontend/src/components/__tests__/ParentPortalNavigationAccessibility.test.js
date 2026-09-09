@@ -35,6 +35,8 @@ describe('parent portal navigation accessibility contract', () => {
   it('keeps parent actions aligned with capability and recovery contracts', () => {
     expect(source).toContain("if (status === 'all_pending') return '查看待繳帳務';");
     expect(source).toContain(':disabled="!fbCanSubmit || !crossCampusActionsEnabled"');
+    expect(source).toContain(':disabled="!crossCampusActionsEnabled"');
+    expect(source).toContain(':aria-label="`${n} 顆星`"');
     expect(source).toContain('const requestId = ++dashboardRequestSequence.value;');
     expect(source).toContain('if (isUnauthorized) {');
     expect(source).toContain('回覆已送出，但最新對話暫時載入失敗');
@@ -46,5 +48,15 @@ describe('parent portal navigation accessibility contract', () => {
       expect(source).toContain(label);
     }
     expect(source).toContain('buildParentHomeSummary');
+  });
+
+  it('makes learning records and their truthful empty state operable', () => {
+    expect(source).toContain('class="pp-expand-icon"');
+    expect(source).toContain(':aria-expanded="expandedRecords.has(record.id ?? record.ID) ? \'true\' : \'false\'"');
+    expect(source).toContain('@click.stop="toggleRecord(record.id ?? record.ID)"');
+    expect(source).toContain('data-guide="parent-learning-empty"');
+    expect(source).toContain('v-if="!lrError && !allLearningRecords.length"');
+    expect(source).toContain('老師完成複核後，這裡會顯示每堂課的進度、作業與建議。');
+    expect(source).toContain("@click=\"gotoParentTarget('schedule', 'learning_empty')\"");
   });
 });

@@ -437,7 +437,16 @@
                 <span class="pp-report-score-val">{{ record.QuizScore }}</span>
                 <span class="pp-report-score-unit">分</span>
               </div>
-              <span class="material-symbols-outlined pp-expand-icon" :class="{ expanded: expandedRecords.has(record.id ?? record.ID) }">expand_more</span>
+              <button
+                type="button"
+                class="pp-expand-icon"
+                :class="{ expanded: expandedRecords.has(record.id ?? record.ID) }"
+                :aria-expanded="expandedRecords.has(record.id ?? record.ID) ? 'true' : 'false'"
+                :aria-label="expandedRecords.has(record.id ?? record.ID) ? '收合學習評量' : '展開學習評量'"
+                @click.stop="toggleRecord(record.id ?? record.ID)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
+              </button>
             </div>
 
             <!-- Quick Indicators -->
@@ -590,9 +599,11 @@
           {{ lrError }}
           <button type="button" class="pp-btn-small" @click="loadMoreRecords">重試載入</button>
         </p>
-        <div class="pp-empty enterprise-empty" v-if="!allLearningRecords.length">
+        <div class="pp-empty enterprise-empty pp-learning-empty" v-if="!lrError && !allLearningRecords.length" role="status" data-guide="parent-learning-empty">
           <span class="material-symbols-outlined">description</span>
-          <p>尚無已核准的學習評量紀錄</p>
+          <p class="pp-empty-title">目前沒有已核准的學習評量</p>
+          <p class="pp-empty-hint">老師完成複核後，這裡會顯示每堂課的進度、作業與建議。</p>
+          <button type="button" class="pp-btn pp-btn-ghost pp-btn-small" @click="gotoParentTarget('schedule', 'learning_empty')">查看課表</button>
         </div>
       </div>
 
@@ -664,6 +675,7 @@
               <button v-for="c in fbCategories" :key="c.key"
                 type="button"
                 :class="['pp-voice-chip', { active: fbCategory === c.key }]"
+                :disabled="!crossCampusActionsEnabled"
                 @click="fbCategory = c.key">
                 {{ c.label }}
               </button>
@@ -674,6 +686,9 @@
             <div class="pp-voice-stars">
               <button v-for="n in 5" :key="n" type="button"
                 class="pp-star-btn"
+                :aria-label="`${n} 顆星`"
+                :aria-pressed="fbRating === n ? 'true' : 'false'"
+                :disabled="!crossCampusActionsEnabled"
                 @click="fbRating = fbRating === n ? 0 : n">
                 <span class="material-symbols-outlined"
                   :style="{ color: n <= fbRating ? 'var(--ds-warning)' : 'var(--ds-canvas-soft)', fontSize: '32px' }">
@@ -691,6 +706,7 @@
               rows="4"
               placeholder="例如：孩子對這學期的數學進步很多，希望繼續加強英文…"
               aria-label="建議內容"
+              :disabled="!crossCampusActionsEnabled"
             ></textarea>
             <div class="pp-voice-count" :class="{ warn: fbContent.length >= 480 }">
               {{ fbContent.length }} / 500
@@ -2624,12 +2640,23 @@ onMounted(async () => {
 .pp-voice-chip.active {
   background: var(--ds-ink-mute); color: var(--ds-canvas); border-color: var(--ds-ink-mute); font-weight: 600;
 }
+.pp-voice-chip:disabled,
+.pp-star-btn:disabled,
+.pp-voice-textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .pp-voice-chip:not(.active):active { background: var(--ds-canvas-soft); }
 
 .pp-voice-stars { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
 .pp-star-btn {
   background: none; border: none; cursor: pointer; padding: 4px;
   min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center;
+}
+.pp-star-btn:focus-visible,
+.pp-expand-icon:focus-visible {
+  outline: 2px solid var(--ds-primary);
+  outline-offset: 2px;
 }
 
 .pp-voice-textarea {
@@ -2791,7 +2818,11 @@ onMounted(async () => {
 .pp-record-score { text-align: center; flex-shrink: 0; }
 .pp-score-value { font-size: 1.4em; font-weight: 800; color: var(--ds-ink-mute); }
 .pp-score-label { font-size: 0.7em; color: var(--ds-ink-mute); }
-.pp-expand-icon { color: var(--ds-hairline); transition: transform 0.2s; font-size: 20px; }
+.pp-expand-icon {
+  color: var(--ds-hairline); transition: transform 0.2s; font-size: 20px;
+  border: 0; background: transparent; padding: 4px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 .pp-expand-icon.expanded { transform: rotate(180deg); }
 .pp-record-detail {
   margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--ds-canvas-soft);
@@ -3065,6 +3096,9 @@ onMounted(async () => {
 }
 .pp-empty .material-symbols-outlined { font-size: 36px; margin-bottom: 4px; }
 .pp-empty p { margin: 0; font-size: 0.88em; }
+.pp-learning-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pp-learning-empty .pp-empty-title { font-weight: 700; color: var(--ds-ink); }
+.pp-learning-empty .pp-btn { margin-top: 8px; }
 
 .pp-section-count {
   margin-left: auto; font-size: 0.78em; color: var(--ds-ink-mute); font-weight: 500;
