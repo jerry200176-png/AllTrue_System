@@ -78,6 +78,14 @@
               <button type="button" :aria-pressed="isWeekOverview" :class="{ active: isWeekOverview }" @click="isWeekOverview = true">週檢視</button>
             </div>
           </div>
+          <button
+            v-if="featureSubstituteV2 && !isTeacher"
+            type="button"
+            class="btn-primary btn-icon-text toolbar-action-btn toolbar-teacher-leave-btn"
+            title="老師請假／安排代課"
+            aria-label="老師請假／安排代課"
+            @click="openTeacherLeaveBatch"
+          ><span class="material-symbols-outlined btn-icon" aria-hidden="true">event_busy</span><span class="btn-text">老師請假／安排代課</span></button>
           <div class="toolbar-fill"></div>
         </div>
         <details v-if="!isTeacher" class="calendar-secondary-controls-disclosure">
@@ -110,13 +118,6 @@
                   </select>
                   <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" aria-label="搜尋老師" autocomplete="off" />
                   <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" aria-label="搜尋學生" autocomplete="off" />
-                  <button
-                    v-if="featureSubstituteV2 && !isTeacher"
-                    type="button"
-                    class="filter-input toolbar-teacher-leave-btn"
-                    title="老師請假一次處理當日多堂代課"
-                    @click="openTeacherLeaveBatch"
-                  ><span class="material-symbols-outlined btn-icon">event_busy</span>老師請假</button>
                   <label
                     v-if="!isWeekOverview && !isTeacher"
                     class="filter-toggle toolbar-hide-empty-toggle"
@@ -466,6 +467,9 @@
       :student-name="leaveDisplay.studentName"
       :subject-label="leaveDisplay.subjectLabel"
       :original-slot-label="leaveDisplay.originalSlot"
+      :impact-preview="leaveImpactPreview"
+      :error="leaveSubmitError"
+      :submitting="leaveSubmitting"
       @close="showLeaveModal = false"
       @submit="submitLeave"
     />
@@ -491,6 +495,7 @@
       @submitted="onBatchSubstituteSubmitted"
     />
     <ToastWithUndo v-if="featureSubstituteV2" ref="toastRef" />
+    <ToastWithUndo ref="calendarLeaveToastRef" />
 
     <!-- #740 Modals：舊版代課（feature flag 關閉時） -->
     <CalendarSubstituteLegacyModal
@@ -999,6 +1004,7 @@ const getVisibleWeekRangeYmd = () => {
   return ymds.length ? { min: ymds[0], max: ymds[ymds.length - 1] } : null;
 };
 
+const calendarLeaveToastRef = ref(null);
 const {
   courses,
   allCoursesUnfiltered,
@@ -1022,11 +1028,11 @@ const {
 });
 
 const {
-  showLeaveModal, leaveForm, leaveDisplay, openLeaveModal, submitLeave, onContextLeave,
+  showLeaveModal, leaveForm, leaveDisplay, leaveImpactPreview, leaveSubmitError, leaveSubmitting,
+  openLeaveModal, submitLeave, onContextLeave,
   showExtraModal, extraForm, computedExtraEndTime, extraParentPaymentType,
   onExtraFormStartTimeChange, onExtraFormTimeChange, openExtraLesson, submitExtraLesson,
 } = useCalendarLeaveExtra({
-  supabase,
   branchId: computed(() => props.branchId),
   showModal,
   modalForm,
@@ -1036,6 +1042,7 @@ const {
   getToken,
   allStudents,
   getSubjectLabel,
+  toastRef: calendarLeaveToastRef,
 });
 
 const {
