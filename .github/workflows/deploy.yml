@@ -62,7 +62,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
       - name: Verify deploy state-machine contract
-        run: python3 scripts/tests/test_deploy_activation_state.py
+        run: |
+          python3 scripts/tests/test_deploy_activation_state.py
+          python3 scripts/tests/test_release_activation_flow.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -358,6 +360,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
+      approval_eligible: ${{ steps.classify.outputs.approval_eligible }}
       tier: ${{ steps.classify.outputs.tier }}
       pr_number: ${{ steps.classify.outputs.pr_number }}
       reason: ${{ steps.classify.outputs.reason }}
@@ -384,6 +387,7 @@ jobs:
           hold() {
             {
               echo "mode=awaiting-activation"
+              echo "approval_eligible=${4:-false}"
               echo "tier=${1:-unknown}"
               echo "pr_number=${2:-none}"
               echo "reason=${3}"
@@ -393,6 +397,7 @@ jobs:
           if [[ "$DEPLOYABLE" != "true" ]]; then
             {
               echo "mode=no-op"
+              echo "approval_eligible=false"
               echo "tier=none"
               echo "pr_number=none"
               echo "reason=non-deployable change"
@@ -407,6 +412,7 @@ jobs:
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]; then
             {
               echo "mode=manual"
+              echo "approval_eligible=true"
               echo "tier=protected"
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested"
@@ -421,6 +427,7 @@ jobs:
             fi
             {
               echo "mode=manual"
+              echo "approval_eligible=true"
               echo "tier=protected"
               echo "pr_number=manual"
               echo "reason=explicit authenticated Parent Portal fixture and smoke verification"
@@ -444,6 +451,7 @@ jobs:
             fi
             {
               echo "mode=manual"
+              echo "approval_eligible=true"
               echo "tier=protected"
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested; runtime_state=${RUNTIME_STATE}"
@@ -477,9 +485,10 @@ jobs:
                   return result
               return value if isinstance(value, list) else []
 
-          def emit(mode, tier, pr_number, reason):
+          def emit(mode, tier, pr_number, reason, approval_eligible=False):
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"mode={mode}\n")
+                  output.write(f"approval_eligible={str(approval_eligible).lower()}\n")
                   output.write(f"tier={tier}\n")
                   output.write(f"pr_number={pr_number}\n")
                   output.write(f"reason={reason}\n")
@@ -579,42 +588,77 @@ jobs:
                   declared_tier=declaration_tier,
                   protected_activation=bool(scope.get("protected_activation")),
               )
-              emit(decision["decision"], decision["effective_tier"], pr_number, decision["reason"])
+              approval_eligible = (
+                  decision["decision"] == "awaiting-activation"
+                  and (
+                      bool(scope.get("protected_activation"))
+                      or decision["effective_tier"] in {"T2", "T3"}
+                  )
+              )
+              emit(
+                  decision["decision"], decision["effective_tier"], pr_number,
+                  decision["reason"], approval_eligible,
+              )
           except Exception:
               emit("awaiting-activation", "unknown", "none", "activation policy evaluation failed; fail closed")
           PY
 
-  merged-awaiting-activation:
-    name: Merged — awaiting production activation
+  release-state:
+    name: Release state
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation' }}
+    if: ${{ always() && needs.classify-activation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Record protected boundary
+      - name: Record explicit pre-deploy state
         env:
-          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
-          TIER: ${{ needs.classify-activation.outputs.tier }}
-          PR_NUMBER: ${{ needs.classify-activation.outputs.pr_number }}
+          MODE: ${{ needs.classify-activation.outputs.mode }}
+          APPROVAL_ELIGIBLE: ${{ needs.classify-activation.outputs.approval_eligible }}
           REASON: ${{ needs.classify-activation.outputs.reason }}
         run: |
           set -euo pipefail
-          {
-            echo "## merged-awaiting-activation"
-            echo ""
-            echo "- target SHA: ${TARGET_SHA}"
-            echo "- source PR: ${PR_NUMBER}"
-            echo "- declared tier: ${TIER}"
-            echo "- reason: ${REASON}"
-            echo ""
-            echo "No production SSH, migration, frontend build, or data mutation was executed."
-            echo "Founder activation must dispatch Deploy to Pi with the exact current main SHA and the phase-specific confirmation phrase."
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          case "$MODE" in
+            no-op)
+              echo "## state=merged (no-op)" >> "$GITHUB_STEP_SUMMARY"
+              echo "No deployable runtime change was found." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            auto)
+              {
+                echo "## state=ready"
+                echo "This state is not deployed. The validated reversible release may proceed to the executor."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            awaiting-activation)
+              if [[ "$APPROVAL_ELIGIBLE" != "true" ]]; then
+                {
+                  echo "## state=blocked"
+                  echo "Production activation evidence is incomplete or invalid. No production SSH, migration, frontend build, or data mutation was executed."
+                  echo "Reason: ${REASON}"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 1
+              fi
+              {
+                echo "## state=awaiting-approval"
+                echo "This state is not deployed. The same workflow run is held by the production-activation Environment; no second dispatch is required."
+                echo "Reason: ${REASON}"
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            manual)
+              {
+                echo "## state=awaiting-approval"
+                echo "This explicit exceptional operation remains Founder-controlled and is not deployed until its gate succeeds."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error::Unknown release mode; refusing to report success." >&2
+              exit 1
+              ;;
+          esac
 
   production-activation:
-    name: Founder production activation gate
+    name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.mode == 'manual' }}
+    if: ${{ always() && needs.classify-activation.result == 'success' && (((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && needs.classify-activation.outputs.mode == 'manual')) }}
     environment:
       name: production-activation
     runs-on: ubuntu-latest
@@ -630,7 +674,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
-          PHASE: ${{ inputs.phase }}
+          PHASE: ${{ inputs.phase || 'application-deploy' }}
         run: |
           set -euo pipefail
           REPO="$REPO" GH_TOKEN="$GH_TOKEN" EVENT_NAME="$EVENT_NAME" PHASE="$PHASE" PYTHONPATH=. python3 - <<'PY'
@@ -639,6 +683,7 @@ jobs:
           import subprocess
 
           from scripts.governance.autonomy_gate import environment_protection_is_valid
+          from scripts.governance.release_activation import environment_protection_is_valid_for_release
 
           repo = os.environ["REPO"]
           base = f"/repos/{repo}/environments/production-activation"
@@ -651,15 +696,27 @@ jobs:
           reviewers = [rule for rule in rules if rule.get("type") == "required_reviewers"]
           required_reviewers_configured = bool(reviewers)
           prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers) if reviewers else False
-          if not environment_protection_is_valid(
-              event_name=os.environ["EVENT_NAME"],
-              phase=os.environ.get("PHASE", ""),
-              required_reviewers_configured=required_reviewers_configured,
-              prevent_self_review=prevent_self_review,
-          ):
+          event_name = os.environ["EVENT_NAME"]
+          phase = os.environ.get("PHASE", "")
+          if event_name == "workflow_dispatch":
+              protection_valid = environment_protection_is_valid(
+                  event_name=event_name,
+                  phase=phase,
+                  required_reviewers_configured=required_reviewers_configured,
+                  prevent_self_review=prevent_self_review,
+              )
+          else:
+              protection_valid = environment_protection_is_valid_for_release(
+                  event_name=event_name,
+                  phase=phase,
+                  required_reviewers_configured=required_reviewers_configured,
+                  prevent_self_review=prevent_self_review,
+              )
+          if not protection_valid:
               raise SystemExit(
-                  "production environment protection is not configured: "
-                  "solo mode requires no required-reviewer rule; self-review cannot be a hidden gate"
+                  "production environment protection is not configured for this event: "
+                  "post-merge releases require a required-reviewer gate with prevent-self-review; "
+                  "manual exceptional operations require the typed Founder gate without a second reviewer queue"
               )
           if environment.get("can_admins_bypass") is not False:
               raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
@@ -671,10 +728,16 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          print("production-activation solo boundary verified: no reviewer gate, no admin bypass, main only")
+          if event_name == "workflow_run":
+              print("production-activation review boundary verified: required reviewer, prevent self-review, no admin bypass, main only")
+          else:
+              # solo mode requires no required-reviewer rule; the typed
+              # Founder confirmation remains the explicit manual boundary.
+              print("production-activation solo boundary verified: no reviewer gate, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           PHASE: ${{ inputs.phase }}
           CAMPUS_ID: ${{ inputs.campus_id }}
@@ -734,10 +797,17 @@ jobs:
           )"
           echo "Manual activation policy result: ${POLICY_RESULT}"
 
+      - name: Record approved activation state
+        run: |
+          {
+            echo "## state=approved"
+            echo "Founder/environment approval completed for this exact target; production side effects have not yet been reported as deployed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Deploy to Production
     needs: [resolve-target, detect-deployable, classify-activation, production-activation]
-    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success')) }}
+    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
     # Serialize only the side-effecting executor. Read-only preflight and
@@ -1186,6 +1256,16 @@ jobs:
           fi
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
+
+      - name: Record deployed and production-verified state
+        run: |
+          {
+            echo "## state=deployed"
+            echo "Exact target SHA was activated by the sole production executor."
+            echo ""
+            echo "## state=production-verified"
+            echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   parent-portal-smoke:
     name: Authenticated Parent Portal production smoke
