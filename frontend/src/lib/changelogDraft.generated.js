@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.10",
     "date": "2026-09-10",
     "title": "2026.09.10 草稿（未發布）",
-    "summary": "評量表授課老師顯示實際填寫老師",
+    "summary": "回復正班老師會清掉殘留代課列；評量表授課老師顯示實際填寫老師",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "回復正班老師會清掉殘留代課列",
           "評量表授課老師顯示實際填寫老師"
         ]
       }
     ],
     "items": [
+      "回復正班老師會清掉殘留代課列",
       "評量表授課老師顯示實際填寫老師"
     ]
   },

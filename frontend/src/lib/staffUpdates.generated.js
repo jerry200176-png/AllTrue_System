@@ -4,6 +4,44 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-10-substitute-restore-clears-schedules",
+    "publishedAt": "2026-09-10",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "回復正班老師會清掉殘留代課",
+    "summary": "單堂「回復正班老師」會同時清除殘留代課排程，評量表授課老師會回到正班老師。",
+    "items": [
+      "若該堂先前做過代課或同日換時，回復正班老師時會清掉殘留代課列，不會只改通知狀態。",
+      "若排程無法安全清除，系統會提示失敗並保持原狀；不改點名、扣堂或帳務歷史。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "若該堂先前做過代課或同日換時，回復正班老師時會清掉殘留代課列，不會只改通知狀態。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "若排程無法安全清除，系統會提示失敗並保持原狀；不改點名、扣堂或帳務歷史。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-10:substitute-restore-clears-schedules",
+      "in-app:#276"
+    ],
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "staff-2026-09-10-learning-record-teacher-display",
     "publishedAt": "2026-09-10",
     "effectiveAt": null,
