@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-09-parent-learning-assessment-controls
+    published_at: "2026-09-09"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 家長學習評量入口與空狀態更清楚
+    summary: 家長能明確展開學習評量、理解尚未有資料的原因，並在唯讀狀態看到不可操作的回饋控制。
+    items:
+      - category: improved
+        text: 家長端學習評量的展開入口支援鍵盤與觸控；尚無已核准資料時提供查看課表的下一步，載入錯誤不再同時顯示空狀態。
+      - category: fixed
+        text: 跨分校唯讀狀態下，家長意見分類、星評與文字輸入會明確停用，不改權限或資料流程。
+    source_refs:
+      - "changelog:2026-09-09:parent-learning-assessment-controls"
+
   - id: staff-2026-09-09-calendar-modal-mobile-reachability
     published_at: "2026-09-09"
     audiences:
