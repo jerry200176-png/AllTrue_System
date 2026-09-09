@@ -44,6 +44,7 @@ const pageModules = {
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
+  'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -103,6 +104,9 @@ createApp({
     }
     if (page === 'parent') {
       return () => h(PageComponent, { standalone: true });
+    }
+    if (page === 'question-bank') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     if (page === 'admissions') {
       const searchParams = new URLSearchParams(window.location.search);

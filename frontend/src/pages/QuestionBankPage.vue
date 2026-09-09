@@ -13,12 +13,12 @@
     <div v-if="showBankForm" class="card qb-form-card">
       <h3>新增題庫</h3>
       <div class="qb-form-grid"><label>題庫名稱<input v-model.trim="bankForm.name" maxlength="120" placeholder="例如：國一英文文法" /></label><label>說明<input v-model.trim="bankForm.description" maxlength="10000" placeholder="選填" /></label></div>
-      <div class="qb-actions"><button class="ghost" @click="showBankForm = false">取消</button><button class="primary" :disabled="saving || !bankForm.name" @click="createBank">{{ saving ? '建立中…' : '建立題庫' }}</button></div>
+      <div class="qb-actions"><AtButton shape="rect" variant="ghost" @click="showBankForm = false">取消</AtButton><AtButton shape="rect" variant="primary" :loading="saving" :disabled="!bankForm.name" @click="createBank">{{ saving ? '建立中…' : '建立題庫' }}</AtButton></div>
     </div>
 
-    <p v-if="error" class="qb-error" role="alert">{{ error }} <button class="ghost small" @click="loadBanks">重試</button></p>
+    <p v-if="error" class="qb-error" role="alert">{{ error }} <AtButton shape="rect" size="sm" variant="secondary" @click="loadBanks">重試</AtButton></p>
     <div class="qb-layout">
-      <aside class="card qb-banks"><div class="qb-card-title"><h3>我的題庫</h3><button class="ghost small" :disabled="loading" @click="loadBanks">重新整理</button></div><div v-if="loading" class="qb-empty">載入中…</div><div v-else-if="!banks.length" class="qb-empty">尚未建立題庫。</div><button v-for="bank in banks" :key="bank.id" type="button" :class="['qb-bank-row', { active: selectedBank?.id === bank.id }]" @click="selectBank(bank)"><strong>{{ bank.name }}</strong><span>{{ bank.items_count || 0 }} 題 · {{ bank.status === 'draft' ? '草稿' : bank.status }}</span></button></aside>
+      <aside class="card qb-banks"><div class="qb-card-title"><h3>我的題庫</h3><AtButton shape="rect" size="sm" variant="ghost" :disabled="loading" @click="loadBanks">重新整理</AtButton></div><div v-if="loading" class="qb-empty" role="status" aria-live="polite">載入中…</div><div v-else-if="!banks.length" class="qb-empty" role="status">尚未建立題庫。</div><button v-for="bank in banks" :key="bank.id" type="button" :class="['qb-bank-row', { active: selectedBank?.id === bank.id }]" @click="selectBank(bank)"><strong>{{ bank.name }}</strong><span>{{ bank.items_count || 0 }} 題 · {{ bank.status === 'draft' ? '草稿' : bank.status }}</span></button></aside>
 
       <main v-if="selectedBank" class="card qb-content">
         <div class="qb-card-title"><div><h3>{{ selectedBank.name }}</h3><p class="muted">{{ selectedBank.description || '尚未填寫題庫說明' }}</p></div><label class="qb-filter">狀態<select v-model="filters.status" @change="loadItems"><option value="">全部</option><option value="draft">草稿</option><option value="pending_review">待審核</option><option value="approved">已核准</option><option value="retired">已退休</option></select></label></div>
@@ -31,7 +31,7 @@
           </summary>
           <div class="card qb-editor"><div class="qb-editor__intro">題目內容與必要標籤先完成即可儲存；來源與授權資訊會保留在題目版本中。</div><div class="qb-form-grid"><label>題型<select v-model="itemForm.question_type"><option value="single_choice">單選</option><option value="multiple_choice">複選</option><option value="true_false">是非</option><option value="fill_blank">填空</option><option value="short_answer">簡答</option></select></label><label>難度（1–5）<input v-model.number="itemForm.difficulty" type="number" min="1" max="5" /></label><label>知識標籤<input v-model.trim="itemForm.knowledge_tag" maxlength="120" placeholder="例如：英文／過去式" /></label><label>來源<select v-model="itemForm.source_type"><option value="internal">內部建立</option><option value="licensed">已授權素材</option><option value="ai_draft">AI 草稿</option><option value="other">其他</option></select></label></div><label>題目內容<textarea v-model.trim="itemForm.prompt" rows="3" maxlength="20000" placeholder="請輸入完整題目" /></label><div class="qb-form-grid"><label>選項（JSON 陣列，選填）<textarea v-model.trim="itemForm.choices" rows="2" placeholder='["A", "B"]' /></label><label>答案（JSON 陣列，選填）<textarea v-model.trim="itemForm.answer" rows="2" placeholder='["A"]' /></label></div><div class="qb-form-grid"><label>來源名稱（選填）<input v-model.trim="itemForm.source_name" maxlength="120" placeholder="例如：TestGo" /></label><label>來源版本（選填）<input v-model.trim="itemForm.source_version" maxlength="120" placeholder="例如：2026-08" /></label><label>外部題號（選填）<input v-model.trim="itemForm.source_question_key" maxlength="191" placeholder="供應商題目識別碼" /></label><label>年級（選填）<input v-model.trim="itemForm.grade_level" maxlength="60" placeholder="例如：國一" /></label><label>科目（選填）<input v-model.trim="itemForm.subject_name" maxlength="120" placeholder="例如：英文" /></label><label>授權參考（授權題目必填）<input v-model.trim="itemForm.license_ref" maxlength="255" placeholder="合約／授權文件編號" /></label></div><label>來源位置（選填）<input v-model.trim="itemForm.source_ref" maxlength="255" placeholder="匯出批次或文件位置，不放帳密" /></label><label>解析（選填）<textarea v-model.trim="itemForm.explanation" rows="2" maxlength="20000" /></label><div class="qb-actions"><button v-if="editing" class="ghost" @click="cancelEdit">取消改版</button><button class="primary" :disabled="saving || !itemForm.prompt || !itemForm.knowledge_tag" @click="saveItem">{{ saving ? '儲存中…' : editing ? '建立新版本' : '儲存草稿' }}</button></div></div>
         </details>
-        <div v-if="itemsLoading" class="qb-empty">題目載入中…</div><div v-else-if="!items.length" class="qb-empty">目前沒有符合條件的題目。</div><div v-else class="qb-table-wrap"><table class="qb-table"><thead><tr><th>題目</th><th>標籤</th><th>難度</th><th>版次</th><th>狀態</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><strong>{{ item.question_type }}</strong><small>{{ item.prompt }}</small><small v-if="item.source_name">來源：{{ item.source_name }}{{ item.source_version ? ` · ${item.source_version}` : '' }}{{ item.source_question_key ? ` · ${item.source_question_key}` : '' }}</small></td><td>{{ item.knowledge_tag }}</td><td>{{ item.difficulty }}/5</td><td>v{{ item.version_no }}</td><td><span :class="['qb-status', `is-${item.status}`]">{{ statusLabel(item.status) }}</span></td><td class="qb-actions"><button v-if="item.status === 'draft'" class="ghost small" @click="submitReview(item)">送審</button><button v-if="item.status === 'pending_review' && isDirector" class="primary small" @click="approve(item)">核准</button><button v-if="['draft', 'pending_review', 'approved'].includes(item.status)" class="ghost small" @click="editItem(item)">建新版</button><button v-if="item.status !== 'retired' && isDirector" class="ghost small danger" @click="retire(item)">退休</button><button class="ghost small" @click="showVersions(item)">歷史</button></td></tr></tbody></table></div>
+        <div v-if="itemsLoading" class="qb-empty" role="status" aria-live="polite">題目載入中…</div><div v-else-if="!items.length" class="qb-empty" role="status">目前沒有符合條件的題目。</div><div v-else class="qb-table-wrap"><table class="qb-table"><thead><tr><th>題目</th><th>標籤</th><th>難度</th><th>版次</th><th>狀態</th><th>操作</th></tr></thead><tbody><tr v-for="item in items" :key="item.id"><td><strong>{{ item.question_type }}</strong><small>{{ item.prompt }}</small><small v-if="item.source_name">來源：{{ item.source_name }}{{ item.source_version ? ` · ${item.source_version}` : '' }}{{ item.source_question_key ? ` · ${item.source_question_key}` : '' }}</small></td><td>{{ item.knowledge_tag }}</td><td>{{ item.difficulty }}/5</td><td>v{{ item.version_no }}</td><td><span :class="['qb-status', `is-${item.status}`]">{{ statusLabel(item.status) }}</span></td><td class="qb-actions"><AtButton v-if="item.status === 'draft'" shape="rect" size="sm" variant="secondary" @click="submitReview(item)">送審</AtButton><AtButton v-if="item.status === 'pending_review' && isDirector" shape="rect" size="sm" variant="primary" @click="approve(item)">核准</AtButton><AtButton v-if="['draft', 'pending_review', 'approved'].includes(item.status)" shape="rect" size="sm" variant="secondary" @click="editItem(item)">建新版</AtButton><AtButton v-if="item.status !== 'retired' && isDirector" shape="rect" size="sm" variant="danger" @click="retire(item)">退休</AtButton><AtButton shape="rect" size="sm" variant="ghost" @click="showVersions(item)">歷史</AtButton></td></tr></tbody></table></div>
       </main>
       <main v-else class="card qb-empty qb-no-selection">請先從左側選擇題庫。</main>
     </div>
@@ -84,4 +84,60 @@ watch(() => props.branchId, loadBanks); onMounted(loadBanks);
 
 <style scoped>
 .question-bank-page { max-width: 1480px; margin: 0 auto; } .qb-header, .qb-card-title, .qb-toolbar, .qb-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; } .qb-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; margin-top: 16px; } .qb-banks, .qb-content { padding: 18px; min-width: 0; } .qb-bank-row { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; border: 0; border-bottom: 1px solid var(--ds-border); background: transparent; padding: 13px 8px; text-align: left; cursor: pointer; color: var(--ds-text-primary); } .qb-bank-row.active { background: var(--ds-surface-subtle); border-left: 3px solid var(--ds-primary); } .qb-bank-row span, .qb-version-row small, .qb-table small { color: var(--ds-text-tertiary); font-size: 12px; display: block; margin-top: 4px; } .qb-form-card, .qb-editor { padding: 18px; margin-top: 16px; } .qb-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; } label { display: flex; flex-direction: column; gap: 5px; color: var(--ds-text-secondary); font-size: 13px; } input, textarea, select { border: 1px solid var(--ds-border); border-radius: 8px; padding: 9px 10px; background: var(--ds-surface); color: var(--ds-text-primary); font: inherit; } .qb-toolbar { border-bottom: 1px solid var(--ds-border); padding: 14px 0; margin-bottom: 2px; } .file-button { display: inline-flex; flex-direction: row; align-items: center; background: var(--ds-primary); color: var(--ds-on-primary); border-radius: 8px; padding: 8px 12px; cursor: pointer; } .file-button input { display: none; } .qb-table-wrap { overflow-x: auto; } .qb-table { width: 100%; border-collapse: collapse; } .qb-table th, .qb-table td { padding: 11px 8px; border-bottom: 1px solid var(--ds-border); text-align: left; vertical-align: top; } .qb-table td.qb-actions { white-space: nowrap; justify-content: flex-start; flex-wrap: wrap; } .qb-status { border-radius: 999px; padding: 3px 8px; font-size: 12px; background: var(--ds-surface-subtle); } .is-approved { color: var(--ds-success); background: var(--ds-success-wash); } .is-pending_review { color: var(--ds-warning); background: var(--ds-warning-wash); } .is-retired { color: var(--ds-text-tertiary); } .qb-empty { color: var(--ds-text-tertiary); padding: 28px 10px; text-align: center; } .qb-no-selection { min-height: 260px; display: grid; place-items: center; } .qb-error { color: var(--ds-danger); margin: 12px 0; } .danger { color: var(--ds-danger); } .qb-version-modal { max-width: 720px; } .qb-version-row { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--ds-border); } .qb-editor-disclosure { margin-top: 16px; border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-surface); } .qb-editor-disclosure > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 13px 14px; cursor: pointer; list-style: none; } .qb-editor-disclosure > summary::-webkit-details-marker { display: none; } .qb-editor-disclosure > summary:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: -2px; } .qb-editor-disclosure__title { color: var(--ds-text-primary); font-size: 14px; font-weight: 700; } .qb-editor-disclosure__hint { color: var(--ds-text-tertiary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .qb-editor-disclosure[open] > summary { border-bottom: 1px solid var(--ds-border); } .qb-editor-disclosure[open] > summary .material-symbols-outlined { transform: rotate(180deg); } .qb-editor-disclosure > summary .material-symbols-outlined { color: var(--ds-text-tertiary); transition: transform .18s ease; } .qb-editor-disclosure .qb-editor { border: 0; box-shadow: none; margin: 0; } .qb-editor__intro { margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid var(--ds-primary); color: var(--ds-text-secondary); background: var(--ds-surface-0); font-size: 12px; line-height: 1.5; } .muted { color: var(--ds-text-tertiary); font-size: 13px; } @media (max-width: 860px) { .qb-layout { grid-template-columns: 1fr; } .qb-form-grid { grid-template-columns: 1fr; } .qb-table th:nth-child(2), .qb-table td:nth-child(2), .qb-table th:nth-child(3), .qb-table td:nth-child(3) { display: none; } }
+.question-bank-page .at-btn,
+.question-bank-page .qb-bank-row,
+.question-bank-page .file-button,
+.question-bank-page .qb-editor-disclosure > summary {
+  min-height: var(--ds-control-height-touch, 44px);
+  box-sizing: border-box;
+}
+.question-bank-page .qb-bank-row:focus-visible,
+.question-bank-page .file-button:focus-within {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
+}
+.question-bank-page input,
+.question-bank-page textarea,
+.question-bank-page select {
+  min-height: var(--ds-control-height-touch, 44px);
+  box-sizing: border-box;
+}
+.question-bank-page textarea { min-height: 72px; }
+.question-bank-page .qb-toolbar {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.question-bank-page .qb-toolbar .muted {
+  flex: 1 1 260px;
+  line-height: 1.5;
+}
+.question-bank-page .qb-actions { flex-wrap: wrap; }
+.question-bank-page .qb-table td.qb-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  white-space: normal;
+}
+.question-bank-page .qb-table td.qb-actions .at-btn { flex: 0 0 auto; }
+.question-bank-page .qb-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 860px) {
+  .question-bank-page .qb-banks,
+  .question-bank-page .qb-content,
+  .question-bank-page .qb-form-card,
+  .question-bank-page .qb-editor { padding: 14px; }
+  .question-bank-page .qb-card-title { align-items: flex-start; flex-wrap: wrap; }
+  .question-bank-page .qb-form-card .qb-actions .at-btn,
+  .question-bank-page .qb-editor .qb-actions .at-btn { flex: 1 1 140px; }
+  .question-bank-page .qb-table td.qb-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .question-bank-page .qb-table td.qb-actions .at-btn { width: 100%; }
+  .question-bank-page .file-button { width: 100%; justify-content: center; }
+}
 </style>
