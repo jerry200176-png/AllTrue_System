@@ -29,6 +29,8 @@ scope:
   - backend/app/Http/Controllers/AttendanceController.php
   - backend/app/Http/Controllers/ClassSessionController.php
   - backend/tests/Feature/**
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
   - .agent-session/manifest.json
   - .exo/cache/**
   - .exo/memory/**
