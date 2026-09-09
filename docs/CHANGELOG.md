@@ -1,4 +1,4 @@
-## 2026-09-09 — fix(parent): learning assessment controls and empty state are actionable
+## 2026-09-09 — fix(parent): 家長學習評量入口與空狀態可操作
 <!-- release-notes: staff_update=staff-2026-09-09-parent-learning-assessment-controls -->
 - 家長端學習評量的展開入口改為可用的鍵盤／觸控按鈕，空資料時清楚說明「老師完成複核後」才會顯示內容，並可直接查看課表；載入錯誤時不再同時顯示誤導性的空狀態。
 - 跨分校唯讀狀態下，校方意見分類、星評與文字輸入會明確停用；不新增資料、權限、付款或學習評量語意。
