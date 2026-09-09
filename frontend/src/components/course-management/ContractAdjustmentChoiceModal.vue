@@ -128,7 +128,7 @@ function onChoose(action) {
 .choice-card__copy { display: grid; gap: 4px; flex: 1; }
 .choice-card__copy strong { font-size: 14px; }
 .choice-card__copy small { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.45; }
-.choice-card__blocked { color: var(--ds-danger, #b42318); font-weight: 600; }
+.choice-card__blocked { color: var(--ds-danger); font-weight: 600; }
 .choice-card__arrow { color: var(--ds-ink-mute); font-size: 24px; line-height: 1; }
 .choice-footnote { margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
