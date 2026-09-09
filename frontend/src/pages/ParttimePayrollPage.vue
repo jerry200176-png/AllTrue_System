@@ -34,19 +34,11 @@
       </div>
 
       <!-- Summary Cards -->
-      <div v-if="loading" class="skeleton-cards">
-        <div class="skeleton-card" v-for="i in 4" :key="i"></div>
-      </div>
-      <div v-else-if="error" class="error-state">
-        <div class="error-icon-wrap">
-          <span class="material-symbols-outlined">error_outline</span>
-        </div>
-        <p>載入薪資資料失敗，請稍後再試</p>
-        <button class="btn-outline small" @click="loadData">
-          <span class="material-symbols-outlined">refresh</span>
-          重試
-        </button>
-      </div>
+      <AtSkeleton v-if="loading" :rows="4" />
+      <AtInlineAlert v-else-if="error" tone="danger" title="無法載入兼職薪資">
+        <p>薪資資料暫時無法載入，請稍後再試。</p>
+        <template #action><AtButton type="button" shape="rect" size="md" variant="ghost" @click="loadData">重試</AtButton></template>
+      </AtInlineAlert>
       <div v-else class="summary-row">
         <div class="summary-card primary">
           <div class="summary-card-icon">
@@ -144,33 +136,32 @@
       </div>
 
       <!-- Empty state -->
-      <div v-if="!loading && !error && teachers.length === 0" class="empty-state">
-        <div class="empty-icon-wrap">
-          <span class="material-symbols-outlined">person_search</span>
-        </div>
-        <p class="empty-title">本月無授課紀錄</p>
-        <p class="empty-sub">該分校本月尚無兼職老師授課資料</p>
-      </div>
+      <AtEmpty
+        v-if="!loading && !error && teachers.length === 0"
+        icon="person_search"
+        title="本月無授課紀錄"
+        description="該分校本月尚無兼職老師授課資料。"
+      />
 
       <!-- Teacher Table -->
       <div v-if="!loading && !error && teachers.length > 0" class="teacher-table">
         <div class="table-header">
-          <span class="col-name sortable" @click="toggleSort('name_asc')">
+          <button type="button" class="col-name sortable" :aria-pressed="sortKey === 'name_asc' ? 'true' : 'false'" @click="toggleSort('name_asc')">
             老師姓名
-            <span class="material-symbols-outlined sort-icon" :class="{ active: sortKey === 'name_asc' }">unfold_more</span>
-          </span>
-          <span class="col-hours sortable" @click="toggleSort('hours_desc')">
+            <span class="material-symbols-outlined sort-icon" :class="{ active: sortKey === 'name_asc' }" aria-hidden="true">unfold_more</span>
+          </button>
+          <button type="button" class="col-hours sortable" :aria-pressed="sortKey === 'hours_desc' ? 'true' : 'false'" @click="toggleSort('hours_desc')">
             總時數
-            <span class="material-symbols-outlined sort-icon" :class="{ active: sortKey === 'hours_desc' }">unfold_more</span>
-          </span>
+            <span class="material-symbols-outlined sort-icon" :class="{ active: sortKey === 'hours_desc' }" aria-hidden="true">unfold_more</span>
+          </button>
           <span class="col-high hide-mobile">高中</span>
           <span class="col-junior hide-mobile">國中</span>
           <span class="col-elem hide-mobile">國小</span>
           <span class="col-tutor hide-mobile">輔導</span>
-          <span class="col-salary sortable" @click="toggleSort('salary_desc')">
+          <button type="button" class="col-salary sortable" :aria-pressed="sortKey === 'salary_desc' ? 'true' : 'false'" @click="toggleSort('salary_desc')">
             應付薪資
-            <span class="material-symbols-outlined sort-icon" :class="{ active: sortKey === 'salary_desc' }">unfold_more</span>
-          </span>
+            <span class="material-symbols-outlined sort-icon" :class="{ active: sortKey === 'salary_desc' }" aria-hidden="true">unfold_more</span>
+          </button>
           <span class="col-count hide-mobile">堂次</span>
         </div>
 
@@ -180,10 +171,16 @@
           class="teacher-row-wrap"
           :class="{ 'is-expanded': expandedId === t.teacher_id }"
         >
-          <div class="teacher-row" @click="toggleExpand(t.teacher_id)">
+          <button
+            type="button"
+            class="teacher-row"
+            :aria-expanded="expandedId === t.teacher_id ? 'true' : 'false'"
+            :aria-controls="`payroll-sessions-${t.teacher_id}`"
+            @click="toggleExpand(t.teacher_id)"
+          >
             <span class="col-name">
               <span class="expand-btn" :class="{ expanded: expandedId === t.teacher_id }">
-                <span class="material-symbols-outlined">expand_more</span>
+                <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
               </span>
               <span class="teacher-avatar">{{ t.teacher_name?.charAt(0) }}</span>
               {{ t.teacher_name }}
@@ -200,19 +197,13 @@
             <span class="col-count hide-mobile">
               <span class="count-badge">{{ t.session_count }}</span>
             </span>
-          </div>
+          </button>
 
           <!-- Expanded session detail -->
           <transition name="expand-slide">
-            <div v-if="expandedId === t.teacher_id" class="session-detail">
-              <div v-if="sessionsLoading" class="session-loading">
-                <span class="material-symbols-outlined spin">progress_activity</span>
-                載入明細中...
-              </div>
-              <div v-else-if="sessions.length === 0" class="session-empty">
-                <span class="material-symbols-outlined">inbox</span>
-                本月無堂次紀錄
-              </div>
+            <div v-if="expandedId === t.teacher_id" :id="`payroll-sessions-${t.teacher_id}`" class="session-detail">
+              <AtSkeleton v-if="sessionsLoading" :rows="3" />
+              <AtEmpty v-else-if="sessions.length === 0" icon="inbox" title="本月無堂次紀錄" />
               <template v-else>
                 <div class="session-table">
                   <div class="session-header">
@@ -331,14 +322,11 @@
           本月已鎖帳，數字依鎖定當下規則計算。如需修改參數請 super_admin 重開後再調整。
         </div>
 
-        <div v-if="rulesLoading" class="rules-loading">
-          <span class="material-symbols-outlined spin">progress_activity</span>
-          載入設定中...
-        </div>
-        <div v-else-if="rulesError" class="error-state" style="padding:16px">
+        <AtSkeleton v-if="rulesLoading" :rows="4" />
+        <AtInlineAlert v-else-if="rulesError" tone="danger" title="無法載入薪資計算設定">
           <p>{{ rulesError }}</p>
-          <button class="btn-outline small" @click="loadRules">重試</button>
-        </div>
+          <template #action><AtButton type="button" shape="rect" size="md" variant="ghost" @click="loadRules">重試</AtButton></template>
+        </AtInlineAlert>
         <template v-else>
           <fieldset class="rules-fieldset" :disabled="isRulesReadonly">
             <legend>基礎時薪（元／小時）</legend>
@@ -414,10 +402,7 @@
           </div>
         </div>
 
-        <div v-if="trLoading" class="rules-loading">
-          <span class="material-symbols-outlined spin">progress_activity</span>
-          載入中...
-        </div>
+        <AtSkeleton v-if="trLoading" :rows="4" />
         <template v-else>
           <div v-if="trHasOverride" class="rules-banner info">
             <span class="material-symbols-outlined">info</span>
@@ -495,7 +480,10 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import {
   fetchPayrollSummary,
   fetchTeacherSessions,
@@ -825,6 +813,24 @@ onMounted(loadData);
 </script>
 
 <style scoped>
+.payroll-page :deep(.at-btn),
+.payroll-page button,
+.payroll-page input,
+.payroll-page textarea { min-height: 44px; }
+.payroll-page .teacher-row,
+.payroll-page .table-header .sortable {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+.payroll-page .teacher-row { width: 100%; }
+.payroll-page .teacher-row:focus-visible,
+.payroll-page .table-header .sortable:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px var(--ds-focus-ring);
+}
 /* ─── Layout ─────────────────────────────── */
 .payroll-page {
   max-width: 1200px;
