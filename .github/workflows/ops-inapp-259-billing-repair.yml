@@ -1,0 +1,270 @@
+name: In-app #259 billing repair (protected one-off)
+
+# One-case Data Repair Gate for the Founder-approved #259 correction.
+# The normal application billing/payment endpoints perform the mutation; this
+# workflow only supplies the protected, auditable execution envelope.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run or apply
+        required: true
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+      confirm:
+        description: Exact confirmation for the selected mode
+        required: true
+        type: string
+      deployed_backend_sha:
+        description: Exact backend SHA already deployed in production
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alltrue-production-side-effects-v2
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Validate #259 repair gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate exact mode, confirmation, and SHA shape
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" == dry-run || "$MODE" == apply ]] || exit 1
+          [[ "$DEPLOYED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::deployed_backend_sha must be a full commit SHA' >&2
+            exit 1
+          }
+          if [[ "$MODE" == dry-run ]]; then
+            [[ "$CONFIRM" == DRY_RUN_INAPP_259_BILLING_REPAIR_20260908 ]] || exit 1
+          else
+            [[ "$CONFIRM" == APPROVE_INAPP_259_BILLING_REPAIR_20260908 ]] || exit 1
+          fi
+
+  preflight:
+    name: Read-only #259 preflight
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Inspect exact production rows without mutation
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          ssh_dir="$RUNNER_TEMP/inapp-259-preflight-ssh"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
+          [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo "::error::production SHA drift: $manifest_sha" >&2; exit 1; }
+          DEPLOYED_SHA="$manifest_sha" php artisan tinker --no-ansi --execute='
+          $db = \Illuminate\Support\Facades\DB::class;
+          $sc = $db::table("StudentClass")->where("ID", 2885)->first();
+          $s = $db::table("ClassSession")->where("id", 32086)->first();
+          $oldInvoice = $db::table("Invoice")->where("id", 1274)->first();
+          $oldReport = $db::table("payment_reports")->where("id", 1309)->first();
+          $sept = $db::table("StudentClass")->where("ID", 3361)->first();
+          $septInvoice = $db::table("Invoice")->where("id", 1575)->first();
+          $activeAugust = $db::table("Invoice")->where("StudentClassID", 2885)->where("billing_period", "2026-08")->whereNotIn("Status", ["void"])->get(["id", "TotalAmount", "PaidAmount", "Status"]);
+          $positivePayments = $db::table("Payment as p")->join("Invoice as i", "i.id", "=", "p.InvoiceID")->where("i.StudentClassID", 2885)->where("i.Status", "!=", "void")->where("p.Amount", ">", 0)->where("p.Method", "!=", "void")->count();
+          $sc->EndDate = $sc->EndDate ? substr((string) $sc->EndDate, 0, 10) : null;
+          echo json_encode(["production_backend_sha" => getenv("DEPLOYED_SHA"), "class_2885" => $sc, "session_32086" => $s, "invoice_1274" => $oldInvoice, "report_1309" => $oldReport, "class_3361" => $sept, "invoice_1575" => $septInvoice, "active_august_invoices" => $activeAugust, "positive_payment_count_for_2885" => $positivePayments], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
+
+  apply:
+    name: Apply and verify #259 repair
+    needs: [guard, preflight]
+    if: ${{ inputs.mode == 'apply' }}
+    environment:
+      name: production-activation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Execute exact canonical billing/payment flow on production
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [[ "$CONFIRM" == APPROVE_INAPP_259_BILLING_REPAIR_20260908 ]] || exit 1
+          ssh_dir="$RUNNER_TEMP/inapp-259-apply-ssh"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          base_url=https://daan.lifenet.com.tw
+          work_dir="$(mktemp -d /tmp/inapp-259-repair.XXXXXX)"
+          token=''
+          cleanup() { unset token; rm -f "$work_dir"/*; rmdir "$work_dir" 2>/dev/null || true; }
+          trap cleanup EXIT
+          manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 "$base_url/deployment.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
+          [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo "::error::production SHA drift: $manifest_sha" >&2; exit 1; }
+          token_file="$work_dir/token"
+          php artisan tinker --no-ansi --execute='
+          $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
+            ->join("User as u", "u.id", "=", "t.user_id")
+            ->where("u.type", "S")->where("t.expires_at", ">", now())
+            ->where(function ($q) { $q->where("u.MustChangePassword", 0)->orWhereNull("u.MustChangePassword"); })
+            ->orderByDesc("t.expires_at")->select("t.token")->first();
+          if (!$row) throw new \RuntimeException("no valid unexpired super_admin session available on Pi");
+          echo (string) $row->token;
+          ' > "$token_file"
+          token="$(<"$token_file")"; rm -f "$token_file"
+          [[ "$token" =~ ^[A-Za-z0-9]{48}$ ]] || { echo '::error::session format check failed' >&2; exit 1; }
+          echo '::add-mask::'"$token"
+          api() {
+            local method="$1" path="$2" body="$3" output="$4"
+            curl -sS --proto '=https' --tlsv1.2 -X "$method" \
+              -H "Authorization: Bearer $token" -H 'Accept: application/json' \
+              -H 'Content-Type: application/json' --data "$body" \
+              -o "$output" -w '%{http_code}' "$base_url$path"
+          }
+          read_json() { python3 - "$1" <<'PY'
+          import json, sys
+          data=json.load(open(sys.argv[1]))
+          print(json.dumps(data, ensure_ascii=False, separators=(',', ':')))
+          PY
+          }
+          state="$work_dir/state.json"
+          DEPLOYED_SHA="$manifest_sha" php artisan tinker --no-ansi --execute='
+          $db = \Illuminate\Support\Facades\DB::class;
+          $sc = $db::table("StudentClass")->where("ID", 2885)->first();
+          $s = $db::table("ClassSession")->where("id", 32086)->first();
+          $augustInvoices = $db::table("Invoice")->where("StudentClassID", 2885)->where("billing_period", "2026-08")->whereNotIn("Status", ["void"])->get(["id", "TotalAmount", "PaidAmount", "Status"]);
+          $invoice = $augustInvoices->first();
+          $paid = $db::table("Payment as p")->join("Invoice as i", "i.id", "=", "p.InvoiceID")->where("i.StudentClassID", 2885)->where("i.Status", "!=", "void")->where("p.Amount", ">", 0)->where("p.Method", "!=", "void")->count();
+          $confirmed = $db::table("payment_reports")->where("StudentClassID", 2885)->where("status", "confirmed")->where("reported_amount", 9000)->get();
+          $sept = $db::table("Invoice")->where("id", 1575)->first();
+          $old = $db::table("Invoice")->where("id", 1274)->first();
+          $oldReport = $db::table("payment_reports")->where("id", 1309)->first();
+          $oldPayments = $db::table("Payment")->whereIn("id", [1377, 1418, 1422])->orderBy("id")->get(["id", "InvoiceID", "Amount", "Method"]);
+          $endDate = $sc && $sc->EndDate ? substr((string)$sc->EndDate, 0, 10) : null;
+          $oldPaymentsExact = $oldPayments->count() === 3 && (int)$oldPayments[0]->id === 1377 && (int)$oldPayments[0]->InvoiceID === 1274 && (int)$oldPayments[0]->Amount === 6600 && (int)$oldPayments[1]->id === 1418 && (int)$oldPayments[1]->InvoiceID === 1274 && (int)$oldPayments[1]->Amount === -6600 && (int)$oldPayments[2]->id === 1422 && (int)$oldPayments[2]->InvoiceID === 1274 && (int)$oldPayments[2]->Amount === -6600;
+          $historyExact = $old && (string)$old->Status === "void" && (int)$old->TotalAmount === 6600 && (int)$old->PaidAmount === 0 && $oldReport && (string)$oldReport->status === "voided" && (int)$oldReport->InvoiceID === 1274 && $oldPaymentsExact;
+          $alreadyExact = $sc && (int)$sc->StudentID === 24 && (int)$sc->SessionCount === 5 && (int)$sc->Charge === 9000 && (int)$sc->Paid === 1 && $endDate === "2026-08-29" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 1 && (string)$augustInvoices[0]->Status === "paid" && (int)$augustInvoices[0]->PaidAmount === 9000 && $confirmed->count() === 1 && $paid === 1 && $sept && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
+          $initialExact = $sc && (int)$sc->StudentID === 24 && (string)$sc->ScheduleMode === "date" && (int)$sc->SessionCount === 4 && (int)$sc->Charge === 7200 && (int)$sc->Paid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$sept->SessionCount === 5 && (int)$sept->Charge === 9000 && (string)$sept->ScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
+          if (!$sc || (int)$sc->StudentID !== 24 || (string)$sc->ScheduleMode !== "date" || !$s || (int)$s->StudentClassID !== 2885 || (string)$s->SessionDate !== "2026-08-29") throw new \RuntimeException("business truth precondition mismatch");
+          if (!$alreadyExact && !$initialExact) throw new \RuntimeException("exact #259 precondition mismatch; no write permitted");
+          echo json_encode(["backend_sha"=>getenv("DEPLOYED_SHA"),"already_exact"=>(bool)$alreadyExact,"session_count"=>(int)$sc->SessionCount,"charge"=>(int)$sc->Charge,"end_date"=>$endDate,"invoice_id"=>$invoice ? (int)$invoice->id : null,"invoice_status"=>$invoice ? (string)$invoice->Status : null,"invoice_total"=>$invoice ? (int)$invoice->TotalAmount : null,"active_invoice_count"=>$augustInvoices->count(),"positive_payment_count"=>(int)$paid,"confirmed_report_count"=>$confirmed->count()], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          ' > "$state"
+          session_count="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["session_count"])' "$state")"
+          charge="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["charge"])' "$state")"
+          end_date="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["end_date"])' "$state")"
+          invoice_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["invoice_id"] or "")' "$state")"
+          positive_payments="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["positive_payment_count"])' "$state")"
+          confirmed_report_count="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["confirmed_report_count"])' "$state")"
+          already_exact="$(python3 -c 'import json,sys; print(1 if json.load(open(sys.argv[1]))["already_exact"] else 0)' "$state")"
+          active_invoice_count="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["active_invoice_count"])' "$state")"
+          if [[ "$already_exact" == 1 ]]; then
+            echo 'in_app_259_repair=already_production_verified'
+            exit 0
+          fi
+          if [[ "$active_invoice_count" != 0 ]]; then
+            invoice_status="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["invoice_status"] or "")' "$state")"
+            invoice_total="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["invoice_total"] or "")' "$state")"
+            [[ "$active_invoice_count" == 1 && "$invoice_status" == unpaid && "$invoice_total" == 9000 ]] || { echo '::error::existing active August invoice is not the exact safe target' >&2; exit 1; }
+          fi
+          if [[ "$session_count" != 5 || "$charge" != 9000 || "$end_date" != 2026-08-29 ]]; then
+            body='{"new_session_count":5,"new_charge":9000,"new_end_date":"2026-08-29","reason":"in-app #259: reconcile August session #32086 and confirmed cash receipt","reason_code":"date_mode_transfer_billing_reconciliation"}'
+            status="$(api POST /api/v1/student-classes/2885/billing-correction "$body" "$work_dir/correction.json")"
+            [[ "$status" == 200 ]] || { echo "::error::billing correction rejected HTTP $status" >&2; read_json "$work_dir/correction.json" >&2; exit 1; }
+            echo 'billing_correction=applied'
+          else
+            echo 'billing_correction=already_exact'
+          fi
+          if [[ -z "$invoice_id" ]]; then
+            body='{"StudentID":24,"StudentClassID":2885,"IssueDate":"2026-09-04","DueDate":"2026-09-04","TotalAmount":9000,"billing_period":"2026-08","Note":"in-app #259；2026-09-04 現金收款；August 5 sessions","Items":[{"StudentClassID":2885,"Description":"2026年8月數學 5 堂","Amount":9000,"PeriodStart":"2026-08-01","PeriodEnd":"2026-08-29"}]}'
+            status="$(api POST /api/v1/invoices "$body" "$work_dir/invoice.json")"
+            [[ "$status" == 201 ]] || { echo "::error::August invoice creation rejected HTTP $status" >&2; read_json "$work_dir/invoice.json" >&2; exit 1; }
+            invoice_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$work_dir/invoice.json")"
+            echo "august_invoice_created=$invoice_id"
+          else
+            invoice_status="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["invoice_status"] or "")' "$state")"
+            invoice_total="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["invoice_total"] or "")' "$state")"
+            [[ "$active_invoice_count" == 1 && "$invoice_status" == unpaid && "$invoice_total" == 9000 ]] || { echo '::error::existing August invoice is not the exact safe target' >&2; exit 1; }
+            echo "august_invoice_reused=$invoice_id"
+          fi
+          if [[ "$positive_payments" == 0 && "$confirmed_report_count" == 0 ]]; then
+            body="{\"student_class_id\":2885,\"invoice_id\":$invoice_id,\"payment_date\":\"2026-09-04\",\"payment_method\":\"cash\",\"amount\":9000,\"note\":\"in-app #259；主任 2026-09-04 已收現金\"}"
+            status="$(api POST /api/v1/payment-reports/director-record "$body" "$work_dir/report.json")"
+            [[ "$status" == 200 ]] || { echo "::error::director payment report rejected HTTP $status" >&2; read_json "$work_dir/report.json" >&2; exit 1; }
+            confirmed_report_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["report_id"])' "$work_dir/report.json")"
+            echo "payment_report_created=$confirmed_report_id"
+            status="$(api PUT "/api/v1/payment-reports/$confirmed_report_id/confirm" '{}' "$work_dir/confirm.json")"
+            [[ "$status" == 200 ]] || { echo "::error::payment confirmation rejected HTTP $status" >&2; read_json "$work_dir/confirm.json" >&2; exit 1; }
+            echo "payment_report_confirmed=$confirmed_report_id"
+          elif [[ "$confirmed_report_count" == 1 && "$positive_payments" == 1 ]]; then
+            echo 'payment_flow=already_exact'
+          else
+            echo '::error::financial state is partial or duplicated; no further mutation' >&2
+            exit 1
+          fi
+          DEPLOYED_SHA="$manifest_sha" php artisan tinker --no-ansi --execute='
+          $db = \Illuminate\Support\Facades\DB::class;
+          $sc = $db::table("StudentClass")->where("ID", 2885)->first();
+          $aug = $db::table("Invoice")->where("StudentClassID", 2885)->where("billing_period", "2026-08")->whereNotIn("Status", ["void"])->get(["id", "TotalAmount", "PaidAmount", "Status"]);
+          $reports = $db::table("payment_reports")->where("StudentClassID", 2885)->where("status", "confirmed")->where("reported_amount", 9000)->get(["id", "InvoiceID", "reported_amount", "payment_date", "status"]);
+          $payments = $db::table("Payment as p")->join("Invoice as i", "i.id", "=", "p.InvoiceID")->where("i.StudentClassID", 2885)->where("i.Status", "!=", "void")->where("p.Amount", ">", 0)->where("p.Method", "!=", "void")->get(["p.id", "p.InvoiceID", "p.Amount", "p.Method", "p.PaidAt", "p.payment_report_id"]);
+          $sept = $db::table("Invoice")->where("id", 1575)->first();
+          $old = $db::table("Invoice")->where("id", 1274)->first();
+          $endDate = $sc && $sc->EndDate ? substr((string)$sc->EndDate, 0, 10) : null;
+          $ok = $sc && (int)$sc->SessionCount === 5 && (int)$sc->Charge === 9000 && $endDate === "2026-08-29" && $aug->count() === 1 && (string)$aug[0]->Status === "paid" && (int)$aug[0]->PaidAmount === 9000 && $reports->count() === 1 && $payments->count() === 1 && (int)$payments[0]->Amount === 9000 && $sept && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $old && (string)$old->Status === "void" && (int)$old->PaidAmount === 0;
+          echo json_encode(["ok"=>(bool)$ok,"backend_sha"=>getenv("DEPLOYED_SHA"),"class_2885"=>["SessionCount"=>(int)$sc->SessionCount,"Charge"=>(int)$sc->Charge,"EndDate"=>$endDate,"Paid"=>(int)$sc->Paid],"august_invoices"=>$aug,"confirmed_reports"=>$reports,"positive_payments"=>$payments,"september_invoice"=>$sept,"historical_void_invoice"=>$old], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          if (!$ok) exit(1);
+          '
+          echo 'in_app_259_repair=production_verified'
+          REMOTE

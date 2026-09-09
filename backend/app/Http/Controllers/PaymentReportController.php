@@ -322,11 +322,19 @@ class PaymentReportController extends Controller
                 if ($invoice && (string) $invoice->Status === 'paid') {
                     return $this->duplicateCoursePaymentResponse();
                 }
+                if ($invoice && (string) $invoice->Status === 'void') {
+                    return response()->json([
+                        'message' => '作廢帳單不可重新入帳，請使用目前有效帳單或讓系統建立新的對應帳單。',
+                        'code' => 'void_invoice_cannot_confirm',
+                    ], 422);
+                }
             }
 
             if (! $invoice) {
                 $invoice = Invoice::where('StudentClassID', $report->StudentClassID)
-                    ->where('Status', '!=', 'paid')
+                    ->where(function ($query) {
+                        $query->whereNull('Status')->orWhereNotIn('Status', ['paid', 'void']);
+                    })
                     ->lockForUpdate()
                     ->first();
             }
@@ -503,6 +511,12 @@ class PaymentReportController extends Controller
                 if ((string) $invoice->Status === 'paid') {
                     return response()->json(['message' => '指定帳單已繳清，請勿重複入帳'], 422);
                 }
+                if ((string) $invoice->Status === 'void') {
+                    return response()->json([
+                        'message' => '作廢帳單不可重新登記，請讓系統建立新的對應帳單。',
+                        'code' => 'void_invoice_cannot_record',
+                    ], 422);
+                }
             }
 
             // FR-006：月結制優先找當月 billing_period 的未繳帳單
@@ -510,7 +524,9 @@ class PaymentReportController extends Controller
                 $currentPeriod = Carbon::now('Asia/Taipei')->format('Y-m');
                 $invoice = Invoice::where('StudentClassID', $sc->ID)
                     ->where('billing_period', $currentPeriod)
-                    ->where('Status', '!=', 'paid')
+                    ->where(function ($query) {
+                        $query->whereNull('Status')->orWhereNotIn('Status', ['paid', 'void']);
+                    })
                     ->lockForUpdate()
                     ->first();
             }
@@ -518,7 +534,9 @@ class PaymentReportController extends Controller
             // Fallback：找任何未繳帳單（legacy 課程或堂數制）
             if (! $invoice) {
                 $invoice = Invoice::where('StudentClassID', $sc->ID)
-                    ->where('Status', '!=', 'paid')
+                    ->where(function ($query) {
+                        $query->whereNull('Status')->orWhereNotIn('Status', ['paid', 'void']);
+                    })
                     ->lockForUpdate()
                     ->first();
             }
