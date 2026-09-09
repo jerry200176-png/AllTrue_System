@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import CalendarSessionEditModal from '../CalendarSessionEditModal.vue';
 
 const form = {
@@ -32,6 +34,23 @@ describe('CalendarSessionEditModal', () => {
     });
     expect(w.text()).toContain('衝堂警告');
     expect(w.text()).toContain('教室已滿');
+  });
+
+  it('provides an accessible top close action for the long mobile modal', async () => {
+    const w = mount(CalendarSessionEditModal, {
+      props: { show: true, form, session, options: {} },
+      global: { stubs: { SearchableSelect: true } },
+    });
+    const close = w.find('[data-testid="calendar-session-close"]');
+    expect(close.attributes('aria-label')).toBe('關閉單堂檢視');
+    await close.trigger('click');
+    expect(w.emitted('close')).toHaveLength(1);
+  });
+
+  it('reserves mobile navigation space below the modal content', async () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/calendar/modals/CalendarSessionEditModal.vue'), 'utf8');
+    expect(source).toMatch(/padding-bottom: calc\(96px \+ env\(safe-area-inset-bottom, 0px\)\) !important;/);
+    expect(source).toContain('touch-action: pan-y;');
   });
 
   it('emits leave and reschedule from action buttons', async () => {

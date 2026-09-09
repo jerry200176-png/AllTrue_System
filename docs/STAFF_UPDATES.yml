@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-09-calendar-modal-mobile-reachability
+    published_at: "2026-09-09"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 手機行事曆單堂檢視更容易操作
+    summary: 單堂檢視新增右上角關閉按鈕，長內容也能滑到最下面。
+    items:
+      - category: fixed
+        text: 手機開啟行事曆的「單堂檢視」時，右上角提供清楚的關閉按鈕。
+      - category: improved
+        text: 長內容會避開手機底部導覽列，最下面的單堂操作與關閉按鈕可以滑到並點擊；不改排課、出勤或帳務資料。
+    source_refs:
+      - "changelog:2026-09-09:calendar-modal-mobile-reachability"
+
   - id: staff-2026-09-09-feedback-mobile-layout
     published_at: "2026-09-09"
     audiences:
