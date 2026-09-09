@@ -1,3 +1,8 @@
+## 2026-09-09 — fix(ops): 代課通知併發重試不重複
+<!-- release-notes: silent_ship=silent-2026-09-09-substitute-notification-idempotency -->
+- 代課成功後建立家長站內通知時，即使重試與另一個請求同時寫入，也會沿用同一筆通知，不會因唯一鍵競爭讓流程失敗。
+- 只處理已知的通知來源鍵競爭；其他資料庫錯誤仍會照原流程回滾，不修改既有帳務、排課或 production 資料。
+
 ## 2026-09-09 — fix(finance): 繳費通知與帳務中心金額一致
 <!-- release-notes: staff_update=staff-2026-09-09-tuition-slip-contract-charge -->
 - 堂數制課程的繳費通知單會沿用帳務中心的合約堂數與單堂費用計算，不會因歷史金額快照與目前合約不同而顯示較高應繳金額。
