@@ -1338,6 +1338,7 @@ jobs:
             echo "- parent_session_id: \`$parent_session_id\` (previous fixture session revoked by canonical service)"
             echo "- repeated run: same campus/student/guardian/link IDs"
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "Synthetic Parent Portal fixture IDs: campus_id=$campus_id student_id=$student_id guardian_id=$guardian_id student_guardian_id=$student_guardian_id parent_session_id=$parent_session_id"
 
           branches="$(curl -fsSL --proto '=https' --tlsv1.2 "$BASE_URL/api/v1/branches")"
           students_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$RUNNER_TEMP/parent-students.json" -w '%{http_code}' -H "Authorization: Bearer $admin_token" "$BASE_URL/api/v1/students?per_page=all")"
