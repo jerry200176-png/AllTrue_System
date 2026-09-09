@@ -198,6 +198,40 @@ export const staffUpdates = [
     "version": "2026.09.08"
   },
   {
+    "id": "staff-2026-09-08-payment-status-affordance",
+    "publishedAt": "2026-09-08",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "繳費狀態不再像按鈕",
+    "summary": "狀態與真正的帳務下一步分開顯示。",
+    "items": [
+      "未繳費與待對帳現在清楚呈現為狀態，不會讓人誤以為可以直接點擊處理。",
+      "需要處理時會顯示前往帳務中心或登記繳費回報的明確入口。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "未繳費與待對帳現在清楚呈現為狀態，不會讓人誤以為可以直接點擊處理。",
+          "需要處理時會顯示前往帳務中心或登記繳費回報的明確入口。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-08:payment-status-affordance"
+    ],
+    "date": "2026-09-08",
+    "version": "2026.09.08"
+  },
+  {
     "id": "staff-2026-09-07-sidebar-search-and-shortcuts",
     "publishedAt": "2026-09-07",
     "effectiveAt": null,
