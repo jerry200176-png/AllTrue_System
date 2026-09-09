@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { ref, nextTick } from 'vue';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { useCalendarLeaveExtra } from '../useCalendarLeaveExtra.js';
 
+const courseManagementSource = readFileSync(resolve(import.meta.dirname, '../../../pages/CourseManagement.vue'), 'utf8');
+
 describe('useCalendarLeaveExtra', () => {
+  afterEach(() => vi.unstubAllGlobals());
   const baseDeps = () => ({
-    supabase: { from: vi.fn(() => ({ insert: vi.fn().mockResolvedValue({}) })) },
     branchId: ref(1),
     showModal: ref(true),
     modalForm: ref({
@@ -52,5 +56,39 @@ describe('useCalendarLeaveExtra', () => {
     expect(leaveForm.value.schedule_date).toBe('2026-06-12');
     expect(leaveForm.value.course_id).toBe(1);
     expect(showLeaveModal.value).toBe(true);
+  });
+
+  it('uses the authoritative add-session command without a direct schedules write', async () => {
+    const deps = baseDeps();
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ message: '已調整加課堂次' }) });
+    vi.stubGlobal('fetch', fetch);
+    const alert = vi.fn();
+    vi.stubGlobal('alert', alert);
+    const { openExtraLesson, submitExtraLesson } = useCalendarLeaveExtra(deps);
+    openExtraLesson();
+    await submitExtraLesson();
+
+    expect(fetch).toHaveBeenCalledWith('/api/v1/student-classes/99/add-session', expect.objectContaining({ method: 'POST' }));
+    expect(fetch.mock.calls[0][1].body).toContain('duration_minutes');
+    expect(fetch.mock.calls[0][1].body).toContain('teacher_id');
+  });
+
+  it('uses the same leave preview and mutation boundary as Course Management', async () => {
+    const deps = baseDeps();
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ leave_mode: 'monthly_bounded', future_dates_unchanged: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ leave_mode: 'monthly_bounded', undo: { schedule_id: 41, undo_window_seconds: 30 } }) });
+    vi.stubGlobal('fetch', fetch);
+    const toastRef = ref({ show: vi.fn() });
+    const { openLeaveModal, submitLeave, leaveImpactPreview } = useCalendarLeaveExtra({ ...deps, toastRef });
+    openLeaveModal();
+    await vi.waitFor(() => expect(leaveImpactPreview.value.items).toContain('未來日期與合約結束日不變，不補尾'));
+    expect(fetch.mock.calls[0][0]).toBe('/api/v1/schedules/leave-cascade-preview');
+    await submitLeave();
+    expect(fetch.mock.calls[1][0]).toBe('/api/v1/schedules');
+    expect(toastRef.value.show).toHaveBeenCalledWith(expect.objectContaining({ onUndo: expect.any(Function) }));
+    for (const endpoint of ['leave-cascade-preview', "'/api/v1/schedules'", 'undo-leave']) {
+      expect(courseManagementSource).toContain(endpoint);
+    }
   });
 });
