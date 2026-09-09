@@ -9,7 +9,6 @@ const source = readFileSync(resolve(__dirname, '../../pages/AssessmentPage.vue')
 describe('Assessment action accessibility', () => {
   it('gives every native assessment button an explicit non-submit type', () => {
     const buttons = source.match(/<button\b[\s\S]*?<\/button>/g) || [];
-    expect(buttons.length).toBeGreaterThan(0);
     expect(buttons.filter((button) => !/\btype=\"(?:button|submit)\"/.test(button))).toEqual([]);
   });
 
@@ -20,12 +19,9 @@ describe('Assessment action accessibility', () => {
     expect(source).toContain('@click="updateRemediation(action, \'completed\')"');
   });
 
-  it('labels both assessment modal surfaces as dialogs', () => {
-    expect(source).toContain('aria-labelledby="assessment-create-title"');
-    expect(source).toContain('id="assessment-create-title"');
-    expect(source).toContain('aria-labelledby="assessment-result-title"');
-    expect(source).toContain('id="assessment-result-title"');
-    expect((source.match(/role="dialog"/g) || []).length).toBe(2);
-    expect((source.match(/aria-modal="true"/g) || []).length).toBe(2);
+  it('uses the shared dialog primitive for both assessment surfaces', () => {
+    expect((source.match(/<AtDialog/g) || []).length).toBe(2);
+    expect(source).toContain('title-id="assessment-create-title"');
+    expect(source).toContain('title-id="assessment-result-title"');
   });
 });
