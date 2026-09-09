@@ -6659,7 +6659,7 @@ button.danger:disabled {
 .payment-anomaly-hint {
   display: inline-block;
   margin-left: 6px;
-  color: var(--ds-danger, #b42318);
+  color: var(--ds-danger);
   font-size: 12px;
   font-weight: 700;
 }
@@ -7886,18 +7886,18 @@ button.danger:disabled {
   padding: 3px 10px;
 }
 .tag-no-payment {
-  background: var(--ds-success-wash, #ecfdf3);
-  color: var(--ds-success, #18794e);
-  border: 1px solid var(--ds-success, #18794e);
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
+  border: 1px solid var(--ds-success);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   padding: 3px 10px;
 }
 .tag-billing-anomaly {
-  background: var(--ds-danger-wash, #fff1f0);
-  color: var(--ds-danger, #b42318);
-  border: 1px solid var(--ds-danger, #b42318);
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
+  border: 1px solid var(--ds-danger);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
