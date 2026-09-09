@@ -3704,7 +3704,8 @@ const downloadSingleRecord = async () => {
     if (!rec) throw new Error('無評量記錄');
 
     const studentName = currentStudentName.value || rec.student_name || '未命名學生';
-    const teacherName = currentTeacherName.value || rec.teacher_name || '未指派';
+    // Backend is the single source for effective instructor; export must not re-infer.
+    const teacherName = rec.teacher_name || '未指派';
     const sessionDate = form.SessionDate || rec.SessionDate || '';
     const branchNames = { 1: '興隆校', 2: '新店校', 3: '大安校', 4: '木柵校' };
     const branchName = branchNames[Number(props.branchId)] || '台北全真一對一補習班';

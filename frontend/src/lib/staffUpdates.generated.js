@@ -4,6 +4,46 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-10-learning-record-teacher-display",
+    "publishedAt": "2026-09-10",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量表授課老師顯示實際填寫老師",
+    "summary": "評量表會顯示該堂實際授課老師；單堂更換老師不會改動課程正班設定。",
+    "items": [
+      "若該堂已更換授課老師或有正式代課，評量表上的「授課老師」會顯示實際授課者，不再卡在課程正班老師。",
+      "列表、詳情與匯出使用同一套顯示規則；不改課程正班、點名、扣堂或帳務。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "若該堂已更換授課老師或有正式代課，評量表上的「授課老師」會顯示實際授課者，不再卡在課程正班老師。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "列表、詳情與匯出使用同一套顯示規則；不改課程正班、點名、扣堂或帳務。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-10:learning-record-teacher-display",
+      "in-app:#276"
+    ],
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "staff-2026-09-09-tutoring-payment-policy",
     "publishedAt": "2026-09-09",
     "effectiveAt": null,
