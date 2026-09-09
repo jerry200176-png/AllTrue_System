@@ -1348,12 +1348,13 @@ jobs:
           test "$admin_binding_status" = 200 || { echo "::error::super_admin binding read returned HTTP $admin_binding_status"; exit 1; }
           qa_parent_status="$(curl -sS --proto '=https' --tlsv1.2 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $parent_token" -X POST "$BASE_URL/api/v1/admin/qa/parent-fixture/session")"
           test "$qa_parent_status" = 401 || { echo "::error::parent token reached QA fixture path with HTTP $qa_parent_status"; exit 1; }
-          CAMPUS_ID="$campus_id" STUDENT_ID="$student_id" BRANCHES="$branches" STUDENTS="$(cat "$RUNNER_TEMP/parent-students.json")" python3 - <<'PY'
+          CAMPUS_ID="$campus_id" STUDENT_ID="$student_id" BRANCHES="$branches" STUDENTS_FILE="$RUNNER_TEMP/parent-students.json" python3 - <<'PY'
           import json, os
           campus_id = int(os.environ["CAMPUS_ID"])
           student_id = int(os.environ["STUDENT_ID"])
           branches = json.loads(os.environ["BRANCHES"])
-          students = json.loads(os.environ["STUDENTS"])
+          with open(os.environ["STUDENTS_FILE"], encoding="utf-8") as handle:
+              students = json.load(handle)
           rows = students.get("data", students) if isinstance(students, dict) else students
           if campus_id in [int(row.get("id", 0)) for row in branches]:
               raise SystemExit("synthetic campus leaked into public campus selector")
