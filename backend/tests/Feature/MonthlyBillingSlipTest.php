@@ -211,6 +211,53 @@ class MonthlyBillingSlipTest extends TestCase
         $response->assertJsonCount(0, 'sessions');
     }
 
+    public function test_count_mode_slip_uses_contract_charge_when_stored_charge_is_stale(): void
+    {
+        $token = $this->createDirectorToken('director-count-stale-charge@example.com');
+        $student = Student::create([
+            'name' => '堂數制舊金額回歸測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 99,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-06-29',
+            'EndDate' => '2026-09-08',
+            'TotalHours' => 8,
+            'Charge' => 8000,
+            'Paid' => 0,
+            'Rate' => 1000,
+            'MDate' => now(),
+            'Stop' => 1,
+            'closed_reason' => 'contract_amended',
+            'ScheduleMode' => 'count',
+            'SessionCount' => 4,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 0,
+            'UsedSessions' => 4,
+            'ClassType' => 'one_on_one',
+            'rate_unit' => 'session',
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/alerts/tuition-slip/{$course->ID}");
+
+        $response->assertOk()
+            ->assertJsonPath('schedule_mode', 'count')
+            ->assertJsonPath('remaining_sessions', 0)
+            ->assertJsonPath('charge', 4000);
+    }
+
     private function createDirectorToken(string $loginName = 'director-monthly@example.com'): string
     {
         $user = User::create([
