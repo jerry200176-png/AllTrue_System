@@ -129,52 +129,32 @@ FROM LearningRecord lr
 JOIN StudentClass sc ON sc.ID=lr.StudentClassID
 LEFT JOIN User ltu ON ltu.id=lr.TeacherID
 LEFT JOIN User ctu ON ctu.id=sc.TeacherID
-WHERE lr.ClassSessionID IN (
-  SELECT cs.id FROM ClassSession cs
-  JOIN StudentClass sc2 ON sc2.ID=cs.StudentClassID
-  JOIN Student s ON s.id=sc2.StudentID
-  WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID AND cs.SessionDate='$DATE'
-);"
+WHERE lr.id=18968 OR lr.ClassSessionID=26509;"
 
-echo "--- substitute schedule rows for those StudentClassIDs on/near date ---"
+echo "--- schedules substitute rows for StudentClass 2878 near date ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',s.id,s.student_class_id,s.session_date,IFNULL(LEFT(s.start_time,5),''),s.teacher_id,IFNULL(u.Name,'?'),IFNULL(s.status,''),IFNULL(s.created_at,''))
-FROM substitute_schedules s
+SELECT CONCAT_WS('|',s.id,s.student_class_id,s.session_date,IFNULL(LEFT(s.start_time,5),''),s.teacher_id,IFNULL(u.Name,'?'),IFNULL(s.type,''),IFNULL(s.status,''))
+FROM schedules s
 LEFT JOIN User u ON u.id=s.teacher_id
-WHERE s.student_class_id IN (
-  SELECT DISTINCT lr.StudentClassID FROM LearningRecord lr
-  WHERE lr.ClassSessionID IN (
-    SELECT cs.id FROM ClassSession cs
-    JOIN StudentClass sc ON sc.ID=cs.StudentClassID
-    JOIN Student st ON st.id=sc.StudentID
-    WHERE st.name='$SN' AND st.CampusID=$CAMPUS_ID AND cs.SessionDate='$DATE'
-  )
-)
-AND s.session_date BETWEEN DATE_SUB('$DATE', INTERVAL 7 DAY) AND DATE_ADD('$DATE', INTERVAL 7 DAY)
-ORDER BY s.session_date,s.id;"
+WHERE s.student_class_id=2878
+ AND s.session_date BETWEEN DATE_SUB('2026-09-09', INTERVAL 7 DAY) AND DATE_ADD('2026-09-09', INTERVAL 7 DAY)
+ORDER BY s.session_date,s.id;" || true
 
-echo "--- deployed resolveEffectiveInstructorUserId via artisan (read-only) ---"
+echo "--- deployed resolveEffectiveInstructorUserId + teacher_name (read-only) ---"
 php /home/admin/backend/artisan tinker --no-ansi --execute="<?php
-\$student = '$SN';
-\$campus = $CAMPUS_ID;
-\$date = '$DATE';
-\$ids = Illuminate\Support\Facades\DB::table('LearningRecord as lr')
-  ->join('ClassSession as cs','cs.id','=','lr.ClassSessionID')
-  ->join('StudentClass as sc','sc.ID','=','lr.StudentClassID')
-  ->join('Student as s','s.id','=','sc.StudentID')
-  ->where('s.name', \$student)
-  ->where('s.CampusID', \$campus)
-  ->where('cs.SessionDate', \$date)
-  ->pluck('lr.id');
+\$lr = App\Models\LearningRecord::with('studentClass')->find(18968);
 \$ctrl = app(App\Http\Controllers\LearningRecordController::class);
 \$m = new ReflectionMethod(\$ctrl, 'resolveEffectiveInstructorUserId');
 \$m->setAccessible(true);
-foreach (\$ids as \$id) {
-  \$lr = App\Models\LearningRecord::with('studentClass')->find(\$id);
-  if (!\$lr) { echo \"missing \$id\n\"; continue; }
-  \$eff = (int) \$m->invoke(\$ctrl, \$lr);
-  \$name = App\Support\TeacherProfileDirectory::nameFor(\$eff, '未指派');
-  echo implode('|', [(int)\$lr->id, (int)\$lr->TeacherID, (int)(\$lr->studentClass->TeacherID ?? 0), \$eff, \$name]), \"\n\";
-}
+\$eff = (int) \$m->invoke(\$ctrl, \$lr);
+\$name = App\Support\TeacherProfileDirectory::nameFor(\$eff, '未指派');
+echo json_encode([
+  'lr_id' => (int)\$lr->id,
+  'lr_teacher_id' => (int)\$lr->TeacherID,
+  'sc_teacher_id' => (int)(\$lr->studentClass->TeacherID ?? 0),
+  'effective_teacher_id' => \$eff,
+  'teacher_name' => \$name,
+  'prod_head' => trim((string)@shell_exec('git -C /home/admin/backend rev-parse HEAD')),
+], JSON_UNESCAPED_UNICODE), PHP_EOL;
 "
 echo "=== END #276 probe ==="
