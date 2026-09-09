@@ -1130,47 +1130,7 @@ class ScheduleController extends Controller
         }
 
         if (strtolower((string) ($merged['status'] ?? 'scheduled')) === 'leave' && $courseId > 0) {
-            try {
-                return DB::transaction(function () use ($schedule, $data, $courseId, $merged, $request) {
-                    $schedule->fill(array_filter($data, fn ($v) => $v !== null));
-                    $schedule->save();
-                    [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade(
-                        $courseId,
-                        (string) ($merged['schedule_date'] ?? $schedule->schedule_date)
-                    );
-                    $course = StudentClass::query()->where('ID', $courseId)->first();
-                    $leaveSession = ClassSession::query()
-                        ->where('StudentClassID', $courseId)
-                        ->whereDate('SessionDate', $leaveSessionDate)
-                        ->first();
-                    if ($course && $leaveSession
-                        && !StudentSignIn::query()->where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
-                        $campusId = (int) (Student::query()->where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
-                        $authUser = $request->attributes->get('auth_user');
-                        $this->leaveAttendanceService->createClosedForSession(
-                            $leaveSession,
-                            $course,
-                            (int) ($authUser->id ?? 0),
-                            null,
-                            $campusId
-                        );
-                    }
-
-                    return response()->json([
-                        'message' => $course && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
-                            ? '請假更新完成：月結課程只標記本堂，日期區間不變、不補尾'
-                            : '請假更新完成：未來既有上課日不變，並於尾端補上堂次',
-                        ...($course ? CourseLeaveCascadeService::leaveOutcomeForCourse($course) : []),
-                        'policy' => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
-                        'schedule' => $schedule,
-                        'leave_session_date' => $leaveSessionDate,
-                        'extended_end_date' => $extendedEndDate,
-                        'class_sessions' => $rows,
-                    ]);
-                });
-            } catch (\InvalidArgumentException $e) {
-                return response()->json(['message' => $e->getMessage()], 422);
-            }
+            return $this->applyLeaveScheduleUpdate($schedule, $data, $courseId, $merged, $request);
         }
 
         if (($merged['status'] ?? 'scheduled') === 'scheduled') {
@@ -1310,6 +1270,61 @@ class ScheduleController extends Controller
             // Re-activate a previously cancelled slot (e.g. reschedule destination that
             // was cancelled by an earlier operation). Never override 'attended' or 'leave'.
             $existing->update(['Status' => 'scheduled', 'EndTime' => $endTime]);
+        }
+    }
+
+    private function applyLeaveScheduleUpdate(
+        Schedule $schedule,
+        array $data,
+        int $courseId,
+        array $merged,
+        Request $request
+    ) {
+        DB::beginTransaction();
+        try {
+            $schedule->fill(array_filter($data, fn ($v) => $v !== null));
+            $schedule->save();
+            [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade(
+                $courseId,
+                (string) ($merged['schedule_date'] ?? $schedule->getAttribute('schedule_date'))
+            );
+            $course = StudentClass::query()->where('ID', $courseId)->first();
+            $leaveSession = ClassSession::query()
+                ->where('StudentClassID', $courseId)
+                ->whereDate('SessionDate', $leaveSessionDate)
+                ->first();
+            if ($course && $leaveSession
+                && !StudentSignIn::query()->where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
+                $campusId = (int) (Student::query()->where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
+                $authUser = $request->attributes->get('auth_user');
+                $this->leaveAttendanceService->createClosedForSession(
+                    $leaveSession,
+                    $course,
+                    (int) ($authUser->id ?? 0),
+                    null,
+                    $campusId
+                );
+            }
+
+            $response = response()->json([
+                'message' => $course && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date'
+                    ? '請假更新完成：月結課程只標記本堂，日期區間不變、不補尾'
+                    : '請假更新完成：未來既有上課日不變，並於尾端補上堂次',
+                ...($course ? CourseLeaveCascadeService::leaveOutcomeForCourse($course) : []),
+                'policy' => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
+                'schedule' => $schedule,
+                'leave_session_date' => $leaveSessionDate,
+                'extended_end_date' => $extendedEndDate,
+                'class_sessions' => $rows,
+            ]);
+            DB::commit();
+            return $response;
+        } catch (\InvalidArgumentException $e) {
+            DB::rollBack();
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
         }
     }
 

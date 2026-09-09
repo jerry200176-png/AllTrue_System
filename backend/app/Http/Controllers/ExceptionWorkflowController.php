@@ -63,7 +63,6 @@ class ExceptionWorkflowController extends Controller
     {
         $workflow = ExceptionWorkflow::with(['student', 'studentClass', 'classSession', 'candidates'])
             ->findOrFail($id);
-
         if (!$this->canAccessCampus($request, (int) $workflow->campus_id)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -474,9 +473,16 @@ class ExceptionWorkflowController extends Controller
         return $current . '|' . $suffix;
     }
 
-    private function isDateModeCourse(ExceptionWorkflow $workflow): bool
+    private function isDateModeCourse($workflow): bool
     {
-        return strtolower((string) ($workflow->studentClass?->ScheduleMode ?? 'count')) === 'date';
+        $course = method_exists($workflow, 'getRelation')
+            ? $workflow->getRelation('studentClass')
+            : null;
+        $mode = method_exists($course, 'getAttribute')
+            ? $course->getAttribute('ScheduleMode')
+            : null;
+
+        return strtolower((string) ($mode ?? 'count')) === 'date';
     }
 
     private function monthlyLeaveRequiresNoMakeupResponse()
