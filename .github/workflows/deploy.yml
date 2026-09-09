@@ -157,7 +157,7 @@ jobs:
           from scripts.governance.autonomy_gate import (
               classify_production_runtime,
               is_application_runtime_path,
-              is_deployable_path,
+              is_control_plane_only_paths,
           )
 
           repo = os.environ["REPO"]
@@ -324,6 +324,9 @@ jobs:
           except ValueError:
               emit(True, deployed, "production-to-main comparison was invalid; classifier must fail closed", "invalid-evidence")
               raise SystemExit(0)
+          files = [item.get("filename", "") for item in comparison.get("files", [])]
+          application_files = [path for path in files if is_application_runtime_path(path)]
+          control_plane_only = is_control_plane_only_paths(files)
           runtime = classify_production_runtime(
               production_sha=deployed,
               target_sha=head,
@@ -334,14 +337,30 @@ jobs:
           runtime_state = str(runtime["state"])
           print(f"Production runtime state: {runtime_state} ({runtime['reason']})")
           if runtime_state == "current":
+              if control_plane_only:
+                  emit(
+                      False,
+                      deployed,
+                      "control-plane-only change is effective on main; application runtime already current",
+                      "control-plane-only",
+                  )
+                  raise SystemExit(0)
               emit(False, deployed, str(runtime["reason"]), runtime_state)
               raise SystemExit(0)
           if runtime_state != "normal-version-lag":
               emit(True, deployed, str(runtime["reason"]), runtime_state)
               raise SystemExit(0)
 
-          files = [item.get("filename", "") for item in comparison.get("files", [])]
-          deployable = any(is_deployable_path(path) for path in files)
+          if control_plane_only:
+              emit(
+                  False,
+                  deployed,
+                  "control-plane-only change is effective on main; no application runtime deployment required",
+                  "control-plane-only",
+              )
+              raise SystemExit(0)
+
+          deployable = bool(application_files)
           print(f"Production runtime base: {deployed}")
           print("Changed files since the deployed runtime:")
           for path in files:
@@ -393,6 +412,16 @@ jobs:
           }
 
           if [[ "$DEPLOYABLE" != "true" ]]; then
+            if [[ "$RUNTIME_STATE" == "control-plane-only" ]]; then
+              {
+                echo "mode=control-plane-verified"
+                echo "approval_eligible=false"
+                echo "tier=none"
+                echo "pr_number=none"
+                echo "reason=control-plane change is effective on main; no application runtime deployment required"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             {
               echo "mode=no-op"
               echo "approval_eligible=false"
@@ -499,6 +528,7 @@ jobs:
                   effective_tier,
                   decide_activation,
                   has_rollback_evidence,
+                  is_founder_approval_eligible,
                   is_deployable_path,
                   is_production_activation_sensitive_path,
                   parse_declaration,
@@ -595,12 +625,9 @@ jobs:
                   ci_success=True,
                   rollback_evidence=rollback_evidence,
               )
-              approval_eligible = (
-                  decision["decision"] == "awaiting-activation"
-                  and (
-                      bool(scope.get("protected_activation"))
-                      or decision["effective_tier"] in {"T2", "T3"}
-                  )
+              approval_eligible = is_founder_approval_eligible(
+                  decision,
+                  protected_activation=bool(scope.get("protected_activation")),
               )
               emit(
                   decision["decision"], decision["effective_tier"], pr_number,
@@ -625,6 +652,12 @@ jobs:
         run: |
           set -euo pipefail
           case "$MODE" in
+            control-plane-verified)
+              {
+                echo "## state=control-plane-verified"
+                echo "The merged control-plane revision is effective on main. No application runtime deployment is required or reported."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
             no-op)
               echo "## state=merged (no-op)" >> "$GITHUB_STEP_SUMMARY"
               echo "No deployable runtime change was found." >> "$GITHUB_STEP_SUMMARY"

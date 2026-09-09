@@ -74,7 +74,9 @@ workflow code is immediately effective in GitHub. The
 `production-activation` Environment cannot delay that control-plane revision;
 it protects only the post-merge production-side-effect job in the resulting
 run. Environment approval is therefore not a substitute for Founder approval
-to merge a workflow change.
+to merge a workflow change. After merge, the workflow is recorded as
+`control-plane-verified`; that state does not imply application deployment or
+production runtime verification.
 
 ## Live settings still outside this PR
 
