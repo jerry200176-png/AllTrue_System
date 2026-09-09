@@ -45,6 +45,7 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('"three_course_materialized_slots"', source)
         self.assertIn('collectTeacherBusySlotsWithCapacity', source)
         self.assertIn('"capacity_slot_checks"', source)
+        self.assertIn('"session_records"', source)
         self.assertIn('"session_count_summaries"', source)
         self.assertIn('"decision_grade_required" => $decisionGradeRequired', source)
         self.assertIn('target-correct probe is required; evidence is not decision-grade', source)

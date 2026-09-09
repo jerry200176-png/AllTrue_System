@@ -1079,7 +1079,7 @@ jobs:
                 ->get([
                   "cs.id as session_id", "cs.StudentClassID as class_id", "cs.SessionDate as session_date",
                   "cs.StartTime as start_time", "cs.EndTime as end_time", "cs.Status as status",
-                  "sc.ClassType as class_type",
+                  "sc.ClassType as class_type", "cs.created_at as created_at", "cs.updated_at as updated_at",
                 ]);
               $groups272 = $sessions272->groupBy(fn ($row) => implode("|", [
                 substr((string)$row->session_date, 0, 10),
@@ -1095,6 +1095,12 @@ jobs:
                   "course_ids" => $rows->pluck("class_id")->map(fn ($id) => (int)$id)->unique()->values()->all(),
                   "session_ids" => $rows->pluck("session_id")->map(fn ($id) => (int)$id)->unique()->values()->all(),
                   "statuses" => $rows->pluck("status")->map(fn ($status) => (string)$status)->unique()->values()->all(),
+                  "session_records" => $rows->map(fn ($row) => [
+                    "session_id" => (int)$row->session_id,
+                    "course_id" => (int)$row->class_id,
+                    "created_at" => $row->created_at ? (string)$row->created_at : null,
+                    "updated_at" => $row->updated_at ? (string)$row->updated_at : null,
+                  ])->values()->all(),
                 ];
               }})->values()->all();
               $probe272["materialized_session_count"] = $sessions272->count();
