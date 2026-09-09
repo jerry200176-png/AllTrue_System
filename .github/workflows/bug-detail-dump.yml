@@ -1132,6 +1132,38 @@ jobs:
               $probe272["scheduled_slot_groups"] = $scheduledGroups272;
               $probe272["three_course_materialized_slots"] = collect($groups272)->filter(fn ($slot) => (int)$slot["course_count"] >= 3)->values()->all();
               $probe272["three_course_scheduled_slots"] = collect($scheduledGroups272)->filter(fn ($slot) => (int)$slot["course_count"] >= 3)->values()->all();
+              $probe272["teacher_id"] = $teacherId272;
+              $capacityService272 = app(\App\Services\SubstituteService::class);
+              $capacityChecks272 = [];
+              foreach ($probe272["three_course_materialized_slots"] as $slot) {
+                $observed = $capacityService272->collectTeacherBusySlotsWithCapacity(
+                  $teacherId272,
+                  (string)$slot["date"],
+                  [],
+                  null
+                );
+                $capacityChecks272[] = [
+                  "date" => (string)$slot["date"],
+                  "start_time" => (string)$slot["start_time"],
+                  "end_time" => (string)$slot["end_time"],
+                  "slots" => collect($observed)->filter(function ($candidate) use ($slot, $campusId272) {
+                    return (int)($candidate["campus_id"] ?? 0) === $campusId272
+                      && (string)($candidate["start_time"] ?? "") === (string)$slot["start_time"]
+                      && (string)($candidate["end_time"] ?? "") === (string)$slot["end_time"];
+                  })->map(fn ($candidate) => [
+                    "class_type" => (string)($candidate["class_type"] ?? ""),
+                    "student_count" => (int)($candidate["student_count"] ?? 0),
+                    "configured_capacity" => (int)($candidate["configured_capacity"] ?? 0),
+                    "occupied_capacity" => (int)($candidate["occupied_capacity"] ?? 0),
+                    "remaining_capacity" => (int)($candidate["remaining_capacity"] ?? 0),
+                    "course_ids" => array_values(array_map("intval", $candidate["course_ids"] ?? [])),
+                    "class_session_ids" => array_values(array_map("intval", $candidate["class_session_ids"] ?? [])),
+                    "schedule_ids" => array_values(array_map("intval", $candidate["schedule_ids"] ?? [])),
+                    "source_types" => array_values(array_map("strval", $candidate["source_types"] ?? [])),
+                  ])->values()->all(),
+                ];
+              }
+              $probe272["capacity_slot_checks"] = $capacityChecks272;
               $probe272["decision_grade"] = true;
               $probe272["error"] = null;
             }} catch (\Throwable $e) {{

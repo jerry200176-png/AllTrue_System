@@ -43,6 +43,8 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('if ($bugId === 272) {{', source)
         self.assertIn('"teacher_same_slot_three_course_report_272"', source)
         self.assertIn('"three_course_materialized_slots"', source)
+        self.assertIn('collectTeacherBusySlotsWithCapacity', source)
+        self.assertIn('"capacity_slot_checks"', source)
         self.assertIn('"session_count_summaries"', source)
         self.assertIn('"decision_grade_required" => $decisionGradeRequired', source)
         self.assertIn('target-correct probe is required; evidence is not decision-grade', source)
