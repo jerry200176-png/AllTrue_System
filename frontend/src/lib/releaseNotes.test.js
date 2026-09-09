@@ -126,5 +126,6 @@ const currentParentNotes = listActiveParentUpdates({ now: new Date('2026-09-10T1
 assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-09-learning-assessment');
 assert.strictEqual(currentParentNotes[0].title, '學習評量重點更清楚');
 assert.match(currentParentNotes[0].summary, /最近學了什麼/);
+assert.match(currentParentNotes[0].details, /逐堂展開查看/);
 
 console.log('releaseNotes.test.js: ok');
