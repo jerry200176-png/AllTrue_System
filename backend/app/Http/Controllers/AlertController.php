@@ -633,7 +633,6 @@ class AlertController extends Controller
     public function tuitionSlipData(Request $request, int $studentClassId)
     {
         $sc = StudentClass::with(['student', 'coursePackage'])->findOrFail($studentClassId);
-        /** @var StudentClass $sc */
 
         if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
@@ -676,7 +675,9 @@ class AlertController extends Controller
                 // Count-mode alerts already use the contract price rather than
                 // a stale historical Charge snapshot. Keep the tuition slip on
                 // that same canonical display path (in-app #275).
-                'charge' => $this->countModeCharge($sc),
+                'charge' => $sc instanceof StudentClass
+                    ? $this->countModeCharge($sc)
+                    : max(0, (int) ($sc->Charge ?? 0)),
                 'period_sessions' => null,
                 'period_start' => null,
                 'period_end' => null,
