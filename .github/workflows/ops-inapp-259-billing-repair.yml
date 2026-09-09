@@ -230,6 +230,7 @@ jobs:
           $invoice = $augustInvoices->first();
           $paid = $db::table("Payment as p")->join("Invoice as i", "i.id", "=", "p.InvoiceID")->where("i.StudentClassID", 2885)->where("i.Status", "!=", "void")->where("p.Amount", ">", 0)->where("p.Method", "!=", "void")->count();
           $confirmed = $db::table("payment_reports")->where("StudentClassID", 2885)->where("status", "confirmed")->where("reported_amount", 9000)->get();
+          $septClass = $db::table("StudentClass")->where("ID", 3361)->first();
           $sept = $db::table("Invoice")->where("id", 1575)->first();
           $old = $db::table("Invoice")->where("id", 1274)->first();
           $oldReport = $db::table("payment_reports")->where("id", 1309)->first();
@@ -251,20 +252,20 @@ jobs:
           $scCharge = $field($sc, ["Charge", "charge"]);
           $scPaid = $field($sc, ["Paid", "paid"]);
           $scEndDate = $field($sc, ["EndDate", "end_date"]);
-          $septSessionCount = $field($sept, ["SessionCount", "session_count"]);
-          $septCharge = $field($sept, ["Charge", "charge"]);
-          $septScheduleMode = $field($sept, ["ScheduleMode", "schedule_mode"]);
+          $septSessionCount = $field($septClass, ["SessionCount", "session_count"]);
+          $septCharge = $field($septClass, ["Charge", "charge"]);
+          $septScheduleMode = $field($septClass, ["ScheduleMode", "schedule_mode"]);
           $endDate = $scEndDate ? substr((string)$scEndDate, 0, 10) : null;
           $oldPaymentsExact = $oldPayments->count() === 3 && (int)$oldPayments[0]->id === 1377 && (int)$oldPayments[0]->InvoiceID === 1274 && (int)$oldPayments[0]->Amount === 6600 && (int)$oldPayments[1]->id === 1418 && (int)$oldPayments[1]->InvoiceID === 1274 && (int)$oldPayments[1]->Amount === -6600 && (int)$oldPayments[2]->id === 1422 && (int)$oldPayments[2]->InvoiceID === 1274 && (int)$oldPayments[2]->Amount === -6600;
           $historyExact = $old && (string)$old->Status === "void" && (int)$old->TotalAmount === 6600 && (int)$old->PaidAmount === 0 && $oldReport && (string)$oldReport->status === "voided" && (int)$oldReport->InvoiceID === 1274 && $oldPaymentsExact;
-          $alreadyExact = $sc && (int)$scStudentId === 24 && (int)$scSessionCount === 5 && (int)$scCharge === 9000 && (int)$scPaid === 1 && $endDate === "2026-08-29" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 1 && (string)$augustInvoices[0]->Status === "paid" && (int)$augustInvoices[0]->PaidAmount === 9000 && $confirmed->count() === 1 && $paid === 1 && $sept && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
+          $alreadyExact = $sc && (int)$scStudentId === 24 && (int)$scSessionCount === 5 && (int)$scCharge === 9000 && (int)$scPaid === 1 && $endDate === "2026-08-29" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 1 && (string)$augustInvoices[0]->Status === "paid" && (int)$augustInvoices[0]->PaidAmount === 9000 && $confirmed->count() === 1 && $paid === 1 && $septClass && (int)$septSessionCount === 5 && (int)$septCharge === 9000 && (string)$septScheduleMode === "date" && $sept && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
           $initialExact = $sc && (int)$scStudentId === 24 && (string)$scScheduleMode === "date" && (int)$scSessionCount === 4 && (int)$scCharge === 7200 && (int)$scPaid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$septSessionCount === 5 && (int)$septCharge === 9000 && (string)$septScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
           if (!$sc || (int)$scStudentId !== 24 || (string)$scScheduleMode !== "date" || !$s || (int)$s->StudentClassID !== 2885 || (string)$s->SessionDate !== "2026-08-29") throw new \RuntimeException("business truth precondition mismatch");
           if (!$alreadyExact && !$initialExact) {
             echo "#259 precondition diagnostic=" . json_encode([
               "keys" => [
                 "student_class" => array_keys($sc ? get_object_vars($sc) : []),
-                "september_class" => array_keys($sept ? get_object_vars($sept) : []),
+                "september_class" => array_keys($septClass ? get_object_vars($septClass) : []),
                 "september_invoice" => array_keys($sept ? get_object_vars($sept) : []),
               ],
               "captured" => [
