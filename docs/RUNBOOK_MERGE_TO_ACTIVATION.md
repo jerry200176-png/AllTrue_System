@@ -42,8 +42,12 @@ The deploy workflow classifies the full production-manifest SHA range. Tests,
 docs, Exo metadata, and the read-only CI scheduler cannot force a normal runtime
 release through the human gate; deploy, migrations, repairs, auth/permission,
 billing, credentials, destructive, and other production-side-effect paths remain
-protected. A declaration may raise effective risk but may never lower the
-machine-derived minimum. Missing, mismatched, or understated evidence is held.
+protected. A sensitive path is inspected for effect: a bounded read-only diff
+is `guarded-sensitive` and uses the existing T2 executor, while control-plane,
+business/security effects, uninspectable diffs, or a blast radius above 3 files
+or 240 changed code lines are `founder-required`. A declaration may raise
+effective risk but may never lower the machine-derived minimum. Missing,
+mismatched, or understated evidence is held.
 
 ## Founder boundary
 
