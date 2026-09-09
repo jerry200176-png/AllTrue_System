@@ -47,7 +47,7 @@
     </div>
 
     <!-- 篩選列 -->
-    <AtFilterBar label="綁定篩選">
+    <AtFilterBar class="bmp-filter-bar" label="綁定篩選">
       <div>
         <label for="bmp-search">搜尋學生姓名</label>
         <input
@@ -98,8 +98,9 @@
     />
 
     <!-- Desktop 表格 -->
-    <div v-else class="bmp-table-wrap">
-      <table class="bmp-table" data-guide="binding-table">
+    <div v-else>
+      <div class="bmp-table-wrap bmp-desktop-table">
+        <table class="bmp-table" data-guide="binding-table">
         <thead>
           <tr>
             <th style="width:110px">學生</th>
@@ -136,13 +137,38 @@
             </td>
           </tr>
         </tbody>
-      </table>
+        </table>
 
-      <!-- 分頁 -->
-      <div v-if="pagination.lastPage > 1" class="bmp-pagination">
-        <AtButton shape="rect" size="sm" variant="ghost" :disabled="page <= 1" @click="changePage(page - 1)">上一頁</AtButton>
-        <span class="bmp-page-info">第 {{ page }} / {{ pagination.lastPage }} 頁（共 {{ pagination.total }} 筆）</span>
-        <AtButton shape="rect" size="sm" variant="ghost" :disabled="page >= pagination.lastPage" @click="changePage(page + 1)">下一頁</AtButton>
+        <!-- 分頁 -->
+        <div v-if="pagination.lastPage > 1" class="bmp-pagination">
+          <AtButton shape="rect" size="sm" variant="ghost" :disabled="page <= 1" @click="changePage(page - 1)">上一頁</AtButton>
+          <span class="bmp-page-info">第 {{ page }} / {{ pagination.lastPage }} 頁（共 {{ pagination.total }} 筆）</span>
+          <AtButton shape="rect" size="sm" variant="ghost" :disabled="page >= pagination.lastPage" @click="changePage(page + 1)">下一頁</AtButton>
+        </div>
+      </div>
+
+      <div class="bmp-mobile-list" aria-label="LINE 綁定清單">
+        <article v-for="row in list" :key="row.id" class="bmp-mobile-card">
+          <div class="bmp-mobile-card__head">
+            <div class="bmp-student">
+              <span class="bmp-avatar">{{ (row.student_name || '?')[0] }}</span>
+              <strong>{{ row.student_name || `#${row.student_id}` }}</strong>
+            </div>
+            <AtBadge :tone="isVerified(row) ? 'success' : 'warning'" :label="isVerified(row) ? '已驗證' : '未驗證'" />
+          </div>
+          <dl class="bmp-mobile-details">
+            <div><dt>LINE ID</dt><dd><code class="bmp-line-id">{{ row.line_user_id_masked || '—' }}</code></dd></div>
+            <div><dt>分校</dt><dd>{{ row.campus_name || `#${row.campus_id}` }}</dd></div>
+            <div><dt>綁定時間</dt><dd class="bmp-tabular">{{ formatDateTime(row.bound_at) }}</dd></div>
+          </dl>
+          <AtButton
+            class="bmp-mobile-card__action"
+            shape="rect"
+            variant="danger"
+            icon="link_off"
+            @click="openUnbindDialog(row)"
+          >解除此筆綁定</AtButton>
+        </article>
       </div>
     </div>
 
@@ -206,7 +232,6 @@ const pagination = ref({ lastPage: 1, total: 0 });
 const unbindTarget = ref(null);
 const unbinding = ref(false);
 const unbindError = ref('');
-const unbindTitleId = 'bmp-unbind-title';
 
 const filters = ref({ studentName: '', campusId: '', status: '' });
 let searchTimer = null;
@@ -372,6 +397,8 @@ onMounted(() => { load(); loadStats(); });
   overflow-x: auto;
 }
 
+.bmp-mobile-list { display: none; }
+
 .bmp-table {
   width: 100%;
   border-collapse: collapse;
@@ -495,9 +522,37 @@ onMounted(() => { load(); loadStats(); });
   font-size: var(--ds-font-size-sm);
 }
 
+.bmp-mobile-card {
+  padding: var(--ds-space-4);
+  border: var(--ds-border-width) solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-1);
+}
+
+.bmp-mobile-card + .bmp-mobile-card { margin-top: var(--ds-space-3); }
+.bmp-mobile-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ds-space-3); }
+.bmp-mobile-details { display: grid; gap: var(--ds-space-2); margin: var(--ds-space-4) 0; }
+.bmp-mobile-details > div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: var(--ds-space-2); align-items: start; }
+.bmp-mobile-details dt { color: var(--ds-ink-mute); font-size: var(--ds-font-size-sm); font-weight: var(--ds-font-weight-semibold); }
+.bmp-mobile-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--ds-ink-secondary); }
+.bmp-mobile-card__action { width: 100%; min-height: var(--ds-control-height-touch, 44px); }
+.bmp-page :deep(.at-btn),
+.bmp-page :deep(.at-icon-btn) { min-height: var(--ds-control-height-touch, 44px); }
+.bmp-page :deep(.at-icon-btn) { min-width: var(--ds-control-height-touch, 44px); }
+
+.bmp-filter-bar :deep(input),
+.bmp-filter-bar :deep(select),
+.bmp-pagination :deep(.at-btn),
+.bmp-dialog :deep(.at-dialog__close) { min-height: var(--ds-control-height-touch, 44px); }
+
 @media (max-width: 768px) {
   .bmp-stats {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
+}
+
+@media (max-width: 640px) {
+  .bmp-desktop-table { display: none; }
+  .bmp-mobile-list { display: block; }
 }
 </style>
