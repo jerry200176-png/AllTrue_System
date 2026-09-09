@@ -257,7 +257,12 @@ jobs:
           php artisan key:generate --force
 
       - name: Install MySQL client
-        run: sudo apt-get update -y && sudo apt-get install -y mysql-client
+        run: |
+          # Runner images ship a Google Chrome apt source that periodically 502/hash-mismatches
+          # and fails unrelated apt-get update (blocks PHPUnit). Drop it before installing mysql-client.
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list /etc/apt/sources.list.d/google-chrome*.list.save || true
+          sudo apt-get update -y
+          sudo apt-get install -y mysql-client
 
       - name: Wait for MySQL
         run: |
