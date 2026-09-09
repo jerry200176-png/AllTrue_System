@@ -126,9 +126,11 @@ class ExceptionWorkflowService
                 : null;
 
             if ($session && in_array(strtolower((string) $session->getAttribute('Status')), [SessionStatus::LEAVE_REQUESTED, SessionStatus::SCHEDULED, 'rescheduled'], true)) {
-                $session->setAttribute('Status', SessionStatus::LEAVE);
-                $session->setAttribute('Note', $this->appendNote($session->getAttribute('Note'), 'parent-leave-approved'));
-                $session->save();
+                // Parent approvals are a second writer for leave. Keep them
+                // on the same artifact-voiding writer as attendance/schedule
+                // flows. In date mode this is deliberately leave-only: no
+                // tail, no future-date move, and no EndDate change.
+                CourseLeaveCascadeService::markSessionLeaveOnly($session, 'parent-leave-approved');
             }
 
             $locked->setAttribute('status', $closedReason === 'candidate_confirmed' ? 'confirmed' : 'waived');

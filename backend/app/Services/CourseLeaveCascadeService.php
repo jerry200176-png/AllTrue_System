@@ -34,6 +34,26 @@ class CourseLeaveCascadeService
     /** Non-billable ClassSession statuses (use NOTE_LEAVE to avoid FIT-5 status-literal ratchet). */
     public const NON_BILLABLE_STATUSES = ['cancelled', self::NOTE_LEAVE, 'leave_adjusted', 'excused'];
 
+    /** @return array<string, mixed> */
+    public static function leaveOutcomeForCourse(StudentClass $course): array
+    {
+        $isDateMode = strtolower((string) ($course->getAttribute('ScheduleMode') ?? 'count')) === 'date';
+
+        if (!$isDateMode) {
+            return ['leave_mode' => 'count_append_tail'];
+        }
+
+        return [
+            'leave_mode' => 'monthly_bounded',
+            'future_dates_unchanged' => true,
+            'auto_makeup_created' => false,
+            'end_date_changed' => false,
+            'contract_end_date' => $course->getAttribute('EndDate')
+                ? Carbon::parse($course->getAttribute('EndDate'))->toDateString()
+                : null,
+        ];
+    }
+
     /**
      * Void any live LearningRecord/StudentSignIn for a session that is becoming (or already
      * is) leave. Single source of truth — every code path that transitions a ClassSession to
@@ -47,6 +67,25 @@ class CourseLeaveCascadeService
     public static function voidLiveArtifactsForLeave(int $classSessionId): void
     {
         self::voidLiveArtifactsForNonAttendance($classSessionId, self::VOID_REASON_LEAVE);
+    }
+
+    /**
+     * Mark one existing session as leave without invoking the count-based tail
+     * planner. The caller owns the surrounding transaction/row lock.
+     */
+    public static function markSessionLeaveOnly(
+        ClassSession $session,
+        string $note = self::NOTE_LEAVE
+    ): ClassSession {
+        self::voidLiveArtifactsForLeave((int) $session->getKey());
+
+        if (strtolower((string) ($session->getAttribute('Status') ?? '')) !== self::NOTE_LEAVE) {
+            $session->setAttribute('Status', self::NOTE_LEAVE);
+            $session->setAttribute('Note', self::appendNote($session->getAttribute('Note'), $note));
+            $session->save();
+        }
+
+        return $session;
     }
 
     /**
@@ -180,6 +219,15 @@ class CourseLeaveCascadeService
         }
 
         $leaveStatus = strtolower((string) ($leaveSession->Status ?? ''));
+
+        // Date-mode idempotency is deliberately independent of legacy
+        // SessionCount/tail provenance. A repeated calendar save must only
+        // re-assert the target status and never infer an append obligation.
+        if ($leaveStatus === self::NOTE_LEAVE
+            && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date') {
+            self::voidLiveArtifactsForLeave((int) $leaveSession->id);
+            return [self::fetchCourseSessionRows($courseId), null, $normalizedLeaveDate];
+        }
 
         if (in_array($leaveStatus, ['completed', 'attended'], true)) {
             throw new \InvalidArgumentException('已完成堂次不可請假（如需補請假請使用 retro-leave）');
@@ -370,7 +418,8 @@ class CourseLeaveCascadeService
                 'moves' => [],
                 'vacated' => [],
                 'append' => null,
-                'extended_end_date' => $course->EndDate
+                'extended_end_date' => null,
+                'contract_end_date' => $course->EndDate
                     ? Carbon::parse($course->EndDate)->toDateString()
                     : null,
                 'future_dates_unchanged' => true,
@@ -480,7 +529,7 @@ class CourseLeaveCascadeService
         if ($course && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date') {
             return [
                 self::fetchCourseSessionRows($courseId),
-                $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null,
+                null,
                 null,
             ];
         }

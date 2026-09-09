@@ -219,7 +219,10 @@ class StudentClassTransferSessionsTest extends TestCase
             ['Authorization' => "Bearer {$token}"]
         );
 
-        $response->assertStatus(422)->assertJsonPath('code', 'billing_correction_required');
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'monthly_leave_period_review_required')
+            ->assertJsonPath('next_step', 'open_tuition_collection')
+            ->assertJsonPath('next_actions.0.code', 'open_tuition_collection');
         $this->assertSame((int) $source->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $source->ID, 'SessionCount' => 4, 'Charge' => 7200, 'EndDate' => '2026-08-28',

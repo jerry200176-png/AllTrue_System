@@ -576,6 +576,7 @@ class AttendanceController extends Controller
                         'message'            => strtolower((string) ($studentClass->ScheduleMode ?? 'count')) === 'date'
                             ? '已請假：月結課程維持原合約日期區間，不補課、不延長到期日'
                             : '已請假：未來既有上課日不變，並於尾端補上堂次',
+                        ...CourseLeaveCascadeService::leaveOutcomeForCourse($studentClass),
                         'policy'             => CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL,
                         'status_label'       => '請假',
                         'person_name'        => $student->name ?? '',
@@ -1094,6 +1095,20 @@ class AttendanceController extends Controller
         }
 
         if ($newStatus === 'leave') {
+            $classSessionId = (int) ($signin->getAttribute('ClassSessionID') ?? 0);
+            if ($classSessionId > 0 && ClassSession::query()->whereKey($classSessionId)->exists()) {
+                return response()->json([
+                    'code' => 'leave_requires_session_workflow',
+                    'message' => '有對應堂次的請假需由堂次流程處理，避免只改出缺勤記錄而漏掉堂次與評量狀態。',
+                    'next_step' => 'leave_by_session',
+                    'next_actions' => [[
+                        'code' => 'leave_by_session',
+                        'label' => '前往堂次請假',
+                        'available' => true,
+                        'class_session_id' => $classSessionId,
+                    ]],
+                ], 422);
+            }
             try {
                 $this->leaveAttendanceService->closeExistingForLeave($signin);
             } catch (\InvalidArgumentException $e) {

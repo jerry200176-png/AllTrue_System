@@ -31,7 +31,7 @@ class MonthlyLeaveDateBoundaryTest extends TestCase
 
         $course->refresh();
         $this->assertSame('2026-09-30', substr((string) $course->EndDate, 0, 10));
-        $this->assertSame('2026-09-30', $result[1]);
+        $this->assertNull($result[1], 'Date-mode leave must not report a changed EndDate.');
         $this->assertSame('2026-09-29', $result[2]);
         $this->assertSame(5, ClassSession::where('StudentClassID', $course->ID)->count());
         $this->assertSame(0, ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '>', '2026-09-30')->count());
@@ -39,7 +39,8 @@ class MonthlyLeaveDateBoundaryTest extends TestCase
 
         $preview = CourseLeaveCascadeService::previewLeaveCascadeForCourse($course->ID, '2026-09-29');
         $this->assertNull($preview['append']);
-        $this->assertSame('2026-09-30', $preview['extended_end_date']);
+        $this->assertNull($preview['extended_end_date']);
+        $this->assertSame('2026-09-30', $preview['contract_end_date']);
         $this->assertTrue($preview['future_dates_unchanged']);
     }
 

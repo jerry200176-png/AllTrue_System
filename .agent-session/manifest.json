@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "080d5751f88c4b0d8043dc7a5cb98324",
+  "session_id": "818df28fe2de49d18a452bce9e8b202f",
   "project": "alltrue",
-  "task_id": "TKT-20260909-103312-QNPX",
+  "task_id": "monthly-leave-date-invariant-20260909",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "394c383d5456d0f78cd133e8acf5ea6538cefbae",
-  "branch": "exo/TKT-20260909-103312-QNPX",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/TKT-20260909-103312-QNPX",
-  "started_at": "2026-09-09T02:33:22Z",
+  "base_sha": "79a014fbe429d478f07a4bda0f1595ed230448b7",
+  "branch": "chore/task-monthly-leave-date-invariant-20260909",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/monthly-leave-date-invariant-20260909",
+  "started_at": "2026-09-09T07:09:34Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }

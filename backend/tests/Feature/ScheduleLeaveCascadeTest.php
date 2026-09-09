@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\SessionDeductionLedger;
+use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
@@ -138,6 +139,47 @@ class ScheduleLeaveCascadeTest extends TestCase
             Carbon::parse((string) $leaveAttendance->SignOutDT)->format('Y-m-d H:i:s')
         );
         $this->assertNotNull($leaveAttendance->RecordedByUserID);
+    }
+
+    public function test_monthly_calendar_schedule_update_is_leave_only_even_with_legacy_session_count(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-monthly-calendar-update@example.com');
+        $student = $this->createStudent(1, '月結行事曆請假');
+        $course = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-09-01', 'EndDate' => '2026-09-30',
+            'TotalHours' => 10, 'Charge' => 5000, 'Paid' => 0, 'Rate' => 1000,
+            'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionCount' => 5,
+            'SessionDuration' => 120, 'RemainingSessions' => 0, 'ClassType' => 'one_on_one', 'UsedSessions' => 0,
+        ]);
+        $session = ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-15',
+            'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled',
+        ]);
+        $future = ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-22',
+            'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled',
+        ]);
+        $schedule = Schedule::create([
+            'student_id' => $student->id, 'teacher_id' => 1, 'subject' => 'Math',
+            'day_of_week' => 2, 'start_time' => '18:00', 'end_time' => '20:00',
+            'class_type' => 'one_on_one', 'status' => 'scheduled', 'type' => 'normal',
+            'deduction' => 0, 'branch_id' => 1, 'schedule_date' => '2026-09-15',
+            'student_course_id' => $course->ID,
+        ]);
+
+        $response = $this->putJson("/api/v1/schedules/{$schedule->id}", [
+            'status' => 'leave',
+        ], ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json']);
+
+        $response->assertOk()
+            ->assertJsonPath('leave_mode', 'monthly_bounded')
+            ->assertJsonPath('auto_makeup_created', false)
+            ->assertJsonPath('end_date_changed', false);
+        $this->assertSame('leave', strtolower((string) $session->fresh()->Status));
+        $this->assertSame('2026-09-22', Carbon::parse((string) $future->fresh()->SessionDate)->toDateString());
+        $this->assertSame('2026-09-30', Carbon::parse((string) $course->fresh()->EndDate)->toDateString());
+        $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->count());
     }
 
     public function test_backdated_leave_created_after_nightly_is_closed_at_write_time(): void
