@@ -72,6 +72,7 @@ final class ParentPortalTestFixtureService
                     'ClassID' => 7,
                     'SchoolName' => config('parent_portal_test.school_name'),
                     'Phone' => null,
+                    'TelegramID' => '',
                     'parent_name' => config('parent_portal_test.guardian_name'),
                     'parent_phone' => null,
                     'notes' => 'TEST / SYNTHETIC Parent Portal smoke fixture',
