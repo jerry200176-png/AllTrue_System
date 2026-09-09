@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.10",
     "date": "2026-09-10",
     "title": "2026.09.10 草稿（未發布）",
-    "summary": "評量表授課老師顯示實際填寫老師",
+    "summary": "評量表授課老師顯示實際填寫老師；行事曆請假依計費模式維持正確課表",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "評量表授課老師顯示實際填寫老師"
+          "評量表授課老師顯示實際填寫老師",
+          "行事曆請假依計費模式維持正確課表"
         ]
       }
     ],
     "items": [
-      "評量表授課老師顯示實際填寫老師"
+      "評量表授課老師顯示實際填寫老師",
+      "行事曆請假依計費模式維持正確課表"
     ]
   },
   {

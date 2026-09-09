@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-10-calendar-leave-policy-parity",
+    "publishedAt": "2026-09-10",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "行事曆請假會先清楚說明影響",
+    "summary": "單堂請假先顯示處理結果；堂數制補尾，月結制維持原帳期。",
+    "items": [
+      "堂數制請假保留後續原定日期並於尾端補堂；月結制只標記原堂、不補尾、不跨到下一個帳期。",
+      "行事曆請假與課程管理共用預覽、確認、錯誤與復原流程；老師請假／安排代課移至主要操作列。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "堂數制請假保留後續原定日期並於尾端補堂；月結制只標記原堂、不補尾、不跨到下一個帳期。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "行事曆請假與課程管理共用預覽、確認、錯誤與復原流程；老師請假／安排代課移至主要操作列。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-10:calendar-leave-policy-parity"
+    ],
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "staff-2026-09-10-learning-record-teacher-display",
     "publishedAt": "2026-09-10",
     "effectiveAt": null,
