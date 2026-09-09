@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-09-monthly-leave-invariant",
+    "publishedAt": "2026-09-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "月結請假維持原合約日期區間",
+    "summary": "月結課程請假只標記原堂，不移動未來堂次、不補尾，也不延長合約結束日。",
+    "items": [
+      "各請假入口共用同一規則；legacy SessionCount 不會讓月結誤走堂數制。",
+      "跨期資料提供帳務中心下一步；月結入口明確顯示不補課。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "各請假入口共用同一規則；legacy SessionCount 不會讓月結誤走堂數制。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "跨期資料提供帳務中心下一步；月結入口明確顯示不補課。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-09:monthly-leave-invariant"
+    ],
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "staff-2026-09-09-feedback-mobile-layout",
     "publishedAt": "2026-09-09",
     "effectiveAt": null,
