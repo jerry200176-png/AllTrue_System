@@ -120,12 +120,78 @@ _ACTIVATION_T3_PREFIXES = tuple(
     if prefix not in {".github/workflows/", "governance/", "docs/governance/"}
 )
 _ACTIVATION_T3_PATH_TERMS = (
-    "/auth/", "/billing/", "/payment", "/identity", "/credential",
-    "/password", "/secret", "/token", "/permission",
+    "auth", "billing", "payment", "identity", "credential", "password",
+    "secret", "token", "permission",
 )
 _SAFE_NON_PRODUCTION_WORKFLOWS = {
     ".github/workflows/autonomous-convergence.yml",
 }
+
+# A sensitive path is an input signal, not a decision by itself. These paths
+# remain Founder-required because they are the release/control plane, an
+# irreversible data boundary, or a service whose public contract is an
+# entitlement/ledger mutation even when the changed lines look small.
+_ALWAYS_FOUNDER_ACTIVATION_PREFIXES = (
+    ".github/workflows/",
+    ".github/CODEOWNERS",
+    ".github/dependabot.yml",
+    "backend/database/migrations/",
+    "backend/app/Console/Commands/Repair",
+    "backend/app/Services/Repair",
+    "backend/app/Services/SessionDeduction",
+    "backend/app/Services/SessionEntitlement",
+    "backend/app/Services/ApprovalSessionSync",
+    "backend/app/Http/Controllers/StudentIdentity",
+    "backend/app/Http/Controllers/Auth",
+    "backend/app/Http/Middleware/",
+    "backend/routes/api.php",
+    "scripts/ops/",
+    "scripts/production",
+    "governance/",
+    "docs/governance/",
+    ".cursorrules",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "codex.md",
+)
+_ALWAYS_FOUNDER_ACTIVATION_PATH_TERMS = (
+    "credential", "password", "secret", "token", "permission",
+)
+
+# Generated release-note bundles are deployable frontend assets, but their
+# historical text must not be treated as the effect of the current change.
+_SEMANTIC_SCAN_EXCLUDED_PATHS = {
+    "frontend/src/lib/changelogDraft.generated.js",
+    "frontend/src/lib/staffUpdates.generated.js",
+}
+
+_FOUNDER_EFFECT_PATTERNS = (
+    ("irreversible/data operation", re.compile(
+        r"\b(?:migration|repair|restore|drop\s+table|truncate|delete\s+from|backfill|reconcile)\b",
+    )),
+    ("billing/ledger semantics", re.compile(
+        r"\b(?:refund|ledger|writeoff|write-off|settle|capture|charge|payable|deduct|"
+        r"session\s+deduction|invoice\s+total|payment\s+amount|contract\s+price|"
+        r"countmodecharge|calculate(?:charge|amount|total)|recalculate)\b",
+    )),
+    ("authentication/privilege boundary", re.compile(
+        r"(?:\bauth\s*\(|\b(?:authenticate|authentication|authorize|authorization|login|logout|password|"
+        r"credential|oauth|sso|sanctum|bearer|access[_-]?token|refresh[_-]?token|"
+        r"privilege|grant|revoke|assign[_-]?role|permission|"
+        r"(?:link|unlink|bind|unbind|associate|merge|split)[_-]?(?:identity|guardian)|"
+        r"(?:identity|guardian)[_-]?(?:link|unlink|bind|unbind|associate|merge|split))\b)",
+    )),
+    ("privacy/legal boundary", re.compile(
+        r"\b(?:pii|personal\s+data|privacy|gdpr|legal|consent|retention)\b",
+    )),
+    ("runtime write", re.compile(
+        r"(?:->|::)\s*(?:create(?:many)?|update(?:orcreate)?|save|delete|destroy|"
+        r"forcedelete|insert|upsert|attach|detach|sync|increment|decrement)\s*\(",
+    )),
+)
+_BROAD_MUTATION_RE = re.compile(r"\b(?:foreach|chunk(?:byid)?|each(?:byid)?|bulk|mass)\b")
+_MAX_GUARDED_SENSITIVE_FILES = 3
+_MAX_GUARDED_SENSITIVE_LINES = 240
 
 
 def _path_matches(path: str, pattern: str) -> bool:
@@ -160,6 +226,13 @@ def _runtime_patch(paths: list[str], patch: str) -> str:
     )
 
 
+def _semantic_runtime_patch(paths: list[str], patch: str) -> str:
+    """Exclude generated historical bundles from current-effect analysis."""
+
+    semantic_paths = [path for path in paths if path not in _SEMANTIC_SCAN_EXCLUDED_PATHS]
+    return _runtime_patch(semantic_paths, patch)
+
+
 def _changed_code_lines(patch: str) -> str:
     lines = []
     for line in (patch or "").splitlines():
@@ -170,6 +243,33 @@ def _changed_code_lines(patch: str) -> str:
             continue
         lines.append(code)
     return "\n".join(lines).lower()
+
+
+def _patch_is_inspectable(paths: list[str], patch: str) -> bool:
+    """Return false when a sensitive diff cannot be deterministically inspected."""
+
+    if not patch:
+        return False
+    if "diff --git " not in patch:
+        return bool(_changed_code_lines(patch))
+    chunks = re.split(r"(?=^diff --git )", patch, flags=re.MULTILINE)
+    for path in paths:
+        matching = [
+            chunk for chunk in chunks
+            if f"diff --git a/{path} b/{path}" in chunk.split("\n", 1)[0]
+        ]
+        if len(matching) != 1 or not _changed_code_lines(matching[0]):
+            return False
+    return True
+
+
+def _founder_effects(changed_code: str, *, include_runtime_write: bool = True) -> list[str]:
+    effects = [label for label, pattern in _FOUNDER_EFFECT_PATTERNS if pattern.search(changed_code)]
+    if not include_runtime_write:
+        effects = [effect for effect in effects if effect != "runtime write"]
+    if effects and _BROAD_MUTATION_RE.search(changed_code):
+        effects.append("unbounded or mass mutation")
+    return effects
 
 
 def is_deployable_path(path: str) -> bool:
@@ -203,8 +303,14 @@ def is_production_activation_sensitive_path(path: str) -> bool:
         return normalized not in _SAFE_NON_PRODUCTION_WORKFLOWS
     if any(normalized.startswith(prefix) for prefix in _ACTIVATION_T3_PREFIXES):
         return True
-    lowered = f"/{normalized.lower()}/"
-    return any(term in lowered for term in _ACTIVATION_T3_PATH_TERMS)
+    lowered = normalized.lower()
+    path_parts = re.split(r"[/_.-]+", lowered)
+    return any(
+        part.startswith(term)
+        for part in path_parts
+        for term in _ACTIVATION_T3_PATH_TERMS
+        if part
+    )
 
 
 def parse_declaration(body: str) -> tuple[int | None, int | None]:
@@ -275,33 +381,83 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
 
 
 def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
-    """Classify only changes that can require a production application activation.
+    """Classify activation by effect, boundedness, and reversible evidence.
 
-    Merge safety remains conservative in ``classify_scope``.  This second view
-    prevents read-only CI/governance metadata from forcing a Pi deploy through
-    the Founder review environment, while keeping true production side effects
-    protected.
+    ``classify_scope`` remains the conservative merge classifier. This
+    activation view distinguishes routine T0/T1/T2 work from a bounded,
+    read-only sensitive change that can use the existing exact-SHA, rollback,
+    health, smoke, and production-verification path. Uninspectable or
+    business/security/control-plane effects stay Founder-required.
     """
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
     runtime_paths = [path for path in normalized if is_deployable_path(path)]
     sensitive_paths = [path for path in normalized if is_production_activation_sensitive_path(path)]
+    always_founder_paths = [
+        path for path in sensitive_paths
+        if any(path.startswith(prefix) for prefix in _ALWAYS_FOUNDER_ACTIVATION_PREFIXES)
+        or any(
+            part.startswith(term)
+            for part in re.split(r"[/_.-]+", path.lower())
+            for term in _ALWAYS_FOUNDER_ACTIVATION_PATH_TERMS
+            if part
+        )
+    ]
     minimum = 0
     reasons: list[str] = []
+    activation_class = "routine"
 
-    if sensitive_paths:
+    semantic_patch = _semantic_runtime_patch(runtime_paths, patch)
+    changed_code = _changed_code_lines(semantic_patch)
+    founder_effects = _founder_effects(
+        changed_code, include_runtime_write=bool(sensitive_paths)
+    )
+
+    if always_founder_paths:
         minimum = 3
-        reasons.extend(f"protected production activation path: {path}" for path in sensitive_paths)
+        activation_class = "founder-required"
+        reasons.extend(f"Founder-required production boundary: {path}" for path in always_founder_paths)
+    elif sensitive_paths:
+        inspectable = _patch_is_inspectable(
+            [path for path in sensitive_paths if is_deployable_path(path)], patch
+        )
+        changed_lines = len(changed_code.splitlines()) if changed_code else 0
+        if founder_effects:
+            minimum = 3
+            activation_class = "founder-required"
+            reasons.append("Founder-required effect: " + ", ".join(founder_effects))
+        elif not inspectable:
+            minimum = 3
+            activation_class = "founder-required"
+            reasons.append("Founder-required: sensitive diff is not inspectable; fail closed")
+        elif len(sensitive_paths) > _MAX_GUARDED_SENSITIVE_FILES:
+            minimum = 3
+            activation_class = "founder-required"
+            reasons.append(
+                f"Founder-required: sensitive blast radius exceeds {_MAX_GUARDED_SENSITIVE_FILES} files"
+            )
+        elif changed_lines > _MAX_GUARDED_SENSITIVE_LINES:
+            minimum = 3
+            activation_class = "founder-required"
+            reasons.append(
+                f"Founder-required: sensitive diff exceeds {_MAX_GUARDED_SENSITIVE_LINES} changed lines"
+            )
+        else:
+            minimum = 2
+            activation_class = "guarded-sensitive"
+            reasons.extend(
+                f"bounded sensitive path eligible for guarded activation: {path}"
+                for path in sensitive_paths
+            )
     elif runtime_paths:
         minimum = 1
         reasons.extend(f"reversible runtime path: {path}" for path in runtime_paths)
 
-    changed_code = _changed_code_lines(_runtime_patch(runtime_paths, patch))
-    matched_t3 = [marker for marker in _T3_MARKERS if marker in changed_code]
-    if matched_t3:
+    if not sensitive_paths and founder_effects:
         minimum = max(minimum, 3)
-        reasons.append("protected semantic marker in runtime diff: " + ", ".join(sorted(set(matched_t3))))
-    elif runtime_paths:
+        activation_class = "founder-required"
+        reasons.append("Founder-required effect in runtime diff: " + ", ".join(founder_effects))
+    elif not sensitive_paths and runtime_paths:
         matched_t2 = [marker for marker in _T2_MARKERS if marker in changed_code]
         if matched_t2:
             minimum = max(minimum, 2)
@@ -310,7 +466,10 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     return {
         "machine_minimum_tier": minimum,
         "tier_name": f"T{minimum}",
-        "protected_activation": bool(sensitive_paths or matched_t3),
+        "activation_class": activation_class,
+        "guarded_sensitive": activation_class == "guarded-sensitive",
+        "founder_required": activation_class == "founder-required",
+        "protected_activation": activation_class == "founder-required",
         "runtime_paths": runtime_paths,
         "reasons": reasons or ["non-deployable or read-only change"],
     }

@@ -74,6 +74,22 @@ normal approval path. No fake reviewer or admin bypass is introduced.
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.
 
+### Activation classification by effect
+
+For production activation, a sensitive path is a signal for inspection, not an
+automatic T3 decision. The deterministic classifier uses three outcomes:
+
+| Activation class | Machine rule | Result |
+|---|---|---|
+| `routine` | T0/T1/T2 behavior remains unchanged; no protected effect is found | Existing automatic path, with T2 exact-target CI and rollback evidence |
+| `guarded-sensitive` | Sensitive runtime path, inspectable read-only diff, at most 3 sensitive files and 240 changed code lines, and no protected effect | Machine minimum T2; existing exact-SHA, rollback, health, critical-smoke, production-verification and automatic abort/rollback path |
+| `founder-required` | Control plane, migration/repair, entitlement/deduction, auth trust boundary, billing/ledger semantics, privilege/credential/privacy boundary, uninspectable diff, or boundedness failure | T3/protected; hold for Founder approval |
+
+Generated historical release-note bundles are excluded from current-effect
+marker scanning. This removes false T3 classifications caused by old words in a
+generated asset while preserving the real business/security operation when the
+changed code expresses it. Unknown or missing evidence fails closed.
+
 ## Review checklist (R2/T2)
 
 R2/T2 requires exact-target required CI, rollback readiness, a documented
