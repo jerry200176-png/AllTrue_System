@@ -64,3 +64,10 @@ echo "--- all schedules for course 2878 on 2026-09-09 ---"
 
 echo "--- LR 18968 current ---"
 "${M[@]}" -e "SELECT CONCAT_WS('|',id,TeacherID,Status,created_at,updated_at,CHAR_LENGTH(IFNULL(Content,''))) FROM LearningRecord WHERE id=18968;"
+
+
+echo "--- POST-RESTORE STATE ---"
+"${M[@]}" -e "SELECT CONCAT_WS('|',id,Name,type,LoginName) FROM User WHERE id=18;"
+"${M[@]}" -e "SELECT CONCAT_WS('|',id,teacher_id,status,IFNULL(original_schedule_id,'null'),created_at,updated_at) FROM schedules WHERE id IN (9889,9890) OR (student_course_id=2878 AND schedule_date='2026-09-09');"
+"${M[@]}" -e "SELECT CONCAT_WS('|',id,TeacherID,Status,updated_at) FROM LearningRecord WHERE id=18968;"
+"${M[@]}" -e "SELECT CONCAT_WS('|',id,old_teacher_id,new_teacher_id,changed_by,reason,created_at) FROM learning_record_teacher_changes WHERE learning_record_id=18968;"
