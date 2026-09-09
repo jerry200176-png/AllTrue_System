@@ -154,9 +154,9 @@
           <strong>今天的工作清單尚未完整載入</strong>
           <p>為避免漏掉點名或評量，暫時不把空白清單當成已完成。</p>
         </div>
-        <button type="button" class="ghost small" :disabled="refreshing" @click="refreshAll">
+        <AtButton type="button" shape="rect" size="sm" variant="ghost" :disabled="refreshing" @click="refreshAll">
           {{ refreshing ? '整理中…' : '重新整理' }}
-        </button>
+        </AtButton>
       </div>
       <div v-else-if="teacherTasks.length === 0" class="th-work-queue__empty">
         <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
@@ -164,7 +164,7 @@
           <strong>今天沒有待完成工作</strong>
           <p>可以查看本週課表，先準備下一堂課。</p>
         </div>
-        <button type="button" class="ghost small" @click="scrollToWeekSchedule">查看本週課表</button>
+        <AtButton type="button" shape="rect" size="sm" variant="ghost" @click="scrollToWeekSchedule">查看本週課表</AtButton>
       </div>
       <div v-else class="th-work-queue__list">
         <div v-if="teacherTasksPartialError" class="th-work-queue__partial-error" role="alert">
@@ -191,9 +191,9 @@
             <p class="th-next-action__summary">{{ teacherTasks[0].summary }}</p>
             <small>期限：{{ teacherTasks[0].dueAt || '今天' }}</small>
           </div>
-          <button type="button" class="primary small th-next-action__cta" @click="openTeacherTask(teacherTasks[0])">
+          <AtButton type="button" shape="rect" size="sm" variant="primary" class="th-next-action__cta" @click="openTeacherTask(teacherTasks[0])">
             {{ teacherTasks[0].actionLabel }}
-          </button>
+          </AtButton>
         </article>
 
         <div v-if="teacherTasks.length > 1" class="th-work-queue__remaining" data-guide="teacher-secondary-actions">
@@ -207,9 +207,9 @@
               <p>{{ task.summary }}</p>
               <small>期限：{{ task.dueAt || '今天' }}</small>
             </div>
-            <button type="button" class="ghost small th-work-task__cta" @click="openTeacherTask(task)">
+            <AtButton type="button" shape="rect" size="sm" variant="ghost" class="th-work-task__cta" @click="openTeacherTask(task)">
               {{ task.actionLabel }}
-            </button>
+            </AtButton>
           </article>
         </div>
       </div>
@@ -1070,7 +1070,7 @@ onBeforeUnmount(() => {
 .th-next-action__title-row h4 { margin: 0; color: var(--ds-ink); font-size: 16px; }
 .th-next-action__summary { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .th-next-action__content small { display: block; margin-top: 5px; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
-.th-next-action__cta { flex: 0 0 auto; min-width: 104px; }
+.th-next-action__cta { flex: 0 0 auto; min-width: 104px; min-height: var(--ds-control-height-touch, 44px); }
 .th-work-queue__remaining { display: grid; gap: 0; padding-top: 4px; }
 .th-work-queue__remaining-label { margin: 4px 0 0; color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; }
 .th-work-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--ds-hairline); }
@@ -1081,12 +1081,14 @@ onBeforeUnmount(() => {
 .th-work-task__type { color: var(--ds-ink-mute); font-size: 12px; font-weight: 700; }
 .th-work-task__main p { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .th-work-task__main small { display: block; margin-top: 5px; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
-.th-work-task__cta { flex: 0 0 auto; min-width: 104px; }
+.th-work-task__cta { flex: 0 0 auto; min-width: 104px; min-height: var(--ds-control-height-touch, 44px); }
 .th-work-queue__empty { display: flex; align-items: center; gap: 12px; padding-top: 16px; color: var(--ds-ink-secondary); }
 .th-work-queue__empty > .material-symbols-outlined { color: var(--ds-success); font-size: 26px; }
 .th-work-queue__empty strong { color: var(--ds-ink); }
 .th-work-queue__empty p { margin: 4px 0 0; font-size: 13px; }
 .th-work-queue__empty button { margin-left: auto; }
+.th-work-queue__empty .at-btn,
+.th-work-queue__error .at-btn { min-height: var(--ds-control-height-touch, 44px); }
 .th-work-queue__error { display: flex; align-items: flex-start; gap: 12px; padding: 16px 0 2px; color: var(--ds-ink-secondary); }
 .th-work-queue__error > .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-danger); font-size: 24px; }
 .th-work-queue__error strong { color: var(--ds-ink); }
@@ -1186,6 +1188,8 @@ onBeforeUnmount(() => {
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 8px 0;
 }
 .th-companion__action:hover { color: var(--ds-cta-hover); text-decoration: underline; }
 .th-companion__action:disabled { cursor: wait; opacity: 0.65; }
@@ -1300,7 +1304,7 @@ onBeforeUnmount(() => {
 .th-day-summary {
   position: sticky; top: 0; z-index: 2;
   display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-  cursor: pointer; user-select: none; font-size: 14px; font-weight: 600;
+  cursor: pointer; user-select: none; min-height: var(--ds-control-height-touch, 44px); font-size: 14px; font-weight: 600;
   color: var(--text); list-style: none; border-radius: 10px;
   background: var(--card-bg);
   transition: background 0.15s;
@@ -1376,14 +1380,14 @@ onBeforeUnmount(() => {
 
 .th-fill-btn {
   background: var(--primary-bg); border: none; border-radius: 8px;
-  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+  width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--primary); transition: var(--transition); flex-shrink: 0;
 }
 .th-fill-btn:hover { background: var(--ds-primary); color: var(--ds-on-primary); }
 
 .th-report-btn {
   background: transparent; border: none; border-radius: 8px;
-  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--text-light); transition: var(--transition); flex-shrink: 0;
   font-size: 20px;
 }
@@ -1406,7 +1410,7 @@ onBeforeUnmount(() => {
 }
 
 .icon-btn {
-  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: inline-flex; align-items: center; justify-content: center;
   padding: 0; font-size: 18px; font-weight: 700; border-radius: 8px;
 }
 
