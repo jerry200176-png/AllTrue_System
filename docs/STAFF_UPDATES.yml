@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-09-feedback-mobile-layout
+    published_at: "2026-09-09"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 手機意見回報排版修正
+    summary: 手機上的意見選項更清楚，送出按鈕也能正常操作。
+    items:
+      - category: fixed
+        text: 修正手機開啟「意見與建議」時，選項文字被擠到畫面邊緣的問題，三種回饋方向都能正常閱讀。
+      - category: improved
+        text: 回報表單的送出按鈕在手機上維持可操作，不改回報內容、附件、權限或處理流程。
+    source_refs:
+      - "changelog:2026-09-09:feedback-mobile-layout"
+
   - id: staff-2026-09-08-global-search-v1
     published_at: "2026-09-08"
     audiences:

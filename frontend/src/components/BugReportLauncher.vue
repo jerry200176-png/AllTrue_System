@@ -620,10 +620,15 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
   background: var(--ds-primary-wash);
 }
 .feedback-type-option input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  padding: 0;
   margin-top: 2px;
   accent-color: var(--ds-primary);
 }
 .feedback-type-option span {
+  min-width: 0;
   display: grid;
   gap: 3px;
 }

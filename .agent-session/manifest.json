@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "311e898993c1492385bd4848ccaaab5c",
+  "session_id": "924fb1cd9a704abc8a4fb3194e7e6feb",
   "project": "alltrue",
-  "task_id": "parent-binding-auth-20260908",
+  "task_id": "inapp-271-mobile-feedback-20260909",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "e65afd25e9dd6a388196b392b070518c853e0373",
-  "branch": "chore/task-parent-binding-auth-20260908",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/parent-binding-auth-20260908",
-  "started_at": "2026-09-08T09:12:59Z",
+  "base_sha": "2c73278cd9d79cabbead326ba850f4718bd6f610",
+  "branch": "chore/task-inapp-271-mobile-feedback-20260909",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-271-mobile-feedback-20260909",
+  "started_at": "2026-09-09T01:33:47Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
