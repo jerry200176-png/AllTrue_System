@@ -278,6 +278,14 @@ test.describe('production acceptance — calendar/course parity', () => {
 
       await navigate(page, CALENDAR_NAV_LABEL);
       await assertResponsive(page, CALENDAR_NAV_LABEL);
+      if (viewport.name === 'mobile') {
+        const leaveCta = page.getByRole('button', { name: '老師請假／安排代課', exact: true });
+        await expect(leaveCta).toBeVisible({ timeout: 15_000 });
+        const isInSecondaryDisclosure = await leaveCta.evaluate((element) => Boolean(
+          element.closest('.calendar-secondary-controls-disclosure'),
+        ));
+        expect(isInSecondaryDisclosure, 'teacher leave CTA must remain in the mobile primary action area').toBeFalsy();
+      }
 
       // Force the reported 2026-08-05—08-07 window instead of relying on the
       // runner's current week. The input's change handler triggers the real SPA

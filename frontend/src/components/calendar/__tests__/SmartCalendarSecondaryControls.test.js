@@ -27,8 +27,18 @@ describe('SmartCalendar secondary-controls disclosure contract', () => {
     const disclosureStart = source.indexOf('<details v-if="!isTeacher" class="calendar-secondary-controls-disclosure">');
     const disclosureEnd = source.indexOf('</details>', disclosureStart);
     const disclosure = source.slice(disclosureStart, disclosureEnd);
-    for (const marker of ['toolbar-room-select', '搜尋老師', '搜尋學生', 'openTeacherLeaveBatch', '管理教室', 'openQuickAdd']) {
+    for (const marker of ['toolbar-room-select', '搜尋老師', '搜尋學生', '管理教室', 'openQuickAdd']) {
       expect(disclosure).toContain(marker);
     }
+  });
+
+  it('keeps teacher leave and substitute in the primary action area with an accessible name', () => {
+    const primaryStart = source.indexOf('toolbar-row toolbar-row-primary');
+    const primaryEnd = source.indexOf('<details v-if="!isTeacher" class="calendar-secondary-controls-disclosure">', primaryStart);
+    const primary = source.slice(primaryStart, primaryEnd);
+
+    expect(primary).toContain('openTeacherLeaveBatch');
+    expect(primary).toContain('老師請假／安排代課');
+    expect(primary).toContain('aria-label="老師請假／安排代課"');
   });
 });
