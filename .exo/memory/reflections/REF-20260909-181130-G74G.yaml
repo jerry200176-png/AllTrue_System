@@ -1,0 +1,14 @@
+id: REF-20260909-181130-G74G
+pattern: Shared responsive header controls used a legacy compact touch height
+insight: When a reusable page-header primitive owns mobile actions, keep its action
+  children width-safe and source the critical mobile height from a shared touch-target
+  token; validate the real page at every required width with focus, console, request-failure,
+  and overflow assertions.
+severity: medium
+scope: frontend
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-09T18:11:30+08:00'
+status: active
+tags: []
+hit_count: 0

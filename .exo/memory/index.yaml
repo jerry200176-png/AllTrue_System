@@ -208,3 +208,15 @@ failure_modes:
       behavior, page IDs, and backend authorization unchanged.
   severity: medium
   frequency: recurring
+- id: FM-20260909-181130-H5HP
+  name: Shared responsive header controls used a legacy compact touch height
+  detection:
+    signal: Shared responsive header controls used a legacy compact touch height
+    source: reflection:REF-20260909-181130-G74G
+  mitigation:
+    practice: When a reusable page-header primitive owns mobile actions, keep its
+      action children width-safe and source the critical mobile height from a shared
+      touch-target token; validate the real page at every required width with focus,
+      console, request-failure, and overflow assertions.
+  severity: medium
+  frequency: recurring
