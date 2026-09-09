@@ -1,5 +1,27 @@
 # Governance changelog
 
+## 2026-09-09 — Minimal autonomous production flow (#2652)
+
+- Reconciled the release runbook and risk policy with the implemented state
+  machine: validated reversible T0/T1/T2 changes follow deterministic gates;
+  T1/T2 auto-deploy after CI and rollback checks; T3/protected or ambiguous changes wait for same-run
+  Founder Environment approval; every deployment requires exact-SHA, health,
+  and critical-smoke evidence.
+- Superseded wording that treated manual dispatch plus no-reviewer Environment
+  as the normal protected path. Typed confirmation remains only for exceptional
+  manual phases. This follow-up removes Environment gating from evidence-complete
+  T2; no Environment setting, permission, secret, merge, deploy, or production
+  data changed in this work.
+
+## 2026-09-09 — Remove T2 verifier ceremony (#2652 follow-up)
+
+- T2 routine reversible releases now require exact-target CI, rollback
+  readiness, and deterministic non-protected classification; a second human or
+  AI verifier is not required to simulate two-person approval.
+- `production-activation` is reserved for T3/protected and ambiguous paths;
+  its static Founder reviewer policy is not used to gate ordinary T2 delivery.
+  No Environment setting or production action changed.
+
 ## 2026-09-04 — Retrospective version record for Archify orientation (#2447)
 
 - Recorded the docs-only architecture orientation change delivered by PR #2447,
@@ -56,8 +78,8 @@
 ## 2026-08-29 — Founder T0–T3 autonomy convergence
 
 - Reconciled the portable governance overlay and Codex adapter with the
-  risk-based operating model: T0/T1 autonomous after required gates, T2 with
-  independent review, and T3/protected work stopping before protected
+  risk-based operating model: T0/T1 autonomous after required gates, reversible
+  T2 autonomous after deterministic checks, and T3/protected work stopping before protected
   execution or activation for Founder approval.
 - Removed the obsolete universal human-approval requirement from the product
   adapter without weakening required checks, rollback evidence, product P0,

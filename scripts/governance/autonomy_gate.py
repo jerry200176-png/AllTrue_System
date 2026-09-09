@@ -18,6 +18,7 @@ RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 
 _RISK_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?\*?\*?Risk-Class\*?\*?\s*:\s*\*?\*?\s*(R[0-3])\b")
 _TIER_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?\*?\*?Autonomy-Tier\*?\*?\s*:\s*\*?\*?\s*(T[0-3])\b")
+_ROLLBACK_RE = re.compile(r"(?im)^\s*(?:[-*]\s+)?(?:\*\*)?Rollback(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.+)$")
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 _T3_PREFIXES = (
@@ -216,6 +217,16 @@ def parse_declaration(body: str) -> tuple[int | None, int | None]:
     return risk, tier
 
 
+def has_rollback_evidence(body: str) -> bool:
+    """Require a concrete rollback value rather than a template placeholder."""
+
+    match = _ROLLBACK_RE.search(body or "")
+    if not match:
+        return False
+    value = re.sub(r"<!--.*?-->", "", match.group(1), flags=re.DOTALL).strip().lower()
+    return value not in {"", "n/a", "na", "none", "tbd", "todo", "___", "..."}
+
+
 def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     """Derive the minimum safe tier from paths and diff text."""
 
@@ -315,8 +326,15 @@ def decide_activation(
     declared_risk: str | None = None,
     declared_tier: str | None = None,
     protected_activation: bool = False,
+    ci_success: bool = False,
+    rollback_evidence: bool = False,
 ) -> dict[str, str]:
-    """Choose automatic activation only for validated reversible changes."""
+    """Choose automatic activation only for validated reversible changes.
+
+    T2 is eligible for the autonomous path when exact-target CI and rollback
+    readiness are complete. T3/protected paths never become automatic through
+    routine evidence.
+    """
 
     if not deployable:
         return {"decision": "no-op", "effective_tier": "none", "reason": "non-deployable change"}
@@ -335,6 +353,15 @@ def decide_activation(
         return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": "production-side-effect boundary requires protected activation"}
     if effective in (0, 1):
         return {"decision": "auto", "effective_tier": f"T{effective}", "reason": f"validated reversible {declared_risk}/{declared_tier} change is auto-deployable"}
+    if effective == 2:
+        missing = []
+        if not ci_success:
+            missing.append("successful CI")
+        if not rollback_evidence:
+            missing.append("rollback evidence")
+        if not missing:
+            return {"decision": "auto", "effective_tier": "T2", "reason": "validated reversible R2/T2 change has successful CI and rollback evidence"}
+        return {"decision": "awaiting-activation", "effective_tier": "T2", "reason": "T2 evidence incomplete; Founder approval required: " + ", ".join(missing)}
     return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": f"effective tier T{effective} requires Founder activation"}
 
 
@@ -415,22 +442,26 @@ def environment_protection_is_valid(
     *, event_name: str, phase: str, required_reviewers_configured: bool,
     prevent_self_review: bool,
 ) -> bool:
-    """Validate the solo-Founder production environment boundary.
+    """Validate the single static Founder production environment boundary.
 
-    Protected actions still require an explicit workflow dispatch and exact
-    typed confirmation. In solo mode, a required reviewer is an
-    unsatisfiable self-approval queue, so the Environment must not carry that
-    rule. If a reviewer rule is reintroduced, fail closed regardless of its
-    self-review setting.
+    Every protected activation event uses the same GitHub Environment
+    configuration: the Founder is the required reviewer, self-review is
+    allowed for this single-Founder repository, administrator bypass is checked
+    by the workflow, and deployment is restricted to ``main``. Manual
+    exceptional phases additionally retain their typed confirmation step in
+    ``deploy.yml``. Evidence-complete reversible T2 does not call this gate.
     """
 
-    if event_name != "workflow_dispatch":
+    if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch"}:
         return False
-    if phase not in {"application-deploy", "parent-portal-smoke", "pop-bootstrap", "phase1-create", "phase2-cutover", "phase3-lock"}:
+    if event_name in {"workflow_run", "repository_dispatch"} and phase != "application-deploy":
         return False
-    if required_reviewers_configured:
+    if event_name == "workflow_dispatch" and phase not in {
+        "application-deploy", "parent-portal-smoke", "pop-bootstrap",
+        "phase1-create", "phase2-cutover", "phase3-lock",
+    }:
         return False
-    return prevent_self_review is False
+    return required_reviewers_configured and prevent_self_review is False
 
 
 def effective_tier(
@@ -459,6 +490,7 @@ __all__ = [
     "classify_production_runtime",
     "environment_protection_is_valid",
     "effective_tier",
+    "has_rollback_evidence",
     "is_application_runtime_path",
     "is_deployable_path",
     "is_production_activation_sensitive_path",
