@@ -9,10 +9,21 @@
         <span v-if="sourceCourse?.start_time">／{{ sourceCourse.start_time }}<span v-if="sourceCourse?.end_time">–{{ sourceCourse.end_time }}</span></span>
       </p>
       <p class="period-hint">
+        <template v-if="isMonthlyCourse">
+          月結課程的請假只影響本堂，不補尾、不改合約結束日。跨期資料不能只搬點名／評量紀錄；請先到帳務中心核對本期實上堂數，本視窗不會修改任何堂次。
+        </template>
+        <template v-else>
         把已上課、已填評量的堂次搬到另一門課程，評量與點名紀錄會一起跟過去，不用重填。
         <strong>不會</strong>異動任一課程的堂數／金額，帳務對帳仍照原本流程。
+        </template>
       </p>
 
+      <div v-if="isMonthlyCourse" class="monthly-guidance" role="status">
+        <strong>可完成的下一步</strong>
+        <button type="button" class="primary" :disabled="submitting" @click="$emit('open-billing')">前往帳務中心</button>
+      </div>
+
+      <template v-else>
       <div class="form-group">
         <label for="transfer-target-course">目標課程</label>
         <input
@@ -77,8 +88,17 @@
           placeholder="例如：原合約誤將已完成堂次標示為已取消，依評量／點名紀錄恢復並移轉"
         />
       </div>
+      </template>
 
-      <p v-if="errorMessage" class="transfer-error" role="alert">{{ errorMessage }}</p>
+      <div v-if="errorMessage" class="transfer-error" role="alert">
+        <span>{{ errorMessage }}</span>
+        <button
+          v-if="errorNextActions.some((action) => action?.code === 'open_tuition_collection' && action?.available !== false)"
+          type="button"
+          class="text-action"
+          @click="$emit('open-billing')"
+        >前往帳務中心</button>
+      </div>
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
@@ -106,10 +126,14 @@ const props = defineProps({
   targetCoursesLoading: { type: Boolean, default: false },
   submitting: { type: Boolean, default: false },
   errorMessage: { type: String, default: '' },
+  errorNextActions: { type: Array, default: () => [] },
 });
-const emit = defineEmits(['close', 'submit']);
+const emit = defineEmits(['close', 'submit', 'open-billing']);
 
 const subjectLabel = computed(() => getSubjectLabel(props.subject));
+const isMonthlyCourse = computed(() => String(
+  props.sourceCourse?.schedule_mode ?? props.sourceCourse?.ScheduleMode ?? '',
+).toLowerCase() === 'date');
 const targetCourseId = ref('');
 const targetCourseQuery = ref('');
 const selectedIds = ref([]);
@@ -202,6 +226,12 @@ function onSubmit() {
   font-size: 12px;
   line-height: 1.5;
 }
+.monthly-guidance {
+  display: flex; flex-direction: column; gap: 10px; margin: 8px 0 14px; padding: 12px;
+  border: 1px solid var(--ds-warning); border-radius: 8px; background: var(--ds-warning-wash);
+  color: var(--ds-ink); font-size: 13px; line-height: 1.5;
+}
+.monthly-guidance .primary { align-self: flex-start; }
 .form-group { margin-bottom: 14px; }
 .form-group label { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
 .form-group input[type="text"] {

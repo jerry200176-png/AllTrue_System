@@ -819,8 +819,8 @@
       </div>
       <p class="att-hint">
         {{ isTeacher
-          ? '你過去尚未點名的已結束堂次。選擇日期範圍查詢，補登後會依狀態自動扣堂；請假時未來日期不變、僅補尾堂。'
-          : '過去尚未點名的已結束堂次。可選擇日期範圍查詢，補登後會依狀態自動扣堂；請假時未來日期不變、僅補尾堂。' }}
+          ? '你過去尚未點名的已結束堂次。選擇日期範圍查詢，補登後會依課程類型更新堂次與帳務；月結請假不補尾。'
+          : '過去尚未點名的已結束堂次。可選擇日期範圍查詢，補登後會依課程類型更新堂次與帳務；月結請假不補尾。' }}
       </p>
       <div class="att-makeup-filters">
         <div class="form-group">
@@ -1930,7 +1930,9 @@ async function doSubmitPendingMark(s, status) {
     if (res.ok) {
       const json = await res.json().catch(() => ({}));
       const label = statusLabelMap[status] || status;
-      if (status === 'leave' && json.extended_end_date) {
+      if (status === 'leave' && json.leave_mode === 'monthly_bounded') {
+        pendingMarkMsg.value = `已請假：${s.student_name}，月結日期區間不變，不補尾堂`;
+      } else if (status === 'leave' && json.extended_end_date) {
         pendingMarkMsg.value = `已請假並順延：${s.student_name}，課程延至 ${json.extended_end_date}`;
       } else {
         pendingMarkMsg.value = `已核課：${s.student_name} ${label}`;
@@ -2105,7 +2107,9 @@ const submitMakeupMark = async (s) => {
     if (res.ok) {
       const json = await res.json().catch(() => ({}));
       const label = statusLabelMap[status] || status;
-      if (status === 'leave' && json.extended_end_date) {
+      if (status === 'leave' && json.leave_mode === 'monthly_bounded') {
+        makeupMsg.value = `已補登請假：${s.student_name}，月結日期區間不變，不補尾堂`;
+      } else if (status === 'leave' && json.extended_end_date) {
         makeupMsg.value = `已補登請假並順延：${s.student_name}，課程延至 ${json.extended_end_date}`;
       } else {
         makeupMsg.value = `已補登：${s.student_name} ${label}`;
@@ -2193,10 +2197,11 @@ const saveStatusEdit = async (record) => {
         record.Status = 'leave';
         record.status_label = '請假';
         record._editing = false;
-        const endDate = json.extended_end_date ? `，課程延至 ${json.extended_end_date}` : '';
+        const monthly = json.leave_mode === 'monthly_bounded';
+        const endDate = !monthly && json.extended_end_date ? `，課程延至 ${json.extended_end_date}` : '';
         pendingMarkMsg.value = isAttended
-          ? `補請假完成，堂數已沖回${endDate}`
-          : `已請假（未來日期不變，已補尾堂）${endDate}`;
+          ? (monthly ? '補請假完成：本堂已標記請假，月結日期區間不變，未補尾' : `補請假完成，堂數已沖回${endDate}`)
+          : (monthly ? '已請假（月結日期區間不變，不補尾堂）' : `已請假（未來日期不變，已補尾堂）${endDate}`);
         pendingMarkMsgType.value = 'success';
         await Promise.all([fetchPendingSessions(), fetchRecords()]);
       } else {

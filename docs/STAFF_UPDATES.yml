@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-09-monthly-leave-invariant
+    published_at: "2026-09-09"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 月結請假維持原合約日期區間
+    summary: 月結課程請假只標記原堂，不移動未來堂次、不補尾，也不延長合約結束日。
+    items:
+      - category: fixed
+        text: 各請假入口共用同一規則；legacy SessionCount 不會讓月結誤走堂數制。
+      - category: improved
+        text: 跨期資料提供帳務中心下一步；月結入口明確顯示不補課。
+    source_refs:
+      - "changelog:2026-09-09:monthly-leave-invariant"
+
   - id: staff-2026-09-09-tutoring-payment-policy
     published_at: "2026-09-09"
     audiences:

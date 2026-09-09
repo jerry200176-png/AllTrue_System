@@ -63,9 +63,12 @@ class ExceptionWorkflowController extends Controller
     {
         $workflow = ExceptionWorkflow::with(['student', 'studentClass', 'classSession', 'candidates'])
             ->findOrFail($id);
-
         if (!$this->canAccessCampus($request, (int) $workflow->campus_id)) {
             return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        if ($this->isDateModeCourse($workflow)) {
+            return $this->monthlyLeaveRequiresNoMakeupResponse();
         }
 
         $data = $request->validate([
@@ -109,6 +112,10 @@ class ExceptionWorkflowController extends Controller
         $data = $request->validate([
             'candidate_id' => 'required|integer',
         ]);
+
+        if ($this->isDateModeCourse($workflow)) {
+            return $this->monthlyLeaveRequiresNoMakeupResponse();
+        }
 
         $candidate = ExceptionWorkflowCandidate::where('workflow_id', $workflow->id)
             ->where('id', (int) $data['candidate_id'])
@@ -335,6 +342,13 @@ class ExceptionWorkflowController extends Controller
                 'id' => (int) $workflow->studentClass->ID,
                 'subject_id' => (int) ($workflow->studentClass->SubjectID ?? 0),
                 'teacher_id' => (int) ($workflow->studentClass->TeacherID ?? 0),
+                'schedule_mode' => strtolower((string) ($workflow->studentClass->ScheduleMode ?? 'count')),
+                'start_date' => $workflow->studentClass->StartDate
+                    ? Carbon::parse($workflow->studentClass->StartDate)->toDateString()
+                    : null,
+                'end_date' => $workflow->studentClass->EndDate
+                    ? Carbon::parse($workflow->studentClass->EndDate)->toDateString()
+                    : null,
             ] : null,
             'class_session' => $session ? [
                 'id' => (int) $session->id,
@@ -457,5 +471,31 @@ class ExceptionWorkflowController extends Controller
         if ($current === '') return $suffix;
         if (str_contains($current, $suffix)) return $current;
         return $current . '|' . $suffix;
+    }
+
+    private function isDateModeCourse($workflow): bool
+    {
+        $course = method_exists($workflow, 'getRelation')
+            ? $workflow->getRelation('studentClass')
+            : null;
+        $mode = method_exists($course, 'getAttribute')
+            ? $course->getAttribute('ScheduleMode')
+            : null;
+
+        return strtolower((string) ($mode ?? 'count')) === 'date';
+    }
+
+    private function monthlyLeaveRequiresNoMakeupResponse()
+    {
+        return response()->json([
+            'code' => 'monthly_leave_no_makeup',
+            'message' => '月結課程請假不安排補課；請核准不補課，系統只會標記原堂請假。',
+            'next_step' => 'waive_without_makeup',
+            'next_actions' => [[
+                'code' => 'waive_without_makeup',
+                'label' => '核准不補課',
+                'available' => true,
+            ]],
+        ], 422);
     }
 }

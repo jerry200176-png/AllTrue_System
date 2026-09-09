@@ -280,9 +280,10 @@
                     <dl class="director-leave-case__details"><div><dt>原堂次</dt><dd>{{ workflow.class_session?.date || '未提供日期' }} {{ workflow.class_session?.start_time || '' }}–{{ workflow.class_session?.end_time || '' }}</dd></div><div><dt>原因</dt><dd><span v-if="workflow.payload?.is_late" style="color:var(--ds-warning);font-weight:700;margin-right:4px;">【臨時請假】</span>{{ workflow.payload?.reason || '未提供原因' }}</dd></div></dl>
                     <p class="director-leave-case__window">
                       <span class="material-symbols-outlined" aria-hidden="true">date_range</span>
-                      補課候選範圍：{{ makeupWindowLabel(workflow) }}（原堂後一天起）
+                      <template v-if="!isMonthlyLeaveWorkflow(workflow)">補課候選範圍：{{ makeupWindowLabel(workflow) }}（原堂後一天起）</template>
+                      <template v-else>月結請假：只標記本堂，不補課、不延長合約結束日</template>
                     </p>
-                    <div v-if="workflowCandidates[workflow.id]?.length" class="director-candidate-picker">
+                    <div v-if="!isMonthlyLeaveWorkflow(workflow) && workflowCandidates[workflow.id]?.length" class="director-candidate-picker">
                       <div class="director-candidate-dates" role="tablist" :aria-label="`${workflow.student?.name || '學生'}可補課日期`">
                         <button v-for="date in workflowCandidateGroups[workflow.id]?.dates" :key="date" :id="`director-candidate-date-${workflow.id}-${date}`" type="button" role="tab" class="director-candidate-date" :class="{ 'is-selected': selectedWorkflowCandidateDates[workflow.id] === date }" :aria-controls="`director-candidate-panel-${workflow.id}`" :aria-selected="selectedWorkflowCandidateDates[workflow.id] === date" @click="selectCandidateDate(workflow.id, date)">
                           {{ candidateDateLabel(date) }}
@@ -294,10 +295,10 @@
                         </div>
                       </div>
                     </div>
-                    <p v-else class="director-leave-case__hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>先搜尋沒有衝堂的可用時段，也可以直接核准不補課。</p>
+                    <p v-else class="director-leave-case__hint"><span class="material-symbols-outlined" aria-hidden="true">lightbulb</span>{{ isMonthlyLeaveWorkflow(workflow) ? '請直接核准不補課，系統只會標記原堂請假。' : '先搜尋沒有衝堂的可用時段，也可以直接核准不補課。' }}</p>
                     <div class="director-leave-case__actions">
-                      <button v-if="!workflowCandidates[workflow.id]?.length" type="button" class="button button--primary" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)"><span class="material-symbols-outlined" aria-hidden="true">search</span>{{ workflowActionId === workflow.id ? '搜尋中…' : '尋找補課時段' }}</button>
-                      <button v-else type="button" class="button button--primary" :disabled="workflowActionId === workflow.id || !selectedWorkflowCandidates[workflow.id]" @click="openWorkflowDecision('candidate', workflow)">確認補課</button>
+                      <button v-if="!isMonthlyLeaveWorkflow(workflow) && !workflowCandidates[workflow.id]?.length" type="button" class="button button--primary" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)"><span class="material-symbols-outlined" aria-hidden="true">search</span>{{ workflowActionId === workflow.id ? '搜尋中…' : '尋找補課時段' }}</button>
+                      <button v-else-if="!isMonthlyLeaveWorkflow(workflow)" type="button" class="button button--primary" :disabled="workflowActionId === workflow.id || !selectedWorkflowCandidates[workflow.id]" @click="openWorkflowDecision('candidate', workflow)">確認補課</button>
                       <button type="button" class="button button--quiet" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('waive', workflow)">核准不補課</button>
                       <button type="button" class="button button--danger" :disabled="workflowActionId === workflow.id" @click="openWorkflowDecision('reject', workflow)">退回</button>
                     </div>
@@ -928,6 +929,10 @@ const makeupWindowLabel = (workflow) => {
   if (!window.startDate || !window.endDate) return '請先確認原堂日期';
   return `${window.startDate}～${window.endDate}`;
 };
+
+const isMonthlyLeaveWorkflow = (workflow) => String(
+  workflow?.student_class?.schedule_mode || '',
+).toLowerCase() === 'date';
 
 const addDaysYmd = (days) => {
   const d = new Date();

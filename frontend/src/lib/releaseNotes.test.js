@@ -28,6 +28,7 @@ assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
 assert.strictEqual(latest.publishedAt, '2026-09-09');
 assert.strictEqual(latest.id, 'staff-2026-09-09-tutoring-payment-policy');
+assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-monthly-leave-invariant'));
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-calendar-modal-mobile-reachability'));
   for (const id of [
     'staff-2026-09-05-admissions-funnel-v1',

@@ -2049,6 +2049,10 @@ class ClassSessionController extends Controller
     private function sessionUpdateResponse(ClassSession $session, string $message)
     {
         $session->refresh();
+        $course = StudentClass::query()->where('ID', (int) $session->StudentClassID)->first();
+        $leaveOutcome = $course && in_array(strtolower((string) ($session->Status ?? '')), ['leave', 'leave_adjusted'], true)
+            ? CourseLeaveCascadeService::leaveOutcomeForCourse($course)
+            : [];
         if (in_array(strtolower((string) ($session->Status ?? '')), [
             'attended', 'late', 'completed', 'trial', 'tutoring_attend',
         ], true)) {
@@ -2056,6 +2060,7 @@ class ClassSessionController extends Controller
         }
         return response()->json([
             'message' => $message,
+            ...$leaveOutcome,
             'session' => $this->sessionPayload($session),
         ]);
     }

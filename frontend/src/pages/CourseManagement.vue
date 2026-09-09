@@ -981,7 +981,9 @@
       :target-courses-loading="transferTargetCoursesLoading"
       :submitting="transferSessionsSubmitting"
       :error-message="transferSessionsError"
+      :error-next-actions="transferSessionsNextActions"
       @close="!transferSessionsSubmitting && (showTransferSessionsModal = false)"
+      @open-billing="openTransferBillingNextStep"
       @submit="submitTransferSessions"
     />
 
@@ -2233,6 +2235,7 @@ const showTransferSessionsModal = ref(false);
 const transferSessionsCourse = ref(null);
 const transferSessionsSubmitting = ref(false);
 const transferSessionsError = ref('');
+const transferSessionsNextActions = ref([]);
 const transferTargetCourses = ref([]);
 const transferTargetCoursesLoading = ref(false);
 let transferTargetCoursesRequest = 0;
@@ -2434,9 +2437,18 @@ const transferSessionsSessionOptions = computed(() => {
 function openTransferSessionsModal(course) {
   transferSessionsCourse.value = course;
   transferSessionsError.value = '';
+  transferSessionsNextActions.value = [];
   transferTargetCourses.value = [];
   showTransferSessionsModal.value = true;
-  loadTransferTargetCourses(course);
+  if (String(course?.schedule_mode ?? course?.ScheduleMode ?? '').toLowerCase() !== 'date') {
+    loadTransferTargetCourses(course);
+  }
+}
+
+function openTransferBillingNextStep() {
+  const course = transferSessionsCourse.value;
+  showTransferSessionsModal.value = false;
+  if (course) goToTuitionBilling(course);
 }
 
 function normalizedCourseValue(value) {
@@ -2517,6 +2529,7 @@ async function submitTransferSessions({ targetCourseId, sessionIds, reason }) {
   if (!course || sessionIds.length === 0) return;
   transferSessionsSubmitting.value = true;
   transferSessionsError.value = '';
+  transferSessionsNextActions.value = [];
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -2541,6 +2554,7 @@ async function submitTransferSessions({ targetCourseId, sessionIds, reason }) {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
+      transferSessionsNextActions.value = Array.isArray(json?.next_actions) ? json.next_actions : [];
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
       const conflict = json?.conflict_session_id
         ? `衝突堂次 #${json.conflict_session_id}`
@@ -3410,11 +3424,15 @@ const leaveImpactPreview = computed(() => {
     ? [
         '會沖回該堂已扣堂數，並重新計算課程剩餘堂數',
         '會作廢該堂出缺勤與學習評量紀錄',
-        '未來既有上課日不變，僅於尾端補上堂次',
+        isMonthlyMode(leaveCourse.value)
+          ? '月結課程只標記本堂請假；未來日期與合約結束日不變，不補尾'
+          : '未來既有上課日不變，僅於尾端補上堂次',
       ]
     : [
         '本堂會標記為請假，不扣堂數',
-        '未來既有上課日不變，僅於尾端補上堂次',
+        isMonthlyMode(leaveCourse.value)
+          ? '月結課程未來日期與合約結束日不變，不補尾'
+          : '未來既有上課日不變，僅於尾端補上堂次',
         '該堂不需要填寫學習評量',
       ];
   const items = buildLeaveCascadeImpactItems(baseItems, leaveCascadePlan.value);
@@ -3526,6 +3544,7 @@ async function submitLeave() {
       });
       if (res.ok) {
         const json = await res.json().catch(() => ({}));
+        const monthly = json?.leave_mode === 'monthly_bounded' || isMonthlyMode(leaveCourse.value);
         const classKey = String(form.course_id || '');
         const normalized = normalizeClassSessionsPayload({ data: json?.class_sessions || [] });
         if (classKey && Array.isArray(normalized.byClass[classKey])) {
@@ -3536,7 +3555,9 @@ async function submitLeave() {
         }
         showLeaveModal.value = false;
         leaveCourse.value = null;
-        alert('補請假完成：堂數已沖回');
+        alert(monthly
+          ? '補請假完成：本堂已標記請假，月結日期區間不變，未補尾'
+          : '補請假完成：堂數已沖回');
         await loadCourses();
         return;
       }
@@ -3569,6 +3590,7 @@ async function submitLeave() {
     });
     if (res.ok) {
       const json = await res.json().catch(() => ({}));
+      const monthly = json?.leave_mode === 'monthly_bounded' || isMonthlyMode(leaveCourse.value);
       const classKey = String(form.course_id || '');
       const normalized = normalizeClassSessionsPayload({ data: json?.class_sessions || [] });
       if (classKey && Array.isArray(normalized.byClass[classKey])) {
@@ -3585,7 +3607,9 @@ async function submitLeave() {
       if (canUndo) {
         toastRef.value?.show?.({
           title: '請假已送出',
-          description: `本堂已請假（未來日期不變，已補尾堂），${undoWindowSec} 秒內可復原`,
+          description: monthly
+            ? `本堂已請假（未來日期與合約結束日不變，不補尾），${undoWindowSec} 秒內可復原`
+            : `本堂已請假（未來日期不變，已補尾堂），${undoWindowSec} 秒內可復原`,
           variant: 'success',
           durationMs: undoWindowSec * 1000,
           undoDescription: '已撤銷請假，尾堂已回復',
@@ -3605,7 +3629,9 @@ async function submitLeave() {
       } else {
         toastRef.value?.show?.({
           title: '請假已送出',
-          description: '本堂已請假（未來日期不變，已補尾堂）',
+          description: monthly
+            ? '本堂已請假（未來日期與合約結束日不變，不補尾）'
+            : '本堂已請假（未來日期不變，已補尾堂）',
           variant: 'success',
           durationMs: 4000,
         });

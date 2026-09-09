@@ -168,6 +168,33 @@ class AttendanceSelfStudyStatusUpdateTest extends TestCase
             ->assertJsonFragment(['status' => 'late']);
     }
 
+    public function test_leave_update_with_real_class_session_returns_actionable_workflow_error(): void
+    {
+        [$token, $signin] = $this->scaffoldSelfStudy(campusId: 1, role: 'director');
+        $session = ClassSession::create([
+            'StudentClassID' => 999,
+            'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+        $signin->ClassSessionID = $session->id;
+        $signin->save();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/attendance/{$signin->id}", ['status' => 'leave'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'leave_requires_session_workflow')
+            ->assertJsonPath('next_step', 'leave_by_session')
+            ->assertJsonPath('next_actions.0.class_session_id', $session->id);
+
+        $signin->refresh();
+        $this->assertSame('present', $signin->Status);
+    }
+
     public function test_leave_update_maps_interval_validation_to_422_without_mutating_record(): void
     {
         [$token, $signin] = $this->scaffoldSelfStudy(campusId: 1, role: 'director');
@@ -194,15 +221,10 @@ class AttendanceSelfStudyStatusUpdateTest extends TestCase
     {
         [$token, $signin] = $this->scaffoldSelfStudy(campusId: 1, role: 'director');
         $sessionDate = now()->subDay()->toDateString();
-        $session = ClassSession::create([
-            'StudentClassID' => 999,
-            'SessionDate' => $sessionDate,
-            'StartTime' => '16:00',
-            'EndTime' => '18:00',
-            'Status' => 'scheduled',
-            'Note' => '',
-        ]);
-        $signin->ClassSessionID = $session->id;
+        // Keep this test focused on the self-study close interval. A real
+        // ClassSession must use the dedicated leave workflow (covered above),
+        // rather than changing only StudentSignIn through this endpoint.
+        $signin->ClassSessionID = 999;
         $signin->SignInDT = "{$sessionDate} 19:30:00";
         $signin->Hours = 1;
         $signin->save();

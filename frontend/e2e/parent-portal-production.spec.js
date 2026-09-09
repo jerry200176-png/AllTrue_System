@@ -14,7 +14,7 @@ function sessionToken() {
   return Buffer.from(String(SESSION_B64 || ''), 'base64').toString('utf8');
 }
 
-async function assertParentSurface(page, viewport) {
+async function assertParentSurface(page, viewport, testInfo) {
   await page.setViewportSize(viewport);
   const errors = [];
   const failedResponses = [];
@@ -38,6 +38,13 @@ async function assertParentSurface(page, viewport) {
   await expect(page.getByText('老師建議／處理', { exact: true })).toBeVisible();
   await expect(page.getByText('回家要做什麼', { exact: true })).toBeVisible();
   await expect(page.getByText('下一步／目前待辦', { exact: true })).toBeVisible();
+  const parentUpdate = page.locator('.pp-parent-update__btn');
+  await expect(parentUpdate).toBeVisible();
+  await parentUpdate.click();
+  await expect(page.getByText('學習評量重點更清楚', { exact: true })).toBeVisible();
+  await expect(page.getByText('已核准的學習評量仍可從「學習」分頁逐堂展開查看；尚未完成老師複核時，頁面會清楚說明目前沒有可查看的評量內容。', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '關閉', exact: true }).click();
+  await expect(page.getByText('學習評量重點更清楚', { exact: true })).toBeHidden();
 
   const learningTab = page.getByRole('tab', { name: /學習/ });
   const scheduleTab = page.getByRole('tab', { name: /課表/ });
@@ -82,7 +89,11 @@ async function assertParentSurface(page, viewport) {
     await expect(page.getByRole('textbox', { name: '建議內容' })).toBeDisabled();
   }
 
-  await page.screenshot({ path: `playwright-report/parent-learning-${viewport.width}.png`, fullPage: true });
+  const screenshot = await page.screenshot({ fullPage: true });
+  await testInfo.attach(`parent-learning-${viewport.width}`, {
+    body: screenshot,
+    contentType: 'image/png',
+  });
 
   const layout = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
@@ -99,11 +110,11 @@ async function assertParentSurface(page, viewport) {
 test.describe('authenticated production Parent Portal smoke', () => {
   test.skip(!BASE || !SESSION_B64, 'protected smoke phase did not provide a parent session');
 
-  test('desktop 1440px home and read-only tabs', async ({ page }) => {
-    await assertParentSurface(page, { width: 1440, height: 1000 });
+  test('desktop 1440px home and read-only tabs', async ({ page }, testInfo) => {
+    await assertParentSurface(page, { width: 1440, height: 1000 }, testInfo);
   });
 
-  test('mobile 390px home and read-only tabs', async ({ page }) => {
-    await assertParentSurface(page, { width: 390, height: 844 });
+  test('mobile 390px home and read-only tabs', async ({ page }, testInfo) => {
+    await assertParentSurface(page, { width: 390, height: 844 }, testInfo);
   });
 });

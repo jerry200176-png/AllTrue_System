@@ -4650,8 +4650,14 @@ class StudentClassController extends Controller
             if (strtolower((string) ($source->ScheduleMode ?? 'count')) === 'date'
                 || strtolower((string) ($target->ScheduleMode ?? 'count')) === 'date') {
                 return response()->json([
-                    'code' => 'billing_correction_required',
-                    'message' => '月結課程不可使用只搬紀錄的堂次移轉；請先使用帳務更正流程同步堂數、費用與月結區間。',
+                    'code' => 'monthly_leave_period_review_required',
+                    'message' => '月結課程不可只搬點名／評量紀錄。請先到帳務中心核對本期實上堂數與跨期歸屬；本次未移動任何堂次。',
+                    'next_step' => 'open_tuition_collection',
+                    'next_actions' => [[
+                        'code' => 'open_tuition_collection',
+                        'label' => '前往帳務中心',
+                        'available' => true,
+                    ]],
                 ], 422);
             }
 
