@@ -62,10 +62,12 @@ health/smoke, rollback, and fail-closed behavior remain mandatory.
 
 T2/T3, unknown classifications, production executor changes, security/data
 boundaries, and irreversible operations stay held for risk-appropriate review
-or the protected Founder boundary. The Environment remains attached to that
-protected path, but solo mode removes its unsatisfiable required-reviewer rule;
-the exact workflow-dispatch confirmation is the Founder decision. No fake
-reviewer, self-review exception, or admin bypass is introduced.
+or the protected Founder boundary. All activation events use the same static
+`production-activation` Environment policy: Founder required reviewer,
+self-review allowed, administrator bypass disabled, and main-only deployment
+branch policy. Workflow-dispatch typed confirmation remains only for exceptional
+manual phases; it is not a second normal approval path. No fake reviewer or
+admin bypass is introduced.
 
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.

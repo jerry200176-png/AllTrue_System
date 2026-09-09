@@ -44,11 +44,11 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
    git push origin feat/功能名稱
    # → GitHub 開 PR → 等 CI 通過 → merge
    ```
-5. **PR merge 後**：`deploy.yml` 自動部署到 Pi，無需手動操作。
-6. **驗證**：
-   ```bash
-   curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
-   ```
+5. **PR merge 後**：`deploy.yml` 依風險分類自動部署，或在同一 run 的
+   `production-activation` Environment 等 Founder approval；無需第二次 dispatch。
+6. **驗證**：只以 deploy workflow 的 exact target SHA、`deployment.json`、health、
+   critical smoke 與 rollback evidence 判定 `production-verified`；單獨 health
+   curl 或 workflow success 均不足。
 
 6. **老師端（2026-04-12 起）**：預設首頁為 **教學工作台**（`teacher-home`）。部署含前端變更後，建議抽樣：**老師登入** → 工作台載入、跨分校本週課表、點「出勤／評量」導頁、側欄出缺勤**紅點**（當日有待點名 `scheduled` 堂次時）是否正常。
 
@@ -140,7 +140,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 4. **Backend-only 不跑前端 build**：只改 `backend/**` 或 Composer 依賴時跑 PHPUnit/MySQL 與 PHPStan，不跑 Vite build。
 5. **Workflow 改動保守全跑**：修改 `.github/workflows/**` 時，CI 必須保守跑完整前後端檢查，避免 path filter 失手。
 6. **Docs-only merge 不部署**：`deploy.yml` 必須先偵測 main 最新 commit 是否含 `backend/**`、`frontend/**`、Composer 或 deploy workflow 變動；沒有 deployable diff 就跳過 production deploy。
-7. **Production deploy 不取消、前置檢查不佔鎖**：`deploy.yml` 只在會產生 production side effect 的 `deploy` 與 `staged_principal_rotation` job 使用 `concurrency: production-deploy` 且 `cancel-in-progress: false`；前置 contract/classification job 不得持有 production lock，避免 queue 被 pending gate 或重複 preflight 卡死。
+7. **Production deploy 不取消、前置檢查不佔鎖**：`deploy.yml` 的 production-side-effect jobs 共用 `alltrue-production-side-effects-v2` 且 `cancel-in-progress: false`；前置 contract/classification job 不持有 production lock，避免 queue 被 pending gate 或重複 preflight 卡死。Legacy case-specific repair workflows 不屬於 release executor，仍依 Control Plane contract 管理。
 8. **禁止用 production Pi 省 CI minutes**：不得把 `/home/admin` production Pi 註冊為 PHPUnit/self-hosted test runner；也不得為省 minutes 在 Pi 上跑 `php artisan test` / `phpunit`。
 9. **低風險 docs 小修先累積**：README footer 日期、錯字、單一連結、排版等不影響系統行為的小修，先保留在本地 docs batch；不要單獨開 PR 觸發 Actions。
 10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
@@ -294,9 +294,14 @@ git push -u origin HEAD
 gh pr create --fill
 gh pr checks --watch          # 等到全綠或自己修
 gh pr merge --squash --delete-branch   # 僅 T2/T3/保護性工作在完成對應 review/gate 後；T0/T1 由 auto-merge-safe.yml 自動啟用
-bash scripts/post-merge-smoke.sh       # deploy 後必跑（取代手動點 UI）
-curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
+# merge 後只觀察 deploy.yml 的 state、exact SHA、health、critical smoke evidence
 ```
+
+正常 merged application deployment 由 `deploy.yml` 單一 executor 完成。
+已驗證可逆的 T0/T1 走 CI 後自動 deploy；T2/T3 或 ambiguous evidence 在同一
+run 的 `production-activation` Environment 等待 Founder approval，批准後自動
+deploy。不得另開第二次 dispatch 或手動 production smoke；workflow success
+不等於 `production-verified`。
 
 - 一 PR 一議題；**≤ 400 行**（hard 700；`chore/docs-*` 無 production 路徑 ≤ 1300，見 presubmit CHECK 2）。
 - 多階段 issue：中間 PR 用 `Refs #N`，最後一個 PR 才 `Closes #N`。

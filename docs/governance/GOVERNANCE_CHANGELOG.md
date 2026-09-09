@@ -1,5 +1,16 @@
 # Governance changelog
 
+## 2026-09-09 — Minimal autonomous production flow (#2652)
+
+- Reconciled the release runbook and risk policy with the implemented state
+  machine: validated reversible T0/T1 changes auto-deploy after CI; protected
+  or ambiguous changes wait for same-run Founder Environment approval; every
+  deployment requires exact-SHA, health, and critical-smoke evidence.
+- Superseded wording that treated manual dispatch plus no-reviewer Environment
+  as the normal protected path. Typed confirmation remains only for exceptional
+  manual phases. No Environment setting, permission, secret, merge, deploy, or
+  production data changed in this work.
+
 ## 2026-09-04 — Retrospective version record for Archify orientation (#2447)
 
 - Recorded the docs-only architecture orientation change delivered by PR #2447,
