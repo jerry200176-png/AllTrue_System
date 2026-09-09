@@ -1,8 +1,3 @@
-## 2026-09-09 — fix(finance): 月結課程跨月堂次更正同步帳務
-<!-- release-notes: staff_update=staff-2026-09-09-inapp-259-accounting-correction -->
-- 月結課程發生跨月堂次更正時，帳務更正流程會同步堂數、月結區間與費用；作廢帳單不會被重新入帳。
-- 現金回報會沿用既有待對帳／確認流程，避免重複應收或遺失付款紀錄。
-
 ## 2026-09-08 — feat(parent): isolated synthetic Parent Portal production smoke fixture
 <!-- release-notes: silent_ship=silent-2026-09-08-parent-portal-test-tenant -->
 - 新增以 `Campus.is_test` 為唯一機器可判斷隔離標記的 TEST／SYNTHETIC Parent Portal smoke fixture；fixture 只能由受保護的 super_admin QA path 建立／重用，重複執行沿用同一校區、學生、監護人與綁定資料，僅輪替 parent session。

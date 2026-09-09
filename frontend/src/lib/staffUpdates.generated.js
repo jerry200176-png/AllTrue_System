@@ -4,45 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-09-09-inapp-259-accounting-correction",
-    "publishedAt": "2026-09-09",
-    "effectiveAt": null,
-    "audiences": [
-      "director",
-      "teacher"
-    ],
-    "audience": [
-      "director",
-      "teacher"
-    ],
-    "importance": "digest",
-    "title": "月結課程跨月更正會同步帳務",
-    "summary": "堂數、月結區間與費用會一起校正，作廢帳單不會重複入帳。",
-    "items": [
-      "月結課程發生跨月堂次更正時，帳務更正會同步堂數、月結區間與費用。",
-      "現金回報沿用既有待對帳與確認流程，避免重複應收或遺失付款紀錄。"
-    ],
-    "sections": [
-      {
-        "title": "我們修好了",
-        "items": [
-          "月結課程發生跨月堂次更正時，帳務更正會同步堂數、月結區間與費用。"
-        ]
-      },
-      {
-        "title": "操作更順手",
-        "items": [
-          "現金回報沿用既有待對帳與確認流程，避免重複應收或遺失付款紀錄。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "changelog:2026-09-09:inapp-259-accounting-correction"
-    ],
-    "date": "2026-09-09",
-    "version": "2026.09.09"
-  },
-  {
     "id": "staff-2026-09-08-subject-count-final-total",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,
