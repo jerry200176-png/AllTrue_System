@@ -27,7 +27,7 @@ assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
 assert.strictEqual(latest.publishedAt, '2026-09-10');
-assert.strictEqual(latest.id, 'staff-2026-09-10-learning-record-teacher-display');
+assert.strictEqual(latest.id, 'staff-2026-09-10-calendar-leave-policy-parity');
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-tutoring-payment-policy'));
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-monthly-leave-invariant'));
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-calendar-modal-mobile-reachability'));
