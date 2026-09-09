@@ -380,7 +380,7 @@ class NotificationApiTest extends TestCase
         ]);
     }
 
-    public function test_mark_student_class_tuition_paid_accepts_zero_amount_for_free_course(): void
+    public function test_mark_student_class_tuition_paid_rejects_tutoring_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-tuition-zero@example.com');
 
@@ -424,16 +424,18 @@ class NotificationApiTest extends TestCase
             'note' => '免費課程結算',
         ]);
 
-        $response->assertOk()->assertJsonPath('message', '已送出待對帳');
+        $response->assertStatus(422)
+            ->assertJsonPath('code', 'tutoring_no_payment_obligation');
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $class->ID,
             'Paid' => 0,
         ]);
-        $this->assertDatabaseHas('payment_reports', [
+        $this->assertDatabaseMissing('payment_reports', [
             'StudentClassID' => $class->ID,
-            'status' => 'pending',
-            'reported_amount' => 0,
+        ]);
+        $this->assertDatabaseMissing('NotificationReads', [
+            'NotificationID' => $notification->id,
         ]);
     }
 
