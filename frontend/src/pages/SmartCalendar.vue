@@ -468,10 +468,14 @@
       :subject-label="leaveDisplay.subjectLabel"
       :original-slot-label="leaveDisplay.originalSlot"
       :impact-preview="leaveImpactPreview"
+      :preview-ready="leavePreviewReady"
+      :preview-loading="leaveCascadePlanLoading"
+      :preview-error="leavePreviewError"
       :error="leaveSubmitError"
       :submitting="leaveSubmitting"
       @close="showLeaveModal = false"
       @submit="submitLeave"
+      @retry-preview="refreshLeaveCascadePreview"
     />
 
     <!-- ===== PRD 9c058f19：代課 V2 Modal + Toast + 批次請假 ===== -->
@@ -519,10 +523,14 @@
       :teachers="teachers || []"
       :new-end-time="computedExtraEndTime"
       :is-monthly="extraParentPaymentType === 'monthly'"
+      :check="extraSessionCheck"
+      :checking="extraSessionChecking"
+      :check-error="extraSessionCheckError"
       @close="showExtraModal = false"
       @submit="submitExtraLesson"
       @duration-change="onExtraFormTimeChange"
       @start-time-change="onExtraFormStartTimeChange"
+      @check="refreshExtraSessionCheck"
     />
 
     <!-- #740 Modals：調課 -->
@@ -1028,10 +1036,11 @@ const {
 });
 
 const {
-  showLeaveModal, leaveForm, leaveDisplay, leaveImpactPreview, leaveSubmitError, leaveSubmitting,
-  openLeaveModal, submitLeave, onContextLeave,
+  showLeaveModal, leaveForm, leaveDisplay, leaveImpactPreview, leavePreviewReady, leaveCascadePlanLoading, leavePreviewError, leaveSubmitError, leaveSubmitting,
+  openLeaveModal, refreshLeaveCascadePreview, submitLeave, onContextLeave,
   showExtraModal, extraForm, computedExtraEndTime, extraParentPaymentType,
-  onExtraFormStartTimeChange, onExtraFormTimeChange, openExtraLesson, submitExtraLesson,
+  extraSessionCheck, extraSessionChecking, extraSessionCheckError,
+  onExtraFormStartTimeChange, onExtraFormTimeChange, refreshExtraSessionCheck, openExtraLesson, submitExtraLesson,
 } = useCalendarLeaveExtra({
   branchId: computed(() => props.branchId),
   showModal,

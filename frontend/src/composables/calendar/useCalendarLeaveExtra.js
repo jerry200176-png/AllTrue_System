@@ -23,6 +23,9 @@ export function useCalendarLeaveExtra({
   const leaveCascadePlan = ref(null);
   const leaveCascadePlanLoading = ref(false);
   const leavePreviewRequestKey = ref('');
+  const leavePreviewRequestVersion = ref(0);
+  const leavePreviewSuccessKey = ref('');
+  const leavePreviewError = ref('');
   const leaveSubmitError = ref('');
   const leaveSubmitting = ref(false);
   const leaveForm = ref({
@@ -47,13 +50,15 @@ export function useCalendarLeaveExtra({
     };
     showModal.value = false;
     leaveSubmitError.value = '';
+    leavePreviewError.value = '';
+    leavePreviewSuccessKey.value = '';
     showLeaveModal.value = true;
   };
 
   const formatPreviewDate = (value) => String(value || '').slice(5, 10).replace('-', '/');
   const leaveImpactPreview = computed(() => {
-    if (!leaveForm.value.schedule_date) return null;
     const plan = leaveCascadePlan.value;
+    if (!plan || !leavePreviewSuccessKey.value) return null;
     const isDateMode = String(modalForm.value?.payment_type || '').toLowerCase() === 'monthly'
       || plan?.leave_mode === 'monthly_bounded';
     const items = [
@@ -70,7 +75,6 @@ export function useCalendarLeaveExtra({
     if (plan?.append) {
       items.push(`尾堂補上：${formatPreviewDate(plan.append)}`);
     }
-    if (leaveCascadePlanLoading.value) items.push('正在計算請假影響…');
     return {
       title: '請假送出前影響預覽',
       summary: `${getStudentName(leaveForm.value.student_id)}｜${getSubjectLabel(leaveForm.value.subject)}｜${leaveForm.value.schedule_date}`,
@@ -78,30 +82,51 @@ export function useCalendarLeaveExtra({
     };
   });
 
+  const leavePreviewReady = computed(() => {
+    const courseId = Number(leaveForm.value.course_id || 0);
+    const date = String(leaveForm.value.schedule_date || '').slice(0, 10);
+    return Boolean(courseId && date && leavePreviewSuccessKey.value === `${courseId}:${date}`
+      && leaveCascadePlan.value && !leaveCascadePlanLoading.value && !leavePreviewError.value);
+  });
+
   const refreshLeaveCascadePreview = async () => {
     const courseId = Number(leaveForm.value.course_id || 0);
     const date = String(leaveForm.value.schedule_date || '').slice(0, 10);
     if (!showLeaveModal.value || !courseId || !date) {
       leaveCascadePlan.value = null;
+      leavePreviewSuccessKey.value = '';
       return;
     }
     const requestKey = `${courseId}:${date}`;
+    // Both the date and modal-open watchers can fire for the same form
+    // transition. One authoritative request is enough; do not invalidate it.
     if (leaveCascadePlanLoading.value && leavePreviewRequestKey.value === requestKey) return;
     leavePreviewRequestKey.value = requestKey;
+    const requestVersion = ++leavePreviewRequestVersion.value;
     leaveCascadePlanLoading.value = true;
+    leaveCascadePlan.value = null;
+    leavePreviewSuccessKey.value = '';
+    leavePreviewError.value = '';
     try {
       const token = await getToken();
-      if (!token) return;
+      if (!token) throw new Error('請重新登入後再試');
       const res = await fetch('/api/v1/schedules/leave-cascade-preview', {
         method: 'POST', credentials: 'include',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ student_course_id: courseId, schedule_date: date }),
       });
-      leaveCascadePlan.value = res.ok ? await res.json() : null;
-    } catch (_) {
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.message || res.statusText || '無法取得請假影響預覽');
+      if (requestVersion !== leavePreviewRequestVersion.value) return;
+      leaveCascadePlan.value = body;
+      leavePreviewSuccessKey.value = requestKey;
+    } catch (error) {
+      if (requestVersion !== leavePreviewRequestVersion.value) return;
       leaveCascadePlan.value = null;
+      leavePreviewSuccessKey.value = '';
+      leavePreviewError.value = error?.message || '無法取得請假影響預覽，請重試';
     } finally {
-      leaveCascadePlanLoading.value = false;
+      if (requestVersion === leavePreviewRequestVersion.value) leaveCascadePlanLoading.value = false;
     }
   };
 
@@ -112,6 +137,10 @@ export function useCalendarLeaveExtra({
     const teacherId = Number(leaveForm.value.teacher_id) || null;
     const bid = Number(branchId.value ?? branchId) || 0;
     if (!studentId || !bid) { alert('請假登記失敗：缺少學生或分校資訊'); return; }
+    if (!leavePreviewReady.value) {
+      leaveSubmitError.value = leavePreviewError.value || '請先取得最新請假影響預覽後再送出';
+      return;
+    }
     const payload = {
       student_id: studentId,
       teacher_id: teacherId,
@@ -199,6 +228,8 @@ export function useCalendarLeaveExtra({
     };
     contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };
     leaveSubmitError.value = '';
+    leavePreviewError.value = '';
+    leavePreviewSuccessKey.value = '';
     showLeaveModal.value = true;
   };
 
@@ -209,9 +240,12 @@ export function useCalendarLeaveExtra({
     if (open) {
       void refreshLeaveCascadePreview();
     } else {
+      leavePreviewRequestVersion.value += 1;
       leaveCascadePlan.value = null;
       leaveCascadePlanLoading.value = false;
       leavePreviewRequestKey.value = '';
+      leavePreviewSuccessKey.value = '';
+      leavePreviewError.value = '';
       leaveSubmitError.value = '';
     }
   });
@@ -225,15 +259,57 @@ export function useCalendarLeaveExtra({
   const showExtraModal = ref(false);
   const extraForm = ref({
     student_id: '', subject: 'Math', teacher_id: '', class_type: 'one_on_one',
-    schedule_date: '', start_time: '16:00', end_time: '18:00', duration_hours: 2,
+    schedule_date: '', start_time: '16:00', end_time: '18:00', duration_hours: 2, auto_approve: false,
   });
+  const extraSessionCheck = ref(null);
+  const extraSessionChecking = ref(false);
+  const extraSessionCheckError = ref('');
+  let extraSessionCheckVersion = 0;
+
+  const refreshExtraSessionCheck = async () => {
+    const courseId = Number(editingCourseId.value || 0);
+    const date = String(extraForm.value.schedule_date || '').slice(0, 10);
+    const startTime = normalizeTimeTo30(extraForm.value.start_time);
+    if (!showExtraModal.value || !courseId || !date || !startTime) {
+      extraSessionCheck.value = null;
+      return;
+    }
+    const requestVersion = ++extraSessionCheckVersion;
+    extraSessionChecking.value = true;
+    extraSessionCheck.value = null;
+    extraSessionCheckError.value = '';
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('請重新登入後再試');
+      const res = await fetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
+        method: 'POST', credentials: 'include',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          session_date: date,
+          start_time: startTime,
+          duration_minutes: Math.round(Number(extraForm.value.duration_hours || 0) * 60),
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.message || res.statusText || '無法檢查加課時段');
+      if (requestVersion !== extraSessionCheckVersion) return;
+      extraSessionCheck.value = body;
+    } catch (error) {
+      if (requestVersion !== extraSessionCheckVersion) return;
+      extraSessionCheckError.value = error?.message || '無法檢查加課時段，請重試';
+    } finally {
+      if (requestVersion === extraSessionCheckVersion) extraSessionChecking.value = false;
+    }
+  };
 
   const onExtraFormStartTimeChange = () => {
     extraForm.value.start_time = normalizeTimeTo30(extraForm.value.start_time);
     extraForm.value.end_time = computeEndTime(extraForm.value.start_time, extraForm.value.duration_hours);
+    void refreshExtraSessionCheck();
   };
   const onExtraFormTimeChange = () => {
     extraForm.value.end_time = computeEndTime(extraForm.value.start_time, extraForm.value.duration_hours);
+    void refreshExtraSessionCheck();
   };
   const computedExtraEndTime = computed(() =>
     computeEndTime(extraForm.value.start_time, extraForm.value.duration_hours),
@@ -253,9 +329,13 @@ export function useCalendarLeaveExtra({
       start_time: start,
       end_time: computeEndTime(start, dur),
       duration_hours: dur,
+      auto_approve: false,
     };
+    extraSessionCheck.value = null;
+    extraSessionCheckError.value = '';
     showModal.value = false;
     showExtraModal.value = true;
+    void refreshExtraSessionCheck();
   };
 
   const submitExtraLesson = async () => {
@@ -263,6 +343,14 @@ export function useCalendarLeaveExtra({
     if (!extraForm.value.schedule_date) { alert('請選擇日期'); return; }
     const courseId = Number(editingCourseId.value || 0);
     if (!courseId) { alert('加課失敗：請從既有課程的單堂操作開啟'); return; }
+    if (extraSessionChecking.value || !extraSessionCheck.value) {
+      alert(extraSessionCheckError.value || '請先完成加課時段檢查後再送出');
+      return;
+    }
+    if (!extraSessionCheck.value.can_add) {
+      alert(extraSessionCheck.value.message || '此時段無法加課，請重新檢查');
+      return;
+    }
     const token = await getToken();
     if (!token) { alert('加課失敗：請重新登入後再試'); return; }
     const res = await fetch(`/api/v1/student-classes/${courseId}/add-session`, {
@@ -274,7 +362,9 @@ export function useCalendarLeaveExtra({
         duration_minutes: Math.round(Number(extraForm.value.duration_hours || 0) * 60),
         teacher_id: extraForm.value.teacher_id || null,
         note: 'Calendar 加課／補登',
-        auto_approve: true,
+        // The backend defaults past sessions to auto-approve when omitted.
+        // Always send the operator's explicit choice after /check has returned.
+        auto_approve: !!extraForm.value.auto_approve,
       }),
     });
     const body = await res.json().catch(() => ({}));
@@ -290,9 +380,10 @@ export function useCalendarLeaveExtra({
   };
 
   return {
-    showLeaveModal, leaveForm, leaveDisplay, leaveImpactPreview, leaveSubmitError, leaveSubmitting,
-    openLeaveModal, submitLeave, onContextLeave,
+    showLeaveModal, leaveForm, leaveDisplay, leaveImpactPreview, leavePreviewReady, leaveCascadePlanLoading, leavePreviewError, leaveSubmitError, leaveSubmitting,
+    openLeaveModal, refreshLeaveCascadePreview, submitLeave, onContextLeave,
     showExtraModal, extraForm, computedExtraEndTime, extraParentPaymentType,
-    onExtraFormStartTimeChange, onExtraFormTimeChange, openExtraLesson, submitExtraLesson,
+    extraSessionCheck, extraSessionChecking, extraSessionCheckError,
+    onExtraFormStartTimeChange, onExtraFormTimeChange, refreshExtraSessionCheck, openExtraLesson, submitExtraLesson,
   };
 }

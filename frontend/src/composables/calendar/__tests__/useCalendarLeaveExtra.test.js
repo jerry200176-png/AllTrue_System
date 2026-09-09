@@ -58,19 +58,38 @@ describe('useCalendarLeaveExtra', () => {
     expect(showLeaveModal.value).toBe(true);
   });
 
-  it('uses the authoritative add-session command without a direct schedules write', async () => {
+  it('checks the authoritative add-session contract before writing and does not auto-approve by default', async () => {
     const deps = baseDeps();
-    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ message: '已調整加課堂次' }) });
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ can_add: true, conflict_type: 'none', is_ended: false }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ message: '已調整加課堂次' }) });
+    vi.stubGlobal('fetch', fetch);
+    const alert = vi.fn();
+    vi.stubGlobal('alert', alert);
+    const { openExtraLesson, submitExtraLesson } = useCalendarLeaveExtra(deps);
+    openExtraLesson();
+    await vi.waitFor(() => expect(fetch.mock.calls[0][0]).toBe('/api/v1/student-classes/99/add-session/check'));
+    await submitExtraLesson();
+
+    expect(fetch.mock.calls[1][0]).toBe('/api/v1/student-classes/99/add-session');
+    expect(fetch.mock.calls[0][1].body).toContain('duration_minutes');
+    expect(fetch.mock.calls[1][1].body).toContain('teacher_id');
+    expect(JSON.parse(fetch.mock.calls[1][1].body).auto_approve).toBe(false);
+  });
+
+  it('fails closed when add-session check has not authorized a past-session write', async () => {
+    const deps = baseDeps();
+    let resolveCheck;
+    const fetch = vi.fn().mockImplementation(() => new Promise((resolve) => { resolveCheck = resolve; }));
     vi.stubGlobal('fetch', fetch);
     const alert = vi.fn();
     vi.stubGlobal('alert', alert);
     const { openExtraLesson, submitExtraLesson } = useCalendarLeaveExtra(deps);
     openExtraLesson();
     await submitExtraLesson();
-
-    expect(fetch).toHaveBeenCalledWith('/api/v1/student-classes/99/add-session', expect.objectContaining({ method: 'POST' }));
-    expect(fetch.mock.calls[0][1].body).toContain('duration_minutes');
-    expect(fetch.mock.calls[0][1].body).toContain('teacher_id');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(alert).toHaveBeenCalledWith('請先完成加課時段檢查後再送出');
+    resolveCheck({ ok: true, json: async () => ({ can_add: true, conflict_type: 'none', is_ended: true }) });
   });
 
   it('uses the same leave preview and mutation boundary as Course Management', async () => {
@@ -90,5 +109,24 @@ describe('useCalendarLeaveExtra', () => {
     for (const endpoint of ['leave-cascade-preview', "'/api/v1/schedules'", 'undo-leave']) {
       expect(courseManagementSource).toContain(endpoint);
     }
+  });
+
+  it('fails closed on leave preview error and permits retry only after an authoritative preview succeeds', async () => {
+    const deps = baseDeps();
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, statusText: 'Service unavailable', json: async () => ({ message: '預覽服務暫時無法使用' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ leave_mode: 'monthly_bounded', future_dates_unchanged: true }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ leave_mode: 'monthly_bounded' }) });
+    vi.stubGlobal('fetch', fetch);
+    const { openLeaveModal, refreshLeaveCascadePreview, submitLeave, leavePreviewError, leavePreviewReady } = useCalendarLeaveExtra(deps);
+    openLeaveModal();
+    await vi.waitFor(() => expect(leavePreviewError.value).toBe('預覽服務暫時無法使用'));
+    await submitLeave();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(leavePreviewReady.value).toBe(false);
+    await refreshLeaveCascadePreview();
+    expect(leavePreviewReady.value).toBe(true);
+    await submitLeave();
+    expect(fetch.mock.calls[2][0]).toBe('/api/v1/schedules');
   });
 });
