@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "session_id": "7c44470443db4421a206424c9aac83c8",
   "project": "alltrue",
-  "task_id": "inapp-276-stale-sub-recon",
+  "task_id": "inapp-276-stale-substitute-recon",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "d6278204e6bc2135dd20bc6902e4311c737a0e5a",
   "branch": "fix/inapp-276-stale-substitute-recon",
