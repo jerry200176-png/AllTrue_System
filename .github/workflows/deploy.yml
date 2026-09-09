@@ -728,7 +728,7 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          if event_name == "workflow_run":
+          if event_name in {"workflow_run", "repository_dispatch"}:
               print("production-activation review boundary verified: required reviewer, prevent self-review, no admin bypass, main only")
           else:
               # solo mode requires no required-reviewer rule; the typed

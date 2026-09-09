@@ -60,6 +60,7 @@ class ReleaseActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("outputs.mode == 'awaiting-activation'", self.workflow)
         self.assertIn("outputs.approval_eligible == 'true'", self.workflow)
         self.assertIn("name: production-activation", self.workflow)
+        self.assertIn("event_name in {\"workflow_run\", \"repository_dispatch\"}", self.workflow)
         self.assertNotIn("Founder exact-SHA dispatch", self.workflow)
         self.assertNotIn("merged-awaiting-activation:", self.workflow)
 

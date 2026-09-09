@@ -2,8 +2,8 @@
 
 This adapter separates the two supported approval mechanisms:
 
-* a post-merge ``workflow_run`` must pause on the production Environment's
-  required-reviewer rule; and
+* a post-merge ``workflow_run`` or autonomous ``repository_dispatch`` must
+  pause on the production Environment's required-reviewer rule; and
 * an explicitly dispatched exceptional operation keeps the existing typed
   confirmation path.
 
