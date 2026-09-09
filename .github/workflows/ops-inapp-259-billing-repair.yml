@@ -192,14 +192,22 @@ jobs:
           import json, sys
 
           raw_path, output_path = sys.argv[1:]
+          text = open(raw_path, encoding="utf-8").read()
+          decoder = json.JSONDecoder()
           candidates = []
-          for line in open(raw_path, encoding="utf-8"):
-              line = line.strip()
-              if line.startswith("{") and line.endswith("}"):
-                  try:
-                      candidates.append(json.loads(line))
-                  except json.JSONDecodeError:
-                      pass
+          cursor = 0
+          while True:
+              start = text.find("{", cursor)
+              if start < 0:
+                  break
+              try:
+                  value, end = decoder.raw_decode(text, start)
+              except json.JSONDecodeError:
+                  cursor = start + 1
+                  continue
+              if isinstance(value, dict):
+                  candidates.append(value)
+              cursor = end
           if len(candidates) != 1:
               raise SystemExit("expected exactly one JSON object from production tinker")
           with open(output_path, "w", encoding="utf-8") as stream:
