@@ -1,9 +1,8 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { dayLabel, normalizeTimeTo30, computeEndTime } from '../../lib/calendarFormat.js';
 
 /** #740 Step 7b1：請假 + 加課 modal 流程 */
 export function useCalendarLeaveExtra({
-  supabase,
   branchId,
   showModal,
   modalForm,
@@ -13,6 +12,7 @@ export function useCalendarLeaveExtra({
   getToken,
   allStudents,
   getSubjectLabel,
+  toastRef,
 }) {
   const getStudentName = (sid) => {
     const s = allStudents.value.find((x) => x.id === sid);
@@ -20,6 +20,11 @@ export function useCalendarLeaveExtra({
   };
 
   const showLeaveModal = ref(false);
+  const leaveCascadePlan = ref(null);
+  const leaveCascadePlanLoading = ref(false);
+  const leavePreviewRequestKey = ref('');
+  const leaveSubmitError = ref('');
+  const leaveSubmitting = ref(false);
   const leaveForm = ref({
     student_id: '', subject: '', day_of_week: 1,
     start_time: '', end_time: '', schedule_date: '', course_id: '',
@@ -41,7 +46,63 @@ export function useCalendarLeaveExtra({
       class_type: modalForm.value.class_type || 'one_on_one',
     };
     showModal.value = false;
+    leaveSubmitError.value = '';
     showLeaveModal.value = true;
+  };
+
+  const formatPreviewDate = (value) => String(value || '').slice(5, 10).replace('-', '/');
+  const leaveImpactPreview = computed(() => {
+    if (!leaveForm.value.schedule_date) return null;
+    const plan = leaveCascadePlan.value;
+    const isDateMode = String(modalForm.value?.payment_type || '').toLowerCase() === 'monthly'
+      || plan?.leave_mode === 'monthly_bounded';
+    const items = [
+      '本堂會標記為請假，不扣堂數',
+      isDateMode
+        ? '未來日期與合約結束日不變，不補尾'
+        : '未來既有上課日不變，僅於尾端補上堂次',
+      '該堂不需要填寫學習評量',
+    ];
+    if (plan?.next_billable_session?.date) {
+      const ordinal = plan.next_billable_session.ordinal != null ? `第 ${plan.next_billable_session.ordinal} 堂` : '下一堂';
+      items.push(`下一堂：${formatPreviewDate(plan.next_billable_session.date)}（${ordinal}）`);
+    }
+    if (plan?.append) {
+      items.push(`尾堂補上：${formatPreviewDate(plan.append)}`);
+    }
+    if (leaveCascadePlanLoading.value) items.push('正在計算請假影響…');
+    return {
+      title: '請假送出前影響預覽',
+      summary: `${getStudentName(leaveForm.value.student_id)}｜${getSubjectLabel(leaveForm.value.subject)}｜${leaveForm.value.schedule_date}`,
+      items,
+    };
+  });
+
+  const refreshLeaveCascadePreview = async () => {
+    const courseId = Number(leaveForm.value.course_id || 0);
+    const date = String(leaveForm.value.schedule_date || '').slice(0, 10);
+    if (!showLeaveModal.value || !courseId || !date) {
+      leaveCascadePlan.value = null;
+      return;
+    }
+    const requestKey = `${courseId}:${date}`;
+    if (leaveCascadePlanLoading.value && leavePreviewRequestKey.value === requestKey) return;
+    leavePreviewRequestKey.value = requestKey;
+    leaveCascadePlanLoading.value = true;
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch('/api/v1/schedules/leave-cascade-preview', {
+        method: 'POST', credentials: 'include',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ student_course_id: courseId, schedule_date: date }),
+      });
+      leaveCascadePlan.value = res.ok ? await res.json() : null;
+    } catch (_) {
+      leaveCascadePlan.value = null;
+    } finally {
+      leaveCascadePlanLoading.value = false;
+    }
   };
 
   const submitLeave = async () => {
@@ -67,15 +128,15 @@ export function useCalendarLeaveExtra({
       schedule_date: leaveForm.value.schedule_date,
       student_course_id: courseId,
     };
-    const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
-    const token = session?.access_token || '';
-    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const token = await getToken();
     if (!token) {
-      alert('請假登記失敗：請重新登入後再試');
+      leaveSubmitError.value = '請假登記失敗：請重新登入後再試';
       return;
     }
+    leaveSubmitError.value = '';
+    leaveSubmitting.value = true;
     try {
-      const res = await fetch(`${baseUrl}/v1/schedules`, {
+      const res = await fetch('/api/v1/schedules', {
         method: 'POST',
         credentials: 'include',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -83,17 +144,42 @@ export function useCalendarLeaveExtra({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert('請假登記失敗：' + (body.message || res.statusText || '請稍後再試'));
+        leaveSubmitError.value = body.message || res.statusText || '請稍後再試';
         return;
       }
+      const undoScheduleId = Number(body?.undo?.schedule_id || 0);
+      const undoWindowSec = Number(body?.undo?.undo_window_seconds || 30);
+      const dateMode = body?.leave_mode === 'monthly_bounded';
+      if (undoScheduleId > 0 && undoWindowSec > 0) {
+        toastRef?.value?.show?.({
+          title: '請假已送出',
+          description: dateMode
+            ? `本堂已請假（未來日期與合約結束日不變，不補尾），${undoWindowSec} 秒內可復原`
+            : `本堂已請假（未來日期不變，已補尾堂），${undoWindowSec} 秒內可復原`,
+          variant: 'success',
+          durationMs: undoWindowSec * 1000,
+          undoDescription: '已撤銷請假，尾堂已回復',
+          onUndo: async () => {
+            const undoRes = await fetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
+              method: 'POST', credentials: 'include',
+              headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+            });
+            const undoBody = await undoRes.json().catch(() => ({}));
+            if (!undoRes.ok) throw new Error(undoBody.message || '撤銷請假失敗');
+            await loadCourses();
+          },
+        });
+      }
     } catch (error) {
-      alert('請假登記失敗：' + (error?.message || '請稍後再試'));
+      leaveSubmitError.value = error?.message || '請稍後再試';
       return;
+    } finally {
+      leaveSubmitting.value = false;
     }
     showLeaveModal.value = false;
     contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };
     await loadCourses();
-    alert('請假登記完成');
+    if (!toastRef?.value) alert('請假登記完成');
   };
 
   const onContextLeave = () => {
@@ -112,8 +198,23 @@ export function useCalendarLeaveExtra({
       course_id: baseId,
     };
     contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };
+    leaveSubmitError.value = '';
     showLeaveModal.value = true;
   };
+
+  watch(() => leaveForm.value.schedule_date, () => {
+    void refreshLeaveCascadePreview();
+  });
+  watch(showLeaveModal, (open) => {
+    if (open) {
+      void refreshLeaveCascadePreview();
+    } else {
+      leaveCascadePlan.value = null;
+      leaveCascadePlanLoading.value = false;
+      leavePreviewRequestKey.value = '';
+      leaveSubmitError.value = '';
+    }
+  });
 
   const leaveDisplay = computed(() => ({
     studentName: getStudentName(leaveForm.value.student_id),
@@ -160,51 +261,37 @@ export function useCalendarLeaveExtra({
   const submitExtraLesson = async () => {
     if (!extraForm.value.student_id) { alert('請選擇學生'); return; }
     if (!extraForm.value.schedule_date) { alert('請選擇日期'); return; }
-    const endTime = computeEndTime(extraForm.value.start_time, extraForm.value.duration_hours);
-    const date = new Date(extraForm.value.schedule_date);
-    let dow = date.getDay();
-    if (dow === 0) dow = 7;
-
-    await supabase.from('schedules').insert([{
-      student_id: extraForm.value.student_id,
-      teacher_id: extraForm.value.teacher_id || null,
-      subject: extraForm.value.subject,
-      day_of_week: dow,
-      start_time: normalizeTimeTo30(extraForm.value.start_time),
-      end_time: endTime,
-      duration_hours: extraForm.value.duration_hours,
-      class_type: extraForm.value.class_type,
-      status: 'scheduled',
-      type: 'extra',
-      deduction: 1,
-      branch_id: branchId.value ?? branchId,
-      schedule_date: extraForm.value.schedule_date,
-      student_course_id: editingCourseId.value || null,
-    }]);
-
-    if (editingCourseId.value) {
-      try {
-        const token = await getToken();
-        await fetch('/api/v1/learning-records/reschedule-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            student_class_id: editingCourseId.value,
-            new_date: extraForm.value.schedule_date,
-            start_time: normalizeTimeTo30(extraForm.value.start_time),
-            end_time: endTime,
-          }),
-        });
-      } catch (_) { /* non-critical */ }
+    const courseId = Number(editingCourseId.value || 0);
+    if (!courseId) { alert('加課失敗：請從既有課程的單堂操作開啟'); return; }
+    const token = await getToken();
+    if (!token) { alert('加課失敗：請重新登入後再試'); return; }
+    const res = await fetch(`/api/v1/student-classes/${courseId}/add-session`, {
+      method: 'POST', credentials: 'include',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        session_date: extraForm.value.schedule_date,
+        start_time: normalizeTimeTo30(extraForm.value.start_time),
+        duration_minutes: Math.round(Number(extraForm.value.duration_hours || 0) * 60),
+        teacher_id: extraForm.value.teacher_id || null,
+        note: 'Calendar 加課／補登',
+        auto_approve: true,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = body?.errors ? Object.values(body.errors).flat().join(' ') : '';
+      alert('加課失敗：' + (detail || body.message || res.statusText || '請稍後再試'));
+      return;
     }
 
     showExtraModal.value = false;
-    alert('加課建立完成，老師上課後需填寫評量表');
+    alert(body?.message || '加課建立完成，老師上課後需填寫評量表');
     await loadCourses();
   };
 
   return {
-    showLeaveModal, leaveForm, leaveDisplay, openLeaveModal, submitLeave, onContextLeave,
+    showLeaveModal, leaveForm, leaveDisplay, leaveImpactPreview, leaveSubmitError, leaveSubmitting,
+    openLeaveModal, submitLeave, onContextLeave,
     showExtraModal, extraForm, computedExtraEndTime, extraParentPaymentType,
     onExtraFormStartTimeChange, onExtraFormTimeChange, openExtraLesson, submitExtraLesson,
   };
