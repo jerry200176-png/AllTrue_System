@@ -82,6 +82,45 @@ export const staffUpdates = [
     "version": "2026.09.09"
   },
   {
+    "id": "staff-2026-09-09-parent-learning-assessment-controls",
+    "publishedAt": "2026-09-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "家長學習評量入口與空狀態更清楚",
+    "summary": "家長能明確展開學習評量、理解尚未有資料的原因，並在唯讀狀態看到不可操作的回饋控制。",
+    "items": [
+      "家長端學習評量的展開入口支援鍵盤與觸控；尚無已核准資料時提供查看課表的下一步，載入錯誤不再同時顯示空狀態。",
+      "跨分校唯讀狀態下，家長意見分類、星評與文字輸入會明確停用，不改權限或資料流程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "家長端學習評量的展開入口支援鍵盤與觸控；尚無已核准資料時提供查看課表的下一步，載入錯誤不再同時顯示空狀態。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "跨分校唯讀狀態下，家長意見分類、星評與文字輸入會明確停用，不改權限或資料流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-09:parent-learning-assessment-controls"
+    ],
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "staff-2026-09-08-subject-count-final-total",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,
