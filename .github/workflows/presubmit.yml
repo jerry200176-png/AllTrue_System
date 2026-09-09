@@ -10,6 +10,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -205,6 +209,23 @@ jobs:
         run: |
           node scripts/check-release-notes-coverage.mjs --self-test
           node scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD
+
+      # CHECK 4B：production-impacting PR 必須先宣告 release impact；
+      # user-visible 才能進 CHANGELOG，internal / no-user-facing-note 不會污染 Version Update。
+      - name: "[CHECK 4B] Production release impact classification"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          BODY_FILE="$RUNNER_TEMP/pull-request-body.md"
+          if [ -n "${PR_NUMBER:-}" ]; then
+            gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.body // ""' > "$BODY_FILE"
+          else
+            : > "$BODY_FILE"
+          fi
+          node scripts/check-production-release-classification.mjs --self-test
+          node scripts/check-production-release-classification.mjs --base origin/main --head HEAD --body-file "$BODY_FILE"
 
       # ─────────────────────────────────────────────
       # CHECK 5：禁止 CI workflow 內含 ssh/rsync/deploy 指令
