@@ -44,6 +44,7 @@ const pageModules = {
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
+  chat: () => import('../../../src/pages/ChatPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -109,6 +110,9 @@ createApp({
       const branchIdParam = searchParams.get('branch');
       const branchId = branchIdParam ? Number(branchIdParam) : 1;
       return () => h(PageComponent, { branchId, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
+    }
+    if (page === 'chat') {
+      return () => h(PageComponent, { branchId: 1, userId: 9001, userRole: 'director' });
     }
     return () => h(PageComponent, { branchId: 1 });
   },
