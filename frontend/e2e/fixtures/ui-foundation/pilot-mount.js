@@ -39,6 +39,7 @@ const pageModules = {
   calendar: () => import('../../../src/pages/SmartCalendar.vue'),
   discrepancy: () => import('../../../src/pages/ScheduleDiscrepancyPage.vue'),
   'tuition-report': () => import('../../../src/pages/TuitionReportPage.vue'),
+  nightly: () => import('../../../src/pages/NightlyReconcilePanel.vue'),
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
@@ -78,6 +79,9 @@ createApp({
     }
     if (page === 'discrepancy') {
       return () => h(PageComponent, { branchId: 1 });
+    }
+    if (page === 'nightly') {
+      return () => h(PageComponent, { token: 'e2e-nightly-token' });
     }
     if (page === 'teacher') {
       return () => h(PageComponent, {

@@ -21,7 +21,7 @@
     <div v-else-if="error" class="nr-error" role="alert">
       <span class="material-symbols-outlined" aria-hidden="true">error</span>
       <span>{{ error }}</span>
-      <button class="nr-retry-btn" @click="loadReport">重試</button>
+      <AtButton class="nr-retry-btn" shape="rect" size="sm" variant="ghost" @click="loadReport">重試</AtButton>
     </div>
 
     <!-- 無報告（404） -->
@@ -29,7 +29,7 @@
       <span class="material-symbols-outlined nr-empty-icon" aria-hidden="true">receipt_long</span>
       <h2 class="nr-empty-title">尚無堂數對帳報告</h2>
       <p class="nr-empty-desc">02:00 排程尚未跑完，或今天還沒寫出報告。這與帳務中心／銀行勾稽無關。</p>
-      <button class="nr-cta-btn" @click="loadReport">重新檢查</button>
+      <AtButton shape="rect" variant="secondary" @click="loadReport">重新檢查</AtButton>
     </div>
 
     <!-- 有報告 -->
@@ -139,59 +139,65 @@
                 <tr>
                   <th
                     class="nr-th--sortable"
-                    @click="toggleSort('student_name')"
                     :aria-sort="sortKey === 'student_name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    學生
-                    <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'student_name' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    <button type="button" class="nr-sort-button" @click="toggleSort('student_name')" :aria-label="`依學生${sortKey === 'student_name' && sortDir === 'asc' ? '降冪' : '升冪'}排序`">
+                      學生
+                      <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'student_name' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    </button>
                   </th>
                   <th
                     class="nr-th--sortable"
-                    @click="toggleSort('subject_name')"
                     :aria-sort="sortKey === 'subject_name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    科目
-                    <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'subject_name' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    <button type="button" class="nr-sort-button" @click="toggleSort('subject_name')" :aria-label="`依科目${sortKey === 'subject_name' && sortDir === 'asc' ? '降冪' : '升冪'}排序`">
+                      科目
+                      <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'subject_name' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    </button>
                   </th>
                   <th
                     class="nr-th--sortable"
-                    @click="toggleSort('campus_name')"
                     :aria-sort="sortKey === 'campus_name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    分校
-                    <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'campus_name' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    <button type="button" class="nr-sort-button" @click="toggleSort('campus_name')" :aria-label="`依分校${sortKey === 'campus_name' && sortDir === 'asc' ? '降冪' : '升冪'}排序`">
+                      分校
+                      <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'campus_name' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    </button>
                   </th>
                   <th scope="col">總堂數</th>
                   <th
                     class="nr-th--sortable"
-                    @click="toggleSort('recorded_used')"
                     :aria-sort="sortKey === 'recorded_used' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    已用（課程記錄）
-                    <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'recorded_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    <button type="button" class="nr-sort-button" @click="toggleSort('recorded_used')" :aria-label="`依課程記錄已用堂數${sortKey === 'recorded_used' && sortDir === 'asc' ? '降冪' : '升冪'}排序`">
+                      已用（課程記錄）
+                      <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'recorded_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    </button>
                   </th>
                   <th
                     class="nr-th--sortable"
-                    @click="toggleSort('expected_used')"
                     :aria-sort="sortKey === 'expected_used' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    權威應為
-                    <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'expected_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    <button type="button" class="nr-sort-button" @click="toggleSort('expected_used')" :aria-label="`依權威應用堂數${sortKey === 'expected_used' && sortDir === 'asc' ? '降冪' : '升冪'}排序`">
+                      權威應為
+                      <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'expected_used' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    </button>
                   </th>
                   <th scope="col">實際出席</th>
                   <th
                     class="nr-th--sortable"
-                    @click="toggleSort('diff')"
                     :aria-sort="sortKey === 'diff' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'"
                     scope="col"
                   >
-                    差異
-                    <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'diff' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    <button type="button" class="nr-sort-button" @click="toggleSort('diff')" :aria-label="`依差異${sortKey === 'diff' && sortDir === 'asc' ? '降冪' : '升冪'}排序`">
+                      差異
+                      <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'diff' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
+                    </button>
                   </th>
                   <th scope="col">類別</th>
                 </tr>
@@ -227,7 +233,7 @@
         <div v-if="filteredMismatches.length === 0 && mismatches.length > 0" class="nr-filter-empty" role="status">
           <span class="material-symbols-outlined" aria-hidden="true">filter_alt_off</span>
           <p>依目前篩選條件無匹配的異常項目</p>
-          <button class="nr-cta-btn nr-cta-btn--sm" @click="clearFilters">清除篩選</button>
+          <AtButton shape="rect" size="sm" variant="ghost" @click="clearFilters">清除篩選</AtButton>
         </div>
 
         <!-- 顯示筆數資訊 -->
@@ -392,13 +398,8 @@ onMounted(() => {
 
 .nr-retry-btn {
   margin-left: auto;
-  padding: 4px 12px;
-  border: 1px solid #fca5a5;
-  border-radius: 6px;
-  background: #fff;
-  color: #b91c1c;
-  font-size: 12px;
-  cursor: pointer;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
 }
 
 .nr-empty {
@@ -587,7 +588,8 @@ onMounted(() => {
 }
 
 .nr-select {
-  padding: 6px 10px;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card-bg);
@@ -633,12 +635,33 @@ onMounted(() => {
 }
 
 .nr-th--sortable {
+  padding: 0 !important;
+}
+
+.nr-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
   cursor: pointer;
   user-select: none;
 }
 
-.nr-th--sortable:hover {
+.nr-sort-button:hover {
   color: var(--accent);
+}
+
+.nr-sort-button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px var(--ds-focus-ring);
 }
 
 .nr-sort-icon {
@@ -720,6 +743,12 @@ onMounted(() => {
   color: var(--text-light);
 }
 
+.nightly-reconcile button,
+.nightly-reconcile :deep(.at-btn),
+.nightly-reconcile :deep(.at-btn--sm) {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+
 /* === RWD === */
 @media (max-width: 768px) {
   .nr-header {
@@ -745,6 +774,16 @@ onMounted(() => {
 
   .nr-select {
     width: 100%;
+  }
+
+  .nr-error {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .nr-retry-btn {
+    margin-left: 0;
+    flex: 1 0 100%;
   }
 
 }
