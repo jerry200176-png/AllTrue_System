@@ -289,17 +289,21 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertFalse(unknown_provenance["retry_allowed"])
         self.assertFalse(invalid_manifest["retry_allowed"])
 
-    def test_solo_environment_rejects_required_reviewer_gate(self):
-        self.assertTrue(environment_protection_is_valid(
+    def test_static_environment_requires_founder_reviewer_and_allows_self_review(self):
+        for event_name, phase in (
+            ("workflow_run", "application-deploy"),
+            ("repository_dispatch", "application-deploy"),
+            ("workflow_dispatch", "application-deploy"),
+            ("workflow_dispatch", "pop-bootstrap"),
+            ("workflow_dispatch", "parent-portal-smoke"),
+        ):
+            with self.subTest(event_name=event_name, phase=phase):
+                self.assertTrue(environment_protection_is_valid(
+                    event_name=event_name, phase=phase,
+                    required_reviewers_configured=True, prevent_self_review=False,
+                ))
+        self.assertFalse(environment_protection_is_valid(
             event_name="workflow_dispatch", phase="application-deploy",
-            required_reviewers_configured=False, prevent_self_review=False,
-        ))
-        self.assertTrue(environment_protection_is_valid(
-            event_name="workflow_dispatch", phase="pop-bootstrap",
-            required_reviewers_configured=False, prevent_self_review=False,
-        ))
-        self.assertTrue(environment_protection_is_valid(
-            event_name="workflow_dispatch", phase="parent-portal-smoke",
             required_reviewers_configured=False, prevent_self_review=False,
         ))
         self.assertFalse(environment_protection_is_valid(
@@ -307,13 +311,13 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             required_reviewers_configured=True, prevent_self_review=True,
         ))
         for event_name, phase in (
-            ("workflow_run", "application-deploy"),
+            ("workflow_run", "parent-portal-smoke"),
             ("workflow_dispatch", "unknown-phase"),
         ):
             with self.subTest(event_name=event_name, phase=phase):
                 self.assertFalse(environment_protection_is_valid(
                     event_name=event_name, phase=phase,
-                    required_reviewers_configured=False, prevent_self_review=False,
+                    required_reviewers_configured=True, prevent_self_review=False,
                 ))
 
 
@@ -342,7 +346,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Checkout target revision for gate policy", self.workflow)
         self.assertIn("production environment protection is not configured", self.workflow)
         self.assertIn("required_reviewers_configured", self.workflow)
-        self.assertIn("solo mode requires no required-reviewer rule", self.workflow)
+        self.assertIn("all activation events require the Founder required-reviewer gate", self.workflow)
         self.assertIn("environment_protection_is_valid", self.workflow)
         self.assertIn('EVENT_NAME: ${{ github.event_name }}', self.workflow)
         self.assertIn('PHASE: ${{ inputs.phase }}', self.workflow)
@@ -376,6 +380,16 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs.classify-activation.outputs.mode == 'auto'", self.workflow)
         self.assertIn("needs.production-activation.result == 'success'", self.workflow)
         self.assertIn('TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"', self.workflow)
+
+    def test_protected_deploy_has_no_production_side_effect_before_same_run_approval(self):
+        gate_start = self.workflow.index("  production-activation:\n")
+        deploy_start = self.workflow.index("  deploy:\n")
+        gate = self.workflow[gate_start:deploy_start]
+        deploy = self.workflow[deploy_start:]
+        self.assertIn("environment:\n      name: production-activation", gate)
+        self.assertIn("needs.production-activation.result == 'success'", deploy)
+        self.assertIn("mode == 'awaiting-activation'", deploy)
+        self.assertLess(deploy.index("needs.production-activation.result == 'success'"), deploy.index("- name: Setup SSH"))
 
     def test_pop_bootstrap_is_a_protected_host_local_executor(self):
         self.assertIn("  pop-bootstrap:", self.workflow)

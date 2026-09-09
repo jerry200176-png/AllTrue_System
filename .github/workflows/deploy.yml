@@ -62,9 +62,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
       - name: Verify deploy state-machine contract
-        run: |
-          python3 scripts/tests/test_deploy_activation_state.py
-          python3 scripts/tests/test_release_activation_flow.py
+        run: python3 scripts/tests/test_deploy_activation_state.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -683,7 +681,6 @@ jobs:
           import subprocess
 
           from scripts.governance.autonomy_gate import environment_protection_is_valid
-          from scripts.governance.release_activation import environment_protection_is_valid_for_release
 
           repo = os.environ["REPO"]
           base = f"/repos/{repo}/environments/production-activation"
@@ -698,25 +695,16 @@ jobs:
           prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers) if reviewers else False
           event_name = os.environ["EVENT_NAME"]
           phase = os.environ.get("PHASE", "")
-          if event_name == "workflow_dispatch":
-              protection_valid = environment_protection_is_valid(
-                  event_name=event_name,
-                  phase=phase,
-                  required_reviewers_configured=required_reviewers_configured,
-                  prevent_self_review=prevent_self_review,
-              )
-          else:
-              protection_valid = environment_protection_is_valid_for_release(
-                  event_name=event_name,
-                  phase=phase,
-                  required_reviewers_configured=required_reviewers_configured,
-                  prevent_self_review=prevent_self_review,
-              )
-          if not protection_valid:
+          if not environment_protection_is_valid(
+              event_name=event_name,
+              phase=phase,
+              required_reviewers_configured=required_reviewers_configured,
+              prevent_self_review=prevent_self_review,
+          ):
               raise SystemExit(
-                  "production environment protection is not configured for this event: "
-                  "post-merge releases require a required-reviewer gate with prevent-self-review; "
-                  "manual exceptional operations require the typed Founder gate without a second reviewer queue"
+                  "production environment protection is not configured: "
+                  "all activation events require the Founder required-reviewer gate, "
+                  "self-review allowed, no admin bypass, and main-only deployment policy"
               )
           if environment.get("can_admins_bypass") is not False:
               raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
@@ -731,9 +719,7 @@ jobs:
           if event_name in {"workflow_run", "repository_dispatch"}:
               print("production-activation review boundary verified: required reviewer, prevent self-review, no admin bypass, main only")
           else:
-              # solo mode requires no required-reviewer rule; the typed
-              # Founder confirmation remains the explicit manual boundary.
-              print("production-activation solo boundary verified: no reviewer gate, no admin bypass, main only")
+              print("production-activation static Founder boundary verified: required reviewer, self-review allowed, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation

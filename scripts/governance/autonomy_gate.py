@@ -415,22 +415,25 @@ def environment_protection_is_valid(
     *, event_name: str, phase: str, required_reviewers_configured: bool,
     prevent_self_review: bool,
 ) -> bool:
-    """Validate the solo-Founder production environment boundary.
+    """Validate the single static Founder production environment boundary.
 
-    Protected actions still require an explicit workflow dispatch and exact
-    typed confirmation. In solo mode, a required reviewer is an
-    unsatisfiable self-approval queue, so the Environment must not carry that
-    rule. If a reviewer rule is reintroduced, fail closed regardless of its
-    self-review setting.
+    Every activation event uses the same GitHub Environment configuration:
+    the Founder is the required reviewer, self-review is allowed for this
+    single-Founder repository, administrator bypass is checked by the
+    workflow, and deployment is restricted to ``main``. Manual exceptional
+    phases additionally retain their typed confirmation step in ``deploy.yml``.
     """
 
-    if event_name != "workflow_dispatch":
+    if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch"}:
         return False
-    if phase not in {"application-deploy", "parent-portal-smoke", "pop-bootstrap", "phase1-create", "phase2-cutover", "phase3-lock"}:
+    if event_name in {"workflow_run", "repository_dispatch"} and phase != "application-deploy":
         return False
-    if required_reviewers_configured:
+    if event_name == "workflow_dispatch" and phase not in {
+        "application-deploy", "parent-portal-smoke", "pop-bootstrap",
+        "phase1-create", "phase2-cutover", "phase3-lock",
+    }:
         return False
-    return prevent_self_review is False
+    return required_reviewers_configured and prevent_self_review is False
 
 
 def effective_tier(
