@@ -346,6 +346,11 @@ describe('bug report composer accessibility', () => {
     expect(source).toContain('class="error-msg" role="alert"');
   });
 
+  it('keeps feedback category radios compact so their labels remain readable', () => {
+    expect(source).toMatch(/\.feedback-type-option input \{[\s\S]*?width: 18px;[\s\S]*?height: 18px;[\s\S]*?flex: 0 0 auto;[\s\S]*?padding: 0;/);
+    expect(source).toMatch(/\.feedback-type-option span \{[\s\S]*?min-width: 0;/);
+  });
+
   it('keeps the composer actions explicit non-submit buttons', () => {
     expect(source).toMatch(/<button\s+type="button"\s+class="fab"/);
     expect(source).toMatch(/<button type="button" class="btn-cancel"/);
