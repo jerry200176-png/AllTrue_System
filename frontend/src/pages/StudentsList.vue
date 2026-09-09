@@ -12,15 +12,7 @@
           <span>目前列表 {{ displayStudents.length }} 人</span>
         </template>
         <template #actions>
-          <button
-            type="button"
-            class="button-outline"
-            aria-label="匯入學生名單"
-            @click="openImportDialog"
-          >
-            <span class="material-symbols-outlined btn-icon" aria-hidden="true">upload_file</span>
-            匯入名單
-          </button>
+          <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">匯入名單</AtButton>
           <input
             ref="importInput"
             class="student-import-input"
@@ -31,10 +23,7 @@
             @change="importStudents"
           />
           <AtButton shape="rect" variant="primary" icon="add" @click="openAddStudent">新增學生</AtButton>
-          <button type="button" class="small ghost" @click="openIdentityModal">
-            <span class="material-symbols-outlined btn-icon">merge</span>
-            跨分校身份
-          </button>
+          <AtButton shape="rect" variant="secondary" icon="merge" @click="openIdentityModal">跨分校身份</AtButton>
         </template>
       </AtPageHeader>
 
@@ -52,22 +41,22 @@
 
       <AtFilterBar label="學生篩選" data-guide="students-filters">
         <div class="filter-search">
-          <label>搜尋姓名</label>
+          <label for="students-name-filter">搜尋姓名</label>
           <div class="search-input-wrap">
             <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
-            <input v-model="filters.name" placeholder="輸入姓名…" @input="debouncedLoad" />
+            <input id="students-name-filter" v-model="filters.name" placeholder="輸入姓名…" @input="debouncedLoad" />
           </div>
         </div>
         <div>
-          <label>年級</label>
-          <select v-model="filters.grade" @change="loadStudents">
+          <label for="students-grade-filter">年級</label>
+          <select id="students-grade-filter" v-model="filters.grade" @change="loadStudents">
             <option value="">全部</option>
             <option v-for="g in GRADES" :key="g.value" :value="g.value">{{ g.label }}</option>
           </select>
         </div>
         <div>
-          <label>狀態</label>
-          <select v-model="filters.status" @change="loadStudents">
+          <label for="students-status-filter">狀態</label>
+          <select id="students-status-filter" v-model="filters.status" @change="loadStudents">
             <option value="active">在學中</option>
             <option value="">全部</option>
             <option value="graduated">已畢業</option>
@@ -98,14 +87,14 @@
         <span class="material-symbols-outlined" aria-hidden="true">cloud_off</span>
         <strong>學生清單暫時無法載入</strong>
         <span>{{ studentsLoadError }}</span>
-        <button type="button" class="students-list-state__action" @click="loadStudents">重試</button>
+        <AtButton shape="rect" variant="secondary" class="students-list-state__action" @click="loadStudents">重試</AtButton>
       </div>
       <div v-else-if="displayStudents.length" class="table-scroll-wrap" :aria-busy="studentsLoading ? 'true' : 'false'">
         <div v-if="studentsLoading || studentsLoadError" class="students-refresh-state" :class="{ 'students-refresh-state--error': studentsLoadError }" role="status" aria-live="polite">
           <span class="material-symbols-outlined" aria-hidden="true">{{ studentsLoadError ? 'cloud_off' : 'sync' }}</span>
           <span v-if="studentsLoadError">更新失敗，仍顯示上次成功載入的學生資料。</span>
           <span v-else>正在更新學生清單…</span>
-          <button type="button" class="students-refresh-state__action" @click="loadStudents">重試</button>
+          <AtButton shape="rect" variant="secondary" class="students-refresh-state__action" @click="loadStudents">重試</AtButton>
         </div>
       <table data-guide="students-table">
         <thead>
@@ -3653,6 +3642,7 @@ table th { font-size: 12.5px; }
   cursor: pointer;
   transition: all 0.15s ease;
   line-height: 1.2;
+  min-height: var(--ds-control-height-touch, 44px);
 }
 .btn-course-disclosure:hover {
   background: var(--ds-primary, var(--primary));
@@ -3661,6 +3651,17 @@ table th { font-size: 12.5px; }
 .btn-course-disclosure.is-active {
   background: var(--ds-primary, var(--primary));
   color: var(--ds-canvas);
+}
+.students-page .at-btn,
+.students-page .at-icon-btn {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.students-page .at-icon-btn {
+  min-width: var(--ds-control-height-touch, 44px);
+}
+.students-page .students-list-state__action,
+.students-page .students-refresh-state__action {
+  min-height: var(--ds-control-height-touch, 44px);
 }
 .icon-btn {
   display: inline-flex !important;
