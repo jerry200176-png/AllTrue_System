@@ -256,6 +256,12 @@ jobs:
           # Override DB settings for CI (phpunit.xml already sets these, but ensure APP_KEY)
           php artisan key:generate --force
 
+      # GitHub-hosted images may include Google Chrome's rolling apt source.
+      # It is not needed for PHP tests; removing it from this ephemeral runner
+      # prevents an upstream index rotation from blocking MySQL installation.
+      - name: Isolate test dependencies from Chrome apt source
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+
       - name: Install MySQL client
         run: |
           # Runner images ship a Google Chrome apt source that periodically 502/hash-mismatches
