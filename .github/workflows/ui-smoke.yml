@@ -76,6 +76,12 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # Playwright downloads its own Chromium. The preinstalled Chrome apt
+      # source is unrelated and can transiently publish mismatched metadata.
+      - name: Isolate Playwright dependencies from Chrome apt source
+        if: steps.detect.outputs.run == 'true'
+        run: sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+
       - name: Install Playwright browser (chromium)
         if: steps.detect.outputs.run == 'true'
         working-directory: frontend
