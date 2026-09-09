@@ -187,7 +187,7 @@ jobs:
             local output="$1"
             shift
             local raw="$work_dir/tinker-raw"
-            php artisan tinker --no-ansi --execute="$*" > "$raw"
+            php artisan tinker --quiet --no-interaction --no-ansi --execute="$*" > "$raw"
             python3 - "$raw" "$output" <<'PY'
           import base64, binascii, json, sys
 
@@ -198,12 +198,18 @@ jobs:
           starts = text.count(start_marker)
           ends = text.count(end_marker)
           if starts != 1 or ends != 1:
+              diagnostic = text[-1200:].replace("\x1b", "\\x1b")
+              print("#259 state capture diagnostic (bounded, no credentials)")
+              print(diagnostic)
               raise SystemExit("expected exactly one #259 state sentinel pair from production tinker")
           start = text.index(start_marker) + len(start_marker)
           end = text.index(end_marker, start)
           try:
               value = json.loads(base64.b64decode(text[start:end].strip(), validate=True))
           except (ValueError, binascii.Error, json.JSONDecodeError) as exc:
+              diagnostic = text[-1200:].replace("\x1b", "\\x1b")
+              print("#259 state capture diagnostic (bounded, no credentials)")
+              print(diagnostic)
               raise SystemExit("invalid #259 state sentinel payload") from exc
           if not isinstance(value, dict):
               raise SystemExit("#259 state sentinel payload must be a JSON object")
