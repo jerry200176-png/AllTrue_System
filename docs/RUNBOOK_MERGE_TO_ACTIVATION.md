@@ -34,7 +34,7 @@ claim. A failed health or smoke check invokes the existing rollback behavior.
 |---|---|---|---|
 | T0/R0 | Required checks and docs gates | No-op for docs-only changes | None |
 | T1/R1 | Required checks, regression test, review, rollback evidence | Yes, with matching declaration and no protected production side effect | `workflow_run` |
-| T2/R2 | Exact-target successful CI, rollback evidence, and either a non-author approval or trusted independent verifier evidence | Yes when all evidence is current; otherwise held as ambiguous | `workflow_run` auto path, or same-run Founder approval when evidence is incomplete |
+| T2/R2 | Exact-target successful CI, rollback readiness, and reversible non-protected scope | Yes when all deterministic gates pass | `workflow_run` auto path |
 | T3/R3 | Prepared with protected-action evidence; no autonomous protected execution | No | Founder-controlled activation / mutation boundary |
 
 The authoritative classifiers are in `scripts/governance/autonomy_gate.py`.
@@ -60,14 +60,6 @@ reversible T2 does not reference the Environment. The workflow verifies the
 configuration and fails closed on drift. `workflow_dispatch` typed confirmation
 remains only for exceptional manual phases; it is not a second normal approval
 path.
-
-For T2, independent evidence is either a non-author GitHub approval on the
-exact target SHA or a machine-readable PASS/APPROVE result from the existing
-Agent Session Provenance/check-run path. Verifier evidence must identify the
-exact target SHA, a verifier session and execution, a distinct implementing
-session, and `self_certified: false`. The deploy workflow reads check-run
-metadata only; PR-body claims never qualify. A normal implementing-session
-provenance check without the verifier role is not sufficient.
 
 No migration, production data repair, credential change, or billing/entitlement
 operation is authorized by this activation input.

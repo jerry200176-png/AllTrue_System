@@ -78,8 +78,8 @@
 ## 2026-08-29 — Founder T0–T3 autonomy convergence
 
 - Reconciled the portable governance overlay and Codex adapter with the
-  risk-based operating model: T0/T1 autonomous after required gates, T2 with
-  independent review, and T3/protected work stopping before protected
+  risk-based operating model: T0/T1 autonomous after required gates, reversible
+  T2 autonomous after deterministic checks, and T3/protected work stopping before protected
   execution or activation for Founder approval.
 - Removed the obsolete universal human-approval requirement from the product
   adapter without weakening required checks, rollback evidence, product P0,

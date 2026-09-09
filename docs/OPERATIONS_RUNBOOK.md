@@ -298,7 +298,7 @@ gh pr merge --squash --delete-branch   # 僅 T2/T3/保護性工作在完成對�
 ```
 
 正常 merged application deployment 由 `deploy.yml` 單一 executor 完成。
-已驗證可逆的 T0/T1，以及具備 independent review、CI、rollback evidence 的
+已驗證可逆的 T0/T1，以及具備 exact-target CI、rollback readiness 的
 T2，走 CI 後自動 deploy；T3/protected 或 ambiguous evidence 才在同一 run 的
 `production-activation` Environment 等待 Founder approval，批准後自動 deploy。
 不得另開第二次 dispatch 或手動 production smoke；workflow success 不等於

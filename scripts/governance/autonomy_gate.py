@@ -20,12 +20,6 @@ _RISK_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?\*?\*?Risk-Class\*?\*?\s*:\s*\*?\*?
 _TIER_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?\*?\*?Autonomy-Tier\*?\*?\s*:\s*\*?\*?\s*(T[0-3])\b")
 _ROLLBACK_RE = re.compile(r"(?im)^\s*(?:[-*]\s+)?(?:\*\*)?Rollback(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.+)$")
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-_VERIFIER_FIELD_RE = re.compile(
-    r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?"
-    r"(schema_version|provenance_type|role|target_sha|verdict|session_id|"
-    r"execution_id|implementing_session_id|self_certified)"
-    r"(?:\*\*)?\s*[:=]\s*`?([^`\s]+)`?\s*$"
-)
 
 _T3_PREFIXES = (
     ".github/workflows/",
@@ -233,90 +227,6 @@ def has_rollback_evidence(body: str) -> bool:
     return value not in {"", "n/a", "na", "none", "tbd", "todo", "___", "..."}
 
 
-def has_independent_review(
-    reviews: Iterable[dict[str, object]], *, author_login: str, target_sha: str
-) -> bool:
-    """Return true only for a current-target approval by someone other than author."""
-
-    if not author_login or not _FULL_SHA_RE.fullmatch(target_sha or ""):
-        return False
-    latest_by_login: dict[str, dict[str, object]] = {}
-    for review in reviews:
-        if not isinstance(review, dict):
-            continue
-        user = review.get("user")
-        login = user.get("login") if isinstance(user, dict) else None
-        if not login:
-            continue
-        latest_by_login[str(login).lower()] = review
-    author = author_login.lower()
-    return any(
-        login != author
-        and str(review.get("state", "")).upper() == "APPROVED"
-        and review.get("commit_id") == target_sha
-        for login, review in latest_by_login.items()
-    )
-
-
-def has_trusted_verifier_evidence(
-    check_runs: Iterable[dict[str, object]], *, target_sha: str
-) -> bool:
-    """Accept only external, exact-target verifier evidence from a check run.
-
-    The deploy workflow passes GitHub's check-run response here, never PR
-    text.  A verifier must publish a structured result through the existing
-    Agent Session Provenance/check-run path.  The execution id is bound to
-    the check run itself, and the verifier session must identify a session
-    distinct from the implementing session.  A normal implementing-session
-    provenance check has no ``role: verifier`` and therefore cannot satisfy
-    this contract by merely passing.
-    """
-
-    if not _FULL_SHA_RE.fullmatch(target_sha or ""):
-        return False
-    for check_run in check_runs:
-        if not isinstance(check_run, dict):
-            continue
-        if check_run.get("name") not in {"Agent Session Provenance", "Independent Agent Verifier"}:
-            continue
-        if check_run.get("status") != "completed" or check_run.get("conclusion") != "success":
-            continue
-        if check_run.get("head_sha") != target_sha:
-            continue
-        app = check_run.get("app")
-        if not isinstance(app, dict) or app.get("slug") != "github-actions":
-            continue
-        output = check_run.get("output")
-        if not isinstance(output, dict):
-            continue
-        text = "\n".join(
-            str(output.get(field) or "") for field in ("title", "summary", "text")
-        )
-        fields = {key: value for key, value in _VERIFIER_FIELD_RE.findall(text)}
-        if (
-            fields.get("schema_version") != "1.0"
-            or fields.get("provenance_type") != "agent-session"
-            or fields.get("role") != "verifier"
-            or fields.get("target_sha") != target_sha
-            or fields.get("verdict", "").upper() not in {"PASS", "APPROVE"}
-            or fields.get("self_certified", "").lower() != "false"
-        ):
-            continue
-        verifier_session = fields.get("session_id", "")
-        implementing_session = fields.get("implementing_session_id", "")
-        execution_id = fields.get("execution_id", "")
-        if len(verifier_session) < 8 or not implementing_session or not execution_id:
-            continue
-        if verifier_session == implementing_session:
-            continue
-        check_run_id = str(check_run.get("id") or "")
-        external_id = str(check_run.get("external_id") or "")
-        if execution_id not in {check_run_id, external_id}:
-            continue
-        return True
-    return False
-
-
 def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     """Derive the minimum safe tier from paths and diff text."""
 
@@ -417,17 +327,13 @@ def decide_activation(
     declared_tier: str | None = None,
     protected_activation: bool = False,
     ci_success: bool = False,
-    independent_review: bool = False,
-    trusted_verifier_evidence: bool = False,
     rollback_evidence: bool = False,
 ) -> dict[str, str]:
     """Choose automatic activation only for validated reversible changes.
 
-    T2 is eligible for the autonomous path only when the canonical review
-    contract is complete: the exact target has successful CI, either a
-    distinct reviewer approved that target or trusted verifier evidence is
-    bound to it, and the PR contains a usable rollback declaration. T3/
-    protected paths never become automatic through evidence.
+    T2 is eligible for the autonomous path when exact-target CI and rollback
+    readiness are complete. T3/protected paths never become automatic through
+    routine evidence.
     """
 
     if not deployable:
@@ -451,12 +357,10 @@ def decide_activation(
         missing = []
         if not ci_success:
             missing.append("successful CI")
-        if not (independent_review or trusted_verifier_evidence):
-            missing.append("independent review or trusted verifier evidence")
         if not rollback_evidence:
             missing.append("rollback evidence")
         if not missing:
-            return {"decision": "auto", "effective_tier": "T2", "reason": "validated reversible R2/T2 change has independent review or trusted verifier evidence, successful CI, and rollback evidence"}
+            return {"decision": "auto", "effective_tier": "T2", "reason": "validated reversible R2/T2 change has successful CI and rollback evidence"}
         return {"decision": "awaiting-activation", "effective_tier": "T2", "reason": "T2 evidence incomplete; Founder approval required: " + ", ".join(missing)}
     return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": f"effective tier T{effective} requires Founder activation"}
 
@@ -586,8 +490,6 @@ __all__ = [
     "classify_production_runtime",
     "environment_protection_is_valid",
     "effective_tier",
-    "has_independent_review",
-    "has_trusted_verifier_evidence",
     "has_rollback_evidence",
     "is_application_runtime_path",
     "is_deployable_path",

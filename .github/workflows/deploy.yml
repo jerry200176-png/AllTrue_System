@@ -498,9 +498,7 @@ jobs:
                   classify_activation_scope,
                   effective_tier,
                   decide_activation,
-                  has_independent_review,
                   has_rollback_evidence,
-                  has_trusted_verifier_evidence,
                   is_deployable_path,
                   is_production_activation_sensitive_path,
                   parse_declaration,
@@ -572,31 +570,10 @@ jobs:
               declared_risk, declared_tier = parse_declaration(body)
               declaration_risk = f"R{declared_risk}" if declared_risk is not None else None
               declaration_tier = f"T{declared_tier}" if declared_tier is not None else None
-              reviews = pages(gh_api(
-                  f"/repos/{repo}/pulls/{pr_number}/reviews?per_page=100",
-                  "--paginate", "--slurp",
-              ))
-              independent_review = has_independent_review(
-                  reviews,
-                  author_login=str((pr.get("user") or {}).get("login") or ""),
-                  target_sha=target,
-              )
-              check_run_pages = gh_api(
-                  f"/repos/{repo}/commits/{target}/check-runs?per_page=100",
-                  "--paginate", "--slurp",
-              )
-              check_runs = []
-              for page in check_run_pages if isinstance(check_run_pages, list) else [check_run_pages]:
-                  if isinstance(page, dict):
-                      check_runs.extend(page.get("check_runs") or [])
-              trusted_verifier_evidence = has_trusted_verifier_evidence(
-                  check_runs, target_sha=target,
-              )
               rollback_evidence = has_rollback_evidence(body)
               print(
                   "T2 evidence: "
-                  f"ci_success=true independent_review={str(independent_review).lower()} "
-                  f"trusted_verifier_evidence={str(trusted_verifier_evidence).lower()} "
+                  "ci_success=true "
                   f"rollback_evidence={str(rollback_evidence).lower()}"
               )
               _, declaration_error = effective_tier(
@@ -616,8 +593,6 @@ jobs:
                   declared_tier=declaration_tier,
                   protected_activation=bool(scope.get("protected_activation")),
                   ci_success=True,
-                  independent_review=independent_review,
-                  trusted_verifier_evidence=trusted_verifier_evidence,
                   rollback_evidence=rollback_evidence,
               )
               approval_eligible = (

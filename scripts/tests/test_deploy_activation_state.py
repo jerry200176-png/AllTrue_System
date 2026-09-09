@@ -22,9 +22,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_manual_activation,
     environment_protection_is_valid,
     effective_tier,
-    has_independent_review,
     has_rollback_evidence,
-    has_trusted_verifier_evidence,
     is_application_runtime_path,
     is_deployable_path,
     is_production_activation_sensitive_path,
@@ -49,16 +47,17 @@ class DeployActivationPolicyTest(unittest.TestCase):
         )
         self.assertEqual(result["decision"], "auto")
 
-    def test_t2_without_complete_evidence_is_held(self):
+    def test_t2_without_ci_or_rollback_evidence_is_held(self):
         result = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,
             machine_validated=True, machine_tier="T2", declared_risk="R2",
-            declared_tier="T2", ci_success=True,
+            declared_tier="T2",
         )
         self.assertEqual(result["decision"], "awaiting-activation")
-        self.assertIn("independent review", result["reason"])
+        self.assertIn("successful CI", result["reason"])
+        self.assertIn("rollback evidence", result["reason"])
 
-    def test_validated_reversible_t2_is_auto_with_canonical_evidence(self):
+    def test_validated_reversible_t2_is_auto_without_second_reviewer(self):
         scope = classify_activation_scope(
             ["frontend/src/pages/SmartCalendar.vue"], "+schedule conflict"
         )
@@ -67,7 +66,7 @@ class DeployActivationPolicyTest(unittest.TestCase):
         result = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,
             machine_validated=True, machine_tier=scope["tier_name"], declared_risk="R2",
-            declared_tier="T2", ci_success=True, independent_review=True,
+            declared_tier="T2", ci_success=True,
             rollback_evidence=True,
         )
         self.assertEqual(result["decision"], "auto")
@@ -76,7 +75,7 @@ class DeployActivationPolicyTest(unittest.TestCase):
         result = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,
             machine_validated=True, machine_tier="T3", declared_risk="R3",
-            declared_tier="T3", ci_success=True, independent_review=True,
+            declared_tier="T3", ci_success=True,
             rollback_evidence=True,
         )
         self.assertEqual(result["decision"], "awaiting-activation")
@@ -222,101 +221,6 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertFalse(has_rollback_evidence("**Rollback:** <!-- revert SHA / prior deploy -->"))
         self.assertFalse(has_rollback_evidence("**Rollback:** n/a"))
         self.assertTrue(has_rollback_evidence("**Rollback:** revert commit abc123 and rerun deploy"))
-
-    def test_independent_review_must_approve_exact_target_and_not_author(self):
-        target = "a" * 40
-        reviews = [
-            {"user": {"login": "author"}, "state": "APPROVED", "commit_id": target},
-            {"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "b" * 40},
-        ]
-        self.assertFalse(has_independent_review(reviews, author_login="author", target_sha=target))
-        reviews[1]["commit_id"] = target
-        self.assertTrue(has_independent_review(reviews, author_login="author", target_sha=target))
-        reviews.append({"user": {"login": "verifier"}, "state": "CHANGES_REQUESTED", "commit_id": target})
-        self.assertFalse(has_independent_review(reviews, author_login="author", target_sha=target))
-
-    def test_trusted_verifier_evidence_is_external_exact_target_and_not_self_certified(self):
-        target = "a" * 40
-        run = {
-            "id": 12345,
-            "name": "Agent Session Provenance",
-            "status": "completed",
-            "conclusion": "success",
-            "head_sha": target,
-            "app": {"slug": "github-actions"},
-            "output": {
-                "summary": "\n".join([
-                    "schema_version: 1.0",
-                    "provenance_type: agent-session",
-                    "role: verifier",
-                    f"target_sha: {target}",
-                    "verdict: APPROVE",
-                    "session_id: verifier-session-123",
-                    "implementing_session_id: implementing-session-456",
-                    "execution_id: 12345",
-                    "self_certified: false",
-                ])
-            },
-        }
-        self.assertTrue(has_trusted_verifier_evidence([run], target_sha=target))
-
-        run["output"]["summary"] = run["output"]["summary"].replace(
-            "self_certified: false", "self_certified: true"
-        )
-        self.assertFalse(has_trusted_verifier_evidence([run], target_sha=target))
-
-    def test_trusted_verifier_evidence_rejects_wrong_sha_same_session_or_body_claim(self):
-        target = "a" * 40
-        body_claim = {
-            "name": "Independent Agent Verifier",
-            "status": "completed",
-            "conclusion": "success",
-            "head_sha": target,
-            "id": 12345,
-            "app": {"slug": "github-actions"},
-            "output": {"summary": f"verdict: APPROVE\ntarget_sha: {target}"},
-        }
-        self.assertFalse(has_trusted_verifier_evidence([body_claim], target_sha=target))
-        malformed = {
-            "id": 12345,
-            "name": "Independent Agent Verifier",
-            "status": "completed",
-            "conclusion": "success",
-            "head_sha": "b" * 40,
-            "app": {"slug": "github-actions"},
-            "output": {"summary": ""},
-        }
-        self.assertFalse(has_trusted_verifier_evidence([malformed], target_sha=target))
-
-        same_session = {
-            "id": 12345,
-            "name": "Independent Agent Verifier",
-            "status": "completed",
-            "conclusion": "success",
-            "head_sha": target,
-            "app": {"slug": "github-actions"},
-            "output": {"summary": "\n".join([
-                "schema_version: 1.0",
-                "provenance_type: agent-session",
-                "role: verifier",
-                f"target_sha: {target}",
-                "verdict: PASS",
-                "session_id: same-session",
-                "implementing_session_id: same-session",
-                "execution_id: 12345",
-                "self_certified: false",
-            ])},
-        }
-        self.assertFalse(has_trusted_verifier_evidence([same_session], target_sha=target))
-
-    def test_t2_accepts_trusted_verifier_evidence_without_second_github_identity(self):
-        result = decide_activation(
-            event_name="workflow_run", deployable=True, classifier_available=True,
-            machine_validated=True, machine_tier="T2", declared_risk="R2",
-            declared_tier="T2", ci_success=True, trusted_verifier_evidence=True,
-            rollback_evidence=True,
-        )
-        self.assertEqual(result["decision"], "auto")
 
     def test_understated_and_mismatched_declarations_fail_closed(self):
         understated = decide_activation(
@@ -495,15 +399,12 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('names != ["main"]', gate)
 
     def test_validated_t2_does_not_reference_founder_environment(self):
-        self.assertIn("independent_review", self.workflow)
-        self.assertIn("trusted_verifier_evidence", self.workflow)
         self.assertIn("rollback_evidence", self.workflow)
-        self.assertIn("/reviews?per_page=100", self.workflow)
-        self.assertIn("/check-runs?per_page=100", self.workflow)
-        self.assertIn("has_trusted_verifier_evidence", self.workflow)
-        self.assertIn("author_login", self.workflow)
-        self.assertIn("target_sha=target", self.workflow)
         self.assertIn("ci_success=True", self.workflow)
+        self.assertNotIn("has_independent_review", self.workflow)
+        self.assertNotIn("has_trusted_verifier_evidence", self.workflow)
+        self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
+        self.assertNotIn("/check-runs?per_page=100", self.workflow)
         self.assertIn("decision[\"effective_tier\"] in {\"T2\", \"T3\"}", self.workflow)
         self.assertIn("bool(scope.get(\"protected_activation\"))", self.workflow)
 
