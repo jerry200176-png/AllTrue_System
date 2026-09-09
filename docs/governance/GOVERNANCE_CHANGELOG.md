@@ -3,8 +3,8 @@
 ## 2026-09-09 — Minimal autonomous production flow (#2652)
 
 - Reconciled the release runbook and risk policy with the implemented state
-  machine: validated reversible T0/T1 and evidence-complete T2 changes
-  auto-deploy after CI; T3/protected or ambiguous changes wait for same-run
+  machine: validated reversible T0/T1/T2 changes follow deterministic gates;
+  T1/T2 auto-deploy after CI and rollback checks; T3/protected or ambiguous changes wait for same-run
   Founder Environment approval; every deployment requires exact-SHA, health,
   and critical-smoke evidence.
 - Superseded wording that treated manual dispatch plus no-reviewer Environment
@@ -13,14 +13,14 @@
   T2; no Environment setting, permission, secret, merge, deploy, or production
   data changed in this work.
 
-## 2026-09-09 — Remove blanket T2 Environment friction (#2652 follow-up)
+## 2026-09-09 — Remove T2 verifier ceremony (#2652 follow-up)
 
-- T2 now remains autonomous only when the exact target has successful CI, a
-  current APPROVED review from a distinct reviewer, and a concrete rollback
-  declaration. Missing evidence is ambiguous and remains held.
+- T2 routine reversible releases now require exact-target CI, rollback
+  readiness, and deterministic non-protected classification; a second human or
+  AI verifier is not required to simulate two-person approval.
 - `production-activation` is reserved for T3/protected and ambiguous paths;
-  its static Founder reviewer policy is not used to gate ordinary evidence-
-  complete T2 delivery. No Environment setting or production action changed.
+  its static Founder reviewer policy is not used to gate ordinary T2 delivery.
+  No Environment setting or production action changed.
 
 ## 2026-09-04 — Retrospective version record for Archify orientation (#2447)
 
