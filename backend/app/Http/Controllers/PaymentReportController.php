@@ -1111,8 +1111,12 @@ class PaymentReportController extends Controller
         ]);
     }
 
-    private function tutoringPaymentBlocked(StudentClass $course)
+    private function tutoringPaymentBlocked($course)
     {
+        if (!$course instanceof StudentClass) {
+            return null;
+        }
+
         if (strtolower(trim((string) ($course->ClassType ?? ''))) !== 'tutoring') {
             return null;
         }
