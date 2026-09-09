@@ -45,6 +45,7 @@
     }
   },
   "workflows": {
+    "monthly-leave-boundary-inventory.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Workflow is manual-confirmed, pinned-SSH, and invokes a read-only artisan inventory command; no apply/execute/write path."},
     "1387-db-grant-repair.yml": {
       "classification": "legacy-case-specific-mutation",
       "production_mutation": "confirmed",
