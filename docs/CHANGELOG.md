@@ -1,3 +1,8 @@
+## 2026-09-09 — fix(ux): 修正手機意見與建議表單排版
+<!-- release-notes: staff_update=staff-2026-09-09-feedback-mobile-layout -->
+- 修正手機開啟「意見與建議」時，回饋類型選項被拉寬、文字難以閱讀且送出按鈕不易操作的問題；三種選項現在會維持清楚可讀的版面。
+- 不改回報內容、附件、權限或既有回報狀態流程。
+
 ## 2026-09-08 — fix(ux): 繳費狀態明確標示為非操作項目
 <!-- release-notes: staff_update=staff-2026-09-08-payment-status-affordance -->
 - 回補今天已完成 production 驗證但漏進教職員「版本更新」的課程繳費狀態 UX 修正：未繳費／待對帳是狀態，不會再呈現成可點擊按鈕。

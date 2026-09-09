@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-09-feedback-mobile-layout",
+    "publishedAt": "2026-09-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "手機意見回報排版修正",
+    "summary": "手機上的意見選項更清楚，送出按鈕也能正常操作。",
+    "items": [
+      "修正手機開啟「意見與建議」時，選項文字被擠到畫面邊緣的問題，三種回饋方向都能正常閱讀。",
+      "回報表單的送出按鈕在手機上維持可操作，不改回報內容、附件、權限或處理流程。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正手機開啟「意見與建議」時，選項文字被擠到畫面邊緣的問題，三種回饋方向都能正常閱讀。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "回報表單的送出按鈕在手機上維持可操作，不改回報內容、附件、權限或處理流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-09:feedback-mobile-layout"
+    ],
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "staff-2026-09-08-subject-count-final-total",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,
