@@ -13,6 +13,11 @@
 **Review / protected-boundary evidence：** <!-- T2: independent review context; T3: Founder decision packet and exact boundary; otherwise N/A -->
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
 
+## Production Release Impact (required for deployable changes)
+<!-- Pick exactly one. This is machine-readable; publication still uses the existing CHANGELOG/STAFF_UPDATES flow. -->
+Release-Impact: user-visible
+<!-- Replace the value with exactly one of: user-visible, internal, no-user-facing-note. -->
+
 > **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
 > ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用，**merge 前需 resolve 所有 thread**）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
 > **T2/R2**：CI 全綠 + independent review + 本 checklist 據實填寫即可由 Agent merge，無 protected Founder decision 時不需人類橡皮圖章。
@@ -48,6 +53,7 @@
 ## Checklist
 - [ ] 已 push feature branch；**merge 前** CI / Presubmit / Security 需全綠（由負責人跟到 completed）
 - [ ] Risk-Class 已宣告且與實際 diff 一致
+- [ ] `Release-Impact` 已宣告且與實際 diff 一致；`user-visible` 已更新 CHANGELOG
 - [ ] 有改 `backend/app/`、`backend/routes/`、`frontend/src/` → 已更新 `docs/CHANGELOG.md`（docs-only / 純 workflow 可略，見團隊慣例）
 - [ ] 有 DB migration → 併 PR 說明上線後由 `deploy.yml` migrate；不在 production 手動試跑 full test
 - [ ] 有前端 deployable diff → merge 後確認 `deploy.yml` 成功，必要時驗 `version.json` / health

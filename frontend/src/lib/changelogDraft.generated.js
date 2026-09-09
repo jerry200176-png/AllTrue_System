@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.08",
     "date": "2026-09-08",
     "title": "2026.09.08 草稿（未發布）",
-    "summary": "修正超級管理員看不到版本更新內容的問題；Parent Binding authentication and campus scope",
+    "summary": "修正超級管理員看不到版本更新內容的問題；繳費狀態明確標示為非操作項目",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "繳費狀態明確標示為非操作項目",
           "Parent Binding authentication and campus scope",
           "老師科目數不顯示自我分母占比",
           "Portal V1 correctness and existing-data home summary",
@@ -41,13 +42,13 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "修正超級管理員看不到版本更新內容的問題",
+      "繳費狀態明確標示為非操作項目",
       "Parent Binding authentication and campus scope",
       "老師科目數不顯示自我分母占比",
       "Portal V1 correctness and existing-data home summary",
       "科目數完整加總後才除以 8",
       "Cmd-K 可搜尋授權的學生、老師與課程",
-      "意見與建議入口更容易使用",
-      "導覽搜尋範圍與高頻查找提示更清楚"
+      "意見與建議入口更容易使用"
     ]
   },
   {
