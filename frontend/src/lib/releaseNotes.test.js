@@ -122,4 +122,9 @@ assert.ok(
     .some((u) => u.id === 'parent-update-2026-07-26-leave'),
 );
 
+const currentParentNotes = listActiveParentUpdates({ now: new Date('2026-09-10T12:00:00'), limit: 2 });
+assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-09-learning-assessment');
+assert.strictEqual(currentParentNotes[0].title, '學習評量重點更清楚');
+assert.match(currentParentNotes[0].summary, /最近學了什麼/);
+
 console.log('releaseNotes.test.js: ok');

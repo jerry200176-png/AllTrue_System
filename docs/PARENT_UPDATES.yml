@@ -9,6 +9,14 @@
 # Then commit frontend/src/lib/parentUpdates.generated.js (CI checks drift).
 
 updates:
+  - id: parent-update-2026-09-09-learning-assessment
+    published_at: "2026-09-09"
+    expires_at: "2026-10-09"
+    kind: improvement
+    title: 學習評量重點更清楚
+    summary: 登入後可以先看到最近學了什麼、本週重點、老師建議、回家要做什麼，以及目前的下一步。
+    details: 已核准的學習評量仍可從「學習」分頁逐堂展開查看；尚未完成老師複核時，頁面會清楚說明目前沒有可查看的評量內容。
+
   - id: parent-update-2026-09-03-multi-guardian
     published_at: "2026-09-03"
     expires_at: "2026-10-03"

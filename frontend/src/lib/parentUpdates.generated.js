@@ -4,6 +4,17 @@
  */
 export const parentUpdates = [
   {
+    "id": "parent-update-2026-09-09-learning-assessment",
+    "kind": "improvement",
+    "title": "學習評量重點更清楚",
+    "summary": "登入後可以先看到最近學了什麼、本週重點、老師建議、回家要做什麼，以及目前的下一步。",
+    "details": "已核准的學習評量仍可從「學習」分頁逐堂展開查看；尚未完成老師複核時，頁面會清楚說明目前沒有可查看的評量內容。",
+    "publishedAt": "2026-09-09",
+    "expiresAt": "2026-10-09",
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "parent-update-2026-09-03-multi-guardian",
     "kind": "improvement",
     "title": "多位家長可各自登入",
