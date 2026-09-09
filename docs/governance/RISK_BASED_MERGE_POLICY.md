@@ -5,7 +5,7 @@
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
 **Founder Decision:** 2026-07-18 — risk-tiered approvals; **not** universal Founder rubber-stamp  
-**Founder Decision:** 2026-08-29 — T0/T1 work is autonomous after required gates; T2 requires independent review, CI, and rollback evidence; T3/protected work may be prepared autonomously but stops before protected execution or activation for Founder approval. This decision supersedes the prior solo-mode R2/R3 merge wording. Fleet policy remains the general capability table; this AllTrue overlay retains stricter product safety boundaries.
+**Founder Decision:** 2026-08-29 — T0/T1 work is autonomous after required gates; evidence-complete reversible T2 may auto-deploy after independent review, CI, and rollback evidence; T3/protected work may be prepared autonomously but stops before protected execution or activation for Founder approval. This decision supersedes the prior solo-mode R2/R3 merge wording. Fleet policy remains the general capability table; this AllTrue overlay retains stricter product safety boundaries.
 
 ## Purpose
 
@@ -60,14 +60,16 @@ activation. T0/T1 deploys do not reference the protected
 `production-activation` environment; exact-SHA, required CI, preflight,
 health/smoke, rollback, and fail-closed behavior remain mandatory.
 
-T2/T3, unknown classifications, production executor changes, security/data
-boundaries, and irreversible operations stay held for risk-appropriate review
-or the protected Founder boundary. All activation events use the same static
-`production-activation` Environment policy: Founder required reviewer,
-self-review allowed, administrator bypass disabled, and main-only deployment
-branch policy. Workflow-dispatch typed confirmation remains only for exceptional
-manual phases; it is not a second normal approval path. No fake reviewer or
-admin bypass is introduced.
+T2 changes with independent review, successful CI, rollback evidence, and
+reversible scope may auto-deploy. Missing or contradictory T2 evidence is
+ambiguous and stays held. T3, unknown classifications, production executor
+changes, security/data boundaries, and irreversible operations stay held for
+risk-appropriate review or the protected Founder boundary. Whenever an
+activation references `production-activation`, all supported events use the same
+static policy: Founder required reviewer, self-review allowed, administrator
+bypass disabled, and main-only deployment branch policy. Workflow-dispatch typed
+confirmation remains only for exceptional manual phases; it is not a second
+normal approval path. No fake reviewer or admin bypass is introduced.
 
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.

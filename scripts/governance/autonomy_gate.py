@@ -18,6 +18,7 @@ RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 
 _RISK_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?\*?\*?Risk-Class\*?\*?\s*:\s*\*?\*?\s*(R[0-3])\b")
 _TIER_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?\*?\*?Autonomy-Tier\*?\*?\s*:\s*\*?\*?\s*(T[0-3])\b")
+_ROLLBACK_RE = re.compile(r"(?im)^\s*(?:[-*]\s+)?(?:\*\*)?Rollback(?:\*\*)?\s*:\s*(?:\*\*)?\s*(.+)$")
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 _T3_PREFIXES = (
@@ -216,6 +217,41 @@ def parse_declaration(body: str) -> tuple[int | None, int | None]:
     return risk, tier
 
 
+def has_rollback_evidence(body: str) -> bool:
+    """Require a concrete rollback value rather than a template placeholder."""
+
+    match = _ROLLBACK_RE.search(body or "")
+    if not match:
+        return False
+    value = re.sub(r"<!--.*?-->", "", match.group(1), flags=re.DOTALL).strip().lower()
+    return value not in {"", "n/a", "na", "none", "tbd", "todo", "___", "..."}
+
+
+def has_independent_review(
+    reviews: Iterable[dict[str, object]], *, author_login: str, target_sha: str
+) -> bool:
+    """Return true only for a current-target approval by someone other than author."""
+
+    if not author_login or not _FULL_SHA_RE.fullmatch(target_sha or ""):
+        return False
+    latest_by_login: dict[str, dict[str, object]] = {}
+    for review in reviews:
+        if not isinstance(review, dict):
+            continue
+        user = review.get("user")
+        login = user.get("login") if isinstance(user, dict) else None
+        if not login:
+            continue
+        latest_by_login[str(login).lower()] = review
+    author = author_login.lower()
+    return any(
+        login != author
+        and str(review.get("state", "")).upper() == "APPROVED"
+        and review.get("commit_id") == target_sha
+        for login, review in latest_by_login.items()
+    )
+
+
 def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     """Derive the minimum safe tier from paths and diff text."""
 
@@ -315,8 +351,17 @@ def decide_activation(
     declared_risk: str | None = None,
     declared_tier: str | None = None,
     protected_activation: bool = False,
+    ci_success: bool = False,
+    independent_review: bool = False,
+    rollback_evidence: bool = False,
 ) -> dict[str, str]:
-    """Choose automatic activation only for validated reversible changes."""
+    """Choose automatic activation only for validated reversible changes.
+
+    T2 is eligible for the autonomous path only when the canonical review
+    contract is complete: the exact target has successful CI, a distinct
+    reviewer approved that target, and the PR contains a usable rollback
+    declaration. T3/protected paths never become automatic through evidence.
+    """
 
     if not deployable:
         return {"decision": "no-op", "effective_tier": "none", "reason": "non-deployable change"}
@@ -335,6 +380,17 @@ def decide_activation(
         return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": "production-side-effect boundary requires protected activation"}
     if effective in (0, 1):
         return {"decision": "auto", "effective_tier": f"T{effective}", "reason": f"validated reversible {declared_risk}/{declared_tier} change is auto-deployable"}
+    if effective == 2:
+        missing = []
+        if not ci_success:
+            missing.append("successful CI")
+        if not independent_review:
+            missing.append("independent review")
+        if not rollback_evidence:
+            missing.append("rollback evidence")
+        if not missing:
+            return {"decision": "auto", "effective_tier": "T2", "reason": "validated reversible R2/T2 change has independent review, successful CI, and rollback evidence"}
+        return {"decision": "awaiting-activation", "effective_tier": "T2", "reason": "T2 evidence incomplete; Founder approval required: " + ", ".join(missing)}
     return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": f"effective tier T{effective} requires Founder activation"}
 
 
@@ -417,11 +473,12 @@ def environment_protection_is_valid(
 ) -> bool:
     """Validate the single static Founder production environment boundary.
 
-    Every activation event uses the same GitHub Environment configuration:
-    the Founder is the required reviewer, self-review is allowed for this
-    single-Founder repository, administrator bypass is checked by the
-    workflow, and deployment is restricted to ``main``. Manual exceptional
-    phases additionally retain their typed confirmation step in ``deploy.yml``.
+    Every protected activation event uses the same GitHub Environment
+    configuration: the Founder is the required reviewer, self-review is
+    allowed for this single-Founder repository, administrator bypass is checked
+    by the workflow, and deployment is restricted to ``main``. Manual
+    exceptional phases additionally retain their typed confirmation step in
+    ``deploy.yml``. Evidence-complete reversible T2 does not call this gate.
     """
 
     if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch"}:
@@ -462,6 +519,8 @@ __all__ = [
     "classify_production_runtime",
     "environment_protection_is_valid",
     "effective_tier",
+    "has_independent_review",
+    "has_rollback_evidence",
     "is_application_runtime_path",
     "is_deployable_path",
     "is_production_activation_sensitive_path",

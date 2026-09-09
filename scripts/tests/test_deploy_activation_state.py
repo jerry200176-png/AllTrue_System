@@ -22,6 +22,8 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_manual_activation,
     environment_protection_is_valid,
     effective_tier,
+    has_independent_review,
+    has_rollback_evidence,
     is_application_runtime_path,
     is_deployable_path,
     is_production_activation_sensitive_path,
@@ -46,15 +48,37 @@ class DeployActivationPolicyTest(unittest.TestCase):
         )
         self.assertEqual(result["decision"], "auto")
 
-    def test_t2_and_t3_are_held(self):
-        for tier in ("T2", "T3"):
-            with self.subTest(tier=tier):
-                result = decide_activation(
-                    event_name="workflow_run", deployable=True, classifier_available=True,
-                    machine_validated=True, machine_tier=tier,
-                    declared_risk=f"R{tier[-1]}", declared_tier=tier,
-                )
-                self.assertEqual(result["decision"], "awaiting-activation")
+    def test_t2_without_complete_evidence_is_held(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T2", declared_risk="R2",
+            declared_tier="T2", ci_success=True,
+        )
+        self.assertEqual(result["decision"], "awaiting-activation")
+        self.assertIn("independent review", result["reason"])
+
+    def test_validated_reversible_t2_is_auto_with_canonical_evidence(self):
+        scope = classify_activation_scope(
+            ["frontend/src/pages/SmartCalendar.vue"], "+schedule conflict"
+        )
+        self.assertEqual(scope["tier_name"], "T2")
+        self.assertFalse(scope["protected_activation"])
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier=scope["tier_name"], declared_risk="R2",
+            declared_tier="T2", ci_success=True, independent_review=True,
+            rollback_evidence=True,
+        )
+        self.assertEqual(result["decision"], "auto")
+
+    def test_t3_remains_protected_even_with_complete_evidence(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T3", declared_risk="R3",
+            declared_tier="T3", ci_success=True, independent_review=True,
+            rollback_evidence=True,
+        )
+        self.assertEqual(result["decision"], "awaiting-activation")
 
     def test_production_side_effect_is_held_even_when_declared_t0_or_t1(self):
         for tier, risk in (("T0", "R0"), ("T1", "R1")):
@@ -192,6 +216,23 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertEqual((risk, tier), (1, 1))
         self.assertEqual(effective_tier(1, risk, tier), (1, None))
         self.assertEqual(effective_tier(3, risk, tier)[0], None)
+
+    def test_rollback_evidence_rejects_template_placeholder(self):
+        self.assertFalse(has_rollback_evidence("**Rollback:** <!-- revert SHA / prior deploy -->"))
+        self.assertFalse(has_rollback_evidence("**Rollback:** n/a"))
+        self.assertTrue(has_rollback_evidence("**Rollback:** revert commit abc123 and rerun deploy"))
+
+    def test_independent_review_must_approve_exact_target_and_not_author(self):
+        target = "a" * 40
+        reviews = [
+            {"user": {"login": "author"}, "state": "APPROVED", "commit_id": target},
+            {"user": {"login": "verifier"}, "state": "APPROVED", "commit_id": "b" * 40},
+        ]
+        self.assertFalse(has_independent_review(reviews, author_login="author", target_sha=target))
+        reviews[1]["commit_id"] = target
+        self.assertTrue(has_independent_review(reviews, author_login="author", target_sha=target))
+        reviews.append({"user": {"login": "verifier"}, "state": "CHANGES_REQUESTED", "commit_id": target})
+        self.assertFalse(has_independent_review(reviews, author_login="author", target_sha=target))
 
     def test_understated_and_mismatched_declarations_fail_closed(self):
         understated = decide_activation(
@@ -351,7 +392,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Checkout target revision for gate policy", self.workflow)
         self.assertIn("production environment protection is not configured", self.workflow)
         self.assertIn("required_reviewers_configured", self.workflow)
-        self.assertIn("all activation events require the Founder required-reviewer gate", self.workflow)
+        self.assertIn("protected activation events require the Founder required-reviewer gate", self.workflow)
         self.assertIn("environment_protection_is_valid", self.workflow)
         self.assertIn('EVENT_NAME: ${{ github.event_name }}', self.workflow)
         self.assertIn('PHASE: ${{ inputs.phase }}', self.workflow)
@@ -368,6 +409,16 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("prevent_self_review", gate)
         self.assertIn("environment.get(\"can_admins_bypass\") is not False", gate)
         self.assertIn('names != ["main"]', gate)
+
+    def test_validated_t2_does_not_reference_founder_environment(self):
+        self.assertIn("independent_review", self.workflow)
+        self.assertIn("rollback_evidence", self.workflow)
+        self.assertIn("/reviews?per_page=100", self.workflow)
+        self.assertIn("author_login", self.workflow)
+        self.assertIn("target_sha=target", self.workflow)
+        self.assertIn("ci_success=True", self.workflow)
+        self.assertIn("decision[\"effective_tier\"] in {\"T2\", \"T3\"}", self.workflow)
+        self.assertIn("bool(scope.get(\"protected_activation\"))", self.workflow)
 
     def test_manual_workflow_revision_is_canonical_main(self):
         self.assertIn('WORKFLOW_REF: ${{ github.ref }}', self.workflow)

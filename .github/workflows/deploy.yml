@@ -498,6 +498,8 @@ jobs:
                   classify_activation_scope,
                   effective_tier,
                   decide_activation,
+                  has_independent_review,
+                  has_rollback_evidence,
                   is_deployable_path,
                   is_production_activation_sensitive_path,
                   parse_declaration,
@@ -554,8 +556,8 @@ jobs:
                   emit("awaiting-activation", "unknown", "none", "no merged PR provenance for current main target; fail closed")
                   sys.exit(0)
 
-              pr = merged[0]
-              pr_number = str(pr.get("number", "unknown"))
+              pr_number = str(merged[0].get("number", "unknown"))
+              pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
               paths = [item.get("filename", "") for item in files]
               patch_parts = []
               for item in files:
@@ -569,6 +571,21 @@ jobs:
               declared_risk, declared_tier = parse_declaration(body)
               declaration_risk = f"R{declared_risk}" if declared_risk is not None else None
               declaration_tier = f"T{declared_tier}" if declared_tier is not None else None
+              reviews = pages(gh_api(
+                  f"/repos/{repo}/pulls/{pr_number}/reviews?per_page=100",
+                  "--paginate", "--slurp",
+              ))
+              independent_review = has_independent_review(
+                  reviews,
+                  author_login=str((pr.get("user") or {}).get("login") or ""),
+                  target_sha=target,
+              )
+              rollback_evidence = has_rollback_evidence(body)
+              print(
+                  "T2 evidence: "
+                  f"ci_success=true independent_review={str(independent_review).lower()} "
+                  f"rollback_evidence={str(rollback_evidence).lower()}"
+              )
               _, declaration_error = effective_tier(
                   int(scope["machine_minimum_tier"]), declared_risk, declared_tier
               )
@@ -585,6 +602,9 @@ jobs:
                   machine_tier=machine_tier, declared_risk=declaration_risk,
                   declared_tier=declaration_tier,
                   protected_activation=bool(scope.get("protected_activation")),
+                  ci_success=True,
+                  independent_review=independent_review,
+                  rollback_evidence=rollback_evidence,
               )
               approval_eligible = (
                   decision["decision"] == "awaiting-activation"
@@ -703,7 +723,7 @@ jobs:
           ):
               raise SystemExit(
                   "production environment protection is not configured: "
-                  "all activation events require the Founder required-reviewer gate, "
+                  "protected activation events require the Founder required-reviewer gate, "
                   "self-review allowed, no admin bypass, and main-only deployment policy"
               )
           if environment.get("can_admins_bypass") is not False:

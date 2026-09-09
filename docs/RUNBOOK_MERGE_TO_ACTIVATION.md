@@ -11,9 +11,9 @@ changes.
 ```text
 PR checks → merged on main → main CI success → deploy.yml preflight
                               ├─ non-deployable diff → merged / no-op
-                              ├─ validated reversible T0/T1 → ready
+                              ├─ validated reversible T0/T1/T2 → ready
                               │                         → automatic deploy
-                              └─ protected T2/T3 or ambiguous evidence
+                              └─ T3/protected or ambiguous evidence
                                                         → awaiting-approval
                                                         → Founder approves the
                                                           same run's Environment
@@ -34,7 +34,7 @@ claim. A failed health or smoke check invokes the existing rollback behavior.
 |---|---|---|---|
 | T0/R0 | Required checks and docs gates | No-op for docs-only changes | None |
 | T1/R1 | Required checks, regression test, review, rollback evidence | Yes, with matching declaration and no protected production side effect | `workflow_run` |
-| T2/R2 | Required checks, independent review, rollback and production evidence | No | Same-run Founder Environment approval |
+| T2/R2 | Independent review, successful CI, rollback evidence, and reversible scope | Yes when all evidence is current; otherwise held as ambiguous | `workflow_run` auto path, or same-run Founder approval when evidence is incomplete |
 | T3/R3 | Prepared with protected-action evidence; no autonomous protected execution | No | Founder-controlled activation / mutation boundary |
 
 The authoritative classifiers are in `scripts/governance/autonomy_gate.py`.
@@ -52,10 +52,11 @@ Founder approves its pending `production-activation` Environment deployment
 once, after which the sole deploy executor proceeds. The run still requires the
 exact current `main` SHA and successful CI for that SHA.
 
-All supported activation events (`workflow_run`, `repository_dispatch`, and
-`workflow_dispatch`) use one static Environment policy: Founder required
-reviewer, self-review allowed, administrator bypass disabled, and custom
-deployment branch policy containing only `main`. The workflow verifies this
+Whenever a protected or ambiguous activation references the Environment,
+`workflow_run`, `repository_dispatch`, and `workflow_dispatch` use one static
+policy: Founder required reviewer, self-review allowed, administrator bypass
+disabled, and custom deployment branch policy containing only `main`. Validated
+reversible T2 does not reference the Environment. The workflow verifies the
 configuration and fails closed on drift. `workflow_dispatch` typed confirmation
 remains only for exceptional manual phases; it is not a second normal approval
 path.

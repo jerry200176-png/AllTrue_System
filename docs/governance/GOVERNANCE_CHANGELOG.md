@@ -3,13 +3,24 @@
 ## 2026-09-09 — Minimal autonomous production flow (#2652)
 
 - Reconciled the release runbook and risk policy with the implemented state
-  machine: validated reversible T0/T1 changes auto-deploy after CI; protected
-  or ambiguous changes wait for same-run Founder Environment approval; every
-  deployment requires exact-SHA, health, and critical-smoke evidence.
+  machine: validated reversible T0/T1 and evidence-complete T2 changes
+  auto-deploy after CI; T3/protected or ambiguous changes wait for same-run
+  Founder Environment approval; every deployment requires exact-SHA, health,
+  and critical-smoke evidence.
 - Superseded wording that treated manual dispatch plus no-reviewer Environment
   as the normal protected path. Typed confirmation remains only for exceptional
-  manual phases. No Environment setting, permission, secret, merge, deploy, or
-  production data changed in this work.
+  manual phases. This follow-up removes Environment gating from evidence-complete
+  T2; no Environment setting, permission, secret, merge, deploy, or production
+  data changed in this work.
+
+## 2026-09-09 — Remove blanket T2 Environment friction (#2652 follow-up)
+
+- T2 now remains autonomous only when the exact target has successful CI, a
+  current APPROVED review from a distinct reviewer, and a concrete rollback
+  declaration. Missing evidence is ambiguous and remains held.
+- `production-activation` is reserved for T3/protected and ambiguous paths;
+  its static Founder reviewer policy is not used to gate ordinary evidence-
+  complete T2 delivery. No Environment setting or production action changed.
 
 ## 2026-09-04 — Retrospective version record for Archify orientation (#2447)
 
