@@ -71,6 +71,82 @@ class DeployActivationPolicyTest(unittest.TestCase):
         )
         self.assertEqual(result["decision"], "auto")
 
+    def test_bounded_read_only_sensitive_change_uses_guarded_t2(self):
+        patch = """diff --git a/frontend/src/pages/BillingStatus.vue b/frontend/src/pages/BillingStatus.vue
++++ b/frontend/src/pages/BillingStatus.vue
+@@ -10,1 +10,1 @@
+-<span>{{ oldStatus }}</span>
++<span>{{ payment_status }}</span>
+"""
+        scope = classify_activation_scope(["frontend/src/pages/BillingStatus.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T2")
+        self.assertEqual(scope["activation_class"], "guarded-sensitive")
+        self.assertFalse(scope["protected_activation"])
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T2", declared_risk="R2",
+            declared_tier="T2", ci_success=True, rollback_evidence=True,
+        )
+        self.assertEqual(result["decision"], "auto")
+
+    def test_billing_effect_stays_founder_required(self):
+        patch = """diff --git a/backend/app/Http/Controllers/BillingController.php b/backend/app/Http/Controllers/BillingController.php
++++ b/backend/app/Http/Controllers/BillingController.php
+@@ -20,1 +20,1 @@
+-return response()->json(['payment_status' => $status]);
++return response()->json(['payable_amount' => calculateCharge($course)]);
+"""
+        scope = classify_activation_scope(["backend/app/Http/Controllers/BillingController.php"], patch)
+        self.assertEqual(scope["activation_class"], "founder-required")
+        self.assertTrue(scope["protected_activation"])
+
+    def test_uninspectable_sensitive_change_fails_closed(self):
+        scope = classify_activation_scope(["frontend/src/pages/BillingStatus.vue"], "")
+        self.assertEqual(scope["activation_class"], "founder-required")
+        self.assertIn("not inspectable", " ".join(scope["reasons"]))
+
+    def test_generated_history_cannot_raise_a_learning_records_change(self):
+        patch = """diff --git a/frontend/src/pages/LearningRecordsPage.vue b/frontend/src/pages/LearningRecordsPage.vue
++++ b/frontend/src/pages/LearningRecordsPage.vue
+@@ -10,1 +10,1 @@
+-<span>{{ student }}</span>
++<span>{{ instructor }}</span>
+diff --git a/frontend/src/lib/staffUpdates.generated.js b/frontend/src/lib/staffUpdates.generated.js
++++ b/frontend/src/lib/staffUpdates.generated.js
+@@ -1,1 +1,1 @@
+-const old = 'old';
++const historical = 'payment, auth, token, billing';
+"""
+        scope = classify_activation_scope(
+            ["frontend/src/pages/LearningRecordsPage.vue", "frontend/src/lib/staffUpdates.generated.js"],
+            patch,
+        )
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertEqual(scope["activation_class"], "routine")
+
+    def test_t2_write_path_and_security_path_keep_distinct_boundaries(self):
+        routine = classify_activation_scope(
+            ["backend/app/Services/ScheduleService.php"],
+            "+$schedule = $this->schedule; $schedule->save();",
+        )
+        auth = classify_activation_scope(
+            ["backend/app/Http/Controllers/AuthController.php"],
+            "+return response()->json($user);",
+        )
+        self.assertEqual(routine["tier_name"], "T2")
+        self.assertEqual(routine["activation_class"], "routine")
+        self.assertEqual(auth["activation_class"], "founder-required")
+
+    def test_sensitive_blast_radius_is_founder_required(self):
+        paths = [f"frontend/src/pages/BillingStatus{i}.vue" for i in range(4)]
+        patch = "\n".join(
+            f"diff --git a/{path} b/{path}\n+++ b/{path}\n@@ -1,1 +1,1 @@\n+<span>{{ status }}</span>"
+            for path in paths
+        )
+        scope = classify_activation_scope(paths, patch)
+        self.assertEqual(scope["activation_class"], "founder-required")
+        self.assertIn("blast radius", " ".join(scope["reasons"]))
+
     def test_t3_remains_protected_even_with_complete_evidence(self):
         result = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,

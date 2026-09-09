@@ -1,5 +1,19 @@
 # Governance changelog
 
+## 2026-09-10 — Effect-based sensitive activation classification (#2652 follow-up)
+
+- Kept T0/T1/T2 behavior and the existing exact-SHA/rollback/health/smoke/
+  production-verification executor unchanged.
+- Replaced activation's path-only T3 promotion with deterministic
+  `routine`, `guarded-sensitive`, and `founder-required` outcomes. Bounded
+  inspectable read-only sensitive diffs (maximum 3 sensitive files and 240
+  changed code lines) use the existing T2 path; control-plane, migration,
+  repair, entitlement/deduction, billing/ledger, auth/privilege/credential,
+  privacy/legal, uninspectable, or unbounded changes remain Founder-required.
+- Excluded generated historical release-note text from current-effect marker
+  scanning and added historical-patch regression coverage. No environment,
+  permission, secret, production, migration, billing, identity, or data change.
+
 ## 2026-09-09 — Minimal autonomous production flow (#2652)
 
 - Reconciled the release runbook and risk policy with the implemented state
