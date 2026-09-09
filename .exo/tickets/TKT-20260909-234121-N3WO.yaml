@@ -22,6 +22,7 @@ scope:
   - frontend/src/composables/calendar/**
   - frontend/src/components/calendar/**
   - frontend/src/pages/SmartCalendar.vue
+  - frontend/src/lib/releaseNotes.test.js
   - frontend/src/pages/CourseManagement.vue
   - frontend/e2e/**
   - backend/app/Services/CourseLeaveCascadeService.php
