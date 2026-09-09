@@ -1258,14 +1258,39 @@ jobs:
           test -n "$admin_token"
           echo "::add-mask::$admin_token"
           qa_session() {
-            curl -fsSL --proto '=https' --tlsv1.2 \
+            local attempt="$1"
+            local response_file="$RUNNER_TEMP/parent-fixture-${attempt}.json"
+            local status
+            local curl_status
+
+            set +e
+            status="$(curl -sS --proto '=https' --tlsv1.2 \
+              -o "$response_file" -w '%{http_code}' \
               -H "Authorization: Bearer $admin_token" \
               -H 'Accept: application/json' \
-              -X POST "$BASE_URL/api/v1/admin/qa/parent-fixture/session"
+              -X POST "$BASE_URL/api/v1/admin/qa/parent-fixture/session")"
+            curl_status=$?
+            set -e
+
+            if [[ "$curl_status" -ne 0 || "$status" != 2?? ]]; then
+              local body
+              body="$(sed -e 's/[[:space:]]\+$//' "$response_file" 2>/dev/null || true)"
+              {
+                echo "## Parent Portal fixture response ($attempt)"
+                echo ""
+                echo "- HTTP status: \`$status\`"
+                echo "- curl exit: \`$curl_status\`"
+                echo "- response body: \`$body\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::canonical parent fixture attempt=$attempt HTTP=$status curl_exit=$curl_status body=$body" >&2
+              return 1
+            fi
+
+            cat "$response_file"
           }
 
-          first="$(qa_session)"
-          second="$(qa_session)"
+          first="$(qa_session first)"
+          second="$(qa_session second)"
           summary="$(FIRST="$first" SECOND="$second" python3 - <<'PY'
           import base64, json, os, re
 
