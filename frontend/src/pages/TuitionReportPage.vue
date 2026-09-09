@@ -9,28 +9,18 @@
       <template #actions>
         <div class="tr-controls">
         <div class="tr-month-picker">
-          <button class="tr-arrow" @click="prevMonth" title="上一月">
-            <span class="material-symbols-outlined">chevron_left</span>
-          </button>
+          <AtIconButton icon="chevron_left" label="上一月" @click="prevMonth" />
           <span class="tr-month-label">{{ year }} 年 {{ month }} 月</span>
-          <button class="tr-arrow" @click="nextMonth" title="下一月">
-            <span class="material-symbols-outlined">chevron_right</span>
-          </button>
+          <AtIconButton icon="chevron_right" label="下一月" @click="nextMonth" />
         </div>
-        <button class="primary" @click="loadData" :disabled="loading">
-          <span class="material-symbols-outlined" style="font-size:18px">refresh</span>
-          重新整理
-        </button>
-        <button class="ghost" @click="exportCsv" :disabled="loading || !rows.length" title="匯出為 CSV">
-          <span class="material-symbols-outlined" style="font-size:18px">download</span>
-          匯出 CSV
-        </button>
+        <AtButton variant="primary" shape="rect" icon="refresh" :disabled="loading" @click="loadData">重新整理</AtButton>
+        <AtButton variant="ghost" shape="rect" icon="download" :disabled="loading || !rows.length" @click="exportCsv">匯出 CSV</AtButton>
         </div>
       </template>
     </AtPageHeader>
 
-    <div v-if="loading" class="tr-loading">
-      <span class="material-symbols-outlined spin">progress_activity</span>
+    <div v-if="loading" class="tr-loading" role="status" aria-live="polite">
+      <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span>
       載入中…
     </div>
 
@@ -53,7 +43,7 @@
         </span>
       </div>
 
-      <div v-if="!rows.length" class="tr-empty">
+      <div v-if="!rows.length" class="tr-empty" role="status">
         <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">calendar_month</span>
         <p>本分校 {{ year }}/{{ month }} 無有效課程紀錄</p>
       </div>
@@ -102,17 +92,19 @@
         </table>
       </div>
 
-      <div v-if="meta.last_page > 1" class="tr-pagination">
-        <button :disabled="meta.current_page <= 1" @click="goPage(meta.current_page - 1)">上一頁</button>
+      <nav v-if="meta.last_page > 1" class="tr-pagination" aria-label="學收報表分頁">
+        <button type="button" :disabled="meta.current_page <= 1" @click="goPage(meta.current_page - 1)">上一頁</button>
         <span class="tr-page-info">第 {{ meta.current_page }} / {{ meta.last_page }} 頁（共 {{ meta.total }} 筆）</span>
-        <button :disabled="meta.current_page >= meta.last_page" @click="goPage(meta.current_page + 1)">下一頁</button>
-      </div>
+        <button type="button" :disabled="meta.current_page >= meta.last_page" @click="goPage(meta.current_page + 1)">下一頁</button>
+      </nav>
     </template>
   </div>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
@@ -242,21 +234,6 @@ loadData();
   border-radius: 8px;
   padding: 2px;
 }
-.tr-arrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text);
-  transition: var(--transition);
-}
-.tr-arrow:hover { background: var(--border); }
-.tr-arrow .material-symbols-outlined { font-size: 20px; }
 .tr-month-label {
   font-size: 14px;
   font-weight: 600;
@@ -411,5 +388,19 @@ loadData();
   .hide-sm { display: none; }
   .show-sm-only { display: table-cell; }
   .tr-table tfoot td[colspan="4"] { display: none; }
+  .tr-controls { width: 100%; gap: 8px; }
+  .tr-month-picker { flex: 1 1 100%; justify-content: space-between; }
+  .tr-controls :deep(.at-btn) { flex: 1 1 0; }
+  .tuition-report-page :deep(.at-icon-btn) {
+    width: var(--ds-control-height-touch, 44px);
+    height: var(--ds-control-height-touch, 44px);
+  }
+}
+
+/* Reporting actions share the same touch rhythm as the rest of AllTrue. */
+.tuition-report-page button,
+.tuition-report-page :deep(.at-btn),
+.tuition-report-page :deep(.at-icon-btn) {
+  min-height: var(--ds-control-height-touch, 44px) !important;
 }
 </style>
