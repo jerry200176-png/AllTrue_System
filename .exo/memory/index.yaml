@@ -208,3 +208,15 @@ failure_modes:
       behavior, page IDs, and backend authorization unchanged.
   severity: medium
   frequency: recurring
+- id: FM-20260910-023609-U916
+  name: shared state primitives in sensitive payroll review surfaces
+  detection:
+    signal: shared state primitives in sensitive payroll review surfaces
+    source: reflection:REF-20260910-023609-1TWV
+  mitigation:
+    practice: For payroll-adjacent UI, standardize loading, error, empty, and keyboard/table
+      states while leaving calculation, locking, rules, export, authorization, and
+      API semantics untouched; validate hidden responsive branches with visible-node
+      filters.
+  severity: medium
+  frequency: recurring
