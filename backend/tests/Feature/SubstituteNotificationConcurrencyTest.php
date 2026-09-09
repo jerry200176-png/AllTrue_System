@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Notification;
+use App\Observers\NotificationObserver;
 use App\Services\SubstituteService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +12,9 @@ use Tests\TestCase;
 class SubstituteNotificationConcurrencyTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** @var array<int, string|null> */
+    protected $connectionsToTransact = [];
 
     public function test_concurrent_substitute_notification_insert_reuses_committed_source_key(): void
     {
@@ -64,10 +68,19 @@ class SubstituteNotificationConcurrencyTest extends TestCase
             $this->assertSame('Math', data_get($notification->Payload, 'subject'));
             $this->assertNull($concurrent->table('Notifications')->where('SourceKey', $sourceKey)->value('ResolvedAt'));
         } finally {
-            // The recovered row may still be locked by RefreshDatabase's
-            // transaction on the default connection; clean it up there.
+            // The competing insert is committed on the second connection, so
+            // clean it up there as well as on the default connection. This
+            // test intentionally opts out of RefreshDatabase transactions
+            // because the committed race fixture must not survive teardown.
+            $concurrent->table('Notifications')->where('SourceKey', $sourceKey)->delete();
             Notification::where('SourceKey', $sourceKey)->delete();
             DB::disconnect($connectionName);
+
+            // The creating hook is process-global in Eloquent. Restore the
+            // application observer so this concurrency test cannot alter the
+            // event listeners seen by later feature tests.
+            Notification::flushEventListeners();
+            Notification::observe(NotificationObserver::class);
         }
     }
 }
