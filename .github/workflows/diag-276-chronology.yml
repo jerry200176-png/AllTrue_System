@@ -1,0 +1,46 @@
+name: Diag 276 chronology (read-only)
+on:
+  workflow_dispatch:
+  push:
+    branches: ['cursor/diag-student-session-276-chrono']
+permissions:
+  contents: read
+concurrency:
+  group: diag-276-chronology
+  cancel-in-progress: false
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Run chronology probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          SCRIPT_B64=$(base64 -w0 scripts/diagnose-276-chronology.sh)
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            SCRIPT_B64="$SCRIPT_B64" \
+            'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          echo "$SCRIPT_B64" | base64 -d > /tmp/diagnose-276-chronology.sh
+          chmod +x /tmp/diagnose-276-chronology.sh
+          bash /tmp/diagnose-276-chronology.sh | tee /tmp/diagnose-276-chronology.txt
+          rm -f /tmp/diagnose-276-chronology.sh
+          ENDSSH
