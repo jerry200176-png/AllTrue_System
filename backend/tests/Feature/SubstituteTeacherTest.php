@@ -204,7 +204,53 @@ class SubstituteTeacherTest extends TestCase
         }
     }
 
-    /** 主任端列表：LR.TeacherID 與 schedules 代課不同步時，仍應顯示代課老師為授課者。 */
+    /** Precedence #1：無代課且 LR 與課程正班一致 → 顯示正班老師。 */
+    public function test_director_learning_records_list_shows_contract_teacher_when_aligned(): void
+    {
+        [$dirToken, $regularTeacherId, , , $lr] = $this->seedSubstituteScenario();
+
+        $list = $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+        $list->assertOk();
+        $hit = collect($list->json('data'))->firstWhere('id', $lr->id);
+        $this->assertNotNull($hit);
+        $this->assertSame($regularTeacherId, (int) ($hit['effective_teacher_id'] ?? 0));
+        $this->assertSame('正班老師', $hit['teacher_name'] ?? '');
+        $this->assertSame($regularTeacherId, (int) ($hit['TeacherID'] ?? 0));
+        $this->assertSame(
+            $regularTeacherId,
+            (int) DB::table('StudentClass')->where('ID', $lr->StudentClassID)->value('TeacherID')
+        );
+    }
+
+    /** Precedence #2 / in-app #276：無代課、LR 單堂老師與課程正班不同 → 顯示 LR 老師，不改 StudentClass。 */
+    public function test_director_learning_records_list_prefers_lr_teacher_when_no_substitute_schedule(): void
+    {
+        [$dirToken, $regularTeacherId, $replacementTeacherId, , $lr] = $this->seedSubstituteScenario();
+
+        DB::table('LearningRecord')->where('id', $lr->id)->update([
+            'TeacherID' => $replacementTeacherId,
+        ]);
+
+        $list = $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+        $list->assertOk();
+        $hit = collect($list->json('data'))->firstWhere('id', $lr->id);
+        $this->assertNotNull($hit);
+        $this->assertSame($replacementTeacherId, (int) ($hit['effective_teacher_id'] ?? 0));
+        $this->assertSame('代課老師', $hit['teacher_name'] ?? '');
+        $this->assertSame($replacementTeacherId, (int) ($hit['TeacherID'] ?? 0));
+        $this->assertSame(
+            $regularTeacherId,
+            (int) DB::table('StudentClass')->where('ID', $lr->StudentClassID)->value('TeacherID')
+        );
+    }
+
+    /** Precedence #3：正式 substitute schedule 優先於 LR.TeacherID 漂移。 */
     public function test_director_learning_records_list_shows_substitute_when_lr_teacher_id_drifts(): void
     {
         [$dirToken, $regularTeacherId, $subTeacherId, $session, $lr] = $this->seedSubstituteScenario();

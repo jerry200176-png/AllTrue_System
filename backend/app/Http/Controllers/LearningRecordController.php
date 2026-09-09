@@ -43,8 +43,10 @@ class LearningRecordController extends Controller
     }
 
     /**
-     * 評量列／詳情顯示用：依 schedules 單堂代課列解析「實際授課老師」User id，
-     * 避免 LearningRecord.TeacherID 與代課不同步時主任端仍顯示正班老師。
+     * 評量列／詳情顯示用（canonical effective instructor）：
+     * substitute schedule → LearningRecord.TeacherID → StudentClass.TeacherID。
+     * 不為單堂異動改寫課程正班；frontend/export 只消費本路徑輸出的
+     * effective_teacher_id / teacher_name（in-app #276）。
      */
     private function resolveEffectiveInstructorUserId(LearningRecord $record): int
     {
@@ -55,14 +57,22 @@ class LearningRecordController extends Controller
         if ($studentClassId <= 0) {
             return (int) ($record->TeacherID ?? 0);
         }
-        $eff = SubstituteScheduleService::effectiveInstructorUserId(
+
+        $subTid = SubstituteScheduleService::resolveSubstituteUserId(
             $studentClassId,
             $record->SessionDate,
-            $contractTid,
             $record->StartTime
         );
+        if ($subTid !== null) {
+            return $subTid;
+        }
 
-        return $eff > 0 ? $eff : (int) ($record->TeacherID ?? 0);
+        $recordTeacherId = (int) ($record->TeacherID ?? 0);
+        if ($recordTeacherId > 0) {
+            return $recordTeacherId;
+        }
+
+        return $contractTid;
     }
 
     /**
