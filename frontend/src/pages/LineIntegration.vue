@@ -41,8 +41,8 @@
           </div>
         </div>
       </div>
-      <div v-else-if="loading" class="hint" style="padding:12px 0;">載入中…</div>
-      <div v-else-if="loadError" class="hint err-banner">{{ loadError }}</div>
+      <div v-else-if="loading" class="hint li-state" role="status" aria-live="polite">載入中…</div>
+      <div v-else-if="loadError" class="hint err-banner" role="alert" aria-live="assertive">{{ loadError }}</div>
     </div>
 
     <!-- 設定表單 -->
@@ -64,36 +64,39 @@
       </div>
 
       <div class="field">
-        <label>頻道授權碼 <span class="required">*</span></label>
+          <label for="line-channel-token">頻道授權碼 <span class="required">*</span></label>
         <div class="input-row">
           <input
+            id="line-channel-token"
             v-model="form.messaging_channel_token"
             :type="show.token ? 'text' : 'password'"
             :placeholder="status?.has_channel_token ? '（已設定，輸入新值可覆蓋）' : '貼上 LINE 後台的頻道授權碼…'"
             class="mono-input"
           />
-          <button class="toggle-btn" @click="show.token = !show.token">{{ show.token ? '隱藏' : '顯示' }}</button>
+          <AtButton type="button" shape="rect" size="sm" variant="ghost" class="toggle-btn" @click="show.token = !show.token">{{ show.token ? '隱藏' : '顯示' }}</AtButton>
         </div>
         <p class="field-hint">LINE Developers → Messaging API → Channel access token（請選長期授權碼）</p>
       </div>
 
       <div class="field">
-        <label>頻道密鑰 <span class="required">*</span></label>
+          <label for="line-channel-secret">頻道密鑰 <span class="required">*</span></label>
         <div class="input-row">
           <input
+            id="line-channel-secret"
             v-model="form.messaging_channel_secret"
             :type="show.secret ? 'text' : 'password'"
             :placeholder="status?.has_channel_secret ? '（已設定，輸入新值可覆蓋）' : '貼上 LINE 後台的頻道密鑰…'"
             class="mono-input"
           />
-          <button class="toggle-btn" @click="show.secret = !show.secret">{{ show.secret ? '隱藏' : '顯示' }}</button>
+          <AtButton type="button" shape="rect" size="sm" variant="ghost" class="toggle-btn" @click="show.secret = !show.secret">{{ show.secret ? '隱藏' : '顯示' }}</AtButton>
         </div>
         <p class="field-hint">LINE Developers → Basic settings → Channel secret</p>
       </div>
 
       <div class="field">
-        <label>手機開啟代碼 <span class="optional">（選填，讓家長在 LINE 內直接開啟頁面）</span></label>
+        <label for="line-liff-id">手機開啟代碼 <span class="optional">（選填，讓家長在 LINE 內直接開啟頁面）</span></label>
         <input
+          id="line-liff-id"
           v-model="form.liff_id"
           type="text"
           placeholder="例：1234567890-AbCdEfGh"
@@ -103,10 +106,10 @@
       </div>
 
       <div class="save-row">
-        <button class="primary" @click="saveSettings" :disabled="saving">
+        <AtButton shape="rect" variant="primary" :loading="saving" @click="saveSettings">
           {{ saving ? '儲存中…' : '儲存設定' }}
-        </button>
-        <span v-if="saveMsg" class="save-msg" :class="saveOk ? 'ok' : 'err'">{{ saveMsg }}</span>
+        </AtButton>
+        <span v-if="saveMsg" class="save-msg" :class="saveOk ? 'ok' : 'err'" role="status" aria-live="polite">{{ saveMsg }}</span>
       </div>
     </div>
 
@@ -117,17 +120,17 @@
       <div class="webhook-label">LINE Webhook</div>
       <div class="url-box">
         <code>{{ status.webhook_url }}</code>
-        <button class="small ghost" @click="copy(status.webhook_url, 'webhook')">
+        <AtButton shape="rect" size="sm" variant="ghost" @click="copy(status.webhook_url, 'webhook')">
           {{ copied === 'webhook' ? '✓ 已複製' : '複製' }}
-        </button>
+        </AtButton>
       </div>
       <p class="field-hint">到 LINE Developers → Messaging API → Webhook settings，貼上此網址並開啟「Use webhook」。</p>
       <div class="webhook-label mt">Telegram Webhook</div>
       <div class="url-box">
         <code>{{ telegramWebhookUrl }}</code>
-        <button class="small ghost" @click="copy(telegramWebhookUrl, 'telegram-webhook')">
+        <AtButton shape="rect" size="sm" variant="ghost" @click="copy(telegramWebhookUrl, 'telegram-webhook')">
           {{ copied === 'telegram-webhook' ? '✓ 已複製' : '複製' }}
-        </button>
+        </AtButton>
       </div>
       <p class="field-hint">Telegram Bot 請用 BotFather 或 setWebhook 將上方網址設為 webhook。</p>
     </div>
@@ -137,12 +140,17 @@
       <h3>📋 設定步驟（點擊展開）</h3>
 
       <div v-for="(step, i) in steps" :key="i" class="step" :class="{ open: openStep === i }">
-        <button class="step-head" @click="openStep = openStep === i ? -1 : i">
+        <button
+          class="step-head"
+          :aria-expanded="openStep === i ? 'true' : 'false'"
+          :aria-controls="`line-step-${i}`"
+          @click="openStep = openStep === i ? -1 : i"
+        >
           <span class="step-num">{{ i + 1 }}</span>
           <span class="step-title">{{ step.title }}</span>
           <span class="step-arrow">{{ openStep === i ? '▲' : '▼' }}</span>
         </button>
-        <div class="step-body" v-if="openStep === i">
+        <div :id="`line-step-${i}`" class="step-body" v-if="openStep === i">
           <p v-for="(line, j) in step.lines" :key="j" v-html="line"></p>
         </div>
       </div>
@@ -159,12 +167,12 @@
         <p style="margin-top:8px;font-size:12px;color:var(--ds-ink-mute);">※ 若有同名學生，系統會提示改用「綁定 學號」</p>
       </div>
       <div class="copy-row">
-        <button class="ghost small mt" @click="copyParentGuide('short')">
+        <AtButton shape="rect" size="sm" variant="ghost" class="mt" @click="copyParentGuide('short')">
           {{ copied === 'guide-short' ? '✓ 已複製（家長簡版）' : '複製家長簡版' }}
-        </button>
-        <button class="ghost small mt" @click="copyParentGuide('full')">
+        </AtButton>
+        <AtButton shape="rect" size="sm" variant="ghost" class="mt" @click="copyParentGuide('full')">
           {{ copied === 'guide-full' ? '✓ 已複製（管理員長版）' : '複製管理員長版' }}
-        </button>
+        </AtButton>
       </div>
     </div>
 
@@ -321,11 +329,9 @@ async function loadStatus() {
         if (j.message) msg = j.message === 'Forbidden' ? '無權限檢視此分校的 LINE 設定' : humanizeApiErrorMessage(j.message, msg);
       } catch (_) { /* ignore */ }
       loadError.value = msg;
-      console.error('LINE status API error:', res.status, t);
     }
-  } catch (e) {
+  } catch {
     loadError.value = '連線失敗，請確認網路後再按「重新整理」。';
-    console.error('Failed to load LINE status:', e);
   } finally {
     loading.value = false;
   }
@@ -649,6 +655,35 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ds-ink); 
   flex-wrap: wrap;
 }
 
+/* Keep this settings workflow on the shared touch and action hierarchy. */
+.li-page .at-btn {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.li-page input {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.li-state {
+  padding: 12px 0;
+}
+.err-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  justify-content: space-between;
+}
+.err-banner .at-btn {
+  flex-shrink: 0;
+}
+.url-box .at-btn {
+  flex-shrink: 0;
+}
+.step-head {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.save-row {
+  flex-wrap: wrap;
+}
+
 .troubleshooting-list {
   margin: 0;
   padding-left: 18px;
@@ -664,7 +699,34 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ds-ink); 
 }
 
 @media (max-width: 640px) {
+  .li-page {
+    width: 100%;
+  }
+  .card {
+    padding: 16px;
+  }
   .status-row { flex-direction: column; }
   .li-top { flex-direction: column; }
+  .save-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .save-row .at-btn {
+    width: 100%;
+  }
+  .url-box {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .url-box .at-btn {
+    width: 100%;
+  }
+  .copy-row .at-btn {
+    flex: 1 1 100%;
+  }
+  .err-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 </style>
