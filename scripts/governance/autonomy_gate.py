@@ -84,6 +84,20 @@ _WORKFLOW_ONLY_PREFIXES = (
     "scripts/tests/",
 )
 
+_CONTROL_PLANE_PREFIXES = (
+    ".github/",
+    "scripts/governance/",
+    "governance/",
+    "docs/governance/",
+)
+
+_CONTROL_PLANE_EXACT = {
+    ".cursorrules",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "codex.md",
+}
+
 _T3_MARKERS = (
     "billing",
     "payment",
@@ -293,6 +307,22 @@ def is_application_runtime_path(path: str) -> bool:
     if normalized.startswith(_WORKFLOW_ONLY_PREFIXES):
         return False
     return is_deployable_path(normalized)
+
+
+def is_control_plane_path(path: str) -> bool:
+    """Identify changes effective in the delivery/control plane, not the app."""
+
+    normalized = path.replace("\\", "/")
+    return normalized in _CONTROL_PLANE_EXACT or normalized.startswith(_CONTROL_PLANE_PREFIXES)
+
+
+def is_control_plane_only_paths(paths: Iterable[str]) -> bool:
+    """Return whether a non-empty change has no application runtime files."""
+
+    normalized = [str(path).replace("\\", "/") for path in paths if path]
+    return bool(normalized) and any(is_control_plane_path(path) for path in normalized) and not any(
+        is_application_runtime_path(path) for path in normalized
+    )
 
 
 def is_production_activation_sensitive_path(path: str) -> bool:
@@ -520,8 +550,18 @@ def decide_activation(
             missing.append("rollback evidence")
         if not missing:
             return {"decision": "auto", "effective_tier": "T2", "reason": "validated reversible R2/T2 change has successful CI and rollback evidence"}
-        return {"decision": "awaiting-activation", "effective_tier": "T2", "reason": "T2 evidence incomplete; Founder approval required: " + ", ".join(missing)}
+        return {"decision": "awaiting-activation", "effective_tier": "T2", "reason": "activation blocked until required evidence is satisfied: " + ", ".join(missing)}
     return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": f"effective tier T{effective} requires Founder activation"}
+
+
+def is_founder_approval_eligible(
+    decision: dict[str, str], *, protected_activation: bool = False,
+) -> bool:
+    """Return whether an awaiting decision may enter the Founder Environment."""
+
+    return decision.get("decision") == "awaiting-activation" and (
+        protected_activation or decision.get("effective_tier") == "T3"
+    )
 
 
 def decide_manual_activation(
@@ -646,11 +686,14 @@ __all__ = [
     "classify_scope",
     "decide_activation",
     "decide_manual_activation",
+    "is_founder_approval_eligible",
     "classify_production_runtime",
     "environment_protection_is_valid",
     "effective_tier",
     "has_rollback_evidence",
     "is_application_runtime_path",
+    "is_control_plane_only_paths",
+    "is_control_plane_path",
     "is_deployable_path",
     "is_production_activation_sensitive_path",
     "parse_declaration",
