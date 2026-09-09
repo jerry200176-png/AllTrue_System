@@ -1,3 +1,8 @@
+## 2026-09-09 — fix(finance): 繳費通知與帳務中心金額一致
+<!-- release-notes: staff_update=staff-2026-09-09-tuition-slip-contract-charge -->
+- 堂數制課程的繳費通知單會沿用帳務中心的合約堂數與單堂費用計算，不會因歷史金額快照與目前合約不同而顯示較高應繳金額。
+- 本次只修正顯示投影，不建立、修改或沖銷任何帳單、收款、收據或 production 資料。
+
 ## 2026-09-09 — fix(finance): 輔導課明確標示無須繳費
 <!-- release-notes: staff_update=staff-2026-09-09-tutoring-payment-policy -->
 - 課程類型為「輔導」時，課程與學生管理會顯示「無須繳費」，不再提供繳費通知、登記繳費回報或其他付款 CTA；課程費用 projection 固定為 0。

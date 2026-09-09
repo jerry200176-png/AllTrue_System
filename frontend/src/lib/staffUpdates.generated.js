@@ -160,6 +160,45 @@ export const staffUpdates = [
     "version": "2026.09.09"
   },
   {
+    "id": "staff-2026-09-09-tuition-slip-contract-charge",
+    "publishedAt": "2026-09-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "繳費通知單與帳務金額一致",
+    "summary": "堂數制繳費通知單會依目前合約堂數與單堂費用計算應繳金額。",
+    "items": [
+      "堂數制課程的繳費通知單與帳務中心使用同一個合約金額計算，不會因歷史金額快照而顯示較高應繳金額。",
+      "本次只修正顯示投影，不建立、修改或沖銷帳單、收款、收據或既有資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "堂數制課程的繳費通知單與帳務中心使用同一個合約金額計算，不會因歷史金額快照而顯示較高應繳金額。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "本次只修正顯示投影，不建立、修改或沖銷帳單、收款、收據或既有資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-09:tuition-slip-contract-charge"
+    ],
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "staff-2026-09-09-parent-learning-assessment-controls",
     "publishedAt": "2026-09-09",
     "effectiveAt": null,
