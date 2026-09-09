@@ -14,7 +14,7 @@
         <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
         <h2>已收到問班需求</h2>
         <p>謝謝您，我們會依照您留下的時段與需求聯絡。</p>
-        <button class="admission-button" type="button" @click="resetPublic">再提交一筆需求</button>
+        <AtButton shape="rect" variant="primary" class="admission-button" @click="resetPublic">再提交一筆需求</AtButton>
       </div>
 
       <form v-else class="admission-form" @submit.prevent="submitPublic">
@@ -35,7 +35,7 @@
           <label for="admission-parent-name">家長稱呼 <span>*</span><input id="admission-parent-name" v-model.trim="publicForm.parent_name" required maxlength="64" autocomplete="name" /></label>
           <label for="admission-parent-phone">聯絡電話 <span>*</span><input id="admission-parent-phone" v-model.trim="publicForm.parent_phone" required maxlength="32" inputmode="tel" autocomplete="tel" /></label>
           <label for="admission-student-name">學生姓名 <span>*</span><input id="admission-student-name" v-model.trim="publicForm.student_name" required maxlength="64" /></label>
-          <button class="admission-button" type="button" @click="advancePublicStep">下一步</button>
+          <AtButton shape="rect" variant="primary" class="admission-button" @click="advancePublicStep">下一步</AtButton>
         </fieldset>
         <fieldset v-else>
           <legend id="admission-step-title" tabindex="-1">孩子想學什麼？</legend>
@@ -61,22 +61,26 @@
           <label>補充說明 <textarea v-model.trim="publicForm.public_notes" maxlength="500" rows="3" placeholder="例如：希望加強的單元（選填）"></textarea></label>
           <label class="admission-consent"><input v-model="publicForm.consent" type="checkbox" required /> 我同意 AllTrue 以此需求聯絡我 <span>*</span></label>
           <div class="admission-actions">
-            <button class="admission-button secondary" type="button" @click="setPublicStep(1)">上一步</button>
-            <button class="admission-button" type="submit" :disabled="busy">{{ busy ? '送出中…' : '送出問班需求' }}</button>
+            <AtButton shape="rect" variant="secondary" class="admission-button secondary" @click="setPublicStep(1)">上一步</AtButton>
+            <AtButton shape="rect" variant="primary" class="admission-button" type="submit" :loading="busy">送出問班需求</AtButton>
           </div>
         </fieldset>
       </form>
     </section>
 
     <template v-if="!standalone">
-      <header class="admission-staff-header">
-        <div><div class="admission-kicker">招生工作流 · 諮詢與試聽進度</div><h1>新生問班</h1><p>集中處理分校家長問班需求、預約體驗試聽並推進正式報名。</p></div>
-        <div class="admission-header-actions">
-          <button class="admission-button secondary" type="button" :title="publicFormUrl" @click="copyPublicLink"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>{{ copySuccess ? '已複製連結' : '複製公開問班連結' }}</button>
-          <button class="admission-button secondary" type="button" @click="openPublicForm"><span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>查看公開問班表單</button>
-          <button class="admission-button secondary" type="button" :disabled="loading" @click="loadQueue"><span class="material-symbols-outlined" aria-hidden="true">refresh</span>重新整理</button>
-        </div>
-      </header>
+      <AtPageHeader
+        title="新生問班"
+        description="集中處理分校家長問班需求、預約體驗試聽並推進正式報名。"
+        icon="how_to_reg"
+      >
+        <template #meta><span>招生工作流 · 諮詢與試聽進度</span></template>
+        <template #actions>
+          <AtButton shape="rect" variant="secondary" class="admission-button" :title="publicFormUrl" @click="copyPublicLink"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>{{ copySuccess ? '已複製連結' : '複製公開問班連結' }}</AtButton>
+          <AtButton shape="rect" variant="secondary" class="admission-button" @click="openPublicForm"><span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>查看公開問班表單</AtButton>
+          <AtButton shape="rect" variant="secondary" class="admission-button" :loading="loading" @click="loadQueue"><span v-if="!loading" class="material-symbols-outlined" aria-hidden="true">refresh</span>重新整理</AtButton>
+        </template>
+      </AtPageHeader>
       <div class="admission-filters-bar">
         <div class="admission-filters" role="search" aria-label="詢問篩選">
           <label for="admission-status-filter">狀態
@@ -108,9 +112,9 @@
           <div class="admission-flow-step"><div class="admission-flow-num">4</div><strong>試聽轉正報名</strong><small>試聽後沿用資料轉正式課</small></div>
         </div>
         <div class="admission-empty-actions">
-          <button class="admission-button" type="button" @click="copyPublicLink"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>{{ copySuccess ? '已複製問班連結！' : '複製公開問班連結' }}</button>
-          <button class="admission-button secondary" type="button" @click="openPublicForm"><span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>查看公開問班表單</button>
-          <button class="admission-button secondary" type="button" @click="loadQueue"><span class="material-symbols-outlined" aria-hidden="true">refresh</span>重新整理</button>
+          <AtButton shape="rect" variant="primary" class="admission-button" @click="copyPublicLink"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>{{ copySuccess ? '已複製問班連結！' : '複製公開問班連結' }}</AtButton>
+          <AtButton shape="rect" variant="secondary" class="admission-button secondary" @click="openPublicForm"><span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>查看公開問班表單</AtButton>
+          <AtButton shape="rect" variant="secondary" class="admission-button secondary" :loading="loading" @click="loadQueue"><span v-if="!loading" class="material-symbols-outlined" aria-hidden="true">refresh</span>重新整理</AtButton>
         </div>
         <div class="admission-empty-hint-card">
           <div class="admission-hint-title"><span class="material-symbols-outlined" aria-hidden="true">help_outline</span><strong>家長若透過 LINE、電話或現場來訪？</strong></div>
@@ -160,11 +164,11 @@
           <div v-if="!detail.owner_id && !['enrolled', 'lost'].includes(detail.status)" class="admission-panel admission-owner-panel">
             <h3>先認領這筆詢問</h3>
             <p class="admission-hint">認領後你會成為負責主任，後續聯絡與追蹤都會留在這筆紀錄。</p>
-            <button class="admission-button" type="button" :disabled="busy" @click="claimInquiry">由我負責</button>
+            <AtButton shape="rect" variant="primary" class="admission-button" :loading="busy" @click="claimInquiry">由我負責</AtButton>
           </div>
           <div v-if="!['enrolled', 'lost'].includes(detail.status)" class="admission-panel">
             <h3>安排下次追蹤</h3>
-            <div class="admission-mini-form"><input v-model="followUpAt" type="date" aria-label="下次追蹤日期" /><button class="admission-button" type="button" :disabled="busy" @click="saveFollowUp">儲存追蹤</button></div>
+            <div class="admission-mini-form"><input v-model="followUpAt" type="date" aria-label="下次追蹤日期" /><AtButton shape="rect" variant="primary" class="admission-button" :loading="busy" @click="saveFollowUp">儲存追蹤</AtButton></div>
           </div>
           <section v-if="detail.history?.length" class="admission-history" aria-label="詢問歷程">
             <h3>處理歷程</h3>
@@ -177,8 +181,8 @@
                 <p>請先電話聯絡家長確認學生目前學習狀況、想加強科目，並評估是否預約體驗試聽。</p>
                 <textarea v-model="contactNote" rows="2" maxlength="1000" placeholder="記錄本次聯絡重點（選填）"></textarea>
                 <div class="admission-action-buttons">
-                  <button class="admission-button" type="button" :disabled="busy" @click="contactInquiry">記錄已電訪聯絡</button>
-                  <button class="admission-button secondary danger-text" type="button" :disabled="busy" @click="markLost">標為暫不繼續</button>
+                  <AtButton shape="rect" variant="primary" class="admission-button" :loading="busy" @click="contactInquiry">記錄已電訪聯絡</AtButton>
+                  <AtButton shape="rect" variant="danger" class="admission-button" :loading="busy" @click="markLost">標為暫不繼續</AtButton>
                 </div>
                 <div class="admission-direct-trial-toggle"><button type="button" class="admission-link-btn" @click="showDirectTrial = !showDirectTrial">{{ showDirectTrial ? '收起直接排試聽' : '家長已明確預約？點此直接安排試聽 →' }}</button></div>
               </div>
@@ -191,24 +195,24 @@
                   <input v-model="trial.duration_minutes" type="number" min="30" max="480" step="30" required aria-label="分鐘數" />
                 </div>
                 <div class="admission-action-buttons">
-                  <button class="admission-button" type="button" :disabled="busy || !trial.teacher_id || !trial.trial_date" @click="scheduleTrial">建立試聽（帶入學生資料）</button>
-                  <button v-if="detail.status === 'contacted'" class="admission-button secondary danger-text" type="button" :disabled="busy" @click="markLost">標為暫不繼續</button>
+                  <AtButton shape="rect" variant="primary" class="admission-button" :loading="busy" :disabled="!trial.teacher_id || !trial.trial_date" @click="scheduleTrial">建立試聽（帶入學生資料）</AtButton>
+                  <AtButton v-if="detail.status === 'contacted'" shape="rect" variant="danger" class="admission-button" :loading="busy" @click="markLost">標為暫不繼續</AtButton>
                 </div>
               </div>
               <div v-if="detail.status === 'trial_scheduled'" class="admission-action-content">
                 <p>試聽課程已建立。試聽結束後，請在此記錄學生出席狀況與家長回饋。</p>
                 <select v-model="trialResult"><option value="attended">已出席</option><option value="no_show">未到</option><option value="cancelled">取消</option><option value="not_suitable">不合適</option></select>
                 <div class="admission-action-buttons">
-                  <button class="admission-button" type="button" :disabled="busy" @click="recordResult">儲存結果</button>
-                  <button class="admission-button secondary danger-text" type="button" :disabled="busy" @click="markLost">標為暫不繼續</button>
+                  <AtButton shape="rect" variant="primary" class="admission-button" :loading="busy" @click="recordResult">儲存結果</AtButton>
+                  <AtButton shape="rect" variant="danger" class="admission-button" :loading="busy" @click="markLost">標為暫不繼續</AtButton>
                 </div>
               </div>
               <div v-if="detail.status === 'trial_completed'" class="admission-action-content">
                 <p>試聽已完成（結果：<strong>{{ resultLabel(detail.trial_result) }}</strong>）。若學生決定繼續上課，可直接轉為正式報名；若暫不繼續亦可結案。</p>
                 <div class="admission-mini-form"><input v-model="formal.sessions" type="number" min="1" max="500" aria-label="正式堂數" /><input v-model="formal.start_date" type="date" aria-label="正式開課日" /></div>
                 <div class="admission-action-buttons">
-                  <button class="admission-button" type="button" :disabled="busy || !formal.start_date" @click="enroll">轉正式報名</button>
-                  <button class="admission-button secondary danger-text" type="button" :disabled="busy" @click="markLost">標為暫不繼續</button>
+                  <AtButton shape="rect" variant="primary" class="admission-button" :loading="busy" :disabled="!formal.start_date" @click="enroll">轉正式報名</AtButton>
+                  <AtButton shape="rect" variant="danger" class="admission-button" :loading="busy" @click="markLost">標為暫不繼續</AtButton>
                 </div>
               </div>
             </div>
@@ -227,6 +231,8 @@ import { admissionAction, convertAdmissionTrial, getAdmissionBranches, getAdmiss
 import { GRADES, SUBJECTS } from '../lib/constants';
 import { buildPublicAdmissionsUrl, parsePublicAdmissionsContext, matchPresetCampus } from '../lib/admissionsUrl';
 import perfFlags from '../lib/perfFlags';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({ standalone: { type: Boolean, default: false }, branchId: { type: [Number, String], default: null }, token: { type: String, default: '' }, enabled: { type: Boolean, default: null } });
 const standalone = computed(() => props.standalone);
@@ -390,7 +396,7 @@ h1 { margin: 8px 0; font-size: clamp(26px, 5vw, 36px); line-height: 1.2; }
 fieldset { border: 0; } legend { margin-bottom: 16px; font-size: 18px; font-weight: 700; }
 label { display: grid; gap: 6px; margin: 14px 0; font-size: 13px; font-weight: 600; } label span { color: var(--ds-danger); }
 input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--ds-hairline-input); border-radius: var(--ds-radius-md); background: var(--ds-canvas); color: var(--ds-ink); font: inherit; } textarea { min-height: 90px; resize: vertical; }
-.admission-button { min-height: 44px; padding: 10px 18px; border: 0; border-radius: var(--ds-radius-md); background: var(--ds-cta); color: var(--ds-on-cta); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; } .admission-button:disabled { opacity: .55; cursor: wait; } .admission-button.secondary { border: 1px solid var(--ds-hairline-input); background: transparent; color: var(--ds-ink); }
+.admission-button:not(.at-btn) { min-height: 44px; padding: 10px 18px; border: 0; border-radius: var(--ds-radius-md); background: var(--ds-cta); color: var(--ds-on-cta); font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; } .admission-button:not(.at-btn):disabled { opacity: .55; cursor: wait; } .admission-button.secondary:not(.at-btn) { border: 1px solid var(--ds-hairline-input); background: transparent; color: var(--ds-ink); }
 .admission-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 22px; } .admission-actions .admission-button:last-child { flex: 1; }
 .admission-consent { display: flex; align-items: center; gap: 8px; } .admission-consent input { width: 20px; min-height: 20px; }
 .admission-error { margin: 14px 0; padding: 10px 12px; border-radius: var(--ds-radius-md); background: var(--ds-danger-wash); color: var(--ds-danger); }
@@ -445,17 +451,39 @@ input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; bor
 .admission-action-content { display: grid; gap: 10px; }
 .admission-action-buttons { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
 .admission-direct-trial-toggle { margin-top: 4px; border-top: 1px dashed var(--ds-hairline); padding-top: 6px; }
-.admission-link-btn { border: 0; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline; }
+.admission-link-btn { min-height: 44px; padding: 8px 0; border: 0; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: underline; }
 .danger-text { color: var(--ds-danger); }
 
+/* Use the shared control rhythm for this workflow's actions. */
+.admission-page .at-btn {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.admission-page .at-btn.admission-button {
+  border-radius: var(--ds-radius-md);
+  font-weight: 700;
+}
+.admission-page .at-btn.admission-button.at-btn--primary {
+  background: var(--ds-cta);
+  color: var(--ds-on-cta);
+}
+.admission-page .at-btn.admission-button.at-btn--secondary {
+  background: var(--ds-canvas);
+  color: var(--ds-primary);
+  border-color: var(--ds-primary);
+}
+.admission-page .at-btn.admission-button.at-btn--danger {
+  background: var(--ds-danger);
+  color: #fff;
+}
+
 @media (max-width: 720px) {
-  .admission-staff-header { flex-direction: column; }
   .admission-header-actions { width: 100%; } .admission-header-actions .admission-button { flex: 1; }
   .admission-filters-bar { flex-direction: column; align-items: stretch; }
   .admission-staff-grid { grid-template-columns: 1fr; }
   .admission-meta { grid-template-columns: 1fr 1fr; }
   .admission-action-buttons { flex-direction: column; align-items: stretch; }
-  .admission-action-buttons .admission-button { width: 100%; }
+  .admission-action-buttons .admission-button,
+  .admission-action-buttons .at-btn { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; } }
 </style>
