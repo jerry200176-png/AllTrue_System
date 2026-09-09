@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "7c44470443db4421a206424c9aac83c8",
+  "session_id": "9dfc633cbff5444cab33a52c1e7e21c1",
   "project": "alltrue",
-  "task_id": "inapp-276-stale-substitute-recon",
+  "task_id": "duplicate-session-review-clarity-20260910",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "d6278204e6bc2135dd20bc6902e4311c737a0e5a",
-  "branch": "fix/inapp-276-stale-substitute-recon",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-276-stale-sub-recon",
-  "started_at": "2026-09-09T17:04:13Z",
+  "base_sha": "56449f466a811b35c71ae6f9a1484a56d3ca45c3",
+  "branch": "chore/task-duplicate-session-review-clarity-20260910",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/duplicate-session-review-clarity-20260910",
+  "started_at": "2026-09-09T18:00:36Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
