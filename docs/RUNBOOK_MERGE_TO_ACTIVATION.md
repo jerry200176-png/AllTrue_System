@@ -34,7 +34,7 @@ claim. A failed health or smoke check invokes the existing rollback behavior.
 |---|---|---|---|
 | T0/R0 | Required checks and docs gates | No-op for docs-only changes | None |
 | T1/R1 | Required checks, regression test, review, rollback evidence | Yes, with matching declaration and no protected production side effect | `workflow_run` |
-| T2/R2 | Independent review, successful CI, rollback evidence, and reversible scope | Yes when all evidence is current; otherwise held as ambiguous | `workflow_run` auto path, or same-run Founder approval when evidence is incomplete |
+| T2/R2 | Exact-target successful CI, rollback evidence, and either a non-author approval or trusted independent verifier evidence | Yes when all evidence is current; otherwise held as ambiguous | `workflow_run` auto path, or same-run Founder approval when evidence is incomplete |
 | T3/R3 | Prepared with protected-action evidence; no autonomous protected execution | No | Founder-controlled activation / mutation boundary |
 
 The authoritative classifiers are in `scripts/governance/autonomy_gate.py`.
@@ -61,8 +61,24 @@ configuration and fails closed on drift. `workflow_dispatch` typed confirmation
 remains only for exceptional manual phases; it is not a second normal approval
 path.
 
+For T2, independent evidence is either a non-author GitHub approval on the
+exact target SHA or a machine-readable PASS/APPROVE result from the existing
+Agent Session Provenance/check-run path. Verifier evidence must identify the
+exact target SHA, a verifier session and execution, a distinct implementing
+session, and `self_certified: false`. The deploy workflow reads check-run
+metadata only; PR-body claims never qualify. A normal implementing-session
+provenance check without the verifier role is not sufficient.
+
 No migration, production data repair, credential change, or billing/entitlement
 operation is authorized by this activation input.
+
+Workflow/control-plane changes have a separate boundary: the Founder decision
+for `.github/workflows/**` occurs at merge authorization because merged
+workflow code is immediately effective in GitHub. The
+`production-activation` Environment cannot delay that control-plane revision;
+it protects only the post-merge production-side-effect job in the resulting
+run. Environment approval is therefore not a substitute for Founder approval
+to merge a workflow change.
 
 ## Live settings still outside this PR
 

@@ -84,6 +84,11 @@ Independent review and required checks do not authorize protected execution. The
 
 ## Rollback
 
+Workflow/control-plane changes require the Founder decision at merge
+authorization. Once merged, the workflow revision is effective; the
+production Environment gate protects only later production side effects and
+cannot make a merged control-plane change pending.
+
 Every R1+ PR must state rollback in one of: revert commit, feature flag off, prior deploy SHA, or data rollback command (R3).
 
 ## Review topology (#876)
@@ -96,7 +101,7 @@ This repo currently has **one** human maintainer (Jerry), who is not a universal
 |---|---|---|
 | `required_approving_review_count` (ruleset `main-protection`) | `0` | `1` |
 | `require_code_owner_review` | `false` | `true` — CODEOWNERS becomes a real blocking gate, not just a review request |
-| T2 review | Independent review context plus implementing Agent evidence | A human second maintainer or separately-launched verifier Agent, plus implementing Agent evidence |
+| T2 review | Exact-target non-author approval or trusted independent verifier evidence; implementing Agent evidence remains separate | A human second maintainer or separately-launched verifier Agent, plus implementing Agent evidence |
 | T3 boundary | Founder decision before protected action; review does not replace the gate | Same protected boundary, with the additional human review if ruleset policy later requires it |
 | `dismiss_stale_reviews_on_push` | `false` | `true` — a stale approval shouldn't survive a force-push-equivalent re-push |
 
