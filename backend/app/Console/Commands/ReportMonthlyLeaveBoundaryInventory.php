@@ -73,17 +73,20 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
 
             foreach ($courses as $course) {
                 $courseCount++;
-                $campus = (int) ($course->student?->CampusID ?? 0);
+                $student = $course->student;
+                $campus = (int) ($student ? $student->getAttribute('CampusID') : 0);
                 $campusCount[$campus] = ($campusCount[$campus] ?? 0) + 1;
 
-                $sessions = $sessionsByCourse->get((int) $course->ID, collect());
+                $sessions = $sessionsByCourse->get((int) $course->getAttribute('ID'), collect());
                 $aggregate['sessions_scanned'] += $sessions->count();
                 $courseHadAnomaly = false;
 
                 foreach ($sessions as $session) {
                     $sessionDate = Carbon::parse((string) $session->SessionDate)->toDateString();
-                    $startDate = $course->StartDate ? Carbon::parse($course->StartDate)->toDateString() : null;
-                    $endDate = $course->EndDate ? Carbon::parse($course->EndDate)->toDateString() : null;
+                    $courseStartDate = $course->getAttribute('StartDate');
+                    $courseEndDate = $course->getAttribute('EndDate');
+                    $startDate = $courseStartDate ? Carbon::parse($courseStartDate)->toDateString() : null;
+                    $endDate = $courseEndDate ? Carbon::parse($courseEndDate)->toDateString() : null;
                     $kind = $startDate === null || $endDate === null
                         ? 'contract_boundary_missing'
                         : ($sessionDate < $startDate ? 'before_start' : ($sessionDate > $endDate ? 'after_end' : null));
@@ -119,7 +122,7 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
                     if (count($anomalies) < $limit) {
                         $anomalies[] = [
                             'campus_id' => $campus ?: null,
-                            'course_id' => (int) $course->ID,
+                            'course_id' => (int) $course->getAttribute('ID'),
                             'class_session_id' => (int) $session->id,
                             'session_date' => $sessionDate,
                             'boundary_kind' => $kind,
@@ -148,7 +151,7 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
             'as_of' => Carbon::now('Asia/Taipei')->toIso8601String(),
             'campus_filter' => $campusId,
             'courses_scanned' => $courseCount,
-            'campuses_with_date_mode_courses' => count(array_filter($campusCount, static fn (int $count): bool => $count > 0)),
+            'campuses_with_date_mode_courses' => count($campusCount),
             'date_mode_courses_by_campus' => $campusCount,
             'aggregate' => $aggregate,
             'bounded_anomalies' => $anomalies,
@@ -169,12 +172,12 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
         }
 
         $paidAmount = (int) (DB::table('Invoice')
-            ->where('StudentClassID', (int) $course->ID)
+            ->where('StudentClassID', (int) $course->getAttribute('ID'))
             ->where(function ($query): void {
                 $query->whereNull('Status')->orWhere('Status', '!=', 'void');
             })
             ->sum('PaidAmount'));
-        $charge = (int) ($course->Charge ?? 0);
+        $charge = (int) ($course->getAttribute('Charge') ?? 0);
         if ($paidAmount <= 0) return 'unpaid';
         return $charge > 0 && $paidAmount >= $charge ? 'paid' : 'partial';
     }
@@ -182,9 +185,9 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
     private function hasNextContract(StudentClass $course, string $sessionDate): bool
     {
         return StudentClass::query()
-            ->where('StudentID', (int) $course->StudentID)
-            ->where('ID', '!=', (int) $course->ID)
-            ->whereDate('StartDate', '>', $course->StartDate ?: $sessionDate)
+            ->where('StudentID', (int) $course->getAttribute('StudentID'))
+            ->where('ID', '!=', (int) $course->getAttribute('ID'))
+            ->whereDate('StartDate', '>', $course->getAttribute('StartDate') ?: $sessionDate)
             ->exists();
     }
 
@@ -192,8 +195,8 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
     {
         return ClassSession::query()
             ->join('StudentClass as other_sc', 'other_sc.ID', '=', 'ClassSession.StudentClassID')
-            ->where('other_sc.StudentID', (int) $course->StudentID)
-            ->where('ClassSession.StudentClassID', '!=', (int) $course->ID)
+            ->where('other_sc.StudentID', (int) $course->getAttribute('StudentID'))
+            ->where('ClassSession.StudentClassID', '!=', (int) $course->getAttribute('ID'))
             ->whereDate('ClassSession.SessionDate', Carbon::parse((string) $session->SessionDate)->toDateString())
             ->whereNotIn(DB::raw('LOWER(ClassSession.Status)'), SessionStatus::futureReservationExclusionStatuses())
             ->whereRaw('SUBSTRING(ClassSession.StartTime, 1, 5) < ?', [substr((string) $session->EndTime, 0, 5)])
