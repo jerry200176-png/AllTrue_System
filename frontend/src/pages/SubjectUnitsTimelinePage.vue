@@ -40,19 +40,14 @@
       <span class="scope-period">{{ periodLabel }}</span>
     </div>
 
-    <div v-if="loading" class="state-card" aria-live="polite">
-      <span class="material-symbols-outlined state-icon loading-icon" aria-hidden="true">progress_activity</span>
-      <span>載入中…</span>
-    </div>
+    <AtSkeleton v-if="loading" :rows="6" />
 
-    <div v-else-if="errorMessage" class="state-card state-card--error" role="alert">
-      <span class="material-symbols-outlined state-icon" aria-hidden="true">error</span>
-      <div>
-        <strong>科目數資料載入失敗</strong>
-        <p>{{ errorMessage }}</p>
-        <button class="secondary small" type="button" @click="loadData">重新載入</button>
-      </div>
-    </div>
+    <AtInlineAlert v-else-if="errorMessage" tone="danger" title="科目數資料載入失敗">
+      <p>{{ errorMessage }}</p>
+      <template #action>
+        <AtButton type="button" variant="ghost" shape="rect" @click="loadData">重新載入</AtButton>
+      </template>
+    </AtInlineAlert>
 
     <template v-else>
       <section class="summary-grid" data-guide="subject-units-summary" aria-label="科目數摘要">
@@ -91,10 +86,12 @@
           </div>
           <span class="section-hint">原始科目數先完整加總，最後總計才 ÷ 8</span>
         </div>
-        <div v-if="teacherContributions.length === 0" class="inline-empty">
-          <span class="material-symbols-outlined" aria-hidden="true">groups</span>
-          <span>這段期間沒有可列出的老師貢獻。</span>
-        </div>
+        <AtEmpty
+          v-if="teacherContributions.length === 0"
+          icon="groups"
+          title="這段期間沒有老師貢獻資料"
+          description="調整日期或分校範圍後再試。"
+        />
         <div v-else class="contribution-wrap">
           <table class="contribution-table">
             <caption class="sr-only">老師分校科目數貢獻</caption>
@@ -183,10 +180,12 @@
             <span class="trend-date">{{ shortDate(day.date) }}</span>
           </button>
         </div>
-        <div v-else class="inline-empty">
-          <span class="material-symbols-outlined" aria-hidden="true">calendar_month</span>
-          <span>這段期間沒有已認列的科目數。可調整日期或分校範圍。</span>
-        </div>
+        <AtEmpty
+          v-else
+          icon="calendar_month"
+          title="這段期間沒有已認列的科目數"
+          description="可調整日期或分校範圍。"
+        />
       </section>
 
       <section class="card detail-card" data-guide="subject-units-table" aria-labelledby="detail-title">
@@ -214,12 +213,15 @@
           <button v-if="focusedDate" class="ghost small clear-focus" type="button" @click="focusedDate = ''">清除日期篩選</button>
         </div>
 
-        <div v-if="filteredEntries.length === 0" class="table-empty">
-          <span class="material-symbols-outlined" aria-hidden="true">filter_alt_off</span>
-          <span>找不到符合條件的明細。請調整搜尋或篩選條件。</span>
-        </div>
-        <div v-else class="table-wrap">
-          <table class="detail-table">
+        <AtEmpty
+          v-if="filteredEntries.length === 0"
+          icon="filter_alt_off"
+          title="找不到符合條件的明細"
+          description="請調整搜尋或篩選條件。"
+        />
+        <div v-else class="detail-results">
+          <div class="table-wrap">
+            <table class="detail-table">
             <caption class="sr-only">科目數日明細</caption>
             <thead>
               <tr>
@@ -257,7 +259,31 @@
                 </tr>
               </template>
             </tbody>
-          </table>
+            </table>
+          </div>
+
+          <div class="mobile-entry-list" role="list" aria-label="科目數日明細手機檢視">
+            <section v-for="group in groupedEntries" :key="`mobile-${group.date}`" class="mobile-day-group">
+              <div class="mobile-day-heading">
+                <strong>{{ formatDate(group.date) }}</strong>
+                <span>{{ group.entries.length }} 個科目明細</span>
+                <span class="mobile-day-total">核薪 {{ formatCount(group.summary.payroll_subject_count) }}</span>
+              </div>
+              <article v-for="entry in group.entries" :key="`mobile-${entryKey(entry)}`" class="mobile-entry-card" role="listitem">
+                <div class="mobile-entry-card__heading">
+                  <strong class="subject-name">{{ entry.subject_name }}</strong>
+                  <span class="campus-pill">{{ entry.campus_name }}</span>
+                </div>
+                <p class="mobile-entry-card__teacher">{{ entry.teacher_name }}</p>
+                <dl class="mobile-entry-metrics">
+                  <div><dt>正課</dt><dd>{{ formatCount(entry.regular_subject_count) }}</dd></div>
+                  <div><dt>輔導／試聽</dt><dd>{{ formatCount(entry.tutoring_trial_subject_count) }}</dd></div>
+                  <div class="mobile-entry-metrics__highlight"><dt>核薪</dt><dd>{{ formatCount(entry.payroll_subject_count) }}</dd></div>
+                  <div><dt>堂數</dt><dd>{{ entry.session_count }}</dd></div>
+                </dl>
+              </article>
+            </section>
+          </div>
         </div>
       </section>
 
@@ -323,8 +349,12 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { branches, loadBranches } from '../lib/useBranches';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -478,22 +508,36 @@ onMounted(async () => { await loadBranches(); loadData(); });
 .period-actions, .branch-field { display: flex; align-items: center; gap: 8px; }
 .date-field, .branch-field { display: flex; flex-direction: column; gap: 4px; }
 .date-field span, .branch-field span, .filter-field span { color: var(--ds-ink-mute); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-input, select { min-height: 36px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-ink); padding: 7px 10px; font: inherit; }
-input:focus-visible, select:focus-visible, button:focus-visible { outline: 3px solid var(--ds-primary-wash); outline-offset: 1px; border-color: var(--ds-primary); }
+button, input, select { min-height: 44px; font: inherit; }
+input, select { border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-ink); padding: 7px 10px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ds-focus-ring); border-color: var(--ds-primary); }
 .scope-strip { display: flex; align-items: center; gap: 8px; margin: -4px 0 16px; color: var(--ds-ink-mute); font-size: 13px; }
 .scope-icon { color: var(--ds-success); font-size: 18px; }.scope-separator { color: var(--ds-hairline-input); }.scope-period { font-variant-numeric: tabular-nums; }
-.state-card, .card { border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); box-shadow: 0 1px 3px rgba(0,55,112,.08); }
-.state-card { display: flex; align-items: center; gap: 12px; min-height: 150px; justify-content: center; color: var(--ds-ink-mute); }.state-card--error { justify-content: flex-start; padding: 24px; color: var(--ds-danger); }.state-card--error p { margin: 6px 0 12px; color: var(--ds-ink-mute); }
-.state-icon { font-size: 24px; }.loading-icon { animation: spin 1.1s linear infinite; color: var(--ds-primary); }
+.card { border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); box-shadow: 0 1px 3px rgba(0,55,112,.08); }
 .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .daily-trend-card, .detail-card, .contribution-card, .disclosure-card { padding: 20px; margin-bottom: 16px; }.section-heading, .detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }.eyebrow { margin: 0 0 4px; color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; } h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }.section-hint, .row-count { color: var(--ds-ink-mute); font-size: 12px; }
 .trend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: 6px; align-items: end; min-height: 144px; }.trend-day { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 5px; border: 0; border-radius: 8px; background: transparent; color: var(--ds-ink-mute); padding: 4px 2px; cursor: pointer; }.trend-day:hover, .trend-day--selected { background: var(--ds-primary-wash); color: var(--ds-ink); }.trend-value, .trend-date { font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }.trend-track { display: flex; width: 100%; height: 88px; align-items: flex-end; justify-content: center; border-bottom: 1px solid var(--ds-hairline); }.trend-bar { width: min(22px, 70%); min-height: 5px; border-radius: 6px 6px 2px 2px; background: var(--ds-primary); transition: height .22s ease, background .22s ease; }.trend-day--selected .trend-bar { background: var(--ds-cta); }
-.inline-empty, .table-empty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 100px; color: var(--ds-ink-mute); font-size: 13px; }
 .table-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }.search-field { display: flex; min-width: min(100%, 320px); flex: 1 1 260px; align-items: center; gap: 8px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); padding: 0 10px; }.search-field input { width: 100%; border: 0; outline: 0; padding-left: 0; }.search-field .material-symbols-outlined { color: var(--ds-ink-mute); font-size: 19px; }.filter-field { display: flex; flex-direction: column; gap: 4px; }.clear-focus { margin-left: auto; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.detail-table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; }.detail-table th, .detail-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.detail-table thead th { position: sticky; top: 0; z-index: 1; background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.detail-table tbody tr.detail-row:hover { background: var(--ds-canvas-soft); }.detail-table tbody tr:last-child td { border-bottom: 0; }.number-cell { text-align: right !important; font-variant-numeric: tabular-nums; }.highlight-cell { color: var(--ds-cta); }.day-summary-row { background: var(--ds-primary-wash); }.day-summary-row th { color: var(--ds-ink); font-weight: 700; }.day-summary-row th span { margin-left: 8px; color: var(--ds-ink-mute); font-size: 11px; font-weight: 500; }.day-summary-row td { border-bottom-color: var(--ds-hairline-input); font-weight: 700; }.date-cell { color: var(--ds-ink-mute); font-variant-numeric: tabular-nums; }.teacher-cell { min-width: 100px; }.subject-name { font-weight: 600; }.campus-pill { display: inline-flex; border: 1px solid var(--ds-hairline-input); border-radius: 999px; padding: 3px 8px; color: var(--ds-ink-secondary); background: var(--ds-canvas); font-size: 12px; }
+.mobile-entry-list { display: none; }
+.mobile-day-group + .mobile-day-group { margin-top: 12px; }
+.mobile-day-heading { display: flex; align-items: baseline; gap: 8px; padding: 8px 2px; color: var(--ds-ink-mute); font-size: 12px; }
+.mobile-day-heading strong { color: var(--ds-ink); font-size: 14px; }
+.mobile-day-total { margin-left: auto; color: var(--ds-cta); font-weight: 700; font-variant-numeric: tabular-nums; }
+.mobile-entry-card { padding: 12px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md, 6px); background: var(--ds-canvas); }
+.mobile-entry-card + .mobile-entry-card { margin-top: 8px; }
+.mobile-entry-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.mobile-entry-card__heading .subject-name { min-width: 0; overflow-wrap: anywhere; }
+.mobile-entry-card__teacher { margin: 6px 0 10px; color: var(--ds-ink-secondary); font-size: 13px; }
+.mobile-entry-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.mobile-entry-metrics > div { padding: 8px; border-radius: var(--ds-radius-sm, 4px); background: var(--ds-canvas-soft); }
+.mobile-entry-metrics dt { color: var(--ds-ink-mute); font-size: 11px; }
+.mobile-entry-metrics dd { margin: 2px 0 0; color: var(--ds-ink); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mobile-entry-metrics__highlight dd { color: var(--ds-cta); }
 .contribution-wrap { overflow-x: auto; border: 1px solid var(--ds-hairline); border-radius: 8px; }.contribution-table { width: 100%; border-collapse: collapse; font-size: 13px; }.contribution-table th, .contribution-table td { border-bottom: 1px solid var(--ds-hairline); padding: 11px 12px; text-align: left; white-space: nowrap; }.contribution-table thead th { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.contribution-table tbody tr:last-child th, .contribution-table tbody tr:last-child td { border-bottom: 0; }.contribution-sort-button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: inherit; padding: 0; font: inherit; font-weight: inherit; letter-spacing: inherit; cursor: pointer; }.contribution-sort-button:hover { color: var(--ds-primary); }.contribution-sort-button--number { justify-content: flex-end; width: 100%; }
 .disclosure-card { padding: 0; }.calc-guide-header, .level-breakdown-header { padding: 12px 16px; }.calc-guide-header h3, .level-breakdown-header h3 { margin: 0; }.calc-guide-toggle, .level-breakdown-toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; }.disclosure-body { border-top: 1px solid var(--ds-hairline); padding: 16px; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.7; }.disclosure-body p { margin: 0 0 8px; }.disclosure-body p:last-child { margin-bottom: 0; }.formula-row { display: flex; gap: 16px; padding: 6px 0; border-top: 1px solid var(--ds-hairline); }.formula-row span { min-width: 100px; color: var(--ds-ink-mute); }.compact-copy { color: var(--ds-ink-mute); }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); } @keyframes spin { to { transform: rotate(360deg); } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }
 @media (max-width: 900px) { .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.period-actions { flex-wrap: wrap; }.branch-field { width: 100%; }.branch-field select { width: 100%; } }
+@media (max-width: 768px) { .table-wrap { display: none; }.mobile-entry-list { display: block; } }
 @media (max-width: 560px) { .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }.daily-trend-card, .detail-card, .contribution-card, .disclosure-card { padding: 14px; }.section-heading, .detail-heading { flex-direction: column; gap: 6px; }.date-field input { max-width: 142px; }.date-separator { align-self: end; padding-bottom: 9px; }.clear-focus { margin-left: 0; }.formula-row { display: block; }.formula-row span { display: block; margin-bottom: 2px; } }
 </style>

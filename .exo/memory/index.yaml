@@ -208,3 +208,15 @@ failure_modes:
       behavior, page IDs, and backend authorization unchanged.
   severity: medium
   frequency: recurring
+- id: FM-20260910-025300-IGMN
+  name: responsive financial report detail presentation
+  detection:
+    signal: responsive financial report detail presentation
+    source: reflection:REF-20260910-025300-20L1
+  mitigation:
+    practice: For read-only financial reports, preserve the authoritative API and
+      role scope while using shared loading, error, and empty primitives; replace
+      clipped mobile tables with an equivalent labeled card projection and verify
+      the same metrics at every responsive target.
+  severity: medium
+  frequency: recurring

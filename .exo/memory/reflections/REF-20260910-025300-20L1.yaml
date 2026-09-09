@@ -1,0 +1,14 @@
+id: REF-20260910-025300-20L1
+pattern: responsive financial report detail presentation
+insight: For read-only financial reports, preserve the authoritative API and role
+  scope while using shared loading, error, and empty primitives; replace clipped mobile
+  tables with an equivalent labeled card projection and verify the same metrics at
+  every responsive target.
+severity: medium
+scope: global
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-10T02:53:00+08:00'
+status: active
+tags: []
+hit_count: 0
