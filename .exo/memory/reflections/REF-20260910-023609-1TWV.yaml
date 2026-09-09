@@ -1,0 +1,13 @@
+id: REF-20260910-023609-1TWV
+pattern: shared state primitives in sensitive payroll review surfaces
+insight: For payroll-adjacent UI, standardize loading, error, empty, and keyboard/table
+  states while leaving calculation, locking, rules, export, authorization, and API
+  semantics untouched; validate hidden responsive branches with visible-node filters.
+severity: medium
+scope: global
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-10T02:36:09+08:00'
+status: active
+tags: []
+hit_count: 0
