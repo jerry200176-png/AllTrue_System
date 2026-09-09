@@ -1,3 +1,8 @@
+## 2026-09-09 — improved(parent): 家長首頁學習重點版本公告
+<!-- release-notes: parent_update=parent-update-2026-09-09-learning-assessment -->
+- 家長登入後可先看到最近學了什麼、本週重點、老師建議、回家要做什麼與目前下一步；已核准的學習評量仍可從「學習」分頁逐堂展開查看。
+- 尚未完成老師複核時，家長端會清楚說明目前沒有可查看的評量內容；不新增資料、指標或新的業務語意。
+
 ## 2026-09-09 — fix(parent): 家長學習評量入口與空狀態可操作
 <!-- release-notes: staff_update=staff-2026-09-09-parent-learning-assessment-controls -->
 - 家長端學習評量的展開入口改為可用的鍵盤／觸控按鈕，空資料時清楚說明「老師完成複核後」才會顯示內容，並可直接查看課表；載入錯誤時不再同時顯示誤導性的空狀態。
