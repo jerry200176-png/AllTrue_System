@@ -17,7 +17,9 @@ const outDir = process.env.UI_FOUNDATION_SHOT_DIR
 
 const viewports = [
   { name: '390', width: 390, height: 844 },
+  { name: '412', width: 412, height: 915 },
   { name: '768', width: 768, height: 1024 },
+  { name: '1280', width: 1280, height: 900 },
   { name: '1440', width: 1440, height: 900 },
 ];
 
@@ -569,6 +571,51 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('role', 'tabpanel');
     await expect(page.locator('#notifications-panel-ops')).toHaveAttribute('aria-labelledby', 'notifications-tab-ops');
   });
+
+  for (const vp of viewports) {
+    test(`page header keeps actions reachable @${vp.name}`, async ({ page }) => {
+      const consoleErrors = [];
+      const failedRequests = [];
+      page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+      });
+      page.on('requestfailed', (request) => {
+        failedRequests.push(`${request.method()} ${request.url()} — ${request.failure()?.errorText || 'failed'}`);
+      });
+
+      await openPilot(page, {
+        pageName: 'inbox',
+        mode: 'long',
+        viewport: vp,
+      });
+
+      const header = page.getByTestId('at-page-header');
+      const action = header.getByRole('button', { name: '通知設定', exact: true });
+      await expect(action).toBeVisible();
+      await action.focus();
+      await expect(action).toBeFocused();
+
+      const metrics = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
+
+      const actionBox = await action.boundingBox();
+      if (vp.width <= 768) {
+        expect(actionBox?.height || 0).toBeGreaterThanOrEqual(44);
+        expect(actionBox?.width || 0).toBeGreaterThan(0);
+      }
+
+      expect(consoleErrors, `瀏覽器 console errors：\n${consoleErrors.join('\n')}`).toEqual([]);
+      expect(failedRequests, `失敗的網路請求：\n${failedRequests.join('\n')}`).toEqual([]);
+
+      fs.mkdirSync(outDir, { recursive: true });
+      await page.locator('.notifications-page').screenshot({
+        path: path.join(outDir, `vue-inbox-page-header-long-${vp.name}.png`),
+      });
+    });
+  }
 
   test('inbox case pager reaches page 3 and item 51 after overlay dismissal', async ({ page }) => {
     await openPilot(page, {
