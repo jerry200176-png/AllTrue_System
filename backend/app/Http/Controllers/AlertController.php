@@ -672,7 +672,12 @@ class AlertController extends Controller
         $billing = $mode === 'date'
             ? $this->monthlyBilling->summarizePeriod($sc, $billingPeriod)
             : [
-                'charge' => max(0, (int) ($sc->Charge ?? 0)),
+                // Count-mode alerts already use the contract price rather than
+                // a stale historical Charge snapshot. Keep the tuition slip on
+                // that same canonical display path (in-app #275).
+                'charge' => $sc instanceof StudentClass
+                    ? $this->countModeCharge($sc)
+                    : max(0, (int) ($sc->Charge ?? 0)),
                 'period_sessions' => null,
                 'period_start' => null,
                 'period_end' => null,
