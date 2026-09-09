@@ -234,24 +234,28 @@ jobs:
           $old = $db::table("Invoice")->where("id", 1274)->first();
           $oldReport = $db::table("payment_reports")->where("id", 1309)->first();
           $oldPayments = $db::table("Payment")->whereIn("id", [1377, 1418, 1422])->orderBy("id")->get(["id", "InvoiceID", "Amount", "Method"]);
-          $scField = static function (array $names) use ($sc) {
-            $values = $sc ? get_object_vars($sc) : [];
+          $field = static function ($row, array $names) {
+            $values = $row ? get_object_vars($row) : [];
             foreach ($names as $name) {
               if (array_key_exists($name, $values)) return $values[$name];
             }
             return null;
           };
-          $scStudentId = $scField(["StudentID", "student_id"]);
-          $scScheduleMode = $scField(["ScheduleMode", "schedule_mode"]);
-          $scSessionCount = $scField(["SessionCount", "session_count"]);
-          $scCharge = $scField(["Charge", "charge"]);
-          $scPaid = $scField(["Paid", "paid"]);
-          $scEndDate = $scField(["EndDate", "end_date"]);
+          $scStudentId = $field($sc, ["StudentID", "student_id"]);
+          $scScheduleMode = $field($sc, ["ScheduleMode", "schedule_mode"]);
+          $scSessionCount = $field($sc, ["SessionCount", "session_count"]);
+          $scCharge = $field($sc, ["Charge", "charge"]);
+          $scPaid = $field($sc, ["Paid", "paid"]);
+          $scEndDate = $field($sc, ["EndDate", "end_date"]);
+          $septSessionCount = $field($sept, ["SessionCount", "session_count"]);
+          $septCharge = $field($sept, ["Charge", "charge"]);
+          $septScheduleMode = $field($sept, ["ScheduleMode", "schedule_mode"]);
           $endDate = $scEndDate ? substr((string)$scEndDate, 0, 10) : null;
           $oldPaymentsExact = $oldPayments->count() === 3 && (int)$oldPayments[0]->id === 1377 && (int)$oldPayments[0]->InvoiceID === 1274 && (int)$oldPayments[0]->Amount === 6600 && (int)$oldPayments[1]->id === 1418 && (int)$oldPayments[1]->InvoiceID === 1274 && (int)$oldPayments[1]->Amount === -6600 && (int)$oldPayments[2]->id === 1422 && (int)$oldPayments[2]->InvoiceID === 1274 && (int)$oldPayments[2]->Amount === -6600;
           $historyExact = $old && (string)$old->Status === "void" && (int)$old->TotalAmount === 6600 && (int)$old->PaidAmount === 0 && $oldReport && (string)$oldReport->status === "voided" && (int)$oldReport->InvoiceID === 1274 && $oldPaymentsExact;
           $alreadyExact = $sc && (int)$scStudentId === 24 && (int)$scSessionCount === 5 && (int)$scCharge === 9000 && (int)$scPaid === 1 && $endDate === "2026-08-29" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 1 && (string)$augustInvoices[0]->Status === "paid" && (int)$augustInvoices[0]->PaidAmount === 9000 && $confirmed->count() === 1 && $paid === 1 && $sept && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
-          $initialExact = $sc && (int)$scStudentId === 24 && (string)$scScheduleMode === "date" && (int)$scSessionCount === 4 && (int)$scCharge === 7200 && (int)$scPaid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$sept->SessionCount === 5 && (int)$sept->Charge === 9000 && (string)$sept->ScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
+          $initialExact = $sc && (int)$scStudentId === 24 && (string)$scScheduleMode === "date" && (int)$scSessionCount === 4 && (int)$scCharge === 7200 && (int)$scPaid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$septSessionCount === 5 && (int)$septCharge === 9000 && (string)$septScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
+          $initialExact = $sc && (int)$scStudentId === 24 && (string)$scScheduleMode === "date" && (int)$scSessionCount === 4 && (int)$scCharge === 7200 && (int)$scPaid === 0 && $endDate === "2026-08-28" && $s && (int)$s->StudentClassID === 2885 && (string)$s->SessionDate === "2026-08-29" && (string)$s->Status === "attended" && $augustInvoices->count() === 0 && $paid === 0 && $confirmed->count() === 0 && $sept && (int)$septSessionCount === 5 && (int)$septCharge === 9000 && (string)$septScheduleMode === "date" && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $historyExact;
           if (!$sc || (int)$scStudentId !== 24 || (string)$scScheduleMode !== "date" || !$s || (int)$s->StudentClassID !== 2885 || (string)$s->SessionDate !== "2026-08-29") throw new \RuntimeException("business truth precondition mismatch");
           if (!$alreadyExact && !$initialExact) throw new \RuntimeException("exact #259 precondition mismatch; no write permitted");
           $state = json_encode(["backend_sha"=>getenv("DEPLOYED_SHA"),"already_exact"=>(bool)$alreadyExact,"session_count"=>(int)$scSessionCount,"charge"=>(int)$scCharge,"end_date"=>$endDate,"invoice_id"=>$invoice ? (int)$invoice->id : null,"invoice_status"=>$invoice ? (string)$invoice->Status : null,"invoice_total"=>$invoice ? (int)$invoice->TotalAmount : null,"active_invoice_count"=>$augustInvoices->count(),"positive_payment_count"=>(int)$paid,"confirmed_report_count"=>$confirmed->count()], JSON_UNESCAPED_UNICODE);
@@ -317,9 +321,24 @@ jobs:
           $payments = $db::table("Payment as p")->join("Invoice as i", "i.id", "=", "p.InvoiceID")->where("i.StudentClassID", 2885)->where("i.Status", "!=", "void")->where("p.Amount", ">", 0)->where("p.Method", "!=", "void")->get(["p.id", "p.InvoiceID", "p.Amount", "p.Method", "p.PaidAt", "p.payment_report_id"]);
           $sept = $db::table("Invoice")->where("id", 1575)->first();
           $old = $db::table("Invoice")->where("id", 1274)->first();
-          $endDate = $sc && $sc->EndDate ? substr((string)$sc->EndDate, 0, 10) : null;
-          $ok = $sc && (int)$sc->SessionCount === 5 && (int)$sc->Charge === 9000 && $endDate === "2026-08-29" && $aug->count() === 1 && (string)$aug[0]->Status === "paid" && (int)$aug[0]->PaidAmount === 9000 && $reports->count() === 1 && $payments->count() === 1 && (int)$payments[0]->Amount === 9000 && $sept && (string)$sept->Status === "unpaid" && (int)$sept->TotalAmount === 9000 && $old && (string)$old->Status === "void" && (int)$old->PaidAmount === 0;
-          echo json_encode(["ok"=>(bool)$ok,"backend_sha"=>getenv("DEPLOYED_SHA"),"class_2885"=>["SessionCount"=>(int)$sc->SessionCount,"Charge"=>(int)$sc->Charge,"EndDate"=>$endDate,"Paid"=>(int)$sc->Paid],"august_invoices"=>$aug,"confirmed_reports"=>$reports,"positive_payments"=>$payments,"september_invoice"=>$sept,"historical_void_invoice"=>$old], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          $field = static function ($row, array $names) {
+            $values = $row ? get_object_vars($row) : [];
+            foreach ($names as $name) {
+              if (array_key_exists($name, $values)) return $values[$name];
+            }
+            return null;
+          };
+          $scSessionCount = $field($sc, ["SessionCount", "session_count"]);
+          $scCharge = $field($sc, ["Charge", "charge"]);
+          $scEndDate = $field($sc, ["EndDate", "end_date"]);
+          $scPaid = $field($sc, ["Paid", "paid"]);
+          $septStatus = $field($sept, ["Status", "status"]);
+          $septTotalAmount = $field($sept, ["TotalAmount", "total_amount"]);
+          $oldStatus = $field($old, ["Status", "status"]);
+          $oldPaidAmount = $field($old, ["PaidAmount", "paid_amount"]);
+          $endDate = $scEndDate ? substr((string)$scEndDate, 0, 10) : null;
+          $ok = $sc && (int)$scSessionCount === 5 && (int)$scCharge === 9000 && $endDate === "2026-08-29" && $aug->count() === 1 && (string)$aug[0]->Status === "paid" && (int)$aug[0]->PaidAmount === 9000 && $reports->count() === 1 && $payments->count() === 1 && (int)$payments[0]->Amount === 9000 && $sept && (string)$septStatus === "unpaid" && (int)$septTotalAmount === 9000 && $old && (string)$oldStatus === "void" && (int)$oldPaidAmount === 0;
+          echo json_encode(["ok"=>(bool)$ok,"backend_sha"=>getenv("DEPLOYED_SHA"),"class_2885"=>["SessionCount"=>(int)$scSessionCount,"Charge"=>(int)$scCharge,"EndDate"=>$endDate,"Paid"=>(int)$scPaid],"august_invoices"=>$aug,"confirmed_reports"=>$reports,"positive_payments"=>$payments,"september_invoice"=>$sept,"historical_void_invoice"=>$old], JSON_UNESCAPED_UNICODE), PHP_EOL;
           if (!$ok) exit(1);
           '
           echo 'in_app_259_repair=production_verified'
