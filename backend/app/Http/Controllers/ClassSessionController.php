@@ -8,6 +8,7 @@ use App\Models\ClassSessionReassignment;
 use App\Models\CourseContractGroupMember;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordTeacherChange;
+use App\Models\Notification;
 use App\Models\Schedule;
 use App\Models\ScheduleAuditLog;
 use App\Models\Student;
@@ -3366,59 +3367,45 @@ class ClassSessionController extends Controller
             $authUser = $request->attributes->get('auth_user');
             $changedBy = (int) ($authUser->id ?? 0);
 
-            $rescheduled = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'rescheduled')
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->first();
+            // in-app #276: durable restore must clear substitute_with_reschedule chains even when
+            // notification payload times / TIME-column formatting diverge from ClassSession HH:mm.
+            $matchDates = $this->substituteRestoreMatchDates($session, $sessionDate);
+            $matchTimes = $this->substituteRestoreMatchTimes($session, $startTime);
 
-            $scheduled = $existingScheduled;
-            if (!$scheduled && $rescheduled) {
-                $scheduled = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', (int) $rescheduled->id)
-                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                    ->first();
-            }
-
-            $scheduledDeleted = 0;
+            $scheduledRows = $this->findSubstituteScheduledRowsForRestore(
+                $courseId,
+                $originalTeacherId,
+                $matchDates,
+                $matchTimes,
+                $existingScheduled
+            );
             $anchorIds = [];
-            if ($rescheduled) {
-                $anchorIds[] = (int) $rescheduled->id;
+            foreach ($scheduledRows as $row) {
+                $anchor = (int) ($row->original_schedule_id ?? 0);
+                if ($anchor > 0) {
+                    $anchorIds[] = $anchor;
+                }
             }
-            if ($scheduled && (int) ($scheduled->original_schedule_id ?? 0) > 0) {
-                $anchorIds[] = (int) $scheduled->original_schedule_id;
+            if ($existingRescheduled) {
+                $anchorIds[] = (int) $existingRescheduled->id;
             }
-            // Defensive recovery for historical data: contract teacher may already change,
-            // but stale substitute rows (teacher_id != current contract teacher) still remain.
-            $fallbackAnchors = Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'scheduled')
-                ->whereNotNull('original_schedule_id')
-                ->where('teacher_id', '!=', $originalTeacherId)
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->pluck('original_schedule_id')
-                ->filter(fn ($id) => (int) $id > 0)
-                ->map(fn ($id) => (int) $id)
-                ->all();
-            $anchorIds = array_values(array_unique(array_merge($anchorIds, $fallbackAnchors)));
+            $anchorIds = array_values(array_unique(array_filter($anchorIds)));
 
-            if (!empty($anchorIds)) {
-                $scheduledDeleted += Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->whereIn('original_schedule_id', $anchorIds)
-                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                    ->delete();
-            } elseif ($scheduled) {
-                $scheduledDeleted += Schedule::where('id', (int) $scheduled->id)->delete();
+            // Prefer delete-by-id so TIME/varchar formatting cannot strand the chain.
+            $scheduledIds = array_values(array_unique(array_filter(array_map(
+                static fn ($row) => (int) ($row->id ?? 0),
+                $scheduledRows
+            ))));
+            $scheduledDeleted = 0;
+            if (!empty($scheduledIds)) {
+                $scheduledDeleted = Schedule::whereIn('id', $scheduledIds)->delete();
             }
 
             $rescheduledDeleted = 0;
             if (!empty($anchorIds)) {
                 // MySQL/MariaDB reject DELETE with subquery on same table (error 1093).
                 $stillLinked = DB::table('schedules')
+                    ->where('student_course_id', $courseId)
                     ->where('status', 'scheduled')
                     ->whereIn('original_schedule_id', $anchorIds)
                     ->pluck('original_schedule_id')
@@ -3427,13 +3414,87 @@ class ClassSessionController extends Controller
                 $safeAnchorIds = array_values(array_diff($anchorIds, $stillLinked));
                 if (!empty($safeAnchorIds)) {
                     $rescheduledDeleted = Schedule::where('student_course_id', $courseId)
-                        ->whereDate('schedule_date', $sessionDate)
                         ->where('status', 'rescheduled')
                         ->whereIn('id', $safeAnchorIds)
                         ->delete();
                 }
-            } elseif ($rescheduled) {
-                $rescheduledDeleted = Schedule::where('id', (int) $rescheduled->id)->delete();
+            }
+
+            $remainingSubstitute = Schedule::where('student_course_id', $courseId)
+                ->whereIn('schedule_date', $matchDates)
+                ->where('status', 'scheduled')
+                ->whereNotNull('original_schedule_id')
+                ->where('teacher_id', '!=', $originalTeacherId)
+                ->where(function ($q) use ($matchTimes) {
+                    $this->constrainScheduleStartTimes($q, $matchTimes);
+                })
+                ->count();
+            // Same-course same-date single-session fallback (production #276 shape).
+            if ($remainingSubstitute > 0) {
+                $sessionsThatDay = ClassSession::where('StudentClassID', $courseId)
+                    ->whereDate('SessionDate', $sessionDate)
+                    ->where('Status', '!=', 'cancelled')
+                    ->count();
+                if ($sessionsThatDay <= 1) {
+                    $leftoverIds = Schedule::where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $sessionDate)
+                        ->where('status', 'scheduled')
+                        ->whereNotNull('original_schedule_id')
+                        ->where('teacher_id', '!=', $originalTeacherId)
+                        ->pluck('id')
+                        ->map(fn ($id) => (int) $id)
+                        ->all();
+                    $leftoverAnchors = Schedule::where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $sessionDate)
+                        ->where('status', 'scheduled')
+                        ->whereNotNull('original_schedule_id')
+                        ->where('teacher_id', '!=', $originalTeacherId)
+                        ->pluck('original_schedule_id')
+                        ->map(fn ($id) => (int) $id)
+                        ->filter(fn ($id) => $id > 0)
+                        ->unique()
+                        ->values()
+                        ->all();
+                    if (!empty($leftoverIds)) {
+                        $scheduledDeleted += Schedule::whereIn('id', $leftoverIds)->delete();
+                    }
+                    if (!empty($leftoverAnchors)) {
+                        $stillLinked = DB::table('schedules')
+                            ->where('student_course_id', $courseId)
+                            ->where('status', 'scheduled')
+                            ->whereIn('original_schedule_id', $leftoverAnchors)
+                            ->pluck('original_schedule_id')
+                            ->map(fn ($id) => (int) $id)
+                            ->all();
+                        $safe = array_values(array_diff($leftoverAnchors, $stillLinked));
+                        if (!empty($safe)) {
+                            $rescheduledDeleted += Schedule::where('student_course_id', $courseId)
+                                ->where('status', 'rescheduled')
+                                ->whereIn('id', $safe)
+                                ->delete();
+                        }
+                    }
+                    $remainingSubstitute = Schedule::where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $sessionDate)
+                        ->where('status', 'scheduled')
+                        ->whereNotNull('original_schedule_id')
+                        ->where('teacher_id', '!=', $originalTeacherId)
+                        ->count();
+                }
+            }
+
+            if ($remainingSubstitute > 0) {
+                Log::warning('[substitute_restore_original] aborted_stale_rows_remain', [
+                    'class_session_id' => $session->id,
+                    'student_class_id' => $courseId,
+                    'remaining_substitute' => $remainingSubstitute,
+                    'scheduled_deleted' => $scheduledDeleted,
+                    'rescheduled_deleted' => $rescheduledDeleted,
+                    'operator_id' => $changedBy ?: null,
+                ]);
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'substitute_teacher_id' => ['無法清除此堂代課排程，請稍後再試或聯絡系統管理員。'],
+                ]);
             }
 
             $lrId = null;
@@ -3488,6 +3549,7 @@ class ClassSessionController extends Controller
                 }
             }
 
+            // Only resolve after schedules are confirmed cleared (in-app #276).
             if (Schema::hasTable('Notifications') && Schema::hasColumn('Notifications', 'ResolvedAt')) {
                 DB::table('Notifications')
                     ->where('Type', 'substitute')
@@ -3497,12 +3559,14 @@ class ClassSessionController extends Controller
                     ->update(['ResolvedAt' => now()]);
             }
 
+            $cleared = ($scheduledDeleted + $rescheduledDeleted) > 0;
             Log::info('[substitute_restore_original]', [
                 'class_session_id' => $session->id,
                 'student_class_id' => $courseId,
                 'restored_teacher_id' => $originalTeacherId,
                 'scheduled_deleted' => $scheduledDeleted,
                 'rescheduled_deleted' => $rescheduledDeleted,
+                'substitute_cleared' => $cleared,
                 'operator_id' => $changedBy ?: null,
             ]);
 
@@ -3510,12 +3574,122 @@ class ClassSessionController extends Controller
                 'message' => '已回復正班老師',
                 'class_session_id' => (int) $session->id,
                 'restored_teacher_id' => $originalTeacherId,
-                'substitute_cleared' => ($scheduledDeleted + $rescheduledDeleted) > 0,
+                'substitute_cleared' => $cleared,
                 'deleted_scheduled_count' => $scheduledDeleted,
                 'deleted_rescheduled_count' => $rescheduledDeleted,
                 'learning_record_id' => $lrId,
             ]);
         });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function substituteRestoreMatchDates(ClassSession $session, string $sessionDate): array
+    {
+        $dates = [$sessionDate];
+        try {
+            $dates[] = Carbon::parse($session->SessionDate)->toDateString();
+        } catch (\Throwable) {
+        }
+        $notif = Notification::where('Type', 'substitute')
+            ->where('SourceType', 'ClassSession')
+            ->where('SourceID', $session->id)
+            ->orderByDesc('id')
+            ->first();
+        $payload = is_array($notif?->Payload) ? $notif->Payload : [];
+        foreach (['session_date', 'original_session_date'] as $key) {
+            $raw = trim((string) ($payload[$key] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            try {
+                $dates[] = Carbon::parse($raw)->toDateString();
+            } catch (\Throwable) {
+            }
+        }
+
+        return array_values(array_unique(array_filter($dates)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function substituteRestoreMatchTimes(ClassSession $session, string $startTime): array
+    {
+        $times = [
+            $this->normalizeSessionTimeForSchedule($startTime),
+            $this->normalizeSessionTimeForSchedule($session->StartTime ?? ''),
+        ];
+        $notif = Notification::where('Type', 'substitute')
+            ->where('SourceType', 'ClassSession')
+            ->where('SourceID', $session->id)
+            ->orderByDesc('id')
+            ->first();
+        $payload = is_array($notif?->Payload) ? $notif->Payload : [];
+        foreach (['start_time', 'original_start_time'] as $key) {
+            $times[] = $this->normalizeSessionTimeForSchedule($payload[$key] ?? '');
+        }
+
+        return array_values(array_unique(array_filter($times)));
+    }
+
+    /**
+     * @param  list<string>  $matchDates
+     * @param  list<string>  $matchTimes
+     * @return list<object>
+     */
+    private function findSubstituteScheduledRowsForRestore(
+        int $courseId,
+        int $originalTeacherId,
+        array $matchDates,
+        array $matchTimes,
+        $existingScheduled
+    ): array {
+        $rows = [];
+        if ($existingScheduled) {
+            $rows[] = $existingScheduled;
+        }
+        if ($courseId <= 0 || $matchDates === []) {
+            return $rows;
+        }
+
+        $query = Schedule::where('student_course_id', $courseId)
+            ->whereIn('schedule_date', $matchDates)
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->where('teacher_id', '!=', $originalTeacherId);
+        if ($matchTimes !== []) {
+            $query->where(function ($q) use ($matchTimes) {
+                $this->constrainScheduleStartTimes($q, $matchTimes);
+            });
+        }
+        foreach ($query->get() as $row) {
+            $rows[] = $row;
+        }
+
+        // Deduplicate by id.
+        $byId = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row->id ?? 0);
+            if ($id > 0) {
+                $byId[$id] = $row;
+            }
+        }
+
+        return array_values($byId);
+    }
+
+    /**
+     * @param  list<string>  $matchTimes  HH:mm
+     */
+    private function constrainScheduleStartTimes($query, array $matchTimes): void
+    {
+        foreach ($matchTimes as $hhmm) {
+            $query->orWhereRaw('SUBSTRING(CAST(start_time AS CHAR), 1, 5) = ?', [$hhmm])
+                ->orWhere('start_time', $hhmm)
+                ->orWhere('start_time', $hhmm.':00');
+        }
     }
 
     /**

@@ -1,3 +1,8 @@
+## 2026-09-10 — fix(schedule): 回復正班老師會清掉殘留代課列
+<!-- release-notes: staff_update=staff-2026-09-10-substitute-restore-clears-schedules -->
+- 主任在單堂使用「回復正班老師」時，系統會一併清除該堂殘留的代課／換時 schedules，並把評量表授課老師還原為課程正班老師。
+- 若代課排程無法安全清除，操作會失敗並保持原狀，不會只把通知標成已解除；不改點名、扣堂或帳務歷史。
+
 ## 2026-09-09 — fix(ops): 代課通知併發重試不重複
 <!-- release-notes: silent_ship=silent-2026-09-09-substitute-notification-idempotency -->
 - 代課成功後建立家長站內通知時，即使重試與另一個請求同時寫入，也會沿用同一筆通知，不會因唯一鍵競爭讓流程失敗。
