@@ -550,8 +550,18 @@ def decide_activation(
             missing.append("rollback evidence")
         if not missing:
             return {"decision": "auto", "effective_tier": "T2", "reason": "validated reversible R2/T2 change has successful CI and rollback evidence"}
-        return {"decision": "awaiting-activation", "effective_tier": "T2", "reason": "T2 evidence incomplete; Founder approval required: " + ", ".join(missing)}
+        return {"decision": "awaiting-activation", "effective_tier": "T2", "reason": "activation blocked until required evidence is satisfied: " + ", ".join(missing)}
     return {"decision": "awaiting-activation", "effective_tier": f"T{effective}", "reason": f"effective tier T{effective} requires Founder activation"}
+
+
+def is_founder_approval_eligible(
+    decision: dict[str, str], *, protected_activation: bool = False,
+) -> bool:
+    """Return whether an awaiting decision may enter the Founder Environment."""
+
+    return decision.get("decision") == "awaiting-activation" and (
+        protected_activation or decision.get("effective_tier") == "T3"
+    )
 
 
 def decide_manual_activation(
@@ -676,6 +686,7 @@ __all__ = [
     "classify_scope",
     "decide_activation",
     "decide_manual_activation",
+    "is_founder_approval_eligible",
     "classify_production_runtime",
     "environment_protection_is_valid",
     "effective_tier",

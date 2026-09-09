@@ -23,6 +23,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     environment_protection_is_valid,
     effective_tier,
     has_rollback_evidence,
+    is_founder_approval_eligible,
     is_application_runtime_path,
     is_control_plane_only_paths,
     is_control_plane_path,
@@ -58,6 +59,18 @@ class DeployActivationPolicyTest(unittest.TestCase):
         self.assertEqual(result["decision"], "awaiting-activation")
         self.assertIn("successful CI", result["reason"])
         self.assertIn("rollback evidence", result["reason"])
+
+    def test_t2_incomplete_evidence_is_blocked_and_not_founder_eligible(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T2", declared_risk="R2",
+            declared_tier="T2", ci_success=True, rollback_evidence=False,
+        )
+        self.assertEqual(result["decision"], "awaiting-activation")
+        self.assertEqual(result["effective_tier"], "T2")
+        self.assertIn("activation blocked until required evidence is satisfied", result["reason"])
+        self.assertNotIn("Founder approval required", result["reason"])
+        self.assertFalse(is_founder_approval_eligible(result))
 
     def test_validated_reversible_t2_is_auto_without_second_reviewer(self):
         scope = classify_activation_scope(
@@ -157,6 +170,7 @@ diff --git a/frontend/src/lib/staffUpdates.generated.js b/frontend/src/lib/staff
             rollback_evidence=True,
         )
         self.assertEqual(result["decision"], "awaiting-activation")
+        self.assertTrue(is_founder_approval_eligible(result))
 
     def test_production_side_effect_is_held_even_when_declared_t0_or_t1(self):
         for tier, risk in (("T0", "R0"), ("T1", "R1")):
@@ -490,7 +504,8 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('names != ["main"]', gate)
 
     def test_only_t3_reaches_founder_environment(self):
-        self.assertIn('decision["effective_tier"] == "T3"', self.workflow)
+        self.assertIn("is_founder_approval_eligible", self.workflow)
+        self.assertIn('protected_activation=bool(scope.get("protected_activation"))', self.workflow)
         self.assertNotIn('decision["effective_tier"] in {"T2", "T3"}', self.workflow)
 
     def test_control_plane_merge_is_verified_without_application_deploy(self):
@@ -507,7 +522,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("has_trusted_verifier_evidence", self.workflow)
         self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
         self.assertNotIn("/check-runs?per_page=100", self.workflow)
-        self.assertIn('decision["effective_tier"] == "T3"', self.workflow)
+        self.assertIn("is_founder_approval_eligible", self.workflow)
         self.assertIn("bool(scope.get(\"protected_activation\"))", self.workflow)
 
     def test_manual_workflow_revision_is_canonical_main(self):

@@ -528,6 +528,7 @@ jobs:
                   effective_tier,
                   decide_activation,
                   has_rollback_evidence,
+                  is_founder_approval_eligible,
                   is_deployable_path,
                   is_production_activation_sensitive_path,
                   parse_declaration,
@@ -624,12 +625,9 @@ jobs:
                   ci_success=True,
                   rollback_evidence=rollback_evidence,
               )
-              approval_eligible = (
-                  decision["decision"] == "awaiting-activation"
-                  and (
-                      bool(scope.get("protected_activation"))
-                      or decision["effective_tier"] == "T3"
-                  )
+              approval_eligible = is_founder_approval_eligible(
+                  decision,
+                  protected_activation=bool(scope.get("protected_activation")),
               )
               emit(
                   decision["decision"], decision["effective_tier"], pr_number,
