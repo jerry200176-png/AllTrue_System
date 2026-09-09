@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "ab2e4d3703494a3798031bc826301177",
+  "session_id": "db56eaface4f49869abc939eef8a9ac6",
   "project": "alltrue",
-  "task_id": "inapp-276-learning-record-teacher-display",
+  "task_id": "task-branch-health-clarity-20260909",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "842f108cce90e667d38a3cca2e239017f9d75947",
-  "branch": "fix/inapp-276-learning-record-teacher-display",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-276-lr-teacher-display",
-  "started_at": "2026-09-09T16:13:06Z",
+  "branch": "chore/task-task-branch-health-clarity-20260909",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/task-branch-health-clarity-20260909",
+  "started_at": "2026-09-09T15:40:41Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
