@@ -356,6 +356,19 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('EVENT_NAME: ${{ github.event_name }}', self.workflow)
         self.assertIn('PHASE: ${{ inputs.phase }}', self.workflow)
 
+    def test_all_activation_events_share_one_static_environment_gate(self):
+        gate_start = self.workflow.index("  production-activation:\n")
+        deploy_start = self.workflow.index("  deploy:\n")
+        gate = self.workflow[gate_start:deploy_start]
+        for event_name in ("workflow_run", "repository_dispatch", "workflow_dispatch"):
+            with self.subTest(event_name=event_name):
+                self.assertIn(f"github.event_name == '{event_name}'", gate)
+        self.assertEqual(gate.count("environment:\n      name: production-activation"), 1)
+        self.assertIn("required_reviewers_configured", gate)
+        self.assertIn("prevent_self_review", gate)
+        self.assertIn("environment.get(\"can_admins_bypass\") is not False", gate)
+        self.assertIn('names != ["main"]', gate)
+
     def test_manual_workflow_revision_is_canonical_main(self):
         self.assertIn('WORKFLOW_REF: ${{ github.ref }}', self.workflow)
         self.assertIn('"$WORKFLOW_REF" != "refs/heads/main"', self.workflow)
