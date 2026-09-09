@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-10-learning-record-teacher-display
+    published_at: "2026-09-10"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 評量表授課老師顯示實際填寫老師
+    summary: 評量表會顯示該堂實際授課老師；單堂更換老師不會改動課程正班設定。
+    items:
+      - category: fixed
+        text: 若該堂已更換授課老師或有正式代課，評量表上的「授課老師」會顯示實際授課者，不再卡在課程正班老師。
+      - category: improved
+        text: 列表、詳情與匯出使用同一套顯示規則；不改課程正班、點名、扣堂或帳務。
+    source_refs:
+      - "changelog:2026-09-10:learning-record-teacher-display"
+      - "in-app:#276"
+
   - id: staff-2026-09-09-tuition-slip-contract-charge
     published_at: "2026-09-09"
     audiences:
