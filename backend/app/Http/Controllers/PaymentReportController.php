@@ -34,6 +34,9 @@ class PaymentReportController extends Controller
         ]);
 
         $sc = StudentClass::with('student', 'subjectRecord')->findOrFail($data['student_class_id']);
+        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
+            return $blockedTutoringPayment;
+        }
 
         $branchId = $sc->student->CampusID ?? 0;
         $result = $tokenService->generate($sc->ID, $branchId);
@@ -104,6 +107,9 @@ class PaymentReportController extends Controller
         $sc = StudentClass::with('student', 'subjectRecord')->find($payload['scid']);
         if (!$sc || !$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
+        }
+        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
+            return $blockedTutoringPayment;
         }
 
         $subjectName = $sc->subjectRecord->Subject_Name ?? '課程';
@@ -177,6 +183,9 @@ class PaymentReportController extends Controller
         $sc = StudentClass::with('student')->find($payload['scid']);
         if (!$sc || !$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
+        }
+        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
+            return $blockedTutoringPayment;
         }
 
         $report = PaymentReport::create([
@@ -304,6 +313,9 @@ class PaymentReportController extends Controller
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
             $sc = StudentClass::find($report->StudentClassID);
+            if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
+                return $blockedTutoringPayment;
+            }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
             if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
@@ -476,6 +488,9 @@ class PaymentReportController extends Controller
         $sc = StudentClass::with('student')->findOrFail($data['student_class_id']);
         if (!$sc->student) {
             return response()->json(['message' => '課程資料不存在'], 404);
+        }
+        if ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc)) {
+            return $blockedTutoringPayment;
         }
 
         // #1096 (in-app #190): a date-mode (月結) course billed at NT$0 is nonsensical —
@@ -1094,5 +1109,17 @@ class PaymentReportController extends Controller
             // current contract. Display-only flag; no ledger figure is touched.
             'billing_mode_changed' => (bool) $invoice?->billingModeChangedSinceIssue(),
         ]);
+    }
+
+    private function tutoringPaymentBlocked(StudentClass $course)
+    {
+        if (strtolower(trim((string) ($course->ClassType ?? ''))) !== 'tutoring') {
+            return null;
+        }
+
+        return response()->json([
+            'message' => '輔導課無須繳費，不能建立付款回報、收款或付款義務。請先檢查課程帳務資料。',
+            'code' => 'tutoring_no_payment_obligation',
+        ], 422);
     }
 }

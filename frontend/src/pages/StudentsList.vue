@@ -403,6 +403,7 @@
                         <dt>付款</dt>
                         <dd>
                           <span :class="['student-course-card__payment', `student-course-card__payment--${course.payment_status || 'unpaid'}`]">{{ paymentStatusButtonLabel(course) }}</span>
+                          <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需修正</span>
                           <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         </dd>
                       </div>
@@ -417,7 +418,8 @@
                       <summary>更多操作</summary>
                       <div class="student-course-card__actions-body">
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
-                        <button type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
+                        <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
+                        <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
                         <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
@@ -1117,27 +1119,39 @@ const forceSubmitting = ref(false);
 
 // Quick add session moved to course-mgmt (authoritative scheduling ops)
 const paymentStatusButtonClass = (course) => {
+  if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
+  if (isTutoringCourse(course)) return 'tag-no-payment';
   if (course?.payment_status === 'paid') return 'ghost';
   if (course?.payment_status === 'pending_report') return 'ghost';
   return 'primary';
 };
 const paymentStatusButtonLabel = (course) => {
+  if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
+  if (isTutoringCourse(course)) return '無須繳費';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
   if (course?.payment_status === 'partial') return '部分繳';
   return '未繳費';
 };
 const paymentNextActionLabel = (course) => {
+  if (isTutoringCourse(course)) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
   if (course?.payment_status === 'pending_report') return '查看待對帳';
   return '前往帳務中心';
 };
-const paymentStatusHelpTitle = (course) => `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
+const isTutoringCourse = (course) => course?.class_type === 'tutoring';
+const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
+const shouldShowPaymentAction = (course) => !isTutoringCourse(course);
+const paymentStatusHelpTitle = (course) => {
+  if (isTutoringBillingAnomaly(course)) return '輔導課不應產生付款義務；帳務資料需由主任檢查。';
+  if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
+  return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
+};
 
 // --- Helpers ---
 const getGradeLabel = (val) => GRADES.find(g => g.value === val)?.label || val;
 const getSubjectLabel = (val) => getSubjectText(val);
-const sessionFeeDisplay = (c) => getPerSessionFee(c);
+const sessionFeeDisplay = (c) => isTutoringCourse(c) ? 0 : getPerSessionFee(c);
 const classTypeLabel = (type) => {
   const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' };
   return map[type] || type;
@@ -1776,6 +1790,8 @@ const loadStudentCourses = async (studentId) => {
           teacher_id: c.teacher_id,
           teacher_name: c.teacher_name,
           class_type: c.class_type,
+          tutoring_billing_anomaly: c.tutoring_billing_anomaly === true,
+          tutoring_billing_anomaly_reasons: c.tutoring_billing_anomaly_reasons || [],
           payment_status: c.payment_status || 'unpaid',
           rate_per_30min: c.rate_per_30min,
           duration_hours: c.duration_hours,
@@ -1809,7 +1825,8 @@ const loadStudentCourses = async (studentId) => {
           closed_reason: c.closed_reason ?? null,
           paid_at: c.paid_at ?? null,
           last_paid_at: c.last_paid_at ?? null,
-          charge: c.Charge ?? c.charge ?? 0,
+          Charge: c.Charge ?? c.charge ?? 0,
+          charge: c.charge ?? c.Charge ?? 0,
           data_source: 'laravel'
         }));
         studentCourses.value = { ...studentCourses.value, [studentId]: courses };
@@ -1856,6 +1873,8 @@ const loadAllStudentCourses = async () => {
             teacher_id: c.teacher_id,
             teacher_name: c.teacher_name || '',
             class_type: c.class_type,
+            tutoring_billing_anomaly: c.tutoring_billing_anomaly === true,
+            tutoring_billing_anomaly_reasons: c.tutoring_billing_anomaly_reasons || [],
             payment_status: c.payment_status || (Number(c?.Paid || 0) > 0 ? 'paid' : 'unpaid'),
             rate_per_30min: c.rate_per_30min,
             duration_hours: c.duration_hours,
@@ -4192,6 +4211,27 @@ table th { font-size: 12.5px; }
   border-radius: 999px !important;
   font-weight: 900 !important;
   pointer-events: none;
+}
+.payment-anomaly-hint {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--ds-danger, #b42318);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tag-no-payment {
+  background: var(--ds-success-wash, #ecfdf3);
+  color: var(--ds-success, #18794e);
+  border: 1px solid var(--ds-success, #18794e);
+  border-radius: 6px;
+  padding: 3px 10px;
+}
+.tag-billing-anomaly {
+  background: var(--ds-danger-wash, #fff1f0);
+  color: var(--ds-danger, #b42318);
+  border: 1px solid var(--ds-danger, #b42318);
+  border-radius: 6px;
+  padding: 3px 10px;
 }
 .student-course-card__actions-body button {
   min-height: 44px;

@@ -104,6 +104,15 @@ class BillingController extends Controller
         ]);
 
         return DB::transaction(function () use ($data) {
+            if (!empty($data['StudentClassID'])) {
+                $course = StudentClass::find($data['StudentClassID']);
+                if ($course && strtolower(trim((string) ($course->ClassType ?? ''))) === 'tutoring') {
+                    return response()->json([
+                        'message' => '輔導課無須繳費，不能建立帳單或付款義務。請先檢查課程帳務資料。',
+                        'code' => 'tutoring_no_payment_obligation',
+                    ], 422);
+                }
+            }
             $scheduleModeAtIssue = !empty($data['StudentClassID'])
                 ? StudentClass::where('ID', $data['StudentClassID'])->first()?->ScheduleMode
                 : null;

@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-09-tutoring-payment-policy",
+    "publishedAt": "2026-09-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "輔導課明確標示無須繳費",
+    "summary": "輔導課不再顯示付款操作；若歷史帳務資料異常，會先提示檢查而不引導付款。",
+    "items": [
+      "課程類型為「輔導」時顯示「無須繳費」，隱藏繳費通知、繳費回報與付款入口，課程費用 projection 為 0。",
+      "若輔導課仍有收費或付款資料，畫面會顯示「帳務資料需修正」並 fail closed；一般付費與未繳課程維持原本流程。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程類型為「輔導」時顯示「無須繳費」，隱藏繳費通知、繳費回報與付款入口，課程費用 projection 為 0。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "若輔導課仍有收費或付款資料，畫面會顯示「帳務資料需修正」並 fail closed；一般付費與未繳課程維持原本流程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-09:tutoring-payment-policy"
+    ],
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "staff-2026-09-09-feedback-mobile-layout",
     "publishedAt": "2026-09-09",
     "effectiveAt": null,

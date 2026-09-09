@@ -895,7 +895,7 @@ class AlertController extends Controller
      * Batch-fetch Invoice paid aggregates per StudentClass ID.
      *
      * @param  int[]  $studentClassIds
-     * @return array<int, array{paid_amount: int, total_amount: int, status: string}>
+     * @return array<int, array{paid_amount: int, total_amount: int, active_invoice_count: int, outstanding_amount: int}>
      */
     public static function invoiceAggregateByStudentClassIds(array $studentClassIds): array
     {
@@ -911,7 +911,8 @@ class AlertController extends Controller
             ->select(
                 'StudentClassID',
                 DB::raw('COALESCE(SUM(PaidAmount), 0) as paid_amount'),
-                DB::raw('COALESCE(SUM(TotalAmount), 0) as total_amount')
+                DB::raw('COALESCE(SUM(TotalAmount), 0) as total_amount'),
+                DB::raw('COUNT(*) as active_invoice_count')
             )
             ->groupBy('StudentClassID')
             ->get();
@@ -921,6 +922,8 @@ class AlertController extends Controller
             $map[(int) $row->StudentClassID] = [
                 'paid_amount'  => (int) $row->paid_amount,
                 'total_amount' => (int) $row->total_amount,
+                'active_invoice_count' => (int) $row->active_invoice_count,
+                'outstanding_amount' => max(0, (int) $row->total_amount - (int) $row->paid_amount),
             ];
         }
 

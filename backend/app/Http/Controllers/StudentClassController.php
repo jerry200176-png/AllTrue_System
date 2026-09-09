@@ -206,6 +206,7 @@ class StudentClassController extends Controller
             $latestReportIds = DB::table('payment_reports')
                 ->whereIn('StudentClassID', $classIds)
                 ->whereIn('status', ['pending', 'confirmed'])
+                ->whereNull('voided_at')
                 ->select('StudentClassID', DB::raw('MAX(id) as latest_id'))
                 ->groupBy('StudentClassID')
                 ->pluck('latest_id');
@@ -345,6 +346,7 @@ class StudentClassController extends Controller
             $subjectNameKey = trim((string) ($class->subject_name ?? ''));
             $class->subject = $reverseSubjectMap[$subjectNameKey] ?? 'Math';
             $class->class_type = $class->ClassType ?? 'one_on_one';
+            $isTutoringCourse = $class->class_type === 'tutoring';
             $class->rate_per_30min = $class->Rate ?? 0;
             $class->total_hours = (int) ($class->TotalHours ?? 0);
             $class->duration_hours = $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2;
@@ -453,6 +455,7 @@ class StudentClassController extends Controller
             if (
                 $effectiveCharge <= 0
                 && $class->payment_type === 'session'
+                && !$isTutoringCourse
                 && !$class->isPartOfPackage()
                 && (float) ($class->Rate ?? 0) > 0
                 && $class->sessions_purchased > 0
@@ -526,7 +529,8 @@ class StudentClassController extends Controller
 
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
             $invoicePaidAt = $paidAtMap[(int) $class->ID] ?? null;
-            $invoicePaidAmount = (int) (($invoiceAggMap[(int) $class->ID]['paid_amount'] ?? 0));
+            $invoiceAggregate = $invoiceAggMap[(int) $class->ID] ?? [];
+            $invoicePaidAmount = (int) ($invoiceAggregate['paid_amount'] ?? 0);
             $pendingReportId = $pendingReportByClassId[(int) $class->ID] ?? null;
             // Settlement and report review are independent facts (#249). Package
             // confirmation already synchronizes Paid; an older pending report must
@@ -538,6 +542,40 @@ class StudentClassController extends Controller
                 $invoicePaidAmount,
                 $effectiveCharge
             ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : 'unpaid');
+
+            $tutoringBillingAnomalyReasons = [];
+            if ($isTutoringCourse) {
+                if ($storedCharge > 0) {
+                    $tutoringBillingAnomalyReasons[] = 'positive_course_charge';
+                }
+                if ((int) ($invoiceAggregate['active_invoice_count'] ?? 0) > 0) {
+                    $tutoringBillingAnomalyReasons[] = 'active_invoice';
+                }
+                if ((int) ($invoiceAggregate['outstanding_amount'] ?? 0) > 0) {
+                    $tutoringBillingAnomalyReasons[] = 'positive_outstanding';
+                }
+                if ((int) ($class->Paid ?? 0) > 0 || $invoicePaidAmount > 0) {
+                    $tutoringBillingAnomalyReasons[] = 'active_paid_state';
+                }
+                if (
+                    $pendingReportId !== null
+                    || isset($latestPaymentSummaryByClassId[(int) $class->ID])
+                ) {
+                    $tutoringBillingAnomalyReasons[] = 'active_payment_report';
+                }
+
+                // Tutoring is always free. Keep the stored billing evidence read-only
+                // for correction workflows, but never project it as a payable charge.
+                $effectiveCharge = 0;
+                $class->Charge = 0;
+                $class->charge = 0;
+                $class->effective_charge = 0;
+                $class->charge_is_fallback = false;
+            }
+            $class->tutoring_billing_anomaly = $isTutoringCourse && !empty($tutoringBillingAnomalyReasons);
+            $class->tutoring_billing_anomaly_reasons = $isTutoringCourse
+                ? array_values(array_unique($tutoringBillingAnomalyReasons))
+                : [];
             $class->latest_payment_report_id = $pendingReportId;
             $class->latest_payment_summary = $latestPaymentSummaryByClassId[(int) $class->ID] ?? null;
             $class->paid_at = $directPaidAt;
@@ -3025,6 +3063,13 @@ class StudentClassController extends Controller
             return $auth;
         }
 
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'tutoring') {
+            return response()->json([
+                'message' => '輔導課無須繳費，不能確認付款。請先檢查課程帳務資料。',
+                'code' => 'tutoring_no_payment_obligation',
+            ], 422);
+        }
+
         $studentClass->Paid = 1;
         $studentClass->PayDate = now()->toDateString();
         $studentClass->save();
@@ -3050,6 +3095,13 @@ class StudentClassController extends Controller
             'end_date'   => 'nullable|date',
             'months'     => 'nullable|integer|min:1|max:24',
         ]);
+
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'tutoring') {
+            return response()->json([
+                'message' => '輔導課無須繳費，不能建立收費續報。請先檢查課程資料。',
+                'code' => 'tutoring_no_payment_obligation',
+            ], 422);
+        }
 
         $preview = $this->buildRenewalPreview($studentClass, $data);
 
@@ -3158,6 +3210,13 @@ class StudentClassController extends Controller
         $auth = $this->authorizeStudentClassAccess($studentClass);
         if ($auth !== null) {
             return $auth;
+        }
+
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'tutoring') {
+            return response()->json([
+                'message' => '輔導課無須繳費，不能建立收費續報。請先檢查課程資料。',
+                'code' => 'tutoring_no_payment_obligation',
+            ], 422);
         }
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') === 'count') {
@@ -3530,6 +3589,13 @@ class StudentClassController extends Controller
         $auth = $this->authorizeStudentClassAccess($studentClass);
         if ($auth !== null) {
             return $auth;
+        }
+
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'tutoring') {
+            return response()->json([
+                'message' => '輔導課無須繳費，不能建立收費續報。請先檢查課程資料。',
+                'code' => 'tutoring_no_payment_obligation',
+            ], 422);
         }
 
         // 月結制課程不支援加購堂數，應使用 renew-monthly 端點
@@ -4938,6 +5004,13 @@ class StudentClassController extends Controller
             'first_session_date' => null,
             'last_session_date' => null,
         ];
+
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'tutoring') {
+            $blockers[] = [
+                'code' => 'tutoring_no_payment_obligation',
+                'message' => '輔導課無須繳費，不能建立收費續報。請先檢查課程資料。',
+            ];
+        }
 
         if ((int) ($studentClass->Stop ?? 0) === 1) {
             $warnings[] = [
