@@ -320,6 +320,11 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
                     required_reviewers_configured=True, prevent_self_review=False,
                 ))
 
+    def test_environment_logs_match_self_review_policy(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("review boundary verified: required reviewer, self-review allowed", workflow)
+        self.assertNotIn("review boundary verified: required reviewer, prevent self-review", workflow)
+
 
 class DeployActivationWorkflowContractTest(unittest.TestCase):
     @classmethod
