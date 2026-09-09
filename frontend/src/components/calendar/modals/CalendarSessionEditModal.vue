@@ -7,7 +7,19 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal session-edit-modal" style="width: 500px; max-width: 92vw;">
-      <h3>{{ session.isTeacher ? '單堂詳細資訊' : '單堂檢視' }}</h3>
+      <div class="session-edit-modal__header">
+        <h3>{{ session.isTeacher ? '單堂詳細資訊' : '單堂檢視' }}</h3>
+        <button
+          type="button"
+          class="session-edit-modal__close"
+          data-testid="calendar-session-close"
+          aria-label="關閉單堂檢視"
+          title="關閉"
+          @click="$emit('close')"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </div>
 
       <div v-if="session.actionDate" class="session-info-card">
         <div class="session-info-row">
@@ -267,6 +279,40 @@ defineEmits([
   font-size: 1.125rem;
   font-weight: 700;
   line-height: 1.35;
+}
+.session-edit-modal__header {
+  position: sticky;
+  top: -28px;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -28px -28px 16px;
+  padding: 16px 16px 12px 28px;
+  background: var(--modal-bg);
+  border-bottom: 1px solid var(--ds-hairline, var(--ds-canvas-soft));
+}
+.session-edit-modal__header h3 { margin: 0; }
+.session-edit-modal__close {
+  display: inline-flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+  padding: 0;
+  border: 1px solid var(--ds-hairline, var(--ds-canvas-soft));
+  border-radius: 999px;
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
+  cursor: pointer;
+}
+.session-edit-modal__close:hover,
+.session-edit-modal__close:focus-visible {
+  border-color: var(--ds-primary);
+  color: var(--ds-primary);
 }
 .conflict-box {
   background: var(--ds-danger-wash);
@@ -528,11 +574,14 @@ defineEmits([
     max-height: 100vh !important;
     max-height: 100dvh !important;
     border-radius: 0 !important;
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 }
 @media (max-width: 640px) {
   .session-edit-modal {
     border-radius: 16px 16px 0 0 !important;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    touch-action: pan-y;
   }
 }
 </style>

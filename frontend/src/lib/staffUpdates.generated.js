@@ -43,6 +43,45 @@ export const staffUpdates = [
     "version": "2026.09.09"
   },
   {
+    "id": "staff-2026-09-09-calendar-modal-mobile-reachability",
+    "publishedAt": "2026-09-09",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "手機行事曆單堂檢視更容易操作",
+    "summary": "單堂檢視新增右上角關閉按鈕，長內容也能滑到最下面。",
+    "items": [
+      "手機開啟行事曆的「單堂檢視」時，右上角提供清楚的關閉按鈕。",
+      "長內容會避開手機底部導覽列，最下面的單堂操作與關閉按鈕可以滑到並點擊；不改排課、出勤或帳務資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "手機開啟行事曆的「單堂檢視」時，右上角提供清楚的關閉按鈕。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "長內容會避開手機底部導覽列，最下面的單堂操作與關閉按鈕可以滑到並點擊；不改排課、出勤或帳務資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-09:calendar-modal-mobile-reachability"
+    ],
+    "date": "2026-09-09",
+    "version": "2026.09.09"
+  },
+  {
     "id": "staff-2026-09-08-subject-count-final-total",
     "publishedAt": "2026-09-08",
     "effectiveAt": null,
