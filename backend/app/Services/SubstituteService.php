@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\UserCampus;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -467,20 +468,10 @@ class SubstituteService
             $sourceKey = 'substitute:'.$classSessionId;
             $existing = Notification::where('SourceKey', $sourceKey)->first();
             if ($existing) {
-                $existing->Title = mb_substr($title, 0, 120, 'UTF-8');
-                $existing->Body = mb_substr($body, 0, 400, 'UTF-8');
-                // 合併既有 Payload 與新資料（保留既有 voided / created_at_ms 等不重要差異）
-                $merged = is_array($existing->Payload) ? $existing->Payload : [];
-                foreach ($payloadData as $k => $v) {
-                    $merged[$k] = $v;
-                }
-                $existing->Payload = $merged;
-                $existing->save();
-
-                return $existing;
+                return $this->refreshParentNotification($existing, $title, $body, $payloadData);
             }
 
-            return Notification::create([
+            $attributes = [
                 'CampusID' => $campusId,
                 'Type' => 'substitute',
                 'Severity' => 'low',
@@ -491,11 +482,59 @@ class SubstituteService
                 'SourceKey' => $sourceKey,
                 'Payload' => $payloadData,
                 'OccurredAt' => now(),
-            ]);
+            ];
+
+            try {
+                return Notification::create($attributes);
+            } catch (QueryException $e) {
+                $driverCode = (int) ($e->errorInfo[1] ?? 0);
+                $isSourceKeyRace = $driverCode === 1062
+                    && stripos($e->getMessage(), 'notifications_sourcekey_unique') !== false;
+                if (!$isSourceKeyRace) {
+                    throw $e;
+                }
+
+                // The initial SELECT may have missed a concurrent committed row. A
+                // locking read is a current read under MySQL REPEATABLE READ and
+                // recovers the winner without hiding unrelated database failures.
+                $existing = Notification::query()->where('SourceKey', $sourceKey)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$existing) {
+                    throw $e;
+                }
+
+                Log::notice('substitute_notification_source_key_race_recovered', [
+                    'campus_id' => $campusId,
+                    'source_key_sha256' => hash('sha256', $sourceKey),
+                ]);
+
+                return $this->refreshParentNotification($existing, $title, $body, $payloadData);
+            }
         } catch (\Throwable $e) {
             // 通知失敗仍算代課失敗（FR-010 要求同一交易），由呼叫端 catch 回滾。
             throw $e;
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payloadData
+     */
+    private function refreshParentNotification(Notification $notification, string $title, string $body, array $payloadData): Notification
+    {
+        $notification->setAttribute('Title', mb_substr($title, 0, 120, 'UTF-8'));
+        $notification->setAttribute('Body', mb_substr($body, 0, 400, 'UTF-8'));
+        // 合併既有 Payload 與新資料（保留既有 voided / created_at_ms 等不重要差異）
+        $payload = $notification->getAttribute('Payload');
+        $merged = is_array($payload) ? $payload : [];
+        foreach ($payloadData as $k => $v) {
+            $merged[$k] = $v;
+        }
+        $notification->setAttribute('Payload', $merged);
+        $notification->setAttribute('ResolvedAt', null);
+        $notification->save();
+
+        return $notification;
     }
 
     /**
