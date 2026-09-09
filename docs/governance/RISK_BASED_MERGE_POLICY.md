@@ -56,16 +56,21 @@ preflight/classification runs do not occupy that side-effect queue. The deploy
 workflow compares the exact production manifest SHA to current `main` and uses
 `classify_activation_scope`: tests, docs, Exo metadata, and the read-only
 convergence scheduler do not turn an ordinary runtime release into a manual
-activation. T0/T1 deploys do not reference the protected
+activation. T0/T1/T2 deploys do not reference the protected
 `production-activation` environment; exact-SHA, required CI, preflight,
 health/smoke, rollback, and fail-closed behavior remain mandatory.
+
+Control-plane-only changes are reported as `control-plane-verified` once merged
+to `main`; they do not require an application runtime deployment and are never
+reported as `production-verified`. A mixed control-plane/application change
+remains an application release and is classified from its full effect.
 
 Reversible T2 changes with successful exact-target CI, rollback readiness, and
 non-protected scope may auto-deploy. Missing or contradictory deterministic
 evidence is ambiguous and stays held. T3, unknown classifications, production executor
 changes, security/data boundaries, and irreversible operations stay held for
-risk-appropriate review or the protected Founder boundary. Whenever an
-activation references `production-activation`, all supported events use the same
+risk-appropriate review or the protected Founder boundary. Only
+Founder-required/T3 activation references `production-activation`; all supported events use the same
 static policy: Founder required reviewer, self-review allowed, administrator
 bypass disabled, and main-only deployment branch policy. Workflow-dispatch typed
 confirmation remains only for exceptional manual phases; it is not a second
