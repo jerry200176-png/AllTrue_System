@@ -3398,7 +3398,7 @@ class ClassSessionController extends Controller
             ))));
             $scheduledDeleted = 0;
             if (!empty($scheduledIds)) {
-                $scheduledDeleted = Schedule::whereIn('id', $scheduledIds)->delete();
+                $scheduledDeleted = Schedule::query()->whereIn('id', $scheduledIds)->delete();
             }
 
             $rescheduledDeleted = 0;
@@ -3431,12 +3431,12 @@ class ClassSessionController extends Controller
                 ->count();
             // Same-course same-date single-session fallback (production #276 shape).
             if ($remainingSubstitute > 0) {
-                $sessionsThatDay = ClassSession::where('StudentClassID', $courseId)
+                $sessionsThatDay = ClassSession::query()->where('StudentClassID', $courseId)
                     ->whereDate('SessionDate', $sessionDate)
                     ->where('Status', '!=', 'cancelled')
                     ->count();
                 if ($sessionsThatDay <= 1) {
-                    $leftoverIds = Schedule::where('student_course_id', $courseId)
+                    $leftoverIds = Schedule::query()->where('student_course_id', $courseId)
                         ->whereDate('schedule_date', $sessionDate)
                         ->where('status', 'scheduled')
                         ->whereNotNull('original_schedule_id')
@@ -3444,7 +3444,7 @@ class ClassSessionController extends Controller
                         ->pluck('id')
                         ->map(fn ($id) => (int) $id)
                         ->all();
-                    $leftoverAnchors = Schedule::where('student_course_id', $courseId)
+                    $leftoverAnchors = Schedule::query()->where('student_course_id', $courseId)
                         ->whereDate('schedule_date', $sessionDate)
                         ->where('status', 'scheduled')
                         ->whereNotNull('original_schedule_id')
@@ -3456,7 +3456,7 @@ class ClassSessionController extends Controller
                         ->values()
                         ->all();
                     if (!empty($leftoverIds)) {
-                        $scheduledDeleted += Schedule::whereIn('id', $leftoverIds)->delete();
+                        $scheduledDeleted += Schedule::query()->whereIn('id', $leftoverIds)->delete();
                     }
                     if (!empty($leftoverAnchors)) {
                         $stillLinked = DB::table('schedules')
@@ -3592,7 +3592,7 @@ class ClassSessionController extends Controller
             $dates[] = Carbon::parse($session->SessionDate)->toDateString();
         } catch (\Throwable) {
         }
-        $notif = Notification::where('Type', 'substitute')
+        $notif = Notification::query()->where('Type', 'substitute')
             ->where('SourceType', 'ClassSession')
             ->where('SourceID', $session->id)
             ->orderByDesc('id')
@@ -3621,7 +3621,7 @@ class ClassSessionController extends Controller
             $this->normalizeSessionTimeForSchedule($startTime),
             $this->normalizeSessionTimeForSchedule($session->StartTime ?? ''),
         ];
-        $notif = Notification::where('Type', 'substitute')
+        $notif = Notification::query()->where('Type', 'substitute')
             ->where('SourceType', 'ClassSession')
             ->where('SourceID', $session->id)
             ->orderByDesc('id')
