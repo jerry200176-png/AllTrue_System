@@ -1053,7 +1053,7 @@ parameters:
 		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\:\:notVoided\(\)\.$#'
 			identifier: method.notFound
-			count: 1
+			count: 2
 			path: app/Http/Controllers/BillingController.php
 
 		-
@@ -3919,7 +3919,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$EndDate\.$#'
 			identifier: property.notFound
-			count: 8
+			count: 9
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
