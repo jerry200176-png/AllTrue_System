@@ -1141,7 +1141,7 @@ jobs:
               $probe272["teacher_id"] = $teacherId272;
               $capacityService272 = app(\App\Services\SubstituteService::class);
               $capacityChecks272 = [];
-              foreach ($probe272["three_course_materialized_slots"] as $slot) {
+              foreach ($probe272["three_course_materialized_slots"] as $slot) {{
                 $observed = $capacityService272->collectTeacherBusySlotsWithCapacity(
                   $teacherId272,
                   (string)$slot["date"],
@@ -1152,11 +1152,11 @@ jobs:
                   "date" => (string)$slot["date"],
                   "start_time" => (string)$slot["start_time"],
                   "end_time" => (string)$slot["end_time"],
-                  "slots" => collect($observed)->filter(function ($candidate) use ($slot, $campusId272) {
+                  "slots" => collect($observed)->filter(function ($candidate) use ($slot, $campusId272) {{
                     return (int)($candidate["campus_id"] ?? 0) === $campusId272
                       && (string)($candidate["start_time"] ?? "") === (string)$slot["start_time"]
                       && (string)($candidate["end_time"] ?? "") === (string)$slot["end_time"];
-                  })->map(fn ($candidate) => [
+                  }})->map(fn ($candidate) => [
                     "class_type" => (string)($candidate["class_type"] ?? ""),
                     "student_count" => (int)($candidate["student_count"] ?? 0),
                     "configured_capacity" => (int)($candidate["configured_capacity"] ?? 0),
@@ -1168,7 +1168,7 @@ jobs:
                     "source_types" => array_values(array_map("strval", $candidate["source_types"] ?? [])),
                   ])->values()->all(),
                 ];
-              }
+              }}
               $probe272["capacity_slot_checks"] = $capacityChecks272;
               $probe272["decision_grade"] = true;
               $probe272["error"] = null;
