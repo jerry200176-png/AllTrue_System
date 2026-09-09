@@ -48,3 +48,19 @@ echo "--- recent audits mentioning 代課/更換/邱崴/黃喬 around course ---
 "${M[@]}" -e "SELECT CONCAT_WS('|',id,session_id,action_type,LEFT(IFNULL(description,''),220),operator_id,IFNULL(u.Name,'?'),created_at) FROM schedule_audit_logs sal LEFT JOIN User u ON u.id=sal.operator_id WHERE created_at>='2026-08-01' AND (session_id=26509 OR description LIKE '%26509%' OR description LIKE '%2878%' OR description LIKE '%代課%' AND (description LIKE '%何昀佳%' OR description LIKE '%2878%')) ORDER BY created_at DESC LIMIT 40;" 2>/dev/null || true
 
 echo "=== END chronology ==="
+
+echo "--- notification 17617 full payload ---"
+"${M[@]}" -e "SELECT id,Type,SourceType,SourceID,ResolvedAt,created_at,updated_at,Payload FROM Notifications WHERE id=17617\G"
+
+echo "--- schedule_audit_logs for 26509 (qualified) ---"
+"${M[@]}" -e "SELECT CONCAT_WS('|',sal.id,sal.session_id,sal.action_type,LEFT(IFNULL(sal.description,''),220),sal.operator_id,IFNULL(u.Name,'?'),sal.created_at) FROM schedule_audit_logs sal LEFT JOIN User u ON u.id=sal.operator_id WHERE sal.session_id=26509 ORDER BY sal.id;"
+
+echo "--- learning_record_teacher_changes for 18968 ---"
+"${M[@]}" -e "SHOW TABLES LIKE 'learning_record_teacher_changes';"
+"${M[@]}" -e "SELECT * FROM learning_record_teacher_changes WHERE learning_record_id=18968 ORDER BY id\G" 2>/dev/null || echo none
+
+echo "--- all schedules for course 2878 on 2026-09-09 ---"
+"${M[@]}" -e "SELECT CONCAT_WS('|',id,teacher_id,status,IFNULL(original_schedule_id,'null'),created_at,updated_at) FROM schedules WHERE student_course_id=2878 AND schedule_date='2026-09-09' ORDER BY id;"
+
+echo "--- LR 18968 current ---"
+"${M[@]}" -e "SELECT CONCAT_WS('|',id,TeacherID,Status,created_at,updated_at,CHAR_LENGTH(IFNULL(Content,''))) FROM LearningRecord WHERE id=18968;"
