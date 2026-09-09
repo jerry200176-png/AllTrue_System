@@ -49,16 +49,16 @@
         <div class="sdp-empty-title">請先選擇要管理的分校</div>
         <div class="sdp-empty-sub">課表回報屬於各分校的內部資料；請於上方切換分校後再查看。</div>
       </div>
-      <div v-else-if="loading" class="sdp-state sdp-state-loading">
+      <div v-else-if="loading" class="sdp-state sdp-state-loading" role="status" aria-live="polite">
         <div class="sdp-spinner" aria-hidden="true"></div>
         <span>載入中…</span>
       </div>
-      <div v-else-if="errorMsg" class="sdp-state sdp-state-error">
+      <div v-else-if="errorMsg" class="sdp-state sdp-state-error" role="alert" aria-live="assertive">
         <span class="material-symbols-outlined" aria-hidden="true">error</span>
         <span>{{ errorMsg }}</span>
         <button class="ghost xs" type="button" @click="refresh">重試</button>
       </div>
-      <div v-else-if="rows.length === 0" class="sdp-state sdp-state-empty">
+      <div v-else-if="rows.length === 0" class="sdp-state sdp-state-empty" role="status">
         <span class="material-symbols-outlined sdp-empty-icon" aria-hidden="true">{{ emptyIcon }}</span>
         <div class="sdp-empty-title">{{ emptyTitle }}</div>
         <div class="sdp-empty-sub">{{ emptySub }}</div>
@@ -874,5 +874,11 @@ onBeforeUnmount(() => {
 .sdp-toast-enter-from, .sdp-toast-leave-to { opacity: 0; transform: translateY(-8px); }
 @media (max-width: 480px) {
   .sdp-toast { top: 12px; right: 12px; left: 12px; }
+}
+
+/* Keep exception handling actions reachable on touch layouts. */
+.sdp-page button,
+.sdp-page :deep(.at-btn) {
+  min-height: var(--ds-control-height-touch, 44px) !important;
 }
 </style>
