@@ -84,6 +84,20 @@ _WORKFLOW_ONLY_PREFIXES = (
     "scripts/tests/",
 )
 
+_CONTROL_PLANE_PREFIXES = (
+    ".github/",
+    "scripts/governance/",
+    "governance/",
+    "docs/governance/",
+)
+
+_CONTROL_PLANE_EXACT = {
+    ".cursorrules",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "codex.md",
+}
+
 _T3_MARKERS = (
     "billing",
     "payment",
@@ -293,6 +307,22 @@ def is_application_runtime_path(path: str) -> bool:
     if normalized.startswith(_WORKFLOW_ONLY_PREFIXES):
         return False
     return is_deployable_path(normalized)
+
+
+def is_control_plane_path(path: str) -> bool:
+    """Identify changes effective in the delivery/control plane, not the app."""
+
+    normalized = path.replace("\\", "/")
+    return normalized in _CONTROL_PLANE_EXACT or normalized.startswith(_CONTROL_PLANE_PREFIXES)
+
+
+def is_control_plane_only_paths(paths: Iterable[str]) -> bool:
+    """Return whether a non-empty change has no application runtime files."""
+
+    normalized = [str(path).replace("\\", "/") for path in paths if path]
+    return bool(normalized) and any(is_control_plane_path(path) for path in normalized) and not any(
+        is_application_runtime_path(path) for path in normalized
+    )
 
 
 def is_production_activation_sensitive_path(path: str) -> bool:
@@ -651,6 +681,8 @@ __all__ = [
     "effective_tier",
     "has_rollback_evidence",
     "is_application_runtime_path",
+    "is_control_plane_only_paths",
+    "is_control_plane_path",
     "is_deployable_path",
     "is_production_activation_sensitive_path",
     "parse_declaration",

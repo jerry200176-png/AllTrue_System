@@ -1,5 +1,17 @@
 # Governance changelog
 
+## 2026-09-10 — Separate control-plane verification from application deployment
+
+- Routed only application-runtime paths to the production executor; merged
+  workflow/governance-only changes now record `control-plane-verified` without
+  requiring an application deployment.
+- Restricted the shared `production-activation` Environment to Founder-required
+  / T3 paths. T0/T1/T2 evidence gaps fail closed instead of being promoted to a
+  reviewer-gated activation.
+- Added regression coverage for control-plane-only detection and the T3-only
+  Founder boundary. No Environment, permission, secret, or production setting
+  was modified.
+
 ## 2026-09-10 — Effect-based sensitive activation classification (#2652 follow-up)
 
 - Kept T0/T1/T2 behavior and the existing exact-SHA/rollback/health/smoke/
