@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-10-learning-record-dialog-clarity
+    published_at: "2026-09-10"
+    audiences:
+      - director
+    importance: digest
+    title: 評量評語視窗更清楚、更容易操作
+    summary: 主任編輯老師評語時會看到一致的對話框、清楚的主要操作與可靠的鍵盤焦點。
+    items:
+      - category: improved
+        text: 學習紀錄頁的「主任給老師評語」改用一致的對話框，標題、說明與儲存／取消操作更容易辨識。
+      - category: improved
+        text: 手機與桌面都能完整閱讀和操作；使用鍵盤時焦點會留在對話框內，關閉後回到原本的開啟位置。
+      - category: fixed
+        text: 評語驗證、儲存 API、權限與學習紀錄資料流程維持不變。
+    source_refs:
+      - "changelog:2026-09-10:learning-record-dialog-clarity"
+      - "pr:#2684"
+
   - id: staff-2026-09-10-substitute-restore-clears-schedules
     published_at: "2026-09-10"
     audiences:
