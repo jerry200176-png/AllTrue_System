@@ -217,6 +217,30 @@ diff --git a/frontend/src/lib/staffUpdates.generated.js b/frontend/src/lib/staff
         self.assertEqual(routine["activation_class"], "routine")
         self.assertEqual(auth["activation_class"], "founder-required")
 
+    def test_css_logout_selector_does_not_trigger_authentication_boundary(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -20,1 +20,5 @@
++.pp-btn-logout:focus-visible,
++.pp-chip:focus-visible {
++  outline: 3px solid var(--ds-focus-ring);
++}
+"""
+        scope = classify_activation_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertEqual(scope["activation_class"], "routine")
+        self.assertFalse(scope["protected_activation"])
+
+    def test_logout_operation_remains_an_authentication_boundary(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -20,1 +20,1 @@
++await logout()
+"""
+        scope = classify_activation_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T3")
+        self.assertTrue(scope["protected_activation"])
+
     def test_sensitive_blast_radius_is_founder_required(self):
         paths = [f"frontend/src/pages/BillingStatus{i}.vue" for i in range(4)]
         patch = "\n".join(

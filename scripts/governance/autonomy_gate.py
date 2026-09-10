@@ -259,6 +259,24 @@ def _changed_code_lines(patch: str) -> str:
     return "\n".join(lines).lower()
 
 
+_CSS_SELECTOR_LINE_RE = re.compile(r"^\s*[.#][a-z_][a-z0-9_-]*(?:::[a-z-]+|:[a-z-]+)?(?:[\s,>{].*)?$", re.IGNORECASE)
+
+
+def _semantic_changed_code_lines(patch: str) -> str:
+    """Exclude standalone CSS selectors from behavioral-effect detection.
+
+    A selector such as ``.pp-btn-logout:focus-visible`` names a control but
+    cannot change the logout/authentication operation. Keep every non-selector
+    line, especially JavaScript calls such as ``logout()``, in the conservative
+    semantic scan.
+    """
+
+    return "\n".join(
+        line for line in _changed_code_lines(patch).splitlines()
+        if not _CSS_SELECTOR_LINE_RE.fullmatch(line)
+    )
+
+
 def _patch_is_inspectable(paths: list[str], patch: str) -> bool:
     """Return false when a sensitive diff cannot be deterministically inspected."""
 
@@ -438,7 +456,7 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     activation_class = "routine"
 
     semantic_patch = _semantic_runtime_patch(runtime_paths, patch)
-    changed_code = _changed_code_lines(semantic_patch)
+    changed_code = _semantic_changed_code_lines(semantic_patch)
     founder_effects = _founder_effects(
         changed_code, include_runtime_write=bool(sensitive_paths)
     )

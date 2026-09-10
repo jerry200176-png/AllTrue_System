@@ -1,0 +1,50 @@
+id: INT-20260911-004629-TYP8
+title: AllTrue GitHub and in-app feedback triage and reversible delivery
+intent: AllTrue GitHub and in-app feedback triage and reversible delivery
+kind: intent
+brain_dump: "\u6574\u7406 AllTrue \u7684 GitHub issues\u3001PRs\u3001branches\uFF0C\
+  \u4E26\u8655\u7406 in-app \u7684 bug\u3001\u610F\u898B\u8207\u5EFA\u8B70\u3002\u6838\
+  \u5C0D\u5BE6\u969B\u72C0\u614B\u3001\u53BB\u91CD\u3001\u4F9D\u4F7F\u7528\u8005\u5F71\
+  \u97FF\u6392\u5E8F\uFF1B\u53EF\u9006\u4FEE\u5FA9\u5B8C\u6210 CI\u3001merge\u3001\
+  deploy\u3001production \u9A57\u8B49\u3002billing\u3001identity\u3001permission\u3001\
+  migration\u3001\u8CC7\u6599\u4FEE\u5FA9\u3001\u96B1\u79C1\u8CC7\u5B89\u3001\u90E8\
+  \u7F72\u6CBB\u7406\u3001\u91CD\u5927\u65B9\u5411\u6216\u4E0D\u53EF\u9006\u8B8A\u66F4\
+  \u9700\u8981 Founder decision\u3002"
+boundary: No production SSH or direct DB access; no billing, identity, permission,
+  migration, data repair, privacy/security policy, deploy governance, or major product-direction
+  activation without Founder decision; do not delete branches with open PRs or unmerged
+  work.
+success_condition: Evidence-backed triage of live GitHub and in-app backlog; each
+  safe reversible item is delivered through CI/merge/deploy/production verification
+  or documented at its actual stage; only proven merged unused branches are deleted
+  with SHA evidence.
+risk: high
+priority: 1
+labels:
+- github-hygiene
+scope:
+  allow:
+  - '**'
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-11T00:46:29+08:00'
+children:
+- TKT-20260911-004635-FTSY
+resource_profile: default
