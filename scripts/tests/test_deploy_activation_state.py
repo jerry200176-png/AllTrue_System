@@ -16,6 +16,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
     classify_activation_scope,
+    classify_activation_provenance,
     classify_production_runtime,
     classify_scope,
     decide_activation,
@@ -34,6 +35,70 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
 
 
 class DeployActivationPolicyTest(unittest.TestCase):
+    @staticmethod
+    def _provenance(number, paths, patch, risk, tier, *, patch_complete=True):
+        return {
+            "number": number,
+            "merged_at": "2026-09-10T00:00:00Z",
+            "paths": paths,
+            "patch": patch,
+            "patch_complete": patch_complete,
+            "declared_risk": risk,
+            "declared_tier": tier,
+        }
+
+    def test_control_plane_only_t3_does_not_raise_following_t2_app(self):
+        result = classify_activation_provenance([
+            self._provenance(2671, [".github/workflows/deploy.yml"], "", 3, 3),
+            self._provenance(2678, ["backend/app/Services/ScheduleService.php"], "+schedule", 2, 2),
+        ])
+        self.assertEqual(result["tier_name"], "T2")
+        self.assertFalse(result["blocked"])
+
+    def test_t3_application_pr_cannot_be_overridden_by_following_t2_app(self):
+        result = classify_activation_provenance([
+            self._provenance(2667, ["backend/app/Http/Controllers/AuthController.php"], "+return response();", 3, 3),
+            self._provenance(2678, ["backend/app/Services/ScheduleService.php"], "+schedule", 2, 2),
+        ])
+        self.assertEqual(result["tier_name"], "T3")
+        self.assertTrue(result["founder_required"])
+        self.assertFalse(result["blocked"])
+
+    def test_t2_application_followed_by_control_plane_only_stays_t2(self):
+        result = classify_activation_provenance([
+            self._provenance(2678, ["backend/app/Services/ScheduleService.php"], "+schedule", 2, 2),
+            self._provenance(2671, ["scripts/governance/autonomy_gate.py"], "", 3, 3),
+        ])
+        self.assertEqual(result["tier_name"], "T2")
+        self.assertFalse(result["blocked"])
+
+    def test_mixed_control_plane_and_application_pr_is_t3(self):
+        result = classify_activation_provenance([
+            self._provenance(
+                2671,
+                [".github/workflows/deploy.yml", "frontend/src/pages/SmartCalendar.vue"],
+                "+schedule",
+                3,
+                3,
+            ),
+        ])
+        self.assertEqual(result["tier_name"], "T3")
+        self.assertTrue(result["founder_required"])
+
+    def test_incomplete_application_provenance_is_blocked(self):
+        result = classify_activation_provenance([
+            self._provenance(
+                2678,
+                ["backend/app/Services/ScheduleService.php"],
+                "",
+                2,
+                2,
+                patch_complete=False,
+            ),
+        ])
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["activation_class"], "blocked")
+
     def test_r0_t0_normal_change_is_auto_eligible(self):
         result = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,
@@ -505,7 +570,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_only_t3_reaches_founder_environment(self):
         self.assertIn("is_founder_approval_eligible", self.workflow)
-        self.assertIn('protected_activation=bool(scope.get("protected_activation"))', self.workflow)
+        self.assertIn('protected_activation=bool(provenance.get("protected_activation"))', self.workflow)
         self.assertNotIn('decision["effective_tier"] in {"T2", "T3"}', self.workflow)
 
     def test_control_plane_merge_is_verified_without_application_deploy(self):
@@ -523,7 +588,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
         self.assertNotIn("/check-runs?per_page=100", self.workflow)
         self.assertIn("is_founder_approval_eligible", self.workflow)
-        self.assertIn("bool(scope.get(\"protected_activation\"))", self.workflow)
+        self.assertIn("bool(provenance.get(\"protected_activation\"))", self.workflow)
 
     def test_manual_workflow_revision_is_canonical_main(self):
         self.assertIn('WORKFLOW_REF: ${{ github.ref }}', self.workflow)
@@ -541,6 +606,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("decide_activation", self.workflow)
         self.assertIn("parse_declaration", self.workflow)
         self.assertIn("effective_tier", self.workflow)
+        self.assertIn("classify_activation_provenance", self.workflow)
         self.assertNotIn("re.search(r\"(?m)^\\*\\*Risk-Class", self.workflow)
 
     def test_state_machine_has_fail_closed_modes(self):

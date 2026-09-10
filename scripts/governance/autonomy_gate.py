@@ -505,6 +505,106 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     }
 
 
+def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict[str, object]:
+    """Classify an undeployed range from independently attributed merged PRs.
+
+    Control-plane-only PRs are already effective when merged and therefore do
+    not become part of a later application release's effect.  Application
+    effects are still accumulated across PRs, while each PR is classified from
+    its own files and patch.  Missing attribution/evidence is a hard hold.
+    """
+
+    normalized = list(records)
+    if not normalized:
+        return {
+            "machine_minimum_tier": 3,
+            "tier_name": "T3",
+            "activation_class": "blocked",
+            "founder_required": True,
+            "protected_activation": True,
+            "blocked": True,
+            "reason": "no merged PR provenance for current main target; fail closed",
+            "application_prs": [],
+        }
+
+    application_prs: list[dict[str, object]] = []
+    minimum = 0
+    blocked_reasons: list[str] = []
+    declared_minimum = 0
+    for record in normalized:
+        number = record.get("number")
+        paths = [str(path).replace("\\", "/") for path in (record.get("paths") or []) if path]
+        patch = str(record.get("patch") or "")
+        if not number or not paths or not record.get("merged_at"):
+            blocked_reasons.append("merged PR attribution is incomplete")
+            continue
+
+        application = any(is_application_runtime_path(path) for path in paths)
+        control_plane = is_control_plane_only_paths(paths)
+        if not application and control_plane:
+            # Its control-plane effect is effective at merge and must not raise
+            # the next application release's tier.
+            continue
+        if not application:
+            blocked_reasons.append(f"PR #{number}: provenance has no classified effect")
+            continue
+        if record.get("patch_complete") is not True:
+            blocked_reasons.append(f"PR #{number}: application patch evidence is incomplete")
+            continue
+
+        scope = classify_activation_scope(paths, patch)
+        application_prs.append({"number": str(number), "scope": scope})
+        minimum = max(minimum, int(scope["machine_minimum_tier"]))
+
+        declared_risk = record.get("declared_risk")
+        declared_tier = record.get("declared_tier")
+        if isinstance(declared_risk, int):
+            declared_minimum = max(declared_minimum, declared_risk)
+        if isinstance(declared_tier, int):
+            declared_minimum = max(declared_minimum, declared_tier)
+        _, declaration_error = effective_tier(
+            int(scope["machine_minimum_tier"]), declared_risk, declared_tier
+        )
+        if declaration_error:
+            blocked_reasons.append(f"PR #{number}: {declaration_error}")
+
+    if blocked_reasons:
+        return {
+            "machine_minimum_tier": max(3, minimum),
+            "tier_name": "T3",
+            "activation_class": "blocked",
+            "founder_required": True,
+            "protected_activation": True,
+            "blocked": True,
+            "reason": "; ".join(blocked_reasons),
+            "application_prs": application_prs,
+        }
+    if not application_prs:
+        return {
+            "machine_minimum_tier": 0,
+            "tier_name": "T0",
+            "activation_class": "control-plane-only",
+            "founder_required": False,
+            "protected_activation": False,
+            "blocked": False,
+            "reason": "merged control-plane-only PRs are effective on main",
+            "application_prs": [],
+        }
+
+    return {
+        "machine_minimum_tier": minimum,
+        "tier_name": f"T{minimum}",
+        "activation_class": "founder-required" if minimum >= 3 else "routine",
+        "founder_required": minimum >= 3,
+        "protected_activation": minimum >= 3,
+        "blocked": False,
+        "reason": "application effects classified from independently attributed PRs",
+        "application_prs": application_prs,
+        "declared_risk": declared_minimum,
+        "declared_tier": declared_minimum,
+    }
+
+
 def decide_activation(
     *,
     event_name: str,
@@ -683,6 +783,7 @@ def effective_tier(
 
 __all__ = [
     "classify_activation_scope",
+    "classify_activation_provenance",
     "classify_scope",
     "decide_activation",
     "decide_manual_activation",
