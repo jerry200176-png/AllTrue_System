@@ -572,7 +572,7 @@
               匯出已選取
             </button>
           </div>
-          <table class="tc-table acct-table">
+          <table class="tc-table acct-table acct-table--payments">
             <thead>
               <tr>
                 <th class="acct-col-check">
@@ -711,7 +711,7 @@
           <AtEmpty icon="task_alt" title="目前查無已結清課程" description="符合目前篩選條件的課程會顯示在這裡。" />
         </div>
         <div v-else class="tc-table-wrap">
-          <table class="tc-table acct-table">
+          <table class="tc-table acct-table acct-table--settled">
             <thead>
               <tr>
                 <th>課程</th><th>學生</th><th>科目</th><th>模式</th><th class="tc-col-currency">已記入</th><th>最近付款</th><th>標籤</th><th>操作</th>
@@ -3398,6 +3398,73 @@ loadAlerts();
   .tc-table:not(.acct-table) td:nth-child(10)::before { content: '到期／逾期'; }
   .tc-table:not(.acct-table) .tc-actions { justify-content: flex-start; }
   .tc-table:not(.acct-table) .tc-col-actions { padding-top: 10px; }
+
+  .tc-table.acct-table,
+  .tc-table.acct-table tbody {
+    display: block;
+  }
+  .tc-table.acct-table thead { display: none; }
+  .tc-table.acct-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 12px;
+    align-items: start;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-bg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  }
+  .tc-table.acct-table tbody tr:last-child { margin-bottom: 0; }
+  .tc-table.acct-table td {
+    min-width: 0;
+    padding: 4px 0;
+    border-bottom: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tc-table.acct-table .tc-actions { justify-content: flex-start; }
+  .tc-table.acct-table .acct-col-check { width: 44px; }
+
+  .tc-table.acct-table--payments td:nth-child(1) { grid-column: 2; grid-row: 1; }
+  .tc-table.acct-table--payments td:nth-child(2) { grid-column: 1; grid-row: 1; }
+  .tc-table.acct-table--payments td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; font-size: 15px; }
+  .tc-table.acct-table--payments td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
+  .tc-table.acct-table--payments td:nth-child(5) { grid-column: 1; grid-row: 4; }
+  .tc-table.acct-table--payments td:nth-child(6) { grid-column: 2; grid-row: 4; text-align: right; }
+  .tc-table.acct-table--payments td:nth-child(7) { grid-column: 1 / -1; grid-row: 5; }
+  .tc-table.acct-table--payments td:nth-child(8) { grid-column: 1 / -1; grid-row: 6; }
+  .tc-table.acct-table--payments td:nth-child(9) { grid-column: 1 / -1; grid-row: 7; padding-top: 10px; }
+  .tc-table.acct-table--payments td:nth-child(5)::before,
+  .tc-table.acct-table--payments td:nth-child(6)::before,
+  .tc-table.acct-table--payments td:nth-child(7)::before {
+    color: var(--text-light);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .tc-table.acct-table--payments td:nth-child(5)::before { content: '現金'; }
+  .tc-table.acct-table--payments td:nth-child(6)::before { content: '匯款'; }
+  .tc-table.acct-table--payments td:nth-child(7)::before { content: '合計'; }
+
+  .tc-table.acct-table--settled td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .tc-table.acct-table--settled td:nth-child(2) { grid-column: 2; grid-row: 1; text-align: right; font-size: 15px; }
+  .tc-table.acct-table--settled td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+  .tc-table.acct-table--settled td:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .tc-table.acct-table--settled td:nth-child(5) { grid-column: 2; grid-row: 3; text-align: right; }
+  .tc-table.acct-table--settled td:nth-child(6) { grid-column: 1 / -1; grid-row: 4; }
+  .tc-table.acct-table--settled td:nth-child(7) { grid-column: 1 / -1; grid-row: 5; }
+  .tc-table.acct-table--settled td:nth-child(8) { grid-column: 1 / -1; grid-row: 6; padding-top: 10px; }
+  .tc-table.acct-table--settled td:nth-child(4)::before,
+  .tc-table.acct-table--settled td:nth-child(5)::before,
+  .tc-table.acct-table--settled td:nth-child(6)::before {
+    color: var(--text-light);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .tc-table.acct-table--settled td:nth-child(4)::before { content: '模式'; }
+  .tc-table.acct-table--settled td:nth-child(5)::before { content: '已記入'; }
+  .tc-table.acct-table--settled td:nth-child(6)::before { content: '最近付款'; }
 }
 @media (max-width: 640px) {
   .acct-tabs { white-space: nowrap; }
@@ -3409,4 +3476,10 @@ loadAlerts();
   .tc-toolbar { flex-direction: column; align-items: stretch; }
   .tc-toolbar-right { margin-left: 0; justify-content: flex-end; }
 }
+
+/* Keep legacy billing actions on the same touch-target floor as shared buttons. */
+.tc-page .tc-btn { min-height: 44px; }
+.tc-page .acct-filter-grid input,
+.tc-page .acct-filter-grid select,
+.tc-page .acct-filters input { min-height: 44px; }
 </style>

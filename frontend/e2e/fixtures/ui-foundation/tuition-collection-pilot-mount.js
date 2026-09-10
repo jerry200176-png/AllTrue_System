@@ -4,6 +4,8 @@ localStorage.setItem('alltrue_session', JSON.stringify({
   user: { id: 9001, role: 'director', name: 'E2E 主任' },
 }));
 localStorage.setItem('app_branch', '1');
+const params = new URLSearchParams(window.location.search);
+const initialTab = params.get('tab') || '';
 
 const [{ createApp, h }, styles, { default: TuitionCollectionPage }] = await Promise.all([
   import('vue'),
@@ -16,7 +18,7 @@ void styles;
 createApp({
   name: 'TuitionCollectionPilotMount',
   setup() {
-    return () => h(TuitionCollectionPage, { branchId: 1 });
+    return () => h(TuitionCollectionPage, { branchId: 1, initialTab });
   },
 }).mount('#app');
 

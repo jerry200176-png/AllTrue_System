@@ -31,6 +31,15 @@ const rows = [
   },
 ];
 
+const accountingRows = [
+  { report_id: 701, payment_date: '2026-09-08', receipt_no: 'AT-260908-0001', student_name: '林宥辰', subject: '國中數學', cash_amount: 0, transfer_amount: 4200, total_amount: 4200, confirmed_by_name: 'E2E 主任' },
+  { report_id: 702, payment_date: '2026-09-07', receipt_no: 'AT-260907-0002', student_name: '陳品妤', subject: '高中英文', cash_amount: 5600, transfer_amount: 0, total_amount: 5600, confirmed_by_name: 'E2E 主任', is_prepaid: true },
+];
+const settledRows = [
+  { student_class_id: 101, course_ref: '000101', student_name: '林宥辰', subject: '國中數學', schedule_mode: 'date', paid_amount: 4200, last_paid_at: '2026-09-08' },
+  { student_class_id: 102, course_ref: '000102', student_name: '陳品妤', subject: '高中英文', schedule_mode: 'count', paid_amount: 5600, last_paid_at: '2026-09-07', pending_reconciliation: true },
+];
+
 function payload(mode) {
   if (mode === 'empty') return [];
   if (mode === 'long') {
@@ -52,6 +61,40 @@ async function installMock(page) {
       return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'tuition alerts unavailable' }) });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload(mode)) });
+  });
+  await page.route('**/api/v1/accounting/payments**', async (route) => {
+    const mode = new URL(page.url()).searchParams.get('mode') || 'normal';
+    if (mode === 'loading') await new Promise((resolve) => setTimeout(resolve, 700));
+    if (mode === 'error' && !await page.evaluate(() => Boolean(window.__tuitionCollectionRetryAllowed))) {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'accounting payments unavailable' }) });
+    }
+    const data = mode === 'empty' ? [] : mode === 'long' ? accountingRows.map((row) => ({
+      ...row,
+      student_name: '這是一個很長的學生姓名用來驗證收據卡片折行與操作仍然可達',
+      subject: '這是一個很長的科目名稱用來驗證收據資料在手機上不會被裁切',
+    })) : accountingRows;
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data, summary: { total_count: data.length, unique_paid_course_count: data.length, duplicate_payment_course_count: 0, cash_total: data.length ? 5600 : 0, transfer_total: data.length ? 4200 : 0, grand_total: data.length ? 9800 : 0, prepaid_count: data.length ? 1 : 0 } }),
+    });
+  });
+  await page.route('**/api/v1/accounting/settled-courses**', async (route) => {
+    const mode = new URL(page.url()).searchParams.get('mode') || 'normal';
+    if (mode === 'loading') await new Promise((resolve) => setTimeout(resolve, 700));
+    if (mode === 'error' && !await page.evaluate(() => Boolean(window.__tuitionCollectionRetryAllowed))) {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'settled courses unavailable' }) });
+    }
+    const data = mode === 'empty' ? [] : mode === 'long' ? settledRows.map((row) => ({
+      ...row,
+      student_name: '這是一個很長的學生姓名用來驗證結清卡片折行與操作仍然可達',
+      subject: '這是一個很長的科目名稱用來驗證結清資料在手機上不會被裁切',
+    })) : settledRows;
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data, summary: { course_count: data.length, legacy_count: 0, exception_count: 0, paid_total: data.length ? 9800 : 0, overpaid_total: 0, pending_reconciliation_count: data.length ? 1 : 0 } }),
+    });
   });
   await page.route('**/api/v1/branches**', (route) => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify([{ id: 1, name: '內湖分校', code: 'neihu' }]),
@@ -136,5 +179,51 @@ test.describe('Tuition Collection clarity browser verification', () => {
     expect(box.y + box.height).toBeLessThanOrEqual(844);
     await page.getByRole('button', { name: '關閉' }).click();
     await expect(dialog).toBeHidden();
+  });
+
+  test('captures the accounting tabs without page overflow', async ({ page }) => {
+    await installMock(page);
+    for (const tab of ['payments', 'settled']) {
+      for (const viewport of viewports) {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+        await expect(page.getByText('帳務中心', { exact: true })).toBeVisible();
+        await page.getByRole('tab', { name: tab === 'payments' ? '收據紀錄' : '已結清課程彙總' }).click();
+        await expect(page.locator('.acct-table:visible')).toBeVisible();
+        await expectNoOverflowAndReachableControls(page);
+        await page.screenshot({ path: path.join(outDir, `${tab}-${viewport.name}.png`), fullPage: true });
+      }
+    }
+  });
+
+  test('uses shared accounting error, retry, and empty feedback', async ({ page }) => {
+    await installMock(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=error');
+    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await expect(page.getByText('收據紀錄載入失敗', { exact: true })).toBeVisible();
+    await page.evaluate(() => { window.__tuitionCollectionRetryAllowed = true; });
+    await page.getByRole('button', { name: '重新載入' }).click();
+    await expect(page.locator('.acct-table:visible')).toBeVisible();
+    await page.goto('/tuition-collection-pilot-mount.html?mode=empty');
+    await page.getByRole('tab', { name: '已結清課程彙總' }).click();
+    await expect(page.getByText('目前查無已結清課程', { exact: true })).toBeVisible();
+    await expectNoOverflowAndReachableControls(page);
+  });
+
+  test('keeps accounting loading and long Chinese content usable', async ({ page }) => {
+    await installMock(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=loading');
+    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await expect(page.getByTestId('at-skeleton')).toBeVisible();
+    await page.goto('/tuition-collection-pilot-mount.html?mode=long');
+    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
+    await expectNoOverflowAndReachableControls(page);
+    await page.goto('/tuition-collection-pilot-mount.html?mode=long');
+    await page.getByRole('tab', { name: '已結清課程彙總' }).click();
+    await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
+    await expectNoOverflowAndReachableControls(page);
   });
 });
