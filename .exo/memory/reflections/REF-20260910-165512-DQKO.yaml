@@ -1,0 +1,17 @@
+id: REF-20260910-165512-DQKO
+pattern: Page-local dialog overlays remain after shared dialog adoption
+insight: Migrate one bounded, high-frequency workflow dialog to AtDialog with a shared
+  action footer; preserve the existing save handler and validate focus, Escape, 44px
+  actions, long Chinese text, viewport bounds, console, and network behavior in the
+  real browser.
+severity: medium
+scope: learning-record-dialog-clarity-20260910
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-10T16:55:12+08:00'
+status: active
+tags:
+- ux
+- dialog
+- responsive
+hit_count: 0

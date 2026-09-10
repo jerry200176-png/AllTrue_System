@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.10",
     "date": "2026-09-10",
     "title": "2026.09.10 草稿（未發布）",
-    "summary": "回復正班老師會清掉殘留代課列；評量表授課老師顯示實際填寫老師",
+    "summary": "回復正班老師會清掉殘留代課列；評量評語視窗更清楚、更容易操作",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "回復正班老師會清掉殘留代課列",
+          "評量評語視窗更清楚、更容易操作",
           "評量表授課老師顯示實際填寫老師"
         ]
       },
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "回復正班老師會清掉殘留代課列",
+      "評量評語視窗更清楚、更容易操作",
       "評量表授課老師顯示實際填寫老師",
       "家長學習分頁更容易操作"
     ]
