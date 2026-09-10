@@ -174,7 +174,7 @@ This repository is governed by ExoProtocol. All AI agent work must follow the se
 - `npm run test:unit`
 - `npm run lint:no-undef`
 - `npm run build`
-- `vendor/bin/phpunit`
+- `backend/vendor/bin/phpunit`
 
 ### Source of Truth
 

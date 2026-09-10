@@ -111,7 +111,7 @@ _T3_MARKERS = (
     "credential",
     "password",
     "secret",
-    "token",
+    "access token",
     "migration",
     "repair",
     "restore",
@@ -259,6 +259,21 @@ def _changed_code_lines(patch: str) -> str:
     return "\n".join(lines).lower()
 
 
+def _semantic_marker_matches(haystack: str, marker: str) -> bool:
+    """Match whole semantic terms, not history/comments or camelCase names.
+
+    Merge and activation classification must inspect the same effect-bearing
+    vocabulary. A substring such as ``restore`` in ``restoredCalendarView``
+    or ``token`` in ``resetWeekToken`` is UI state, not an auth/data boundary.
+    """
+
+    return bool(re.search(
+        rf"(?<![a-z0-9]){re.escape(marker)}(?![a-z0-9])",
+        haystack or "",
+        flags=re.IGNORECASE,
+    ))
+
+
 def _patch_is_inspectable(paths: list[str], patch: str) -> bool:
     """Return false when a sensitive diff cannot be deterministically inspected."""
 
@@ -373,7 +388,16 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     non_runtime_only = normalized and not any(is_deployable_path(path) for path in normalized)
     runtime_paths = [path for path in normalized if is_deployable_path(path)]
     marker_paths = runtime_paths or normalized
-    haystack = ("\n".join(marker_paths) + "\n" + _runtime_patch(runtime_paths, patch)).lower()
+    # Use the same semantic source as activation classification: changed code
+    # only, with generated historical bundles excluded. Paths remain inputs
+    # so protected file names still fail closed.
+    semantic_patch = _semantic_runtime_patch(runtime_paths, patch)
+    changed_code = _changed_code_lines(semantic_patch)
+    if not changed_code and "diff --git " not in semantic_patch:
+        # Unit callers may provide a compact patch fragment rather than a git
+        # patch; preserve the same marker semantics for that contract.
+        changed_code = semantic_patch.lower()
+    haystack = "\n".join(marker_paths) + "\n" + changed_code
     minimum = 0
     reasons: list[str] = []
 
@@ -389,12 +413,12 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
             reasons.append(f"product/runtime path: {path}")
 
     if not non_runtime_only:
-        matched_t3 = [marker for marker in _T3_MARKERS if marker in haystack]
+        matched_t3 = [marker for marker in _T3_MARKERS if _semantic_marker_matches(haystack, marker)]
         if matched_t3:
             minimum = max(minimum, 3)
             reasons.append("protected semantic marker: " + ", ".join(sorted(set(matched_t3))))
         else:
-            matched_t2 = [marker for marker in _T2_MARKERS if marker in haystack]
+            matched_t2 = [marker for marker in _T2_MARKERS if _semantic_marker_matches(haystack, marker)]
             if matched_t2:
                 minimum = max(minimum, 2)
                 reasons.append("product semantic marker: " + ", ".join(sorted(set(matched_t2))))

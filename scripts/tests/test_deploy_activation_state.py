@@ -381,6 +381,31 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             with self.subTest(paths=paths):
                 self.assertEqual(classify_scope(paths, patch)["tier_name"], expected)
 
+    def test_merge_and_activation_classifiers_share_effect_markers(self):
+        paths = [
+            "frontend/package.json",
+            "frontend/src/lib/calendarViewState.js",
+            "frontend/src/lib/staffUpdates.generated.js",
+            "frontend/src/pages/SmartCalendar.vue",
+        ]
+        patch = """diff --git a/frontend/src/lib/calendarViewState.js b/frontend/src/lib/calendarViewState.js
++++ b/frontend/src/lib/calendarViewState.js
++const restoredCalendarView = readCalendarViewState();
++// UI state only; does not affect auth.
+diff --git a/frontend/src/lib/staffUpdates.generated.js b/frontend/src/lib/staffUpdates.generated.js
++++ b/frontend/src/lib/staffUpdates.generated.js
++const historical = 'payment, auth, token, billing';
+diff --git a/frontend/src/pages/SmartCalendar.vue b/frontend/src/pages/SmartCalendar.vue
++++ b/frontend/src/pages/SmartCalendar.vue
++watch((token) => resetWeekToken(token));
++const scheduleView = readCalendarViewState();
+"""
+        merge_scope = classify_scope(paths, patch)
+        activation_scope = classify_activation_scope(paths, patch)
+        self.assertEqual(merge_scope["tier_name"], "T2")
+        self.assertEqual(activation_scope["tier_name"], "T2")
+        self.assertNotIn("protected semantic marker", " ".join(merge_scope["reasons"]))
+
     def test_declaration_is_validated_against_machine_minimum(self):
         risk, tier = parse_declaration("**Risk-Class:** R1\n**Autonomy-Tier:** T1")
         self.assertEqual((risk, tier), (1, 1))

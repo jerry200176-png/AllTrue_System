@@ -7,11 +7,11 @@
     "npm run test:unit",
     "npm run lint:no-undef",
     "npm run build",
-    "vendor/bin/phpunit",
+    "backend/vendor/bin/phpunit",
     "bash scripts/phpunit-isolated.sh"
   ],
   "coherence_rules": [],
-  "composed_at": "2026-09-07T10:00:51+08:00",
+  "composed_at": "2026-09-11T00:18:16+08:00",
   "deny_patterns": [
     "**/.env",
     "**/.env.*.local",
@@ -98,10 +98,10 @@
     ]
   },
   "hooks_hash": "",
-  "integrity_hash": "915b406e0ed4f8aeef555db39ae9365f0240cca7286bd01936838b0425185a08",
+  "integrity_hash": "5678139b3c660219560515a8f8e7d6bcf6a0b95dc7485c67bdb529cd6f51e0ff",
   "scope_deny_from_features": [],
   "sources": {
-    "config": "d68138fb1ce852b0d28b4eb2225e099611c3ab254724f1c66c9637078a3ffc4e",
+    "config": "6fc15662fc53a81e3180f8befc69d211167d51408e3c16881c2cf949af4f0c96",
     "constitution": "f36ea664fa045696a839dcda1d02d893a4ebae3c58fa30e67429a0da5d058516",
     "features": "",
     "requirements": ""
