@@ -252,6 +252,27 @@ async function runPopulatedParentPortal(page, viewport) {
   await page.goto('/pilot-mount.html?page=parent');
   await expect(page.locator('[data-guide="parent-portal-root"]')).toBeVisible();
   await expect(page.getByText('數學', { exact: true }).first()).toBeVisible();
+  const attention = page.locator('[data-guide="parent-attention-card"]');
+  await expect(attention).toBeVisible();
+  const attentionItems = attention.locator('.pp-attention-item');
+  expect(await attentionItems.count()).toBeGreaterThan(0);
+  for (let index = 0; index < await attentionItems.count(); index += 1) {
+    const item = attentionItems.nth(index);
+    const box = await item.boundingBox();
+    expect(box?.height, `attention item ${index} height at ${viewport.width}`).toBeGreaterThanOrEqual(52);
+    await item.focus();
+    await expect(item).toBeFocused();
+    const focusStyle = await item.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    expect(focusStyle.outlineStyle, `attention item ${index} focus at ${viewport.width}`).toBe('solid');
+    expect(Number.parseFloat(focusStyle.outlineWidth), `attention item ${index} focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
+  }
+  await page.screenshot({ path: `/tmp/parent-attention-after-${viewport.width}.png`, fullPage: true });
+  await attentionItems.first().click();
+  await expect(page.locator('#parent-tab-learning')).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Tab');
   await page.screenshot({ path: `/tmp/parent-header-after-${viewport.width}.png`, fullPage: false });
 
   for (const selector of ['.pp-btn-logout', '.pp-chip:not([disabled])', '#parent-campus-scope']) {
@@ -355,6 +376,7 @@ test('parent portal: header remains clear for empty and long Traditional Chinese
   await expect(page.locator('[data-guide="parent-student-card"]')).toBeVisible();
   await expect(page.locator('#parent-student-switcher-label')).toHaveText(/切換學生/);
   await expect(page.locator('#parent-campus-switcher-label')).toHaveText(/分校範圍/);
+  await expect(page.locator('.pp-attention-empty')).toHaveAttribute('role', 'status');
   for (const selector of ['.pp-btn-logout', '.pp-chip:not([disabled])', '#parent-campus-scope']) {
     const box = await page.locator(selector).first().boundingBox();
     expect(box?.width, `${selector} width`).toBeGreaterThanOrEqual(44);

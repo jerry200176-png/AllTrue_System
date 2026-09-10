@@ -4,6 +4,17 @@
  */
 export const parentUpdates = [
   {
+    "id": "parent-update-2026-09-10-parent-status-hierarchy",
+    "kind": "improvement",
+    "title": "需要留意事項更清楚",
+    "summary": "家長入口會把需要查看或回覆的事情整理成更容易點選的下一步。",
+    "details": "長說明在手機上會完整換行；沒有待辦時會清楚顯示目前沒有需要處理的事項，原有導頁與資料範圍不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "parent-update-2026-09-10-parent-header-clarity",
     "kind": "improvement",
     "title": "家長入口更容易操作",
