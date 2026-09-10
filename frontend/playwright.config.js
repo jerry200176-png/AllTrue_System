@@ -24,6 +24,7 @@ export default defineConfig({
     /ui-foundation-role-matrix\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
     /learning-records-preview\.spec\.js$/,
+    /release-notes-clarity\.spec\.js$/,
     /teacher-daily-workflow\.spec\.js$/,
     /teacher-calendar-ux\.spec\.js$/,
     /product-clarity-browser\.spec\.js$/,
