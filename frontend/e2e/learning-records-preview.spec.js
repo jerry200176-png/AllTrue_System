@@ -204,6 +204,12 @@ test('director note dialog keeps one clear action and usable bounds', async ({ p
     await expect(dialog.getByRole('button', { name: '儲存', exact: true })).toBeVisible();
     await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeVisible();
     await expect(dialog).toBeFocused();
+    if (viewport.name === '390') {
+      await page.keyboard.press('Shift+Tab');
+      await expect(dialog.getByRole('button', { name: '儲存', exact: true })).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(dialog.getByRole('button', { name: '關閉主任評語', exact: true })).toBeFocused();
+    }
 
     await dialog.locator('textarea').fill('請確認孩子今天的閱讀理解與錯題訂正，並在下堂課延續這項練習。這段長內容用來確認繁體中文在窄螢幕不會被截斷。');
     const bounds = await dialog.boundingBox();
@@ -225,6 +231,7 @@ test('director note dialog keeps one clear action and usable bounds', async ({ p
     if (viewport.name === '390') {
       await page.keyboard.press('Escape');
       await expect(dialog).toBeHidden();
+      await expect(noteButton).toBeFocused();
       await noteButton.click();
       await expect(dialog).toBeVisible();
       await dialog.locator('textarea').fill('請補充本堂課的錯題訂正與下次練習重點。');
