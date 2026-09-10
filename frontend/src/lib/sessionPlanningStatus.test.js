@@ -91,6 +91,8 @@ assert.equal(canMaterializeProjectedSession({ ScheduleMode: 'unknown', payment_t
   });
   assert.equal(s.code, 'course_partially_scheduled');
   assert.match(s.message, /已排 8／購買 12/);
+  assert.match(s.message, /尚有 4 堂未安排/);
+  assert.match(s.message, /日期清單只列已實際排定的堂次/);
 }
 
 assert.equal(buildSessionPlanningStatus({
