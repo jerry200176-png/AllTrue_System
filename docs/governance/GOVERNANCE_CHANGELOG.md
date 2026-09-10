@@ -1,5 +1,16 @@
 # Governance changelog
 
+## 2026-09-10 — Attribute activation effects per merged PR
+
+- Control-plane-only PRs are treated as effective when merged and no longer
+  raise a later application release's activation tier.
+- Undeployed application PRs are classified independently from their own
+  paths, patches, and declarations; mixed control-plane/application PRs and
+  any T3 application effect remain Founder-required.
+- Missing commit-to-PR attribution or application patch evidence remains
+  fail-closed. No Environment, secret, permission, or production setting was
+  changed.
+
 ## 2026-09-10 — Separate control-plane verification from application deployment
 
 - Routed only application-runtime paths to the production executor; merged
