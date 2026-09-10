@@ -246,16 +246,16 @@
         <button type="button" class="pp-btn pp-btn-primary" @click="retryDashboard">重新載入</button>
       </div>
 
-      <div class="pp-card pp-attention-card" v-if="progressSummary" data-guide="parent-attention-card">
+      <section class="pp-card pp-attention-card" v-if="progressSummary" data-guide="parent-attention-card" aria-labelledby="parent-attention-title">
         <div class="pp-attention-head">
           <div>
             <div class="pp-attention-title">
               <span class="material-symbols-outlined" aria-hidden="true">notifications_active</span>
-              <h3>需要留意</h3>
+              <h3 id="parent-attention-title">需要留意</h3>
             </div>
             <p class="pp-attention-subtitle">把需要你查看或回覆的事情集中在這裡。</p>
           </div>
-          <span v-if="parentActionItems.length" class="pp-attention-count">{{ parentActionItems.length }}</span>
+          <span v-if="parentActionItems.length" class="pp-attention-count" :aria-label="`${parentActionItems.length} 個待處理事項`">{{ parentActionItems.length }}</span>
         </div>
         <div v-if="parentActionItems.length" class="pp-attention-list">
           <button
@@ -274,11 +274,11 @@
             <span class="material-symbols-outlined pp-attention-item__chevron" aria-hidden="true">chevron_right</span>
           </button>
         </div>
-        <div v-else class="pp-attention-empty">
+        <div v-else class="pp-attention-empty" role="status">
           <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
           <span>目前沒有需要處理的事項。完整紀錄仍可從下方分頁查看。</span>
         </div>
-      </div>
+      </section>
 
       <div class="pp-card pp-parent-update" v-if="progressSummary && parentReleaseNotes.length">
         <button type="button" class="pp-parent-update__btn" @click="openReleaseNote(parentReleaseNotes[0])">
@@ -2431,7 +2431,8 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px 9px;
+  min-height: 52px;
+  padding: 12px 9px;
   border: 1px solid var(--ds-hairline);
   border-radius: 10px;
   background: var(--ds-canvas);
@@ -2443,7 +2444,11 @@ onMounted(async () => {
   -webkit-tap-highlight-color: transparent;
 }
 .pp-attention-item:hover { border-color: var(--ds-primary); background: var(--ds-canvas-soft); transform: translateY(-1px); }
-.pp-attention-item:focus-visible { outline: 3px solid var(--ds-primary-wash); outline-offset: 2px; }
+.pp-attention-item:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
+}
 .pp-attention-item__icon { flex-shrink: 0; font-size: 22px; color: var(--ds-ink-mute); }
 .pp-attention-item--warning .pp-attention-item__icon { color: var(--ds-warning); }
 .pp-attention-item--success .pp-attention-item__icon { color: var(--ds-success); }
@@ -2451,16 +2456,18 @@ onMounted(async () => {
 .pp-attention-item--today .pp-attention-item__icon { color: var(--ds-primary-deep); }
 .pp-attention-item__main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .pp-attention-item__main strong { font-size: 13px; font-weight: 800; }
-.pp-attention-item__main small { overflow: hidden; color: var(--ds-ink-mute); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.pp-attention-item__main small { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .pp-attention-item__action { flex-shrink: 0; color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; }
 .pp-attention-item__chevron { flex-shrink: 0; color: var(--ds-ink-mute); font-size: 19px; }
 .pp-attention-empty {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 10px 2px 2px;
   color: var(--ds-ink-mute);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .pp-attention-empty .material-symbols-outlined { color: var(--ds-success); font-size: 20px; }
 

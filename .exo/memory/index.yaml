@@ -250,3 +250,15 @@ failure_modes:
       original panel in the real role workflow at every required viewport.
   severity: medium
   frequency: recurring
+- id: FM-20260910-191806-W1NM
+  name: Parent Portal action queue focus and long-copy convergence
+  detection:
+    signal: Parent Portal action queue focus and long-copy convergence
+    source: reflection:REF-20260910-191806-DI2T
+  mitigation:
+    practice: Keep next-step action rows at the shared mobile ergonomics floor (52px
+      here), use the canonical --ds-focus-ring, expose the queue as a labelled section
+      with a status-aware empty state, and test :focus-visible after restoring keyboard
+      modality when a prior pointer click changed the browser modality.
+  severity: medium
+  frequency: recurring
