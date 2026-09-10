@@ -608,10 +608,10 @@
       </div>
 
         <!-- Attendance Timeline (FR-B-003) -->
-        <div class="pp-card" id="pp-attendance-section">
+        <section class="pp-card" id="pp-attendance-section" aria-labelledby="parent-attendance-title">
           <div class="pp-section-header">
-            <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-success);">fact_check</span>
-            <h3>出缺勤紀錄</h3>
+            <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-success);" aria-hidden="true">fact_check</span>
+            <h3 id="parent-attendance-title">出缺勤紀錄</h3>
           </div>
           <template v-if="(dashboard.attendance_history || []).length">
             <div class="pp-timeline">
@@ -620,7 +620,7 @@
                    class="pp-timeline-item"
                    :class="attendanceRowClass(a.Status)">
                 <div class="pp-timeline-dot" :class="attendanceDotClass(a.Status)">
-                  <span class="material-symbols-outlined">{{ attendanceIcon(a.Status) }}</span>
+                  <span class="material-symbols-outlined" aria-hidden="true">{{ attendanceIcon(a.Status) }}</span>
                 </div>
                 <div class="pp-timeline-content">
                   <div class="pp-timeline-head">
@@ -628,9 +628,9 @@
                     <span :class="['pp-timeline-status', attendanceStatusClass(a.Status)]">{{ a.status_label || attendanceLabel(a.Status) }}</span>
                   </div>
                   <div class="pp-timeline-sub" v-if="a.time || a.subject || a.teacher_name">
-                    <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon">schedule</span>{{ a.time }}</span>
-                    <span v-if="a.subject"><span class="material-symbols-outlined pp-mini-icon">menu_book</span>{{ a.subject }}</span>
-                    <span v-if="a.teacher_name"><span class="material-symbols-outlined pp-mini-icon">person</span>{{ a.teacher_name }}</span>
+                    <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon" aria-hidden="true">schedule</span>{{ a.time }}</span>
+                    <span v-if="a.subject"><span class="material-symbols-outlined pp-mini-icon" aria-hidden="true">menu_book</span>{{ a.subject }}</span>
+                    <span v-if="a.teacher_name"><span class="material-symbols-outlined pp-mini-icon" aria-hidden="true">person</span>{{ a.teacher_name }}</span>
                   </div>
                 </div>
               </div>
@@ -641,12 +641,12 @@
               顯示更多（共 {{ dashboard.attendance_history.length }} 筆）
             </button>
           </template>
-          <div class="pp-empty enterprise-empty" v-else>
+          <div class="pp-empty enterprise-empty" v-else role="status">
             <span class="material-symbols-outlined">event_busy</span>
             <p>目前無出缺勤記錄</p>
             <p class="pp-empty-hint">老師完成點名後將自動顯示於此</p>
           </div>
-        </div>
+        </section>
 
         <!-- 家長建議回饋卡片（Brand + Mobile-first） — 與「逐堂給老師留言」分區，避免誤以為只能填這一張 -->
         <div class="pp-card pp-voice-card">
@@ -2042,7 +2042,12 @@ onMounted(async () => {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; padding: 8px; margin-top: 8px;
   background: var(--ds-canvas); border: 1px solid var(--ds-canvas-soft); border-radius: 8px;
-  font-size: 0.85em; color: var(--ds-ink-mute); cursor: pointer;
+  font-size: 0.85em; color: var(--ds-ink-mute); cursor: pointer; min-height: 44px;
+}
+.pp-btn-more:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
 }
 
 /* ═══ Profile Card ═══ */
@@ -3049,16 +3054,16 @@ onMounted(async () => {
 .pp-timeline-dot.late { background: var(--ds-warning); }
 .pp-timeline-dot.absent { background: var(--ds-danger); }
 .pp-timeline-dot.leave { background: var(--ds-ink-mute); }
-.pp-timeline-content { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
-.pp-timeline-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pp-timeline-content { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pp-timeline-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .pp-timeline-date { font-size: 0.88em; color: var(--ds-ink); font-weight: 600; }
 .pp-timeline-status { font-size: 0.82em; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
 .pp-timeline-status.present { color: var(--ds-success); background: var(--ds-success-wash); }
 .pp-timeline-status.late { color: var(--ds-primary); background: var(--ds-warning-wash); }
 .pp-timeline-status.absent { color: var(--ds-danger); background: var(--ds-danger-wash); }
 .pp-timeline-status.leave { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); }
-.pp-timeline-sub { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.8em; color: var(--ds-ink-mute); }
-.pp-timeline-sub span { display: inline-flex; align-items: center; gap: 3px; }
+.pp-timeline-sub { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.8em; color: var(--ds-ink-mute); min-width: 0; }
+.pp-timeline-sub span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .pp-mini-icon { font-size: 13px !important; vertical-align: middle; }
 .pp-empty-hint { font-size: 0.78em !important; color: var(--ds-ink-mute); margin-top: 4px; }
 
