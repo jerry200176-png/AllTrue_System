@@ -124,6 +124,46 @@ export const staffUpdates = [
     "version": "2026.09.10"
   },
   {
+    "id": "staff-2026-09-10-learning-record-dialog-clarity",
+    "publishedAt": "2026-09-10",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "評量評語視窗更清楚、更容易操作",
+    "summary": "主任編輯老師評語時會看到一致的對話框、清楚的主要操作與可靠的鍵盤焦點。",
+    "items": [
+      "學習紀錄頁的「主任給老師評語」改用一致的對話框，標題、說明與儲存／取消操作更容易辨識。",
+      "手機與桌面都能完整閱讀和操作；使用鍵盤時焦點會留在對話框內，關閉後回到原本的開啟位置。",
+      "評語驗證、儲存 API、權限與學習紀錄資料流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學習紀錄頁的「主任給老師評語」改用一致的對話框，標題、說明與儲存／取消操作更容易辨識。",
+          "手機與桌面都能完整閱讀和操作；使用鍵盤時焦點會留在對話框內，關閉後回到原本的開啟位置。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "評語驗證、儲存 API、權限與學習紀錄資料流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-10:learning-record-dialog-clarity",
+      "pr:#2684"
+    ],
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "staff-2026-09-09-tutoring-payment-policy",
     "publishedAt": "2026-09-09",
     "effectiveAt": null,

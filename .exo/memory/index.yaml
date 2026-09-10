@@ -224,3 +224,15 @@ failure_modes:
       and zero-note roles across the standard responsive matrix.
   severity: medium
   frequency: recurring
+- id: FM-20260910-165512-SSBX
+  name: Page-local dialog overlays remain after shared dialog adoption
+  detection:
+    signal: Page-local dialog overlays remain after shared dialog adoption
+    source: reflection:REF-20260910-165512-DQKO
+  mitigation:
+    practice: Migrate one bounded, high-frequency workflow dialog to AtDialog with
+      a shared action footer; preserve the existing save handler and validate focus,
+      Escape, 44px actions, long Chinese text, viewport bounds, console, and network
+      behavior in the real browser.
+  severity: medium
+  frequency: recurring
