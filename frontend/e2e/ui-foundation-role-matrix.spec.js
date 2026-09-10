@@ -252,7 +252,23 @@ async function runPopulatedParentPortal(page, viewport) {
   await page.goto('/pilot-mount.html?page=parent');
   await expect(page.locator('[data-guide="parent-portal-root"]')).toBeVisible();
   await expect(page.getByText('數學', { exact: true }).first()).toBeVisible();
-  await page.screenshot({ path: `/tmp/parent-tab-focus-before-${viewport.width}.png`, fullPage: false });
+  await page.screenshot({ path: `/tmp/parent-header-after-${viewport.width}.png`, fullPage: false });
+
+  for (const selector of ['.pp-btn-logout', '.pp-chip:not([disabled])', '#parent-campus-scope']) {
+    const control = page.locator(selector).first();
+    await expect(control).toBeVisible();
+    const box = await control.boundingBox();
+    expect(box?.width, `${selector} width at ${viewport.width}`).toBeGreaterThanOrEqual(44);
+    expect(box?.height, `${selector} height at ${viewport.width}`).toBeGreaterThanOrEqual(44);
+    await control.focus();
+    await expect(control).toBeFocused();
+    const focusStyle = await control.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    expect(focusStyle.outlineStyle, `${selector} focus style at ${viewport.width}`).toBe('solid');
+    expect(Number.parseFloat(focusStyle.outlineWidth), `${selector} focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
+  }
 
   const learningTab = page.locator('#parent-tab-learning');
   await learningTab.focus();
@@ -305,6 +321,51 @@ async function runPopulatedParentPortal(page, viewport) {
   expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   expect(failedRequests, `失敗請求：\n${failedRequests.join('\n')}`).toEqual([]);
 }
+
+test('parent portal: header remains clear for empty and long Traditional Chinese data', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem('parent_portal_token', 'e2e-parent-header-token');
+  });
+
+  const errors = [];
+  const failedRequests = [];
+  await page.on('pageerror', (error) => errors.push(String(error)));
+  await page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+  await page.route('**/api/v1/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.includes('/parent/dashboard')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          student: { id: 2000, name: '這是一個需要換行顯示的超長學生姓名測試資料', grade: '國三', school: '這是一個需要換行顯示的超長學校名稱', campus_id: 1, campus_name: '臺北市中心分校' },
+          students: [{ id: 2000, name: '這是一個需要換行顯示的超長學生姓名測試資料' }, { id: 2001, name: '另一位學生' }],
+          enrollments: [{ student_id: 2000, campus_id: 1, campus_name: '臺北市中心分校' }, { student_id: 2000, campus_id: 2, campus_name: '新北市新店區第二分校' }],
+          cross_campus_access: 'actions',
+          progress_summary: { week_label: '9/7–9/13', week_progress: { attended: 0, scheduled: 0 }, payment: { paid_courses: 0, total_courses: 0, status: 'none' }, pending_total: 0 },
+          learning_records: [], learning_records_meta: { total: 0, has_more: false }, attendance_history: [], upcoming_sessions: [], classes: [], remaining_sessions_total: 0, remaining_by_subject: {}, payment_alerts: [], invoices: [], announcements: [], assessment_progress: { items: [] },
+        }),
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+
+  await page.goto('/pilot-mount.html?page=parent');
+  await expect(page.locator('[data-guide="parent-student-card"]')).toBeVisible();
+  await expect(page.locator('#parent-student-switcher-label')).toHaveText(/切換學生/);
+  await expect(page.locator('#parent-campus-switcher-label')).toHaveText(/分校範圍/);
+  for (const selector of ['.pp-btn-logout', '.pp-chip:not([disabled])', '#parent-campus-scope']) {
+    const box = await page.locator(selector).first().boundingBox();
+    expect(box?.width, `${selector} width`).toBeGreaterThanOrEqual(44);
+    expect(box?.height, `${selector} height`).toBeGreaterThanOrEqual(44);
+  }
+  await page.screenshot({ path: '/tmp/parent-header-after-long-390.png', fullPage: false });
+  const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+  expect(errors).toEqual([]);
+  expect(failedRequests).toEqual([]);
+});
 
 for (const [name, viewport] of [
   ['mobile', { width: 390, height: 844 }],

@@ -125,9 +125,10 @@ assert.ok(
 );
 
 const currentParentNotes = listActiveParentUpdates({ now: new Date('2026-09-10T12:00:00'), limit: 2 });
-assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-10-learning-tab-focus');
-assert.strictEqual(currentParentNotes[0].title, '學習分頁更容易操作');
-assert.match(currentParentNotes[0].summary, /學習內容/);
-assert.match(currentParentNotes[0].details, /鍵盤與觸控焦點/);
+assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-10-parent-header-clarity');
+assert.strictEqual(currentParentNotes[0].title, '家長入口更容易操作');
+assert.match(currentParentNotes[0].summary, /登出、切換學生與分校範圍/);
+assert.match(currentParentNotes[0].details, /長學生姓名/);
+assert.strictEqual(currentParentNotes[1].id, 'parent-update-2026-09-10-learning-tab-focus');
 
 console.log('releaseNotes.test.js: ok');

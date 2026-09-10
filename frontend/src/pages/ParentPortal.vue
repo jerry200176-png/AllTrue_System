@@ -110,8 +110,8 @@
           </button>
         </div>
         <!-- Student Switcher (multi-child) -->
-        <div class="pp-student-switcher" v-if="students && students.length > 1">
-          <div class="pp-switcher-label">
+        <div class="pp-student-switcher" v-if="students && students.length > 1" role="group" aria-labelledby="parent-student-switcher-label">
+          <div id="parent-student-switcher-label" class="pp-switcher-label">
             <span class="material-symbols-outlined" style="font-size:16px;">people</span>
             切換學生
           </div>
@@ -128,8 +128,8 @@
           </div>
           <p class="pp-error" v-if="switchError" role="alert" style="margin-top:6px;">{{ switchError }}</p>
         </div>
-        <div class="pp-campus-switcher" v-if="(dashboard.enrollments || []).length > 1">
-          <label class="pp-switcher-label" for="parent-campus-scope">
+        <div class="pp-campus-switcher" v-if="(dashboard.enrollments || []).length > 1" role="group" aria-labelledby="parent-campus-switcher-label">
+          <label id="parent-campus-switcher-label" class="pp-switcher-label" for="parent-campus-scope">
             <span class="material-symbols-outlined" style="font-size:16px;">account_balance</span>
             分校範圍
           </label>
@@ -2027,10 +2027,17 @@ onMounted(async () => {
 }
 .pp-btn-logout {
   background: none; border: 1px solid var(--ds-canvas-soft); border-radius: 8px;
-  padding: 6px; cursor: pointer; color: var(--ds-ink-mute);
-  display: flex; align-items: center;
+  min-width: 44px; min-height: 44px; padding: 6px; cursor: pointer; color: var(--ds-ink-mute);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .pp-btn-logout:hover { background: var(--ds-canvas); }
+.pp-btn-logout:focus-visible,
+.pp-chip:focus-visible,
+.pp-campus-select:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
+}
 .pp-btn-more {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; padding: 8px; margin-top: 8px;
@@ -2049,7 +2056,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 .pp-profile-info { flex: 1; min-width: 0; }
-.pp-student-name { margin: 0; font-size: 1.2em; color: var(--ds-ink); }
+.pp-student-name { margin: 0; font-size: 1.2em; color: var(--ds-ink); overflow-wrap: anywhere; }
 .pp-meta-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .pp-tag {
   display: inline-block; padding: 2px 8px; border-radius: 4px;
@@ -2063,13 +2070,13 @@ onMounted(async () => {
 .pp-switcher-label { display: flex; align-items: center; gap: 4px; font-size: 0.82em; color: var(--ds-ink-mute); margin-bottom: 8px; }
 .pp-switcher-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .pp-campus-switcher { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ds-border); }
-.pp-campus-select { width: 100%; min-height: 38px; border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-surface); color: var(--ds-ink); padding: 0 10px; }
+.pp-campus-select { width: 100%; min-height: 44px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-ink); padding: 0 10px; font-size: 1rem; }
 .pp-switcher-hint { margin: 6px 0 0; font-size: 0.78em; color: var(--ds-ink-mute); }
 .pp-campus-label { display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--ds-success-wash); color: var(--ds-success); font-size: 0.75em; white-space: nowrap; }
 .pp-chip {
-  padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--ds-canvas-soft);
-  background: var(--ds-canvas); font-size: 0.88em; cursor: pointer; transition: all 0.2s;
-  color: var(--ds-ink); font-weight: 500;
+  min-height: 44px; max-width: 100%; padding: 8px 14px; border-radius: 20px; border: 1.5px solid var(--ds-canvas-soft);
+  background: var(--ds-canvas); font-size: 0.88em; line-height: 1.25; overflow-wrap: anywhere;
+  text-align: left; cursor: pointer; transition: all 0.2s; color: var(--ds-ink); font-weight: 500;
 }
 .pp-chip:hover:not(.active):not(:disabled) { border-color: var(--ds-primary); color: var(--ds-primary); background: var(--ds-warning-wash); }
 .pp-chip.active { background: var(--ds-primary); color: var(--ds-canvas); border-color: var(--ds-primary); cursor: default; }
