@@ -524,8 +524,7 @@ jobs:
           target = os.environ["TARGET_SHA"]
           try:
               from scripts.governance.autonomy_gate import (
-                  classify_activation_scope,
-                  effective_tier,
+                  classify_activation_provenance,
                   decide_activation,
                   has_rollback_evidence,
                   is_founder_approval_eligible,
@@ -541,26 +540,35 @@ jobs:
                   emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
                   sys.exit(0)
 
-              # A runtime range can contain more than one merged PR. Use the
-              # declaration from the newest PR that actually contributed a
-              # runtime or protected production path; a read-only scheduler
-              # or test/docs PR must not raise an unrelated runtime release
-              # to T3. All evidence is read-only GitHub API metadata.
+              # Attribute the undeployed range to each merged PR before
+              # classifying it. A control-plane-only PR is already effective
+              # at merge; it must not raise a later application release. Do
+              # not classify one aggregate diff with the newest declaration.
+              # All provenance evidence is read-only GitHub API metadata.
+              # Each application record still uses classify_activation_scope
+              # so its complete effect remains subject to the existing boundary.
               merged = []
               seen_prs = set()
+              attributed_commits = set()
+              provenance_complete = True
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
                   if not commit_sha:
+                      provenance_complete = False
                       continue
                   candidates = gh_api(
                       f"/repos/{repo}/commits/{commit_sha}/pulls",
                       "--header", "Accept: application/vnd.github+json",
                   )
+                  if not candidates:
+                      provenance_complete = False
                   for candidate in candidates:
                       pr_number = candidate.get("number")
+                      if pr_number in seen_prs:
+                          attributed_commits.add(commit_sha)
+                          continue
                       if (
                           not pr_number
-                          or pr_number in seen_prs
                           or candidate.get("base", {}).get("ref") != "main"
                           or not candidate.get("merged_at")
                       ):
@@ -577,57 +585,73 @@ jobs:
                           for path in pr_paths
                       ):
                           seen_prs.add(pr_number)
+                          attributed_commits.add(commit_sha)
                           continue
                       seen_prs.add(pr_number)
-                      merged.append(candidate)
-              merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
-              if not merged:
-                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance for current main target; fail closed")
+                      pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
+                      patch_parts = []
+                      patch_complete = True
+                      for item in pr_files:
+                          path = item.get("filename", "")
+                          item_patch = item.get("patch")
+                          if item_patch is None:
+                              patch_complete = False
+                          patch_parts.append(
+                              f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"
+                          )
+                      declared_risk, declared_tier = parse_declaration(pr.get("body") or "")
+                      merged.append({
+                          "number": pr_number,
+                          "merged_at": pr.get("merged_at"),
+                          "paths": pr_paths,
+                          "patch": "\n".join(patch_parts),
+                          "patch_complete": patch_complete,
+                          "declared_risk": declared_risk,
+                          "declared_tier": declared_tier,
+                      })
+                      attributed_commits.add(commit_sha)
+              if not provenance_complete or not merged:
+                  emit("awaiting-activation", "unknown", "none", "incomplete merged PR provenance; fail closed")
                   sys.exit(0)
-
-              pr_number = str(merged[0].get("number", "unknown"))
-              pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
-              paths = [item.get("filename", "") for item in files]
-              patch_parts = []
-              for item in files:
-                  path = item.get("filename", "")
-                  patch_parts.append(
-                      f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item.get('patch') or ''}"
+              if len(attributed_commits) != len(comparison.get("commits") or []):
+                  emit("awaiting-activation", "unknown", "none", "incomplete commit-to-PR provenance; fail closed")
+                  sys.exit(0)
+              merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
+              provenance = classify_activation_provenance(merged)
+              if provenance.get("blocked"):
+                  emit("awaiting-activation", provenance.get("tier_name", "unknown"), "multiple", provenance["reason"])
+                  sys.exit(0)
+              if provenance.get("activation_class") == "control-plane-only":
+                  emit("control-plane-verified", "none", "multiple", provenance["reason"])
+                  sys.exit(0)
+              machine_tier = provenance["tier_name"]
+              pr_number = ",".join(str(pr["number"]) for pr in provenance["application_prs"])
+              rollback_evidence = all(
+                  has_rollback_evidence(
+                      gh_api(f"/repos/{repo}/pulls/{pr['number']}").get("body") or ""
                   )
-              scope = classify_activation_scope(paths, "\n".join(patch_parts))
-              machine_tier = scope.get("tier_name")
-              body = pr.get("body") or ""
-              declared_risk, declared_tier = parse_declaration(body)
-              declaration_risk = f"R{declared_risk}" if declared_risk is not None else None
-              declaration_tier = f"T{declared_tier}" if declared_tier is not None else None
-              rollback_evidence = has_rollback_evidence(body)
+                  for pr in provenance["application_prs"]
+              )
               print(
                   "T2 evidence: "
                   "ci_success=true "
                   f"rollback_evidence={str(rollback_evidence).lower()}"
               )
-              _, declaration_error = effective_tier(
-                  int(scope["machine_minimum_tier"]), declared_risk, declared_tier
-              )
-              if declaration_error:
-                  emit(
-                      "awaiting-activation", machine_tier, pr_number,
-                      f"PR #{pr_number}: {declaration_error}; fail closed",
-                  )
-                  sys.exit(0)
+              declaration_risk = f"R{provenance['declared_risk']}"
+              declaration_tier = f"T{provenance['declared_tier']}"
 
               decision = decide_activation(
                   event_name=os.environ["EVENT_NAME"], deployable=True,
                   classifier_available=True, machine_validated=True,
                   machine_tier=machine_tier, declared_risk=declaration_risk,
                   declared_tier=declaration_tier,
-                  protected_activation=bool(scope.get("protected_activation")),
+                  protected_activation=bool(provenance.get("protected_activation")),
                   ci_success=True,
                   rollback_evidence=rollback_evidence,
               )
               approval_eligible = is_founder_approval_eligible(
                   decision,
-                  protected_activation=bool(scope.get("protected_activation")),
+                  protected_activation=bool(provenance.get("protected_activation")),
               )
               emit(
                   decision["decision"], decision["effective_tier"], pr_number,
