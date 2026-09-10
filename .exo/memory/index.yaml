@@ -208,3 +208,19 @@ failure_modes:
       behavior, page IDs, and backend authorization unchanged.
   severity: medium
   frequency: recurring
+- id: FM-20260910-172912-0QKR
+  name: Release Notes disclosure controls were native details summaries with weak
+    visual hierarchy and no consistent touch or fo
+  detection:
+    signal: Release Notes disclosure controls were native details summaries with weak
+      visual hierarchy and no consistent touch or focus affordance, while the role-empty
+      state bypassed the shared empty primitive.
+    source: reflection:REF-20260910-172912-HQAF
+  mitigation:
+    practice: For a low-risk static announcement page, keep native details semantics
+      and source/audience filtering unchanged; style summary and external-link actions
+      as 44px keyboard-visible controls with the existing focus token, replace ad
+      hoc empty copy with AtEmpty, and verify real rendered SFC behavior for populated
+      and zero-note roles across the standard responsive matrix.
+  severity: medium
+  frequency: recurring
