@@ -124,11 +124,12 @@ assert.ok(
     .some((u) => u.id === 'parent-update-2026-07-26-leave'),
 );
 
-const currentParentNotes = listActiveParentUpdates({ now: new Date('2026-09-10T12:00:00'), limit: 2 });
+const currentParentNotes = listActiveParentUpdates({ now: new Date('2026-09-10T12:00:00'), limit: 3 });
+const progressHubNote = currentParentNotes.find((note) => note.id === 'parent-update-2026-09-10-parent-progress-hub-clarity');
+assert.ok(progressHubNote);
+assert.strictEqual(progressHubNote.title, '進度中心更容易理解');
+assert.match(progressHubNote.summary, /本週學習/);
+assert.match(progressHubNote.details, /觸控尺寸/);
 assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-10-parent-status-hierarchy');
-assert.strictEqual(currentParentNotes[0].title, '需要留意事項更清楚');
-assert.match(currentParentNotes[0].summary, /需要查看或回覆/);
-assert.match(currentParentNotes[0].details, /長說明/);
-assert.strictEqual(currentParentNotes[1].id, 'parent-update-2026-09-10-parent-header-clarity');
 
 console.log('releaseNotes.test.js: ok');

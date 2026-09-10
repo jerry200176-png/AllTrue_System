@@ -145,12 +145,12 @@
       </div>
 
       <!-- ═══ Progress Hub (PRD enterprise v2) ═══ -->
-      <div class="pp-card pp-hub-card enterprise-page-header" v-if="progressSummary" data-guide="parent-progress-hub">
+      <section class="pp-card pp-hub-card enterprise-page-header" v-if="progressSummary" data-guide="parent-progress-hub" aria-labelledby="parent-progress-hub-title">
         <div class="pp-hub-header">
-          <div class="pp-hub-title">
-            <span class="material-symbols-outlined">flag</span>
+          <h2 id="parent-progress-hub-title" class="pp-hub-title">
+            <span class="material-symbols-outlined" aria-hidden="true">flag</span>
             進度中心
-          </div>
+          </h2>
           <span class="pp-hub-week">本週 {{ progressSummary.week_label }}</span>
         </div>
         <div class="pp-hub-grid pp-hub-grid--home">
@@ -200,7 +200,7 @@
           </span>
           <span class="material-symbols-outlined pp-hub-feedback-cta__chev">chevron_right</span>
         </button>
-      </div>
+      </section>
 
       <!-- Parent Portal V1: answer the five parent questions using existing data only. -->
       <section class="pp-card pp-home-v1" v-if="parentHomeSummary" aria-labelledby="parent-home-v1-title">
@@ -2121,11 +2121,12 @@ onMounted(async () => {
 /* ═══ Progress Hub (PRD enterprise v2) ═══ */
 .pp-hub-card { padding: 14px 14px 12px; }
 .pp-hub-header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-bottom: 10px;
 }
 .pp-hub-title {
   display: inline-flex; align-items: center; gap: 6px;
+  min-width: 0; margin: 0;
   font-size: 14px; font-weight: 800; color: var(--ds-ink);
 }
 .pp-hub-week { font-size: 12px; color: var(--ds-ink-mute); font-weight: 600; }
@@ -2140,7 +2141,7 @@ onMounted(async () => {
 .pp-hub-cell {
   position: relative;
   display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
-  padding: 12px 12px 14px;
+  min-height: 112px; padding: 12px 12px 14px;
   background: var(--ds-canvas);
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 14px;
@@ -2152,6 +2153,12 @@ onMounted(async () => {
   border-color: rgba(15, 23, 42, 0.32);
   transform: translateY(-1px);
   background: var(--ds-canvas-soft);
+}
+.pp-hub-cell:focus-visible {
+  z-index: 1;
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
 }
 .pp-hub-cell-label {
   font-size: 11px; font-weight: 800; color: var(--ds-ink-mute);
@@ -2170,6 +2177,7 @@ onMounted(async () => {
 .pp-hub-cell-val--small small { font-size: 12px; color: var(--ds-ink); }
 .pp-hub-cell-sub { color: var(--ds-ink-mute) !important; }
 .pp-hub-cell-cta {
+  margin-top: auto;
   font-size: 12px; font-weight: 700; color: var(--ds-ink-mute);
 }
 .pp-hub-cell--accent { border-color: rgba(245, 158, 11, 0.55); background: var(--ds-warning-wash); }
@@ -2355,6 +2363,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   width: 100%;
+  min-height: 56px;
   margin-top: 12px;
   padding: 12px 14px;
   border-radius: 12px;
@@ -2369,6 +2378,11 @@ onMounted(async () => {
 }
 .pp-hub-feedback-cta:active {
   box-shadow: inset 0 1px 4px rgba(49, 27, 146, 0.08);
+}
+.pp-hub-feedback-cta:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
 }
 .pp-hub-feedback-cta__icon {
   font-size: 28px;

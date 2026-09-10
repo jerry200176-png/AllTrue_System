@@ -262,3 +262,17 @@ failure_modes:
       modality when a prior pointer click changed the browser modality.
   severity: medium
   frequency: recurring
+- id: FM-20260910-194128-II4H
+  name: Parent Portal progress hub actions looked clickable without a semantic section
+    or a shared keyboard focus contract
+  detection:
+    signal: Parent Portal progress hub actions looked clickable without a semantic
+      section or a shared keyboard focus contract
+    source: reflection:REF-20260910-194128-4XPC
+  mitigation:
+    practice: Use a labelled section with a real heading for dashboard summaries;
+      give every actionable metric tile a canonical focus-visible ring, a 112px touch-safe
+      floor, and anchor its next-step CTA consistently. Mark decorative icons aria-hidden
+      so the heading name stays human-readable.
+  severity: medium
+  frequency: recurring
