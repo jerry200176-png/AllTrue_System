@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "737c0e9c58de469997d8b6c4dc0cd699",
+  "session_id": "955028b600644693a4ea76cd06bbe63b",
   "project": "alltrue",
-  "task_id": "release-governance-classifier-fix-20260910",
+  "task_id": "parent-tab-focus-clarity-20260910",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "753b824619916442a1ec0c37ddc3c9787730bdbd",
-  "branch": "chore/task-release-governance-classifier-fix-20260910",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/release-governance-classifier-fix-20260910",
-  "started_at": "2026-09-09T18:55:55Z",
+  "base_sha": "7cbdb97663cb648eceff5b52a6ba3a6f1302cdb5",
+  "branch": "chore/task-parent-tab-focus-clarity-20260910",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/parent-tab-focus-clarity-20260910",
+  "started_at": "2026-09-10T09:10:45Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }

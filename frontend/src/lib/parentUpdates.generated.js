@@ -4,6 +4,17 @@
  */
 export const parentUpdates = [
   {
+    "id": "parent-update-2026-09-10-learning-tab-focus",
+    "kind": "improvement",
+    "title": "學習分頁更容易操作",
+    "summary": "切換家長入口的學習內容時，現在更容易看出目前所在的分頁。",
+    "details": "手機、平板與桌面都支援清楚的鍵盤與觸控焦點；學習內容、可查看範圍與原有操作方式不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "parent-update-2026-09-09-learning-assessment",
     "kind": "improvement",
     "title": "學習評量重點更清楚",
