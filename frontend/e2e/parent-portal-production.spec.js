@@ -40,11 +40,14 @@ async function assertParentSurface(page, viewport, testInfo) {
   await expect(page.getByText('下一步／目前待辦', { exact: true })).toBeVisible();
   const parentUpdate = page.locator('.pp-parent-update__btn');
   await expect(parentUpdate).toBeVisible();
+  const parentUpdateTeaser = await parentUpdate.locator('.pp-parent-update__t').innerText();
+  expect(parentUpdateTeaser.trim(), 'current parent update teaser').not.toBe('');
   await parentUpdate.click();
-  await expect(page.getByText('學習評量重點更清楚', { exact: true })).toBeVisible();
-  await expect(page.getByText('已核准的學習評量仍可從「學習」分頁逐堂展開查看；尚未完成老師複核時，頁面會清楚說明目前沒有可查看的評量內容。', { exact: true })).toBeVisible();
+  const releaseDetail = page.locator('.pp-release-detail');
+  await expect(releaseDetail).toBeVisible();
+  await expect(releaseDetail).toContainText(parentUpdateTeaser.trim());
   await page.getByRole('button', { name: '關閉', exact: true }).click();
-  await expect(page.getByText('學習評量重點更清楚', { exact: true })).toBeHidden();
+  await expect(releaseDetail).toBeHidden();
 
   const learningTab = page.getByRole('tab', { name: /學習/ });
   const scheduleTab = page.getByRole('tab', { name: /課表/ });
