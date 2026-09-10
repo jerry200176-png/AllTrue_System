@@ -1464,12 +1464,14 @@
     </div>
 
     <!-- Director: quick internal note to teacher (no full edit flow) -->
-    <div v-if="showDirectorNoteModal" class="modal-overlay lr-modal-overlay" @click.self="closeDirectorNoteModal">
-      <div class="lr-modal lr-director-note-modal" style="max-width: 440px" @click.stop>
-        <div class="lr-modal-header">
-          <h3>主任給老師評語</h3>
-          <button type="button" class="lr-modal-close" @click="closeDirectorNoteModal">&times;</button>
-        </div>
+    <AtDialog
+      :open="showDirectorNoteModal"
+      title="主任給老師評語"
+      size="sm"
+      panel-class="lr-director-note-dialog"
+      close-label="關閉主任評語"
+      @close="closeDirectorNoteModal"
+    >
         <div class="lr-director-note-body">
           <p v-if="directorNoteTarget" class="lr-director-note-meta">
             {{ directorNoteTarget.student_name }} · {{ directorNoteTarget.SessionDate }} {{ directorNoteTarget.StartTime || '' }}
@@ -1484,15 +1486,18 @@
             placeholder="例：請補上週考錯題類型、或提醒下堂帶課本…"
           ></textarea>
           <div v-if="directorNoteError" class="lr-teacher-comment-error">{{ directorNoteError }}</div>
-          <div class="lr-form-actions lr-director-note-actions">
-            <button type="button" class="ghost" @click="closeDirectorNoteModal">取消</button>
-            <button type="button" class="primary" :disabled="directorNoteSaving" @click="submitDirectorNoteModal">
-              {{ directorNoteSaving ? '儲存中…' : '儲存' }}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" @click="closeDirectorNoteModal">取消</AtButton>
+        <AtButton
+          variant="primary"
+          shape="rect"
+          :loading="directorNoteSaving"
+          :disabled="directorNoteSaving"
+          @click="submitDirectorNoteModal"
+        >儲存</AtButton>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
@@ -1502,6 +1507,7 @@ import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
@@ -7227,7 +7233,8 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 }
 
 .lr-director-note-body {
-  padding: 0 20px 20px;
+  display: grid;
+  gap: var(--ds-space-3);
 }
 .lr-director-note-meta {
   font-size: 13px;
@@ -7251,11 +7258,17 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   min-height: 120px;
   resize: vertical;
 }
-.lr-director-note-actions {
-  margin-top: 14px;
-  padding-top: 0;
-  border-top: none;
-  justify-content: flex-end;
+:global(.at-dialog__panel.lr-director-note-dialog) {
+  max-width: 440px;
+  animation: none;
+}
+
+:global(.at-dialog__panel.lr-director-note-dialog) .lr-director-note-textarea {
+  min-height: 120px;
+}
+
+:global(.at-dialog__panel.lr-director-note-dialog) .at-btn {
+  min-height: 44px;
 }
 
 .lr-modal-header {
