@@ -208,3 +208,16 @@ failure_modes:
       behavior, page IDs, and backend authorization unchanged.
   severity: medium
   frequency: recurring
+- id: FM-20260910-161728-QB5J
+  name: billing queue responsive state convergence
+  detection:
+    signal: billing queue responsive state convergence
+    source: reflection:REF-20260910-161728-XS34
+  mitigation:
+    practice: For sensitive billing surfaces, converge shared loading/error/empty
+      states and make dense receivable tables card-like below tablet width while preserving
+      payment status, mutation, permission, and API contracts; verify visible controls,
+      long Chinese content, no overflow, keyboard paths, and modal bounds in a real
+      browser.
+  severity: medium
+  frequency: recurring
