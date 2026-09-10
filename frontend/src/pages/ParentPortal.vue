@@ -2310,9 +2310,14 @@ onMounted(async () => {
 }
 .pp-tab {
   flex: 1; display: flex; flex-direction: column; align-items: center;
-  gap: 3px; padding: 10px 4px; background: none; border: none;
+  gap: 3px; padding: 10px 8px; min-height: 52px; background: none; border: none;
   cursor: pointer; font-size: 0.8em; color: var(--ds-ink-mute); transition: color .2s, background .2s;
   position: relative;
+}
+.pp-tab:focus-visible {
+  z-index: 1;
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: -3px;
 }
 .pp-tab .material-symbols-outlined { font-size: 20px; }
 .pp-tab.active { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); font-weight: 600; }
