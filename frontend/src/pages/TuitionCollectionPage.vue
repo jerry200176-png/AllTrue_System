@@ -71,32 +71,15 @@
     >
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
-      <div class="tc-summary">
-        <div class="tc-card tc-card--skeleton" v-for="i in 5" :key="i">
-          <span class="skel skel-num"></span>
-          <span class="skel skel-label"></span>
-        </div>
-      </div>
-      <div class="tc-table-wrap">
-        <table class="tc-table">
-          <thead>
-            <tr>
-              <th v-for="i in 8" :key="i"><span class="skel skel-th"></span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="i in 5" :key="i">
-              <td v-for="j in 8" :key="j"><span class="skel skel-cell" :style="{ width: j === 1 ? '120px' : j <= 4 ? '72px' : '80px' }"></span></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <AtSkeleton :rows="8" height="28px" />
     </div>
 
-    <div v-else-if="error" class="tc-error">
-      <span class="material-symbols-outlined" style="font-size:20px">error</span>
+    <AtInlineAlert v-else-if="error" tone="danger" title="帳務待處理資料載入失敗">
       {{ error }}
-    </div>
+      <template #action>
+        <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" @click="loadAlerts">重新載入</AtButton>
+      </template>
+    </AtInlineAlert>
 
     <template v-else>
       <!-- The row-level queue is the primary surface; totals remain available on demand. -->
@@ -147,9 +130,11 @@
       </div>
 
       <div v-if="!rows.length" class="tc-empty">
-        <span class="material-symbols-outlined" style="font-size:52px;color:var(--success)">check_circle</span>
-        <p>本分校目前無待催繳課程</p>
-        <button class="tc-cta-btn" @click="$emit('navigate', 'tuition-report')">查看當月學收</button>
+        <AtEmpty icon="check_circle" title="本分校目前無待催繳課程" description="待催繳佇列已清空，仍可從學收報表查看當月明細。">
+          <template #action>
+            <AtButton variant="primary" shape="rect" @click="$emit('navigate', 'tuition-report')">查看當月學收</AtButton>
+          </template>
+        </AtEmpty>
       </div>
 
       <div v-else>
@@ -246,12 +231,15 @@
 
         <!-- Empty state for current tab -->
         <div v-if="!filteredRows.length" class="tc-empty" style="padding:32px 0">
-          <span v-if="searchQuery" class="material-symbols-outlined" style="font-size:40px;color:var(--text-light)">person_search</span>
-          <span v-else class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">inbox</span>
-          <p v-if="searchQuery">找不到包含「{{ searchQuery }}」的學生</p>
-          <p v-else>此分類目前無資料</p>
-          <button v-if="searchQuery" class="tc-cta-btn tc-cta-btn--ghost" @click="searchQuery = ''">清除搜尋</button>
-          <button v-else-if="activeTab !== 'all'" class="tc-cta-btn tc-cta-btn--ghost" @click="activeTab = 'all'">查看全部</button>
+          <AtEmpty
+            :icon="searchQuery ? 'person_search' : 'inbox'"
+            :title="searchQuery ? `找不到包含「${searchQuery}」的學生` : '此分類目前無資料'"
+          >
+            <template #action>
+              <AtButton v-if="searchQuery" variant="secondary" shape="rect" @click="searchQuery = ''">清除搜尋</AtButton>
+              <AtButton v-else-if="activeTab !== 'all'" variant="secondary" shape="rect" @click="activeTab = 'all'">查看全部</AtButton>
+            </template>
+          </AtEmpty>
         </div>
 
         <!-- Table -->
@@ -269,27 +257,27 @@
                     :aria-label="batchMode === 'confirm' ? '全選待對帳' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
                   />
                 </th>
-                <th class="tc-th-sort" @click="toggleSort('student_name')">
+                <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('student_name')" @keydown.enter.prevent="toggleSort('student_name')" @keydown.space.prevent="toggleSort('student_name')">
                   學生
                   <span v-if="sortKey === 'student_name'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
-                <th class="tc-th-sort" @click="toggleSort('subject')">
+                <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('subject')" @keydown.enter.prevent="toggleSort('subject')" @keydown.space.prevent="toggleSort('subject')">
                   科目
                   <span v-if="sortKey === 'subject'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-mode">模式</th>
                 <th>狀態</th>
-                <th class="tc-col-currency tc-th-sort" @click="toggleSort('charge')">
+                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('charge')" @keydown.enter.prevent="toggleSort('charge')" @keydown.space.prevent="toggleSort('charge')">
                   應繳
                   <span v-if="sortKey === 'charge'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-currency">已繳</th>
-                <th class="tc-col-currency tc-th-sort" @click="toggleSort('outstanding')">
+                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('outstanding')" @keydown.enter.prevent="toggleSort('outstanding')" @keydown.space.prevent="toggleSort('outstanding')">
                   未結清
                   <span v-if="sortKey === 'outstanding'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-date">最近付款</th>
-                <th class="tc-col-date tc-th-sort" @click="toggleSort('due_date')">
+                <th class="tc-col-date tc-th-sort" role="button" tabindex="0" @click="toggleSort('due_date')" @keydown.enter.prevent="toggleSort('due_date')" @keydown.space.prevent="toggleSort('due_date')">
                   到期／逾期
                   <span v-if="sortKey === 'due_date'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
@@ -521,18 +509,15 @@
         </div>
       </div>
 
-      <div v-if="accountingError" class="tc-error">
-        <span class="material-symbols-outlined" style="font-size:20px">error</span>
+      <AtInlineAlert v-if="accountingError" tone="danger" title="收據紀錄載入失敗">
         {{ accountingError }}
-      </div>
+        <template #action>
+          <AtButton variant="secondary" size="sm" shape="rect" :loading="accountingLoading" @click="loadAccountingPayments">重新載入</AtButton>
+        </template>
+      </AtInlineAlert>
 
-      <div v-if="accountingLoading && !accountingRows.length" class="tc-skeleton-area">
-        <div class="tc-summary">
-          <div class="tc-card tc-card--skeleton" v-for="i in 5" :key="i">
-            <span class="skel skel-num"></span>
-            <span class="skel skel-label"></span>
-          </div>
-        </div>
+      <div v-else-if="accountingLoading && !accountingRows.length" class="tc-skeleton-area">
+        <AtSkeleton :rows="6" height="28px" />
       </div>
 
       <template v-else>
@@ -571,9 +556,11 @@
         </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
-          <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">receipt_long</span>
-          <p>此區間尚無已核帳收款</p>
-          <button class="tc-cta-btn tc-cta-btn--ghost" @click="activeAccountingTab = 'receivables'">前往待處理</button>
+          <AtEmpty icon="receipt_long" title="此區間尚無已核帳收款" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
+            <template #action>
+              <AtButton variant="secondary" shape="rect" @click="activeAccountingTab = 'receivables'">前往待處理</AtButton>
+            </template>
+          </AtEmpty>
         </div>
 
         <div v-else class="tc-table-wrap">
@@ -591,18 +578,18 @@
                 <th class="acct-col-check">
                   <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="全選" />
                 </th>
-                <th class="acct-th-sortable" @click="toggleAccountingSort('payment_date')">
+                <th class="acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('payment_date')" @keydown.enter.prevent="toggleAccountingSort('payment_date')" @keydown.space.prevent="toggleAccountingSort('payment_date')">
                   繳費日期／收據編號
                   <span v-if="accountingSortKey === 'payment_date'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
-                <th class="acct-th-sortable" @click="toggleAccountingSort('student_name')">
+                <th class="acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('student_name')" @keydown.enter.prevent="toggleAccountingSort('student_name')" @keydown.space.prevent="toggleAccountingSort('student_name')">
                   學生
                   <span v-if="accountingSortKey === 'student_name'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th>科目／第一堂課</th>
                 <th class="tc-col-currency">現金</th>
                 <th class="tc-col-currency">匯款</th>
-                <th class="tc-col-currency acct-th-sortable" @click="toggleAccountingSort('total_amount')">
+                <th class="tc-col-currency acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('total_amount')" @keydown.enter.prevent="toggleAccountingSort('total_amount')" @keydown.space.prevent="toggleAccountingSort('total_amount')">
                   合計
                   <span v-if="accountingSortKey === 'total_amount'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
@@ -699,10 +686,12 @@
         </div>
       </div>
 
-      <div v-if="settledError" class="tc-error">
-        <span class="material-symbols-outlined" style="font-size:20px">error</span>
+      <AtInlineAlert v-if="settledError" tone="danger" title="已結清課程載入失敗">
         {{ settledError }}
-      </div>
+        <template #action>
+          <AtButton variant="secondary" size="sm" shape="rect" :loading="settledLoading" @click="loadSettledCourses">重新載入</AtButton>
+        </template>
+      </AtInlineAlert>
 
       <template v-else>
         <div class="tc-summary">
@@ -716,11 +705,10 @@
         <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
-          <div class="tc-card tc-card--skeleton"><span class="skel skel-num"></span><span class="skel skel-label"></span></div>
+          <AtSkeleton :rows="4" height="28px" />
         </div>
         <div v-else-if="!settledRows.length" class="tc-empty">
-          <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">task_alt</span>
-          <p>目前查無已結清課程</p>
+          <AtEmpty icon="task_alt" title="目前查無已結清課程" description="符合目前篩選條件的課程會顯示在這裡。" />
         </div>
         <div v-else class="tc-table-wrap">
           <table class="tc-table acct-table">
@@ -942,14 +930,11 @@
           </div>
 
           <!-- Loading -->
-          <div v-if="sessionDetailLoading" class="tc-session-loading">
-            <span class="material-symbols-outlined spin">progress_activity</span>
-            載入中…
-          </div>
+          <AtSkeleton v-if="sessionDetailLoading" :rows="4" height="24px" />
 
           <!-- Empty -->
           <div v-else-if="!sessionDetailList.length" class="tc-session-empty">
-            尚無上課紀錄
+            <AtEmpty icon="event_busy" title="尚無上課紀錄" />
           </div>
 
           <!-- Table -->
@@ -995,7 +980,10 @@ import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
   formatTuitionSettleSummary,
@@ -2306,6 +2294,16 @@ loadAlerts();
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
+.tc-page button,
+.tc-page input:not([type="checkbox"]),
+.tc-page select,
+.tc-page textarea {
+  min-height: 44px;
+}
+.tc-page input[type="checkbox"] { min-height: 20px; min-width: 20px; }
+.tc-page :deep(.at-btn) { min-height: 44px; }
+.tc-page :deep(.at-inline-alert) { flex-wrap: wrap; }
+.tc-page :deep(.at-inline-alert__action) { margin-left: auto; }
 .tc-process-disclosure,
 .tc-summary-disclosure {
   margin-bottom: 16px;
@@ -3342,6 +3340,64 @@ loadAlerts();
   .tc-card--outstanding .tc-card-num { font-size: 15px; }
   .tc-search-wrap { width: 100%; }
   .acct-filter-grid { grid-template-columns: 1fr 1fr; }
+  .tc-table-wrap:has(.tc-table:not(.acct-table)) {
+    overflow: visible;
+    margin: 0;
+  }
+  .tc-table:not(.acct-table),
+  .tc-table:not(.acct-table) tbody {
+    display: block;
+  }
+  .tc-table:not(.acct-table) thead { display: none; }
+  .tc-table:not(.acct-table) tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 12px;
+    align-items: start;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-bg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  }
+  .tc-table:not(.acct-table) tbody tr:last-child { margin-bottom: 0; }
+  .tc-table:not(.acct-table) td {
+    min-width: 0;
+    padding: 4px 0;
+    border-bottom: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tc-table:not(.acct-table) td:nth-child(1) { grid-column: 2; grid-row: 1; width: 44px; }
+  .tc-table:not(.acct-table) td:nth-child(2) { grid-column: 1; grid-row: 1; font-size: 15px; }
+  .tc-table:not(.acct-table) td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; color: var(--text-light); }
+  .tc-table:not(.acct-table) td:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .tc-table:not(.acct-table) td:nth-child(5) { grid-column: 2; grid-row: 3; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(6) { grid-column: 1; grid-row: 4; }
+  .tc-table:not(.acct-table) td:nth-child(7) { grid-column: 2; grid-row: 4; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(8) { grid-column: 1; grid-row: 5; }
+  .tc-table:not(.acct-table) td:nth-child(9) { grid-column: 2; grid-row: 5; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(10) { grid-column: 1 / -1; grid-row: 6; }
+  .tc-table:not(.acct-table) td:nth-child(11) { grid-column: 1 / -1; grid-row: 7; }
+  .tc-table:not(.acct-table) td:nth-child(4)::before,
+  .tc-table:not(.acct-table) td:nth-child(6)::before,
+  .tc-table:not(.acct-table) td:nth-child(7)::before,
+  .tc-table:not(.acct-table) td:nth-child(8)::before,
+  .tc-table:not(.acct-table) td:nth-child(9)::before,
+  .tc-table:not(.acct-table) td:nth-child(10)::before {
+    color: var(--text-light);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .tc-table:not(.acct-table) td:nth-child(4)::before { content: '模式'; }
+  .tc-table:not(.acct-table) td:nth-child(6)::before { content: '應繳'; }
+  .tc-table:not(.acct-table) td:nth-child(7)::before { content: '已繳'; }
+  .tc-table:not(.acct-table) td:nth-child(8)::before { content: '未結清'; }
+  .tc-table:not(.acct-table) td:nth-child(9)::before { content: '最近付款'; }
+  .tc-table:not(.acct-table) td:nth-child(10)::before { content: '到期／逾期'; }
+  .tc-table:not(.acct-table) .tc-actions { justify-content: flex-start; }
+  .tc-table:not(.acct-table) .tc-col-actions { padding-top: 10px; }
 }
 @media (max-width: 640px) {
   .acct-tabs { white-space: nowrap; }
