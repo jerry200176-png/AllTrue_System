@@ -1,0 +1,16 @@
+id: REF-20260910-161728-XS34
+pattern: billing queue responsive state convergence
+insight: For sensitive billing surfaces, converge shared loading/error/empty states
+  and make dense receivable tables card-like below tablet width while preserving payment
+  status, mutation, permission, and API contracts; verify visible controls, long Chinese
+  content, no overflow, keyboard paths, and modal bounds in a real browser.
+severity: medium
+scope: global
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-10T16:17:28+08:00'
+status: active
+tags:
+- ux
+- billing
+hit_count: 0
