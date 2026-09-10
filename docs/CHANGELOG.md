@@ -10,7 +10,7 @@
 - 不改評語驗證、儲存 API、權限或學習紀錄資料流程。
 
 ## 2026-09-10 — improved(parent): 家長學習分頁更容易操作
-<!-- release-notes: parent_update=parent-update-2026-09-10-learning-tab-focus -->
+<!-- release-notes: silent_ship=silent-2026-09-10-parent-learning-tab-focus -->
 - 家長在「學習」分頁切換內容時，鍵盤與觸控都能清楚辨識目前所在的分頁；焦點狀態有足夠對比與可見範圍。
 - 手機、平板與桌面寬度都保留完整的分頁與內容操作，不改家長可查看的資料、權限或導頁流程。
 
