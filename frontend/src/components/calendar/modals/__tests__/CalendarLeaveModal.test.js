@@ -20,10 +20,39 @@ describe('CalendarLeaveModal', () => {
   });
 
   it('emits close and submit', async () => {
-    const w = mount(CalendarLeaveModal, { props: { show: true, form } });
+    const w = mount(CalendarLeaveModal, {
+      props: {
+        show: true, form, previewReady: true,
+        impactPreview: { title: '請假送出前影響預覽', summary: '小明｜數學', items: ['未來日期不變'] },
+      },
+    });
     await w.find('.ghost').trigger('click');
     expect(w.emitted('close')).toHaveLength(1);
+    expect(w.find('.primary').attributes('disabled')).toBeDefined();
+    await w.find('.impact-confirm input').setValue(true);
     await w.find('.primary').trigger('click');
     expect(w.emitted('submit')).toHaveLength(1);
+  });
+
+  it('renders the authoritative impact preview and inline submit error', () => {
+    const w = mount(CalendarLeaveModal, {
+      props: {
+        show: true, form, error: '堂次已變更',
+        previewReady: true,
+        impactPreview: { title: '請假送出前影響預覽', summary: '小明｜數學', items: ['未來日期不變'] },
+      },
+    });
+    expect(w.get('[aria-label="請假影響預覽"]').text()).toContain('未來日期不變');
+    expect(w.get('[role="alert"]').text()).toContain('堂次已變更');
+  });
+
+  it('fails closed while preview is loading or failed and offers retry', async () => {
+    const w = mount(CalendarLeaveModal, {
+      props: { show: true, form, previewError: '預覽服務暫時無法使用' },
+    });
+    expect(w.find('.impact-confirm').exists()).toBe(false);
+    expect(w.find('.primary').attributes('disabled')).toBeDefined();
+    await w.find('.preview-retry').trigger('click');
+    expect(w.emitted('retry-preview')).toHaveLength(1);
   });
 });

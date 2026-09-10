@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-10-calendar-leave-policy-parity
+    published_at: "2026-09-10"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 行事曆請假會先清楚說明影響
+    summary: 單堂請假先顯示處理結果；堂數制補尾，月結制維持原帳期。
+    items:
+      - category: fixed
+        text: 堂數制請假保留後續原定日期並於尾端補堂；月結制只標記原堂、不補尾、不跨到下一個帳期。
+      - category: improved
+        text: 行事曆請假與課程管理共用預覽、確認、錯誤與復原流程；老師請假／安排代課移至主要操作列。
+    source_refs:
+      - "changelog:2026-09-10:calendar-leave-policy-parity"
+
   - id: staff-2026-09-10-substitute-restore-clears-schedules
     published_at: "2026-09-10"
     audiences:
