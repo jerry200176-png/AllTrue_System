@@ -1,3 +1,8 @@
+## 2026-09-10 — improved(parent): 出缺勤紀錄更容易閱讀
+<!-- release-notes: silent_ship=silent-2026-09-10-parent-attendance-clarity -->
+- 家長入口的「出缺勤紀錄」現在有清楚的區塊語意、可見的鍵盤焦點與一致的「顯示更多」觸控尺寸；長課程與老師名稱在手機上也會正常換行。
+- 保留原有出席、遲到、缺席、請假資料與顯示順序；本次只改善呈現、可及性與 responsive 行為。
+
 ## 2026-09-10 — improved(parent): 進度中心更容易理解
 <!-- release-notes: silent_ship=silent-2026-09-10-parent-progress-hub-clarity -->
 - 家長入口的「進度中心」現在以清楚的區塊標題、可辨識的鍵盤焦點與一致的觸控尺寸呈現本週學習、下次課程與繳費狀態；每個項目的下一步會固定在容易找到的位置。
