@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.TUITION_COLLECTION_SHOT_DIR
   || path.resolve(__dirname, '../../docs/design/evidence/tuition-collection-clarity');
+const dialogShotDir = process.env.TUITION_COLLECTION_DIALOG_SHOT_DIR || outDir;
 const viewports = [
   { name: '390', width: 390, height: 844 },
   { name: '412', width: 412, height: 915 },
@@ -170,14 +171,17 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
     await page.getByRole('button', { name: /剩 4 堂/ }).click();
-    const dialog = page.locator('.tc-dialog--wide');
+    const dialog = page.locator('.tc-session-dialog');
     await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('role', 'dialog');
+    await expect(dialog).toBeFocused();
     const box = await dialog.boundingBox();
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
     expect(box.y + box.height).toBeLessThanOrEqual(844);
-    await page.getByRole('button', { name: '關閉' }).click();
+    await page.screenshot({ path: path.join(dialogShotDir, 'session-dialog-390.png'), fullPage: true });
+    await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
   });
 
