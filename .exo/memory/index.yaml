@@ -208,18 +208,20 @@ failure_modes:
       behavior, page IDs, and backend authorization unchanged.
   severity: medium
   frequency: recurring
-- id: FM-20260910-171808-M6R5
-  name: Primary role navigation can have correct ARIA and roving keyboard behavior
-    yet still lack a visible focus affordance and
+- id: FM-20260910-172912-0QKR
+  name: Release Notes disclosure controls were native details summaries with weak
+    visual hierarchy and no consistent touch or fo
   detection:
-    signal: Primary role navigation can have correct ARIA and roving keyboard behavior
-      yet still lack a visible focus affordance and a comfortable touch target.
-    source: reflection:REF-20260910-171808-D9JB
+    signal: Release Notes disclosure controls were native details summaries with weak
+      visual hierarchy and no consistent touch or focus affordance, while the role-empty
+      state bypassed the shared empty primitive.
+    source: reflection:REF-20260910-172912-HQAF
   mitigation:
-    practice: For bounded tab-navigation convergence, preserve the existing tab semantics
-      and keyboard handler, add the existing --ds-focus-ring token to :focus-visible,
-      use a minimum 52px tab target, and verify ArrowRight focus plus return to the
-      original panel in the real role workflow at every required viewport.
+    practice: For a low-risk static announcement page, keep native details semantics
+      and source/audience filtering unchanged; style summary and external-link actions
+      as 44px keyboard-visible controls with the existing focus token, replace ad
+      hoc empty copy with AtEmpty, and verify real rendered SFC behavior for populated
+      and zero-note roles across the standard responsive matrix.
   severity: medium
   frequency: recurring
 - id: FM-20260910-165512-SSBX
@@ -232,5 +234,19 @@ failure_modes:
       a shared action footer; preserve the existing save handler and validate focus,
       Escape, 44px actions, long Chinese text, viewport bounds, console, and network
       behavior in the real browser.
+  severity: medium
+  frequency: recurring
+- id: FM-20260910-171808-M6R5
+  name: Primary role navigation can have correct ARIA and roving keyboard behavior
+    yet still lack a visible focus affordance and
+  detection:
+    signal: Primary role navigation can have correct ARIA and roving keyboard behavior
+      yet still lack a visible focus affordance and a comfortable touch target.
+    source: reflection:REF-20260910-171808-D9JB
+  mitigation:
+    practice: For bounded tab-navigation convergence, preserve the existing tab semantics
+      and keyboard handler, add the existing --ds-focus-ring token to :focus-visible,
+      use a minimum 52px tab target, and verify ArrowRight focus plus return to the
+      original panel in the real role workflow at every required viewport.
   severity: medium
   frequency: recurring

@@ -1,0 +1,19 @@
+id: REF-20260910-172912-HQAF
+pattern: Release Notes disclosure controls were native details summaries with weak
+  visual hierarchy and no consistent touch or focus affordance, while the role-empty
+  state bypassed the shared empty primitive.
+insight: For a low-risk static announcement page, keep native details semantics and
+  source/audience filtering unchanged; style summary and external-link actions as
+  44px keyboard-visible controls with the existing focus token, replace ad hoc empty
+  copy with AtEmpty, and verify real rendered SFC behavior for populated and zero-note
+  roles across the standard responsive matrix.
+severity: medium
+scope: TKT-20260910-RELEASE-NOTES
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-10T17:29:12+08:00'
+status: active
+tags:
+- ux
+- accessibility
+hit_count: 0

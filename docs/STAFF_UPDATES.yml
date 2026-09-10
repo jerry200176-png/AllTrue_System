@@ -21,6 +21,25 @@ updates:
       - "changelog:2026-09-10:learning-record-dialog-clarity"
       - "pr:#2684"
 
+  - id: staff-2026-09-10-release-notes-disclosure
+    published_at: "2026-09-10"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 版本更新頁更容易閱讀
+    summary: 版本更新的區塊、空狀態與完整變更紀錄入口現在更容易辨識與操作。
+    items:
+      - category: improved
+        text: 版本更新頁的內容區塊使用清楚的展開控制，標題、目前狀態與鍵盤焦點更容易辨識。
+      - category: fixed
+        text: 沒有可顯示的更新時提供一致的空狀態說明；完整變更紀錄入口在手機與桌面都維持可操作。
+      - category: improved
+        text: 版本更新資料、角色可見範圍與既有導頁流程維持不變。
+    source_refs:
+      - "changelog:2026-09-10:release-notes-disclosure"
+      - "pr:#2686"
+
   - id: staff-2026-09-10-substitute-restore-clears-schedules
     published_at: "2026-09-10"
     audiences:
