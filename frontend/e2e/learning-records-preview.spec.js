@@ -140,6 +140,30 @@ test('learning records distinguish API error from empty data', async ({ page }) 
   await emptyPage.close();
 });
 
+test('learning records expose a loading state before the queue resolves', async ({ page }) => {
+  let resolveRecords;
+  const recordsPending = new Promise((resolve) => { resolveRecords = resolve; });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request();
+    if (request.method() !== 'GET') {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+    }
+    const path = new URL(request.url()).pathname;
+    if (path.includes('/learning-records') && !path.includes('/feedbacks')) {
+      await recordsPending;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(recordsPayload()) });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+  });
+
+  await page.goto('/pilot-mount.html?page=learning&role=director&mode=preview&loading=1');
+  await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+  await expect(page.locator('.lr-record-skeleton-grid')).toBeVisible();
+  resolveRecords();
+  await expect(page.locator('.lr-record-card, .lr-table-row').first()).toBeVisible({ timeout: 15_000 });
+});
+
 test('director note dialog keeps one clear action and usable bounds', async ({ page }) => {
   const viewports = [
     { name: '390', width: 390, height: 844 },
