@@ -200,7 +200,17 @@ async function runPopulatedParentPortal(page, viewport) {
     learning_records: pageNumber === 1 ? [recordOne] : [recordTwo],
     learning_records_meta: { page: pageNumber, per_page: 10, total: 2, has_more: pageNumber === 1 },
     assessment_progress: { items: [] },
-    attendance_history: [],
+    attendance_history: [
+      ...Array.from({ length: 12 }, (_, index) => ({
+        id: 5000 + index,
+        date: `2026-09-${String(12 - index).padStart(2, '0')}`,
+        time: '16:00–17:00',
+        subject: index === 0 ? '這是一個需要換行顯示的超長課程名稱：數學與自然科學綜合複習' : '數學',
+        teacher_name: index === 0 ? '這是一個需要換行顯示的超長老師姓名測試資料' : '測試老師',
+        Status: index === 2 ? 'late' : 'present',
+        status_label: index === 2 ? '遲到' : '出席',
+      })),
+    ],
     upcoming_sessions: [{ id: 6201, SessionDate: '2026-09-20', StartTime: '16:00', EndTime: '17:00', Status: 'scheduled', Subject: '數學' }],
     classes: [],
     remaining_sessions_total: 0,
@@ -259,6 +269,25 @@ async function runPopulatedParentPortal(page, viewport) {
   await expect(hub).toHaveAttribute('aria-labelledby', 'parent-progress-hub-title');
   const hubCells = hub.locator('.pp-hub-cell');
   await expect(hubCells).toHaveCount(3);
+  const attendance = page.locator('#pp-attendance-section');
+  await expect(attendance).toHaveAttribute('aria-labelledby', 'parent-attendance-title');
+  await expect(page.getByRole('heading', { name: '出缺勤紀錄', exact: true })).toBeVisible();
+  await expect(attendance.locator('.pp-timeline-item')).toHaveCount(10);
+  await expect(attendance).toContainText('這是一個需要換行顯示的超長課程名稱');
+  const attendanceMore = attendance.getByRole('button', { name: /顯示更多/ });
+  await expect(attendanceMore).toBeVisible();
+  const attendanceMoreBox = await attendanceMore.boundingBox();
+  expect(attendanceMoreBox?.height, `attendance more height at ${viewport.width}`).toBeGreaterThanOrEqual(44);
+  await attendanceMore.focus();
+  await expect(attendanceMore).toBeFocused();
+  const attendanceFocusStyle = await attendanceMore.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+  });
+  expect(attendanceFocusStyle.outlineStyle, `attendance more focus at ${viewport.width}`).toBe('solid');
+  expect(Number.parseFloat(attendanceFocusStyle.outlineWidth), `attendance more focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
+  await attendanceMore.click();
+  await expect(attendance.locator('.pp-timeline-item')).toHaveCount(12);
   for (let index = 0; index < await hubCells.count(); index += 1) {
     const cell = hubCells.nth(index);
     const box = await cell.boundingBox();

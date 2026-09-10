@@ -276,3 +276,18 @@ failure_modes:
       so the heading name stays human-readable.
   severity: medium
   frequency: recurring
+- id: FM-20260910-200756-2FL6
+  name: Fresh governed worktrees may have no dependencies, while browser fixtures
+    can still run through npx; full build then fai
+  detection:
+    signal: Fresh governed worktrees may have no dependencies, while browser fixtures
+      can still run through npx; full build then fails at missing eslint.
+    source: reflection:REF-20260910-200756-HC85
+  mitigation:
+    practice: Run npm ci in a newly created task worktree before the governed full
+      build when node_modules is absent. For Parent Portal attendance slices, verify
+      the real Vue role-matrix fixture at 390/412/768/1280/1440 and keep attendance
+      section semantics, 44px show-more controls, visible 3px focus, and overflow-safe
+      long Traditional Chinese wrapping aligned to existing Parent Portal patterns.
+  severity: medium
+  frequency: recurring

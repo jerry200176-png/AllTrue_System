@@ -37,6 +37,17 @@ export const parentUpdates = [
     "version": "2026.09.10"
   },
   {
+    "id": "parent-update-2026-09-10-parent-attendance-clarity",
+    "kind": "improvement",
+    "title": "出缺勤紀錄更容易閱讀",
+    "summary": "出席、遲到、缺席與請假紀錄在手機上更清楚，也更容易查看完整內容。",
+    "details": "長課程與老師名稱會正常換行；顯示更多的操作有一致的觸控尺寸與鍵盤焦點，原有紀錄與顯示順序不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "parent-update-2026-09-10-learning-tab-focus",
     "kind": "improvement",
     "title": "學習分頁更容易操作",
