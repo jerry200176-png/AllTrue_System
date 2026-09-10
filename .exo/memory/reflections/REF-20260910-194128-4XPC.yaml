@@ -1,0 +1,17 @@
+id: REF-20260910-194128-4XPC
+pattern: Parent Portal progress hub actions looked clickable without a semantic section
+  or a shared keyboard focus contract
+insight: Use a labelled section with a real heading for dashboard summaries; give
+  every actionable metric tile a canonical focus-visible ring, a 112px touch-safe
+  floor, and anchor its next-step CTA consistently. Mark decorative icons aria-hidden
+  so the heading name stays human-readable.
+severity: medium
+scope: global
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-10T19:41:28+08:00'
+status: active
+tags:
+- ux
+- accessibility
+hit_count: 0

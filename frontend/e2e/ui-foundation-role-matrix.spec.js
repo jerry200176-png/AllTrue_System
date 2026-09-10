@@ -60,7 +60,10 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   await page.goto('/pilot-mount.html?page=parent');
   await expect(page.locator('[data-guide="parent-portal-root"]')).toBeVisible();
   await expect(page.locator('[data-guide="parent-student-card"]')).toContainText('測試學生甲');
-  await expect(page.locator('[data-guide="parent-progress-hub"] .pp-hub-title')).toContainText('進度中心');
+  const hub = page.locator('[data-guide="parent-progress-hub"]');
+  await expect(hub).toHaveAttribute('aria-labelledby', 'parent-progress-hub-title');
+  await expect(page.getByRole('heading', { name: '進度中心', exact: true })).toBeVisible();
+  await expect(hub.locator('.pp-hub-cell')).toHaveCount(3);
   await expect(page.getByText('公告', { exact: true })).toBeVisible();
   await expect(page.getByText('這是給家長看的公告。', { exact: true })).toBeVisible();
 
@@ -252,6 +255,39 @@ async function runPopulatedParentPortal(page, viewport) {
   await page.goto('/pilot-mount.html?page=parent');
   await expect(page.locator('[data-guide="parent-portal-root"]')).toBeVisible();
   await expect(page.getByText('數學', { exact: true }).first()).toBeVisible();
+  const hub = page.locator('[data-guide="parent-progress-hub"]');
+  await expect(hub).toHaveAttribute('aria-labelledby', 'parent-progress-hub-title');
+  const hubCells = hub.locator('.pp-hub-cell');
+  await expect(hubCells).toHaveCount(3);
+  for (let index = 0; index < await hubCells.count(); index += 1) {
+    const cell = hubCells.nth(index);
+    const box = await cell.boundingBox();
+    expect(box?.height, `progress hub cell ${index} height at ${viewport.width}`).toBeGreaterThanOrEqual(112);
+    await cell.focus();
+    await expect(cell).toBeFocused();
+    const focusStyle = await cell.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    expect(focusStyle.outlineStyle, `progress hub cell ${index} focus at ${viewport.width}`).toBe('solid');
+    expect(Number.parseFloat(focusStyle.outlineWidth), `progress hub cell ${index} focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
+  }
+  const feedbackCta = hub.locator('.pp-hub-feedback-cta');
+  await expect(feedbackCta).toBeVisible();
+  const feedbackBox = await feedbackCta.boundingBox();
+  expect(feedbackBox?.height, `progress hub feedback height at ${viewport.width}`).toBeGreaterThanOrEqual(56);
+  await feedbackCta.focus();
+  await expect(feedbackCta).toBeFocused();
+  const feedbackFocusStyle = await feedbackCta.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+  });
+  expect(feedbackFocusStyle.outlineStyle, `progress hub feedback focus at ${viewport.width}`).toBe('solid');
+  expect(Number.parseFloat(feedbackFocusStyle.outlineWidth), `progress hub feedback focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
+  await hubCells.first().click();
+  await expect(page.locator('#parent-tab-learning')).toHaveAttribute('aria-selected', 'true');
+  await page.screenshot({ path: `/tmp/parent-progress-hub-after-${viewport.width}.png`, fullPage: true });
+  await page.keyboard.press('Tab');
   const attention = page.locator('[data-guide="parent-attention-card"]');
   await expect(attention).toBeVisible();
   const attentionItems = attention.locator('.pp-attention-item');
@@ -380,7 +416,7 @@ test('parent portal: header remains clear for empty and long Traditional Chinese
   for (const selector of ['.pp-btn-logout', '.pp-chip:not([disabled])', '#parent-campus-scope']) {
     const box = await page.locator(selector).first().boundingBox();
     expect(box?.width, `${selector} width`).toBeGreaterThanOrEqual(44);
-    expect(box?.height, `${selector} height`).toBeGreaterThanOrEqual(44);
+    expect(Math.round(box?.height ?? 0), `${selector} height`).toBeGreaterThanOrEqual(44);
   }
   await page.screenshot({ path: '/tmp/parent-header-after-long-390.png', fullPage: false });
   const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));

@@ -15,6 +15,17 @@ export const parentUpdates = [
     "version": "2026.09.10"
   },
   {
+    "id": "parent-update-2026-09-10-parent-progress-hub-clarity",
+    "kind": "improvement",
+    "title": "進度中心更容易理解",
+    "summary": "本週學習、下次課程與繳費狀態的下一步更容易看見與操作。",
+    "details": "每個項目在手機、平板與桌面都有一致的觸控尺寸與鍵盤焦點；原有資料、導頁與操作方式不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "parent-update-2026-09-10-parent-header-clarity",
     "kind": "improvement",
     "title": "家長入口更容易操作",
