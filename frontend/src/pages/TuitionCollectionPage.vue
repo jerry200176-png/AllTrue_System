@@ -900,26 +900,25 @@
     </Transition>
 
     <!-- Session Detail Modal -->
-    <Transition name="fade">
-      <div v-if="sessionDetailOpen" class="tc-overlay" @click.self="sessionDetailOpen = false">
-        <div class="tc-dialog tc-dialog--wide">
-          <div class="tc-dialog-header">
-            <div>
-              <h3 class="tc-dialog-title" style="margin-bottom:2px">
-                <span class="material-symbols-outlined" style="font-size:20px;color:var(--primary)">history_edu</span>
-                上課紀錄查核
-              </h3>
-              <div v-if="sessionDetailRow" style="font-size:13px;color:var(--text-light)">
-                {{ sessionDetailRow.student_name }} — {{ sessionDetailRow.subject }}
-              </div>
-            </div>
-            <button class="tc-dialog-close" @click="sessionDetailOpen = false">
-              <span class="material-symbols-outlined">close</span>
-            </button>
-          </div>
+    <AtDialog
+      :open="sessionDetailOpen"
+      panel-class="tc-session-dialog"
+      aria-label="上課紀錄查核"
+      close-label="關閉上課紀錄查核"
+      @close="sessionDetailOpen = false"
+    >
+      <template #header>
+        <h2 class="tc-session-dialog-title">
+          <span class="material-symbols-outlined" aria-hidden="true">history_edu</span>
+          上課紀錄查核
+        </h2>
+        <div v-if="sessionDetailRow" class="tc-session-dialog-subtitle">
+          {{ sessionDetailRow.student_name }} — {{ sessionDetailRow.subject }}
+        </div>
+      </template>
 
           <!-- Summary bar -->
-          <div v-if="sessionDetailRow" class="tc-session-summary">
+      <div v-if="sessionDetailRow" class="tc-session-summary">
             <span class="tc-ss-item tc-ss-attended">
               <strong>{{ sessionDetailAttended }}</strong> 堂已上
             </span>
@@ -927,18 +926,16 @@
             <span class="tc-ss-item">購買 <strong>{{ sessionDetailRow.sessions_purchased }}</strong> 堂</span>
             <span class="tc-ss-sep">·</span>
             <span class="tc-ss-item">剩餘 <strong>{{ sessionDetailRow.remaining_sessions }}</strong> 堂</span>
-          </div>
+      </div>
 
           <!-- Loading -->
-          <AtSkeleton v-if="sessionDetailLoading" :rows="4" height="24px" />
+      <AtSkeleton v-if="sessionDetailLoading" :rows="4" height="24px" />
 
           <!-- Empty -->
-          <div v-else-if="!sessionDetailList.length" class="tc-session-empty">
-            <AtEmpty icon="event_busy" title="尚無上課紀錄" />
-          </div>
+      <AtEmpty v-else-if="!sessionDetailList.length" icon="event_busy" title="尚無上課紀錄" />
 
           <!-- Table -->
-          <div v-else class="tc-session-table-wrap">
+      <div v-else class="tc-session-table-wrap">
             <table class="tc-session-table">
               <thead>
                 <tr>
@@ -957,14 +954,12 @@
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          <div class="tc-dialog-btns" style="margin-top:12px">
-            <button class="tc-btn tc-btn--ghost" @click="sessionDetailOpen = false">關閉</button>
-          </div>
-        </div>
       </div>
-    </Transition>
+
+      <template #actions>
+        <AtButton class="tc-session-dialog-action" variant="secondary" shape="rect" @click="sessionDetailOpen = false">關閉</AtButton>
+      </template>
+    </AtDialog>
 
     <!-- Toast -->
     <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
@@ -980,6 +975,7 @@ import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -3233,7 +3229,6 @@ loadAlerts();
 .tc-sessions-link:hover { color: var(--ds-ink-mute); }
 
 /* ─── Session Detail Dialog ─── */
-.tc-dialog--wide { max-width: 620px; width: 95vw; max-height: 80vh; display: flex; flex-direction: column; }
 .tc-dialog-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .tc-dialog-close { background: none; border: none; cursor: pointer; color: var(--text-light); display: flex; align-items: center; padding: 2px; border-radius: 6px; }
 .tc-dialog-close:hover { color: var(--text); background: var(--ds-canvas-soft); }
@@ -3254,6 +3249,23 @@ loadAlerts();
   font-size: 13px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+}
+:global(.at-dialog__panel.tc-session-dialog) { max-width: 620px; animation: none; }
+.tc-session-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ds-ink);
+  font-size: 18px;
+  line-height: 1.25;
+}
+.tc-session-dialog-title .material-symbols-outlined { color: var(--primary); font-size: 20px; }
+.tc-session-dialog-subtitle { margin-top: 4px; color: var(--text-light); font-size: 13px; }
+:global(.at-dialog__panel.tc-session-dialog .at-dialog__close) { min-width: 44px; min-height: 44px; }
+:global(.tc-session-dialog-action) { min-height: 44px; }
+@media (max-width: 640px) {
+  :global(.at-dialog__panel.tc-session-dialog) { max-height: calc(92dvh - 8px); }
 }
 .tc-ss-attended strong { color: var(--ds-success); }
 .tc-ss-sep { color: var(--text-light); }
