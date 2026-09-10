@@ -139,3 +139,76 @@ test('learning records distinguish API error from empty data', async ({ page }) 
   await expect(emptyPage.locator('.lr-empty-title')).toContainText(/無評量記錄|尚無評量資料/);
   await emptyPage.close();
 });
+
+test('director note dialog keeps one clear action and usable bounds', async ({ page }) => {
+  const viewports = [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ];
+  const consoleErrors = [];
+  const failedRequests = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+
+  for (const viewport of viewports) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.route('**/api/v1/**', async (route) => {
+      const request = route.request();
+      if (request.method() !== 'GET') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, comment: { content: '已儲存' } }) });
+      }
+      const path = new URL(request.url()).pathname;
+      if (path.includes('/learning-records') && !path.includes('/feedbacks')) {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(recordsPayload()) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+    });
+
+    await page.goto(`/pilot-mount.html?page=learning&role=director&mode=preview&dialog=${viewport.name}`);
+    await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
+    const noteButton = page.locator('.lr-btn-director-note').first();
+    await expect(noteButton).toBeVisible({ timeout: 15_000 });
+    await noteButton.click();
+
+    const dialog = page.getByRole('dialog', { name: '主任給老師評語' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '儲存', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeVisible();
+    await expect(dialog).toBeFocused();
+
+    await dialog.locator('textarea').fill('請確認孩子今天的閱讀理解與錯題訂正，並在下堂課延續這項練習。這段長內容用來確認繁體中文在窄螢幕不會被截斷。');
+    const bounds = await dialog.boundingBox();
+    const layout = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(bounds).not.toBeNull();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+
+    if (viewport.name === '390' || viewport.name === '1440') {
+      await dialog.screenshot({ path: `/tmp/learning-record-dialog-after-${viewport.name}.png` });
+    }
+
+    if (viewport.name === '390') {
+      await page.keyboard.press('Escape');
+      await expect(dialog).toBeHidden();
+      await noteButton.click();
+      await expect(dialog).toBeVisible();
+      await dialog.locator('textarea').fill('請補充本堂課的錯題訂正與下次練習重點。');
+    }
+    await dialog.getByRole('button', { name: '儲存', exact: true }).click();
+    await expect(dialog).toBeHidden();
+  }
+
+  expect(consoleErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
+});
