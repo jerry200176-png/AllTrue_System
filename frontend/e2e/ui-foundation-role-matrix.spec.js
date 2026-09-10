@@ -14,7 +14,9 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   });
 
   const errors = [];
+  const failedRequests = [];
   page.on('pageerror', (error) => errors.push(String(error)));
+  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.includes('/parent/dashboard')) {
@@ -62,6 +64,19 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   await expect(page.getByText('公告', { exact: true })).toBeVisible();
   await expect(page.getByText('這是給家長看的公告。', { exact: true })).toBeVisible();
 
+  const learningTab = page.locator('#parent-tab-learning');
+  await learningTab.focus();
+  await expect(learningTab).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#parent-tab-schedule')).toBeFocused();
+  const focusStyle = await page.locator('#parent-tab-schedule').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, minHeight: el.getBoundingClientRect().height };
+  });
+  expect(focusStyle.outlineStyle).toBe('solid');
+  expect(Number.parseFloat(focusStyle.outlineWidth)).toBeGreaterThanOrEqual(3);
+  expect(focusStyle.minHeight).toBeGreaterThanOrEqual(52);
+
   await page.locator('.pp-tab').filter({ hasText: '帳務' }).click();
   await expect(page.getByText('繳費提醒', { exact: true })).toBeVisible();
   await expect(page.getByText('剩餘 2 堂', { exact: true })).toBeVisible();
@@ -72,6 +87,7 @@ test('parent portal: mobile home exposes announcements and billing status', asyn
   }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
   expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
+  expect(failedRequests, `失敗請求：\n${failedRequests.join('\n')}`).toEqual([]);
 });
 
 async function runPopulatedParentPortal(page, viewport) {
@@ -82,6 +98,10 @@ async function runPopulatedParentPortal(page, viewport) {
 
   const dashboardCalls = [];
   const mutationCalls = [];
+  const errors = [];
+  const failedRequests = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+  page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
   let selectedStudentId = 2000;
   let replyPosted = false;
   const recordOne = {
@@ -194,6 +214,22 @@ async function runPopulatedParentPortal(page, viewport) {
   await page.goto('/pilot-mount.html?page=parent');
   await expect(page.locator('[data-guide="parent-portal-root"]')).toBeVisible();
   await expect(page.getByText('數學', { exact: true }).first()).toBeVisible();
+  await page.screenshot({ path: `/tmp/parent-tab-focus-before-${viewport.width}.png`, fullPage: false });
+
+  const learningTab = page.locator('#parent-tab-learning');
+  await learningTab.focus();
+  await expect(learningTab).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#parent-tab-schedule')).toBeFocused();
+  await page.screenshot({ path: `/tmp/parent-tab-focus-after-${viewport.width}.png`, fullPage: false });
+  const focusStyle = await page.locator('#parent-tab-schedule').evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth, minHeight: el.getBoundingClientRect().height };
+  });
+  expect(focusStyle.outlineStyle).toBe('solid');
+  expect(Number.parseFloat(focusStyle.outlineWidth)).toBeGreaterThanOrEqual(3);
+  expect(focusStyle.minHeight).toBeGreaterThanOrEqual(52);
+  await learningTab.click();
 
   const firstRecord = page.locator('.pp-report').first();
   await expect(firstRecord).toBeVisible();
@@ -227,9 +263,17 @@ async function runPopulatedParentPortal(page, viewport) {
   await expect(page.locator('[data-guide="parent-student-card"]')).toContainText('測試學生乙');
   const layout = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
   expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
+  expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
+  expect(failedRequests, `失敗請求：\n${failedRequests.join('\n')}`).toEqual([]);
 }
 
-for (const [name, viewport] of [['desktop', { width: 1440, height: 900 }], ['mobile', { width: 390, height: 844 }]]) {
+for (const [name, viewport] of [
+  ['mobile', { width: 390, height: 844 }],
+  ['mobile-wide', { width: 412, height: 915 }],
+  ['tablet', { width: 768, height: 1024 }],
+  ['desktop-compact', { width: 1280, height: 900 }],
+  ['desktop', { width: 1440, height: 900 }],
+]) {
   test(`parent portal: populated assessment interactions ${name}`, async ({ page }) => {
     await runPopulatedParentPortal(page, viewport);
   });
