@@ -26,6 +26,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "家長學習分頁更容易操作",
           "版本更新頁更容易閱讀"
         ]
       }
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
       "回復正班老師會清掉殘留代課列",
       "評量評語視窗更清楚、更容易操作",
       "評量表授課老師顯示實際填寫老師",
+      "家長學習分頁更容易操作",
       "版本更新頁更容易閱讀"
     ]
   },

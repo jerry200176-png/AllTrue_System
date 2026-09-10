@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-10-parent-learning-tab-focus
+    changelog_date: "2026-09-10"
+    changelog_title: "improved(parent): 家長學習分頁更容易操作"
+    reason: 家長 Portal 既有學習分頁的鍵盤／觸控焦點與 responsive 操作改善；家長溝通另由 PARENT_UPDATES.yml 明確提供，不新增教職員操作流程或業務語意。
+
   - id: silent-2026-09-09-substitute-notification-idempotency
     changelog_date: "2026-09-09"
     changelog_title: "fix(ops): 代課通知併發重試不重複"

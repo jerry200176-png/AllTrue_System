@@ -9,6 +9,14 @@
 # Then commit frontend/src/lib/parentUpdates.generated.js (CI checks drift).
 
 updates:
+  - id: parent-update-2026-09-10-learning-tab-focus
+    published_at: "2026-09-10"
+    expires_at: "2026-10-10"
+    kind: improvement
+    title: 學習分頁更容易操作
+    summary: 切換家長入口的學習內容時，現在更容易看出目前所在的分頁。
+    details: 手機、平板與桌面都支援清楚的鍵盤與觸控焦點；學習內容、可查看範圍與原有操作方式不變。
+
   - id: parent-update-2026-09-09-learning-assessment
     published_at: "2026-09-09"
     expires_at: "2026-10-09"
