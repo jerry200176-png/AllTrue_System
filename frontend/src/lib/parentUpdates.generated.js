@@ -4,6 +4,17 @@
  */
 export const parentUpdates = [
   {
+    "id": "parent-update-2026-09-10-parent-header-clarity",
+    "kind": "improvement",
+    "title": "家長入口更容易操作",
+    "summary": "登出、切換學生與分校範圍在手機上更容易看見、點選與使用鍵盤操作。",
+    "details": "長學生姓名會保持可讀並正常換行；學生切換、跨分校查看、請假、回饋與帳務的原有操作方式不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "parent-update-2026-09-10-learning-tab-focus",
     "kind": "improvement",
     "title": "學習分頁更容易操作",

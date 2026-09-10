@@ -1,3 +1,8 @@
+## 2026-09-10 — improved(parent): 家長入口標頭更容易操作
+<!-- release-notes: silent_ship=silent-2026-09-10-parent-header-clarity -->
+- 家長入口的登出、切換學生與分校範圍控制在手機、平板與桌面都有一致的觸控尺寸與鍵盤焦點提示；長學生姓名也會保持可讀並正常換行。
+- 保留原有學生切換、跨分校查看、請假、回饋、帳務、權限與資料流程；本次只改善呈現與可及性。
+
 ## 2026-09-10 — fix(schedule): 回復正班老師會清掉殘留代課列
 <!-- release-notes: staff_update=staff-2026-09-10-substitute-restore-clears-schedules -->
 - 主任在單堂使用「回復正班老師」時，系統會一併清除該堂殘留的代課／換時 schedules，並把評量表授課老師還原為課程正班老師。

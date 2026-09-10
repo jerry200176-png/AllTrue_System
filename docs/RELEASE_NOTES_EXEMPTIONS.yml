@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-10-parent-header-clarity
+    changelog_date: "2026-09-10"
+    changelog_title: "improved(parent): 家長入口標頭更容易操作"
+    reason: 家長 Portal 既有學生／分校切換與登出控制的觸控尺寸、鍵盤焦點與長文字 responsive 改善；家長溝通另由 PARENT_UPDATES.yml 明確提供，不新增教職員操作流程或業務語意。
+
   - id: silent-2026-09-10-parent-learning-tab-focus
     changelog_date: "2026-09-10"
     changelog_title: "improved(parent): 家長學習分頁更容易操作"
