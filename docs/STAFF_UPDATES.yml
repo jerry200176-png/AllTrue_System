@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-daily-teacher-workflow-touch-actions
+    published_at: "2026-09-12"
+    audiences:
+      - teacher
+    importance: digest
+    title: 教師工作台操作在手機更容易觸及
+    summary: 今日任務、課表與評量操作有足夠觸控尺寸，長內容也能完整閱讀與操作。
+    items:
+      - category: improved
+        text: 手機上的今日任務、課表展開、填寫評量與回報問題等操作維持至少 44px 觸控尺寸。
+      - category: improved
+        text: 長學生姓名與科目會自然收納，不會產生水平捲軸；載入、空白與錯誤狀態仍清楚可辨識。
+      - category: fixed
+        text: 任務排序、導頁、API、權限、點名、評量與課表資料流程維持不變。
+    source_refs:
+      - "changelog:2026-09-12:teacher-workflow-touch-actions"
+      - "supersedes-pr:#2644"
+
   - id: staff-2026-09-12-director-inbox-touch-actions
     published_at: "2026-09-12"
     audiences:

@@ -130,6 +130,46 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-daily-teacher-workflow-touch-actions",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "教師工作台操作在手機更容易觸及",
+    "summary": "今日任務、課表與評量操作有足夠觸控尺寸，長內容也能完整閱讀與操作。",
+    "items": [
+      "手機上的今日任務、課表展開、填寫評量與回報問題等操作維持至少 44px 觸控尺寸。",
+      "長學生姓名與科目會自然收納，不會產生水平捲軸；載入、空白與錯誤狀態仍清楚可辨識。",
+      "任務排序、導頁、API、權限、點名、評量與課表資料流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "手機上的今日任務、課表展開、填寫評量與回報問題等操作維持至少 44px 觸控尺寸。",
+          "長學生姓名與科目會自然收納，不會產生水平捲軸；載入、空白與錯誤狀態仍清楚可辨識。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "任務排序、導頁、API、權限、點名、評量與課表資料流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:teacher-workflow-touch-actions",
+      "supersedes-pr:#2644"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-course-balance-evidence",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
