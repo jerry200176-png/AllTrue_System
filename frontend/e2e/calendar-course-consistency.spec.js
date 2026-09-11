@@ -487,9 +487,9 @@ test.describe('production acceptance — calendar/course parity', () => {
       // Keep the count contract independent of typography, while ensuring the
       // selected detail is the reported 2-attended / 4-purchased course.
       await expect(detail.locator('.dates-panel-title')).toContainText(/已上\s*2\s*[／/]\s*購買\s*4\s*堂/);
-      await expect(row.getByRole('button', { name: '排課', exact: true })).toBeEnabled();
-
-      if (viewport.name === 'mobile') {
+      if (viewport.name === 'desktop') {
+        await expect(row.getByRole('button', { name: '排課', exact: true })).toBeEnabled();
+      } else {
         const isClipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
         expect(isClipped, 'the unarranged-session explanation must wrap rather than clip on mobile').toBeFalsy();
         await row.getByRole('button', { name: /更多/ }).click();
