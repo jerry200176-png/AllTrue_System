@@ -1,0 +1,41 @@
+id: TKT-20260911-123325-RHYR
+title: 'Integrate #2519 teachers-list recovery on current main'
+intent: 'Integrate #2519 teachers-list recovery on current main'
+kind: task
+parent_id: INT-20260911-123319-T269
+boundary: 'Implement only approved #2519 list loading/empty/retry/recovery UX from
+  its verified head. No product-policy or backend changes.'
+success_condition: One session-owned current-main diff with focused tests and complete
+  frontend build passes.
+priority: 1
+labels:
+- ux
+scope:
+  allow:
+  - frontend/**
+  - docs/**
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 15
+  max_loc_changed: 500
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-11T12:33:25+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
