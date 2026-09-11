@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.12",
     "date": "2026-09-12",
     "title": "2026.09.12 草稿（未發布）",
-    "summary": "已儲存的評量不再誤顯示無法確認；手機頁首操作更容易點選",
+    "summary": "已儲存的評量不再誤顯示無法確認；主任收件匣操作在手機更容易觸及",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "主任收件匣操作在手機更容易觸及",
           "手機頁首操作更容易點選",
           "意見與建議在手機與桌面更容易操作"
         ]
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "已儲存的評量不再誤顯示無法確認",
+      "主任收件匣操作在手機更容易觸及",
       "手機頁首操作更容易點選",
       "意見與建議在手機與桌面更容易操作"
     ]

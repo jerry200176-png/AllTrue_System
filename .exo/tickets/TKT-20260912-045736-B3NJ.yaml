@@ -1,0 +1,53 @@
+id: TKT-20260912-045736-B3NJ
+title: 'Integrate touch-safe director inbox toolbar from draft PR #2643'
+intent: 'Integrate touch-safe director inbox toolbar from draft PR #2643'
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: Frontend presentation, responsiveness, and regression coverage only. Preserve
+  existing handlers, API contracts, authentication, authorization, billing, scheduling,
+  data, workflows, and production data; deploy only through the committed workflow.
+success_condition: The current-main director inbox keeps filter and toolbar actions
+  reachable and at least 44px touch-safe across 390, 412, 768, 1280, and 1440 widths;
+  focused and full frontend gates pass; required CI is green; the replacement PR is
+  squash-merged and exact-SHA production activation is verified.
+priority: 1
+labels:
+- integration
+- ux
+scope:
+  allow:
+  - frontend/src/pages/NotificationsCenter.vue
+  - frontend/src/components/design-system/AtToolbar.vue
+  - frontend/src/components/design-system/AtFilterBar.vue
+  - frontend/e2e/ui-foundation-pages.spec.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 320
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T04:57:36+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

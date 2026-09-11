@@ -39,6 +39,9 @@ defineProps({
   }
   .at-toolbar__end :deep(.at-btn) {
     flex: 1;
+    min-height: var(--ds-control-height-touch, 44px);
+    white-space: normal;
+    line-height: var(--ds-line-base, 1.5);
   }
 }
 </style>
