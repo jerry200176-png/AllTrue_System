@@ -1013,12 +1013,12 @@ jobs:
               $probe253["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
-          // #278/#281 share one historical report: the reporter supplied
-          // physical/session facts but no student or confirmed campus. Search
-          // only the two report campuses and emit opaque candidates, never a
-          // student, teacher, course, session, or schedule identifier. A
-          // result is evidence for the next diagnostic step, not permission to
-          // repair historical data or to infer that either report campus wins.
+          // #278/#281 describe one historical cancelled-makeup symptom. Use
+          // only the current report's latest public reporter follow-up to
+          // resolve an explicitly named campus and student. Emit opaque course
+          // references and aggregate state only: never echo the matched names,
+          // contacts, or raw student/course/session/schedule identifiers. This
+          // remains diagnostic evidence, not permission to repair history.
           $probe278281 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "Allowlisted only for in-app bugs 278 and 281",
@@ -1027,74 +1027,135 @@ jobs:
             $probe278281["applicable"] = true;
             $probe278281["case"] = "historical_cancelled_makeup_candidate_278_281";
             $probe278281["target_scope"] = [
-              "campus_ids" => [9, 13],
+              "identity_source" => "latest_public_reporter_followup_on_requested_bug",
               "dates" => ["2026-07-22", "2026-08-12"],
-              "weekday" => 3,
-              "start" => "18:00",
-              "end" => "20:00",
-              "class_type" => "one_on_three",
               "subject_name_contains" => "物理",
-              "purchased_sessions" => 4,
-              "reported_attended_sessions" => 4,
             ];
             try {{
-              $candidateBase = $db::table("StudentClass as sc")
-                ->join("Student as st", "st.id", "=", "sc.StudentID")
+              $reporterFollowup = $db::table("bug_report_comments")
+                ->where("bug_report_id", $bugId)
+                ->where("author_user_id", (int)$bug->reporter_user_id)
+                ->where("is_internal_note", false)
+                ->whereRaw("TRIM(body) <> ''")
+                ->orderByDesc("id")
+                ->first(["body"]);
+              $followupBody = trim((string)($reporterFollowup->body ?? ""));
+              $campusMatches = $followupBody === "" ? collect() : $db::table("Campus")
+                ->get(["id", "name"])
+                ->filter(function ($campus) use ($followupBody) {{
+                  $name = trim((string)($campus->name ?? ""));
+                  return mb_strlen($name) >= 2 && mb_strpos($followupBody, $name) !== false;
+                }})->values();
+              $studentMatches = collect();
+              if ($campusMatches->count() === 1) {{
+                $matchedCampusId = (int)$campusMatches->first()->id;
+                $studentMatches = $db::table("Student")
+                  ->where("CampusID", $matchedCampusId)
+                  ->get(["id", "name"])
+                  ->filter(function ($student) use ($followupBody) {{
+                    $name = trim((string)($student->name ?? ""));
+                    return mb_strlen($name) >= 2 && mb_strpos($followupBody, $name) !== false;
+                  }})->values();
+              }}
+              $identityResolution = $followupBody === ""
+                ? "missing_reporter_followup"
+                : ($campusMatches->count() !== 1
+                  ? "campus_".($campusMatches->isEmpty() ? "not_found" : "ambiguous")
+                  : ($studentMatches->count() !== 1
+                    ? "student_".($studentMatches->isEmpty() ? "not_found" : "ambiguous")
+                    : "unique"));
+              $probe278281["reporter_followup_found"] = $followupBody !== "";
+              $probe278281["matched_campus_count"] = $campusMatches->count();
+              $probe278281["matched_student_count"] = $studentMatches->count();
+              $probe278281["identity_resolution"] = $identityResolution;
+
+              if ($identityResolution !== "unique") {{
+                $probe278281["candidate_count"] = 0;
+                $probe278281["candidate_resolution"] = "identity_unresolved";
+                $probe278281["candidates"] = [];
+                $probe278281["error"] = null;
+              }} else {{
+                $matchedCampusId = (int)$campusMatches->first()->id;
+                $matchedStudentId = (int)$studentMatches->first()->id;
+                $candidateBase = $db::table("StudentClass as sc")
                 ->join("Subject as sub", "sub.id", "=", "sc.SubjectID")
-                ->whereIn("st.CampusID", [9, 13])
-                ->where("sc.ClassType", "one_on_three")
-                ->where("sc.SessionCount", 4)
+                ->where("sc.StudentID", $matchedStudentId)
                 ->where("sub.Subject_Name", "like", "%物理%")
+                ->orderBy("sc.StartDate")
                 ->get([
-                  "sc.ID as class_id", "st.CampusID as campus_id",
-                  "sc.UsedSessions as used_sessions",
-                ]);
-              $candidateIds = $candidateBase->pluck("class_id")->map(fn ($id) => (int)$id)->all();
-              $targetDates = ["2026-07-22", "2026-08-12"];
-              $sessionRows = $candidateIds === [] ? collect() : $db::table("ClassSession")
+                  "sc.ID as class_id", "sc.ClassType as class_type",
+                  "sc.ScheduleMode as schedule_mode", "sc.SessionCount as session_count",
+                  "sc.UsedSessions as used_sessions", "sc.RemainingSessions as remaining_sessions",
+                  "sc.SessionDuration as session_duration", "sc.StartDate as start_date",
+                  "sc.EndDate as end_date", "sc.Stop as stopped",
+                  "sc.week", "sc.time", "sc.week1", "sc.time1", "sc.week2", "sc.time2",
+                  "sc.week3", "sc.time3", "sc.week4", "sc.time4", "sc.week5", "sc.time5",
+                  "sc.week6", "sc.time6",
+                  ]);
+                $candidateIds = $candidateBase->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+                $targetDates = ["2026-07-22", "2026-08-12"];
+                $sessionRows = $candidateIds === [] ? collect() : $db::table("ClassSession")
                 ->whereIn("StudentClassID", $candidateIds)
                 ->whereIn("SessionDate", $targetDates)
-                ->whereRaw("SUBSTRING(StartTime, 1, 5) = ?", ["18:00"])
-                ->whereRaw("SUBSTRING(EndTime, 1, 5) = ?", ["20:00"])
-                ->get(["StudentClassID as class_id", "SessionDate as session_date", "Status as status"]);
-              $scheduleRows = $candidateIds === [] ? collect() : $db::table("schedules")
+                ->get(["StudentClassID as class_id", "SessionDate as session_date", "StartTime as start_time", "EndTime as end_time", "Status as status"]);
+                $scheduleRows = $candidateIds === [] ? collect() : $db::table("schedules")
                 ->whereIn("student_course_id", $candidateIds)
                 ->whereIn("schedule_date", $targetDates)
-                ->whereRaw("SUBSTRING(start_time, 1, 5) = ?", ["18:00"])
-                ->whereRaw("SUBSTRING(end_time, 1, 5) = ?", ["20:00"])
-                ->get(["student_course_id as class_id", "schedule_date as session_date", "status"]);
-              $attendedByClass = $candidateIds === [] ? collect() : $db::table("ClassSession")
+                ->get(["student_course_id as class_id", "schedule_date as session_date", "start_time", "end_time", "status", "type", "deduction", "original_schedule_id"]);
+                $statusCounts = $candidateIds === [] ? collect() : $db::table("ClassSession")
                 ->whereIn("StudentClassID", $candidateIds)
-                ->whereIn("Status", ["attended", "completed", "late"])
-                ->selectRaw("StudentClassID as class_id, COUNT(*) as attended_count")
-                ->groupBy("StudentClassID")->pluck("attended_count", "class_id");
-              $cancelled = ["cancelled", "voided"];
-              $strict = [];
-              foreach ($candidateBase as $row) {{
-                $classId = (int)$row->class_id;
-                $sessionDates = $sessionRows->where("class_id", $classId)
-                  ->filter(fn ($item) => in_array(strtolower((string)$item->status), $cancelled, true))
-                  ->pluck("session_date")->map(fn ($date) => substr((string)$date, 0, 10));
-                $scheduleDates = $scheduleRows->where("class_id", $classId)
-                  ->filter(fn ($item) => in_array(strtolower((string)$item->status), $cancelled, true))
-                  ->pluck("session_date")->map(fn ($date) => substr((string)$date, 0, 10));
-                $cancelledDates = $sessionDates->merge($scheduleDates)->unique()->sort()->values()->all();
-                $attendedCount = (int)($attendedByClass[$classId] ?? 0);
-                $usedSessions = (int)($row->used_sessions ?? 0);
-                if ($cancelledDates !== $targetDates || $usedSessions !== 4 || $attendedCount < 4) continue;
-                $strict[] = [
-                  "candidate_ref" => substr(hash("sha256", "inapp-278-281|".(int)$row->campus_id."|".$classId), 0, 16),
-                  "campus_id" => (int)$row->campus_id,
-                  "cancelled_dates" => $cancelledDates,
-                  "persisted_used_sessions" => $usedSessions,
-                  "observed_attended_session_count" => $attendedCount,
-                ];
+                ->selectRaw("StudentClassID as class_id, LOWER(Status) as status, COUNT(*) as row_count")
+                ->groupBy("StudentClassID", $db::raw("LOWER(Status)"))
+                ->get();
+                $candidates = [];
+                foreach ($candidateBase as $row) {{
+                  $classId = (int)$row->class_id;
+                  $contractSlots = [];
+                  for ($slot = 0; $slot <= 6; $slot++) {{
+                    $suffix = $slot === 0 ? "" : (string)$slot;
+                    $day = $row->{{"week".$suffix}} ?? null;
+                    $time = $row->{{"time".$suffix}} ?? null;
+                  if ($day === null && $time === null) continue;
+                  $contractSlots[] = ["weekday" => $day === null ? null : (int)$day, "time" => $time === null ? null : substr((string)$time, 0, 5)];
+                }}
+                $targetSessions = $sessionRows->where("class_id", $classId)
+                  ->groupBy(fn ($item) => substr((string)$item->session_date, 0, 10)."|".substr((string)$item->start_time, 0, 5)."|".substr((string)$item->end_time, 0, 5)."|".strtolower((string)$item->status))
+                  ->map(function ($rows) {{
+                    $item = $rows->first();
+                    return ["date" => substr((string)$item->session_date, 0, 10), "start" => substr((string)$item->start_time, 0, 5), "end" => substr((string)$item->end_time, 0, 5), "status" => strtolower((string)$item->status), "count" => $rows->count()];
+                  }})->values()->all();
+                $targetSchedules = $scheduleRows->where("class_id", $classId)
+                  ->groupBy(fn ($item) => substr((string)$item->session_date, 0, 10)."|".substr((string)$item->start_time, 0, 5)."|".substr((string)$item->end_time, 0, 5)."|".strtolower((string)$item->status)."|".strtolower((string)$item->type)."|".(int)$item->deduction."|".($item->original_schedule_id === null ? "root" : "exception"))
+                  ->map(function ($rows) {{
+                    $item = $rows->first();
+                    return ["date" => substr((string)$item->session_date, 0, 10), "start" => substr((string)$item->start_time, 0, 5), "end" => substr((string)$item->end_time, 0, 5), "status" => strtolower((string)$item->status), "type" => strtolower((string)$item->type), "deduction" => (int)$item->deduction, "origin" => $item->original_schedule_id === null ? "root" : "exception", "count" => $rows->count()];
+                  }})->values()->all();
+                $courseStatusCounts = $statusCounts->where("class_id", $classId)
+                  ->mapWithKeys(fn ($item) => [strtolower((string)$item->status) => (int)$item->row_count])->all();
+                  $candidates[] = [
+                  "candidate_ref" => substr(hash("sha256", "inapp-278-281|".$bugId."|".$matchedCampusId."|".$matchedStudentId."|".$classId), 0, 16),
+                  "class_type" => (string)($row->class_type ?? ""),
+                  "schedule_mode" => (string)($row->schedule_mode ?? ""),
+                  "session_count" => $row->session_count === null ? null : (int)$row->session_count,
+                  "used_sessions" => $row->used_sessions === null ? null : (int)$row->used_sessions,
+                  "remaining_sessions" => $row->remaining_sessions === null ? null : (int)$row->remaining_sessions,
+                  "session_duration_minutes" => $row->session_duration === null ? null : (int)$row->session_duration,
+                  "start_date" => substr((string)$row->start_date, 0, 10),
+                  "end_date" => $row->end_date === null ? null : substr((string)$row->end_date, 0, 10),
+                  "stopped" => (bool)$row->stopped,
+                  "contract_slots" => $contractSlots,
+                  "all_session_status_counts" => $courseStatusCounts,
+                  "target_date_session_rows" => $targetSessions,
+                  "target_date_schedule_rows" => $targetSchedules,
+                  ];
+                }}
+                $probe278281["identity_ref"] = substr(hash("sha256", "inapp-278-281-identity|".$bugId."|".$matchedCampusId."|".$matchedStudentId), 0, 16);
+                $probe278281["candidate_count"] = count($candidates);
+                $probe278281["candidate_resolution"] = count($candidates) === 0 ? "none" : "matched_identity_courses";
+                $probe278281["candidates"] = $candidates;
+                $probe278281["decision_grade"] = count($candidates) > 0;
+                $probe278281["error"] = null;
               }}
-              $probe278281["candidate_count"] = count($strict);
-              $probe278281["candidate_resolution"] = count($strict) === 1 ? "unique" : (count($strict) === 0 ? "none" : "ambiguous");
-              $probe278281["candidates"] = $strict;
-              $probe278281["decision_grade"] = count($strict) === 1;
-              $probe278281["error"] = null;
             }} catch (\Throwable $e) {{
               $probe278281["candidate_count"] = 0;
               $probe278281["candidate_resolution"] = "error";
