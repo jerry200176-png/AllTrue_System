@@ -11,6 +11,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\CourseLeaveCascadeService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -85,6 +86,102 @@ class AddSessionConflictTest extends TestCase
         ]);
 
         $res->assertStatus(201);
+    }
+
+    /**
+     * In-app #278: cancelling a historical occurrence voids its dependent
+     * attendance/evaluation artifacts. Those audit rows remain queryable, but
+     * must not keep the cancelled slot locked against a legitimate make-up.
+     */
+    public function test_add_session_reuses_cancelled_slot_when_only_voided_artifacts_exist(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+        $session = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-03-25',
+            'StartTime' => '19:00:00',
+            'EndTime' => '21:00:00',
+            'Status' => 'cancelled',
+        ]);
+
+        StudentSignIn::create([
+            'StudentClassID' => $sc->ID,
+            'StudentID' => $student->id,
+            'ClassSessionID' => $session->id,
+            'SignInDT' => now(),
+            'MDT' => now(),
+            'Status' => 'present',
+            'CampusID' => 1,
+            'VoidedAt' => now(),
+            'VoidReason' => CourseLeaveCascadeService::VOID_REASON_CANCELLED,
+        ]);
+        LearningRecord::create([
+            'StudentClassID' => $sc->ID,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 99,
+            'Content' => 'Cancelled evaluation',
+            'Subject' => 'Math',
+            'SessionDate' => '2026-03-25',
+            'StartTime' => '19:00:00',
+            'EndTime' => '21:00:00',
+            'Status' => 'approved',
+            'ApprovedAt' => now(),
+            'VoidedAt' => now(),
+            'VoidReason' => CourseLeaveCascadeService::VOID_REASON_CANCELLED,
+        ]);
+
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+        $params = [
+            'session_date' => '2026-03-25',
+            'start_time' => '19:00',
+        ];
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", $params)
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('conflict_type', 'none')
+            ->assertJsonPath('existing_session_id', $session->id);
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/student-classes/{$sc->ID}/add-session", array_merge($params, [
+                'duration_minutes' => 120,
+                'auto_approve' => false,
+            ]))
+            ->assertCreated()
+            ->assertJsonPath('class_session_id', $session->id);
+
+        $this->assertSame('completed', (string) $session->fresh()->Status);
+        $this->assertSame(1, ClassSession::where('StudentClassID', $sc->ID)->count());
+        $this->assertNull(LearningRecord::where('ClassSessionID', $session->id)->value('VoidedAt'));
+    }
+
+    public function test_check_keeps_manually_voided_learning_record_locked(): void
+    {
+        [$token, $sc] = $this->seedCourseWithLockedSession('learning_record');
+        $session = ClassSession::where('StudentClassID', $sc->ID)->firstOrFail();
+        $session->Status = 'cancelled';
+        $session->save();
+
+        LearningRecord::where('ClassSessionID', $session->id)->update([
+            'VoidedAt' => now(),
+            'VoidReason' => 'manual director decision',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+            'session_date' => '2026-03-25',
+            'start_time' => '19:00',
+        ])->assertOk()
+            ->assertJsonPath('can_add', false)
+            ->assertJsonPath('conflict_type', 'locked_existing');
     }
 
     /**

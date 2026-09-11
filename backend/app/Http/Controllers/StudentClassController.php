@@ -28,6 +28,7 @@ use App\Services\Scheduling\LessonEntitlementCoverageCalculator;
 use App\Services\ClassSessionContractReflowService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\InvoiceAmountReconciliationService;
+use App\Services\LearningRecordResurrectionPolicy;
 use App\Services\SessionDeductionService;
 use App\Services\SessionContractRecoveryService;
 use App\Exceptions\SessionContractRecoveryException;
@@ -4022,16 +4023,10 @@ class StudentClassController extends Controller
             $todayYmd = Carbon::now()->toDateString();
             $nowTime = Carbon::now()->format('H:i:s');
 
-            $approvedSessionIds = LearningRecord::where('StudentClassID', $classId)
-                ->where('Status', 'approved')
-                ->whereNotNull('ClassSessionID')
-                ->pluck('ClassSessionID')
-                ->map(fn ($id) => (int) $id)
-                ->filter(fn ($id) => $id > 0)
-                ->unique()
-                ->values()
-                ->all();
+            [$learningRecordLockedSessionIds, $approvedSessionIds] =
+                $this->addSessionLearningRecordLocks($classId);
             $signInSessionIds = StudentSignIn::where('StudentClassID', $classId)
+                ->active()
                 ->whereNotNull('ClassSessionID')
                 ->pluck('ClassSessionID')
                 ->map(fn ($id) => (int) $id)
@@ -4040,7 +4035,7 @@ class StudentClassController extends Controller
                 ->values()
                 ->all();
             $lockedSessionIdMap = [];
-            foreach (array_merge($approvedSessionIds, $signInSessionIds) as $sid) {
+            foreach (array_merge($learningRecordLockedSessionIds, $signInSessionIds) as $sid) {
                 $lockedSessionIdMap[(int) $sid] = true;
             }
 
@@ -4133,6 +4128,7 @@ class StudentClassController extends Controller
                 $classSession->save();
             }
 
+            LearningRecordResurrectionPolicy::restoreEligibleForSession($classSession);
             $record = LearningRecord::where('ClassSessionID', (int) $classSession->id)->active()->first();
             $approved = false;
             $deducted = false;
@@ -4253,21 +4249,17 @@ class StudentClassController extends Controller
         $todayYmd = Carbon::now()->toDateString();
         $nowTime = Carbon::now()->format('H:i:s');
 
-        $approvedSessionIds = LearningRecord::where('StudentClassID', $classId)
-            ->where('Status', 'approved')
-            ->whereNotNull('ClassSessionID')
-            ->pluck('ClassSessionID')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->unique()->values()->all();
+        [$learningRecordLockedSessionIds, $approvedSessionIds] =
+            $this->addSessionLearningRecordLocks($classId);
         $signInSessionIds = StudentSignIn::where('StudentClassID', $classId)
+            ->active()
             ->whereNotNull('ClassSessionID')
             ->pluck('ClassSessionID')
             ->map(fn ($id) => (int) $id)
             ->filter(fn ($id) => $id > 0)
             ->unique()->values()->all();
         $lockedSessionIdMap = [];
-        foreach (array_merge($approvedSessionIds, $signInSessionIds) as $sid) {
+        foreach (array_merge($learningRecordLockedSessionIds, $signInSessionIds) as $sid) {
             $lockedSessionIdMap[(int) $sid] = true;
         }
 
@@ -4586,6 +4578,44 @@ class StudentClassController extends Controller
             '_existing_session' => $existing,
             '_movable_session' => $movableSession,
         ];
+    }
+
+    /**
+     * @return array{0: array<int>, 1: array<int>}
+     */
+    private function addSessionLearningRecordLocks(int $classId): array
+    {
+        $locked = [];
+        $activeApproved = [];
+        $records = LearningRecord::where('StudentClassID', $classId)
+            ->whereNotNull('ClassSessionID')
+            ->get(['ClassSessionID', 'Status', 'VoidedAt', 'VoidReason']);
+
+        foreach ($records as $record) {
+            $sessionId = (int) $record->ClassSessionID;
+            if ($sessionId <= 0) {
+                continue;
+            }
+
+            if (!$record->isVoided()) {
+                if ((string) $record->Status === 'approved') {
+                    $locked[$sessionId] = true;
+                    $activeApproved[$sessionId] = true;
+                }
+                continue;
+            }
+
+            if (!LearningRecordResurrectionPolicy::isEligibleForResurrect(
+                $record->VoidReason,
+                'completed'
+            )) {
+                // Preserve a manual/non-cascade void decision and avoid the
+                // ClassSessionID unique key turning it into an internal error.
+                $locked[$sessionId] = true;
+            }
+        }
+
+        return [array_keys($locked), array_keys($activeApproved)];
     }
 
     /**
