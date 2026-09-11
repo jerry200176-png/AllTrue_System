@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "f5e229dd38d943569838358f520efff8",
+  "session_id": "164b070d68ce4b358482796b928d5253",
   "project": "alltrue",
-  "task_id": "after-class-confirmed-save-20260911",
+  "task_id": "TKT-20260911-184450-BHNI",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "a4e0194cd0627f9dc6f0b2c947931b8d9899f96f",
-  "branch": "chore/task-after-class-confirmed-save-20260911",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/after-class-confirmed-save-20260911",
-  "started_at": "2026-09-11T10:11:01Z",
+  "base_sha": "63b70302d894469e947a185fa77973ae16b70078",
+  "branch": "exo/TKT-20260911-184450-BHNI",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/deps-minor-2711-20260911",
+  "started_at": "2026-09-11T10:43:12Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
