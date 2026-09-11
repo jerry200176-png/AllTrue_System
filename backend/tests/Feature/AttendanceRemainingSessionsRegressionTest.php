@@ -238,6 +238,44 @@ class AttendanceRemainingSessionsRegressionTest extends TestCase
         $this->assertSame('review_required', $hit['usage_balance_status']);
     }
 
+    public function test_student_classes_index_exposes_stored_counter_drift_before_projecting_canonical_balance(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-index-stored-drift@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-index-stored-drift@example.com');
+        $student = $this->createStudent(1, '列表儲存堂數漂移測試');
+        $courseId = $this->bootstrapCourse($token, $student->id, $teacherId, 4);
+
+        for ($i = 1; $i <= 4; $i++) {
+            ClassSession::create([
+                'StudentClassID' => $courseId,
+                'SessionDate' => now()->subDays(10 + $i)->toDateString(),
+                'StartTime' => '16:00',
+                'EndTime' => '18:00',
+                'Status' => 'attended',
+                'Note' => '',
+            ]);
+        }
+        DB::table('StudentClass')->where('ID', $courseId)->update([
+            'UsedSessions' => 4,
+            'RemainingSessions' => 1,
+        ]);
+
+        $hit = collect($this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $student->id . '&per_page=100')
+            ->assertOk()
+            ->json('data'))->firstWhere('id', $courseId);
+
+        $this->assertNotNull($hit);
+        $this->assertSame(4, (int) $hit['sessions_used']);
+        $this->assertSame(0, (int) $hit['remaining_sessions']);
+        $this->assertSame('review_required', $hit['usage_balance_status']);
+        $this->assertSame(1, (int) $hit['usage_balance_diagnostic']['stored_remaining_sessions']);
+        $this->assertSame(0, (int) $hit['usage_balance_diagnostic']['expected_remaining_sessions']);
+        $this->assertSame(1, (int) DB::table('StudentClass')->where('ID', $courseId)->value('RemainingSessions'));
+    }
+
     private function bootstrapCourse(string $token, int $studentId, int $teacherId, int $remaining): int
     {
         unset($token);

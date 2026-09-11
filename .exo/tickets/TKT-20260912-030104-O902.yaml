@@ -1,0 +1,53 @@
+id: TKT-20260912-030104-O902
+title: 'Align operations trust with canonical course balance for in-app #281'
+intent: 'Align operations trust with canonical course balance for in-app #281'
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: 'Read-only projection fix only: do not mutate production or persisted attendance,
+  ledger, course, billing, identity, permission, migration, workflow, or security
+  state; preserve fractional-minute authority and campus isolation.'
+success_condition: An exhausted course with stale stored counters cannot create a
+  stranded-paid Critical, genuine stored-versus-canonical drift remains visible in
+  Operations Trust and Course Management, focused regressions pass, and exact-SHA
+  deploy plus desktop/mobile verification are recorded.
+priority: 1
+labels:
+- bug
+scope:
+  allow:
+  - .agent-session/manifest.json
+  - .exo/tickets/**
+  - backend/app/Services/BusinessDigestService.php
+  - backend/app/Http/Controllers/StudentClassController.php
+  - backend/tests/Feature/OpsBusinessDigestTest.php
+  - backend/tests/Feature/DirectorOperationsTrustApiTest.php
+  - backend/tests/Feature/AttendanceRemainingSessionsRegressionTest.php
+  - frontend/src/pages/CourseManagement.vue
+  - frontend/src/components/__tests__/CourseManagementLensUx.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/generated/**
+  - frontend/src/lib/staffUpdates.generated.js
+  - docs/AI_REGRESSION_LESSONS.md
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/logs/**
+  deny:
+  - .github/**
+  - backend/database/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T03:01:04+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

@@ -17,4 +17,10 @@ describe('CourseManagement lens UX', () => {
     expect(historySection).toContain('usageBalanceWarningTitle(hc)');
     expect(historySection).toContain('堂數待對帳');
   });
+
+  it('explains stored versus canonical remaining-session drift', () => {
+    expect(source).toContain('diagnostic.stored_remaining_sessions');
+    expect(source).toContain('diagnostic.expected_remaining_sessions');
+    expect(source).toContain('目前畫面依出席與扣堂證據顯示');
+  });
 });
