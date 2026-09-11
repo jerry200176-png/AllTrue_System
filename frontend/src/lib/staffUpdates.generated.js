@@ -4,6 +4,48 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-12-question-bank-touch-controls",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "題庫管理在手機更容易操作",
+    "summary": "題庫、題目與審核控制有足夠觸控高度，長內容也能完整閱讀。",
+    "items": [
+      "題庫選擇、篩選、題目編輯與審核操作，在手機維持至少 44px 觸控高度。",
+      "CSV 匯入可用鍵盤開啟，匯入完成提示也會保持可見。",
+      "題庫 API、權限、送審、核准、退休、匯入與資料保存流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "題庫選擇、篩選、題目編輯與審核操作，在手機維持至少 44px 觸控高度。",
+          "CSV 匯入可用鍵盤開啟，匯入完成提示也會保持可見。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "題庫 API、權限、送審、核准、退休、匯入與資料保存流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:question-bank-touch-controls",
+      "supersedes-pr:#2647"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-page-header-mobile-actions",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
