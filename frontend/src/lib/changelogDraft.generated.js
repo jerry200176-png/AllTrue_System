@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.11",
     "date": "2026-09-11",
     "title": "2026.09.11 草稿（未發布）",
-    "summary": "課後儲存確認與失敗輸入保留；未安排堂次的日期清單說明",
+    "summary": "課後儲存確認與失敗輸入保留；未付款堂數更正只在安全條件下開放",
     "audience": [
       "teacher",
       "director"
@@ -18,7 +18,8 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "課後儲存確認與失敗輸入保留"
+          "課後儲存確認與失敗輸入保留",
+          "未付款堂數更正只在安全條件下開放"
         ]
       },
       {
@@ -30,6 +31,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "課後儲存確認與失敗輸入保留",
+      "未付款堂數更正只在安全條件下開放",
       "未安排堂次的日期清單說明"
     ]
   },
@@ -165,7 +167,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.07",
     "date": "2026-09-07",
     "title": "2026.09.07 草稿（未發布）",
-    "summary": "學生管理載入與搜尋回復更清楚；教室管理錯誤回復更清楚",
+    "summary": "老師管理載入與篩選回復更清楚；學生管理載入與搜尋回復更清楚",
     "audience": [
       "teacher",
       "director"
@@ -175,6 +177,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "老師管理載入與篩選回復更清楚",
           "學生管理載入與搜尋回復更清楚",
           "教室管理錯誤回復更清楚",
           "手機更多功能可搜尋",
@@ -184,6 +187,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "老師管理載入與篩選回復更清楚",
       "學生管理載入與搜尋回復更清楚",
       "教室管理錯誤回復更清楚",
       "手機更多功能可搜尋",

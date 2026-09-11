@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-11-billing-correction-entry-gating
+    published_at: "2026-09-11"
+    audiences:
+      - director
+    importance: major
+    title: 未付款堂數更正入口依付款狀態保護
+    summary: 只有符合未付款按堂課條件時，才可進入堂數與金額更正；其他付款狀態先到帳務中心。
+    items:
+      - category: fixed
+        text: 已繳、部分收款、待對帳與未知付款狀態不會誤進未付款更正流程，會清楚提示改到帳務中心處理。
+      - category: fixed
+        text: 輔導課及其帳務異常一律不開放收費更正入口，維持輔導課不收費與異常先檢查的既有規則。
+    source_refs:
+      - "changelog:2026-09-11:billing-correction-entry-gating"
+      - "pr:#2588"
+
   - id: staff-2026-09-11-course-unarranged-session-detail
     published_at: "2026-09-11"
     audiences:
@@ -287,6 +303,20 @@ updates:
         text: 課程、出缺勤與學習紀錄的學生／老師查找欄位統一使用搜尋提示與 native search affordance。
     source_refs:
       - "changelog:2026-09-08:search-scope-clarity"
+  - id: staff-2026-09-07-teachers-list-recovery
+    published_at: "2026-09-07"
+    audiences:
+      - director
+    importance: digest
+    title: 老師管理載入狀態更清楚
+    summary: 載入失敗可重試，篩選無結果也能清除條件。
+    items:
+      - category: improved
+        text: 老師管理會分開顯示首次載入、重新整理、載入失敗、真正空清單與篩選後無結果。
+      - category: improved
+        text: 重新整理失敗時保留上次成功資料並提供重試；篩選沒有結果時可清除條件回到完整清單。
+    source_refs:
+      - "changelog:2026-09-07:teachers-list-recovery"
 
   - id: staff-2026-09-07-students-list-recovery
     published_at: "2026-09-07"

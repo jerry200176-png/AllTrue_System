@@ -390,6 +390,11 @@ jobs:
               "rev" => "30d30c47d2de5a1ae7314cceea46cbb4471f4e2a",
               "deploy" => "34203695848",
             ],
+            277 => [
+              "reply" => "已修好並上線：課程明細現在會清楚顯示已排／購買堂數與尚未安排的堂數，並說明日期清單只列已實際排定的堂次。這不會建立預留堂次，也不改扣堂、帳務、到期或既有排課權限。您調整後的課程明細可看到購買 4 堂、已上 2 堂、尚有 2 堂未安排。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2695",
+              "rev" => "c5e83183d82564b450ea444c4b3f10a205e124fc",
+              "deploy" => "34559408656",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {

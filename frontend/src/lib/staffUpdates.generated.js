@@ -4,6 +4,39 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-11-billing-correction-entry-gating",
+    "publishedAt": "2026-09-11",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "未付款堂數更正入口依付款狀態保護",
+    "summary": "只有符合未付款按堂課條件時，才可進入堂數與金額更正；其他付款狀態先到帳務中心。",
+    "items": [
+      "已繳、部分收款、待對帳與未知付款狀態不會誤進未付款更正流程，會清楚提示改到帳務中心處理。",
+      "輔導課及其帳務異常一律不開放收費更正入口，維持輔導課不收費與異常先檢查的既有規則。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已繳、部分收款、待對帳與未知付款狀態不會誤進未付款更正流程，會清楚提示改到帳務中心處理。",
+          "輔導課及其帳務異常一律不開放收費更正入口，維持輔導課不收費與異常先檢查的既有規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-11:billing-correction-entry-gating",
+      "pr:#2588"
+    ],
+    "date": "2026-09-11",
+    "version": "2026.09.11"
+  },
+  {
     "id": "staff-2026-09-11-course-unarranged-session-detail",
     "publishedAt": "2026-09-11",
     "effectiveAt": null,
@@ -735,6 +768,38 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-09-07:navigation-history-context"
+    ],
+    "date": "2026-09-07",
+    "version": "2026.09.07"
+  },
+  {
+    "id": "staff-2026-09-07-teachers-list-recovery",
+    "publishedAt": "2026-09-07",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師管理載入狀態更清楚",
+    "summary": "載入失敗可重試，篩選無結果也能清除條件。",
+    "items": [
+      "老師管理會分開顯示首次載入、重新整理、載入失敗、真正空清單與篩選後無結果。",
+      "重新整理失敗時保留上次成功資料並提供重試；篩選沒有結果時可清除條件回到完整清單。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師管理會分開顯示首次載入、重新整理、載入失敗、真正空清單與篩選後無結果。",
+          "重新整理失敗時保留上次成功資料並提供重試；篩選沒有結果時可清除條件回到完整清單。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-07:teachers-list-recovery"
     ],
     "date": "2026-09-07",
     "version": "2026.09.07"
