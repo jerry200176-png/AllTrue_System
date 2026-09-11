@@ -431,6 +431,8 @@ test.describe('production acceptance — calendar/course parity', () => {
     { name: 'mobile', width: 390, height: 844 },
   ]) {
     test(`director ${viewport.name}: contracted four-session detail explains two unarranged sessions`, async ({ page, request }) => {
+      test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
+        'missing controlled production director session');
       test.skip(BRANCH_ID !== 9, 'the reported unarranged-session course is scoped to campus 9');
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       const token = SESSION.access_token;
@@ -489,7 +491,12 @@ test.describe('production acceptance — calendar/course parity', () => {
         const isClipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
         expect(isClipped, 'the unarranged-session explanation must wrap rather than clip on mobile').toBeFalsy();
         await row.getByRole('button', { name: /更多/ }).click();
-        await expect(group.getByRole('menuitem', { name: /補課 \/ 補登/ })).toBeEnabled();
+        const makeupEntry = group.getByRole('menuitem', { name: /補課 \/ 補登/ });
+        await expect(makeupEntry).toBeVisible();
+        // This exact report is an already-ended contract. Keep the existing
+        // guard: the entry remains discoverable but cannot create a new
+        // session after a contract amendment.
+        await expect(makeupEntry).toBeDisabled();
       }
     });
   }
