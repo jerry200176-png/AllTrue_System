@@ -5,7 +5,7 @@
   "task_id": "TKT-20260911-190559-GYJW",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "b6f32ae82f2a48299dfaf97447f016726b1bac6e",
-  "branch": "exo/TKT-20260911-190559-GYJW",
+  "branch": "exo/TKT-20260911-190559-GYJW-r2",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/phpstan-minor-2544-20260911",
   "started_at": "2026-09-11T11:05:12Z",
   "production_mutation": false,
