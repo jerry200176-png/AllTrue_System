@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "課程繳費下一步更容易辨識",
           "未安排堂次的日期清單說明"
         ]
       }
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
     "items": [
       "課後儲存確認與失敗輸入保留",
       "未付款堂數更正只在安全條件下開放",
+      "課程繳費下一步更容易辨識",
       "未安排堂次的日期清單說明"
     ]
   },

@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-11-course-payment-action-hierarchy
+    published_at: "2026-09-11"
+    audiences:
+      - director
+    importance: digest
+    title: 課程繳費下一步更容易辨識
+    summary: 課程管理會把繳費狀態與下一步動作分開呈現，入口更容易找到。
+    items:
+      - category: improved
+        text: 「登記繳費回報」、「查看待對帳」與「前往帳務中心」會和目前繳費狀態分開排列，方便確認後再操作。
+      - category: improved
+        text: 原有按鈕名稱、帳務中心導頁、權限與帳務規則維持不變。
+    source_refs:
+      - "changelog:2026-09-11:course-payment-action-hierarchy"
+      - "in-app:#279"
+
   - id: staff-2026-09-11-billing-correction-entry-gating
     published_at: "2026-09-11"
     audiences:

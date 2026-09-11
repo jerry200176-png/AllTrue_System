@@ -58,9 +58,12 @@ describe('CourseManagement student billing tab', () => {
   });
 
   it('keeps payment status non-interactive and names the real billing action', () => {
+    expect(source).toContain('class="payment-status-and-action"');
     expect(source).toContain("'payment-status-badge'");
     expect(source).toContain('role="status"');
     expect(source).toContain('付款狀態不可直接操作');
+    expect(source).toContain('class="small ghost payment-next-action"');
+    expect(source).toContain('@click="goToTuitionBilling(c)"');
     expect(source).not.toContain("'btn-status'");
     expect(source).not.toContain('>帳務</button>');
   });
