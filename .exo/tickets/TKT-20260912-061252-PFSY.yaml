@@ -22,6 +22,7 @@ scope:
   - frontend/e2e/profile-controls-clarity.spec.js
   - frontend/e2e/fixtures/ui-foundation/pilot-mount.js
   - frontend/playwright.ui-foundation.config.js
+  - frontend/playwright.config.js
   - docs/CHANGELOG.md
   - docs/STAFF_UPDATES.yml
   - frontend/src/lib/changelogDraft.generated.js
@@ -44,7 +45,7 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes: []
 blockers: []
@@ -53,3 +54,5 @@ brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- 7c9d85adaa2748a49b7a6ae34db19ea809621543
