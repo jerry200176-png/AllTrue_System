@@ -1363,9 +1363,10 @@
           <!-- Actions: fixed footer inside modal (mobile-safe; avoids overlap with sticky/chrome) -->
           <div class="lr-form-actions lr-form-actions--modal-footer">
             <button type="button" class="ghost" @click="closeModal">關閉</button>
-            <button v-if="!isReadOnly" type="submit" class="primary">
-              {{ isEditing ? '儲存變更' : '提交評量' }}
+            <button v-if="!isReadOnly" type="submit" class="primary" :disabled="submitInFlight">
+              {{ submitInFlight ? '儲存中…' : (isEditing ? '儲存變更' : '提交評量') }}
             </button>
+            <p v-if="submitError" class="lr-time-lock-note" role="alert">{{ submitError }}</p>
           </div>
         </form>
       </div>
@@ -1545,8 +1546,8 @@ import {
   listDrafts as _listDraftsFromStorage,
   removeDraftByKey,
   pruneOldDrafts,
-  migrateLegacyDrafts,
 } from '../lib/learningRecordDrafts';
+import { createLearningRecordSaver } from '../composables/useLearningRecordSave';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read']);
@@ -1592,6 +1593,11 @@ const showDraftPanel = ref(false);
 const draftList = ref([]);
 const draftStatusText = ref('');
 const draftSaveError = ref(false);
+const submitInFlight = ref(false);
+const submitError = ref('');
+const contextEpoch = ref(0);
+const draftScope = ref(null);
+const saveLearningRecord = createLearningRecordSaver();
 const _draftThrottleTimer = ref(null);
 const teacherChangeSubmitting = ref(false);
 const teacherList = ref([]);
@@ -3387,9 +3393,11 @@ const fetchStatusCounts = async () => {
 };
 
 const fetchRecords = async () => {
+  const owner = [props.userId, props.branchId].map(String).join(':');
+  const ownerIsCurrent = () => owner === [props.userId, props.branchId].map(String).join(':');
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token || !ownerIsCurrent()) return;
     recordsLoadError.value = '';
     recordsPagination.value = { ...recordsPagination.value, loading: true };
 
@@ -3401,6 +3409,7 @@ const fetchRecords = async () => {
     if (!res.ok) throw new Error('Fetch failed');
 
     const data = await res.json();
+    if (!ownerIsCurrent()) return;
     records.value = data.data || [];
     recordsPagination.value = {
       currentPage: data.current_page || 1,
@@ -3409,6 +3418,7 @@ const fetchRecords = async () => {
       loading: false,
     };
   } catch (e) {
+    if (!ownerIsCurrent()) return;
     console.error(e);
     recordsLoadError.value = '請檢查網路連線後再試一次。原有資料仍會保留。';
     recordsPagination.value = { ...recordsPagination.value, loading: false };
@@ -3550,6 +3560,7 @@ const loadAllRecords = async () => {
 
 // ── Modal ──
 const _fillForm = (record) => {
+  if (showModal.value) closeModal();
   isEditing.value = true;
   formTimesFromBinding.value = false;
   _activeRecordRef.value = record;
@@ -3585,6 +3596,7 @@ const _fillForm = (record) => {
 };
 
 const _clearForm = () => {
+  if (showModal.value) closeModal();
   isEditing.value = false;
   formTimesFromBinding.value = false;
   _activeRecordRef.value = null;
@@ -3682,12 +3694,13 @@ const editRecord = (record) => {
   _attachTextareaResize();
 };
 
-const closeModal = () => {
+const closeModal = ({ preserveDraft = true } = {}) => {
+  contextEpoch.value += 1;
   if (_draftThrottleTimer.value) {
     clearTimeout(_draftThrottleTimer.value);
     _draftThrottleTimer.value = null;
-    saveDraft();
   }
+  if (preserveDraft) saveDraft();
   draftStatusText.value = '';
   draftSaveError.value = false;
   showAllCommentPhrases.value = false;
@@ -3774,39 +3787,6 @@ const switchToTeacherLogin = async () => {
   window.location.reload();
 };
 
-/** 409 後精準拉取該堂次評量（含作廢列），避開清單分頁漏載 */
-const fetchLearningRecordsForConflictLookup = async (classSessionId, preferredId = null) => {
-  try {
-    const cs = Number(classSessionId || 0);
-    if (cs <= 0) return null;
-    const token = await getToken();
-    if (!token) return null;
-    const params = new URLSearchParams({
-      for_conflict_lookup: '1',
-      class_session_id: String(cs),
-      per_page: '5',
-    });
-    const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({}));
-    const rows = data.data || [];
-    for (const r of rows) {
-      upsertRecordInList(r);
-    }
-    const want = preferredId != null && Number(preferredId) > 0 ? Number(preferredId) : null;
-    if (want) {
-      const byId = records.value.find((rec) => Number(rec.id) === want);
-      if (byId) return byId;
-    }
-    return records.value.find((rec) => Number(rec.ClassSessionID) === cs) || rows[0] || null;
-  } catch (e) {
-    console.error('[LR] conflict lookup failed', e);
-    return null;
-  }
-};
-
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
@@ -3816,87 +3796,55 @@ const submitForm = async () => {
     alert('請從課表點選該堂課進入評量，系統會自動帶入並鎖定上課時間。');
     return;
   }
-
-  const token = await getToken();
-  const url = isEditing.value ? `/api/v1/learning-records/${form.id}` : '/api/v1/learning-records';
-  // Some deployments reject PUT at the web server layer; use POST for edits too.
-  const method = 'POST';
-
-  if (!form.ClassSessionID) form.ClassSessionID = 0;
-
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify(form)
-  });
-
-  if (res.ok) {
-    const savedRecord = await res.json().catch(() => null);
+  if (submitInFlight.value) return;
+  submitInFlight.value = true;
+  submitError.value = '';
+  const submissionSnapshot = JSON.parse(JSON.stringify(form));
+  if (!submissionSnapshot.ClassSessionID) submissionSnapshot.ClassSessionID = 0;
+  const submissionEpoch = contextEpoch.value;
+  const submissionScope = { ..._draftKeyParams() };
+  const ownerIsCurrent = () => String(props.userId) === String(submissionScope.teacherId)
+    && String(props.branchId) === String(submissionScope.branchId);
+  const isCurrent = () => submissionEpoch === contextEpoch.value && showModal.value && ownerIsCurrent();
+  const editing = isEditing.value;
+  const url = editing ? `/api/v1/learning-records/${submissionSnapshot.id}` : '/api/v1/learning-records';
+  try {
+    const token = await getToken();
+    if (!isCurrent()) return;
+    if (!token) throw new Error('登入狀態無法確認');
+    const result = await saveLearningRecord({ fetchImpl: fetch, url, token, snapshot: submissionSnapshot });
+    if (!isCurrent()) return;
+    if (!result.ok) { submitError.value = result.message; return; }
+    const savedRecord = result.record;
+    if (JSON.stringify(form) !== JSON.stringify(submissionSnapshot)) {
+      form.id = savedRecord.id;
+      isEditing.value = true;
+      saveDraft();
+      submitError.value = '送出時的內容已儲存；送出後的新修改仍保留，尚未儲存。';
+      return;
+    }
     const localRecord = buildLocalRecordFromForm(savedRecord);
-    clearDraft();
+    _clearDraftFromStorage(submissionScope);
+    closeModal({ preserveDraft: false });
     // (#105) 若剛存的評量日期早於預設「近 N 天」視窗，自動解除視窗，
     // 否則 fetchRecords 會把它濾掉 → 老師誤以為「新增評量後列表卻看不到」。
-    const savedDate = String(localRecord?.SessionDate || form.SessionDate || '').slice(0, 10);
+    const savedDate = String(localRecord?.SessionDate || submissionSnapshot.SessionDate || '').slice(0, 10);
     if (shouldLiftDefaultWindowForDate({ savedDate, windowStart: resolvedDefaultWindowStart.value })) {
       defaultWindowDisabled.value = true;
     }
     await fetchRecords();
+    if (!ownerIsCurrent()) return;
     if (localRecord?.id) {
       upsertRecordInList(localRecord);
     }
     if (isTeacher.value) {
       await fetchTeacherClasses();
     }
-    trackAdoptionEvent('learning_saved', props.branchId, { role: props.userRole });
-    closeModal();
-  } else if (res.status === 409) {
-    const errBody = await res.json().catch(() => ({}));
-    clearDraft();
-    if (errBody.voided) {
-      closeModal();
-      alert(errBody.message || '此堂評量已作廢，請聯絡分校主任協助處理。');
-      await fetchRecords();
-      if (isTeacher.value) {
-        await fetchTeacherClasses();
-      }
-      return;
-    }
-    const csId = Number(form.ClassSessionID || 0);
-    const existingId = errBody?.existing_id ?? errBody?.existing_record_id;
-    let conflicting = existingId
-      ? records.value.find((r) => Number(r.id) === Number(existingId))
-      : null;
-    if (!conflicting && csId > 0) {
-      conflicting = records.value.find((r) => Number(r.ClassSessionID) === csId);
-    }
-    if (!conflicting && csId > 0) {
-      conflicting = await fetchLearningRecordsForConflictLookup(csId, existingId);
-    }
-    if (!conflicting) {
-      await fetchRecords();
-      conflicting = existingId
-        ? records.value.find((r) => Number(r.id) === Number(existingId))
-        : null;
-      if (!conflicting && csId > 0) {
-        conflicting = records.value.find((r) => Number(r.ClassSessionID) === csId);
-      }
-    }
-    closeModal();
-    if (conflicting) {
-      openRecordAction(conflicting);
-    } else {
-      alert(errBody?.message || '此堂評量已存在，請重新整理後查看。');
-    }
-    if (isTeacher.value) {
-      await fetchTeacherClasses();
-    }
-    await fetchRecords();
-  } else {
-    const err = await res.json().catch(() => ({}));
-    alert('儲存失敗: ' + (err.message || `${res.status} ${res.statusText}` || '未知錯誤'));
+    if (ownerIsCurrent()) trackAdoptionEvent('learning_saved', props.branchId, { role: props.userRole });
+  } catch (error) {
+    if (isCurrent()) submitError.value = `儲存失敗：${error?.message || '請稍後再試'}；輸入內容已保留。`;
+  } finally {
+    submitInFlight.value = false;
   }
 };
 
@@ -4269,11 +4217,14 @@ const insertPhrase = (field, phrase) => {
   form[field] = current ? `${current}\n${phrase}` : phrase;
 };
 
-const _draftKeyParams = () => ({
-  teacherId: props.userId,
-  classSessionId: form.ClassSessionID,
-  fallback: { studentClassId: form.StudentID, sessionDate: form.SessionDate },
-});
+const _draftKeyParams = () => draftScope.value || {};
+
+watch(showModal, (visible) => {
+  if (!visible) return;
+  contextEpoch.value += 1;
+  draftScope.value = { teacherId: props.userId, branchId: props.branchId, classSessionId: form.ClassSessionID };
+  submitError.value = '';
+}, { flush: 'sync' });
 
 const _draftMeta = () => ({
   studentName: currentStudentName.value,
@@ -4285,6 +4236,7 @@ const _draftMeta = () => ({
 
 const saveDraft = () => {
   if (!showModal.value || forceReadOnly.value) return;
+  if (Number(draftScope.value?.classSessionId || 0) !== Number(form.ClassSessionID || 0)) return;
   if (isEditing.value && form.Status === 'approved') return;
   const result = _saveDraftToStorage({
     ..._draftKeyParams(),
@@ -4298,10 +4250,14 @@ const saveDraft = () => {
   } else if (result.error === 'quota_exceeded') {
     draftStatusText.value = '儲存空間不足，草稿無法保存';
     draftSaveError.value = true;
+  } else if (result.error === 'no_key') {
+    draftStatusText.value = '尚未綁定分校與堂次，輸入僅保留在此視窗；請勿切頁。';
+    draftSaveError.value = true;
   }
 };
 
 const saveDraftThrottled = () => {
+  if (!showModal.value || submitInFlight.value) return;
   if (_draftThrottleTimer.value) clearTimeout(_draftThrottleTimer.value);
   _draftThrottleTimer.value = setTimeout(() => {
     saveDraft();
@@ -4310,6 +4266,7 @@ const saveDraftThrottled = () => {
 };
 
 const loadDraft = () => {
+  if (Number(_draftKeyParams().classSessionId || 0) !== Number(form.ClassSessionID || 0)) return false;
   const { draft } = _loadDraftFromStorage(_draftKeyParams());
   if (!draft) return false;
   applyDraftToForm(draft, form);
@@ -4327,7 +4284,7 @@ const clearDraft = () => {
 
 const refreshDraftList = () => {
   if (!props.userId) { draftList.value = []; return; }
-  draftList.value = _listDraftsFromStorage(props.userId);
+  draftList.value = _listDraftsFromStorage(props.userId, props.branchId);
 };
 
 const openDraftPanel = () => {
@@ -4341,7 +4298,7 @@ const closeDraftPanel = () => {
 
 const deleteDraftFromList = (draftItem) => {
   if (!confirm(`確定清除「${draftItem.studentName} — ${draftItem.sessionDate}」的草稿嗎？`)) return;
-  removeDraftByKey(draftItem.key);
+  removeDraftByKey(draftItem.key, { teacherId: props.userId, branchId: props.branchId });
   refreshDraftList();
 };
 
@@ -4887,8 +4844,7 @@ onMounted(async () => {
   window.addEventListener('resize', updateViewportMode);
   if (window.innerWidth <= 640) scheduleView.value = 'today';
   if (hasActiveFilters.value) showAdvancedFilters.value = true;
-  migrateLegacyDrafts();
-  if (props.userId) pruneOldDrafts(props.userId);
+  if (props.userId && props.branchId) pruneOldDrafts(props.userId, props.branchId);
 
   // Pull backend perf_flags (lr_default_window_days 等) before first fetch so that
   // _buildRecordsParams injects the authoritative window in the initial request.
@@ -4940,10 +4896,15 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  closeModal();
   window.removeEventListener('resize', updateViewportMode);
 });
 
-watch(() => props.branchId, () => {
+watch(() => [props.userId, props.branchId], () => {
+  closeModal();
+  _clearForm();
+  showDraftPanel.value = false;
+  refreshDraftList();
   fetchRecords();
   fetchTeachers();
   fetchSubjects();
