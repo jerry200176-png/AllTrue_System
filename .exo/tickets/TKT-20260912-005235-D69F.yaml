@@ -1,0 +1,48 @@
+id: TKT-20260912-005235-D69F
+title: 'Recover Bug Reports responsive clarity from PR #2670'
+intent: 'Recover Bug Reports responsive clarity from PR #2670'
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: 'Recover only the display/accessibility changes and isolated tests from
+  conflicting draft PR #2670 onto exact current main. Do not change bug APIs, lifecycle
+  permissions, status transitions, attachments/storage, backend security behavior,
+  production data, or unrelated UI.'
+success_condition: A clean current-main PR preserves Bug Reports behavior while standardizing
+  tabs, loading/empty/error states, touch targets, and responsive layout; focused
+  tests pass at mobile and desktop widths without console/request failures.
+priority: 2
+labels:
+- frontend
+- accessibility
+scope:
+  allow:
+  - frontend/src/pages/BugReportsPage.vue
+  - frontend/src/lib/bugReportsPageA11y.test.js
+  - frontend/e2e/bug-reports-clarity.spec.js
+  - frontend/e2e/bug-reports-playwright.config.js
+  - frontend/e2e/fixtures/ui-foundation/bug-reports-pilot-mount.html
+  - frontend/e2e/fixtures/ui-foundation/bug-reports-pilot-mount.js
+  - .agent-session/**
+  - .exo/tickets/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 420
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T00:52:35+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
