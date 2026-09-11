@@ -365,13 +365,15 @@
                       </template>
                     </td>
                     <td>
-                      <span
-                        :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
-                        role="status"
-                        :title="paymentStatusHelpTitle(c)"
-                      >{{ paymentStatusButtonLabel(c) }}</span>
+                      <div class="payment-status-and-action">
+                        <span
+                          :class="['small', 'payment-status-badge', paymentStatusButtonClass(c)]"
+                          role="status"
+                          :title="paymentStatusHelpTitle(c)"
+                        >{{ paymentStatusButtonLabel(c) }}</span>
+                        <button v-if="shouldShowPaymentAction(c)" type="button" class="small ghost payment-next-action" @click="goToTuitionBilling(c)">{{ paymentNextActionLabel(c) }}</button>
+                      </div>
                       <span v-if="isTutoringBillingAnomaly(c)" class="payment-anomaly-hint" role="alert">帳務資料需修正，請由主任檢查帳務中心。</span>
-                      <button v-if="shouldShowPaymentAction(c)" type="button" class="small ghost" style="margin-left:6px;" @click="goToTuitionBilling(c)">{{ paymentNextActionLabel(c) }}</button>
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                       <div v-if="c.payment_status === 'paid' && c.latest_payment_report_id" class="field-hint">
                         已繳清；另有回報待核對。
@@ -6695,6 +6697,24 @@ button.danger:disabled {
   border-radius: 999px !important;
   font-weight: 900 !important;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
+}
+.payment-status-and-action {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-width: max-content;
+}
+.payment-next-action {
+  margin: 0 !important;
+  border-color: var(--ds-primary) !important;
+  background: var(--ds-canvas-soft) !important;
+  color: var(--ds-primary) !important;
+  font-weight: 800 !important;
+  white-space: nowrap;
+}
+.payment-next-action:hover,
+.payment-next-action:focus-visible {
+  background: var(--ds-info-wash) !important;
 }
 .payment-anomaly-hint {
   display: inline-block;

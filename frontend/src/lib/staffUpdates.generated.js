@@ -73,6 +73,39 @@ export const staffUpdates = [
     "version": "2026.09.11"
   },
   {
+    "id": "staff-2026-09-11-course-payment-action-hierarchy",
+    "publishedAt": "2026-09-11",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程繳費下一步更容易辨識",
+    "summary": "課程管理會把繳費狀態與下一步動作分開呈現，入口更容易找到。",
+    "items": [
+      "「登記繳費回報」、「查看待對帳」與「前往帳務中心」會和目前繳費狀態分開排列，方便確認後再操作。",
+      "原有按鈕名稱、帳務中心導頁、權限與帳務規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「登記繳費回報」、「查看待對帳」與「前往帳務中心」會和目前繳費狀態分開排列，方便確認後再操作。",
+          "原有按鈕名稱、帳務中心導頁、權限與帳務規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-11:course-payment-action-hierarchy",
+      "in-app:#279"
+    ],
+    "date": "2026-09-11",
+    "version": "2026.09.11"
+  },
+  {
     "id": "staff-2026-09-10-substitute-restore-clears-schedules",
     "publishedAt": "2026-09-10",
     "effectiveAt": null,
