@@ -773,6 +773,38 @@ export const staffUpdates = [
     "version": "2026.09.07"
   },
   {
+    "id": "staff-2026-09-07-teachers-list-recovery",
+    "publishedAt": "2026-09-07",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師管理載入狀態更清楚",
+    "summary": "載入失敗可重試，篩選無結果也能清除條件。",
+    "items": [
+      "老師管理會分開顯示首次載入、重新整理、載入失敗、真正空清單與篩選後無結果。",
+      "重新整理失敗時保留上次成功資料並提供重試；篩選沒有結果時可清除條件回到完整清單。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師管理會分開顯示首次載入、重新整理、載入失敗、真正空清單與篩選後無結果。",
+          "重新整理失敗時保留上次成功資料並提供重試；篩選沒有結果時可清除條件回到完整清單。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-07:teachers-list-recovery"
+    ],
+    "date": "2026-09-07",
+    "version": "2026.09.07"
+  },
+  {
     "id": "staff-2026-09-07-students-list-recovery",
     "publishedAt": "2026-09-07",
     "effectiveAt": null,
