@@ -22,6 +22,17 @@ for (const workflow of workflows) {
   assert.ok(!source.includes('PUBLIC_REPLY=\\$(printf %q'), `${workflow} must not interpolate raw reply text`);
 }
 
+const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
+assert.ok(
+  !phaseCSource.includes('repair_resolved'),
+  'Phase-C allowlist entries must not replay already-resolved reports during unrelated runs',
+);
+assert.match(
+  phaseCSource,
+  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
+  'Phase-C must skip every already-resolved or closed report',
+);
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-bug-reply-'));
 const marker = path.join(tempDir, 'executed');
 const payload = `literal $(touch ${marker}) \`echo SHOULD_NOT_RUN\` ; quoted 'reply'`;

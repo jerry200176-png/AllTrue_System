@@ -288,7 +288,6 @@ jobs:
               "reply" => "補充驗證：已再次核對正職老師的核薪科目總數與科目數統計，現在會保留完整公司／老師範圍及各老師原始貢獻，並在最後總額才計算核薪值。請重新整理正職薪資要件與科目數統計頁確認；若仍不一致，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2539",
               "rev" => "c431b9d08b165d37e911f4801acb2bfc884f306d",
               "deploy" => "34186501865",
-              "repair_resolved" => true,
             ],
             256 => [
               "reply" => "已完成修正並上線：科目數統計現在會先保留正課、輔導及其他適用類別的原始科目數，完整加總完成後才在最終總額除以 8，不會再把各類別或中間小計先除造成數字漂移；頁面也提供分校正職老師按月份查看的科目數摘要。請重新整理科目數統計頁確認；若仍不一致，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2540",
@@ -415,17 +414,14 @@ jobs:
             }
             $status = (string)$bug->status;
             if (in_array($status, ["resolved", "closed"], true)) {
-              if ($status !== "resolved" || empty($cfg["repair_resolved"])) {
-                $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
-                continue;
-              }
+              $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
+              continue;
             }
             // Walk legal transitions toward resolved
             $path = [];
             if ($status === "new") $path = ["triaged", "in_progress", "resolved"];
             elseif ($status === "triaged") $path = ["in_progress", "resolved"];
             elseif ($status === "in_progress") $path = ["resolved"];
-            elseif ($status === "resolved" && !empty($cfg["repair_resolved"])) $path = ["in_progress", "resolved"];
             else {
               $results[] = ["id" => $bugId, "action" => "unsupported_status", "status" => $status];
               continue;
