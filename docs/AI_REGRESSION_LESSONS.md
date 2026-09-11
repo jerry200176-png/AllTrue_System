@@ -6,6 +6,13 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R138. 儲存成功驗證的 fixture 必須使用後端真實序列化欄位（in-app #282/#283，2026-09-12）
+
+- **現象**：評量已由後端成功寫入，前端卻顯示「無法確認儲存結果」，讓使用者可能重複提交。
+- **根因層級**：F1 API 回應契約測試失真；前端驗證器與單元 fixture 都假設回應含 `StudentID`，但 `LearningRecordController::hydrateRecordForResponse()` 實際附加的是 `student_id`，合成測試因此綠燈而 production-shaped 回應被拒絕。
+- **強制規則**：成功確認必須以實際 controller serialization 為準；相容別名只可映射到同一權威身分，若同時出現且值衝突必須 fail closed。不得用放寬身分、老師、堂次或狀態驗證來消除錯誤提示。
+- **測試必補**：至少覆蓋 production-shaped `student_id` 成功、學生不符拒絕，以及 `StudentID`／`student_id` 同時存在但衝突時拒絕；合成成功 fixture 不得只覆蓋前端自行假設的 casing。
+
 ### R137. Parent binding 不可用 display projection 判斷 guardian contact existence（2026-09-05）
 
 - **現象**：多監護人開啟時，主要監護人沒有手機但 secondary active／read_only guardian 有手機；LINE／Portal classifier 仍可能回 `CONTACT_PHONE_MISSING` 或 `PHONE_MISMATCH`。
