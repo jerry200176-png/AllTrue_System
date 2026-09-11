@@ -1,0 +1,48 @@
+id: TKT-20260912-014823-XISQ
+title: 'Refine read-only probe for in-app #278 cancelled makeup'
+intent: 'Refine read-only probe for in-app #278 cancelled makeup'
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: 'Add only a bounded read-only diagnostic for in-app #278/#281 using the
+  reporter public follow-up; never emit student names, contacts, or raw student/class/session/schedule
+  IDs; do not mutate production data, change permissions/lifecycle/deploy governance,
+  or implement a repair.'
+success_condition: The workflow can uniquely resolve an explicitly named campus/student
+  from the reporter public comment and emit only redacted course/session/schedule
+  state summaries for the reported dates; focused contract tests, lint, CI, and production
+  workflow evidence pass.
+priority: 1
+labels:
+- in-app-feedback
+- governance
+scope:
+  allow:
+  - .github/workflows/bug-detail-dump.yml
+  - scripts/tests/test_bug_detail_dump_contract.py
+  - .agent-session/**
+  - .exo/tickets/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 260
+checks:
+- npm run lint:no-undef
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T01:48:23+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
+commits:
+- db7b9a963d65046df67d9529a1c3a6d716e7c446
+- 13855038a4379c3b7b3ca78c95ff40ffdd067638
+- da7d6104b979fc6550432302376dcdfb844e0791
+- e03d2170a9c414f9631d2993c1cb8880442bded5
