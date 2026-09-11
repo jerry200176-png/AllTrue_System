@@ -1,0 +1,47 @@
+id: INT-20260911-184443-TIAB
+title: 'Deliver compatible frontend minor dependency updates from #2711'
+intent: 'Deliver compatible frontend minor dependency updates from #2711'
+kind: intent
+brain_dump: 'User authorized compatible dependency updates and actual delivery. Replace
+  stale Dependabot #2711 on current main.'
+boundary: Only frontend package manifest/lockfile plus required governed provenance
+  and release records; no application logic, workflows, auth, data, migrations, credentials,
+  or active in-app chains.
+success_condition: Current-main PR updates Sentry, Supabase, and Playwright minor
+  versions; audit/build/gates pass; old Dependabot PR is superseded.
+risk: low
+priority: 2
+labels:
+- dependencies
+scope:
+  allow:
+  - frontend/package.json
+  - frontend/package-lock.json
+  - .agent-session/**
+  - .exo/**
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/*.generated.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 260
+checks:
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-11T18:44:43+08:00'
+children:
+- TKT-20260911-184450-BHNI
+resource_profile: default
