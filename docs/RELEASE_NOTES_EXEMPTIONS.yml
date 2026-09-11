@@ -2,11 +2,6 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
-  - id: silent-2026-09-11-after-class-save-verification
-    changelog_date: "2026-09-11"
-    changelog_title: "fix(learning): 課後儲存確認與失敗輸入保留"
-    reason: 本批已獲實作與上線 GO，但須依既有流程在正式站情境驗證後才發布 STAFF_UPDATES；這是暫待驗證，不代表免除公告。
-
   - id: silent-2026-09-10-parent-attendance-clarity
     changelog_date: "2026-09-10"
     changelog_title: "improved(parent): 出缺勤紀錄更容易閱讀"

@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-11-after-class-confirmed-save
+    published_at: "2026-09-11"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課後儲存失敗可接續填寫
+    summary: 送出後會確認儲存結果；失敗時保留原堂內容，返回後可接續填寫。
+    items:
+      - category: fixed
+        text: 儲存失敗或無法確認時不會標記完成；請依提示重新查詢或重試，避免重複提交。
+      - category: fixed
+        text: 同帳號、分校與堂次的評量可接續草稿；未綁定堂次時請留在原視窗。
+      - category: improved
+        text: 完成儲存後回到教學工作台即可查看最新待辦；儲存成功不代表主任已核准。
+    source_refs:
+      - "changelog:2026-09-11:after-class-confirmed-save"
+      - "pr:#2719"
+
   - id: staff-2026-09-11-course-payment-action-hierarchy
     published_at: "2026-09-11"
     audiences:
