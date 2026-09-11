@@ -391,7 +391,11 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     non_runtime_only = normalized and not any(is_deployable_path(path) for path in normalized)
     runtime_paths = [path for path in normalized if is_deployable_path(path)]
     marker_paths = runtime_paths or normalized
-    haystack = ("\n".join(marker_paths) + "\n" + _runtime_patch(runtime_paths, patch)).lower()
+    # Release-note bundles are deployable assets, but their historical copy is
+    # not evidence of the current change's runtime effect. Use the same
+    # narrowed semantic input as activation classification; paths themselves
+    # remain classified and executable runtime files are never excluded.
+    haystack = ("\n".join(marker_paths) + "\n" + _semantic_runtime_patch(runtime_paths, patch)).lower()
     minimum = 0
     reasons: list[str] = []
 
