@@ -1013,6 +1013,96 @@ jobs:
               $probe253["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          // #278/#281 share one historical report: the reporter supplied
+          // physical/session facts but no student or confirmed campus. Search
+          // only the two report campuses and emit opaque candidates, never a
+          // student, teacher, course, session, or schedule identifier. A
+          // result is evidence for the next diagnostic step, not permission to
+          // repair historical data or to infer that either report campus wins.
+          $probe278281 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bugs 278 and 281",
+          ];
+          if (in_array($bugId, [278, 281], true)) {{
+            $probe278281["applicable"] = true;
+            $probe278281["case"] = "historical_cancelled_makeup_candidate_278_281";
+            $probe278281["target_scope"] = [
+              "campus_ids" => [9, 13],
+              "dates" => ["2026-07-22", "2026-08-12"],
+              "weekday" => 3,
+              "start" => "18:00",
+              "end" => "20:00",
+              "class_type" => "one_on_three",
+              "subject_name_contains" => "物理",
+              "purchased_sessions" => 4,
+              "reported_attended_sessions" => 4,
+            ];
+            try {{
+              $candidateBase = $db::table("StudentClass as sc")
+                ->join("Student as st", "st.id", "=", "sc.StudentID")
+                ->join("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->whereIn("st.CampusID", [9, 13])
+                ->where("sc.ClassType", "one_on_three")
+                ->where("sc.SessionCount", 4)
+                ->where("sub.Subject_Name", "like", "%物理%")
+                ->get([
+                  "sc.ID as class_id", "st.CampusID as campus_id",
+                  "sc.UsedSessions as used_sessions",
+                ]);
+              $candidateIds = $candidateBase->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+              $targetDates = ["2026-07-22", "2026-08-12"];
+              $sessionRows = $candidateIds === [] ? collect() : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateIds)
+                ->whereIn("SessionDate", $targetDates)
+                ->whereRaw("SUBSTRING(StartTime, 1, 5) = ?", ["18:00"])
+                ->whereRaw("SUBSTRING(EndTime, 1, 5) = ?", ["20:00"])
+                ->get(["StudentClassID as class_id", "SessionDate as session_date", "Status as status"]);
+              $scheduleRows = $candidateIds === [] ? collect() : $db::table("schedules")
+                ->whereIn("student_course_id", $candidateIds)
+                ->whereIn("schedule_date", $targetDates)
+                ->whereRaw("SUBSTRING(start_time, 1, 5) = ?", ["18:00"])
+                ->whereRaw("SUBSTRING(end_time, 1, 5) = ?", ["20:00"])
+                ->get(["student_course_id as class_id", "schedule_date as session_date", "status"]);
+              $attendedByClass = $candidateIds === [] ? collect() : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateIds)
+                ->whereIn("Status", ["attended", "completed", "late"])
+                ->selectRaw("StudentClassID as class_id, COUNT(*) as attended_count")
+                ->groupBy("StudentClassID")->pluck("attended_count", "class_id");
+              $cancelled = ["cancelled", "voided"];
+              $strict = [];
+              foreach ($candidateBase as $row) {{
+                $classId = (int)$row->class_id;
+                $sessionDates = $sessionRows->where("class_id", $classId)
+                  ->filter(fn ($item) => in_array(strtolower((string)$item->status), $cancelled, true))
+                  ->pluck("session_date")->map(fn ($date) => substr((string)$date, 0, 10));
+                $scheduleDates = $scheduleRows->where("class_id", $classId)
+                  ->filter(fn ($item) => in_array(strtolower((string)$item->status), $cancelled, true))
+                  ->pluck("session_date")->map(fn ($date) => substr((string)$date, 0, 10));
+                $cancelledDates = $sessionDates->merge($scheduleDates)->unique()->sort()->values()->all();
+                $attendedCount = (int)($attendedByClass[$classId] ?? 0);
+                $usedSessions = (int)($row->used_sessions ?? 0);
+                if ($cancelledDates !== $targetDates || $usedSessions !== 4 || $attendedCount < 4) continue;
+                $strict[] = [
+                  "candidate_ref" => substr(hash("sha256", "inapp-278-281|".(int)$row->campus_id."|".$classId), 0, 16),
+                  "campus_id" => (int)$row->campus_id,
+                  "cancelled_dates" => $cancelledDates,
+                  "persisted_used_sessions" => $usedSessions,
+                  "observed_attended_session_count" => $attendedCount,
+                ];
+              }}
+              $probe278281["candidate_count"] = count($strict);
+              $probe278281["candidate_resolution"] = count($strict) === 1 ? "unique" : (count($strict) === 0 ? "none" : "ambiguous");
+              $probe278281["candidates"] = $strict;
+              $probe278281["decision_grade"] = count($strict) === 1;
+              $probe278281["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe278281["candidate_count"] = 0;
+              $probe278281["candidate_resolution"] = "error";
+              $probe278281["candidates"] = [];
+              $probe278281["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
+
           $probe272 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "Allowlisted only for in-app bug 272",
@@ -1187,6 +1277,7 @@ jobs:
             249 => $probe249,
             253 => $probe253,
             272 => $probe272,
+            278, 281 => $probe278281,
             default => null,
           }};
           $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272], true);
@@ -1230,6 +1321,7 @@ jobs:
                 "probe_251_contract_session_count_payment" => $probe251,
                 "probe_253_teacher_capacity_orphan_exception" => $probe253,
                 "probe_272_teacher_same_slot" => $probe272,
+                "probe_278_281_cancelled_makeup_candidates" => $probe278281,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
