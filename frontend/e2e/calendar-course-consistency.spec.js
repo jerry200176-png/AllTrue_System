@@ -431,6 +431,7 @@ test.describe('production acceptance — calendar/course parity', () => {
     { name: 'mobile', width: 390, height: 844 },
   ]) {
     test(`director ${viewport.name}: contracted four-session detail explains two unarranged sessions`, async ({ page, request }) => {
+      test.skip(BRANCH_ID !== 9, 'the reported unarranged-session course is scoped to campus 9');
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       const token = SESSION.access_token;
       const coursesPayload = await getJson(
@@ -442,6 +443,11 @@ test.describe('production acceptance — calendar/course parity', () => {
         Number(valueOf(course, 'SessionCount', 'session_count', 'sessions_purchased')) === 4
         && Number(valueOf(course, 'UsedSessions', 'used_sessions')) === 2
         && Number(valueOf(course, 'RemainingSessions', 'remaining_sessions')) === 2
+        && String(valueOf(course, 'subject_name', 'subject') || '') === '數學'
+        && String(valueOf(course, 'class_type', 'ClassType') || '') === 'one_on_two'
+        && String(valueOf(course, 'start_time', 'StartTime') || '').slice(0, 5) === '17:00'
+        && String(valueOf(course, 'end_time', 'EndTime') || '').slice(0, 5) === '19:00'
+        && String(valueOf(course, 'closed_reason') || '') === 'contract_amended'
       ));
       expect(matches, 'the reported 4 purchased / 2 attended / 2 unarranged course must be unique').toHaveLength(1);
       const target = matches[0];
