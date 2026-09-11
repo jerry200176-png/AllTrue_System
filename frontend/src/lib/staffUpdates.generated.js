@@ -48,6 +48,47 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-course-balance-evidence",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "堂數待對帳會說明原始與目前依據",
+    "summary": "課程管理會顯示原始記錄與目前依出席、扣堂證據計算的剩餘堂數。",
+    "items": [
+      "已上完的按堂課程不再因原始餘額漂移，被營運信任中心誤列為「已付還沒排進未來課表」。",
+      "若堂數需要核對，課程管理會同時說明原始記錄與目前依出席、扣堂證據顯示的剩餘堂數。",
+      "系統不會自動修改堂數、出席、扣堂或付款資料；部分分鐘餘額仍依既有規則顯示。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已上完的按堂課程不再因原始餘額漂移，被營運信任中心誤列為「已付還沒排進未來課表」。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "若堂數需要核對，課程管理會同時說明原始記錄與目前依出席、扣堂證據顯示的剩餘堂數。",
+          "系統不會自動修改堂數、出席、扣堂或付款資料；部分分鐘餘額仍依既有規則顯示。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:course-balance-evidence",
+      "in-app:#281",
+      "issue:#2736"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-bug-reports-responsive-clarity",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

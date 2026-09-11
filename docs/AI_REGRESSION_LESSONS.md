@@ -1639,3 +1639,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **現象**：Phase-A acknowledgement 與 Phase-C follow-up 都包含同一個 GitHub issue URL；若 workflow 只用 URL 判斷「已留言」，post-deploy 的公開驗收留言會被錯誤跳過。
 - **強制規則**：同一 bug 的不同生命週期留言必須以完整、精確的留言 payload（或明確的事件 marker）區分；shared URL 只能驗證連結存在，不能作為留言幂等鍵。
 - **測試必補**：已有相同 issue URL 的舊留言時，follow-up workflow 仍必須新增一次精確 payload；同一 payload 重跑才可安全 skip。
+
+### R138. 唯讀堂數投影不可在覆寫後遺失原始漂移（in-app #281，2026-09-12）
+
+- **現象**：課程卡依出席證據顯示 4／4 堂已用完，但營運信任中心仍以資料表殘留的 `RemainingSessions=1` 顯示「已付未排」Critical；課程 API 又先覆寫回傳堂數再比對，因而把原始漂移標為正常。
+- **根因層級**：同一個唯讀請求混用了持久化計數器與 canonical 出席／扣堂投影，且沒有在投影前保留兩者，造成營運決策與課程卡呈現雙重真相。
+- **強制規則**：投影前先保留 stored counters，回傳 canonical 顯示值時仍須以 stored-versus-canonical 判定 `review_required`；營運收入風險不得把 canonical 已耗盡的整堂課列為 stranded，但資料品質警示必須保留。部分分鐘餘額仍是權威，不得套用整堂排除。
+- **安全邊界**：GET、摘要與診斷只能讀取和標示，不得自動更改課程、出席、扣堂或付款資料；跨校摘要必須維持 campus scope，批次診斷不可退化成逐課 N+1。
+- **測試必補**：同一筆 stored 餘額漂移要同時證明 Critical 消失、對帳警示仍在、API 顯示 canonical 餘額並回傳 stored 診斷，而且資料庫原值不變；另以部分分鐘案例證明不會被錯誤排除。

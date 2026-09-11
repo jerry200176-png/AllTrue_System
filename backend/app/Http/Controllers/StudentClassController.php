@@ -471,6 +471,8 @@ class StudentClassController extends Controller
             $class->charge = $effectiveCharge;
             $class->effective_charge = $effectiveCharge;
             $class->charge_is_fallback = $storedCharge <= 0 && $effectiveCharge > 0;
+            $storedUsedSessions = (int) ($class->UsedSessions ?? 0);
+            $storedRemainingSessions = (int) ($class->RemainingSessions ?? 0);
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
             $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
@@ -497,9 +499,12 @@ class StudentClassController extends Controller
                 );
                 $class->usage_balance_status = (
                     (int) $usageDiagnostic['cancelled_usage_artifacts'] > 0
-                    || (int) ($class->RemainingSessions ?? 0) !== $expectedRemaining
+                    || $storedUsedSessions !== (int) $usageDiagnostic['expected_used']
+                    || $storedRemainingSessions !== $expectedRemaining
                 ) ? 'review_required' : 'ok';
                 $class->usage_balance_diagnostic = [
+                    'stored_used_sessions' => $storedUsedSessions,
+                    'stored_remaining_sessions' => $storedRemainingSessions,
                     'observed_used_sessions' => (int) $usageDiagnostic['observed_used'],
                     'class_session_used_sessions' => (int) $usageDiagnostic['class_session_used'],
                     'cancelled_usage_artifacts' => (int) $usageDiagnostic['cancelled_usage_artifacts'],
