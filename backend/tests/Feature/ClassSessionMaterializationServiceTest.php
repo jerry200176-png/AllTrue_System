@@ -121,7 +121,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
         try {
             $service->upsertSlot([
                 'StudentClassID' => $secondCourseId,
-                'SessionDate' => '2026-09-10',
+                'SessionDate' => '2099-09-10',
                 'StartTime' => '17:00',
                 'EndTime' => '19:00',
                 'Status' => 'scheduled',
