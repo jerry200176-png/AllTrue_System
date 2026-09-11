@@ -248,6 +248,48 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-account-profile-touch-controls",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "個人資料在手機更容易操作",
+    "summary": "分頁、輸入欄位與主要動作有足夠觸控高度，長內容也能完整閱讀與操作。",
+    "items": [
+      "個人資料、安全性與通知偏好的分頁、輸入欄位及主要操作，在手機維持至少 44px 觸控高度。",
+      "長姓名與登入帳號不會造成水平捲軸；分頁選取、鍵盤焦點、載入與錯誤狀態也更清楚。",
+      "個人資料、密碼、登入裝置、通知偏好、API、權限與資料處理流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "個人資料、安全性與通知偏好的分頁、輸入欄位及主要操作，在手機維持至少 44px 觸控高度。",
+          "長姓名與登入帳號不會造成水平捲軸；分頁選取、鍵盤焦點、載入與錯誤狀態也更清楚。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "個人資料、密碼、登入裝置、通知偏好、API、權限與資料處理流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:account-profile-touch-controls",
+      "supersedes-pr:#2645"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-11-billing-correction-entry-gating",
     "publishedAt": "2026-09-11",
     "effectiveAt": null,

@@ -30,6 +30,7 @@ export default defineConfig({
     /product-clarity-browser\.spec\.js$/,
     /admissions-workflow-clarity\.spec\.js$/,
     /bug-reports-clarity\.spec\.js$/,
+    /profile-controls-clarity\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
