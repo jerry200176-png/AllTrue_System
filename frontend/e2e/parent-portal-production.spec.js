@@ -60,11 +60,12 @@ async function assertParentSurface(page, viewport, testInfo) {
   await expect(learningTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('目前沒有需要處理的事項。', { exact: false })).toBeVisible();
 
-  await page.getByRole('button', { name: /本週學習/ }).click();
+  const progressHub = page.locator('[data-guide="parent-progress-hub"]');
+  await progressHub.getByRole('button', { name: /本週學習/ }).click();
   await expect(learningTab).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', { name: /下次課程/ }).click();
+  await progressHub.getByRole('button', { name: /下次課程/ }).click();
   await expect(scheduleTab).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', { name: /繳費狀態/ }).click();
+  await progressHub.getByRole('button', { name: /繳費狀態/ }).click();
   await expect(billingTab).toHaveAttribute('aria-selected', 'true');
 
   await scheduleTab.click();
