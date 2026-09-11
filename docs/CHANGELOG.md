@@ -1,3 +1,9 @@
+## 2026-09-12 — improved(ux): 個人資料控制項在手機更容易操作
+<!-- release-notes: staff_update=staff-2026-09-12-account-profile-touch-controls -->
+- 個人資料、安全性與通知偏好的分頁、輸入欄位及主要操作，在手機維持至少 44px 觸控高度；長姓名與登入帳號也不會造成水平捲軸。
+- 分頁現在有清楚的選取與鍵盤焦點狀態，載入與錯誤畫面仍明確可辨識。
+- 保留既有個人資料、密碼、登入裝置、通知偏好、API、權限與資料處理流程。
+
 ## 2026-09-12 — improved(ux): 教師工作台操作在手機更容易觸及
 <!-- release-notes: staff_update=staff-2026-09-12-daily-teacher-workflow-touch-actions -->
 - 教師工作台的今日任務、本週課表、填寫評量與回報問題等操作，在手機維持至少 44px 觸控尺寸；長學生姓名與科目也不會造成水平捲軸。
