@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-11-course-unarranged-session-detail
+    published_at: "2026-09-11"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 未安排堂次的說明更清楚
+    summary: 堂次未排滿時，課程明細會說明未安排數與日期清單的範圍。
+    items:
+      - category: improved
+        text: 課程明細會清楚顯示尚有幾堂未安排，並說明下方只列已有實際日期的堂次。
+      - category: improved
+        text: 既有補排入口和權限維持不變；不建立預留堂次，也不改扣堂、帳務或到期規則。
+    source_refs:
+      - "changelog:2026-09-11:course-unarranged-session-detail"
+      - "in-app:#277"
+      - "pr:#2697"
+
   - id: staff-2026-09-10-learning-record-dialog-clarity
     published_at: "2026-09-10"
     audiences:

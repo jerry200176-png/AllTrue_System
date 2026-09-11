@@ -4,6 +4,42 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-11-course-unarranged-session-detail",
+    "publishedAt": "2026-09-11",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "未安排堂次的說明更清楚",
+    "summary": "堂次未排滿時，課程明細會說明未安排數與日期清單的範圍。",
+    "items": [
+      "課程明細會清楚顯示尚有幾堂未安排，並說明下方只列已有實際日期的堂次。",
+      "既有補排入口和權限維持不變；不建立預留堂次，也不改扣堂、帳務或到期規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程明細會清楚顯示尚有幾堂未安排，並說明下方只列已有實際日期的堂次。",
+          "既有補排入口和權限維持不變；不建立預留堂次，也不改扣堂、帳務或到期規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-11:course-unarranged-session-detail",
+      "in-app:#277",
+      "pr:#2697"
+    ],
+    "date": "2026-09-11",
+    "version": "2026.09.11"
+  },
+  {
     "id": "staff-2026-09-10-substitute-restore-clears-schedules",
     "publishedAt": "2026-09-10",
     "effectiveAt": null,

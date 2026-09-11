@@ -2971,3 +2971,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 - 修正公開問班入口在 feature flag 關閉時誤渲染主任工作佇列的條件分支，standalone 與 staff surface 現在互斥。
 - 科目數統計的計算說明改為預設收合，趨勢與明細先呈現；課程查找在共用方案科目狀態不一致時補充分列說明，仍以各科既有帳務狀態與帳務中心為準。
 - 僅調整前端呈現與可及性，不改 API、權限、付款資料、排課規則或 production 狀態；未引入新的 OSS UI 套件。
+## 2026-09-11 — improved(course): 未安排堂次的日期清單說明
+<!-- release-notes: staff_update=staff-2026-09-11-course-unarranged-session-detail -->
+- 堂數制課程在購買堂數尚未全部排定時，會清楚顯示「尚有 N 堂未安排」，並說明下方日期清單只列已實際排定的堂次。
+- 保留既有排課入口與權限判定；不建立逐堂 placeholder 或 ClassSession，也不改排課、扣堂、帳務、到期或合約規則。
