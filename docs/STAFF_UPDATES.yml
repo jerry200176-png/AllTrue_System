@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-page-header-mobile-actions
+    published_at: "2026-09-12"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 手機頁首操作更容易點選
+    summary: 頁首按鈕有足夠觸控高度，長標題與操作文字也會正常換行。
+    items:
+      - category: improved
+        text: 手機與平板的頁首操作按鈕維持至少 44px 高度，使用觸控或鍵盤都更容易操作。
+      - category: improved
+        text: 長中文標題與按鈕文字會自然換行，不會把頁面撐出水平捲軸。
+      - category: fixed
+        text: 導頁、權限、API 與既有業務資料流程維持不變。
+    source_refs:
+      - "changelog:2026-09-12:page-header-mobile-actions"
+      - "supersedes-pr:#2641"
+
   - id: staff-2026-09-12-course-balance-evidence
     published_at: "2026-09-12"
     audiences:

@@ -4,6 +4,48 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-12-page-header-mobile-actions",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "手機頁首操作更容易點選",
+    "summary": "頁首按鈕有足夠觸控高度，長標題與操作文字也會正常換行。",
+    "items": [
+      "手機與平板的頁首操作按鈕維持至少 44px 高度，使用觸控或鍵盤都更容易操作。",
+      "長中文標題與按鈕文字會自然換行，不會把頁面撐出水平捲軸。",
+      "導頁、權限、API 與既有業務資料流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "手機與平板的頁首操作按鈕維持至少 44px 高度，使用觸控或鍵盤都更容易操作。",
+          "長中文標題與按鈕文字會自然換行，不會把頁面撐出水平捲軸。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "導頁、權限、API 與既有業務資料流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:page-header-mobile-actions",
+      "supersedes-pr:#2641"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-learning-save-response-confirmation",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
