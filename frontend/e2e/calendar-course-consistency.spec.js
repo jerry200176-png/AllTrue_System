@@ -403,10 +403,14 @@ test.describe('production acceptance — calendar/course parity', () => {
     expect(switchedPeriod.rawDenominator).not.toBe(switchedCampus.rawDenominator);
   });
 
-  test('director: 課程付款狀態不是按鈕且帳務入口清楚', async ({ page }) => {
+  for (const viewport of [
+    { name: 'desktop', width: 1440, height: 900 },
+    { name: 'mobile', width: 390, height: 844 },
+  ]) {
+    test(`director ${viewport.name}: 課程付款狀態與帳務入口分開且可操作`, async ({ page }) => {
     test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
       'missing controlled production director session');
-    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.addInitScript(({ session, branch, releaseVersion }) => {
       localStorage.setItem('alltrue_session', JSON.stringify(session));
       localStorage.setItem('app_branch', String(branch));
@@ -418,13 +422,21 @@ test.describe('production acceptance — calendar/course parity', () => {
     await navigate(page, COURSE_NAV_LABEL);
     await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
 
-    const status = page.locator('.payment-status-badge').first();
+    const paymentCell = page.locator('.payment-status-and-action').filter({
+      has: page.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true }),
+    }).first();
+    await expect(paymentCell).toBeVisible({ timeout: 15_000 });
+    const status = paymentCell.locator('.payment-status-badge');
+    const action = paymentCell.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true });
     await expect(status).toBeVisible({ timeout: 15_000 });
     await expect(status).toHaveAttribute('role', 'status');
     await expect(status).toHaveCSS('cursor', 'default');
     await expect(page.locator('.btn-status')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true }).first()).toBeVisible();
+    await expect(action).toBeVisible();
+    await action.click();
+    await expect(page.getByRole('heading', { name: '帳務中心', exact: true })).toBeVisible({ timeout: 15_000 });
   });
+  }
 
   for (const viewport of [
     { name: 'desktop', width: 1440, height: 900 },
