@@ -104,6 +104,7 @@
   --ds-control-height-sm: 28px;
   --ds-control-height-md: 32px;
   --ds-control-height-lg: 36px;
+  --ds-control-height-touch: 44px;
   --ds-border-width: 1px;
 
   --ds-surface-0: var(--ds-canvas-soft);

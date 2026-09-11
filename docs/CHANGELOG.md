@@ -1,3 +1,8 @@
+## 2026-09-12 — improved(ux): 手機頁首操作更容易點選
+<!-- release-notes: staff_update=staff-2026-09-12-page-header-mobile-actions -->
+- 共用頁首的操作按鈕在手機與平板維持至少 44px 觸控高度，長中文標題與按鈕文字會自然換行，不會把頁面撐出水平捲軸。
+- 桌面版維持原本排列與鍵盤焦點；不修改導頁、權限、API 或任何業務資料。
+
 ## 2026-09-12 — fix(ops): 已上完課程不再誤列已付未排
 <!-- release-notes: staff_update=staff-2026-09-12-course-balance-evidence -->
 - 營運信任中心現在會用既有出席與扣堂證據辨識已用完的按堂課程，不再因原始剩餘堂數漂移而誤列「已付還沒排進未來課表」Critical。
