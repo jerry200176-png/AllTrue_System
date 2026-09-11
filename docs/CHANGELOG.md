@@ -1,5 +1,5 @@
 ## 2026-09-12 — improved(ux): 教師工作台操作在手機更容易觸及
-<!-- release-notes: staff_update=staff-2026-09-12-teacher-workflow-touch-actions -->
+<!-- release-notes: staff_update=staff-2026-09-12-daily-teacher-workflow-touch-actions -->
 - 教師工作台的今日任務、本週課表、填寫評量與回報問題等操作，在手機維持至少 44px 觸控尺寸；長學生姓名與科目也不會造成水平捲軸。
 - 今日任務的主要與次要操作改用既有共用按鈕樣式，載入中、空白與錯誤狀態仍清楚可辨識。
 - 保留所有既有任務排序、導頁、API、權限、點名、評量與課表資料流程。

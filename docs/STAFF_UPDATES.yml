@@ -3,7 +3,7 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-09-12-teacher-workflow-touch-actions
+  - id: staff-2026-09-12-daily-teacher-workflow-touch-actions
     published_at: "2026-09-12"
     audiences:
       - teacher
