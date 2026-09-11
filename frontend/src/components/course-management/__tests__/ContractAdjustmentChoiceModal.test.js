@@ -6,7 +6,7 @@ import ContractAmendmentModal from '../ContractAmendmentModal.vue';
 describe('ContractAdjustmentChoiceModal', () => {
   it('explains the independent adjustment workflows without exposing their APIs', () => {
     const wrapper = mount(ContractAdjustmentChoiceModal, {
-      props: { show: true, studentName: '測試學生', subject: 'math' },
+      props: { show: true, studentName: '測試學生', subject: 'math', paymentStatus: 'unpaid' },
     });
 
     expect(wrapper.text()).toContain('未付款，堂數改少');
@@ -18,9 +18,27 @@ describe('ContractAdjustmentChoiceModal', () => {
     expect(wrapper.text()).not.toContain('transfer-sessions');
   });
 
+  it.each(['paid', 'partial', 'pending_report', ''])('blocks billing correction for %s payment state', async (paymentStatus) => {
+    const wrapper = mount(ContractAdjustmentChoiceModal, {
+      props: { show: true, paymentStatus, billingAvailable: true },
+    });
+    const billing = wrapper.findAll('.choice-card')[0];
+    expect(billing.attributes('disabled')).toBeDefined();
+    await billing.trigger('click');
+    expect(wrapper.emitted('choose')).toBeUndefined();
+  });
+
+  it('fails closed when tutoring or anomaly policy marks billing unavailable', async () => {
+    const wrapper = mount(ContractAdjustmentChoiceModal, {
+      props: { show: true, paymentStatus: 'unpaid', billingAvailable: false },
+    });
+    expect(wrapper.findAll('.choice-card')[0].attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).toContain('不適用未付款堂數更正');
+  });
+
   it('routes each choice to the existing workflow', async () => {
     const wrapper = mount(ContractAdjustmentChoiceModal, {
-      props: { show: true, studentName: '測試學生', subject: 'math' },
+      props: { show: true, studentName: '測試學生', subject: 'math', paymentStatus: 'unpaid' },
     });
     const choices = wrapper.findAll('.choice-card');
 

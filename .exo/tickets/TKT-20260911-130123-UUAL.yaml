@@ -1,0 +1,38 @@
+id: TKT-20260911-130123-UUAL
+title: Apply js-yaml 4.3.2 security remediation
+intent: Apply js-yaml 4.3.2 security remediation
+kind: task
+parent_id: INT-20260911-130111-3H0X
+boundary: Only replace vulnerable js-yaml package-lock resolution; no application
+  or policy changes.
+success_condition: Patched js-yaml lockfile verifies with npm audit and frontend build.
+priority: 1
+labels:
+- security
+scope:
+  allow:
+  - frontend/package-lock.json
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 200
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-11T13:01:23+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
