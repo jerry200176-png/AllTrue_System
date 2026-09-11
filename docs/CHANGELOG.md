@@ -1,3 +1,9 @@
+## 2026-09-12 — improved(feedback): 意見與建議在手機與桌面更容易操作
+<!-- release-notes: staff_update=staff-2026-09-12-bug-reports-responsive-clarity -->
+- 意見與建議的頁籤、狀態篩選、載入、空白與錯誤畫面改用一致元件，手機與桌面都能更快辨識目前狀態與下一步。
+- 篩選、分頁與重試等操作維持至少 44px 觸控高度；長中文內容會自然換行，詳情關閉按鈕也有明確名稱。
+- 不變更回報內容、附件、API、處理狀態、權限或任何後端資料。
+
 ## 2026-09-12 — fix(learning): 已儲存的評量不再誤顯示無法確認
 <!-- release-notes: staff_update=staff-2026-09-12-learning-save-response-confirmation -->
 - 評量儲存成功後，畫面現在會正確辨識伺服器回傳的學生資料，不再把已寫入的紀錄誤判成「無法確認儲存結果」。

@@ -8,38 +8,41 @@
     />
 
     <div v-if="branchId == null" class="card empty-card">
-      請先選擇分校後再查看意見與建議。
+      <AtEmpty
+        icon="rate_review"
+        title="請先選擇分校"
+        description="選擇分校後，這裡會顯示意見與建議及處理進度。"
+      />
     </div>
 
     <template v-else>
 
       <!-- Super Admin: 頁面層級 Tab（意見與建議 / 家長回饋）-->
       <div v-if="isSuperAdmin" class="bugs-page-tabs" role="tablist" aria-label="意見與建議與家長回饋">
-        <button
+        <AtButton
           id="bugs-tab"
-          type="button"
+          shape="rect"
+          :variant="pageTab === 'bugs' ? 'secondary' : 'ghost'"
           role="tab"
           aria-controls="bugs-panel"
-          :aria-selected="pageTab === 'bugs'"
-          :class="['bugs-page-tab', { active: pageTab === 'bugs' }]"
+          :aria-selected="pageTab === 'bugs' ? 'true' : 'false'"
+          class="bugs-page-tab"
+          icon="rate_review"
           @click="pageTab = 'bugs'"
-        >
-          <span class="material-symbols-outlined">rate_review</span>
-          意見與建議
-        </button>
-        <button
+        >意見與建議</AtButton>
+        <AtButton
           id="feedback-tab"
-          type="button"
+          shape="rect"
+          :variant="pageTab === 'feedback' ? 'secondary' : 'ghost'"
           role="tab"
           aria-controls="feedback-panel"
-          :aria-selected="pageTab === 'feedback'"
-          :class="['bugs-page-tab', { active: pageTab === 'feedback' }]"
+          :aria-selected="pageTab === 'feedback' ? 'true' : 'false'"
+          class="bugs-page-tab"
+          icon="chat"
           @click="switchToFeedbackTab"
-        >
-          <span class="material-symbols-outlined">chat</span>
-          家長回饋
+        >家長回饋
           <span v-if="pfUnreadCount > 0" class="bugs-page-tab-badge">{{ pfUnreadCount }}</span>
-        </button>
+        </AtButton>
       </div>
 
       <!-- ═══ 家長回饋 Tab（super_admin only）═══ -->
@@ -64,15 +67,15 @@
         </div>
 
         <!-- Loading -->
-        <div v-if="pfLoading" class="pf-loading">
-          <div class="pp-spinner-inline"></div> 載入中…
-        </div>
+        <AtSkeleton v-if="pfLoading" :rows="4" />
 
         <!-- Empty -->
-        <div v-else-if="!pfList.length" class="pf-empty">
-          <span class="material-symbols-outlined">mark_chat_read</span>
-          <p>目前無家長回饋</p>
-        </div>
+        <AtEmpty
+          v-else-if="!pfList.length"
+          icon="mark_chat_read"
+          title="目前沒有家長回饋"
+          description="收到家長回饋後，會在這裡顯示。"
+        />
 
         <!-- 列表 -->
         <div v-else class="pf-list">
@@ -95,10 +98,7 @@
             <div class="pf-content">{{ fb.content }}</div>
             <!-- 動作 -->
             <div class="pf-actions">
-              <button v-if="!fb.is_read" class="pf-btn-read" @click="markRead(fb)">
-                <span class="material-symbols-outlined">done_all</span>
-                標記已讀
-              </button>
+              <AtButton v-if="!fb.is_read" shape="rect" size="md" variant="ghost" icon="done_all" @click="markRead(fb)">標記已讀</AtButton>
               <span v-else class="pf-read-label">
                 <span class="material-symbols-outlined">check_circle</span>
                 已處理
@@ -109,9 +109,9 @@
 
         <!-- 分頁 -->
         <div v-if="pfLastPage > 1" class="pf-pagination">
-          <button :disabled="pfPage <= 1" @click="loadFeedback(pfPage - 1)" class="pf-page-btn">‹</button>
+          <AtButton shape="rect" size="md" variant="ghost" icon="chevron_left" aria-label="上一頁" :disabled="pfPage <= 1" @click="loadFeedback(pfPage - 1)" />
           <span>{{ pfPage }} / {{ pfLastPage }}</span>
-          <button :disabled="pfPage >= pfLastPage" @click="loadFeedback(pfPage + 1)" class="pf-page-btn">›</button>
+          <AtButton shape="rect" size="md" variant="ghost" icon="chevron_right" aria-label="下一頁" :disabled="pfPage >= pfLastPage" @click="loadFeedback(pfPage + 1)" />
         </div>
       </div>
 
@@ -129,38 +129,18 @@
         <div class="quick-tabs" role="group" aria-label="意見與建議狀態篩選">
           <!-- Super admin tabs: 待處理 first (their default action queue) -->
           <template v-if="isSuperAdmin">
-            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'pending'" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
-              <span class="material-symbols-outlined tab-icon">pending_actions</span>
-              待處理
-            </button>
-            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'all'" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
-              <span class="material-symbols-outlined tab-icon">list</span>
-              全部
-            </button>
-            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'closed'" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
-              <span class="material-symbols-outlined tab-icon">check_circle</span>
-              已關閉
-            </button>
+            <AtButton shape="rect" size="md" :variant="quickFilter === 'pending' ? 'secondary' : 'ghost'" class="quick-tab" :aria-pressed="quickFilter === 'pending' ? 'true' : 'false'" icon="pending_actions" @click="setQuickFilter('pending')">待處理</AtButton>
+            <AtButton shape="rect" size="md" :variant="quickFilter === 'all' ? 'secondary' : 'ghost'" class="quick-tab" :aria-pressed="quickFilter === 'all' ? 'true' : 'false'" icon="list" @click="setQuickFilter('all')">全部</AtButton>
+            <AtButton shape="rect" size="md" :variant="quickFilter === 'closed' ? 'secondary' : 'ghost'" class="quick-tab" :aria-pressed="quickFilter === 'closed' ? 'true' : 'false'" icon="check_circle" @click="setQuickFilter('closed')">已關閉</AtButton>
           </template>
           <!-- Reporter tabs: 全部 first (see all progress), then filtering by status -->
           <template v-else>
-            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'all'" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
-              <span class="material-symbols-outlined tab-icon">list</span>
-              全部
+            <AtButton shape="rect" size="md" :variant="quickFilter === 'all' ? 'secondary' : 'ghost'" class="quick-tab" :aria-pressed="quickFilter === 'all' ? 'true' : 'false'" icon="list" @click="setQuickFilter('all')">全部
               <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount }}</span>
-            </button>
-            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'pending'" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
-              <span class="material-symbols-outlined tab-icon">pending_actions</span>
-              處理中
-            </button>
-            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'resolved'" :class="{ active: quickFilter === 'resolved' }" @click="setQuickFilter('resolved')">
-              <span class="material-symbols-outlined tab-icon">task_alt</span>
-              已解決
-            </button>
-            <button type="button" class="quick-tab" :aria-pressed="quickFilter === 'closed'" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
-              <span class="material-symbols-outlined tab-icon">check_circle</span>
-              已關閉
-            </button>
+            </AtButton>
+            <AtButton shape="rect" size="md" :variant="quickFilter === 'pending' ? 'secondary' : 'ghost'" class="quick-tab" :aria-pressed="quickFilter === 'pending' ? 'true' : 'false'" icon="pending_actions" @click="setQuickFilter('pending')">處理中</AtButton>
+            <AtButton shape="rect" size="md" :variant="quickFilter === 'resolved' ? 'secondary' : 'ghost'" class="quick-tab" :aria-pressed="quickFilter === 'resolved' ? 'true' : 'false'" icon="task_alt" @click="setQuickFilter('resolved')">已解決</AtButton>
+            <AtButton shape="rect" size="md" :variant="quickFilter === 'closed' ? 'secondary' : 'ghost'" class="quick-tab" :aria-pressed="quickFilter === 'closed' ? 'true' : 'false'" icon="check_circle" @click="setQuickFilter('closed')">已關閉</AtButton>
           </template>
         </div>
       </div>
@@ -261,17 +241,19 @@
 
       <!-- 意見與建議列表（只在主要頁籤顯示）-->
       <div v-if="!isSuperAdmin || pageTab === 'bugs'" class="card" data-guide="bugs-list" ref="listCardRef">
-        <div v-if="listError" class="att-msg error bugs-error-banner" style="margin-bottom:12px">
-          {{ listError }}
-          <button type="button" class="btn-sm btn-ghost" style="margin-left:8px" @click="loadBugs">重試</button>
-        </div>
-        <div v-if="loading" class="loading-box">載入中…</div>
-        <div v-else-if="!listError && bugs.length === 0" class="empty-box">
-          <span class="material-symbols-outlined empty-icon">check_circle</span>
-          <p v-if="hasActiveFilters">沒有符合篩選條件的意見與建議</p>
-          <p v-else>目前沒有意見與建議</p>
-          <button v-if="hasActiveFilters" class="btn-sm btn-ghost" @click="clearAllFilters">清除篩選</button>
-        </div>
+        <AtInlineAlert v-if="listError" tone="danger" title="無法載入意見與建議">
+          <p>{{ listError }}</p>
+          <template #action><AtButton shape="rect" size="md" variant="ghost" @click="loadBugs">重試</AtButton></template>
+        </AtInlineAlert>
+        <AtSkeleton v-else-if="loading" :rows="5" />
+        <AtEmpty
+          v-else-if="!listError && bugs.length === 0"
+          icon="check_circle"
+          :title="hasActiveFilters ? '沒有符合篩選條件的意見與建議' : '目前沒有意見與建議'"
+          :description="hasActiveFilters ? '請調整篩選條件，或清除篩選查看全部回報。' : '新的意見與建議會顯示在這裡。'"
+        >
+          <template v-if="hasActiveFilters" #action><AtButton shape="rect" size="md" variant="ghost" @click="clearAllFilters">清除篩選</AtButton></template>
+        </AtEmpty>
         <template v-else>
           <div class="list-summary">
             共 {{ total }} 筆，第 {{ currentPage }}/{{ lastPage }} 頁
@@ -341,7 +323,7 @@
       <div v-if="activeBug" ref="detailCardEl" class="card detail-card">
         <div class="detail-header">
           <h3 ref="detailTitleEl" tabindex="-1">{{ detail?.title || activeBug.title }}</h3>
-          <button class="btn-close-detail" @click="closeDetail">
+          <button type="button" class="btn-close-detail" aria-label="關閉意見與建議詳情" title="關閉意見與建議詳情" @click="closeDetail">
             <span class="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -351,11 +333,11 @@
           <button type="button" class="btn-sm btn-ghost" @click="actionFeedback = null">關閉</button>
         </div>
 
-        <div v-if="loadingDetail" class="loading-box">載入詳情...</div>
-        <div v-else-if="detailError" class="att-msg error bugs-error-banner" style="margin-bottom:12px">
-          {{ detailError }}
-          <button type="button" class="btn-sm btn-ghost" style="margin-left:8px" @click="selectBug(activeBug)">重試</button>
-        </div>
+        <AtSkeleton v-if="loadingDetail" :rows="5" />
+        <AtInlineAlert v-else-if="detailError" tone="danger" title="無法載入意見與建議詳情">
+          <p>{{ detailError }}</p>
+          <template #action><AtButton shape="rect" size="md" variant="ghost" @click="selectBug(activeBug)">重試</AtButton></template>
+        </AtInlineAlert>
         <template v-else-if="detail">
           <!-- Resolved: reporter sees verification prompt; others see read-only banner -->
           <div v-if="detail.status === 'resolved' && isReporter" class="verify-prompt">
@@ -507,6 +489,10 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtButton from '../components/design-system/AtButton.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import {
   fetchBugReports, fetchBugDetail, addBugComment,
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
@@ -988,21 +974,19 @@ function formatDate(iso) {
 
 <style scoped>
 .bugs-page { padding-bottom: 24px; }
+.bugs-page :deep(.at-btn) { min-height: 44px; }
+.bugs-page button,
+.bugs-page select,
+.bugs-page input:not([type="checkbox"]),
+.bugs-page textarea { min-height: 44px; }
 
 /* ═══ 頁面 Tab Bar（Bug 回報 / 家長回饋）═══ */
 .bugs-page-tabs {
-  display: flex; gap: 0; background: var(--ds-canvas); border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.07); overflow: hidden; margin-bottom: 12px;
+  display: flex; gap: var(--ds-space-2); margin: 0 16px 12px;
 }
 .bugs-page-tab {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  gap: 6px; padding: 11px 16px; background: none; border: none;
-  cursor: pointer; font-size: 0.88em; color: var(--ds-ink-mute);
-  transition: color .2s, background .2s; position: relative; font-weight: 500;
+  flex: 1; min-width: 0; font-size: var(--ds-font-size-md);
 }
-.bugs-page-tab .material-symbols-outlined { font-size: 18px; }
-.bugs-page-tab.active { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); font-weight: 700; }
-.bugs-page-tab:not(.active):hover { background: var(--ds-canvas-soft); }
 .bugs-page-tab-badge {
   background: var(--ds-danger); color: var(--ds-canvas); border-radius: 10px;
   font-size: 0.72em; padding: 1px 6px; font-weight: 700; min-width: 18px; text-align: center;
@@ -1010,10 +994,10 @@ function formatDate(iso) {
 
 /* ═══ 家長回饋 Admin 列表 ═══ */
 .pf-admin-card { padding: 16px; }
-.pf-filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.pf-filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .pf-select {
   border: 1px solid var(--ds-canvas-soft); border-radius: 8px; padding: 7px 12px;
-  font-size: 0.88em; outline: none; background: var(--ds-canvas);
+  font-size: 0.88em; outline: none; background: var(--ds-canvas); min-height: 44px;
 }
 .pf-total { font-size: 0.82em; color: var(--ds-ink-mute); margin-left: auto; }
 .pf-loading { display: flex; align-items: center; gap: 8px; color: var(--ds-ink-mute); padding: 20px 0; }
@@ -1068,16 +1052,7 @@ function formatDate(iso) {
 /* Quick filter tabs */
 .quick-filter-card { padding: 8px 16px; }
 .quick-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-.quick-tab {
-  display: flex; align-items: center; gap: 4px;
-  padding: 8px 16px; border: none; border-radius: 8px;
-  background: transparent; color: var(--text-light);
-  font-size: 13px; font-weight: 500; cursor: pointer;
-  transition: all 0.15s; position: relative;
-}
-.quick-tab:hover { background: var(--primary-bg); color: var(--text); }
-.quick-tab.active { background: var(--primary); color: var(--ds-canvas); }
-.tab-icon { font-size: 18px; }
+.quick-tab { flex: 0 1 auto; position: relative; }
 
 /* Unread badge on "全部" tab */
 .unread-badge {
@@ -1107,7 +1082,7 @@ function formatDate(iso) {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 36px;
+  min-height: 44px;
   padding: 0 10px;
   background: var(--input-bg, var(--ds-canvas));
   border: 1.5px solid var(--border);
@@ -1188,7 +1163,7 @@ function formatDate(iso) {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 36px;
+  min-height: 44px;
   padding: 0 10px;
   background: var(--input-bg, var(--ds-canvas));
   border: 1.5px solid var(--border);
