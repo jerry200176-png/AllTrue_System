@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.11",
     "date": "2026-09-11",
     "title": "2026.09.11 草稿（未發布）",
-    "summary": "未付款堂數更正只在安全條件下開放；未安排堂次的日期清單說明",
+    "summary": "未付款堂數更正只在安全條件下開放；課程繳費下一步更容易辨識",
     "audience": [
       "teacher",
       "director"
@@ -24,12 +24,14 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "課程繳費下一步更容易辨識",
           "未安排堂次的日期清單說明"
         ]
       }
     ],
     "items": [
       "未付款堂數更正只在安全條件下開放",
+      "課程繳費下一步更容易辨識",
       "未安排堂次的日期清單說明"
     ]
   },

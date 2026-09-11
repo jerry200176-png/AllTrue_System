@@ -1,3 +1,8 @@
+## 2026-09-11 — improved(ux): 課程繳費下一步更容易辨識
+<!-- release-notes: staff_update=staff-2026-09-11-course-payment-action-hierarchy -->
+- 課程管理的繳費欄位現在會把目前狀態與下一步動作分開排列，讓「登記繳費回報」、「查看待對帳」或「前往帳務中心」更容易辨識與點選。
+- 保留原有按鈕名稱、帳務中心導頁、權限與所有帳務規則；本次不新增或改變任何繳費、扣堂、帳單或收據資料。
+
 ## 2026-09-10 — improved(parent): 出缺勤紀錄更容易閱讀
 <!-- release-notes: silent_ship=silent-2026-09-10-parent-attendance-clarity -->
 - 家長入口的「出缺勤紀錄」現在有清楚的區塊語意、可見的鍵盤焦點與一致的「顯示更多」觸控尺寸；長課程與老師名稱在手機上也會正常換行。
