@@ -106,6 +106,48 @@ export const staffUpdates = [
     "version": "2026.09.11"
   },
   {
+    "id": "staff-2026-09-11-after-class-confirmed-save",
+    "publishedAt": "2026-09-11",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課後儲存失敗可接續填寫",
+    "summary": "送出後會確認儲存結果；失敗時保留原堂內容，返回後可接續填寫。",
+    "items": [
+      "儲存失敗或無法確認時不會標記完成；請依提示重新查詢或重試，避免重複提交。",
+      "同帳號、分校與堂次的評量可接續草稿；未綁定堂次時請留在原視窗。",
+      "完成儲存後回到教學工作台即可查看最新待辦；儲存成功不代表主任已核准。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "儲存失敗或無法確認時不會標記完成；請依提示重新查詢或重試，避免重複提交。",
+          "同帳號、分校與堂次的評量可接續草稿；未綁定堂次時請留在原視窗。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "完成儲存後回到教學工作台即可查看最新待辦；儲存成功不代表主任已核准。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-11:after-class-confirmed-save",
+      "pr:#2719"
+    ],
+    "date": "2026-09-11",
+    "version": "2026.09.11"
+  },
+  {
     "id": "staff-2026-09-10-substitute-restore-clears-schedules",
     "publishedAt": "2026-09-10",
     "effectiveAt": null,

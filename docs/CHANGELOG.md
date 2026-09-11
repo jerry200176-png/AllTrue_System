@@ -1,8 +1,8 @@
 ## 2026-09-11 — fix(learning): 課後儲存確認與失敗輸入保留
-<!-- release-notes: silent_ship=silent-2026-09-11-after-class-save-verification -->
+<!-- release-notes: staff_update=staff-2026-09-11-after-class-confirmed-save -->
 - 課後評量只有在伺服器回傳相符的紀錄後才結束儲存；錯誤、衝突或無法確認的回應保留輸入，不以送出請求代表完成。
 - 沿用現有草稿機制補強帳號、分校及堂次隔離；快速跨頁返回可繼續原堂次內容，不新增持久化儲存服務。
-- 不變更核准、扣堂、課程合約或權限政策。正式站驗證後才發布教職員版本更新。
+- 不變更核准、扣堂、課程合約或權限政策。已於正式站驗證後發布教職員版本更新。
 
 ## 2026-09-11 — improved(ux): 課程繳費下一步更容易辨識
 <!-- release-notes: staff_update=staff-2026-09-11-course-payment-action-hierarchy -->
