@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { notesForRole, parentReleaseNoteTeaser } from '../src/lib/releaseNotes.js';
 
 /**
  * Authenticated production smoke for the isolated TEST Parent Portal fixture.
@@ -39,13 +40,17 @@ async function assertParentSurface(page, viewport, testInfo) {
   await expect(page.getByText('回家要做什麼', { exact: true })).toBeVisible();
   await expect(page.getByText('下一步／目前待辦', { exact: true })).toBeVisible();
   const parentUpdate = page.locator('.pp-parent-update__btn');
+  const expectedParentUpdate = notesForRole('parent')[0];
+  expect(expectedParentUpdate, 'current parent update source').toBeTruthy();
   await expect(parentUpdate).toBeVisible();
-  const parentUpdateTeaser = await parentUpdate.locator('.pp-parent-update__t').innerText();
-  expect(parentUpdateTeaser.trim(), 'current parent update teaser').not.toBe('');
+  await expect(parentUpdate.locator('.pp-parent-update__meta')).toContainText(expectedParentUpdate.version);
+  await expect(parentUpdate.locator('.pp-parent-update__t')).toHaveText(parentReleaseNoteTeaser(expectedParentUpdate));
   await parentUpdate.click();
   const releaseDetail = page.locator('.pp-release-detail');
   await expect(releaseDetail).toBeVisible();
-  await expect(releaseDetail).toContainText(parentUpdateTeaser.trim());
+  await expect(releaseDetail.locator('.pp-release-detail-head strong')).toHaveText(expectedParentUpdate.title);
+  await expect(releaseDetail.locator('.pp-release-detail-summary')).toHaveText(expectedParentUpdate.summary);
+  await expect(releaseDetail.locator('.pp-release-detail-body')).toHaveText(expectedParentUpdate.details);
   await page.getByRole('button', { name: '關閉', exact: true }).click();
   await expect(releaseDetail).toBeHidden();
 
