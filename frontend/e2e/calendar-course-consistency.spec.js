@@ -425,4 +425,66 @@ test.describe('production acceptance — calendar/course parity', () => {
     await expect(page.locator('.btn-status')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true }).first()).toBeVisible();
   });
+
+  for (const viewport of [
+    { name: 'desktop', width: 1440, height: 900 },
+    { name: 'mobile', width: 390, height: 844 },
+  ]) {
+    test(`director ${viewport.name}: contracted four-session detail explains two unarranged sessions`, async ({ page, request }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const token = SESSION.access_token;
+      const coursesPayload = await getJson(
+        request,
+        `/api/v1/student-classes?branch_id=${BRANCH_ID}&per_page=2000`,
+        token,
+      );
+      const matches = listFromPayload(coursesPayload).filter((course) => (
+        Number(valueOf(course, 'SessionCount', 'session_count', 'sessions_purchased')) === 4
+        && Number(valueOf(course, 'UsedSessions', 'used_sessions')) === 2
+        && Number(valueOf(course, 'RemainingSessions', 'remaining_sessions')) === 2
+      ));
+      expect(matches, 'the reported 4 purchased / 2 attended / 2 unarranged course must be unique').toHaveLength(1);
+      const target = matches[0];
+      const studentName = String(valueOf(target, 'student_name') || target?.student?.name || '').trim();
+      const subjectName = String(valueOf(target, 'subject_name', 'subject') || '').trim();
+      expect(studentName).not.toBe('');
+      expect(subjectName).not.toBe('');
+
+      await page.addInitScript(({ session, branch, releaseVersion }) => {
+        localStorage.setItem('alltrue_session', JSON.stringify(session));
+        localStorage.setItem('app_branch', String(branch));
+        localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
+        sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
+      }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+      await page.goto('/');
+      await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+      await navigate(page, COURSE_NAV_LABEL);
+
+      const studentFilter = page.locator('#course-filter-student');
+      await studentFilter.fill(studentName);
+      await expect(page.locator('.course-list-skeleton')).toHaveCount(0, { timeout: 20_000 });
+      const group = page.locator('.student-group-card').filter({ hasText: studentName }).first();
+      await expect(group).toBeVisible({ timeout: 20_000 });
+      const toggle = group.locator('.student-group-toggle');
+      if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+      const row = group.locator('tr.course-row').filter({ hasText: subjectName }).first();
+      await expect(row).toBeVisible({ timeout: 15_000 });
+      await row.getByRole('button', { name: '詳情', exact: true }).click();
+
+      const detail = group.locator('.detail-panel').first();
+      const planning = detail.locator('.drift-hint-info');
+      await expect(planning).toBeVisible({ timeout: 15_000 });
+      await expect(planning).toContainText('已排 2／購買 4 堂，尚有 2 堂未安排');
+      await expect(planning).toContainText('下方日期清單只列已實際排定的堂次');
+      await expect(detail.locator('.dates-panel-title')).toContainText('已上 2／購買 4 堂');
+      await expect(row.getByRole('button', { name: '排課', exact: true })).toBeEnabled();
+
+      if (viewport.name === 'mobile') {
+        const isClipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
+        expect(isClipped, 'the unarranged-session explanation must wrap rather than clip on mobile').toBeFalsy();
+        await row.getByRole('button', { name: /更多/ }).click();
+        await expect(group.getByRole('menuitem', { name: /補課 \/ 補登/ })).toBeEnabled();
+      }
+    });
+  }
 });
