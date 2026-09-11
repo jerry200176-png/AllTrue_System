@@ -903,6 +903,8 @@
       :show="showContractAdjustmentModal"
       :student-name="contractAdjustmentCourse?.student_name || ''"
       :subject="contractAdjustmentCourse?.subject_name || contractAdjustmentCourse?.subject || ''"
+      :payment-status="contractAdjustmentCourse?.payment_status || ''"
+      :billing-available="isBillingCorrectionStructureEligible(contractAdjustmentCourse)"
       @close="showContractAdjustmentModal = false"
       @choose="chooseContractAdjustment"
     />
@@ -2276,8 +2278,16 @@ function openBillingCorrectionModal(course) {
   showBillingCorrectionModal.value = true;
 }
 
+function isBillingCorrectionStructureEligible(course) {
+  return Boolean(course)
+    && isSessionMode(course)
+    && !course?.PackageID
+    && !isTutoringCourse(course)
+    && !isTutoringBillingAnomaly(course);
+}
+
 function isUnpaidCountCourse(course) {
-  return isSessionMode(course) && !course?.PackageID && course?.payment_status !== 'paid';
+  return isBillingCorrectionStructureEligible(course) && course?.payment_status === 'unpaid';
 }
 
 function usageBalanceWarningTitle(course) {
@@ -2299,7 +2309,11 @@ function chooseContractAdjustment(action) {
   const course = contractAdjustmentCourse.value;
   showContractAdjustmentModal.value = false;
   if (!course) return;
-  if (action === 'billing') openBillingCorrectionModal(course);
+  if (action === 'billing') {
+    if (!isUnpaidCountCourse(course)) return;
+    openBillingCorrectionModal(course);
+    return;
+  }
   if (action === 'transfer') openTransferSessionsModal(course);
   if (action === 'amendment') openContractAmendmentModal(course);
 }
