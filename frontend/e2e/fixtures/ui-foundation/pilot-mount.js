@@ -45,6 +45,7 @@ const pageModules = {
   parent: () => import('../../../src/pages/ParentPortal.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
+  'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -110,6 +111,9 @@ createApp({
         token: 'e2e-foundation-token',
         initialTab: mode === 'security' ? 'security' : 'profile',
       });
+    }
+    if (page === 'question-bank') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     if (page === 'admissions') {
       const searchParams = new URLSearchParams(window.location.search);

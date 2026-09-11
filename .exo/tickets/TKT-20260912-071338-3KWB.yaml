@@ -1,0 +1,56 @@
+id: TKT-20260912-071338-3KWB
+title: 'Integrate responsive Question Bank controls from draft PR #2647'
+intent: 'Integrate responsive Question Bank controls from draft PR #2647'
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: Frontend Question Bank presentation, accessibility, responsiveness, and
+  regression coverage only. Preserve question-bank API, authentication, authorization,
+  review/approval/retire transitions, import semantics, persistence, billing, and
+  production-data behavior; deploy only through the committed workflow.
+success_condition: Question Bank forms, bank selection, item actions, loading/empty/error
+  states, import control, and version dialog remain readable, operable, and at least
+  44px touch-safe across 390, 412, 768, 1280, and 1440 widths; focused and full frontend
+  gates pass; replacement PR merges and exact-SHA production activation is verified.
+priority: 1
+labels:
+- integration
+- ux
+- accessibility
+scope:
+  allow:
+  - frontend/src/pages/QuestionBankPage.vue
+  - frontend/e2e/question-bank-clarity.spec.js
+  - frontend/e2e/fixtures/ui-foundation/pilot-mount.js
+  - frontend/playwright.ui-foundation.config.js
+  - frontend/playwright.config.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T07:13:38+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

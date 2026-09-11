@@ -31,6 +31,7 @@ export default defineConfig({
     /admissions-workflow-clarity\.spec\.js$/,
     /bug-reports-clarity\.spec\.js$/,
     /profile-controls-clarity\.spec\.js$/,
+    /question-bank-clarity\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
