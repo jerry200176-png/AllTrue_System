@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-director-inbox-touch-actions
+    published_at: "2026-09-12"
+    audiences:
+      - director
+    importance: digest
+    title: 主任收件匣操作在手機更容易觸及
+    summary: 篩選、分類與通知處理按鈕有足夠觸控高度，長內容也能完整閱讀與操作。
+    items:
+      - category: improved
+        text: 手機上的收件匣篩選、工具列、分類頁籤與通知處理按鈕維持至少 44px 高度。
+      - category: improved
+        text: 長中文通知與操作文字會自然換行，不會把按鈕推出畫面或產生水平捲軸。
+      - category: fixed
+        text: 通知條件、導頁、API、權限與資料處理流程維持不變。
+    source_refs:
+      - "changelog:2026-09-12:director-inbox-touch-actions"
+      - "supersedes-pr:#2643"
+
   - id: staff-2026-09-12-page-header-mobile-actions
     published_at: "2026-09-12"
     audiences:

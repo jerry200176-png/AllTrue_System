@@ -90,6 +90,46 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-director-inbox-touch-actions",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任收件匣操作在手機更容易觸及",
+    "summary": "篩選、分類與通知處理按鈕有足夠觸控高度，長內容也能完整閱讀與操作。",
+    "items": [
+      "手機上的收件匣篩選、工具列、分類頁籤與通知處理按鈕維持至少 44px 高度。",
+      "長中文通知與操作文字會自然換行，不會把按鈕推出畫面或產生水平捲軸。",
+      "通知條件、導頁、API、權限與資料處理流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "手機上的收件匣篩選、工具列、分類頁籤與通知處理按鈕維持至少 44px 高度。",
+          "長中文通知與操作文字會自然換行，不會把按鈕推出畫面或產生水平捲軸。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "通知條件、導頁、API、權限與資料處理流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:director-inbox-touch-actions",
+      "supersedes-pr:#2643"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-course-balance-evidence",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

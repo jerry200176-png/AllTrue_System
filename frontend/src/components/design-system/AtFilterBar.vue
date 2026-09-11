@@ -53,4 +53,20 @@ defineProps({
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 640px) {
+  .at-filter-bar :deep(input:not([type='checkbox'])),
+  .at-filter-bar :deep(select) {
+    min-height: var(--ds-control-height-touch, 44px);
+  }
+
+  .at-filter-bar :deep(input[type='checkbox']) {
+    width: 20px;
+    height: 20px;
+  }
+
+  .at-filter-bar :deep(label:has(input[type='checkbox'])) {
+    min-height: var(--ds-control-height-touch, 44px);
+  }
+}
 </style>
