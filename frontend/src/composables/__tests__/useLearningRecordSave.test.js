@@ -4,6 +4,12 @@ const snapshot={id:null,StudentID:7,TeacherID:9,ClassSessionID:11,Status:'pendin
 const response=(status,body)=>({ok:status>=200&&status<300,status,json:async()=>body});
 describe('learning record save contract',()=>{
  it('accepts only matching identity and valid status',()=>{expect(extractLearningRecordResponse({id:3,StudentID:7,TeacherID:9,ClassSessionID:11,Status:'pending'},snapshot)).toBeTruthy();expect(extractLearningRecordResponse({id:3,StudentID:8,TeacherID:9,ClassSessionID:11,Status:'pending'},snapshot)).toBeNull();expect(extractLearningRecordResponse({id:3,StudentID:7,TeacherID:9,ClassSessionID:11,Status:'weird'},snapshot)).toBeNull()});
+ it('accepts the hydrated backend student_id response without weakening identity checks',()=>{
+   const hydrated={id:3,student_id:7,TeacherID:9,ClassSessionID:11,Status:'pending'};
+   expect(extractLearningRecordResponse(hydrated,snapshot)).toBeTruthy();
+   expect(extractLearningRecordResponse({...hydrated,student_id:8},snapshot)).toBeNull();
+   expect(extractLearningRecordResponse({...hydrated,StudentID:8},snapshot)).toBeNull();
+ });
  it('keeps malformed, conflict, and network failures explicit',async()=>{expect((await saveLearningRecord({fetchImpl:vi.fn(async()=>response(201,{})),url:'/',snapshot})).kind).toBe('malformed');expect((await saveLearningRecord({fetchImpl:vi.fn(async()=>response(409,{message:'duplicate'})),url:'/',snapshot})).kind).toBe('conflict');expect((await saveLearningRecord({fetchImpl:vi.fn(async()=>{throw new Error('offline')}),url:'/',snapshot})).kind).toBe('network')});
  it('single-flights two deferred submits without sharing other page instances',async()=>{
    let release;

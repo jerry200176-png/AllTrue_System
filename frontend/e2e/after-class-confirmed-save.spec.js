@@ -8,7 +8,7 @@ const text = '長中文課後紀錄：分數應用與解題說明，失敗後必
 async function install(page, testInfo) {
   const state = { mode: 'error', saves: 0, saved: false, actor: 9001, sessionId: 9101, release: null, unexpected: [], errors: [] };
   const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
-  const record = { id: 9301, StudentID: 9401, student_id: 9401, TeacherID: 9001,
+  const record = { id: 9301, student_id: 9401, TeacherID: 9001,
     effective_teacher_id: 9001, StudentClassID: 9201, ClassSessionID: 9101,
     student_name: '隔離測試學生長中文名稱', teacher_name: '隔離測試老師', Subject: '數學',
     SessionDate: day, StartTime: '00:00', EndTime: '00:30', Status: 'changes_requested',
@@ -36,6 +36,9 @@ async function install(page, testInfo) {
         if (state.mode !== 'ok') return route.fulfill({ status: 503, json: { message: '隔離測試：暫時無法儲存' } });
         state.saved = true;
         Object.assign(record, request.postDataJSON(), { id: 9301, Status: 'pending' });
+        // The hydrated Laravel response adds lowercase student_id; StudentID
+        // belongs to the request snapshot and is not serialized on LearningRecord.
+        delete record.StudentID;
         return route.fulfill({ status: 200, json: record });
       }
       // Existing telemetry/ensure-past calls remain intercepted, never sent to production.

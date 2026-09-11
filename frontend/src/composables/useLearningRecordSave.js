@@ -2,7 +2,12 @@ export function extractLearningRecordResponse(payload, snapshot) {
   const positiveId = value => Number.isInteger(Number(value)) && Number(value) > 0;
   if (!payload || !positiveId(payload.id)) return null;
   const same = key => positiveId(snapshot[key]) && positiveId(payload[key]) && Number(payload[key]) === Number(snapshot[key]);
-  if (!same('StudentID') || !same('TeacherID')) return null;
+  const responseStudentIds = [payload.StudentID, payload.student_id]
+    .filter(value => value !== undefined && value !== null && value !== '');
+  const sameStudent = positiveId(snapshot.StudentID)
+    && responseStudentIds.length > 0
+    && responseStudentIds.every(value => positiveId(value) && Number(value) === Number(snapshot.StudentID));
+  if (!sameStudent || !same('TeacherID')) return null;
   if (positiveId(snapshot.id) && !same('id')) return null;
   if (positiveId(snapshot.ClassSessionID) && !same('ClassSessionID')) return null;
   if (!['pending', 'approved', 'rejected', 'changes_requested'].includes(payload.Status)) return null;
