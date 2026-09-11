@@ -484,7 +484,9 @@ test.describe('production acceptance — calendar/course parity', () => {
       await expect(planning).toBeVisible({ timeout: 15_000 });
       await expect(planning).toContainText('已排 2／購買 4 堂，尚有 2 堂未安排');
       await expect(planning).toContainText('下方日期清單只列已實際排定的堂次');
-      await expect(detail.locator('.dates-panel-title')).toContainText('已上 2／購買 4 堂');
+      // Keep the count contract independent of typography, while ensuring the
+      // selected detail is the reported 2-attended / 4-purchased course.
+      await expect(detail.locator('.dates-panel-title')).toContainText(/已上\s*2\s*[／/]\s*購買\s*4\s*堂/);
       await expect(row.getByRole('button', { name: '排課', exact: true })).toBeEnabled();
 
       if (viewport.name === 'mobile') {
