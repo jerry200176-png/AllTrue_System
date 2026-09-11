@@ -22,6 +22,10 @@ scope:
   - frontend/e2e/bug-reports-playwright.config.js
   - frontend/e2e/fixtures/ui-foundation/bug-reports-pilot-mount.html
   - frontend/e2e/fixtures/ui-foundation/bug-reports-pilot-mount.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
   - .agent-session/**
   - .exo/tickets/**
   - .exo/cache/**
@@ -30,14 +34,14 @@ scope:
   - .exo/logs/**
   deny: []
 budgets:
-  max_files_changed: 10
-  max_loc_changed: 420
+  max_files_changed: 13
+  max_loc_changed: 800
 checks:
 - npm run test:unit
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes: []
 blockers: []
@@ -46,3 +50,5 @@ brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- 07d09b5ddc5a89b61b6a4d9c1259836b42f06144

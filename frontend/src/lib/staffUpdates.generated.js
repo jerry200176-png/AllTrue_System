@@ -48,6 +48,43 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-bug-reports-responsive-clarity",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "意見與建議在各種螢幕更容易操作",
+    "summary": "頁籤、篩選與處理狀態更一致，手機操作與長文字閱讀更清楚。",
+    "items": [
+      "頁籤、狀態篩選、載入、空白與錯誤畫面現在使用一致的呈現方式，重試與下一步更容易找到。",
+      "手機上的篩選、分頁與詳情操作維持足夠觸控高度，長中文內容會完整換行而不會水平溢出。",
+      "回報內容、附件、處理狀態、權限與後端資料流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "頁籤、狀態篩選、載入、空白與錯誤畫面現在使用一致的呈現方式，重試與下一步更容易找到。",
+          "手機上的篩選、分頁與詳情操作維持足夠觸控高度，長中文內容會完整換行而不會水平溢出。",
+          "回報內容、附件、處理狀態、權限與後端資料流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:bug-reports-responsive-clarity",
+      "supersedes-pr:#2670"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-11-billing-correction-entry-gating",
     "publishedAt": "2026-09-11",
     "effectiveAt": null,
