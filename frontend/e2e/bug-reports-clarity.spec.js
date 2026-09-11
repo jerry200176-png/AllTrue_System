@@ -97,7 +97,7 @@ test.describe('Bug reports clarity browser verification', () => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/bug-reports-pilot-mount.html?mode=normal');
-    const pendingFilter = page.getByRole('button', { name: '處理中' });
+    const pendingFilter = page.getByRole('button', { name: '處理中', exact: true });
     await pendingFilter.focus();
     await page.keyboard.press('Enter');
     await expect(pendingFilter).toHaveAttribute('aria-pressed', 'true');
