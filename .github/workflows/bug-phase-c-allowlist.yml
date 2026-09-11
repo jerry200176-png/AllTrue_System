@@ -400,6 +400,11 @@ jobs:
               "rev" => "5c5ff6b701d9868f1ccfde7b78c8b81b9ad6cb47",
               "deploy" => "34591624669",
             ],
+            282 => [
+              "reply" => "已修好並上線：評量成功儲存後，畫面現在會正確辨識伺服器回傳的學生資料，不再把已寫入的紀錄誤顯示為「無法確認儲存結果」。學生、老師、堂次與狀態仍會核對；若仍看到提示，請先重新查詢該堂評量，再回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2726",
+              "rev" => "481ecadd2db0632efe4b696a91bb305269f7583e",
+              "deploy" => "34621357508",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
