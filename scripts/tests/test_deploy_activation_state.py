@@ -204,6 +204,36 @@ diff --git a/frontend/src/lib/staffUpdates.generated.js b/frontend/src/lib/staff
         self.assertEqual(scope["tier_name"], "T1")
         self.assertEqual(scope["activation_class"], "routine")
 
+    def test_generated_release_history_cannot_raise_merge_classifier_tier(self):
+        patch = """diff --git a/frontend/src/lib/sessionPlanningStatus.js b/frontend/src/lib/sessionPlanningStatus.js
++++ b/frontend/src/lib/sessionPlanningStatus.js
+@@ -10,1 +10,1 @@
+-message: 'old'
++message: 'actual scheduled sessions only'
+diff --git a/frontend/src/lib/changelogDraft.generated.js b/frontend/src/lib/changelogDraft.generated.js
++++ b/frontend/src/lib/changelogDraft.generated.js
+@@ -1,1 +1,1 @@
+-const old = 'old';
++const historical = 'restore, payment, token';
+"""
+        scope = classify_scope(
+            ["frontend/src/lib/sessionPlanningStatus.js", "frontend/src/lib/changelogDraft.generated.js"],
+            patch,
+        )
+        self.assertEqual(scope["tier_name"], "T2")
+        self.assertNotIn("restore", " ".join(scope["reasons"]))
+
+    def test_merge_classifier_keeps_real_protected_operation_at_t3(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -10,1 +10,1 @@
+-return true;
++await auth();
+"""
+        scope = classify_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T3")
+        self.assertIn("protected semantic marker: auth", " ".join(scope["reasons"]))
+
     def test_t2_write_path_and_security_path_keep_distinct_boundaries(self):
         routine = classify_activation_scope(
             ["backend/app/Services/ScheduleService.php"],
