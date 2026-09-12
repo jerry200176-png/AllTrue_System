@@ -356,4 +356,10 @@ describe('bug report composer accessibility', () => {
     expect(source).toMatch(/<button type="button" class="btn-cancel"/);
     expect(source).toMatch(/<button type="button" class="btn-submit"/);
   });
+
+  it('uses the design-system modal layer above phone bottom navigation', () => {
+    const globalStyles = readFileSync(resolve(__dirname, '../../styles.css'), 'utf8');
+    expect(globalStyles).toMatch(/--ds-z-modal:\s*12001/);
+    expect(globalStyles).toMatch(/\.mobile-bottom-nav[\s\S]*?z-index:\s*10000/);
+  });
 });

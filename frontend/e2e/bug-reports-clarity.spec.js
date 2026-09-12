@@ -73,6 +73,34 @@ async function expectNoOverflowAndReachableControls(page) {
 }
 
 test.describe('Bug reports clarity browser verification', () => {
+  test('keeps the phone feedback dialog actions above persistent bottom navigation', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/bug-reports-pilot-mount.html?mode=launcher');
+    await page.getByRole('button', { name: '提供意見與建議' }).click();
+
+    const overlay = page.locator('.at-dialog-overlay');
+    const nav = page.locator('.mobile-bottom-nav');
+    const submit = page.getByRole('button', { name: '送出意見' });
+    await expect(overlay).toBeVisible();
+    await expect(submit).toBeVisible();
+
+    const layers = await page.evaluate(() => {
+      const overlay = document.querySelector('.at-dialog-overlay');
+      const nav = document.querySelector('.mobile-bottom-nav');
+      const submit = [...document.querySelectorAll('button')].find((node) => node.textContent?.trim() === '送出意見');
+      if (!overlay || !nav || !submit) throw new Error('feedback dialog fixture is incomplete');
+      const rect = submit.getBoundingClientRect();
+      const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      return {
+        overlayZ: Number(getComputedStyle(overlay).zIndex),
+        navZ: Number(getComputedStyle(nav).zIndex),
+        submitReceivesPointer: top === submit || Boolean(top?.closest('button') === submit),
+      };
+    });
+    expect(layers.overlayZ).toBeGreaterThan(layers.navZ);
+    expect(layers.submitReceivesPointer).toBe(true);
+  });
+
   test('keeps one clear reporter workflow across responsive widths', async ({ page }) => {
     await installMock(page);
     const consoleErrors = [];

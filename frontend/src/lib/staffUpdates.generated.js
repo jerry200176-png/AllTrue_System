@@ -370,6 +370,49 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-feedback-mobile-action-layer",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "手機直向可完成意見回報",
+    "summary": "意見與建議的送出與關閉操作不再被手機底部導覽列遮住。",
+    "items": [
+      "直向手機開啟「意見與建議」後，送出與關閉操作會保持可點選，不必轉成橫向才能完成回報。",
+      "回報對話框與提示會位於持續顯示的手機導覽列之上，表單流程保持完整可操作。",
+      "回報內容、附件、處理狀態、API、權限與後端資料流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "直向手機開啟「意見與建議」後，送出與關閉操作會保持可點選，不必轉成橫向才能完成回報。",
+          "回報內容、附件、處理狀態、API、權限與後端資料流程維持不變。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "回報對話框與提示會位於持續顯示的手機導覽列之上，表單流程保持完整可操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:feedback-mobile-action-layer",
+      "in-app:#274",
+      "issue:#2606"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-director-task-return",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
