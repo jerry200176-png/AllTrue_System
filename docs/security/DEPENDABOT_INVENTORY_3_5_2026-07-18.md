@@ -16,14 +16,15 @@
 
 | Item | Result |
 |------|--------|
-| Search | `files.*` wildcard validation rules |
-| Hits | **0** |
-| Related upload rules (explicit, not `files.*`) | `ImportController` `file`; `AuthController` `avatar` image; `BugReportController` `attachments.*`; `ChatController` `file` — all use concrete `file`/`image`/`mimes` rules |
-| Production exposure | **Low** for this specific advisory (wildcard `files.*` not used) |
-| Recommended action | No blind L10 bump. Keep explicit rules; add regression note if introducing array file uploads |
-| Deadline | Re-check when adding multi-file array validation; framework migration #977 |
+| Search | `files.*` / array file validation rules |
+| Hits | **1 reachable endpoint** — `BugReportController` previously used `attachments.*` |
+| Mitigation | Individual `attachments` entries now validate under fixed attribute `attachment`; wildcard file validation is not used |
+| Related upload rules | `ImportController` `file`; `AuthController` `avatar`; `ChatController` `file` — concrete rules; BugReport now validates each uploaded object individually |
+| Production exposure | **Mitigated in application code**; framework remains on the vulnerable 8.x line until #977 |
+| Recommended action | Keep app-level mitigation and regression test; no blind L10 bump. Durable fix remains Laravel migration |
+| Deadline | Re-check on any new multi-file upload validation; framework migration #977 |
 
 ## Explicit non-actions
 
-- Do not major-upgrade Laravel solely for #3/#5 given zero reachable hits.
-- Do not mark Dependabot alerts “fixed” without version change; keep open with this inventory as accepted residual until #977.
+- Do not major-upgrade Laravel solely for #3/#5; #3 now has an app-level mitigation while #977 remains the durable fix.
+- Do not mark Dependabot alert #3 “fixed” without a framework version change; keep it open with this mitigation and accepted residual risk until #977.
