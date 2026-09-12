@@ -24,6 +24,28 @@ function setup() {
 }
 
 describe('tutoring continuation async identity', () => {
+  it.each([
+    ['2026-10-26', 4, '2026-10-01 ～ 2026-10-26；已排 4 堂。'],
+    [null, 0, '2026-10-01 起；尚未排課，請至行事曆逐堂安排。'],
+  ])('uses human-readable completion for end=%s', async (endDate, sessions, expected) => {
+    const { context: c, resolveAuth } = setup();
+    c.showSessionsModal = { value: true };
+    c.loadAllStudentCourses = vi.fn(async () => {});
+    c.loadStudentCourses = vi.fn(async () => {});
+    c.fetch.mockResolvedValue({ ok: true, json: async () => ({
+      message: '已建立下一期輔導課，費用為零元。',
+      source_course_id: 7,
+      new_course: { id: 99, start_date: '2026-10-01', end_date: endDate, created_sessions: sessions },
+    }) });
+    const pending = c.handlers.submitAddSessions();
+    resolveAuth();
+    await pending;
+    expect(c.alert).toHaveBeenCalledTimes(1);
+    expect(c.alert.mock.calls[0][0]).toContain(expected);
+    expect(c.alert.mock.calls[0][0]).not.toMatch(/#7|#99|null|undefined/);
+    expect(c.showSessionsModal.value).toBe(false);
+  });
+
   it('freezes payload before auth and prevents opening paid B while A submits', async () => {
     const { context: c, resolveAuth } = setup();
     const pending = c.handlers.submitAddSessions();
