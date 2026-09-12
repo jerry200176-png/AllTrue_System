@@ -4,6 +4,49 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-12-teacher-task-time-order",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "今日待辦會先顯示較早的課務",
+    "summary": "一般待點名與待填評量會一起依上課時間排序，不再讓下午課程排在上午課務前面。",
+    "items": [
+      "同一層級的今日待點名與待填評量，會依課程開始時間決定「現在先做」。",
+      "需修改與過期評量仍優先，家長回覆仍保留在一般今日工作之後。",
+      "課表、出缺勤、評量、扣堂、帳務、權限與既有資料維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "同一層級的今日待點名與待填評量，會依課程開始時間決定「現在先做」。",
+          "需修改與過期評量仍優先，家長回覆仍保留在一般今日工作之後。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課表、出缺勤、評量、扣堂、帳務、權限與既有資料維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:teacher-task-time-order",
+      "in-app:#284",
+      "github:#2751"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-question-bank-touch-controls",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

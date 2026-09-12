@@ -1,0 +1,46 @@
+id: INT-20260912-121714-V4OZ
+title: "\u4FEE\u6B63 in-app #284 \u6559\u5E2B\u5DE5\u4F5C\u53F0\u5F85\u8FA6\u512A\u5148\
+  \u5E8F"
+intent: "\u4FEE\u6B63 in-app #284 \u6559\u5E2B\u5DE5\u4F5C\u53F0\u5F85\u8FA6\u512A\
+  \u5148\u5E8F"
+kind: intent
+brain_dump: "\u91CD\u65B0\u4EE5\u53D7\u7BA1\u63D0\u4EA4\u4EA4\u4ED8\u5DF2\u9A57\u8B49\
+  \u7684 in-app #284 \u6392\u5E8F\u4FEE\u5FA9\uFF1A\u4E00\u822C\u5F85\u9EDE\u540D\u8207\
+  \u5F85\u586B\u8A55\u91CF\u540C\u7D1A\u5F8C\u4F9D\u6642\u9593\u6392\u5E8F\uFF1B\u4FDD\
+  \u7559\u8A55\u91CF\u9801\u6E1B\u566A\u5F8C\u7E8C\u3002"
+boundary: "\u4E0D\u6539 API\u3001DB\u3001\u8AB2\u8868\u3001\u51FA\u7F3A\u52E4\u3001\
+  \u8A55\u91CF\u3001\u5BB6\u9577\u56DE\u8986\u3001\u6263\u5802\u3001\u5E33\u52D9\u3001\
+  \u6B0A\u9650\u3001\u8CC7\u6599\u6216\u7522\u54C1\u898F\u5247\uFF1B\u53EA\u642C\u79FB\
+  \u5DF2\u9A57\u8B49\u7684\u6392\u5E8F\u3001\u6E2C\u8A66\u8207 release notes\u3002"
+success_condition: "\u53D7\u7BA1 commit \u901A\u904E pr-check\u3001required CI\u3001\
+  \u90E8\u7F72\u8207\u6B63\u5F0F\u7AD9\u9A57\u8B49\uFF1Bin-app #284 \u4FDD\u6301\u672A\
+  \ resolved \u76F4\u5230\u7B2C\u4E8C\u90E8\u5206\u5B8C\u6210\u3002"
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - '**'
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 300
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T12:17:14+08:00'
+children:
+- TKT-20260912-121721-DDYJ
+resource_profile: default
