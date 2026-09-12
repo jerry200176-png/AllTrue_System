@@ -1,3 +1,8 @@
+## 2026-09-12 — fix(teacher-home): 今日待辦依上課時間安排下一步
+<!-- release-notes: staff_update=staff-2026-09-12-teacher-task-time-order -->
+- 教師工作台的一般待點名與待填評量現在視為同一層級，會依上課時間排序；上午已到的課務不再被下午待填評量壓到後面。
+- 需修改與過期評量仍維持優先，家長回覆仍排在一般今日工作之後；不修改課表、出缺勤、評量、扣堂、帳務、權限或既有資料。
+
 ## 2026-09-12 — improved(course): 重疊警示與結束課程操作更好懂
 <!-- release-notes: staff_update=staff-2026-09-12-course-overlap-copy-clarity -->
 - 課程管理的重疊警示現在會直接說明：這不是重複課堂，而是另一門進行中課程使用同一位老師與相同時段。

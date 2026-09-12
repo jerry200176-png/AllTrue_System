@@ -1,0 +1,38 @@
+id: TKT-20260912-121721-DDYJ
+title: "\u53D7\u7BA1\u91CD\u63D0 #284 \u6559\u5E2B\u5F85\u8FA6\u6392\u5E8F\u4FEE\u5FA9"
+intent: "\u53D7\u7BA1\u91CD\u63D0 #284 \u6559\u5E2B\u5F85\u8FA6\u6392\u5E8F\u4FEE\u5FA9"
+kind: task
+parent_id: INT-20260912-121714-V4OZ
+boundary: "\u53EA\u542B\u5DF2\u9A57\u8B49\u7684\u6559\u5E2B\u5F85\u8FA6\u6392\u5E8F\
+  \u3001\u56DE\u6B78\u6E2C\u8A66\u3001\u7248\u672C\u8AAA\u660E\u8207\u5FC5\u8981 session\
+  \ provenance\uFF1B\u4E0D\u6539\u5F8C\u7AEF\u6216\u8CC7\u6599\u3002"
+success_condition: "commit \u5728 active session \u5167\u7522\u751F\uFF0Cpr-check\
+  \ \u901A\u904E\u4E14\u7522\u54C1\u6E2C\u8A66\u7DAD\u6301\u5168\u7DA0\u3002"
+priority: 3
+labels: []
+scope:
+  allow:
+  - '**'
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 300
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T12:17:21+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
