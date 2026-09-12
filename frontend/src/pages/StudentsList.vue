@@ -745,7 +745,7 @@
     </div>
 
     <!-- Add Sessions Modal -->
-    <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="showSessionsModal = false">
+    <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
         <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
         <div class="form-group">
@@ -761,7 +761,7 @@
         </div>
         <p class="hint sessions-package-hint">
           {{ isTutoringCourse(selectedCourse)
-            ? '複製原課程的科目、老師與固定時段建立下一期，保留前後期關聯。費用 0 元、不建立帳單或付款義務；原課程及歷史紀錄不變。'
+            ? '複製原課程設定建立下一期，保留前後期關聯。固定排課沿用原星期時段，手動排課仍需逐堂安排。費用 0 元、不建立帳單或付款義務；原課程及歷史紀錄不變。'
             : selectedCourse?.PackageID
             ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
             : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
@@ -789,7 +789,7 @@
           </template>
         </p>
         <div class="actions">
-          <button type="button" class="ghost" @click="showSessionsModal = false">取消</button>
+          <button type="button" class="ghost" :disabled="addSessionsSubmitting" @click="showSessionsModal = false">取消</button>
           <button type="button" class="primary" :disabled="addSessionsSubmitting" @click="submitAddSessions">
             {{ addSessionsSubmitting ? '建立中…' : isTutoringCourse(selectedCourse) ? '確認建立下一期輔導課' : '確認加購' }}
           </button>
@@ -2978,6 +2978,7 @@ const deleteCourse = async (course) => {
 
 // --- Add Sessions (per-course) ---
 const openAddSessionsForCourse = (course) => {
+  if (addSessionsSubmitting.value) return;
   if (isTutoringCourse(course) && isPackageMember(course)) {
     alert('此輔導課屬於共用方案，不能從這裡延續或加購；請先確認方案設定。');
     return;
@@ -3016,29 +3017,36 @@ const openAddSessionsForCourse = (course) => {
 const submitAddSessions = async () => {
   if (addSessionsSubmitting.value) return;
   if (!selectedCourse.value) return;
-  if (isTutoringCourse(selectedCourse.value) && isPackageMember(selectedCourse.value)) {
+  const course = { ...selectedCourse.value };
+  const submittedStudent = selectedStudent.value ? { ...selectedStudent.value } : null;
+  const submittedBranch = props.branchId;
+  const submittedCount = Number(addSessionCount.value);
+  const submittedStart = addSessionStartDate.value;
+  const submittedEnd = tutoringEndDate.value;
+  const tutoring = isTutoringCourse(course);
+  if (isTutoringCourse(course) && isPackageMember(course)) {
     alert('共用方案輔導課不支援此延續流程；未變更方案堂數。');
     return;
   }
-  if (addSessionCount.value <= 0) {
+  if (submittedCount <= 0) {
     alert('請輸入正確堂數');
     return;
   }
-  if (!isPackageMember(selectedCourse.value) && !addSessionStartDate.value) {
+  if (!isPackageMember(course) && !submittedStart) {
     alert('請選擇新批次開始日期');
     return;
   }
 
-  if (isTutoringCourse(selectedCourse.value) && selectedCourse.value.payment_type === 'monthly' && !tutoringEndDate.value) {
+  if (isTutoringCourse(course) && course.payment_type === 'monthly' && !submittedEnd) {
     alert('請選擇下一期結束日期');
     return;
   }
   addSessionsSubmitting.value = true;
   try {
-    if (isPackageMember(selectedCourse.value)) {
-      const packageId = Number(selectedCourse.value.PackageID ?? selectedCourse.value.package_id);
-      const addSessions = Number(addSessionCount.value);
-      const currentTotal = getPackageTotalSessions(selectedCourse.value);
+    if (isPackageMember(course)) {
+      const packageId = Number(course.PackageID ?? course.package_id);
+      const addSessions = Number(submittedCount);
+      const currentTotal = getPackageTotalSessions(course);
       const nextTotal = currentTotal + addSessions;
       if (!packageId || currentTotal <= 0) {
         alert('找不到方案總堂數，請先重新整理後再試');
@@ -3047,8 +3055,8 @@ const submitAddSessions = async () => {
       await updatePackage(packageId, { total_sessions: nextTotal });
       showSessionsModal.value = false;
       await loadAllStudentCourses();
-      if (selectedStudent.value?.id) {
-        await loadStudentCourses(selectedStudent.value.id);
+      if (submittedStudent?.id) {
+        await loadStudentCourses(submittedStudent.id);
       }
       alert(`已加購共用方案堂數：總堂數由 ${currentTotal} 堂增加為 ${nextTotal} 堂。所有方案科目共用同一個堂數池。`);
       return;
@@ -3061,10 +3069,10 @@ const submitAddSessions = async () => {
       return;
     }
 
-    const tutoring = isTutoringCourse(selectedCourse.value);
+    if (props.branchId !== submittedBranch || selectedCourse.value?.id !== course.id) return;
     const endpoint = tutoring
-      ? `/api/v1/student-classes/${selectedCourse.value.id}/continue-tutoring`
-      : `/api/v1/student-classes/${selectedCourse.value.id}/purchase-batch`;
+      ? `/api/v1/student-classes/${course.id}/continue-tutoring`
+      : `/api/v1/student-classes/${course.id}/purchase-batch`;
     const res = await fetch(endpoint, {
       method: 'POST',
       credentials: 'include',
@@ -3074,10 +3082,10 @@ const submitAddSessions = async () => {
         'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
-        sessions: Number(addSessionCount.value),
-        start_date: addSessionStartDate.value,
+        sessions: Number(submittedCount),
+        start_date: submittedStart,
         ...(tutoring
-          ? (selectedCourse.value.payment_type === 'monthly' ? { end_date: tutoringEndDate.value } : {})
+          ? (course.payment_type === 'monthly' ? { end_date: submittedEnd } : {})
           : { mode: 'new_purchase' })
       })
     });
@@ -3090,21 +3098,22 @@ const submitAddSessions = async () => {
       return;
     }
 
+    if (props.branchId !== submittedBranch || selectedCourse.value?.id !== course.id) return;
     showSessionsModal.value = false;
     await loadAllStudentCourses();
-    if (selectedStudent.value?.id) {
-      await loadStudentCourses(selectedStudent.value.id);
+    if (submittedStudent?.id) {
+      await loadStudentCourses(submittedStudent.id);
     }
     const newCourse = json?.new_course || {};
     if (tutoring) {
       alert(`${json.message}\n原課程 #${json.source_course_id} → 下一期 #${newCourse.id}\n${newCourse.start_date} ～ ${newCourse.end_date}，${newCourse.created_sessions} 堂。`);
       return;
     }
-    const studentName = selectedStudent.value?.name || '';
+    const studentName = submittedStudent?.name || '';
     alert(formatRenewSuccessMessage({
       kind: 'purchase',
       studentName,
-      subject: selectedCourse.value?.subject_name || selectedCourse.value?.subject || '',
+      subject: course?.subject_name || course?.subject || '',
       sessions: newCourse.created_sessions,
       firstDate: newCourse.first_session_date || '',
       lastDate: newCourse.last_session_date || '',
