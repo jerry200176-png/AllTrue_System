@@ -3,37 +3,205 @@
   "bootstrap_path": ".exo/cache/sessions/human.bootstrap.md",
   "concurrent": false,
   "context_window_tokens": null,
-  "git_branch": "feat/TKT-20260901-045848-UJSJ",
-  "git_head_sha": "6928b64598eab428c82b8ebfff21ef4666eb5685",
+  "git_branch": "exo/TKT-20260912-135926-9P4S",
+  "git_head_sha": "ad0262b9da31f02258594297cf8172aa0964b1f2",
   "handoff_from": null,
   "lock": {
-    "created_at": "2026-09-01T04:59:42+08:00",
-    "expires_at": "2026-09-01T08:59:42+08:00",
-    "fencing_token": 1,
-    "heartbeat_at": "2026-09-01T04:59:42+08:00",
-    "lease_expires_at": "2026-09-01T08:59:42+08:00",
+    "created_at": "2026-09-12T13:59:32+08:00",
+    "expires_at": "2026-09-12T15:59:32+08:00",
+    "fencing_token": 12,
+    "heartbeat_at": "2026-09-12T13:59:32+08:00",
+    "lease_expires_at": "2026-09-12T15:59:32+08:00",
     "owner": "human",
-    "role": "implementer",
-    "ticket_id": "TKT-20260901-045848-UJSJ",
-    "updated_at": "2026-09-01T04:59:42+08:00",
+    "role": "implementing",
+    "ticket_id": "TKT-20260912-135926-9P4S",
+    "updated_at": "2026-09-12T13:59:32+08:00",
     "workspace": {
       "base": "main",
-      "branch": "feat/TKT-20260901-045848-UJSJ"
+      "branch": "codex/TKT-20260912-135926-9P4S"
     }
   },
   "machine_snapshot": {
     "cpu_count": 12,
-    "load_avg_1m": 0.2,
-    "ram_available_gb": 3.4,
-    "ram_total_gb": 4.8
+    "load_avg_1m": 0.5,
+    "ram_available_gb": 6.1,
+    "ram_total_gb": 7.8
   },
   "mode": "work",
-  "model": "codex",
-  "pid": 97477,
+  "model": "gpt-5",
+  "pid": 441423,
   "pr_check": null,
-  "role": "implementer",
-  "session_id": "SES-20260901045942-87630ED6",
+  "role": "implementing",
+  "session_id": "SES-20260912135932-461EEB27",
   "start_advisories": [
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "exo/TKT-20260907-095040-GNDS",
+        "overlapping_patterns": [
+          ".exo/**",
+          "frontend/**",
+          "frontend/e2e/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907095046-E50BB912",
+        "ticket_id": "TKT-20260907-095040-GNDS"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/TKT-20260907-095040-GNDS (ticket=TKT-20260907-095040-GNDS, actor=human) \u2014 Added a director-authenticated, read-only production classroom-management smoke ",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "exo/INT-20260907-074745-682Y",
+        "overlapping_patterns": [
+          ".agent-session/manifest.json",
+          ".exo/**",
+          "frontend/src/pages/**",
+          "frontend/src/**",
+          "frontend/**",
+          "frontend/src/lib/**",
+          "frontend/e2e/**",
+          "docs/**",
+          "docs/CHANGELOG.md",
+          "docs/STAFF_UPDATES.yml",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907090908-213D7FBF",
+        "ticket_id": "INT-20260907-074745-682Y"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/INT-20260907-074745-682Y (ticket=INT-20260907-074745-682Y, actor=agent:codex) \u2014 Resumed the existing classroom UX delivery, reconciled the latest origin/main wi",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "exo/INT-20260907-071544-9K2N",
+        "overlapping_patterns": [
+          ".exo/**",
+          "frontend/src/**",
+          "frontend/**",
+          "frontend/src/lib/**",
+          "frontend/e2e/**",
+          "docs/**",
+          "docs/CHANGELOG.md",
+          "docs/STAFF_UPDATES.yml",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907071549-7D208BD9",
+        "ticket_id": "INT-20260907-071544-9K2N"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/INT-20260907-071544-9K2N (ticket=INT-20260907-071544-9K2N, actor=agent:codex) \u2014 Implemented mobile More navigation search, role-scoped filtering, empty-state re",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "exo/INT-20260907-063735-M93H",
+        "overlapping_patterns": [
+          ".exo/**",
+          "frontend/src/**",
+          "frontend/**",
+          "frontend/src/lib/**",
+          "frontend/e2e/**",
+          "docs/**",
+          "docs/CHANGELOG.md",
+          "docs/STAFF_UPDATES.yml",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907063741-C315A7A5",
+        "ticket_id": "INT-20260907-063735-M93H"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/INT-20260907-063735-M93H (ticket=INT-20260907-063735-M93H, actor=agent:codex) \u2014 Implemented role-authorized SPA page history with preserved notification deep-li",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-onboarding-v1-convergence-20260905",
+        "overlapping_patterns": [
+          ".exo/**",
+          "frontend/src/**",
+          "frontend/src/lib/**",
+          "frontend/**",
+          "docs/**",
+          "docs/CHANGELOG.md",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260905214810-03B6F746",
+        "ticket_id": "TKT-20260905-214801-DDDN"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-onboarding-v1-convergence-20260905 (ticket=TKT-20260905-214801-DDDN, actor=agent:codex) \u2014 Implemented and locally verified role onboarding UI journeys; PR 2485 open, remo",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-transfer-contract-integrity-20260903",
+        "overlapping_patterns": [
+          ".agent-session/**",
+          ".exo/**",
+          "frontend/src/pages/**",
+          "frontend/src/**",
+          "frontend/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260903165129-5C08849E",
+        "ticket_id": "TKT-20260903-165120-IGVX"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-transfer-contract-integrity-20260903 (ticket=TKT-20260903-165120-IGVX, actor=agent:codex) \u2014 Implemented canonical transfer capacity preflight, orphan schedule exclusion, co",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "chore/task-contract-session-date-overlap-20260903-final",
+        "overlapping_patterns": [
+          ".agent-session/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260903155423-38602524",
+        "ticket_id": "TKT-20260903-155417-MUVF"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch chore/task-contract-session-date-overlap-20260903-final (ticket=TKT-20260903-155417-MUVF, actor=agent:codex) \u2014 Fixed student slot conflict queries to ignore ClassSession and schedule residue ",
+      "severity": "info"
+    },
     {
       "detail": {
         "actor": "human",
@@ -59,8 +227,8 @@
         "actor": "human",
         "branch": "chore/task-bug247-evidence-refresh-20260831",
         "overlapping_patterns": [
-          ".exo/cache/**",
           ".exo/**",
+          ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
           ".exo/tickets/**",
@@ -78,11 +246,11 @@
         "actor": "human",
         "branch": "chore/task-smart-calendar-room-form-a11y-20260831",
         "overlapping_patterns": [
+          ".exo/**",
           "frontend/src/pages/**",
           "frontend/src/**",
-          "frontend/src/components/__tests__/**",
+          "frontend/**",
           ".exo/cache/**",
-          ".exo/**",
           ".exo/memory/**",
           ".exo/locks/**",
           ".exo/tickets/**",
@@ -100,11 +268,11 @@
         "actor": "human",
         "branch": "chore/task-learning-record-selection-a11y-20260831",
         "overlapping_patterns": [
+          ".exo/**",
           "frontend/src/pages/**",
           "frontend/src/**",
-          "frontend/src/components/__tests__/**",
+          "frontend/**",
           ".exo/cache/**",
-          ".exo/**",
           ".exo/memory/**",
           ".exo/locks/**",
           ".exo/tickets/**",
@@ -122,11 +290,11 @@
         "actor": "human",
         "branch": "chore/task-attendance-checkbox-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/pages/**",
-          "frontend/src/**",
-          "frontend/src/components/__tests__/**",
           ".agent-session/**",
           ".exo/**",
+          "frontend/src/pages/**",
+          "frontend/src/**",
+          "frontend/**",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -145,11 +313,11 @@
         "actor": "agent:codex",
         "branch": "chore/task-students-import-button-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/pages/**",
-          "frontend/src/**",
-          "frontend/src/components/__tests__/**",
           ".agent-session/**",
           ".exo/**",
+          "frontend/src/pages/**",
+          "frontend/src/**",
+          "frontend/**",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -168,11 +336,11 @@
         "actor": "agent:codex",
         "branch": "chore/task-subject-units-disclosure-a11y-20260831",
         "overlapping_patterns": [
-          "frontend/src/pages/**",
-          "frontend/src/**",
-          "frontend/src/components/__tests__/**",
           ".agent-session/**",
           ".exo/**",
+          "frontend/src/pages/**",
+          "frontend/src/**",
+          "frontend/**",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -191,10 +359,10 @@
         "actor": "human",
         "branch": "chore/task-learning-filters-clear-action-a11y-20260830",
         "overlapping_patterns": [
+          ".exo/**",
           "frontend/src/pages/**",
           "frontend/src/**",
-          "frontend/src/components/__tests__/**",
-          ".exo/**",
+          "frontend/**",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -213,10 +381,10 @@
         "actor": "human",
         "branch": "chore/task-director-makeup-candidate-tabs-a11y-20260830",
         "overlapping_patterns": [
+          ".exo/**",
           "frontend/src/pages/**",
           "frontend/src/**",
-          "frontend/src/components/__tests__/**",
-          ".exo/**",
+          "frontend/**",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -235,11 +403,11 @@
         "actor": "human",
         "branch": "chore/task-learning-feedback-preview-a11y-20260830",
         "overlapping_patterns": [
+          ".exo/**",
           "frontend/src/pages/**",
           "frontend/src/**",
-          "frontend/src/components/__tests__/**",
+          "frontend/**",
           ".exo/cache/**",
-          ".exo/**",
           ".exo/memory/**",
           ".exo/locks/**",
           ".exo/tickets/**",
@@ -257,11 +425,11 @@
         "actor": "agent:codex",
         "branch": "chore/task-calendar-teacher-list-a11y-20260830",
         "overlapping_patterns": [
+          ".exo/**",
           "frontend/src/pages/**",
           "frontend/src/**",
-          "frontend/src/components/__tests__/**",
+          "frontend/**",
           ".exo/cache/**",
-          ".exo/**",
           ".exo/memory/**",
           ".exo/locks/**",
           ".exo/tickets/**",
@@ -279,11 +447,11 @@
         "actor": "human",
         "branch": "chore/task-attendance-controls-a11y-20260830",
         "overlapping_patterns": [
-          "frontend/src/pages/**",
-          "frontend/src/**",
-          "frontend/src/components/__tests__/**",
           ".agent-session/manifest.json",
           ".exo/**",
+          "frontend/src/pages/**",
+          "frontend/src/**",
+          "frontend/**",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -322,11 +490,11 @@
         "actor": "agent:codex",
         "branch": "chore/task-calendar-247-regression-20260830",
         "overlapping_patterns": [
-          "frontend/src/**",
-          "frontend/src/components/**",
-          "docs/**",
           ".agent-session/manifest.json",
           ".exo/**",
+          "frontend/src/**",
+          "frontend/**",
+          "docs/**",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -345,11 +513,12 @@
         "actor": "agent:codex",
         "branch": "chore/task-teacher-overdue-partial-failure-20260830",
         "overlapping_patterns": [
-          "frontend/src/pages/**",
-          "frontend/**",
-          "frontend/src/**",
           ".agent-session/manifest.json",
           ".exo/**",
+          "frontend/src/pages/TeacherHomePage.vue",
+          "frontend/**",
+          "frontend/src/**",
+          "frontend/e2e/teacher-daily-workflow.spec.js",
           ".exo/cache/**",
           ".exo/memory/**",
           ".exo/locks/**",
@@ -364,10 +533,10 @@
       "severity": "info"
     }
   ],
-  "started_at": "2026-09-01T04:59:42+08:00",
+  "started_at": "2026-09-12T13:59:32+08:00",
   "status": "active",
-  "task": "\u4fee\u6b63 CourseManagement \u6b77\u53f2\u8ab2\u7a0b\u5361\u907a\u6f0f\u5802\u6578\u5f85\u5c0d\u5e33\u6a19\u7c64\uff1b\u53ea\u505a frontend bounded visibility change\uff0c\u88dc\u56de\u6b78\u6e2c\u8a66\u8207\u7cbe\u7c21 release note\uff0c\u4e0d\u6539 backend\u3001\u4ed8\u6b3e\u3001\u51fa\u52e4\u3001\u6263\u5802\u6216 production data\u3002",
-  "ticket_id": "TKT-20260901-045848-UJSJ",
+  "task": "Integrate handed-off PR 2757 from source 458b6417 onto current main, review, test, deploy, and verify",
+  "ticket_id": "TKT-20260912-135926-9P4S",
   "topic_id": "repo:default",
   "vendor": "openai",
   "writing_session": null

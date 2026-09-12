@@ -1,3 +1,13 @@
+## 2026-09-12 — fix(navigation): 主任從今日待辦進入課務後可返回
+<!-- release-notes: staff_update=staff-2026-09-12-director-task-return -->
+- 主任從今日待辦進入評量等課務頁時，「回到主任今日工作」不再被同一次導頁清除，可回到原待辦確認處理進度。
+- 只修正導頁返回狀態的套用順序；不修改評量、點名、課表、帳務、權限或資料。
+
+## 2026-09-12 — improved(teacher-home): 首屏先呈現今日待辦
+<!-- release-notes: staff_update=staff-2026-09-12-teacher-closeout-first-screen -->
+- 老師工作台把「今天要完成」與主要下一步移到品牌陪伴區之前，手機與桌面首屏都能直接看到目前最重要的操作。
+- 同一堂且有可靠堂次識別的工作會先點名、再填評量；不同分校或無可靠堂次識別的同時段工作維持穩定排序，不改動點名、評量、課表、權限或資料。
+
 ## 2026-09-12 — improved(learning): 老師評量頁先呈現待辦訊號
 <!-- release-notes: staff_update=staff-2026-09-12-learning-teacher-focus -->
 - 老師端頁名與入口改為「評量待辦／家長回覆」，進頁先看未填、需修改與家長回覆狀態；完整評量內容需要時再展開。
