@@ -236,6 +236,63 @@ class BugReportApiTest extends TestCase
         $this->assertNotEmpty($atts[0]['url'] ?? null);
     }
 
+    public function test_upload_validation_rejects_wildcard_like_key_and_disallowed_file(): void
+    {
+        [$token] = $this->createUserToken([1], 'bugWildcardUpload@test.com', 'T');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->post('/api/v1/bugs', [
+            'title' => '拒絕惡意附件鍵名',
+            'description' => 'wildcard-like array key must not bypass file validation',
+            'severity' => 'high',
+            'branch_id' => 1,
+            'attachments' => [
+                '__asterisk__' => UploadedFile::fake()->create('payload.php', 1, 'application/x-php'),
+            ],
+        ]);
+
+        $res->assertStatus(422)->assertJsonValidationErrors(['attachments.__asterisk__']);
+        $this->assertDatabaseMissing('bug_reports', ['title' => '拒絕惡意附件鍵名']);
+    }
+
+    /** @dataProvider invalidAttachmentValues */
+    public function test_attachment_validation_rejects_non_file_entries(bool $mixed, string $value): void
+    {
+        Storage::fake('public');
+        [$token] = $this->createUserToken([1], 'bugInvalidFile@test.com', 'T');
+        $attachments = ['not_file' => $value];
+        if ($mixed) $attachments['valid'] = UploadedFile::fake()->image('valid.png');
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->post('/api/v1/bugs', [
+                'title' => '非檔案附件必須拒絕', 'description' => 'invalid input must not be silently discarded',
+                'branch_id' => 1, 'attachments' => $attachments,
+            ]);
+        $res->assertStatus(422)->assertJsonValidationErrors(['attachments.not_file']);
+        $this->assertDatabaseCount('bug_reports', 0);
+        $this->assertDatabaseCount('bug_report_attachments', 0);
+    }
+
+    public static function invalidAttachmentValues(): array
+    {
+        return [[false, 'not-a-file'], [true, 'not-a-file']];
+    }
+
+    public function test_attachment_limits_remain_enforced(): void
+    {
+        Storage::fake('public');
+        [$token] = $this->createUserToken([1], 'bugLimits@test.com', 'T');
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $payload = ['title' => '附件限制', 'description' => 'existing limits', 'branch_id' => 1];
+        $this->withHeaders($headers)->post('/api/v1/bugs', $payload + ['attachments' => [UploadedFile::fake()->image('big.png')->size(5121)]])
+            ->assertStatus(422)->assertJsonValidationErrors(['attachments.0']);
+        $this->withHeaders($headers)->post('/api/v1/bugs', $payload + ['attachments' => array_map(fn ($i) => UploadedFile::fake()->image("{$i}.png"), range(1, 6))])
+            ->assertStatus(422)->assertJsonValidationErrors(['attachments']);
+        $this->assertDatabaseCount('bug_reports', 0);
+        $this->assertDatabaseCount('bug_report_attachments', 0);
+    }
+
     /**
      * RC-1 regression: when the public storage disk is broken / symlink missing,
      * the bug report itself must still be created (HTTP 201) and attachment_errors
