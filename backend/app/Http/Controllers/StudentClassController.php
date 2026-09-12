@@ -2461,7 +2461,7 @@ class StudentClassController extends Controller
                 'affected_scheduled_sessions' => $affectedScheduledSessions,
                 'new_session_count' => $newCount,
                 'observed_used_sessions' => $observedUsed,
-            ], 422);
+            ], 409);
         }
 
         $result = DB::transaction(function () use ($classId, $newCount, $newCharge, $payload, $oldCount, $oldCharge, $studentClass, $confirmationToken) {

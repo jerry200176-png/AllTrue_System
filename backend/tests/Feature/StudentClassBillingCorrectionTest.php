@@ -192,7 +192,7 @@ class StudentClassBillingCorrectionTest extends TestCase
                 'confirmation_token' => $preview->json('confirmation_token'),
             ]
         )->assertStatus(409)->assertJsonPath('code', 'billing_correction_confirmation_stale');
-        $this->assertSame(1, SecurityAuditEvent::query()
+        $this->assertSame(1, DB::table('security_audit_events')
             ->where('event_type', 'student_class.billing_contract_correction')->count());
 
         $audit = DB::table('security_audit_events')
@@ -292,7 +292,8 @@ class StudentClassBillingCorrectionTest extends TestCase
 
         $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 4, 'Charge' => 4400]);
         $this->assertSame(3, ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->count());
-        $this->assertSame(0, SecurityAuditEvent::query()->where('event_type', 'student_class.billing_contract_correction')->count());
+        $this->assertSame(0, DB::table('security_audit_events')
+            ->where('event_type', 'student_class.billing_contract_correction')->count());
     }
 
     public function test_four_to_three_after_one_attended_cancels_tail_through_confirmed_api_flow(): void
