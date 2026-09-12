@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-12-tutoring-continuation",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "輔導課可建立不收費的下一期",
+    "summary": "從學生課程的「更多操作」選擇「延續輔導課（不收費）」，保留前後期關聯與原課程設定。",
+    "items": [
+      "下一期費用為零元，不建立帳單或付款義務；原課程、評量及出席紀錄保留。",
+      "固定排課沿用原星期與時段，逐堂手動排課仍須逐堂安排；重送或衝堂時不會重複建立。",
+      "共用方案不使用此流程；一般付費課的續報及加購規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "下一期費用為零元，不建立帳單或付款義務；原課程、評量及出席紀錄保留。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "固定排課沿用原星期與時段，逐堂手動排課仍須逐堂安排；重送或衝堂時不會重複建立。",
+          "共用方案不使用此流程；一般付費課的續報及加購規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:tutoring-continuation",
+      "in-app:#286",
+      "github:#2760"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-teacher-task-time-order",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

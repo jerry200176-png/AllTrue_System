@@ -420,7 +420,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -747,7 +747,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="showSessionsModal = false">
       <div class="modal">
-        <h3 id="sessions-modal-title">加購堂數 — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -756,25 +756,32 @@
           <label>{{ selectedCourse?.PackageID ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
           <p :style="{ fontSize: '20px', fontWeight: 700, color: (selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2 ? '#e65100' : 'var(--primary)' }">
             {{ selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0) }} 堂
-            <span v-if="(selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2" class="sessions-near-empty-hint">（即將用完，建議盡快加購）</span>
+            <span v-if="(selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2" class="sessions-near-empty-hint">{{ isTutoringCourse(selectedCourse) ? '（即將用完，可建立下一期）' : '（即將用完，建議盡快加購）' }}</span>
           </p>
         </div>
         <p class="hint sessions-package-hint">
-          {{ selectedCourse?.PackageID
+          {{ isTutoringCourse(selectedCourse)
+            ? '複製原課程的科目、老師與固定時段建立下一期，保留前後期關聯。費用 0 元、不建立帳單或付款義務；原課程及歷史紀錄不變。'
+            : selectedCourse?.PackageID
             ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
             : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
           }}
         </p>
-        <div class="form-group">
-          <label>加購堂數</label>
+        <div v-if="!(isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly')" class="form-group">
+          <label>{{ isTutoringCourse(selectedCourse) ? '下一期堂數' : '加購堂數' }}</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
         </div>
         <div v-if="!selectedCourse?.PackageID" class="form-group">
-          <label>新批次開始日期</label>
+          <label>{{ isTutoringCourse(selectedCourse) ? '下一期開始日期（須在原課程最後堂次之後）' : '新批次開始日期' }}</label>
           <input v-model="addSessionStartDate" type="date" />
         </div>
+        <div v-if="isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly'" class="form-group">
+          <label>下一期結束日期</label>
+          <input v-model="tutoringEndDate" type="date" :min="addSessionStartDate" />
+        </div>
         <p class="hint" v-if="addSessionCount > 0">
-          <template v-if="selectedCourse?.PackageID">
+          <template v-if="isTutoringCourse(selectedCourse)">下一期費用：<strong>0 元，無須繳費</strong></template>
+          <template v-else-if="selectedCourse?.PackageID">
             將共用方案總堂數增加 <strong>{{ addSessionCount }}</strong> 堂（不拆成單科新契約）
           </template>
           <template v-else>
@@ -783,8 +790,8 @@
         </p>
         <div class="actions">
           <button type="button" class="ghost" @click="showSessionsModal = false">取消</button>
-          <button type="button" class="primary" @click="submitAddSessions">
-            確認加購
+          <button type="button" class="primary" :disabled="addSessionsSubmitting" @click="submitAddSessions">
+            {{ addSessionsSubmitting ? '建立中…' : isTutoringCourse(selectedCourse) ? '確認建立下一期輔導課' : '確認加購' }}
           </button>
         </div>
       </div>
@@ -1096,6 +1103,8 @@ const showGradePromotion = ref(false);
 
 // Sessions modal
 const showSessionsModal = ref(false);
+const tutoringEndDate = ref('');
+const addSessionsSubmitting = ref(false);
 const addSessionCount = ref(8);
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const showRenewMonthlyModal = ref(false);
@@ -1354,7 +1363,7 @@ const getCoursePrimaryAction = (course) => {
     return {
       key: 'renew',
       icon: 'add_circle',
-      label: '續報加購',
+      label: isTutoringCourse(course) ? '延續輔導課' : '續報加購',
       title: '先處理課程續報',
       description: `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
       tone: 'warning',
@@ -2969,7 +2978,11 @@ const deleteCourse = async (course) => {
 
 // --- Add Sessions (per-course) ---
 const openAddSessionsForCourse = (course) => {
-  if (course?.payment_type === 'monthly') {
+  if (isTutoringCourse(course) && isPackageMember(course)) {
+    alert('此輔導課屬於共用方案，不能從這裡延續或加購；請先確認方案設定。');
+    return;
+  }
+  if (course?.payment_type === 'monthly' && !isTutoringCourse(course)) {
     renewMonthlyTargetCourse.value = course;
     renewMonthlyForm.value = {
       student_name: students.value.find(s => s.id === course.student_id)?.name || '—',
@@ -2987,11 +3000,26 @@ const openAddSessionsForCourse = (course) => {
   selectedCourse.value = course;
   addSessionCount.value = 8;
   addSessionStartDate.value = new Date().toISOString().slice(0, 10);
+  tutoringEndDate.value = '';
+  if (isTutoringCourse(course)) {
+    const end = String(course?.end_date || course?.EndDate || '').slice(0, 10);
+    if (end) {
+      const next = new Date(`${end}T12:00:00`);
+      next.setDate(next.getDate() + 1);
+      const nextDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+      if (nextDate > addSessionStartDate.value) addSessionStartDate.value = nextDate;
+    }
+  }
   showSessionsModal.value = true;
 };
 
 const submitAddSessions = async () => {
+  if (addSessionsSubmitting.value) return;
   if (!selectedCourse.value) return;
+  if (isTutoringCourse(selectedCourse.value) && isPackageMember(selectedCourse.value)) {
+    alert('共用方案輔導課不支援此延續流程；未變更方案堂數。');
+    return;
+  }
   if (addSessionCount.value <= 0) {
     alert('請輸入正確堂數');
     return;
@@ -3001,6 +3029,11 @@ const submitAddSessions = async () => {
     return;
   }
 
+  if (isTutoringCourse(selectedCourse.value) && selectedCourse.value.payment_type === 'monthly' && !tutoringEndDate.value) {
+    alert('請選擇下一期結束日期');
+    return;
+  }
+  addSessionsSubmitting.value = true;
   try {
     if (isPackageMember(selectedCourse.value)) {
       const packageId = Number(selectedCourse.value.PackageID ?? selectedCourse.value.package_id);
@@ -3028,7 +3061,11 @@ const submitAddSessions = async () => {
       return;
     }
 
-    const res = await fetch(`/api/v1/student-classes/${selectedCourse.value.id}/purchase-batch`, {
+    const tutoring = isTutoringCourse(selectedCourse.value);
+    const endpoint = tutoring
+      ? `/api/v1/student-classes/${selectedCourse.value.id}/continue-tutoring`
+      : `/api/v1/student-classes/${selectedCourse.value.id}/purchase-batch`;
+    const res = await fetch(endpoint, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -3039,7 +3076,9 @@ const submitAddSessions = async () => {
       body: JSON.stringify({
         sessions: Number(addSessionCount.value),
         start_date: addSessionStartDate.value,
-        mode: 'new_purchase'
+        ...(tutoring
+          ? (selectedCourse.value.payment_type === 'monthly' ? { end_date: tutoringEndDate.value } : {})
+          : { mode: 'new_purchase' })
       })
     });
 
@@ -3057,6 +3096,10 @@ const submitAddSessions = async () => {
       await loadStudentCourses(selectedStudent.value.id);
     }
     const newCourse = json?.new_course || {};
+    if (tutoring) {
+      alert(`${json.message}\n原課程 #${json.source_course_id} → 下一期 #${newCourse.id}\n${newCourse.start_date} ～ ${newCourse.end_date}，${newCourse.created_sessions} 堂。`);
+      return;
+    }
     const studentName = selectedStudent.value?.name || '';
     alert(formatRenewSuccessMessage({
       kind: 'purchase',
@@ -3068,6 +3111,8 @@ const submitAddSessions = async () => {
     }));
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    addSessionsSubmitting.value = false;
   }
 };
 
