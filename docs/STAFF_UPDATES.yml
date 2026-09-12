@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-learning-card-status-clarity
+    published_at: "2026-09-12"
+    audiences:
+      - director
+    importance: digest
+    title: 評量狀態更容易分辨
+    summary: 評量卡會分開標示內容是否填寫，以及目前的主任審核進度。
+    items:
+      - category: fixed
+        text: 卡片明確標示「評量內容已填／未填」，不再以過短文字呈現。
+      - category: improved
+        text: 審核狀態會寫明待主任核准或老師需修改，並加大加粗方便掃讀。
+      - category: improved
+        text: 請假、課堂、評量、出缺勤、扣堂、帳務、權限與既有資料維持不變。
+    source_refs:
+      - "changelog:2026-09-12:learning-card-status-clarity"
+      - "in-app:#280"
+      - "github:#2715"
+
   - id: staff-2026-09-12-canonical-session-status
     published_at: "2026-09-12"
     audiences:
