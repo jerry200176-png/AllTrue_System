@@ -2,6 +2,7 @@
 <!-- release-notes: staff_update=staff-2026-09-12-attendance-touch-tutoring-copy -->
 - 出缺勤按鈕與篩選維持至少 44px 觸控高度；載入、空白與錯誤狀態補上輔助科技提示，沿用原點名、扣堂與分校規則。
 - 輔導課編輯畫面釐清課務與核薪參考單價不是學生費用；一般付費課欄位、實際儲存內容與歷史資料不變。
+- 輔導延續完成訊息不再顯示內部課程編號；手動排課不顯示空白結束日，明確提示至行事曆逐堂安排。
 
 ## 2026-09-12 — feat(course): 輔導課可延續不收費的下一期
 <!-- release-notes: staff_update=staff-2026-09-12-tutoring-continuation -->

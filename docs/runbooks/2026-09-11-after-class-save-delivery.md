@@ -57,6 +57,10 @@
 
 ## 2026-09-12 本批對帳與低風險 UI 接續
 
+- **18:40 最終 #286 里程碑**：main CI `34688472717`、deploy `34688731527` success；依主 CLI 已有 GO 在同 run 記錄 `production-activation` 審核，沒有擴大到 #287。2026-09-12T10:40:16Z identity GREEN，backend/frontend/build 全部 exact `a975e4b6ae3137ae8cb0bb92f8f6c0fe188e08ce`、health ok、pending/drift 空；正式前端隔離 API 的3個手機／桌面流程 passed。原串公開回覆 **695**、resolved evidence 已写；GitHub #2760 closed，未代建真人正式課程、未代按 reporter verify，operationally accepted 尚未確認。下方 earlier pending 狀態由本條覆蓋。
+- 範圍再對帳：API 共287筆、max ID287，無新 report ID；#274 在本批期間以 comment692 重新反映手機底部遮擋，status in_progress。已 reopen #2606、原串回覆694，要求辨識新被遮擋面板／畫面，不冒充舊單堂視窗修正涵蓋所有情境；屬啟動後非新事故之後續手機案件，保留下一批，不擴張本批業務範圍。
+- UI 最終本機：整合 #286 後完整 unit **106 files／548 tests**、完整 build passed；Attendance full-App recovery 390/1440 **2 passed**、tutoring full-App **3 passed**、page/component browser **12 passed**，兩個 baseline-only cases 非正常驗收項。完成訊息另去除內部課程ID，manual 零預排顯示下一步而不是 null 結束日；API payload 和財務/權限保持不變。#2768 仍須 exact-head CI 與後續 production 驗證。
+
 - **最新狀態覆蓋下方較早里程碑**：#287 新 comment 691 指出一般取消仍會依舊四堂上限補排；已回到 in_progress，GitHub #2761 reopened，公開回覆 693 明確撤回「行事曆導頁可完成需求」的建議。根因為既有測試直接 DB cancelled，未覆蓋使用者取消／補排路徑。已向主 CLI 申請限定未收款按堂課的「主任確認後原子下修總數／金額／超額預排」GO，尚未批准、未實作或代改正式資料；不得再次視為 resolved。
 - #286 已 merge：PR #2766 最終 head `a5923dac85f62f2fa6e52079000f39f02c2f069a`，merge `a975e4b6ae3137ae8cb0bb92f8f6c0fe188e08ce`，PR CI `34688163020` passed；main CI `34688472717`／部署仍待確認。
 - Security #2767 deploy `34688143363` attempt 2 success；2026-09-12T10:25:30Z production-identity GREEN，backend exact `577a0a25484999042250088bac202b887a4fbd15`，無前端變動所以 frontend/build 保留 `41d959b9…`，health ok、pending runtime/drift 空。沒有對真人正式資料提交攻擊測試，不冒充 live exploit test 或 operational acceptance。#977 已記錄 evidence；#3 仍 open。
