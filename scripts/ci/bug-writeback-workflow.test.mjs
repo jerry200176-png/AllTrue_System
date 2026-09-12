@@ -35,6 +35,11 @@ for (const bugId of [281, 283]) {
     `in-app #${bugId} must resolve only against its exact verified production revision and deploy run`,
   );
 }
+assert.match(
+  phaseCSource,
+  /284 => \[[\s\S]*?"rev" => "921fe606766172e63252f03805504ae08c8ac8d8",[\s\S]*?"deploy" => "34675463987",/,
+  'in-app #284 must resolve only against its exact verified production revision and deploy run',
+);
 assert.ok(
   !phaseCSource.includes('repair_resolved'),
   'Phase-C allowlist entries must not replay already-resolved reports during unrelated runs',
