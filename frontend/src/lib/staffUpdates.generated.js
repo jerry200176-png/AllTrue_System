@@ -8,9 +8,11 @@ export const staffUpdates = [
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
     "audiences": [
+      "director",
       "teacher"
     ],
     "audience": [
+      "director",
       "teacher"
     ],
     "importance": "digest",
