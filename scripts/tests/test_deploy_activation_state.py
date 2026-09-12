@@ -234,6 +234,28 @@ diff --git a/frontend/src/lib/changelogDraft.generated.js b/frontend/src/lib/cha
         self.assertEqual(scope["tier_name"], "T3")
         self.assertIn("protected semantic marker: auth", " ".join(scope["reasons"]))
 
+    def test_ui_copy_next_to_unchanged_payment_context_stays_t1(self):
+        patch = """diff --git a/frontend/src/components/CourseEditForm.vue b/frontend/src/components/CourseEditForm.vue
++++ b/frontend/src/components/CourseEditForm.vue
+@@ -10,2 +10,2 @@
+-<label>繳費方式</label>
++<label>課程期間計算方式</label>
+ <select v-model=\"form.payment_type\">
+"""
+        scope = classify_scope(["frontend/src/components/CourseEditForm.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertNotIn("payment", " ".join(scope["reasons"]))
+
+    def test_real_billing_identity_and_permission_operations_stay_t3(self):
+        cases = (
+            (["backend/app/Http/Controllers/BillingController.php"], "+$invoice->TotalAmount = $amount;"),
+            (["frontend/src/pages/ParentPortal.vue"], "+await auth();"),
+            (["frontend/src/pages/DirectorDashboard.vue"], "+await authorizePermission();"),
+        )
+        for paths, patch in cases:
+            with self.subTest(paths=paths):
+                self.assertEqual(classify_scope(paths, patch)["tier_name"], "T3")
+
     def test_t2_write_path_and_security_path_keep_distinct_boundaries(self):
         routine = classify_activation_scope(
             ["backend/app/Services/ScheduleService.php"],

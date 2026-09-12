@@ -395,7 +395,18 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     # not evidence of the current change's runtime effect. Use the same
     # narrowed semantic input as activation classification; paths themselves
     # remain classified and executable runtime files are never excluded.
-    haystack = ("\n".join(marker_paths) + "\n" + _semantic_runtime_patch(runtime_paths, patch)).lower()
+    # A unified diff contains unchanged context lines.  Those lines explain a
+    # nearby edit but are not an effect of this PR; classifying them as one can
+    # incorrectly turn a copy-only UI change next to a payment field into T3.
+    # Paths remain an independent conservative signal, while semantic markers
+    # are limited to added/removed executable lines in deployable files.
+    semantic_patch = _semantic_runtime_patch(runtime_paths, patch)
+    semantic_effect = (
+        _semantic_changed_code_lines(semantic_patch)
+        if "diff --git " in semantic_patch
+        else semantic_patch
+    )
+    haystack = ("\n".join(marker_paths) + "\n" + semantic_effect).lower()
     minimum = 0
     reasons: list[str] = []
 
