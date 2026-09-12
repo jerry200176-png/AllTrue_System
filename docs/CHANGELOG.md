@@ -1,3 +1,8 @@
+## 2026-09-12 — fix(course): 更正堂數時不讓取消／請假歷史影響受影響預排
+<!-- release-notes: staff_update=staff-2026-09-12-billing-correction-history-sequence -->
+- 主任調低符合條件的未收款按堂課程時，預覽、再次確認與實際取消會使用相同的有效堂次順序；取消／請假歷史會保留，且不會改變將取消的未來預排。
+- 已上課、點名、評量、扣堂、付款檢查、月結、共用方案及已收款課程規則均不變。
+
 ## 2026-09-12 — improved(ux): 手機點名操作與輔導課單價說明
 <!-- release-notes: staff_update=staff-2026-09-12-attendance-touch-tutoring-copy -->
 - 補齊出缺勤按鈕與篩選至少 44px 的觸控高度；載入、空白與錯誤狀態補上輔助科技提示，沿用原點名、扣堂與分校規則。
