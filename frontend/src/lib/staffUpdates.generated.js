@@ -294,6 +294,49 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-canonical-session-status",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "同一堂課的狀態顯示保持一致",
+    "summary": "已上與取消歷史同時存在時，課程管理會固定顯示有效狀態，不再隨載入順序跳動。",
+    "items": [
+      "同一課程、日期與時段若同時保留已上與取消紀錄，會固定以已上紀錄呈現。",
+      "真正只有取消紀錄的堂次仍維持取消，不會被誤顯示為已上。",
+      "本次只統一畫面讀取判斷，不修改課表、出席、評量、扣堂、帳務或歷史資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "同一課程、日期與時段若同時保留已上與取消紀錄，會固定以已上紀錄呈現。",
+          "真正只有取消紀錄的堂次仍維持取消，不會被誤顯示為已上。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "本次只統一畫面讀取判斷，不修改課表、出席、評量、扣堂、帳務或歷史資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:canonical-session-status",
+      "in-app:#281",
+      "github:#2743"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-bug-reports-responsive-clarity",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

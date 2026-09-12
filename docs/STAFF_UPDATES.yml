@@ -3,6 +3,26 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-canonical-session-status
+    published_at: "2026-09-12"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 同一堂課的狀態顯示保持一致
+    summary: 已上與取消歷史同時存在時，課程管理會固定顯示有效狀態，不再隨載入順序跳動。
+    items:
+      - category: fixed
+        text: 同一課程、日期與時段若同時保留已上與取消紀錄，會固定以已上紀錄呈現。
+      - category: fixed
+        text: 真正只有取消紀錄的堂次仍維持取消，不會被誤顯示為已上。
+      - category: improved
+        text: 本次只統一畫面讀取判斷，不修改課表、出席、評量、扣堂、帳務或歷史資料。
+    source_refs:
+      - "changelog:2026-09-12:canonical-session-status"
+      - "in-app:#281"
+      - "github:#2743"
+
   - id: staff-2026-09-12-inactive-course-overlap-warning
     published_at: "2026-09-12"
     audiences:
