@@ -83,7 +83,6 @@
     <!-- Section 2: 費用與繳費 -->
     <section class="form-section">
       <h4 class="form-section-title">費用與繳費</h4>
-      <p v-if="form.class_type === 'tutoring'" class="field-hint field-hint--info">輔導課應收費用固定為 0 元，不建立付款義務。下方參考單價供既有課務／核薪使用，不是向學生收費。</p>
       <div class="form-section-grid">
         <div class="form-group">
           <label>費率計算方式</label>
@@ -106,7 +105,7 @@
         </div>
 
         <div class="form-group">
-          <label>{{ form.class_type === 'tutoring' ? '課務／核薪參考單價（元）' : effectiveRateUnit === 'hour' ? '每小時費用（元）' : '單堂費用（元）' }}</label>
+          <label>{{ effectiveRateUnit === 'hour' ? '每小時費用（元）' : '單堂費用（元）' }}</label>
           <input v-model.number="form.rate_per_30min" type="number" min="0" step="1" placeholder="1500" />
         </div>
 
@@ -122,7 +121,7 @@
         </div>
 
         <div class="form-group">
-          <label>{{ form.class_type === 'tutoring' ? '課程期間計算方式' : '繳費方式' }}</label>
+          <label>繳費方式</label>
           <select v-model="form.payment_type">
             <option value="session">堂數制</option>
             <option value="monthly">月結</option>

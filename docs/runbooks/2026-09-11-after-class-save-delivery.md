@@ -29,9 +29,7 @@
 - 目前 portfolio-ops origin/main bootstrap v1.1 將 agent-control 定為 canonical、Exo 為 experiment-only；canonical 本機便利 checkout 仍有舊文字，不能用舊 adapter 加設第二套 gate。未 regenerate adapter、清全域 session、變更 classifier 或放寬必要 CI。
 - P4 比對：#2699 merge `bce8daed103972badbb9be22253b1151388970e1` 已提供 generated-history 排除及真實 auth 負例。#2692 head `107c6fa25e906d45539ecb80a379dc726026468b` 尚含 PHPUnit snapshot/config 路徑與 whole-term marker／token vocabulary 改動；不整包重播，也不覆寫主線後續 CSS-selector 負例。現有 activation state 68 tests passed；本包不需更改 classifier。
 
-## 2026-09-12 接續：in-app #285（已上線，待回報者驗收）
-
-- 交付完成證據：PR #2765 head `1f685a50e66e576f03812edee8e46f209d9b7ea8`，merge `41d959b9c9f298c66a2efbd19307be3d49f0c381`；PR CI `34686195961` 與 main CI `34686439685` success，deploy `34686619551` success。正式 backend/frontend/build 全部 exact SHA 相同，health ok。正式前端隔離 API 的四個課後流程 tests passed（390/1440）；没有以真人資料測試寫入。原串公開留言 `690`，status 已 `resolved`，尚無 reporter verify，不是 closed 或 operationally accepted。
+## 2026-09-12 接續：in-app #285（尚未交付）
 
 - 本輪啟動範圍：in-app #285／#286／#287；fresh queue run `34685461154`，detail runs `34685510917`／`34685519056`／`34685520422`，三件 freshness validator passed。其他既有 resolved 回報不重複通知或代替真人驗收。
 - 接管基線與正式站 backend/frontend/build：`ff74c83e604191a5ae56ca543629be2e3577daf6`；deploy `34682878958` success，health ok。agent-control session `637daa9815dc42f783fbe84a8cf46acf`，branch `chore/task-product-delivery-20260912-main`；preflight passed。未提交舊成果留在原 worktrees。
@@ -46,11 +44,3 @@
 - 隔離 fixtures 攔截所有 API；只證明前端已部署行為，不冒充 production DB 寫入或真人理解率。測試 revision、畫面、required checks 與正式站 SHA 已列於上方並在 scoped PR 回寫。
 - 反覆失敗由 Astra 接手；required gate、身份／隔離／權威回應驗證不明時停止相關交付，不改 assertion 洗綠。
 - Rollback：透過現有 deploy.yml 交付本包 revert；保留後端課務與歷史草稿，不回放提交／通知。上線前記錄正式站基線 SHA，回退後重新核對 health/version 與課後情境。
-
-## 本批接續：in-app #286 輔導課下一期（開發中，尚未部署）
-
-- Founder 於 2026-09-12 主 CLI 明確批准：從既有輔導課複製設定建立下一期、保留前後期關聯、費用為 0、不建立付款義務；一般付費課規則不變。批准證據：[issue #2760 留言](https://github.com/jerry200176-png/AllTrue_System/issues/2760#issuecomment-5645043931)。不包含歷史修復、帳款搬移、migration、權限擴大或其他 runtime activation。
-- R3/T3 scoped GO；task `chore/task-tutoring-continuation-286-20260912`，session `62a7401baf5e4719a175d2abf3892f9a`，base `ff74c83e604191a5ae56ca543629be2e3577daf6`，preflight passed。原回報 #286、issue #2760；本批其他 in-app 範圍仍是 #285/#287，不擴張清單。
-- 架構：新增明確 tutoring endpoint，主任／管理員分校權限、鎖來源／學生／群組、複用既有排課與 CourseContinuity 關聯；不改 paid renewal/purchase。Charge/Pay/Paid 歸零且 PayDate 空，Rate 保留既有課務／核薪語意；不建立 Invoice/Payment，不變更舊課、出席或評量。
-- 獨立 SEC/ARCH review 指出並修正：共用方案不得誤走付費加購、首堂須符合原固定星期、手動排課不可偷偷轉自動。最新本機相關 API suites：36 tests / 227 assertions passed，含舊付費／關聯 regression；前端既有 high-risk flows 6 passed，Vite build passed，PHPStan no errors。完整 App 的 390/1440 失敗保留／重試／零應收及共用方案防誤寫共 3 browser tests passed；舊版正式前端的兩個尺寸 before 截圖亦已取得，所有 API 均隔離攔截，不是 production DB 寫入證據。CI 與部署尚待最終 head 驗證，不宣稱已交付。
-- rollback：以正常 PR revert 並透過 deploy.yml 交付，停用新入口；不刪已建立的下一期、不搬回帳務或歷史紀錄。必要資料處置另取授權。原串完成回覆需在 exact-SHA/runtime 核對後，不能代替回報者驗收。
