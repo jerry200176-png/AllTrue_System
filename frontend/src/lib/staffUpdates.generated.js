@@ -608,6 +608,47 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-billing-correction-schedule-guidance",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "減少未收款堂數時會列出需先處理的排程",
+    "summary": "若新堂數少於目前排程，課程管理會列出受影響日期與時間，並可直接前往行事曆處理。",
+    "items": [
+      "說明不再誤稱系統會自動取消排程；更正尚未完成時也不顯示內部堂次編號。",
+      "可從阻擋提示直接開啟該課程與日期的行事曆，處理後再回來重試。",
+      "堂數、帳務、排程取消、權限與既有資料規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "說明不再誤稱系統會自動取消排程；更正尚未完成時也不顯示內部堂次編號。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "可從阻擋提示直接開啟該課程與日期的行事曆，處理後再回來重試。",
+          "堂數、帳務、排程取消、權限與既有資料規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:billing-correction-schedule-guidance",
+      "in-app:#287",
+      "github:#2761"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-account-profile-touch-controls",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
