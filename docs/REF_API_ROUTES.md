@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 462 api/* routes · generated 2026-09-08
+> Source: `php artisan route:list --json` · 463 api/* routes · generated 2026-09-12
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -690,7 +690,7 @@
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
 
-## /api/v1/student-classes (33)
+## /api/v1/student-classes (34)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -709,6 +709,7 @@
 | POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/charge-correction` | `StudentClassController@chargeCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/continue-tutoring` | `StudentClassController@continueTutoring` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/contract-amendment` | `ContractAmendmentController@execute` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/contract-amendment/preview` | `ContractAmendmentController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/convert-to-package` | `CoursePackageController@convertToPackage` | role+campus |

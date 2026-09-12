@@ -3083,6 +3083,162 @@ class StudentClassController extends Controller
         return response()->json(['message' => '已確認繳費', 'class_id' => $studentClass->ID]);
     }
 
+    /** Founder GO #286: a new zero-obligation tutoring term, never a paid renewal. */
+    public function continueTutoring(Request $request, StudentClass $studentClass)
+    {
+        $data = $request->validate([
+            'start_date' => 'required|date|after_or_equal:today',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'sessions' => 'nullable|integer|min:1|max:500',
+        ]);
+        // No client-supplied identity, price, payment or continuity group is accepted.
+        if (array_diff(array_keys($request->all()), ['start_date', 'end_date', 'sessions'])) {
+            abort(422, '只可設定下一期的日期與堂數。');
+        }
+
+        return DB::transaction(function () use ($request, $studentClass, $data) {
+            $source = StudentClass::query()->where('ID', $studentClass->getAttribute('ID'))->lockForUpdate()->first();
+            if (!$source instanceof StudentClass) abort(404, '課程不存在。');
+            $student = Student::query()->where('id', $source->getAttribute('StudentID'))->lockForUpdate()->first();
+            if (!$student instanceof Student) abort(404, '學生不存在。');
+            $campusId = (int) $student->getAttribute('CampusID');
+            $role = $request->attributes->get('auth_role');
+            $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+            if (!in_array($role, ['director', 'admin', 'super_admin'], true)
+                || $campusId <= 0 || ($role !== 'super_admin' && !in_array($campusId, $campusIds, true))) {
+                abort(403, '無權延續此分校的課程。');
+            }
+            if (strtolower(trim((string) $source->getAttribute('ClassType'))) !== 'tutoring' || $source->isPartOfPackage()) {
+                abort(422, '此功能只適用於非共用方案的輔導課；付費課請使用原續報流程。');
+            }
+
+            $member = \App\Models\CourseContractGroupMember::query()->where('student_class_id', $source->getAttribute('ID'))->first();
+            $group = $member ? \App\Models\CourseContractGroup::query()->whereKey($member->group_id)->lockForUpdate()->first() : null;
+            if ($member && !$group instanceof \App\Models\CourseContractGroup) abort(409, '課程關聯不存在，請先確認。');
+            if ($group) {
+                $members = $group->activeMembers()->orderBy('sequence')->get();
+                if ($member->unlinked_at !== null || !$members->last()
+                    || (int) $members->last()->student_class_id !== (int) $source->getAttribute('ID')
+                    || $members->contains(fn ($m) => !in_array($m->relation_type, ['original', 'renewal'], true))) {
+                    abort(409, '此課程已有下一期或關聯不明確，請從最新一期延續；不會重複建立。');
+                }
+            }
+
+            $start = Carbon::parse($data['start_date'])->toDateString();
+            $sourceEnd = $this->normalizeDateString($source->getAttribute('EndDate'));
+            $lastSession = ClassSession::query()->where('StudentClassID', $source->getAttribute('ID'))
+                ->where('Status', '!=', 'cancelled')->max('SessionDate');
+            $lastDate = max($sourceEnd ?: '', $this->normalizeDateString($lastSession) ?: '');
+            if (!$lastDate || $start <= $lastDate) {
+                abort(422, '下一期須在原課程結束日及最後堂次之後；請先確認原課程日期。');
+            }
+            $mode = (string) ($source->getAttribute('ScheduleMode') ?: 'count');
+            if (!in_array($mode, ['count', 'date'], true)
+                || ($mode === 'count' && empty($data['sessions']))
+                || ($mode === 'date' && empty($data['end_date']))) {
+                abort(422, '堂數制請填下一期堂數；期間制請填下一期結束日。');
+            }
+            if ($mode === 'date' && Carbon::parse($data['end_date'])->gt(Carbon::parse($start)->addYears(2))) {
+                abort(422, '下一期期間最多兩年。');
+            }
+            $slots = $this->resolveScheduleSlotsForRebuild($source);
+            $policy = $source->getAttribute('scheduling_policy') ?: 'auto_recurrence';
+            if (!in_array($policy, ['auto_recurrence', 'manual_occurrence'], true)) {
+                abort(422, '原課程排課方式不明，請先確認設定。');
+            }
+            $manual = $source->getAttribute('scheduling_policy') === 'manual_occurrence';
+            if ($manual && $mode !== 'count') {
+                abort(422, '逐堂手動排課僅支援堂數制課程。');
+            }
+            if (!$slots && !$manual) {
+                abort(422, '原課程沒有固定排課設定，請先設定上課時段再延續。');
+            }
+            $firstDate = Carbon::parse($start);
+            if (!$manual && $mode === 'count') {
+                $weekdays = array_map('intval', array_column($slots, 'weekday'));
+                for ($offset = 0; $offset < 7 && !in_array($firstDate->dayOfWeekIso, $weekdays, true); $offset++) {
+                    $firstDate->addDay();
+                }
+                if (!in_array($firstDate->dayOfWeekIso, $weekdays, true)) {
+                    abort(422, '原課程固定星期設定無效。');
+                }
+            }
+
+            // Explicit copy: no legacy paid flags, balances, package, closure or ledger state.
+            $payload = $source->only([
+                'StudentID', 'GradeID', 'SubjectID', 'TeacherID', 'by1', 'Period',
+                'week', 'time', 'week1', 'time1', 'week2', 'time2', 'week3', 'time3',
+                'week4', 'time4', 'week5', 'time5', 'week6', 'time6',
+                'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6',
+                'SessionDuration', 'Rate', 'rate_unit', 'LearnTimeID', 'room_id', 'Memo',
+                'standard_lesson_minutes', 'deduction_basis',
+            ]);
+            $duration = max(30, (int) ($source->getAttribute('SessionDuration') ?: 120));
+            $payload = array_merge($payload, [
+                'ClassType' => 'tutoring', 'ScheduleMode' => $mode, 'StartDate' => $start,
+                'EndDate' => $mode === 'date' ? Carbon::parse($data['end_date'])->toDateString() : null,
+                'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'PayDate' => null,
+                'Stop' => 0, 'UsedSessions' => 0, 'SessionCount' => 0,
+                'RemainingSessions' => 0, 'TotalHours' => 0, 'MDate' => now(),
+            ]);
+            $new = new StudentClass($payload);
+            $new->save();
+            $new->setAttribute('scheduling_policy', $manual ? 'manual_occurrence' : 'auto_recurrence');
+            $rows = $manual ? [] : ($mode === 'count'
+                ? $this->buildSessionsForCount((int) $new->getAttribute('ID'), $firstDate->toDateString(), (int) $data['sessions'], $slots, $duration)
+                : $this->buildSessionsFromWeeklySchedule((int) $new->getAttribute('ID'), $start, $payload['EndDate'], $slots, $duration));
+            if ((!$rows && !$manual) || count($rows) > 500) {
+                abort(422, '下一期須包含 1 至 500 堂課，請調整期間或堂數。');
+            }
+            if (!$manual && $mode === 'count' && count($rows) !== (int) $data['sessions']) {
+                abort(422, '下一期堂數超出兩年內可排課範圍，請減少堂數。');
+            }
+            $new->setAttribute('SessionCount', $manual ? (int) $data['sessions'] : count($rows));
+            $new->setAttribute('RemainingSessions', $new->getAttribute('SessionCount'));
+            $new->setAttribute('TotalHours', (int) round(array_sum(array_map(static function ($row) {
+                return Carbon::parse($row['StartTime'])->diffInMinutes(Carbon::parse($row['EndTime']));
+            }, $rows)) / 60));
+            if ($mode === 'count' && !$manual) {
+                $new->setAttribute('EndDate', $rows[count($rows) - 1]['SessionDate']);
+            }
+            $new->save();
+            foreach ($rows as $row) {
+                $conflicts = $this->teacherCapacityConflictsForSession($new, (string) $row['SessionDate'], $row['StartTime'], $row['EndTime']);
+                if ($conflicts) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['schedule' => '下一期時段有衝突，請先調整原課程固定時段。']);
+                }
+                app(ClassSessionMaterializationService::class)->upsertSlot($row);
+            }
+            SessionDeductionService::syncCounters($new);
+            $new->refresh();
+            $scope = ['mode' => $role === 'super_admin' ? 'all' : 'scoped', 'campus_ids' => $campusIds];
+            $actor = $request->attributes->get('auth_user');
+            $actorId = $actor ? (int) $actor->id : null;
+            $continuity = app(\App\Services\CourseContinuityService::class);
+            $nextMember = [
+                'student_class_id' => (int) $new->getAttribute('ID'), 'relation_type' => 'renewal',
+                'effective_from' => $start, 'decision_reason' => '輔導課下一期：費用 0，不建立付款義務',
+            ];
+            if ($group) {
+                $continuity->addMember($group, $nextMember, $actorId, $scope);
+            } else {
+                $group = $continuity->createGroup([
+                    'student_id' => (int) $source->getAttribute('StudentID'), 'campus_id' => $campusId,
+                    'subject_id' => (int) $source->getAttribute('SubjectID'),
+                    'members' => [['student_class_id' => (int) $source->getAttribute('ID'), 'relation_type' => 'original'], $nextMember],
+                ], $actorId, $scope);
+            }
+            return response()->json([
+                'message' => '已建立下一期輔導課並保留前後期關聯；費用 0 元，無須繳費。',
+                'source_course_id' => (int) $source->getAttribute('ID'), 'continuity_group_id' => (int) $group->id,
+                'new_course' => ['id' => (int) $new->getAttribute('ID'), 'charge' => 0,
+                    'start_date' => $start, 'end_date' => $this->normalizeDateString($new->getAttribute('EndDate')),
+                    'created_sessions' => count($rows)],
+                'next_actions' => ['view_new_course'],
+            ], 201);
+        });
+    }
+
     /**
      * 續報預覽：只回傳將發生的課程 / 帳單 / 排課影響，不寫入資料。
      * POST /api/v1/student-classes/{studentClass}/renewal-preview
