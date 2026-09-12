@@ -587,8 +587,8 @@
 
     <!-- ===== Records Grouped By Student ===== -->
       <div class="lr-view-toolbar" aria-label="評量顯示模式">
-        <div v-if="!isNarrowViewport" class="lr-view-toolbar__label">顯示模式</div>
-        <div v-if="!isNarrowViewport" class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
+        <div v-if="!isNarrowViewport || !isTeacher" class="lr-view-toolbar__label">顯示模式</div>
+        <div v-if="!isNarrowViewport || !isTeacher" class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
         <button
           type="button"
           :class="['lr-view-btn', { active: effectiveViewMode === 'table' }]"
