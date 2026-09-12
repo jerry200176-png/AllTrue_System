@@ -14,6 +14,9 @@ assert.equal(oneItems.length, 1);
 assert.equal(oneItems[0].tone, 'warning');
 const oneSummary = courseRowWarningSummary(oneWarning, usageBalanceWarningTitle);
 assert.deepEqual(oneSummary, oneItems);
+assert.equal(oneItems[0].label, '⚠ 另一門課仍在同時段');
+assert.match(oneItems[0].title, /不是重複課堂/);
+assert.match(oneItems[0].title, /結束課程（不再續課）/);
 
 // schedule_drift wins over contract_exception_count (else-if in source).
 const driftOnly = courseRowWarningItems(
@@ -34,6 +37,6 @@ const multiSummary = courseRowWarningSummary(multi, usageBalanceWarningTitle);
 assert.equal(multiSummary.length, 1);
 assert.equal(multiSummary[0].tone, 'danger');
 assert.equal(multiSummary[0].label, '⚠ 3 個提醒');
-assert.match(multiSummary[0].title, /與另一堂時段重疊/);
+assert.match(multiSummary[0].title, /另一門課仍在同時段/);
 assert.match(multiSummary[0].title, /補課例外/);
 assert.match(multiSummary[0].title, /堂數對帳提示/);

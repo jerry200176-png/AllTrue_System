@@ -67,7 +67,8 @@ describe('CourseManagement action hierarchy', () => {
   it('offers explicit settlement for unpaid courses and preserves reconciliation messaging', () => {
     expect(source).toContain("&& (isSessionMode(c) || isMonthlyMode(c))");
     expect(source).toContain("c.closed_reason !== 'settled_pending';");
-    expect(source).toContain('>結案（不續報）</button>');
+    expect(source.match(/結束課程（不再續課）/g)).toHaveLength(2);
+    expect(source.match(/title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒"/g)).toHaveLength(2);
     expect(studentsSource).toContain("['session', 'monthly'].includes");
     expect(studentsSource).toContain("course?.closed_reason !== 'settled_pending'");
     // course-mgmt deep-links commercial settle to students; mutation stays authoritative there

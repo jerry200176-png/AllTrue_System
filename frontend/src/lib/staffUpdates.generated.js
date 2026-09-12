@@ -294,6 +294,47 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-course-overlap-copy-clarity",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "重疊課程與結束課程說明更清楚",
+    "summary": "課程管理會說明警示是另一門進行中課程使用相同時段，結束舊課的操作也改為白話。",
+    "items": [
+      "重疊提醒明確區分「重複課堂」與「另一門進行中課程使用同時段」。",
+      "「結案（不續報）」改為「結束課程（不再續課）」，並說明會保留已上課與付款紀錄。",
+      "重疊判定、課程結束流程、排課、出缺勤、扣堂、帳務與既有資料維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "重疊提醒明確區分「重複課堂」與「另一門進行中課程使用同時段」。",
+          "「結案（不續報）」改為「結束課程（不再續課）」，並說明會保留已上課與付款紀錄。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "重疊判定、課程結束流程、排課、出缺勤、扣堂、帳務與既有資料維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:course-overlap-copy-clarity",
+      "in-app:#283",
+      "github:#2727"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-course-balance-evidence",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

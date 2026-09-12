@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-course-overlap-copy-clarity
+    published_at: "2026-09-12"
+    audiences:
+      - director
+    importance: digest
+    title: 重疊課程與結束課程說明更清楚
+    summary: 課程管理會說明警示是另一門進行中課程使用相同時段，結束舊課的操作也改為白話。
+    items:
+      - category: improved
+        text: 重疊提醒明確區分「重複課堂」與「另一門進行中課程使用同時段」。
+      - category: improved
+        text: 「結案（不續報）」改為「結束課程（不再續課）」，並說明會保留已上課與付款紀錄。
+      - category: fixed
+        text: 重疊判定、課程結束流程、排課、出缺勤、扣堂、帳務與既有資料維持不變。
+    source_refs:
+      - "changelog:2026-09-12:course-overlap-copy-clarity"
+      - "in-app:#283"
+      - "github:#2727"
+
   - id: staff-2026-09-12-learning-card-status-clarity
     published_at: "2026-09-12"
     audiences:
