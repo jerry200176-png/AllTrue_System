@@ -5,8 +5,8 @@ kind: task
 parent_id: INT-20260912-135917-8BAE
 boundary: Carry source head 458b6417 onto current main with explicit conflict resolution
   and new verification evidence, plus the minimum App navigation-order repair required
-  by the director return-flow acceptance check. No source-session reuse, no second-batch assessment
-  work, no backend/API/auth/billing/production-data/gate changes.
+  by the director return-flow acceptance check. No source-session reuse, no second-batch
+  assessment work, no backend/API/auth/billing/production-data/gate changes.
 success_condition: Integrated head preserves source product intent and current main;
   focused and full tests, screenshots, authenticated safe-env flows, independent review,
   required CI, merge/deploy and production read-only verification all pass.
@@ -47,24 +47,26 @@ checks:
 - npm run lint:no-undef
 - npm run build
 type: feature
-status: todo
+status: review
 spec_ref: null
 notes:
-- 'Source provenance: PR #2757 head 458b6417d1539f08ca3d8b3b34f943e17831f0df,
-  parent 921fe606766172e63252f03805504ae08c8ac8d8. Live base at takeover was
-  ad0262b9da31f02258594297cf8172aa0964b1f2; conflict was the singleton
-  .agent-session/manifest.json after #284 Phase C merged.'
-- 'The stopped source session/ticket/manifest were not reused or copied. A fresh
-  governed worktree/session carried the source product files. Compared with source
-  head, those files differ only in the no-unused-vars-safe removal of private sort
-  fields; App.vue contains the separate minimum director return-context ordering fix.'
-- 'Safe-environment full-login checks ran at 390x844 and 1280x720. Attendance wrote
-  only AllTrue_test; assessment readback showed filled+pending, and director todo to
-  evaluation to return passed. The existing learning-record response identity warning
-  was observed and intentionally left to the excluded second batch.'
+- 'Source provenance: PR #2757 head 458b6417d1539f08ca3d8b3b34f943e17831f0df, parent
+  921fe606766172e63252f03805504ae08c8ac8d8. Live base at takeover was ad0262b9da31f02258594297cf8172aa0964b1f2;
+  conflict was the singleton .agent-session/manifest.json after #284 Phase C merged.'
+- The stopped source session/ticket/manifest were not reused or copied. A fresh governed
+  worktree/session carried the source product files. Compared with source head, those
+  files differ only in the no-unused-vars-safe removal of private sort fields; App.vue
+  contains the separate minimum director return-context ordering fix.
+- Safe-environment full-login checks ran at 390x844 and 1280x720. Attendance wrote
+  only AllTrue_test; assessment readback showed filled+pending, and director todo
+  to evaluation to return passed. The existing learning-record response identity warning
+  was observed and intentionally left to the excluded second batch.
 blockers: []
 created_at: '2026-09-12T13:59:26+08:00'
 brain_dump: ''
 risk: medium
 children: []
 resource_profile: default
+commits:
+- a87829c5b64af984e4de1f2bc13adfe8d5944f66
+- 184102a17f4e7cdf72479e41456614bad107d517
