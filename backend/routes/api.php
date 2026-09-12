@@ -549,6 +549,7 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('student-classes/{studentClass}/continue-tutoring', [StudentClassController::class, 'continueTutoring']);
         Route::post('student-classes/{studentClass}/manual-sessions/check', [StudentClassController::class, 'checkManualSession']);
         Route::post('student-classes/{studentClass}/manual-sessions', [StudentClassController::class, 'createManualSession']);
     });
