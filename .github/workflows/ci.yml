@@ -48,6 +48,7 @@ jobs:
           node scripts/ci/bug-writeback-workflow.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
+          python3 scripts/tests/test_required_php_checks.py
 
       - name: Test control plane lint catches violations
         run: |
