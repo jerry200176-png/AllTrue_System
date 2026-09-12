@@ -18,8 +18,8 @@ export function courseRowWarningItems(course, usageBalanceWarningTitle) {
   if (course?.hasSlotConflict) {
     items.push({
       tone: 'warning',
-      label: '⚠ 與另一堂時段重疊',
-      title: '這位學生還有另一筆進行中課程佔用同一位老師的同一時段，常見於續約時舊課程沒關閉。此堂請假／調課不會釋出對方的時段。',
+      label: '⚠ 另一門課仍在同時段',
+      title: '這不是重複課堂；這位學生另有一門進行中課程使用同一位老師與相同上課時段，若舊課已結束且不再續課，請在舊課選擇「結束課程（不再續課）」；請假或調課不會關閉舊課。',
     });
   }
   if (course?.schedule_drift) {
