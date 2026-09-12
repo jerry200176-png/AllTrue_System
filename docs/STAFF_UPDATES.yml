@@ -14,7 +14,7 @@ updates:
       - category: improved
         text: 頁名與入口改為「評量待辦／家長回覆」，更直接對應未填、需修改與家長回覆工作。
       - category: improved
-        text: 完整評量內容預設收合，需要核對時可隨時展開；手機不再顯示無法使用的列表／卡片切換。
+        text: 完整評量內容預設收合，需要核對時可隨時展開；老師手機不再顯示無法使用的列表／卡片切換，主任原有控制維持不變。
       - category: improved
         text: 評量狀態、篩選、課表、家長回覆、API、權限與既有資料維持不變。
     source_refs:
