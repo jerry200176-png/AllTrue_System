@@ -910,7 +910,7 @@ import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { getPerSessionFee } from '../lib/coursePricing';
-import { formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
+import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
@@ -3093,8 +3093,10 @@ const submitAddSessions = async () => {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      const msg = details || json?.message || '操作失敗';
-      alert(msg);
+      const duplicateHint = json?.duplicate_course?.id
+        ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
+        : '';
+      alert((details || json?.message || '操作失敗') + duplicateHint);
       return;
     }
 
