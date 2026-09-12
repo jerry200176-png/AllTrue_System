@@ -28,6 +28,13 @@ assert.match(
   /280 => \[[\s\S]*?"rev" => "995023201e9452cbd067df5aa7cd0bdc7312bb5c",[\s\S]*?"deploy" => "34667267404",/,
   'in-app #280 must resolve only against its exact verified production revision and deploy run',
 );
+for (const bugId of [281, 283]) {
+  assert.match(
+    phaseCSource,
+    new RegExp(`${bugId} => \\[[\\s\\S]*?"rev" => "86602e4ddaf8c03b73c78ee99d745507d884e958",[\\s\\S]*?"deploy" => "34670532157",`),
+    `in-app #${bugId} must resolve only against its exact verified production revision and deploy run`,
+  );
+}
 assert.ok(
   !phaseCSource.includes('repair_resolved'),
   'Phase-C allowlist entries must not replay already-resolved reports during unrelated runs',

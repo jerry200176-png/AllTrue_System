@@ -1,0 +1,39 @@
+id: TKT-20260912-113843-PO9W
+title: Allowlist verified Phase-C writeback for in-app 281 and 283
+intent: Allowlist verified Phase-C writeback for in-app 281 and 283
+kind: task
+parent_id: INT-20260912-113834-Q112
+boundary: No application, course-state, credential, permission, attendance, deduction,
+  billing, or unrelated-report changes.
+success_condition: 'Focused contract and build pass; existing workflow resolves only
+  #281/#283 with exact verified production revision and deploy evidence.'
+priority: 1
+labels:
+- in-app
+scope:
+  allow:
+  - .github/workflows/bug-phase-c-allowlist.yml
+  - scripts/ci/bug-writeback-workflow.test.mjs
+  - operations/closeout/bug-phase-c-allowlist.request.md
+  - .agent-session/manifest.json
+  - .exo/tickets/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 180
+checks:
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T11:38:43+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
