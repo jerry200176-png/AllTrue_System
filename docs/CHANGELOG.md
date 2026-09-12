@@ -1,3 +1,7 @@
+## 2026-09-12 — fix(learning): 舊評量儲存回應的學生欄位一致
+<!-- release-notes: staff_update=staff-2026-09-12-learning-save-response-confirmation -->
+- 修正舊評量儲存成功後因學生識別欄位不一致，仍顯示「無法確認儲存結果」的問題；保留身分核對、草稿與防重複提交，不修改歷史資料（in-app #285）。
+
 ## 2026-09-12 — fix(course): 減少未收款堂數時列出需先處理的排程
 <!-- release-notes: staff_update=staff-2026-09-12-billing-correction-schedule-guidance -->
 - 主任調低未收款課程堂數時，若既有未來排程超過新堂數，畫面會列出受影響日期與時間，並可直接前往該課程的行事曆處理。
