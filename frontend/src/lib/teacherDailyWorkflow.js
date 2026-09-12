@@ -169,12 +169,12 @@ export function buildTeacherTasks({
   return tasks.sort((a, b) => {
     const rankDelta = a._sortRank - b._sortRank;
     if (rankDelta !== 0) return rankDelta;
-    const timeDelta = a._sortTime - b._sortTime;
-    if (timeDelta !== 0) return timeDelta;
     if (a._sessionKey && a._sessionKey === b._sessionKey && a._sortRank === 2) {
       const typeDelta = (typeOrderForSameSession[a.type] ?? 2) - (typeOrderForSameSession[b.type] ?? 2);
       if (typeDelta !== 0) return typeDelta;
     }
+    const timeDelta = a._sortTime - b._sortTime;
+    if (timeDelta !== 0) return timeDelta;
     return a._stableKey.localeCompare(b._stableKey, 'zh-Hant');
   }).map((task) => {
     const publicTask = { ...task };

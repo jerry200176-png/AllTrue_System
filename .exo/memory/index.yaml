@@ -315,3 +315,16 @@ failure_modes:
       and patch comparison, then generate new checks on the integration head.
   severity: medium
   frequency: recurring
+- id: FM-20260912-143759-EZNJ
+  name: Teacher task comparator applied display time before reliable same-session
+    dependency ordering
+  detection:
+    signal: Teacher task comparator applied display time before reliable same-session
+      dependency ordering
+    source: reflection:REF-20260912-143759-6JSX
+  mitigation:
+    practice: When two ordinary tasks share a reliable ClassSession id, enforce attendance-before-learning
+      before comparing potentially stale display times; use time ordering only across
+      different sessions and cover mismatched-time payloads.
+  severity: medium
+  frequency: recurring

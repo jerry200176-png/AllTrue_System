@@ -17,7 +17,10 @@ describe('dashboard return context', () => {
   });
 
   it('applies the next return context after page navigation clears stale state', () => {
-    const appSource = fs.readFileSync(path.resolve(process.cwd(), 'src/App.vue'), 'utf8');
+    const frontendRoot = fs.existsSync(path.resolve(process.cwd(), 'src/App.vue'))
+      ? process.cwd()
+      : path.resolve(process.cwd(), 'frontend');
+    const appSource = fs.readFileSync(path.resolve(frontendRoot, 'src/App.vue'), 'utf8');
     const start = appSource.indexOf('function onNavigateFromNotifications');
     const end = appSource.indexOf('function onNavigateFromCourseManagement', start);
     const navigationBlock = appSource.slice(start, end);
