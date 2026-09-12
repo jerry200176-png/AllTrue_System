@@ -142,7 +142,7 @@ class LearningRecordController extends Controller
         // The legacy column defaults to 0 and is not maintained by save paths.
         // Both response aliases must describe the authoritative course student.
         // This hydration runs after persistence; it does not repair stored rows.
-        $record->StudentID = $record->student_id;
+        $record->setAttribute('StudentID', $record->student_id);
         $subjectId = $record->studentClass->SubjectID ?? null;
         $subjectName = $subjectId
             ? DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')

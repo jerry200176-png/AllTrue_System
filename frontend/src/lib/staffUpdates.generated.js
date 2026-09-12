@@ -215,7 +215,7 @@ export const staffUpdates = [
     ],
     "importance": "digest",
     "title": "評量成功儲存後會正確顯示結果",
-    "summary": "已寫入的評量不再因學生欄位格式差異而誤顯示無法確認。",
+    "summary": "新增或修改評量時，包含舊紀錄的學生欄位格式差異，都會依課程所屬學生確認儲存結果。",
     "items": [
       "送出評量後，系統會用伺服器實際回傳的學生資料確認成功，不再要求對已儲存紀錄重複送出。",
       "若更新前曾看到「無法確認儲存結果」，請先重新查詢該堂評量是否已存在，再決定是否重試。",
@@ -240,6 +240,7 @@ export const staffUpdates = [
       "changelog:2026-09-12:learning-save-response-confirmation",
       "in-app:#282",
       "in-app:#283",
+      "in-app:#285",
       "issue:#2726"
     ],
     "date": "2026-09-12",
