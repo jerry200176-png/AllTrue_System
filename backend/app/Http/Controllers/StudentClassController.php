@@ -2439,7 +2439,7 @@ class StudentClassController extends Controller
             $newCharge,
             $observedUsed,
             $affectedScheduledSessions,
-            (int) (request()->attributes->get('auth_user')?->id ?? 0)
+            (int) (request()->attributes->get('auth_user')->id ?? 0)
         );
         if ($request->boolean('preview')) {
             return response()->json([
@@ -2494,7 +2494,7 @@ class StudentClassController extends Controller
             }
             $currentToken = $this->billingCorrectionConfirmationToken(
                 $locked, $newCount, $newCharge, $currentObservedUsed, $currentAffected,
-                (int) (request()->attributes->get('auth_user')?->id ?? 0), $lockedSessions
+                (int) (request()->attributes->get('auth_user')->id ?? 0), $lockedSessions
             );
             if (!hash_equals($currentToken, $confirmationToken)) {
                 abort(response()->json([
@@ -7095,8 +7095,8 @@ class StudentClassController extends Controller
                 (string) $session->SessionDate,
                 (string) $session->StartTime,
                 (string) $session->EndTime,
-                (string) $session->Status,
-                (string) $session->updated_at,
+                (string) $session->getAttribute('Status'),
+                (string) $session->getAttribute('updated_at'),
             ])->all(),
         ];
 
