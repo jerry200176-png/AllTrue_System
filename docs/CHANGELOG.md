@@ -1,3 +1,8 @@
+## 2026-09-12 — fix(students): 重複續報會說明下一步
+<!-- release-notes: staff_update=staff-2026-09-12-students-duplicate-renewal-guidance -->
+- 主任從學生資料加購／續報時，如相同條件的新批次已存在，畫面會明確提示先確認是否已續報；不顯示內部課程編號，也不重複建立批次。
+- 不改變一般付費課、共用方案、月結或輔導課的續報與加購規則。
+
 ## 2026-09-12 — fix(course): 更正堂數時不讓取消／請假歷史影響受影響預排
 <!-- release-notes: staff_update=staff-2026-09-12-billing-correction-history-sequence -->
 - 主任調低符合條件的未收款按堂課程時，預覽、再次確認與實際取消會使用相同的有效堂次順序；取消／請假歷史會保留，且不會改變將取消的未來預排。
