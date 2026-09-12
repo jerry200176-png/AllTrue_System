@@ -158,6 +158,7 @@ jobs:
               classify_production_runtime,
               is_application_runtime_path,
               is_control_plane_only_paths,
+              wait_for_exact_successful_provenance,
           )
 
           repo = os.environ["REPO"]
@@ -327,11 +328,22 @@ jobs:
           files = [item.get("filename", "") for item in comparison.get("files", [])]
           application_files = [path for path in files if is_application_runtime_path(path)]
           control_plane_only = is_control_plane_only_paths(files)
+          provenance_sha = successful_deploy_provenance(deployed)
+          # A deployment manifest is identity evidence, never success proof.
+          # Only when it already names this exact target may a bounded 60-second
+          # recheck wait for the authoritative completed-success deployment run.
+          if deployed == head and manifest_source == "github-actions:deploy.yml" and provenance_sha is None:
+              provenance_sha = wait_for_exact_successful_provenance(
+                  lookup=successful_deploy_provenance,
+                  expected_sha=deployed,
+                  attempts=7,
+                  interval_seconds=10,
+              )
           runtime = classify_production_runtime(
               production_sha=deployed,
               target_sha=head,
               comparison_status=comparison.get("status"),
-              provenance_sha=successful_deploy_provenance(deployed),
+              provenance_sha=provenance_sha,
               manifest_source=manifest_source,
           )
           runtime_state = str(runtime["state"])

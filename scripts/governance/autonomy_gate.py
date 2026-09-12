@@ -770,6 +770,29 @@ def classify_production_runtime(
     }
 
 
+def wait_for_exact_successful_provenance(
+    *, lookup, expected_sha: str, attempts: int = 7, interval_seconds: int = 10, sleep_fn=None,
+) -> str | None:
+    """Bound a same-SHA deployment-provenance visibility retry to 60 seconds.
+
+    The caller supplies the authoritative completed-success lookup. This helper
+    never treats a manifest, a wrong SHA, or an API error represented as None
+    as deployment proof.
+    """
+
+    if not _FULL_SHA_RE.fullmatch(expected_sha or ""):
+        return None
+    if attempts < 1 or interval_seconds < 0:
+        raise ValueError("retry bounds must be non-negative")
+    sleeper = sleep_fn or __import__("time").sleep
+    for attempt in range(attempts):
+        if lookup(expected_sha) == expected_sha:
+            return expected_sha
+        if attempt + 1 < attempts:
+            sleeper(interval_seconds)
+    return None
+
+
 def environment_protection_is_valid(
     *, event_name: str, phase: str, required_reviewers_configured: bool,
     prevent_self_review: bool,
@@ -822,6 +845,7 @@ __all__ = [
     "decide_manual_activation",
     "is_founder_approval_eligible",
     "classify_production_runtime",
+    "wait_for_exact_successful_provenance",
     "environment_protection_is_valid",
     "effective_tier",
     "has_rollback_evidence",
