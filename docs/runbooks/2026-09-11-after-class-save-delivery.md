@@ -29,7 +29,9 @@
 - 目前 portfolio-ops origin/main bootstrap v1.1 將 agent-control 定為 canonical、Exo 為 experiment-only；canonical 本機便利 checkout 仍有舊文字，不能用舊 adapter 加設第二套 gate。未 regenerate adapter、清全域 session、變更 classifier 或放寬必要 CI。
 - P4 比對：#2699 merge `bce8daed103972badbb9be22253b1151388970e1` 已提供 generated-history 排除及真實 auth 負例。#2692 head `107c6fa25e906d45539ecb80a379dc726026468b` 尚含 PHPUnit snapshot/config 路徑與 whole-term marker／token vocabulary 改動；不整包重播，也不覆寫主線後續 CSS-selector 負例。現有 activation state 68 tests passed；本包不需更改 classifier。
 
-## 2026-09-12 接續：in-app #285（尚未交付）
+## 2026-09-12 接續：in-app #285（已上線，待回報者驗收）
+
+- 交付完成證據：PR #2765 head `1f685a50e66e576f03812edee8e46f209d9b7ea8`，merge `41d959b9c9f298c66a2efbd19307be3d49f0c381`；PR CI `34686195961` 與 main CI `34686439685` success，deploy `34686619551` success。正式 backend/frontend/build 全部 exact SHA 相同，health ok。正式前端隔離 API 的四個課後流程 tests passed（390/1440）；没有以真人資料測試寫入。原串公開留言 `690`，status 已 `resolved`，尚無 reporter verify，不是 closed 或 operationally accepted。
 
 - 本輪啟動範圍：in-app #285／#286／#287；fresh queue run `34685461154`，detail runs `34685510917`／`34685519056`／`34685520422`，三件 freshness validator passed。其他既有 resolved 回報不重複通知或代替真人驗收。
 - 接管基線與正式站 backend/frontend/build：`ff74c83e604191a5ae56ca543629be2e3577daf6`；deploy `34682878958` success，health ok。agent-control session `637daa9815dc42f783fbe84a8cf46acf`，branch `chore/task-product-delivery-20260912-main`；preflight passed。未提交舊成果留在原 worktrees。

@@ -10,7 +10,7 @@ updates:
       - teacher
     importance: digest
     title: 手機點名按鈕加大
-    summary: 出缺勤操作與篩選加大觸控區，載入與錯誤提示也更明確。
+    summary: 補齊出缺勤操作與篩選的觸控區，載入與錯誤提示也更明確。
     items:
       - category: improved
         text: 手機點名、狀態選擇與篩選維持至少 44px 高度，點名與扣堂規則不變。

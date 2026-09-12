@@ -42,6 +42,7 @@ const pageModules = {
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
+  'course-edit': () => import('../../../src/components/CourseEditForm.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
@@ -55,6 +56,13 @@ void styles;
 createApp({
   name: 'UiFoundationPilotMount',
   setup() {
+    if (page === 'course-edit') {
+      return () => h(PageComponent, {
+        modelValue: { class_type: mode === 'paid' ? 'one_on_one' : 'tutoring', rate_per_30min: 1500, rate_unit: 'session', sessions_purchased: 8 },
+        subjects: [{ value: 'Math', label: '數學' }],
+        teachers: [],
+      });
+    }
     if (page === 'students') {
       return () => h(PageComponent, { branchId: 1 });
     }
