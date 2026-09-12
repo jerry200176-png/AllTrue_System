@@ -1,0 +1,44 @@
+id: TKT-20260912-193127-0YT5
+title: Founder-authorized in-app 287 unpaid session correction
+intent: Founder-authorized in-app 287 unpaid session correction
+kind: task
+parent_id: INT-20260827-171548-YSLP
+boundary: 'Only implement Founder-approved #287 correction for unpaid, non-package,
+  session courses. Preserve paid, monthly, package, attendance, assessment, deduction
+  history, other students, permissions, and production data; no migrations, repairs,
+  or GitHub workflow changes.'
+success_condition: Normal API/UI correction and schedule synchronization are transactional,
+  stale-confirmation safe, idempotent, and regression-tested.
+priority: 3
+labels: []
+scope:
+  allow:
+  - backend/**
+  - frontend/**
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - .github/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- bash scripts/phpunit-isolated.sh
+- npm run test:unit
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T19:31:27+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

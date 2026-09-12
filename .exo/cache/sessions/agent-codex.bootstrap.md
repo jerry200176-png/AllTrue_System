@@ -1,35 +1,35 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260908-010013-U115 | actor: agent:codex║
+║  ticket: TKT-20260912-193127-0YT5 | actor: agent:codex║
 ║  model: gpt-5                                        ║
-║  branch: exo/TKT-20260908-010013-U115                ║
+║  branch: exo/TKT-20260912-193127-0YT5                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260908010046-424D9861
+session_id: SES-20260912193132-FE1A1F67
 actor: agent:codex
 vendor: openai
 model: gpt-5
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260908-010013-U115
-ticket_title: Audit and bounded UX improvements
+ticket_id: TKT-20260912-193127-0YT5
+ticket_title: Founder-authorized in-app 287 unpaid session correction
 ticket_status: todo
-ticket_priority: 1
+ticket_priority: 3
 topic_id: repo:default
 lock_owner: agent:codex
-git_branch: exo/TKT-20260908-010013-U115
-lock_branch: codex/TKT-20260908-010013-U115
-lock_expires_at: 2026-09-08T09:00:46+08:00
+git_branch: exo/TKT-20260912-193127-0YT5
+lock_branch: codex/TKT-20260912-193127-0YT5
+lock_expires_at: 2026-09-12T23:31:32+08:00
 
 ## Scope
-- allow: ["docs/research/**", "frontend/**", "frontend/tests/**", "backend/tests/**", ".agent-session/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
-- deny: []
+- allow: ["backend/**", "frontend/**", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", ".agent-session/**", ".exo/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- deny: [".github/**"]
 
 ## Checks
-- ["npm run test:unit", "npm run lint:no-undef", "npm run build", "vendor/bin/phpunit"]
+- ["bash scripts/phpunit-isolated.sh", "npm run test:unit"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -38,15 +38,16 @@ lock_expires_at: 2026-09-08T09:00:46+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 1.2
+- load_avg_1m: 0.1
 - ram: 6.1GB available / 7.8GB total
 
 ## Sibling Sessions (other agents working concurrently)
-- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=164.0h)
+- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=278.5h)
 
 ## Start Advisories
-- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: docs/**, frontend/**, .agent-session/**, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
-- [INFO] Unmerged work on branch exo/TKT-20260907-095040-GNDS (ticket=TKT-20260907-095040-GNDS, actor=human) — Added a director-authenticated, read-only production classroom-management smoke
+- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: frontend/**, docs/CHANGELOG.md, docs/**, docs/STAFF_UPDATES.yml, .agent-session/**, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [INFO] Unmerged work on branch exo/TKT-20260912-135926-9P4S (ticket=TKT-20260912-135926-9P4S, actor=human) — Integrated PR #2757 source head 458b6417 onto current main in a fresh governed s
+- [INFO] Unmerged work on branch exo/TKT-20260907-095040-GNDS (ticket=TKT-20260907-095040-GNDS, actor=human) — Added a director-authenticated, read-only production classroom-management smoke 
 - [INFO] Unmerged work on branch exo/INT-20260907-074745-682Y (ticket=INT-20260907-074745-682Y, actor=agent:codex) — Resumed the existing classroom UX delivery, reconciled the latest origin/main wi
 - [INFO] Unmerged work on branch exo/INT-20260907-071544-9K2N (ticket=INT-20260907-071544-9K2N, actor=agent:codex) — Implemented mobile More navigation search, role-scoped filtering, empty-state re
 - [INFO] Unmerged work on branch exo/INT-20260907-063735-M93H (ticket=INT-20260907-063735-M93H, actor=agent:codex) — Implemented role-authorized SPA page history with preserved notification deep-li
@@ -133,10 +134,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-AllTrue product experience audit; bounded low-risk UX improvements only
+Founder GO: #287 unpaid session correction
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260908-010013-U115 --owner agent:codex
+- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260912-193127-0YT5 --owner agent:codex
 - run worker once: EXO_ACTOR=agent:codex python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=agent:codex python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260908-010013-U115
+- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260912-193127-0YT5
