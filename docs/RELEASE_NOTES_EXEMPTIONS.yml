@@ -2,7 +2,7 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
-  - id: silent-2026-09-12-file-validation-bypass-mitigation
+  - id: security-2026-09-12-file-validation-bypass-mitigation
     changelog_date: "2026-09-12"
     changelog_title: "security: harden in-app attachment validation against wildcard-key bypass"
     reason: 僅修補既有意見與建議附件上傳的 CVE-2025-27515 app-level validation bypass；不新增教職員流程或業務語意，Dependabot #3 仍待 Laravel framework migration #977。
