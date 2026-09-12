@@ -23,6 +23,11 @@ for (const workflow of workflows) {
 }
 
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
+assert.match(
+  phaseCSource,
+  /280 => \[[\s\S]*?"rev" => "995023201e9452cbd067df5aa7cd0bdc7312bb5c",[\s\S]*?"deploy" => "34667267404",/,
+  'in-app #280 must resolve only against its exact verified production revision and deploy run',
+);
 assert.ok(
   !phaseCSource.includes('repair_resolved'),
   'Phase-C allowlist entries must not replay already-resolved reports during unrelated runs',
