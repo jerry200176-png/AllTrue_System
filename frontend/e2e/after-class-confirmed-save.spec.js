@@ -33,12 +33,13 @@ async function install(page, testInfo) {
         if (state.mode === 'network') return route.abort('failed');
         if (state.mode === 'invalid') return route.fulfill({ status: 200, contentType: 'application/json', body: '{invalid' });
         if (state.mode === 'conflict') return route.fulfill({ status: 409, json: { message: '此堂紀錄已變更，請先確認。', existing_id: 9301 } });
+        if (state.mode === 'legacy-zero') return route.fulfill({ status: 200, json: { ...record, ...request.postDataJSON(), StudentID: 0, Status: 'pending' } });
         if (state.mode !== 'ok') return route.fulfill({ status: 503, json: { message: '隔離測試：暫時無法儲存' } });
         state.saved = true;
         Object.assign(record, request.postDataJSON(), { id: 9301, Status: 'pending' });
-        // The hydrated Laravel response adds lowercase student_id; StudentID
-        // belongs to the request snapshot and is not serialized on LearningRecord.
-        delete record.StudentID;
+        // The save response hydrates both aliases from the same course student.
+        // Existing rows may still carry StudentID=0 in storage (in-app #285).
+        record.StudentID = record.student_id;
         return route.fulfill({ status: 200, json: record });
       }
       // Existing telemetry/ensure-past calls remain intercepted, never sent to production.
@@ -95,12 +96,13 @@ for (const width of [390, 1440]) {
     await expect(input).toHaveValue(`${text}立即返回`);
     await input.fill(text);
 
-    for (const mode of ['invalid', 'conflict', 'network']) {
+    for (const mode of ['invalid', 'conflict', 'network', 'legacy-zero']) {
       state.mode = mode;
       await page.getByRole('button', { name: '儲存變更', exact: true }).click();
       await expect(page.locator('.lr-form [role="alert"]')).toBeVisible();
       await expect(input).toHaveValue(text);
       expect(state.saved).toBe(false);
+      if (mode === 'legacy-zero') await state.screenshot('before-legacy-student-alias.png');
     }
     state.mode = 'loading';
     const before = state.saves;

@@ -9,6 +9,8 @@ describe('learning record save contract',()=>{
    expect(extractLearningRecordResponse(hydrated,snapshot)).toBeTruthy();
    expect(extractLearningRecordResponse({...hydrated,student_id:8},snapshot)).toBeNull();
    expect(extractLearningRecordResponse({...hydrated,StudentID:8},snapshot)).toBeNull();
+   expect(extractLearningRecordResponse({...hydrated,StudentID:0},snapshot)).toBeNull();
+   expect(extractLearningRecordResponse({...hydrated,StudentID:7},snapshot)).toEqual({...hydrated,StudentID:7});
  });
  it('keeps malformed, conflict, and network failures explicit',async()=>{expect((await saveLearningRecord({fetchImpl:vi.fn(async()=>response(201,{})),url:'/',snapshot})).kind).toBe('malformed');expect((await saveLearningRecord({fetchImpl:vi.fn(async()=>response(409,{message:'duplicate'})),url:'/',snapshot})).kind).toBe('conflict');expect((await saveLearningRecord({fetchImpl:vi.fn(async()=>{throw new Error('offline')}),url:'/',snapshot})).kind).toBe('network')});
  it('single-flights two deferred submits without sharing other page instances',async()=>{
