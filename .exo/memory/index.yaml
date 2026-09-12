@@ -291,3 +291,40 @@ failure_modes:
       long Traditional Chinese wrapping aligned to existing Parent Portal patterns.
   severity: medium
   frequency: recurring
+- id: FM-20260912-142953-4FV7
+  name: App navigation prepared dashboard return context before setActivePage
+  detection:
+    signal: App navigation prepared dashboard return context before setActivePage
+    source: reflection:REF-20260912-142953-DHGO
+  mitigation:
+    practice: setActivePage intentionally clears stale dashboard return state; compute
+      the next context before navigation but assign it only after setActivePage, and
+      verify through the mounted App rather than only the pure helper.
+  severity: medium
+  frequency: recurring
+- id: FM-20260912-142954-3TJH
+  name: Handed-off PR source session could not be legally reused after base drift
+    and singleton manifest conflict
+  detection:
+    signal: Handed-off PR source session could not be legally reused after base drift
+      and singleton manifest conflict
+    source: reflection:REF-20260912-142954-40OW
+  mitigation:
+    practice: Create a fresh governed integration worktree on current main, carry
+      the source product diff without its session/ticket evidence, record source head
+      and patch comparison, then generate new checks on the integration head.
+  severity: medium
+  frequency: recurring
+- id: FM-20260912-143759-EZNJ
+  name: Teacher task comparator applied display time before reliable same-session
+    dependency ordering
+  detection:
+    signal: Teacher task comparator applied display time before reliable same-session
+      dependency ordering
+    source: reflection:REF-20260912-143759-6JSX
+  mitigation:
+    practice: When two ordinary tasks share a reliable ClassSession id, enforce attendance-before-learning
+      before comparing potentially stale display times; use time ordering only across
+      different sessions and cover mismatched-time payloads.
+  severity: medium
+  frequency: recurring

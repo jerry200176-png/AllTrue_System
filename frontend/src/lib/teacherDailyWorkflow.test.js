@@ -71,6 +71,48 @@ assert.equal(
   'same-tier work due at 10:00 should come before a 13:00 learning record',
 );
 
+const sameSessionTasks = buildTeacherTasks({
+  ...base,
+  pendingAttendance: [{ ...makeSession(20), start_time: '14:00', end_time: '16:00' }],
+  pendingLearning: [{ ...makeLearning(20), start_time: '14:00', end_time: '16:00' }],
+});
+assert.deepEqual(
+  sameSessionTasks.map((task) => task.type),
+  ['attendance', 'learning'],
+  'attendance comes first only when both ordinary tasks carry the same class-session id',
+);
+
+const sameSessionWithStaleTimes = buildTeacherTasks({
+  ...base,
+  pendingAttendance: [{ ...makeSession(21), start_time: '14:05', end_time: '16:05' }],
+  pendingLearning: [{ ...makeLearning(21), start_time: '14:00', end_time: '16:00' }],
+});
+assert.deepEqual(
+  sameSessionWithStaleTimes.map((task) => task.type),
+  ['attendance', 'learning'],
+  'a reliable same-session id keeps attendance first even if one payload carries stale display times',
+);
+
+const campusA = { ...makeSession(31), branch_id: 9, start_time: '15:00', end_time: '17:00' };
+const campusB = { ...makeSession(32), branch_id: 15, start_time: '15:00', end_time: '17:00' };
+const campusLearningA = { ...makeLearning(31), branch_id: 9, start_time: '15:00', end_time: '17:00' };
+const campusLearningB = { ...makeLearning(32), branch_id: 15, start_time: '15:00', end_time: '17:00' };
+const crossCampusFirst = buildTeacherTasks({
+  ...base,
+  pendingAttendance: [campusB, campusA],
+  pendingLearning: [campusLearningB, campusLearningA],
+});
+const crossCampusSecond = buildTeacherTasks({
+  ...base,
+  pendingAttendance: [campusA, campusB],
+  pendingLearning: [campusLearningA, campusLearningB],
+});
+assert.deepEqual(
+  crossCampusFirst.map((task) => task.id),
+  crossCampusSecond.map((task) => task.id),
+  'same-time cross-campus sessions keep deterministic ordering without a global attendance priority',
+);
+
 const empty = buildTeacherTasks(base);
 assert.deepEqual(empty, []);
 assert.equal(countTeacherTasks(empty), 0);

@@ -1,0 +1,14 @@
+id: REF-20260912-142953-DHGO
+pattern: App navigation prepared dashboard return context before setActivePage
+insight: setActivePage intentionally clears stale dashboard return state; compute
+  the next context before navigation but assign it only after setActivePage, and verify
+  through the mounted App rather than only the pure helper.
+severity: medium
+scope: TKT-20260912-135926-9P4S
+actor: human
+session_id: SES-20260912135932-461EEB27
+created_at: '2026-09-12T14:29:53+08:00'
+status: active
+tags:
+- navigation
+hit_count: 0

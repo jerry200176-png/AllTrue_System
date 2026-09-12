@@ -7,46 +7,10 @@
       icon="today"
       data-guide="teacher-home-header"
     >
-      <template #meta>
-        <span v-if="streakChipVisible" class="th-streak-chip" role="status">
-          <span class="material-symbols-outlined th-streak-icon" aria-hidden="true">local_fire_department</span>
-          連續使用 <strong>{{ streakCurrent }}</strong> 天
-          <span v-if="streakLongest > streakCurrent" class="th-streak-longest">（累積最高 {{ streakLongest }}）</span>
-        </span>
-        <span v-if="engagementChipVisible" class="th-engagement-chip" role="status">
-          <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
-        </span>
-      </template>
       <template #actions>
         <AtButton variant="ghost" shape="rect" icon="refresh" :loading="refreshing" @click="refreshAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
-
-    <!-- A small brand moment: warm and encouraging, without competing with the
-      operational queue below. The illustration is decorative; all action copy
-      remains available as real text and a keyboard-focusable link. -->
-    <section class="th-companion" data-guide="teacher-home-companion" aria-labelledby="teacher-companion-title">
-      <div class="th-companion__copy">
-        <p class="th-companion__eyebrow">今天的節奏</p>
-        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了')) }}</h3>
-        <p class="th-companion__description">
-          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTaskCount} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
-        </p>
-        <button v-if="teacherTasksError" type="button" class="th-companion__action" :disabled="refreshing" @click="refreshAll">
-          <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
-          <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
-        </button>
-        <a v-else class="th-companion__action" href="#teacher-work-queue-title" @click="focusTeacherWorkQueue">
-          <span>{{ teacherTasks.length || teacherTasksLoading ? '查看今日任務' : '查看今日摘要' }}</span>
-          <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-        </a>
-      </div>
-      <div class="th-companion__art" aria-hidden="true">
-        <span class="th-companion__spark th-companion__spark--one">✦</span>
-        <span class="th-companion__spark th-companion__spark--two">✦</span>
-        <img :src="learningCompanionUrl" alt="" width="180" height="198" fetchpriority="high" />
-      </div>
-    </section>
 
     <!-- Clock-in Status Card -->
     <button
@@ -214,6 +178,43 @@
         </div>
       </div>
     </section>
+
+    <!-- Keep the warm brand moment after the operational queue so it cannot hide
+      the first action. The illustration remains decorative and the copy remains
+      available as real text and a keyboard-focusable link. -->
+    <section class="th-companion" data-guide="teacher-home-companion" aria-labelledby="teacher-companion-title">
+      <div class="th-companion__copy">
+        <p class="th-companion__eyebrow">今天的節奏</p>
+        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了')) }}</h3>
+        <p class="th-companion__description">
+          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTaskCount} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
+        </p>
+        <button v-if="teacherTasksError" type="button" class="th-companion__action" :disabled="refreshing" @click="refreshAll">
+          <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+        </button>
+        <a v-else class="th-companion__action" href="#teacher-work-queue-title" @click="focusTeacherWorkQueue">
+          <span>{{ teacherTasks.length || teacherTasksLoading ? '查看今日任務' : '查看今日摘要' }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+        </a>
+      </div>
+      <div class="th-companion__art" aria-hidden="true">
+        <span class="th-companion__spark th-companion__spark--one">✦</span>
+        <span class="th-companion__spark th-companion__spark--two">✦</span>
+        <img :src="learningCompanionUrl" alt="" width="180" height="198" fetchpriority="high" />
+      </div>
+    </section>
+
+    <div v-if="streakChipVisible || engagementChipVisible" class="th-secondary-motivation" aria-label="工作進度與品牌資訊">
+      <span v-if="streakChipVisible" class="th-streak-chip" role="status">
+        <span class="material-symbols-outlined th-streak-icon" aria-hidden="true">local_fire_department</span>
+        連續使用 <strong>{{ streakCurrent }}</strong> 天
+        <span v-if="streakLongest > streakCurrent" class="th-streak-longest">（累積最高 {{ streakLongest }}）</span>
+      </span>
+      <span v-if="engagementChipVisible" class="th-engagement-chip" role="status">
+        <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
+      </span>
+    </div>
 
 
     <!-- B. Weekly Schedule (merged across all branches) -->
@@ -1264,6 +1265,13 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--ds-primary) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--ds-primary) 18%, transparent);
 }
+.th-secondary-motivation {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.th-secondary-motivation .th-streak-chip,
+.th-secondary-motivation .th-engagement-chip { margin: 0; }
 
 /* ──────── Section Titles ──────── */
 .th-section-title {

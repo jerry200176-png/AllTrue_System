@@ -3,6 +3,40 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-director-task-return
+    published_at: "2026-09-12"
+    audiences:
+      - director
+    importance: digest
+    title: 今日待辦進入課務後可回到原處
+    summary: 從主任今日待辦開啟評量等課務頁後，頂端會保留返回今日工作的入口。
+    items:
+      - category: fixed
+        text: 「回到主任今日工作」不再被導頁清除，可回到原待辦確認進度。
+      - category: improved
+        text: 評量、點名、課表、帳務、權限與資料處理規則維持不變。
+    source_refs:
+      - "changelog:2026-09-12:director-task-return"
+      - "github:#2757"
+
+  - id: staff-2026-09-12-teacher-closeout-first-screen
+    published_at: "2026-09-12"
+    audiences:
+      - teacher
+    importance: digest
+    title: 老師首頁先顯示今天要完成的工作
+    summary: 登入老師工作台後，手機與桌面首屏會先看到今日待辦與主要下一步。
+    items:
+      - category: improved
+        text: 「今天要完成」移到品牌陪伴資訊之前，第一個主要操作更容易找到。
+      - category: improved
+        text: 同一堂課會先顯示點名、再顯示評量；不同分校的同時段工作維持穩定順序。
+      - category: improved
+        text: 點名、評量、課表、權限、資料與送審規則維持不變。
+    source_refs:
+      - "changelog:2026-09-12:teacher-closeout-first-screen"
+      - "github:#2757"
+
   - id: staff-2026-09-12-learning-teacher-focus
     published_at: "2026-09-12"
     audiences:

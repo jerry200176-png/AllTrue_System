@@ -47,6 +47,41 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-teacher-closeout-first-screen",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師首頁先顯示今天要完成的工作",
+    "summary": "登入老師工作台後，手機與桌面首屏會先看到今日待辦與主要下一步。",
+    "items": [
+      "「今天要完成」移到品牌陪伴資訊之前，第一個主要操作更容易找到。",
+      "同一堂課會先顯示點名、再顯示評量；不同分校的同時段工作維持穩定順序。",
+      "點名、評量、課表、權限、資料與送審規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「今天要完成」移到品牌陪伴資訊之前，第一個主要操作更容易找到。",
+          "同一堂課會先顯示點名、再顯示評量；不同分校的同時段工作維持穩定順序。",
+          "點名、評量、課表、權限、資料與送審規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:teacher-closeout-first-screen",
+      "github:#2757"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-question-bank-touch-controls",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
@@ -288,6 +323,44 @@ export const staffUpdates = [
       "changelog:2026-09-12:inactive-course-overlap-warning",
       "in-app:#283",
       "github:#2727"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
+    "id": "staff-2026-09-12-director-task-return",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "今日待辦進入課務後可回到原處",
+    "summary": "從主任今日待辦開啟評量等課務頁後，頂端會保留返回今日工作的入口。",
+    "items": [
+      "「回到主任今日工作」不再被導頁清除，可回到原待辦確認進度。",
+      "評量、點名、課表、帳務、權限與資料處理規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "「回到主任今日工作」不再被導頁清除，可回到原待辦確認進度。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "評量、點名、課表、帳務、權限與資料處理規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:director-task-return",
+      "github:#2757"
     ],
     "date": "2026-09-12",
     "version": "2026.09.12"

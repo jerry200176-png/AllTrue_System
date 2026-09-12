@@ -1641,7 +1641,7 @@ function onNavigateFromNotifications(payload = {}) {
     return;
   }
   if (!target) return;
-  dashboardReturnContext.value = createDashboardReturnContext({ fromPage: active.value, target });
+  const nextDashboardReturnContext = createDashboardReturnContext({ fromPage: active.value, target });
   if (target === 'calendar') {
     calendarResetToken.value += 1;
     initialTeacherIdForNav.value = normalizeNavigationId(teacherId);
@@ -1725,6 +1725,7 @@ function onNavigateFromNotifications(payload = {}) {
     history: target === 'director' ? 'replace' : 'push',
     preserveInboxContext: target === 'director',
   });
+  dashboardReturnContext.value = nextDashboardReturnContext;
 }
 
 function onNavigateFromCourseManagement(payload) {
