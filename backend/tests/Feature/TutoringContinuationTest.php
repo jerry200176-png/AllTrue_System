@@ -19,10 +19,18 @@ class TutoringContinuationTest extends TestCase
 {
     use RefreshDatabase;
 
+    private array $initialCounts = [];
+    private int $actorId;
+
     protected function setUp(): void
     {
         parent::setUp();
         Carbon::setTestNow('2026-09-12 09:00:00');
+        // Full CI includes unrelated courses. Assert exact per-test deltas,
+        // never assume that an otherwise unrelated table starts empty.
+        foreach (['StudentClass', 'ClassSession', 'course_contract_group_members', 'Invoice', 'InvoiceItem', 'Payment', 'payment_reports'] as $table) {
+            $this->initialCounts[$table] = \Illuminate\Support\Facades\DB::table($table)->count();
+        }
     }
 
     protected function tearDown(): void
@@ -50,17 +58,17 @@ class TutoringContinuationTest extends TestCase
         $this->assertNull($new->PayDate);
         $this->assertSame($before, $source->fresh()->getAttributes());
         $this->assertGreaterThan(0, ClassSession::where('StudentClassID', $new->ID)->count());
-        $this->assertDatabaseCount('Invoice', 0);
-        $this->assertDatabaseCount('InvoiceItem', 0);
-        $this->assertDatabaseCount('Payment', 0);
-        $this->assertDatabaseCount('payment_reports', 0);
-        $members = CourseContractGroupMember::orderBy('sequence')->get();
+        $this->assertTableDelta('Invoice', 0);
+        $this->assertTableDelta('InvoiceItem', 0);
+        $this->assertTableDelta('Payment', 0);
+        $this->assertTableDelta('payment_reports', 0);
+        $members = CourseContractGroupMember::where('group_id', $response->json('continuity_group_id'))->orderBy('sequence')->get();
         $this->assertSame(['original', 'renewal'], $members->pluck('relation_type')->all());
         $this->assertSame([(int) $source->ID, (int) $new->ID], $members->pluck('student_class_id')->map(fn ($id) => (int) $id)->all());
         $this->assertNotNull($members->last()->created_by);
         $this->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", $this->payload())->assertStatus(409);
-        $this->assertDatabaseCount('StudentClass', 2);
-        $this->assertDatabaseCount('course_contract_group_members', 2);
+        $this->assertTableDelta('StudentClass', 2);
+        $this->assertTableDelta('course_contract_group_members', 2);
     }
 
     public static function scheduleModes(): array
@@ -73,9 +81,9 @@ class TutoringContinuationTest extends TestCase
     {
         $source = $this->fixture($sourceOverrides);
         $this->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", array_merge($this->payload(), $input))->assertStatus(422);
-        $this->assertDatabaseCount('StudentClass', 1);
-        $this->assertDatabaseCount('ClassSession', 0);
-        $this->assertDatabaseCount('course_contract_group_members', 0);
+        $this->assertTableDelta('StudentClass', 1);
+        $this->assertTableDelta('ClassSession', 0);
+        $this->assertTableDelta('course_contract_group_members', 0);
     }
 
     public static function invalidRequests(): array
@@ -97,7 +105,7 @@ class TutoringContinuationTest extends TestCase
         $source = $this->fixture();
         Student::where('id', $source->StudentID)->update(['CampusID' => 2]);
         $this->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", $this->payload())->assertForbidden();
-        $this->assertDatabaseCount('StudentClass', 1);
+        $this->assertTableDelta('StudentClass', 1);
     }
 
     public function test_first_lesson_follows_fixed_weekday_not_arbitrary_start_date(): void
@@ -121,7 +129,7 @@ class TutoringContinuationTest extends TestCase
         $new = StudentClass::findOrFail($response->json('new_course.id'));
         $this->assertSame('manual_occurrence', $new->getAttribute('scheduling_policy'));
         $this->assertSame(4, (int) $new->SessionCount);
-        $this->assertDatabaseCount('ClassSession', 0);
+        $this->assertTableDelta('ClassSession', 0);
     }
 
     public function test_link_failure_rolls_back_new_course_and_sessions(): void
@@ -131,25 +139,25 @@ class TutoringContinuationTest extends TestCase
             $mock->shouldReceive('createGroup')->once()->andThrow(ValidationException::withMessages(['members' => 'test conflict']));
         });
         $this->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", $this->payload())->assertStatus(422);
-        $this->assertDatabaseCount('StudentClass', 1);
-        $this->assertDatabaseCount('ClassSession', 0);
+        $this->assertTableDelta('StudentClass', 1);
+        $this->assertTableDelta('ClassSession', 0);
     }
 
     public function test_teacher_cannot_create_next_term(): void
     {
         $source = $this->fixture();
-        User::query()->update(['type' => 'T']);
-        UserCampus::query()->update(['Admin' => 0]);
+        User::query()->whereKey($this->actorId)->update(['type' => 'T']);
+        UserCampus::query()->where('UserID', $this->actorId)->update(['Admin' => 0]);
         $this->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", $this->payload())->assertForbidden();
-        $this->assertDatabaseCount('StudentClass', 1);
+        $this->assertTableDelta('StudentClass', 1);
     }
 
     public function test_missing_campus_scope_cannot_create_next_term(): void
     {
         $source = $this->fixture();
-        UserCampus::query()->delete();
+        UserCampus::query()->where('UserID', $this->actorId)->delete();
         $this->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", $this->payload())->assertForbidden();
-        $this->assertDatabaseCount('StudentClass', 1);
+        $this->assertTableDelta('StudentClass', 1);
     }
 
     public function test_no_auth_cannot_create_next_term(): void
@@ -157,7 +165,7 @@ class TutoringContinuationTest extends TestCase
         $source = $this->fixture();
         $response = $this->withHeaders(['Authorization' => ''])->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", $this->payload());
         $response->assertStatus(401);
-        $this->assertDatabaseCount('StudentClass', 1);
+        $this->assertTableDelta('StudentClass', 1);
     }
 
     public function test_existing_student_session_conflict_rolls_back_new_term(): void
@@ -168,9 +176,14 @@ class TutoringContinuationTest extends TestCase
         $other->save();
         ClassSession::create(['StudentClassID' => $other->ID, 'SessionDate' => '2026-10-05', 'StartTime' => '14:00:00', 'EndTime' => '16:00:00', 'Status' => 'scheduled']);
         $this->postJson("/api/v1/student-classes/{$source->ID}/continue-tutoring", $this->payload())->assertStatus(422);
-        $this->assertDatabaseCount('StudentClass', 2);
-        $this->assertDatabaseCount('ClassSession', 1);
-        $this->assertDatabaseCount('course_contract_group_members', 0);
+        $this->assertTableDelta('StudentClass', 2);
+        $this->assertTableDelta('ClassSession', 1);
+        $this->assertTableDelta('course_contract_group_members', 0);
+    }
+
+    private function assertTableDelta(string $table, int $added): void
+    {
+        $this->assertDatabaseCount($table, $this->initialCounts[$table] + $added);
     }
 
     private function payload(): array
@@ -181,6 +194,7 @@ class TutoringContinuationTest extends TestCase
     private function fixture(array $overrides = []): StudentClass
     {
         $user = User::create(['LoginName' => 'continuation@example.test', 'Name' => '測試主任', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0900000000']);
+        $this->actorId = (int) $user->id;
         UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
