@@ -48,6 +48,7 @@ jobs:
           node scripts/ci/bug-writeback-workflow.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
+          python3 scripts/tests/test_required_php_checks.py
 
       - name: Test control plane lint catches violations
         run: |
@@ -134,7 +135,9 @@ jobs:
   phpunit:
     name: PHPUnit Feature & Unit Tests
     needs: changes
-    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci_config == 'true'
+    # This job is a required main-branch check. Run it for every non-draft PR:
+    # GitHub rulesets do not treat a path-skipped required job as satisfied.
+    # Keep the real suite and its existing threshold; never synthesize a pass.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Non-sensitive password for the ephemeral CI-only MySQL service.
