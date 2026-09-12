@@ -131,6 +131,42 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-learning-teacher-focus",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "評量頁會先顯示待辦與家長回覆",
+    "summary": "老師進入評量頁時先看要處理的狀態，完整內容需要時再展開，手機操作也更精簡。",
+    "items": [
+      "頁名與入口改為「評量待辦／家長回覆」，更直接對應未填、需修改與家長回覆工作。",
+      "完整評量內容預設收合，需要核對時可隨時展開；手機不再顯示無法使用的列表／卡片切換。",
+      "評量狀態、篩選、課表、家長回覆、API、權限與既有資料維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "頁名與入口改為「評量待辦／家長回覆」，更直接對應未填、需修改與家長回覆工作。",
+          "完整評量內容預設收合，需要核對時可隨時展開；手機不再顯示無法使用的列表／卡片切換。",
+          "評量狀態、篩選、課表、家長回覆、API、權限與既有資料維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:learning-teacher-focus",
+      "in-app:#284",
+      "github:#2751"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-learning-save-response-confirmation",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

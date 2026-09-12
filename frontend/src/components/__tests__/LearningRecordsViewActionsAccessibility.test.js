@@ -8,10 +8,11 @@ const source = readFileSync(resolve(__dirname, '../../pages/LearningRecordsPage.
 
 describe('LearningRecords view and action accessibility', () => {
   it('announces the active list/card view and content preview state', () => {
-    expect(source).toContain("class=\"lr-view-toggle\" role=\"group\" aria-label=\"切換列表或卡片\"");
+    expect(source).toContain("v-if=\"!isNarrowViewport\" class=\"lr-view-toggle\" role=\"group\" aria-label=\"切換列表或卡片\"");
     expect(source).toContain(":aria-pressed=\"effectiveViewMode === 'table' ? 'true' : 'false'\"");
     expect(source).toContain(":aria-pressed=\"effectiveViewMode === 'card' ? 'true' : 'false'\"");
     expect(source).toContain(":aria-pressed=\"showContentPreview ? 'true' : 'false'\"");
+    expect(source).toContain("showContentPreview ? '收合完整評量' : '顯示完整評量'");
   });
 
   it('gives every native LearningRecords button an explicit non-submit type', () => {

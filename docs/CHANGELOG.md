@@ -1,3 +1,8 @@
+## 2026-09-12 — improved(learning): 老師評量頁先呈現待辦訊號
+<!-- release-notes: staff_update=staff-2026-09-12-learning-teacher-focus -->
+- 老師端頁名與入口改為「評量待辦／家長回覆」，進頁先看未填、需修改與家長回覆狀態；完整評量內容需要時再展開。
+- 手機移除無法切換的重複列表／卡片控制，桌面仍保留兩種檢視；不修改評量狀態、篩選、課表、家長回覆、API、權限或既有資料。
+
 ## 2026-09-12 — fix(teacher-home): 今日待辦依上課時間安排下一步
 <!-- release-notes: staff_update=staff-2026-09-12-teacher-task-time-order -->
 - 教師工作台的一般待點名與待填評量現在視為同一層級，會依上課時間排序；上午已到的課務不再被下午待填評量壓到後面。
