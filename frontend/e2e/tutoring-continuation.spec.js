@@ -91,7 +91,8 @@ for (const width of [390, 1440]) {
     await submit.click();
     await expect(modal).toHaveCount(0);
     await expect.poll(() => state.dialogs.length).toBe(2);
-    expect(state.dialogs[1]).toContain('原課程 #9001 → 下一期 #9002');
+    expect(state.dialogs[1]).toContain('2026-10-01 ～ 2026-10-26；已排 4 堂。');
+    expect(state.dialogs[1]).not.toMatch(/#9001|#9002/);
     expect(state.writes).toHaveLength(2);
     expect(state.errors).toEqual([]);
   });
