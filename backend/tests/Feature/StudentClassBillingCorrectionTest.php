@@ -191,7 +191,7 @@ class StudentClassBillingCorrectionTest extends TestCase
                 'reason' => '主任確認本期理化實際上四堂',
                 'confirmation_token' => $preview->json('confirmation_token'),
             ]
-        )->assertStatus(409)->assertJsonPath('code', 'billing_correction_confirmation_stale');
+        )->assertStatus(422)->assertJsonPath('code', 'billing_correction_reduction_only');
         $this->assertSame(1, DB::table('security_audit_events')
             ->where('event_type', 'student_class.billing_contract_correction')->count());
 
