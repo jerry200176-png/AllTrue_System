@@ -45,26 +45,38 @@ async function install(page) {
     const path = url.pathname;
     if (request.method() === 'POST' && path === '/api/v1/student-classes/9001/billing-correction') {
       state.corrections += 1;
-      expect(request.postDataJSON()).toEqual({
+      const payload = request.postDataJSON();
+      expect(payload).toMatchObject({
         new_session_count: 3,
         new_charge: 7500,
         reason: '測試：本期改收三堂',
       });
+      if (payload.preview === true) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            requires_confirmation: true,
+            confirmation_token: 'a'.repeat(64),
+            old_session_count: 4,
+            new_session_count: 3,
+            old_charge: 10000,
+            new_charge: 7500,
+            affected_scheduled_sessions: [{
+              session_id: 35056,
+              session_date: '2026-09-29',
+              start_time: '20:00',
+              end_time: '22:00',
+              status: 'scheduled',
+            }],
+          }),
+        });
+      }
+      expect(payload.confirmation_token).toBe('a'.repeat(64));
       return route.fulfill({
-        status: 422,
+        status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          message: '更正後堂數會使未來預排超額；受影響堂次：#35056 2026-09-29 20:00',
-          code: 'billing_correction_future_schedule_over_capacity',
-          affected_scheduled_sessions: [{
-            session_id: 35056,
-            session_date: '2026-09-29',
-            start_time: '20:00',
-            end_time: '22:00',
-            status: 'scheduled',
-          }],
-          next_step: 'handle_affected_scheduled_sessions_then_retry',
-        }),
+        body: JSON.stringify({ new_session_count: 3, new_charge: 7500, cancelled_scheduled_sessions: [{ session_id: 35056 }] }),
       });
     }
     if (request.method() === 'POST' && path === '/api/v1/student-classes/session-dates') {
@@ -96,7 +108,7 @@ async function install(page) {
 }
 
 for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 720 }]) {
-  test(`in-app #287 阻擋提示與行事曆下一步 ${viewport.width}`, async ({ page }, testInfo) => {
+  test(`in-app #287 預覽確認與超額預排取消 ${viewport.width}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     const state = await install(page);
     await page.goto(`${baseURL}/?app_page=course-mgmt`);
@@ -108,23 +120,23 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 720 
     await page.getByRole('button', { name: /未付款，堂數改少/ }).click();
     const modal = page.locator('.billing-correction-modal');
     await expect(modal).toBeVisible();
-    await expect(modal).toContainText('不會自動取消');
+    await expect(modal).toContainText('先檢視新舊堂數、金額及受影響未來堂次');
 
     await modal.getByLabel('更正後購買堂數').fill('3');
     await modal.getByLabel('更正後總費用').fill('7500');
     await modal.getByLabel('更正原因').fill('測試：本期改收三堂');
-    await modal.getByRole('button', { name: '確認更正', exact: true }).click();
+    await modal.getByRole('button', { name: '預覽更正內容', exact: true }).click();
 
-    await expect(modal.getByText('還不能更正', { exact: true })).toBeVisible();
+    await expect(modal.getByText('請確認本次更正', { exact: true })).toBeVisible();
     await expect(modal.getByText('2026-09-29 20:00–22:00', { exact: true })).toBeVisible();
     await expect(modal).not.toContainText('#35056');
     await expect.poll(() => state.corrections).toBe(1);
     await expect(page.locator('html')).toHaveJSProperty('scrollWidth', viewport.width);
     await page.screenshot({ path: testInfo.outputPath('billing-correction-blocked.png'), fullPage: true });
 
-    await modal.getByRole('button', { name: '前往行事曆處理', exact: true }).click();
-    await expect(page).toHaveURL(/app_page=calendar/);
+    await modal.getByRole('button', { name: '確認並取消超額預排', exact: true }).click();
     await expect(page.locator('.billing-correction-modal')).toHaveCount(0);
+    await expect.poll(() => state.corrections).toBe(2);
     expect(state.unexpectedMutations).toEqual([]);
     expect(state.errors).toEqual([]);
   });

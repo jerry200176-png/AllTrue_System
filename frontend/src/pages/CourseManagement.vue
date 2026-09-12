@@ -932,8 +932,17 @@
           {{ billingCorrectionCourse?.student_name || '此學生' }}／{{ billingCorrectionCourse?.subject_name || billingCorrectionCourse?.subject || '課程' }}
         </p>
         <div class="billing-correction-warning">
-          僅適用於尚未收款的按堂課程。已上課紀錄不會被刪除；若更正後堂數少於目前排程，系統會先列出需處理的未來堂次，不會自動取消。
+          僅適用於尚未收款的按堂課程。先檢視新舊堂數、金額及受影響未來堂次，再確認送出；已上課紀錄不會被刪除。
         </div>
+        <AtInlineAlert v-if="billingCorrectionPreview" tone="warning" title="請確認本次更正" style="margin-bottom: 12px;">
+          <p style="margin: 0;">堂數：{{ billingCorrectionPreview.old_session_count }} → {{ billingCorrectionPreview.new_session_count }}；費用：${{ Number(billingCorrectionPreview.old_charge).toLocaleString() }} → ${{ Number(billingCorrectionPreview.new_charge).toLocaleString() }}。</p>
+          <p v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" style="margin: 6px 0 0;">確認後會取消下列超額的未來預排；系統不會補回舊堂數。</p>
+          <ul v-if="billingCorrectionPreview.affected_scheduled_sessions?.length" class="billing-correction-affected-sessions" aria-label="確認後將取消的未來堂次">
+            <li v-for="session in billingCorrectionPreview.affected_scheduled_sessions" :key="session.session_id">
+              <time :datetime="`${session.session_date}T${session.start_time}`">{{ formatBillingCorrectionSessionLabel({ sessionDate: session.session_date, startTime: session.start_time, endTime: session.end_time }) }}</time>
+            </li>
+          </ul>
+        </AtInlineAlert>
         <AtInlineAlert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正" style="margin-bottom: 12px;">
           <p style="margin: 0;">{{ billingCorrectionBlocked.message }}</p>
           <p v-if="billingCorrectionBlocked.hint" style="margin: 6px 0 0;">{{ billingCorrectionBlocked.hint }}</p>
@@ -967,7 +976,7 @@
         </label>
         <div class="actions">
           <button class="ghost" :disabled="billingCorrectionSubmitting" @click="showBillingCorrectionModal = false">取消</button>
-          <button class="primary" :disabled="billingCorrectionSubmitting" @click="submitBillingCorrection">{{ billingCorrectionSubmitting ? '處理中…' : '確認更正' }}</button>
+          <button class="primary" :disabled="billingCorrectionSubmitting" @click="submitBillingCorrection">{{ billingCorrectionSubmitting ? '處理中…' : (billingCorrectionPreview ? '確認並取消超額預排' : '預覽更正內容') }}</button>
         </div>
       </div>
     </div>
@@ -2279,6 +2288,7 @@ const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
 const billingCorrectionBlocked = ref(null);
+const billingCorrectionPreview = ref(null);
 const billingCorrectionExpectedCharge = computed(() => {
   const course = billingCorrectionCourse.value;
   const count = Number(billingCorrectionForm.value.new_session_count || 0);
@@ -2296,6 +2306,7 @@ function openBillingCorrectionModal(course) {
     reason: '',
   };
   billingCorrectionBlocked.value = null;
+  billingCorrectionPreview.value = null;
   showBillingCorrectionModal.value = true;
 }
 
@@ -2452,16 +2463,31 @@ async function submitBillingCorrection() {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ new_session_count: count, new_charge: charge, reason }),
+      body: JSON.stringify({
+        new_session_count: count,
+        new_charge: charge,
+        reason,
+        ...(billingCorrectionPreview.value
+          ? { confirmation_token: billingCorrectionPreview.value.confirmation_token }
+          : { preview: true }),
+      }),
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       // Keep this on-screen (not just a toast that vanishes) — the person acting on
       // it needs to see *why* it's blocked and what to do instead, not just retry.
+      if (body?.code === 'billing_correction_confirmation_stale' || body?.code === 'billing_correction_confirmation_required') {
+        billingCorrectionPreview.value = null;
+      }
       billingCorrectionBlocked.value = buildBillingCorrectionBlockedState(body);
       return;
     }
+    if (body?.requires_confirmation) {
+      billingCorrectionPreview.value = body;
+      return;
+    }
     showBillingCorrectionModal.value = false;
+    billingCorrectionPreview.value = null;
     await loadCourses();
     toastRef.value?.show?.({
       title: '未收款堂數已更正',
