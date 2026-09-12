@@ -29,6 +29,17 @@
 - 目前 portfolio-ops origin/main bootstrap v1.1 將 agent-control 定為 canonical、Exo 為 experiment-only；canonical 本機便利 checkout 仍有舊文字，不能用舊 adapter 加設第二套 gate。未 regenerate adapter、清全域 session、變更 classifier 或放寬必要 CI。
 - P4 比對：#2699 merge `bce8daed103972badbb9be22253b1151388970e1` 已提供 generated-history 排除及真實 auth 負例。#2692 head `107c6fa25e906d45539ecb80a379dc726026468b` 尚含 PHPUnit snapshot/config 路徑與 whole-term marker／token vocabulary 改動；不整包重播，也不覆寫主線後續 CSS-selector 負例。現有 activation state 68 tests passed；本包不需更改 classifier。
 
+## 2026-09-12 接續：in-app #285（已上線，待回報者驗收）
+
+- 交付完成證據：PR #2765 head `1f685a50e66e576f03812edee8e46f209d9b7ea8`，merge `41d959b9c9f298c66a2efbd19307be3d49f0c381`；PR CI `34686195961` 與 main CI `34686439685` success，deploy `34686619551` success。正式 backend/frontend/build 全部 exact SHA 相同，health ok。正式前端隔離 API 的四個課後流程 tests passed（390/1440）；没有以真人資料測試寫入。原串公開留言 `690`，status 已 `resolved`，尚無 reporter verify，不是 closed 或 operationally accepted。
+
+- 本輪啟動範圍：in-app #285／#286／#287；fresh queue run `34685461154`，detail runs `34685510917`／`34685519056`／`34685520422`，三件 freshness validator passed。其他既有 resolved 回報不重複通知或代替真人驗收。
+- 接管基線與正式站 backend/frontend/build：`ff74c83e604191a5ae56ca543629be2e3577daf6`；deploy `34682878958` success，health ok。agent-control session `637daa9815dc42f783fbe84a8cf46acf`，branch `chore/task-product-delivery-20260912-main`；preflight passed。未提交舊成果留在原 worktrees。
+- #285 附件 235 是主任編輯後的無法確認提示。先前只測沒有大寫學生欄位的 response；正式站唯讀取樣顯示舊 `StudentID=0` 與關聯派生 `student_id>0` 並存。migration `2026_04_24_000001` 設定預設 0，Model fillable 不維護該欄位；hydration 原先只補小寫欄位。這是 response contract 缺口，不是已證明的資料遺失。
+- 最小 R2/T2 修復：儲存後 hydration 的兩個學生欄位均取課程學生關聯；不存回 legacy 欄位，不改 auth、campus、老師、堂次、狀態與前端 fail-closed assertion。老師／主任 create/edit 的 HTTP feature tests 已在修前 4/4 fail；修後加上不回顯錯誤 request student 的負例，與既有代課／復原測試共 31 tests／172 assertions passed；前端契約 5 tests passed。
+- 正式 frontend 加隔離 API 回應：手機 390／桌機 1440 的課後儲存 4 cases，及 #287 的 390／1280 阻擋導頁 2 cases，共 6 passed；截圖在本輪 `/tmp/alltrue-delivery-20260912-bbCslW/browser/`。所有 API／外部請求攔截，沒有 production DB 測試寫入。這不代表正式 backend 已更新。
+- rollback：透過既有 deploy.yml 交付本次 merge 的 revert；無 migration/data repair，不回退其他已交付成果。#285 原串受理留言 685 已存在，待部署與驗證後才追加完成回覆。
+
 ## 驗收與停止條件
 
 - 實際完整 App（不是 pilot HTML）：手機 390、桌機 1440，TeacherHome→原評量→失敗→快速 browser back→同堂恢復→重試→後端确认→工作台不再催修改。
