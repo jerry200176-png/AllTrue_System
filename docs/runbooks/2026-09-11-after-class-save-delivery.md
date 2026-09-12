@@ -57,6 +57,12 @@
 
 ## 2026-09-12 本批對帳與低風險 UI 接續
 
+- **最新狀態覆蓋下方較早里程碑**：#287 新 comment 691 指出一般取消仍會依舊四堂上限補排；已回到 in_progress，GitHub #2761 reopened，公開回覆 693 明確撤回「行事曆導頁可完成需求」的建議。根因為既有測試直接 DB cancelled，未覆蓋使用者取消／補排路徑。已向主 CLI 申請限定未收款按堂課的「主任確認後原子下修總數／金額／超額預排」GO，尚未批准、未實作或代改正式資料；不得再次視為 resolved。
+- #286 已 merge：PR #2766 最終 head `a5923dac85f62f2fa6e52079000f39f02c2f069a`，merge `a975e4b6ae3137ae8cb0bb92f8f6c0fe188e08ce`，PR CI `34688163020` passed；main CI `34688472717`／部署仍待確認。
+- Security #2767 deploy `34688143363` attempt 2 success；2026-09-12T10:25:30Z production-identity GREEN，backend exact `577a0a25484999042250088bac202b887a4fbd15`，無前端變動所以 frontend/build 保留 `41d959b9…`，health ok、pending runtime/drift 空。沒有對真人正式資料提交攻擊測試，不冒充 live exploit test 或 operational acceptance。#977 已記錄 evidence；#3 仍 open。
+- GitHub #2743／#2727／#2751 已依最新原串與 production ancestry 關閉：#281 reporter comment 679 確認正常、既有 reply 680；#283 已交付 reply 681；#284 已交付評量減噪 reply 684（後來686只限制其增量切片）。未再次通知或代按 in-app reporter verify。#2715 依其明確等待回報者的紀錄保留。
+- UI #2768 為 draft，等待 #286 runtime 後才合併；完整前端 105 files／543 tests passed，最終整合 head 的 browser 截圖使用 `ui-mobile-final/`。原 #2653 保留到來源差異確認整合後。
+
 - #287：已交付 #2763（merge/deploy `ff74c83e604191a5ae56ca543629be2e3577daf6`、deploy `34682878958`）；本輪以 production `41d959b9…` 再跑手機／桌面隔離流程 2 passed。保留公開回覆 689，不重複通知；已寫 resolved evidence 指向 `41d959b9c9f298c66a2efbd19307be3d49f0c381`／`34686619551`，reporter 尚未 verify。修的是錯誤說明／下一步，不冒充已替使用者取消排程、改堂數或帳務。
 - #286：完整本機 PHPUnit 2,301 tests／10,583 assertions，11 既有 skips，無 failures；新測試改精確 baseline+delta 是為兼容整套 fixtures，不刪 assertion。獨立 review `1e5f21cc0f6d1f4ffc6db0708c54bd8af6546912` passed；該 head required CI 全綠。後續納入已合併 #2767；最終 merge/deploy/runtime 仍待核對。
 - Security #2767：source #2764 head `235857f4138fe4bf0a6884df41c427e3622c2e85` 的固定欄位驗證完整保留，補上混合文字／檔案輸入拒絕；49 API tests／244 assertions、PHPStan、exact-head CI `34687587529` 與獨立 review passed。merge `577a0a25484999042250088bac202b887a4fbd15`，main CI `34687835027` passed。deploy `34688143363` 首次因 PR 欠明確 Rollback 欄位停在 executor 前；已補具體回滾 evidence 後重跑，不修改 gate。此時尚未確認部署。
