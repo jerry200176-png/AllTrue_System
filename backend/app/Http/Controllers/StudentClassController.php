@@ -2303,6 +2303,8 @@ class StudentClassController extends Controller
             'new_charge' => ['required', 'integer', 'min:0'],
             'new_end_date' => ['nullable', 'date'],
             'reason' => ['required', 'string', 'max:255'],
+            'preview' => ['nullable', 'boolean'],
+            'confirmation_token' => ['nullable', 'string', 'size:64'],
         ]);
 
         if ((string) ($studentClass->ScheduleMode ?? 'count') === 'date') {
@@ -2426,27 +2428,43 @@ class StudentClassController extends Controller
             ], 422);
         }
 
-        // Reducing a contract must not silently cancel future bookings. The
-        // operator must see exactly which scheduled sessions fall outside the
-        // new entitlement and handle them explicitly before retrying.
+        // A correction can retire future scheduled rows, but never silently:
+        // return their exact list first and require a state-bound confirmation.
+        // The confirmation is revalidated after locking payment and session
+        // state in the write transaction below.
         $affectedScheduledSessions = $this->scheduledSessionsBeyondCount($classId, $newCount);
-        if ($affectedScheduledSessions !== []) {
-            $this->auditEditBlocked($studentClass, 'billing_correction_future_schedule_over_capacity', 422);
+        $confirmationToken = $this->billingCorrectionConfirmationToken(
+            $studentClass,
+            $newCount,
+            $newCharge,
+            $observedUsed,
+            $affectedScheduledSessions,
+            (int) (request()->attributes->get('auth_user')->id ?? 0)
+        );
+        if ($request->boolean('preview')) {
             return response()->json([
-                'message' => "更正後堂數會使未來預排超額；請先處理受影響堂次後再重試。受影響堂次："
-                    . implode('、', array_map(
-                        static fn (array $session): string => '#' . $session['session_id'] . ' ' . $session['session_date'] . ' ' . $session['start_time'],
-                        $affectedScheduledSessions
-                    )),
-                'code' => 'billing_correction_future_schedule_over_capacity',
+                'requires_confirmation' => true,
+                'confirmation_token' => $confirmationToken,
+                'old_session_count' => $oldCount,
+                'new_session_count' => $newCount,
+                'old_charge' => $oldCharge,
+                'new_charge' => $newCharge,
+                'observed_used_sessions' => $observedUsed,
+                'affected_scheduled_sessions' => $affectedScheduledSessions,
+            ]);
+        }
+        if (!hash_equals($confirmationToken, (string) ($payload['confirmation_token'] ?? ''))) {
+            $this->auditEditBlocked($studentClass, 'billing_correction_confirmation_required', 409);
+            return response()->json([
+                'message' => '預覽已過期或尚未確認，請重新檢視新舊堂數、金額與受影響未來堂次後再送出。',
+                'code' => 'billing_correction_confirmation_required',
                 'affected_scheduled_sessions' => $affectedScheduledSessions,
                 'new_session_count' => $newCount,
                 'observed_used_sessions' => $observedUsed,
-                'next_step' => 'handle_affected_scheduled_sessions_then_retry',
-            ], 422);
+            ], 409);
         }
 
-        $result = DB::transaction(function () use ($classId, $newCount, $newCharge, $payload, $oldCount, $oldCharge, $studentClass, $observedUsed) {
+        $result = DB::transaction(function () use ($classId, $newCount, $newCharge, $payload, $oldCount, $oldCharge, $studentClass, $confirmationToken) {
             $locked = StudentClass::query()->where('ID', $classId)->lockForUpdate()->first();
             if (!$locked) {
                 abort(404);
@@ -2458,9 +2476,39 @@ class StudentClassController extends Controller
                 ], 409));
             }
 
-            $locked->SessionCount = $newCount;
-            $locked->Charge = $newCharge;
-            $locked->save();
+            $lockedSessions = ClassSession::query()
+                ->where('StudentClassID', $classId)
+                ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+                ->lockForUpdate()->get();
+            $currentAffected = $this->scheduledSessionsBeyondCountFromRows($lockedSessions, $newCount);
+            $currentUsageDiagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
+            $currentObservedUsed = max(
+                (int) ($currentUsageDiagnostic['expected_used'] ?? 0),
+                (int) ($currentUsageDiagnostic['uncapped_used'] ?? 0)
+            );
+            if ($newCount < $currentObservedUsed) {
+                abort(response()->json([
+                    'message' => '處理期間已有新的出席或扣堂紀錄，請重新預覽後再操作。',
+                    'code' => 'billing_correction_confirmation_stale',
+                ], 409));
+            }
+            $currentToken = $this->billingCorrectionConfirmationToken(
+                $locked, $newCount, $newCharge, $currentObservedUsed, $currentAffected,
+                (int) (request()->attributes->get('auth_user')->id ?? 0), $lockedSessions
+            );
+            if (!hash_equals($currentToken, $confirmationToken)) {
+                abort(response()->json([
+                    'message' => '課程、付款、出席或預排狀態已變更，請重新預覽並再次確認。',
+                    'code' => 'billing_correction_confirmation_stale',
+                ], 409));
+            }
+
+            if (PaymentReport::query()->where('StudentClassID', $classId)->whereIn('status', ['pending', 'confirmed'])->lockForUpdate()->exists()) {
+                abort(response()->json([
+                    'message' => '處理期間出現繳費回報，請重新整理後改走帳務流程。',
+                    'code' => 'billing_correction_payment_report_locked',
+                ], 409));
+            }
 
             // An unpaid invoice may already exist even though no payment was
             // entered. Keep the future payment report and receipt on the same
@@ -2473,6 +2521,23 @@ class StudentClassController extends Controller
                 })
                 ->lockForUpdate()
                 ->get();
+            $invoiceIds = $openInvoices->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+            if ($invoiceIds !== [] && Payment::query()
+                ->whereIn('InvoiceID', $invoiceIds)
+                ->where('Amount', '>', 0)
+                ->where(function ($query) {
+                    $query->whereNull('Method')->orWhere('Method', '!=', 'void');
+                })
+                ->lockForUpdate()->exists()) {
+                abort(response()->json([
+                    'message' => '處理期間出現有效收款紀錄，請重新整理後改走帳務流程。',
+                    'code' => 'billing_correction_payment_locked',
+                ], 409));
+            }
+
+            $locked->SessionCount = $newCount;
+            $locked->Charge = $newCharge;
+            $locked->save();
             foreach ($openInvoices as $invoice) {
                 if ((int) ($invoice->PaidAmount ?? 0) !== 0) {
                     abort(response()->json([
@@ -2489,7 +2554,7 @@ class StudentClassController extends Controller
                 $adjustedInvoiceCount++;
             }
 
-            $this->cancelExcessScheduledSessions($classId, $newCount);
+            $this->cancelExcessScheduledSessionsFromRows($lockedSessions, $newCount);
             SessionDeductionService::recomputeCounters($classId);
             $fresh = $locked->fresh();
 
@@ -2521,11 +2586,12 @@ class StudentClassController extends Controller
                 'new_session_count' => $newCount,
                 'old_charge' => $oldCharge,
                 'new_charge' => $newCharge,
-                'observed_used_sessions' => $observedUsed,
+                'observed_used_sessions' => $currentObservedUsed,
                 'remaining_sessions' => (int) ($fresh->RemainingSessions ?? 0),
                 'payment_status' => 'unpaid',
                 'reason' => $payload['reason'],
                 'adjusted_invoice_count' => $adjustedInvoiceCount,
+                'cancelled_scheduled_sessions' => $currentAffected,
             ];
         });
 
@@ -6929,6 +6995,17 @@ class StudentClassController extends Controller
             ->orderBy('id')
             ->get();
 
+        $this->cancelExcessScheduledSessionsFromRows($allActive, $newCount);
+    }
+
+    /**
+     * Cancel only unlocked scheduled rows outside the retained count. Callers
+     * that already hold ClassSession locks use this variant so a correction and
+     * concurrent attendance update cannot interleave.
+     */
+    private function cancelExcessScheduledSessionsFromRows($allActive, int $newCount): void
+    {
+
         if ($allActive->count() <= $newCount) {
             return;
         }
@@ -6961,6 +7038,12 @@ class StudentClassController extends Controller
             ->orderBy('id')
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
 
+        return $this->scheduledSessionsBeyondCountFromRows($allActive, $newCount);
+    }
+
+    /** @return array<int, array{session_id:int, session_date:string, start_time:string, end_time:string, status:string}> */
+    private function scheduledSessionsBeyondCountFromRows($allActive, int $newCount): array
+    {
         $today = Carbon::today()->toDateString();
 
         return $allActive->slice($newCount)
@@ -6977,6 +7060,47 @@ class StudentClassController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Bind an explicit operator confirmation to the current course, payment
+     * guard inputs and schedule state. It is not authorization: all guards are
+     * repeated inside the transaction before any write.
+     */
+    private function billingCorrectionConfirmationToken(
+        StudentClass $studentClass,
+        int $newCount,
+        int $newCharge,
+        int $observedUsed,
+        array $affectedScheduledSessions,
+        int $actorId,
+        $sessions = null
+    ): string {
+        $rows = $sessions ?? ClassSession::query()
+            ->where('StudentClassID', (int) $studentClass->getKey())
+            ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'updated_at']);
+        $snapshot = [
+            'class_id' => (int) $studentClass->getKey(),
+            'actor_id' => $actorId,
+            'new_count' => $newCount,
+            'new_charge' => $newCharge,
+            'current_count' => (int) ($studentClass->SessionCount ?? 0),
+            'current_charge' => (int) ($studentClass->Charge ?? 0),
+            'paid' => (int) ($studentClass->Paid ?? 0),
+            'observed_used' => $observedUsed,
+            'affected' => $affectedScheduledSessions,
+            'sessions' => $rows->map(static fn (ClassSession $session): array => [
+                (int) $session->getKey(),
+                (string) $session->SessionDate,
+                (string) $session->StartTime,
+                (string) $session->EndTime,
+                (string) $session->getAttribute('Status'),
+                (string) $session->getAttribute('updated_at'),
+            ])->all(),
+        ];
+
+        return hash_hmac('sha256', json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), (string) config('app.key'));
     }
 
     /**
