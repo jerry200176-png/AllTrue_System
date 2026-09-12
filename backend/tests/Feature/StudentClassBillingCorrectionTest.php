@@ -115,19 +115,20 @@ class StudentClassBillingCorrectionTest extends TestCase
             'Amount' => 5500,
         ]);
 
-        $response = $this->withToken($token)->postJson(
+        $preview = $this->withToken($token)->postJson(
             "/api/v1/student-classes/{$course->ID}/billing-correction",
             [
                 'new_session_count' => 4,
                 'new_charge' => 4400,
                 'reason' => '主任確認本期理化實際上四堂',
+                'preview' => true,
             ]
         );
 
-        $response->assertStatus(422)
-            ->assertJsonPath('code', 'billing_correction_future_schedule_over_capacity')
+        $preview->assertOk()
+            ->assertJsonPath('requires_confirmation', true)
             ->assertJsonPath('affected_scheduled_sessions.0.session_id', $futureScheduled->id)
-            ->assertJsonPath('next_step', 'handle_affected_scheduled_sessions_then_retry');
+            ->assertJsonPath('new_session_count', 4);
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $course->ID,
@@ -140,17 +141,13 @@ class StudentClassBillingCorrectionTest extends TestCase
             'Status' => 'scheduled',
         ]);
 
-        DB::table('ClassSession')
-            ->where('StudentClassID', $course->ID)
-            ->where('SessionDate', '2026-10-17')
-            ->update(['Status' => 'cancelled']);
-
         $response = $this->withToken($token)->postJson(
             "/api/v1/student-classes/{$course->ID}/billing-correction",
             [
                 'new_session_count' => 4,
                 'new_charge' => 4400,
                 'reason' => '主任確認本期理化實際上四堂',
+                'confirmation_token' => $preview->json('confirmation_token'),
             ]
         );
 
@@ -158,7 +155,8 @@ class StudentClassBillingCorrectionTest extends TestCase
             ->assertJsonPath('new_session_count', 4)
             ->assertJsonPath('new_charge', 4400)
             ->assertJsonPath('remaining_sessions', 0)
-            ->assertJsonPath('payment_status', 'unpaid');
+            ->assertJsonPath('payment_status', 'unpaid')
+            ->assertJsonPath('cancelled_scheduled_sessions.0.session_id', $futureScheduled->id);
 
         $this->assertDatabaseHas('StudentClass', [
             'ID' => $course->ID,
@@ -182,6 +180,20 @@ class StudentClassBillingCorrectionTest extends TestCase
             'InvoiceID' => $invoice->id,
             'Amount' => 4400,
         ]);
+
+        // Replaying the same confirmation after the contract changed must not
+        // make a second correction or recreate the cancelled future slot.
+        $this->withToken($token)->postJson(
+            "/api/v1/student-classes/{$course->ID}/billing-correction",
+            [
+                'new_session_count' => 4,
+                'new_charge' => 4400,
+                'reason' => '主任確認本期理化實際上四堂',
+                'confirmation_token' => $preview->json('confirmation_token'),
+            ]
+        )->assertStatus(409)->assertJsonPath('code', 'billing_correction_confirmation_stale');
+        $this->assertSame(1, SecurityAuditEvent::query()
+            ->where('event_type', 'student_class.billing_contract_correction')->count());
 
         $audit = DB::table('security_audit_events')
             ->where('event_type', 'student_class.billing_contract_correction')
@@ -252,6 +264,59 @@ class StudentClassBillingCorrectionTest extends TestCase
             "/api/v1/student-classes/{$pending->ID}/billing-correction",
             ['new_session_count' => 7, 'new_charge' => 7700, 'reason' => '測試待對帳']
         )->assertStatus(409)->assertJsonPath('code', 'billing_correction_payment_report_locked');
+    }
+
+    public function test_confirmation_rechecks_payment_report_created_after_preview_without_partial_write(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['SessionCount' => 4, 'Charge' => 4400, 'RemainingSessions' => 3, 'UsedSessions' => 1]);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-05-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+        foreach (['2026-09-01', '2026-09-08', '2026-09-15'] as $date) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'scheduled']);
+        }
+
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認未收款三堂', 'preview' => true,
+        ])->assertOk();
+        PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID, 'reported_by_name' => $student->name,
+            'payment_date' => now()->toDateString(), 'reported_amount' => 3300, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'after-preview-' . uniqid()), 'token_expires_at' => now()->addDay(),
+        ]);
+
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認未收款三堂',
+            'confirmation_token' => $preview->json('confirmation_token'),
+        ])->assertStatus(409)->assertJsonPath('code', 'billing_correction_payment_report_locked');
+
+        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 4, 'Charge' => 4400]);
+        $this->assertSame(3, ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->count());
+        $this->assertSame(0, SecurityAuditEvent::query()->where('event_type', 'student_class.billing_contract_correction')->count());
+    }
+
+    public function test_four_to_three_after_one_attended_cancels_tail_through_confirmed_api_flow(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['SessionCount' => 4, 'Charge' => 4400, 'RemainingSessions' => 3, 'UsedSessions' => 1]);
+        $attended = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-05-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+        SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $attended->id, 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]);
+        $scheduled = collect(['2026-09-01', '2026-09-08', '2026-09-15'])->map(fn (string $date) => ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'scheduled',
+        ]));
+
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認四堂改為三堂', 'preview' => true,
+        ])->assertOk()->assertJsonPath('affected_scheduled_sessions.0.session_id', $scheduled->last()->id);
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認四堂改為三堂',
+            'confirmation_token' => $preview->json('confirmation_token'),
+        ])->assertOk()->assertJsonPath('remaining_sessions', 2);
+
+        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 3, 'Charge' => 3300, 'UsedSessions' => 1, 'RemainingSessions' => 2]);
+        $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'cancelled']);
+        $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->count());
     }
 
     public function test_director_can_correct_unpaid_date_mode_charge_without_touching_entitlement(): void

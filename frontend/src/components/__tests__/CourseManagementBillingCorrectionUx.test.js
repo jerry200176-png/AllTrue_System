@@ -38,11 +38,11 @@ describe('in-app #287 billing correction guidance', () => {
     ]);
   });
 
-  it('keeps the page contract aligned with the fail-closed backend rule', () => {
+  it('keeps the page contract aligned with the preview-confirm backend rule', () => {
     const source = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
-    expect(source).not.toContain('超出新堂數的未上課排程會取消');
-    expect(source).toContain('billingCorrectionBlocked.affectedSessions');
-    expect(source).toContain('前往行事曆處理');
-    expect(source).toContain('openBillingCorrectionCalendar');
+    expect(source).toContain('billingCorrectionPreview');
+    expect(source).toContain('確認並取消超額預排');
+    expect(source).toContain('confirmation_token');
+    expect(source).toContain('preview: true');
   });
 });
