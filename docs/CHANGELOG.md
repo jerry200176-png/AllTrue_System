@@ -3098,3 +3098,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 <!-- release-notes: staff_update=staff-2026-09-11-billing-correction-entry-gating -->
 - 主任從「合約／堂次調整」進入未付款堂數更正時，只有明確未付款、非共用按堂課程才會開放；已繳、部分收款、待對帳或未知狀態會直接導向既有帳務中心處理。
 - 輔導課與已標示帳務異常的輔導課一律不提供此入口，避免把「輔導不收費」的歷史異常誤帶入收費更正流程；不改帳務政策、歷史資料或後端權限。
+## 2026-09-12 — security: harden in-app attachment validation against wildcard-key bypass
+<!-- release-notes: silent_ship=security-2026-09-12-file-validation-bypass-mitigation -->
+- 意見與建議的多附件上傳改為逐一使用固定欄位驗證，避免 Laravel 舊版 wildcard file rule 被惡意陣列鍵名繞過；保留既有圖片格式、大小與附件數限制。
+- 這是 CVE-2025-27515 的 app-level mitigation；Laravel 8→12 的長期升級仍由 #977 另案處理，Dependabot #3 不在本批標記 fixed。
