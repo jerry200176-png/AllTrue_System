@@ -855,6 +855,7 @@ import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
 import GlobalSearchResults from './components/GlobalSearchResults.vue';
 import { createLatestRequestGuard, fetchGlobalSearch, MIN_QUERY_LENGTH } from './lib/globalSearchApi';
+import { getSessionUserId, isCurrentAuthRevision, shouldClearLocalIdentity } from './lib/authSessionIdentity';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -904,6 +905,24 @@ const publicAdmissionBranchId = computed(() => {
 const session = ref(null);
 const userProfile = ref(null);
 const loading = ref(true);
+let authRevision = 0;
+const beginAuthRevision = () => ++authRevision;
+const isCurrentAuth = (revision) => isCurrentAuthRevision(revision, authRevision);
+
+async function clearLocalIdentity(revision, { clearAuthStorage = false } = {}) {
+  if (!isCurrentAuth(revision)) return;
+  const hadInMemorySession = session.value != null;
+  session.value = null;
+  userProfile.value = null;
+  localStorage.removeItem('alltrue_session');
+  if (!clearAuthStorage && !hadInMemorySession) return;
+  try {
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {
+    // The in-memory identity and this app's persisted profile are already
+    // cleared. A transport failure must not revive or replace another login.
+  }
+}
 const toast = useToast();
 const guideTour = usePageGuideTour();
 const guidePopoverRef = ref(null);
@@ -2300,8 +2319,9 @@ onMounted(async () => {
     // Branches and session are independent: start both so a slow public branch
     // request does not delay auth/profile initialization.
     const branchesPromise = loadBranches();
+    const bootstrapRevision = beginAuthRevision();
     const sessionPromise = supabase.auth.getSession();
-    const { data } = await sessionPromise;
+    const { data, error } = await sessionPromise;
     await branchesPromise;
 
     // Restore saved branch or use first branch as default
@@ -2316,23 +2336,31 @@ onMounted(async () => {
         currentBranch.value = getDefaultBranchId();
     }
 
-    session.value = data.session;
-
-    if (session.value) {
-        await fetchProfile(session.value.user.id);
+    if (!isCurrentAuth(bootstrapRevision)) return;
+    if (shouldClearLocalIdentity({ session: data?.session })) {
+        await clearLocalIdentity(bootstrapRevision, { clearAuthStorage: true });
+    } else if (!error && data?.session) {
+        session.value = data.session;
+        userProfile.value = null;
+        await fetchProfile(getSessionUserId(data.session), bootstrapRevision);
         await ensureDirectorBranches();
         triggerBrandIntroOncePerSessionToken();
     }
     loading.value = false;
 
-    supabase.auth.onAuthStateChange(async (_event, _session) => {
-        session.value = _session;
-        if (_session) {
-            await fetchProfile(_session.user.id);
+    supabase.auth.onAuthStateChange(async (event, nextSession) => {
+        const revision = beginAuthRevision();
+        if (shouldClearLocalIdentity({ event, session: nextSession })) {
+            await clearLocalIdentity(revision, { clearAuthStorage: event !== 'SIGNED_OUT' });
+        } else if (nextSession) {
+            session.value = nextSession;
+            userProfile.value = null;
+            await fetchProfile(getSessionUserId(nextSession), revision);
             await ensureDirectorBranches();
             triggerBrandIntroOncePerSessionToken();
         } else {
             userProfile.value = null;
+            localStorage.removeItem('alltrue_session');
         }
     });
 
@@ -2360,10 +2388,9 @@ onMounted(async () => {
     scheduleBrandIdleOverlay();
 });
 
-const fetchProfile = async (_uid) => {
+const fetchProfile = async (_uid, revision = authRevision) => {
     const token = session.value?.access_token;
     if (!token) {
-        userProfile.value = null;
         return;
     }
 
@@ -2375,19 +2402,18 @@ const fetchProfile = async (_uid) => {
             },
         });
 
-        if (res.status === 401) {
-            await supabase.auth.signOut();
-            session.value = null;
-            userProfile.value = null;
+        if (!isCurrentAuth(revision)) return;
+        if (shouldClearLocalIdentity({ responseStatus: res.status, session: session.value })) {
+            await clearLocalIdentity(revision, { clearAuthStorage: true });
             return;
         }
 
         if (!res.ok) {
-            userProfile.value = null;
             return;
         }
 
         const me = await res.json();
+        if (!isCurrentAuth(revision) || getSessionUserId(session.value) !== _uid) return;
         const mustChangePassword = Boolean(me?.must_change_password);
         userProfile.value = {
             id: me.id,
@@ -2422,14 +2448,17 @@ const fetchProfile = async (_uid) => {
         } else if (me.role === 'director' || me.role === 'admin' || me.role === 'super_admin') {
             applyDeepLinkFromUrl();
         }
-    } catch {
-        userProfile.value = null;
-    }
+    } catch { /* Preserve the current authenticated identity on transport failure. */ }
 };
 
 const handleLoginSuccess = async ({ user, profile }) => {
     // Session is already set by supabase.auth (signInWithPassword stores it)
     const { data } = await supabase.auth.getSession();
+    const revision = beginAuthRevision();
+    if (shouldClearLocalIdentity({ session: data?.session })) {
+      await clearLocalIdentity(revision, { clearAuthStorage: true });
+      return;
+    }
     session.value = data.session;
     userProfile.value = profile ?? null;
 
