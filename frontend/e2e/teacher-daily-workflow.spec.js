@@ -31,6 +31,7 @@ async function installTeacherMocks(page, mode = 'normal') {
       const rows = mode === 'empty' ? [] : mode === 'time-order' ? [
         { id: 110, class_session_id: 110, student_id: 410, student_class_id: 210, branch_id: 1, session_date: localToday, start_time: '10:00', end_time: '12:00', student_name: '上午課程學生', subject_name: '數學', status: 'scheduled', learning_record_status: 'approved', learning_record_id: 310 },
         { id: 113, class_session_id: 113, student_id: 413, student_class_id: 213, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '15:00', student_name: '下午課程學生', subject_name: '化學', status: 'scheduled', learning_record_status: 'missing' },
+        { id: 114, class_session_id: 114, student_id: 414, student_class_id: 214, branch_id: 9, session_date: localToday, start_time: '13:00', end_time: '15:00', student_name: '跨校同時段學生', subject_name: '物理', status: 'scheduled', learning_record_status: 'missing' },
       ] : [
         { id: 101, class_session_id: 101, student_id: 401, student_class_id: 201, branch_id: 1, session_date: localToday, start_time: '09:00', end_time: '10:00', student_name: mode === 'long' ? '測試學生超長姓名用於驗證課表操作區折行與可達性' : '測試學生甲', subject_name: mode === 'long' ? '英文進階閱讀與寫作' : '數學', status: 'scheduled', learning_record_status: 'changes_requested', learning_record_id: 301 },
         { id: 102, class_session_id: 102, student_id: 402, student_class_id: 202, branch_id: 1, session_date: localToday, start_time: '10:30', end_time: '11:30', student_name: '測試學生乙', subject_name: '英文', status: 'scheduled', learning_record_status: 'missing' },
@@ -138,6 +139,8 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.goto('/pilot-mount.html?page=teacher');
     const companion = page.locator('[data-guide="teacher-home-companion"]');
     await expect(companion).toBeVisible();
+    const sectionOrder = await page.locator('.th-page > [data-guide]').evaluateAll((nodes) => nodes.map((node) => node.dataset.guide));
+    expect(sectionOrder.indexOf('teacher-home-today')).toBeLessThan(sectionOrder.indexOf('teacher-home-companion'));
     await expect(companion.getByRole('heading', { name: '先完成最重要的一件事' })).toBeVisible();
     await expect(companion.locator('img')).toHaveAttribute('alt', '');
     const queueLink = companion.getByRole('link', { name: '查看今日任務' });
@@ -189,8 +192,13 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await expect(nextAction.getByRole('button', { name: '開始點名' })).toBeVisible();
 
     const followingTasks = page.locator('.th-work-task');
-    await expect(followingTasks.first()).toContainText('13:00–15:00');
-    await expect(followingTasks.first().getByRole('button', { name: '填寫評量' })).toBeVisible();
+    await expect(followingTasks.nth(0)).toContainText('13:00–15:00');
+    await expect(followingTasks.nth(0).getByRole('button', { name: '開始點名' })).toBeVisible();
+    await expect(followingTasks.nth(1)).toContainText('13:00–15:00');
+    await expect(followingTasks.nth(1).getByRole('button', { name: '填寫評量' })).toBeVisible();
+    await expect(followingTasks.nth(2)).toContainText('跨校同時段學生');
+    await expect(followingTasks.nth(2).getByRole('button', { name: '開始點名' })).toBeVisible();
+    await expect(followingTasks.nth(3).getByRole('button', { name: '填寫評量' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       await page.evaluate(() => document.documentElement.clientWidth),
     );
@@ -231,6 +239,23 @@ test.describe('Teacher daily workflow real Vue page', () => {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();
   });
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 720 }]) {
+    test(`shows the first actionable work in the initial viewport @${viewport.width}`, async ({ page }) => {
+      await installTeacherMocks(page);
+      await page.setViewportSize(viewport);
+      await page.goto('/pilot-mount.html?page=teacher');
+      const nextAction = page.locator('[data-guide="teacher-next-action"]');
+      await expect(nextAction).toBeVisible();
+      await expect(nextAction.locator('.th-next-action__cta')).toBeVisible();
+      const bounds = await nextAction.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        await page.evaluate(() => document.documentElement.clientWidth),
+      );
+    });
+  }
 
   test('surfaces a schedule error without hiding the workbench', async ({ page }) => {
     await installTeacherMocks(page, 'error');
