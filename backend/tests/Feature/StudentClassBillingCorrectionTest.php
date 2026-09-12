@@ -320,6 +320,47 @@ class StudentClassBillingCorrectionTest extends TestCase
         $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->count());
     }
 
+    public function test_confirmation_uses_the_same_quota_sequence_when_cancelled_and_leave_history_exist(): void
+    {
+        [$token] = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, [
+            'SessionCount' => 4,
+            'Charge' => 4400,
+            'RemainingSessions' => 3,
+            'UsedSessions' => 1,
+        ]);
+
+        // These historical rows must remain untouched and must not shift the
+        // retained purchased-session sequence used by preview or confirmation.
+        $cancelled = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-04-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'cancelled']);
+        $leave = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-04-08', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'leave']);
+        $attended = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-05-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+        SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $attended->id, 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]);
+        $scheduled = collect(['2026-10-01', '2026-10-08', '2026-10-15'])->map(fn (string $date) => ClassSession::create([
+            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'scheduled',
+        ]));
+
+        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認取消與請假歷史不佔本期堂數', 'preview' => true,
+        ])->assertOk();
+        $preview->assertJsonPath('affected_scheduled_sessions.0.session_id', $scheduled->last()->id)
+            ->assertJsonCount(1, 'affected_scheduled_sessions');
+
+        $confirmed = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認取消與請假歷史不佔本期堂數',
+            'confirmation_token' => $preview->json('confirmation_token'),
+        ])->assertOk();
+        $confirmed->assertJsonPath('cancelled_scheduled_sessions.0.session_id', $scheduled->last()->id)
+            ->assertJsonCount(1, 'cancelled_scheduled_sessions');
+
+        $this->assertDatabaseHas('ClassSession', ['id' => $cancelled->id, 'Status' => 'cancelled']);
+        $this->assertDatabaseHas('ClassSession', ['id' => $leave->id, 'Status' => 'leave']);
+        $this->assertDatabaseHas('ClassSession', ['id' => $attended->id, 'Status' => 'attended']);
+        $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'cancelled']);
+        $this->assertSame(2, ClassSession::whereIn('id', $scheduled->take(2)->pluck('id'))->where('Status', 'scheduled')->count());
+    }
+
     public function test_director_can_correct_unpaid_date_mode_charge_without_touching_entitlement(): void
     {
         [$token, $userId] = $this->director();
