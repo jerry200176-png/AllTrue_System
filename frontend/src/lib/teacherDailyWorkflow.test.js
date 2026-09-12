@@ -51,6 +51,26 @@ assert.equal(tasks.find((task) => task.type === 'attendance').actionLabel, 'é–‹å
 assert.equal(countTeacherTasks(tasks), 6, 'aggregate count should include grouped feedback messages');
 assert.equal(countTeacherTasks([{ count: 2 }, { count: 'bad' }, { count: 0 }]), 3);
 
+const chronologicalTodayTasks = buildTeacherTasks({
+  ...base,
+  pendingAttendance: [{
+    ...makeSession(10),
+    start_time: '10:00',
+    end_time: '12:00',
+  }],
+  pendingLearning: [{
+    ...makeLearning(13),
+    start_time: '13:00',
+    end_time: '15:00',
+  }],
+});
+
+assert.equal(
+  chronologicalTodayTasks[0].id,
+  'attendance-10',
+  'same-tier work due at 10:00 should come before a 13:00 learning record',
+);
+
 const empty = buildTeacherTasks(base);
 assert.deepEqual(empty, []);
 assert.equal(countTeacherTasks(empty), 0);

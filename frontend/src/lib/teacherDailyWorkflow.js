@@ -67,7 +67,9 @@ const taskForAttendance = (row) => ({
   target: { type: 'attendance', classSessionId: sessionKey(row) },
   source: row,
   _sortTime: timeKey(row),
-  _sortRank: 3,
+  // Attendance and ordinary learning records are the same "today incomplete"
+  // tier. Let their session time decide which action is next (in-app #284).
+  _sortRank: 2,
 });
 
 const taskForFeedback = (row) => {

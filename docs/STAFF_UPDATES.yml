@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-teacher-task-time-order
+    published_at: "2026-09-12"
+    audiences:
+      - teacher
+    importance: digest
+    title: 今日待辦會先顯示較早的課務
+    summary: 一般待點名與待填評量會一起依上課時間排序，不再讓下午課程排在上午課務前面。
+    items:
+      - category: fixed
+        text: 同一層級的今日待點名與待填評量，會依課程開始時間決定「現在先做」。
+      - category: fixed
+        text: 需修改與過期評量仍優先，家長回覆仍保留在一般今日工作之後。
+      - category: improved
+        text: 課表、出缺勤、評量、扣堂、帳務、權限與既有資料維持不變。
+    source_refs:
+      - "changelog:2026-09-12:teacher-task-time-order"
+      - "in-app:#284"
+      - "github:#2751"
+
   - id: staff-2026-09-12-course-overlap-copy-clarity
     published_at: "2026-09-12"
     audiences:

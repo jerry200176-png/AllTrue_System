@@ -28,7 +28,10 @@ async function installTeacherMocks(page, mode = 'normal') {
       return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '今日課表暫時無法載入' }) });
     }
     if (path.includes('/class-sessions')) {
-      const rows = mode === 'empty' ? [] : [
+      const rows = mode === 'empty' ? [] : mode === 'time-order' ? [
+        { id: 110, class_session_id: 110, student_id: 410, student_class_id: 210, branch_id: 1, session_date: localToday, start_time: '10:00', end_time: '12:00', student_name: '上午課程學生', subject_name: '數學', status: 'scheduled', learning_record_status: 'approved', learning_record_id: 310 },
+        { id: 113, class_session_id: 113, student_id: 413, student_class_id: 213, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '15:00', student_name: '下午課程學生', subject_name: '化學', status: 'scheduled', learning_record_status: 'missing' },
+      ] : [
         { id: 101, class_session_id: 101, student_id: 401, student_class_id: 201, branch_id: 1, session_date: localToday, start_time: '09:00', end_time: '10:00', student_name: mode === 'long' ? '測試學生超長姓名用於驗證課表操作區折行與可達性' : '測試學生甲', subject_name: mode === 'long' ? '英文進階閱讀與寫作' : '數學', status: 'scheduled', learning_record_status: 'changes_requested', learning_record_id: 301 },
         { id: 102, class_session_id: 102, student_id: 402, student_class_id: 202, branch_id: 1, session_date: localToday, start_time: '10:30', end_time: '11:30', student_name: '測試學生乙', subject_name: '英文', status: 'scheduled', learning_record_status: 'missing' },
         { id: 103, class_session_id: 103, student_id: 403, student_class_id: 203, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '14:00', student_name: '請假學生', subject_name: '自然', status: 'leave_requested', learning_record_status: 'missing' },
@@ -173,6 +176,24 @@ test.describe('Teacher daily workflow real Vue page', () => {
     expect(await page.locator('.th-work-task__cta').first().isVisible()).toBeTruthy();
     expect(secondaryRequests).toHaveLength(0);
     await expect(page.locator('[data-guide="teacher-secondary-actions"]')).toBeVisible();
+  });
+
+  test('orders same-tier attendance and learning work by class time', async ({ page }) => {
+    await installTeacherMocks(page, 'time-order');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/pilot-mount.html?page=teacher&mode=time-order');
+
+    const nextAction = page.locator('[data-guide="teacher-next-action"]');
+    await expect(nextAction.getByRole('heading', { name: '待點名' })).toBeVisible();
+    await expect(nextAction).toContainText('10:00–12:00');
+    await expect(nextAction.getByRole('button', { name: '開始點名' })).toBeVisible();
+
+    const followingTasks = page.locator('.th-work-task');
+    await expect(followingTasks.first()).toContainText('13:00–15:00');
+    await expect(followingTasks.first().getByRole('button', { name: '填寫評量' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
   });
 
   test('shows a clear empty state without horizontal overflow', async ({ page }) => {
