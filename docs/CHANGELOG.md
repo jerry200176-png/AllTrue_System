@@ -1,3 +1,8 @@
+## 2026-09-12 — improved(ux): 手機點名操作與輔導課單價說明
+<!-- release-notes: staff_update=staff-2026-09-12-attendance-touch-tutoring-copy -->
+- 出缺勤按鈕與篩選維持至少 44px 觸控高度；載入、空白與錯誤狀態補上輔助科技提示，沿用原點名、扣堂與分校規則。
+- 輔導課編輯畫面釐清課務與核薪參考單價不是學生費用；一般付費課欄位、實際儲存內容與歷史資料不變。
+
 ## 2026-09-12 — fix(learning): 舊評量儲存回應的學生欄位一致
 <!-- release-notes: staff_update=staff-2026-09-12-learning-save-response-confirmation -->
 - 修正舊評量儲存成功後因學生識別欄位不一致，仍顯示「無法確認儲存結果」的問題；保留身分核對、草稿與防重複提交，不修改歷史資料（in-app #285）。

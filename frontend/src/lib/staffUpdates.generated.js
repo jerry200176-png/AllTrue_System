@@ -650,6 +650,41 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-attendance-touch-tutoring-copy",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "手機點名按鈕加大",
+    "summary": "出缺勤操作與篩選加大觸控區，載入與錯誤提示也更明確。",
+    "items": [
+      "手機點名、狀態選擇與篩選維持至少 44px 高度，點名與扣堂規則不變。",
+      "輔導課編輯畫面說明參考單價供課務與核薪使用，不是向學生收費。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "手機點名、狀態選擇與篩選維持至少 44px 高度，點名與扣堂規則不變。",
+          "輔導課編輯畫面說明參考單價供課務與核薪使用，不是向學生收費。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:attendance-touch-tutoring-copy",
+      "github:#2653"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-account-profile-touch-controls",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
