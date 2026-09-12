@@ -14,6 +14,7 @@ function setup() {
     selectedStudent: { value: { id: 8 } }, props: { branchId: 16 },
     addSessionCount: { value: 4 }, addSessionStartDate: { value: '2026-10-01' }, tutoringEndDate: { value: '' },
     isTutoringCourse: c => c?.class_type === 'tutoring', isPackageMember: c => Boolean(c?.PackageID),
+    getSubjectLabel: subject => subject === 'Science' ? '自然科學' : subject,
     formatDuplicatePurchaseHint: ({ subject }) => `\\n\\n已有相同「${subject}」加購批次，請先確認是否已經續報過。`,
     supabase: { auth: { getSession: () => auth } },
     fetch: vi.fn(async () => ({ ok: false, json: async () => ({ message: 'conflict' }) })),
@@ -77,7 +78,7 @@ describe('tutoring continuation async identity', () => {
 
   it('explains a duplicate paid-course renewal without exposing an internal course id', async () => {
     const { context: c, resolveAuth } = setup();
-    c.selectedCourse.value = { id: 7, class_type: 'one_on_one', subject: '理化' };
+    c.selectedCourse.value = { id: 7, class_type: 'one_on_one', subject: 'Science' };
     c.fetch.mockResolvedValue({ ok: false, json: async () => ({
       message: '偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
       duplicate_course: { id: 99 },
@@ -90,7 +91,7 @@ describe('tutoring continuation async identity', () => {
     expect(c.fetch).toHaveBeenCalledWith('/api/v1/student-classes/7/purchase-batch', expect.objectContaining({
       body: JSON.stringify({ sessions: 4, start_date: '2026-10-01', mode: 'new_purchase' }),
     }));
-    expect(c.alert).toHaveBeenCalledWith(expect.stringContaining('已有相同「理化」加購批次'));
+    expect(c.alert).toHaveBeenCalledWith(expect.stringContaining('已有相同「自然科學」加購批次'));
     expect(c.alert.mock.calls[0][0]).not.toContain('#99');
     expect(c.addSessionsSubmitting.value).toBe(false);
   });

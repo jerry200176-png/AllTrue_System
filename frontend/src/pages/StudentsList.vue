@@ -3094,7 +3094,7 @@ const submitAddSessions = async () => {
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
       const duplicateHint = json?.duplicate_course?.id
-        ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
+        ? formatDuplicatePurchaseHint({ subject: getSubjectLabel(course?.subject || course?.subject_name || '') })
         : '';
       alert((details || json?.message || '操作失敗') + duplicateHint);
       return;
