@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-students-purchase-error-visible
+    published_at: "2026-09-13"
+    audiences:
+      - director
+    importance: digest
+    title: 加購失敗提示保留在原視窗
+    summary: 加購或延續課程時，操作失敗的提示會保留在原視窗，方便查看原因。
+    items:
+      - category: improved
+        text: 本次僅改善提示呈現，課程與收費規則不變。
+    source_refs:
+      - "changelog:2026-09-13:students-purchase-error-visible"
+      - "github:#2780"
+
   - id: staff-2026-09-12-students-duplicate-renewal-guidance
     published_at: "2026-09-12"
     audiences:
