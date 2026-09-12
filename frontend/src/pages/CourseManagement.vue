@@ -3956,8 +3956,9 @@ const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCo
 const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
 
 // #2007/#2006: a renewal that left the old course open shows up here as two
-// "進行中" rows fighting over the same teacher slot. Flag them so a director
-// doesn't have to guess why a request-leave didn't free the time up.
+// "進行中" rows fighting over the same teacher slot. Paused rows remain in
+// this display collection for follow-up, but slotOccupancy excludes them to
+// match the backend Stop=0 occupancy contract (in-app #283).
 // A student rarely has more than a handful of active courses, so recomputing
 // per render is cheap — no memoization needed.
 const hasSlotConflict = (group, c) => coursesWithSlotConflicts(activeCourses(group)).has(c.id);

@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-inactive-course-overlap-warning
+    published_at: "2026-09-12"
+    audiences:
+      - director
+    importance: digest
+    title: 暫停課程不再誤顯示時段重疊
+    summary: 課程管理的重疊警示會排除暫停課程，與實際排課占位規則一致。
+    items:
+      - category: fixed
+        text: 暫停課程仍保留供後續處理，但不再造成「與另一堂時段重疊」警示。
+      - category: fixed
+        text: 兩筆進行中課程確實使用同一老師與時段時，原有警示仍會顯示。
+      - category: improved
+        text: 本次不修改課表、堂次、出缺勤、扣堂、帳務或任何既有資料。
+    source_refs:
+      - "changelog:2026-09-12:inactive-course-overlap-warning"
+      - "in-app:#283"
+      - "github:#2727"
+
   - id: staff-2026-09-12-question-bank-touch-controls
     published_at: "2026-09-12"
     audiences:

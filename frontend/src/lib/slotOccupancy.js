@@ -155,16 +155,22 @@ function dateRangesOverlap(a, b) {
   return aStart <= bEnd && bStart <= aEnd;
 }
 
+function occupiesTeacherSlot(course) {
+  const status = String(course?.status || '').toLowerCase();
+  const stop = Number(course?.Stop ?? course?.stop ?? 0);
+  return status !== 'inactive' && stop !== 1;
+}
+
 /**
  * #2007/#2006: flag courses that silently double-book the same teacher slot —
  * typically a renewal that left the old course open (root cause of #2006).
- * Callers should pass only the courses they already consider "active"; this
- * function only checks teacher+day+time overlap, nothing about status.
+ * Course-management keeps paused rows visible for staff follow-up, so filter
+ * explicit status=inactive / Stop=1 rows before checking teacher+day+time.
  * Returns a Set of course ids (both sides of every conflicting pair).
  */
 export function coursesWithSlotConflicts(courses = []) {
   const conflicted = new Set();
-  const list = Array.isArray(courses) ? courses : [];
+  const list = (Array.isArray(courses) ? courses : []).filter(occupiesTeacherSlot);
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
       const a = list[i];

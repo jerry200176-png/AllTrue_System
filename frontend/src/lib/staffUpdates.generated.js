@@ -132,6 +132,47 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-inactive-course-overlap-warning",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "暫停課程不再誤顯示時段重疊",
+    "summary": "課程管理的重疊警示會排除暫停課程，與實際排課占位規則一致。",
+    "items": [
+      "暫停課程仍保留供後續處理，但不再造成「與另一堂時段重疊」警示。",
+      "兩筆進行中課程確實使用同一老師與時段時，原有警示仍會顯示。",
+      "本次不修改課表、堂次、出缺勤、扣堂、帳務或任何既有資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "暫停課程仍保留供後續處理，但不再造成「與另一堂時段重疊」警示。",
+          "兩筆進行中課程確實使用同一老師與時段時，原有警示仍會顯示。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "本次不修改課表、堂次、出缺勤、扣堂、帳務或任何既有資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:inactive-course-overlap-warning",
+      "in-app:#283",
+      "github:#2727"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-director-inbox-touch-actions",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

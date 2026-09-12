@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.12",
     "date": "2026-09-12",
     "title": "2026.09.12 草稿（未發布）",
-    "summary": "已儲存的評量不再誤顯示無法確認；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+    "summary": "暫停課程不再造成進行中時段重疊警示；已儲存的評量不再誤顯示無法確認",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "暫停課程不再造成進行中時段重疊警示",
           "已儲存的評量不再誤顯示無法確認"
         ]
       },
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "暫停課程不再造成進行中時段重疊警示",
       "已儲存的評量不再誤顯示無法確認",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "個人資料控制項在手機更容易操作",
