@@ -788,6 +788,9 @@
             將新增一筆 <strong>{{ addSessionCount }}</strong> 堂的未繳課程批次（不再併入原課程）
           </template>
         </p>
+        <p v-if="addSessionsError" class="sessions-submit-error" role="alert" aria-live="assertive">
+          {{ addSessionsError }}
+        </p>
         <div class="actions">
           <button type="button" class="ghost" :disabled="addSessionsSubmitting" @click="showSessionsModal = false">取消</button>
           <button type="button" class="primary" :disabled="addSessionsSubmitting" @click="submitAddSessions">
@@ -1105,6 +1108,7 @@ const showGradePromotion = ref(false);
 const showSessionsModal = ref(false);
 const tutoringEndDate = ref('');
 const addSessionsSubmitting = ref(false);
+const addSessionsError = ref('');
 const addSessionCount = ref(8);
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const showRenewMonthlyModal = ref(false);
@@ -2999,6 +3003,7 @@ const openAddSessionsForCourse = (course) => {
   }
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
   selectedCourse.value = course;
+  addSessionsError.value = '';
   addSessionCount.value = 8;
   addSessionStartDate.value = new Date().toISOString().slice(0, 10);
   tutoringEndDate.value = '';
@@ -3017,6 +3022,7 @@ const openAddSessionsForCourse = (course) => {
 const submitAddSessions = async () => {
   if (addSessionsSubmitting.value) return;
   if (!selectedCourse.value) return;
+  addSessionsError.value = '';
   const course = { ...selectedCourse.value };
   const submittedStudent = selectedStudent.value ? { ...selectedStudent.value } : null;
   const submittedBranch = props.branchId;
@@ -3096,7 +3102,7 @@ const submitAddSessions = async () => {
       const duplicateHint = json?.duplicate_course?.id
         ? formatDuplicatePurchaseHint({ subject: getSubjectLabel(course?.subject || course?.subject_name || '') })
         : '';
-      alert((details || json?.message || '操作失敗') + duplicateHint);
+      addSessionsError.value = (details || json?.message || '操作失敗') + duplicateHint;
       return;
     }
 
@@ -3127,7 +3133,7 @@ const submitAddSessions = async () => {
       lastDate: newCourse.last_session_date || '',
     }));
   } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
+    addSessionsError.value = '操作失敗：' + (e?.message || '請稍後再試');
   } finally {
     addSessionsSubmitting.value = false;
   }
@@ -3339,6 +3345,14 @@ table th { font-size: 12.5px; }
 .sessions-package-hint {
   color: var(--ds-warning);
   margin-bottom: 8px;
+}
+.sessions-submit-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--ds-danger);
+  background: var(--ds-danger-wash);
+  line-height: 1.5;
 }
 .duplicate-course-heading {
   color: var(--ds-warning);

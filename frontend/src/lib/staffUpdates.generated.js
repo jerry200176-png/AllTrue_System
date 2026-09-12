@@ -4,6 +4,37 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-13-students-purchase-error-visible",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "加購失敗提示保留在原視窗",
+    "summary": "加購或延續課程時，操作失敗的提示會保留在原視窗，方便查看原因。",
+    "items": [
+      "本次僅改善提示呈現，課程與收費規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "本次僅改善提示呈現，課程與收費規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:students-purchase-error-visible",
+      "github:#2780"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-12-tutoring-continuation",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

@@ -1,3 +1,7 @@
+## 2026-09-13 — improved(students): 加購或延續失敗提示保留在原視窗
+<!-- release-notes: staff_update=staff-2026-09-13-students-purchase-error-visible -->
+- 加購或延續課程時，操作失敗的提示會保留在原視窗，方便查看原因。本次僅改善提示呈現，課程與收費規則不變。
+
 ## 2026-09-12 — fix(students): 重複續報會說明下一步
 <!-- release-notes: staff_update=staff-2026-09-12-students-duplicate-renewal-guidance -->
 - 主任從學生資料加購／續報時，如相同條件的新批次已存在，畫面會明確提示先確認是否已續報；不顯示內部課程編號，也不重複建立批次。
