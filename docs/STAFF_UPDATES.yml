@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-12-students-duplicate-renewal-guidance
+    published_at: "2026-09-12"
+    audiences:
+      - director
+    importance: digest
+    title: 加購重複時會提示先確認既有批次
+    summary: 學生資料的加購／續報若已經建立相同條件的新批次，現在會直接說明下一步。
+    items:
+      - category: fixed
+        text: 遇到重複保護時會提示先確認是否已續報，避免以為按鈕沒有作用或再次建立批次。
+      - category: improved
+        text: 不顯示內部課程編號；一般付費課、共用方案、月結與輔導課規則維持不變。
+    source_refs:
+      - "changelog:2026-09-12:students-duplicate-renewal-guidance"
+      - "in-app:#288"
+      - "github:#2776"
+
   - id: staff-2026-09-12-attendance-touch-tutoring-copy
     published_at: "2026-09-12"
     audiences:

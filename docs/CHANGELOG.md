@@ -1,3 +1,8 @@
+## 2026-09-12 — fix(students): 重複續報會說明下一步
+<!-- release-notes: staff_update=staff-2026-09-12-students-duplicate-renewal-guidance -->
+- 主任從學生資料加購／續報時，如相同條件的新批次已存在，畫面會明確提示先確認是否已續報；不顯示內部課程編號，也不重複建立批次。
+- 不改變一般付費課、共用方案、月結或輔導課的續報與加購規則。
+
 ## 2026-09-12 — improved(ux): 手機點名操作與輔導課單價說明
 <!-- release-notes: staff_update=staff-2026-09-12-attendance-touch-tutoring-copy -->
 - 補齊出缺勤按鈕與篩選至少 44px 的觸控高度；載入、空白與錯誤狀態補上輔助科技提示，沿用原點名、扣堂與分校規則。

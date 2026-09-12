@@ -123,6 +123,45 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-students-duplicate-renewal-guidance",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "加購重複時會提示先確認既有批次",
+    "summary": "學生資料的加購／續報若已經建立相同條件的新批次，現在會直接說明下一步。",
+    "items": [
+      "遇到重複保護時會提示先確認是否已續報，避免以為按鈕沒有作用或再次建立批次。",
+      "不顯示內部課程編號；一般付費課、共用方案、月結與輔導課規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "遇到重複保護時會提示先確認是否已續報，避免以為按鈕沒有作用或再次建立批次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "不顯示內部課程編號；一般付費課、共用方案、月結與輔導課規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:students-duplicate-renewal-guidance",
+      "in-app:#288",
+      "github:#2776"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-question-bank-touch-controls",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
