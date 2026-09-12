@@ -723,7 +723,7 @@
                     </div>
                   </div>
                 </div>
-                <span :class="statusTagClass(record.Status)" class="status-tag">{{ statusLabel(record.Status) }}</span>
+                <span :class="statusTagClass(record.Status)" class="status-tag">{{ cardReviewStatusLabel(record.Status) }}</span>
               </div>
               <div class="lr-record-card__time">
                 <span class="material-symbols-outlined" aria-hidden="true">event</span>
@@ -749,7 +749,7 @@
                 >
                   📝 {{ teacherCommentUnread(record) ? '新主任評語' : '主任評語' }}
                 </span>
-                <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                <span v-if="cardFillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ cardFillLabel(record) }}</span>
                 <span v-if="!isTeacher" class="lr-record-card__teacher">{{ record.teacher_name || '未指派' }}</span>
               </div>
               <FeedbackInlinePreview
@@ -4002,10 +4002,27 @@ const isUrgentTeacherRecord = (record) => (
 
 const fillLabel = (record) => (hasLearningRecordBody(record) ? '已填' : '未填');
 
+const cardFillLabel = (record) => (
+  isDirectorRole.value
+    ? (hasLearningRecordBody(record) ? '評量內容已填' : '評量內容未填')
+    : fillLabel(record)
+);
+
 const fillLabelClass = (record) => (hasLearningRecordBody(record) ? 'fill-done' : 'fill-missing');
 
 const statusLabel = (status) => {
   const map = { pending: '待審核', approved: '已核准', rejected: '已退回', changes_requested: '需修改' };
+  return map[status] || status;
+};
+
+const cardReviewStatusLabel = (status) => {
+  if (!isDirectorRole.value) return statusLabel(status);
+  const map = {
+    pending: '審核：待主任核准',
+    approved: '審核：已核准',
+    rejected: '審核：已退回',
+    changes_requested: '審核：老師需修改',
+  };
   return map[status] || status;
 };
 
@@ -6203,6 +6220,12 @@ select.lr-input {
   align-items: center;
   gap: 8px;
   margin-top: 12px;
+}
+
+.lr-page:not(.lr-page--teacher) .lr-record-card .status-tag,
+.lr-page:not(.lr-page--teacher) .lr-record-card .fill-badge {
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .lr-record-card__actions {

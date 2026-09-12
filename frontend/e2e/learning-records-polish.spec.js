@@ -21,9 +21,9 @@ async function openLearningPilot(page, viewport) {
         contentType: 'application/json',
         body: JSON.stringify({
           data: [
-            { id: 501, student_id: 1, student_name: '測試學生甲', student_class_label: 'J1', Subject: '數學', teacher_name: '測試老師', SessionDate: '2026-08-01', StartTime: '10:00', Status: 'pending', body: '待主任確認本次學習進度。' },
-            { id: 502, student_id: 1, student_name: '測試學生甲', student_class_label: 'J1', Subject: '英文', teacher_name: '測試老師', SessionDate: '2026-07-31', StartTime: '14:00', Status: 'approved', body: '完成閱讀理解練習。' },
-            { id: 503, student_id: 2, student_name: '測試學生乙名稱較長以驗證折行', student_class_label: 'J2', Subject: '自然', teacher_name: '測試老師', SessionDate: '2026-07-30', StartTime: '16:00', Status: 'changes_requested', body: '' },
+            { id: 501, student_id: 1, student_name: '測試學生甲', student_class_label: 'J1', Subject: '數學', teacher_name: '測試老師', SessionDate: '2026-08-01', StartTime: '10:00', Status: 'pending', Progress: '' },
+            { id: 502, student_id: 1, student_name: '測試學生甲', student_class_label: 'J1', Subject: '英文', teacher_name: '測試老師', SessionDate: '2026-07-31', StartTime: '14:00', Status: 'approved', Progress: '完成閱讀理解練習。' },
+            { id: 503, student_id: 2, student_name: '測試學生乙名稱較長以驗證折行', student_class_label: 'J2', Subject: '自然', teacher_name: '測試老師', SessionDate: '2026-07-30', StartTime: '16:00', Status: 'changes_requested', Progress: '' },
           ],
           total: 3,
           current_page: 1,
@@ -49,7 +49,22 @@ for (const viewport of viewports) {
     await openLearningPilot(page, viewport);
     await expect(page.getByText('學習評量表', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('tab', { name: '待主任核准', exact: false }).first()).toBeVisible();
+    await page.getByRole('button', { name: '卡片', exact: true }).click();
     await expect(page.locator('.lr-group, .lr-record-card').first()).toBeVisible({ timeout: 15_000 });
+    const pendingCard = page.locator('.lr-record-card').filter({ hasText: '測試學生甲' }).first();
+    await expect(pendingCard.getByText('審核：待主任核准', { exact: true })).toBeVisible();
+    await expect(pendingCard.getByText('評量內容未填', { exact: true })).toBeVisible();
+    const statusTypography = await pendingCard.locator('.status-tag, .fill-badge').evaluateAll((elements) => (
+      elements.map((element) => ({
+        fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+        fontWeight: Number.parseInt(getComputedStyle(element).fontWeight, 10),
+      }))
+    ));
+    expect(statusTypography).toHaveLength(2);
+    for (const typography of statusTypography) {
+      expect(typography.fontSize).toBeGreaterThanOrEqual(13);
+      expect(typography.fontWeight).toBeGreaterThanOrEqual(700);
+    }
     const layout = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,

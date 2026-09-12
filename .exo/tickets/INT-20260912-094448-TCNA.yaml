@@ -1,0 +1,59 @@
+id: INT-20260912-094448-TCNA
+title: 'Clarify learning-record card statuses for in-app #280'
+intent: 'Clarify learning-record card statuses for in-app #280'
+kind: intent
+brain_dump: Prioritize latest in-app feedback. Reporter clarified that the assessment-card
+  text is too small or unclear, causing teachers to misunderstand status; preserve
+  prior fixes and deliver the smallest safe batch through CI, production verification,
+  and in-app writeback.
+boundary: Display-only director LearningRecords card labels and typography. Do not
+  change leave filtering, ClassSession or LearningRecord lifecycle, APIs, database,
+  attendance, deductions, billing, authentication, permissions, workflows, or production
+  data.
+success_condition: 'Director cards explicitly distinguish assessment content completion
+  from director review status at desktop and mobile widths; regression tests and build
+  pass; exact merged SHA deploys and is verified in production; in-app #280 receives
+  a public reporter-facing follow-up with evidence.'
+risk: low
+priority: 1
+labels:
+- in-app
+- learning-records
+scope:
+  allow:
+  - frontend/src/pages/LearningRecordsPage.vue
+  - frontend/src/components/__tests__/LearningRecordsQueueAccessibility.test.js
+  - frontend/e2e/learning-records-polish.spec.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/workflows/**
+  - database/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 260
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T09:44:48+08:00'
+children:
+- TKT-20260912-094456-3LN8
+resource_profile: default

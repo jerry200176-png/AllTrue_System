@@ -132,6 +132,47 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-learning-card-status-clarity",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "評量狀態更容易分辨",
+    "summary": "評量卡會分開標示內容是否填寫，以及目前的主任審核進度。",
+    "items": [
+      "卡片明確標示「評量內容已填／未填」，不再以過短文字呈現。",
+      "審核狀態會寫明待主任核准或老師需修改，並加大加粗方便掃讀。",
+      "請假、課堂、評量、出缺勤、扣堂、帳務、權限與既有資料維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "卡片明確標示「評量內容已填／未填」，不再以過短文字呈現。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "審核狀態會寫明待主任核准或老師需修改，並加大加粗方便掃讀。",
+          "請假、課堂、評量、出缺勤、扣堂、帳務、權限與既有資料維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:learning-card-status-clarity",
+      "in-app:#280",
+      "github:#2715"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-inactive-course-overlap-warning",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
