@@ -773,6 +773,45 @@ export const staffUpdates = [
     "version": "2026.09.12"
   },
   {
+    "id": "staff-2026-09-12-billing-correction-history-sequence",
+    "publishedAt": "2026-09-12",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "調低未收款堂數會一致保留歷史堂次",
+    "summary": "預覽與確認會使用同一份有效堂次清單，讓主任確認的未來預排就是實際會取消的堂次。",
+    "items": [
+      "已取消或請假的歷史堂次會保留，但不再影響未收款堂數更正的未來預排選取。",
+      "已上課、點名、評量、扣堂與付款檢查維持原規則；狀態變更仍會要求重新預覽。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已取消或請假的歷史堂次會保留，但不再影響未收款堂數更正的未來預排選取。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已上課、點名、評量、扣堂與付款檢查維持原規則；狀態變更仍會要求重新預覽。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-12:billing-correction-history-sequence",
+      "in-app:#287",
+      "github:#2761"
+    ],
+    "date": "2026-09-12",
+    "version": "2026.09.12"
+  },
+  {
     "id": "staff-2026-09-12-attendance-touch-tutoring-copy",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,

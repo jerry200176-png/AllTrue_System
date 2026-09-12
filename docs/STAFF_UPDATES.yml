@@ -20,6 +20,23 @@ updates:
       - "in-app:#288"
       - "github:#2776"
 
+  - id: staff-2026-09-12-billing-correction-history-sequence
+    published_at: "2026-09-12"
+    audiences:
+      - director
+    importance: digest
+    title: 調低未收款堂數會一致保留歷史堂次
+    summary: 預覽與確認會使用同一份有效堂次清單，讓主任確認的未來預排就是實際會取消的堂次。
+    items:
+      - category: fixed
+        text: 已取消或請假的歷史堂次會保留，但不再影響未收款堂數更正的未來預排選取。
+      - category: improved
+        text: 已上課、點名、評量、扣堂與付款檢查維持原規則；狀態變更仍會要求重新預覽。
+    source_refs:
+      - "changelog:2026-09-12:billing-correction-history-sequence"
+      - "in-app:#287"
+      - "github:#2761"
+
   - id: staff-2026-09-12-attendance-touch-tutoring-copy
     published_at: "2026-09-12"
     audiences:

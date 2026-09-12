@@ -7005,6 +7005,7 @@ class StudentClassController extends Controller
      */
     private function cancelExcessScheduledSessionsFromRows($allActive, int $newCount): void
     {
+        $allActive = $this->purchasedQuotaSessionRows($allActive);
 
         if ($allActive->count() <= $newCount) {
             return;
@@ -7046,7 +7047,7 @@ class StudentClassController extends Controller
     {
         $today = Carbon::today()->toDateString();
 
-        return $allActive->slice($newCount)
+        return $this->purchasedQuotaSessionRows($allActive)->slice($newCount)
             ->filter(static function (ClassSession $session) use ($today): bool {
                 return strtolower((string) $session->getAttribute('Status')) === 'scheduled'
                     && substr((string) $session->getAttribute('SessionDate'), 0, 10) >= $today;
@@ -7060,6 +7061,22 @@ class StudentClassController extends Controller
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Keep the correction preview, its locked confirmation, and the write path
+     * on the same purchased-session sequence. Historical cancellation and leave
+     * rows remain in the token snapshot for stale-state detection, but never
+     * consume a retained contract slot or shift which future reservation is
+     * selected for cancellation.
+     */
+    private function purchasedQuotaSessionRows($sessions)
+    {
+        return $sessions->filter(static function (ClassSession $session): bool {
+            return !in_array(strtolower((string) $session->getAttribute('Status')), [
+                'cancelled', 'leave', 'leave_adjusted', 'excused',
+            ], true);
+        })->values();
     }
 
     /**
