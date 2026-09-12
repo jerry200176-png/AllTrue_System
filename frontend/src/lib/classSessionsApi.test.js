@@ -33,6 +33,32 @@ function materialized(over) {
   assert.equal(merged[0].id, 11);
 }
 
+// In-app #281: production course 2483 has an attended row and an older
+// cancelled-history row for 2026-08-12 18:00.  The canonical chip must not
+// depend on API order or on whether class-sessions/session-dates resolves last.
+{
+  const attended = materialized({ id: 22123, studentClassId: 2483, date: '2026-08-12', startTime: '18:00', endTime: '20:00', status: 'attended' });
+  const cancelled = materialized({ id: 25265, studentClassId: 2483, date: '2026-08-12', startTime: '18:00', endTime: '20:00', status: 'cancelled' });
+  for (const rows of [[attended, cancelled], [cancelled, attended]]) {
+    const [canonical] = mergeSessionViewModels([], rows);
+    assert.equal(canonical.id, 22123, 'attended evidence must win over cancelled history in either order');
+    assert.equal(canonical.status, 'attended');
+  }
+}
+
+// A replacement scheduled row likewise remains effective over its cancelled
+// predecessor, while a genuinely all-cancelled slot stays cancelled.
+{
+  const scheduled = materialized({ id: 42, studentClassId: 900, date: '2026-08-19', startTime: '18:00', status: 'scheduled' });
+  const cancelled = materialized({ id: 41, studentClassId: 900, date: '2026-08-19', startTime: '18:00', status: 'cancelled' });
+  for (const rows of [[scheduled, cancelled], [cancelled, scheduled]]) {
+    assert.equal(mergeSessionViewModels([], rows)[0].status, 'scheduled');
+  }
+  const onlyCancelled = mergeSessionViewModels([], [cancelled, { ...cancelled, id: 43 }]);
+  assert.equal(onlyCancelled.length, 1);
+  assert.equal(onlyCancelled[0].status, 'cancelled');
+}
+
 // 3. 整包 payload（跨學生）normalize 後 byClass 各課程各自保留堂次
 {
   const json = {

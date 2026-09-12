@@ -1,0 +1,50 @@
+id: TKT-20260912-084627-S7H1
+title: 'Fix response-order-dependent session status for in-app #281'
+intent: 'Fix response-order-dependent session status for in-app #281'
+kind: task
+parent_id: INT-20260912-084619-T75M
+boundary: Frontend read-model canonicalization and focused tests only; no backend,
+  workflow, production-data, attendance, billing, authorization, or history mutation.
+success_condition: Production-shaped attended/cancelled duplicate slot deterministically
+  renders attended in either order; scheduled/cancelled also keeps scheduled and all-cancelled
+  still remains cancelled; required local/CI checks, deployment verification, and
+  original in-app follow-up complete.
+priority: 1
+labels:
+- in-app
+- bug
+scope:
+  allow:
+  - frontend/src/lib/classSessionsApi.js
+  - frontend/src/lib/classSessionsApi.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 260
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T08:46:27+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
