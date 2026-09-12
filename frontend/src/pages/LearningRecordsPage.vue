@@ -2,8 +2,8 @@
   <div :class="['lr-page', { 'lr-page--teacher': isTeacher }]">
     <!-- Page Header -->
     <AtPageHeader
-      :title="pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表')"
-      :description="pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理本週未填與需修改的評量；已核准僅供檢視' : '先處理待審與需修改的評量；已核准僅供查閱')"
+      :title="pageMode === 'parent_messages' ? (isTeacher ? '家長回覆' : '家長留言') : (isTeacher ? '評量待辦' : '學習評量表')"
+      :description="pageMode === 'parent_messages' ? (isTeacher ? '先看新留言與尚未回覆；範圍為我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理未填與需修改；完整評量需要時再展開' : '先處理待審與需修改的評量；已核准僅供查閱')"
       icon="fact_check"
       data-guide="learning-header"
     >
@@ -23,9 +23,9 @@
       </template>
     </AtPageHeader>
 
-    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" aria-label="學習評量與家長留言">
-      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">學習評量</button>
-      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">家長留言</button>
+    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" :aria-label="isTeacher ? '評量待辦與家長回覆' : '學習評量與家長留言'">
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">{{ isTeacher ? '評量待辦' : '學習評量' }}</button>
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">{{ isTeacher ? '家長回覆' : '家長留言' }}</button>
     </div>
 
     <!-- Teacher quick-filter tabs -->
@@ -76,7 +76,6 @@
           已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
         </button>
       </div>
-      <div class="lr-tab-hint">從課表點擊堂次 → 填寫或編輯評量。已核准的評量僅供檢視。</div>
     </div>
 
     <!-- Director review queue tabs -->
@@ -588,11 +587,10 @@
 
     <!-- ===== Records Grouped By Student ===== -->
       <div class="lr-view-toolbar" aria-label="評量顯示模式">
-        <div class="lr-view-toolbar__label">顯示模式</div>
-        <div class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
+        <div v-if="!isNarrowViewport" class="lr-view-toolbar__label">顯示模式</div>
+        <div v-if="!isNarrowViewport" class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
         <button
           type="button"
-          v-if="!isNarrowViewport"
           :class="['lr-view-btn', { active: effectiveViewMode === 'table' }]"
           :aria-pressed="effectiveViewMode === 'table' ? 'true' : 'false'"
           @click="viewMode = 'table'"
@@ -617,9 +615,8 @@
           @click="showContentPreview = !showContentPreview"
         >
           <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
-          {{ showContentPreview ? '隱藏內容預覽' : '預覽內容' }}
+          {{ showContentPreview ? '收合完整評量' : '顯示完整評量' }}
         </button>
-        <span v-if="isNarrowViewport" class="lr-mobile-view-hint">手機版自動使用卡片</span>
       </div>
 
     <div
@@ -1533,6 +1530,10 @@ import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusS
 import { compareLearningRecords } from '../lib/learningRecordSort';
 import { deduplicateLearningRecordSessions } from '../lib/learningRecordSessionPolicy';
 import {
+  resolveLearningRecordViewDefaults,
+  resolveLearningRecordViewMode,
+} from '../lib/learningRecordViewPreferences';
+import {
   addMinutesToTime,
   dayOfWeekFromYmd,
   formatLocalDate,
@@ -1569,15 +1570,22 @@ const perf = createPerfTracker('LearningRecordsPage');
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].includes(String(props.userRole || '')));
-const showContentPreview = ref(isTeacher.value);
+const initialViewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
+const initialViewDefaults = resolveLearningRecordViewDefaults({
+  viewportWidth: initialViewportWidth,
+  savedViewMode: typeof window !== 'undefined' ? window.localStorage.getItem('lr_view_mode') : null,
+});
+const showContentPreview = ref(initialViewDefaults.showContentPreview);
 
 const records = ref([]);
 const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
-const defaultViewMode = typeof window !== 'undefined' && window.innerWidth < 760 ? 'card' : 'table';
-const viewMode = ref(localStorage.getItem('lr_view_mode') || defaultViewMode);
-watch(viewMode, (mode) => localStorage.setItem('lr_view_mode', mode));
-const isNarrowViewport = ref(typeof window !== 'undefined' && window.innerWidth <= 640);
-const effectiveViewMode = computed(() => (isNarrowViewport.value ? 'card' : viewMode.value));
+const viewMode = ref(initialViewDefaults.viewMode);
+watch(viewMode, (mode) => window.localStorage.setItem('lr_view_mode', mode));
+const isNarrowViewport = ref(initialViewportWidth <= 640);
+const effectiveViewMode = computed(() => resolveLearningRecordViewMode({
+  viewportWidth: isNarrowViewport.value ? 640 : 641,
+  viewMode: viewMode.value,
+}));
 const updateViewportMode = () => {
   isNarrowViewport.value = window.innerWidth <= 640;
 };
@@ -6040,11 +6048,6 @@ select.lr-input {
 
 .lr-preview-toggle .material-symbols-outlined {
   font-size: 16px;
-}
-
-.lr-mobile-view-hint {
-  color: var(--ds-ink-mute);
-  font-size: 12px;
 }
 
 .lr-error-state {

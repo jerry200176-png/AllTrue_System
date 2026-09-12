@@ -92,6 +92,9 @@ for (const viewport of viewports) {
     await expect(page.getByText('完成分數與比例的應用題', { exact: true })).toHaveCount(0);
     await page.locator('#lr-teacher-tab-all').click();
     await expect(page.locator('#lr-teacher-tab-all')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText('完成分數與比例的應用題', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '顯示完整評量', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await page.getByRole('button', { name: '顯示完整評量', exact: true }).click();
     await expect(page.getByText('內容預覽', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('完成分數與比例的應用題', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('第 3 單元', { exact: true }).first()).toBeVisible();
@@ -108,6 +111,9 @@ for (const viewport of viewports) {
     if (viewport.width <= 640) {
       expect(await page.locator('.lr-card-view').count()).toBe(1);
       expect(await page.locator('.lr-table-scroll').count()).toBe(0);
+      await expect(page.locator('.lr-view-toggle')).toHaveCount(0);
+    } else {
+      await expect(page.locator('.lr-view-toggle')).toBeVisible();
     }
     if (viewport.name === '390' || viewport.name === '1440') {
       await page.locator('.lr-page').screenshot({ path: `/tmp/learning-record-preview-${viewport.name}.png` });
@@ -122,7 +128,7 @@ test('director can turn the read-only preview on and off', async ({ page }) => {
   const toggle = page.locator('.lr-preview-toggle');
   await toggle.click();
   await expect(page.getByText('內容預覽', { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: '隱藏內容預覽', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '收合完整評量', exact: true })).toBeVisible();
   await toggle.click();
   await expect(page.getByText('內容預覽', { exact: true })).toHaveCount(0);
 });
