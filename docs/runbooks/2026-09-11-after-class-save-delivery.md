@@ -44,3 +44,35 @@
 - 隔離 fixtures 攔截所有 API；只證明前端已部署行為，不冒充 production DB 寫入或真人理解率。測試 revision、畫面、required checks 與正式站 SHA 已列於上方並在 scoped PR 回寫。
 - 反覆失敗由 Astra 接手；required gate、身份／隔離／權威回應驗證不明時停止相關交付，不改 assertion 洗綠。
 - Rollback：透過現有 deploy.yml 交付本包 revert；保留後端課務與歷史草稿，不回放提交／通知。上線前記錄正式站基線 SHA，回退後重新核對 health/version 與課後情境。
+
+## 本批接續：in-app #286 輔導課下一期（開發中，尚未部署）
+
+- Founder 於 2026-09-12 主 CLI 明確批准：從既有輔導課複製設定建立下一期、保留前後期關聯、費用為 0、不建立付款義務；一般付費課規則不變。批准證據：[issue #2760 留言](https://github.com/jerry200176-png/AllTrue_System/issues/2760#issuecomment-5645043931)。不包含歷史修復、帳款搬移、migration、權限擴大或其他 runtime activation。
+- R3/T3 scoped GO；task `chore/task-tutoring-continuation-286-20260912`，session `62a7401baf5e4719a175d2abf3892f9a`，base `ff74c83e604191a5ae56ca543629be2e3577daf6`，preflight passed。原回報 #286、issue #2760；本批其他 in-app 範圍仍是 #285/#287，不擴張清單。
+- 架構：新增明確 tutoring endpoint，主任／管理員分校權限、鎖來源／學生／群組、複用既有排課與 CourseContinuity 關聯；不改 paid renewal/purchase。Charge/Pay/Paid 歸零且 PayDate 空，Rate 保留既有課務／核薪語意；不建立 Invoice/Payment，不變更舊課、出席或評量。
+- 獨立 SEC/ARCH review 指出並修正：共用方案不得誤走付費加購、首堂須符合原固定星期、手動排課不可偷偷轉自動。最新本機相關 API suites：36 tests / 227 assertions passed，含舊付費／關聯 regression；前端既有 high-risk flows 6 passed，Vite build passed，PHPStan no errors。完整 App 的 390/1440 失敗保留／重試／零應收及共用方案防誤寫共 3 browser tests passed；舊版正式前端的兩個尺寸 before 截圖亦已取得，所有 API 均隔離攔截，不是 production DB 寫入證據。CI 與部署尚待最終 head 驗證，不宣稱已交付。
+- rollback：以正常 PR revert 並透過 deploy.yml 交付，停用新入口；不刪已建立的下一期、不搬回帳務或歷史紀錄。必要資料處置另取授權。原串完成回覆需在 exact-SHA/runtime 核對後，不能代替回報者驗收。
+
+## 2026-09-12 本批對帳與低風險 UI 接續
+
+- **18:40 最終 #286 里程碑**：main CI `34688472717`、deploy `34688731527` success；依主 CLI 已有 GO 在同 run 記錄 `production-activation` 審核，沒有擴大到 #287。2026-09-12T10:40:16Z identity GREEN，backend/frontend/build 全部 exact `a975e4b6ae3137ae8cb0bb92f8f6c0fe188e08ce`、health ok、pending/drift 空；正式前端隔離 API 的3個手機／桌面流程 passed。原串公開回覆 **695**、resolved evidence 已写；GitHub #2760 closed，未代建真人正式課程、未代按 reporter verify，operationally accepted 尚未確認。下方 earlier pending 狀態由本條覆蓋。
+- 範圍再對帳：API 共287筆、max ID287，無新 report ID；#274 在本批期間以 comment692 重新反映手機底部遮擋，status in_progress。已 reopen #2606、原串回覆694，要求辨識新被遮擋面板／畫面，不冒充舊單堂視窗修正涵蓋所有情境；屬啟動後非新事故之後續手機案件，保留下一批，不擴張本批業務範圍。
+- UI 最終本機：整合 #286 後完整 unit **106 files／548 tests**、完整 build passed；Attendance full-App recovery 390/1440 **2 passed**、tutoring full-App **3 passed**、page/component browser **12 passed**，兩個 baseline-only cases 非正常驗收項。完成訊息另去除內部課程ID，manual 零預排顯示下一步而不是 null 結束日；API payload 和財務/權限保持不變。#2768 仍須 exact-head CI 與後續 production 驗證。
+
+- **最新狀態覆蓋下方較早里程碑**：#287 新 comment 691 指出一般取消仍會依舊四堂上限補排；已回到 in_progress，GitHub #2761 reopened，公開回覆 693 明確撤回「行事曆導頁可完成需求」的建議。根因為既有測試直接 DB cancelled，未覆蓋使用者取消／補排路徑。已向主 CLI 申請限定未收款按堂課的「主任確認後原子下修總數／金額／超額預排」GO，尚未批准、未實作或代改正式資料；不得再次視為 resolved。
+- #286 已 merge：PR #2766 最終 head `a5923dac85f62f2fa6e52079000f39f02c2f069a`，merge `a975e4b6ae3137ae8cb0bb92f8f6c0fe188e08ce`，PR CI `34688163020` passed；main CI `34688472717`／部署仍待確認。
+- Security #2767 deploy `34688143363` attempt 2 success；2026-09-12T10:25:30Z production-identity GREEN，backend exact `577a0a25484999042250088bac202b887a4fbd15`，無前端變動所以 frontend/build 保留 `41d959b9…`，health ok、pending runtime/drift 空。沒有對真人正式資料提交攻擊測試，不冒充 live exploit test 或 operational acceptance。#977 已記錄 evidence；#3 仍 open。
+- GitHub #2743／#2727／#2751 已依最新原串與 production ancestry 關閉：#281 reporter comment 679 確認正常、既有 reply 680；#283 已交付 reply 681；#284 已交付評量減噪 reply 684（後來686只限制其增量切片）。未再次通知或代按 in-app reporter verify。#2715 依其明確等待回報者的紀錄保留。
+- UI #2768 為 draft，等待 #286 runtime 後才合併；完整前端 105 files／543 tests passed，最終整合 head 的 browser 截圖使用 `ui-mobile-final/`。原 #2653 保留到來源差異確認整合後。
+
+- #287：已交付 #2763（merge/deploy `ff74c83e604191a5ae56ca543629be2e3577daf6`、deploy `34682878958`）；本輪以 production `41d959b9…` 再跑手機／桌面隔離流程 2 passed。保留公開回覆 689，不重複通知；已寫 resolved evidence 指向 `41d959b9c9f298c66a2efbd19307be3d49f0c381`／`34686619551`，reporter 尚未 verify。修的是錯誤說明／下一步，不冒充已替使用者取消排程、改堂數或帳務。
+- #286：完整本機 PHPUnit 2,301 tests／10,583 assertions，11 既有 skips，無 failures；新測試改精確 baseline+delta 是為兼容整套 fixtures，不刪 assertion。獨立 review `1e5f21cc0f6d1f4ffc6db0708c54bd8af6546912` passed；該 head required CI 全綠。後續納入已合併 #2767；最終 merge/deploy/runtime 仍待核對。
+- Security #2767：source #2764 head `235857f4138fe4bf0a6884df41c427e3622c2e85` 的固定欄位驗證完整保留，補上混合文字／檔案輸入拒絕；49 API tests／244 assertions、PHPStan、exact-head CI `34687587529` 與獨立 review passed。merge `577a0a25484999042250088bac202b887a4fbd15`，main CI `34687835027` passed。deploy `34688143363` 首次因 PR 欠明確 Rollback 欄位停在 executor 前；已補具體回滾 evidence 後重跑，不修改 gate。此時尚未確認部署。
+- 已關閉重複 PR #2762／#2764：前者 merge-tree 與 current main 的產品及 staff updates 無剩餘差異（由 #2763 整合），後者由 #2767 保留並補強。原 branch/worktree 與未提交成果保留。
+- UI 草稿 #2646、#2648–#2651、#2653–#2662（存在的 PR）、#2666、#2668、#2673、#2676、#2679、#2680、#2682 仍有獨有產品差異，不能當重複案關閉。本批只接續 #2653 點名觸控／狀態提示；其餘保留後續獨立驗證。#2677 仍有行事曆權威檢查及過去堂次確認改動，#2021／#2626 涉帳務取捨，#1991 是延後的 spinout RFC，均不整包帶入。
+- Issues 不以 in-app resolved 自動清零：#2715 明確等待回報者；#2751／#2727／#2743 的 GitHub 紀錄仍需與最新原串補充對帳。#2135 是未完成 umbrella；#2742 是非阻塞的同 SHA provenance 競態，保留 fail-closed 與既有 Founder boundary，不新增治理改動。
+- Security 對帳：Dependabot open 僅 #3（Laravel）；維持 open／#977 framework track，未 dismiss。Code scanning API 回 no analysis found（404），不是零漏洞證據；secret scanning list 回 1 筆已 resolved 的 Telegram 通報，另有 scope 警告，不能宣稱全面掃描完成。#1007 最新既有證據為 credentials containment 完成、公開歷史 object 清理未完成；不重播 rotation、不 force-push，保留協調與 GitHub-side purge blocker。
+- 分支 dry-run 無 remote merged deletion 候選。四個本機 branch 已核實零 unique commits、無 worktree、無 open PR／upstream dependency 後刪除參照：`test-push-verify`→`895bc724abb836e1d14c406b8b0b8992fe907a74`；`chore/compact-release-notes-20260831`→`d34549f2ac6355029696926629a404577bbf29ba`；`chore/docs-runtime-log-cleanup`→`dca6773b88584c124805570813698db855925671`；`chore/exempt-dependabot-provenance`→`e2f2a390c7d2c7550d655d9face627820a779591`。commits 均留在 main 歷史，可用上述 SHA 重建；未刪目錄或未提交資料。
+- UI scope：task `mobile-attendance-copy-20260912`、session `23f7107a635d489a8e9007f7e4a6afe6`、base `577a0a254…`。接續 #2653 head `146f4868c47f23ed45e6171e15e480823d5a4d20` 的 Attendance 模板/CSS，新增實際點名 payload contract 與 CourseEditForm 參考單價文案測試。無 script/API/權限／付款／點名語意變動；Rate 仍保留原值。
+- UI 本機證據：390/412/768/1280/1440、密集/空白/loading/error/長中文及單筆點名與輔導/付費表單 12 browser tests passed（2 個 baseline-only cases 在正常模式刻意 skipped），新 Vue tests 2 passed、完整 build passed。baseline 兩個尺寸各頁已拍；前後圖在 `/tmp/alltrue-delivery-20260912-bbCslW/ui-attendance-before`、`ui-course-edit-before`、`ui-mobile-after`。真 Vue + 合成 API，未寫正式資料；觸控高度達 44px，不宣稱誤觸率或效率已量測改善。
+- UI rollback：正常 revert PR/deploy，僅回復呈現；不改任何點名／帳務資料。最終 CI、merge、deployment、production 驗證與原串對帳尚待本批完成時更新。

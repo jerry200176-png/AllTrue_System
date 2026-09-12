@@ -3106,7 +3106,13 @@ const submitAddSessions = async () => {
     }
     const newCourse = json?.new_course || {};
     if (tutoring) {
-      alert(`${json.message}\n原課程 #${json.source_course_id} → 下一期 #${newCourse.id}\n${newCourse.start_date} ～ ${newCourse.end_date}，${newCourse.created_sessions} 堂。`);
+      const period = newCourse.end_date
+        ? `${newCourse.start_date} ～ ${newCourse.end_date}`
+        : `${newCourse.start_date} 起`;
+      const scheduleHint = Number(newCourse.created_sessions) === 0
+        ? '尚未排課，請至行事曆逐堂安排。'
+        : `已排 ${newCourse.created_sessions} 堂。`;
+      alert(`${json.message}\n${period}；${scheduleHint}`);
       return;
     }
     const studentName = submittedStudent?.name || '';
