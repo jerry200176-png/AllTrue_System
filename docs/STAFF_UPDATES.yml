@@ -322,6 +322,26 @@ updates:
       - "changelog:2026-09-12:bug-reports-responsive-clarity"
       - "supersedes-pr:#2670"
 
+  - id: staff-2026-09-12-feedback-mobile-action-layer
+    published_at: "2026-09-12"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 手機直向可完成意見回報
+    summary: 意見與建議的送出與關閉操作不再被手機底部導覽列遮住。
+    items:
+      - category: fixed
+        text: 直向手機開啟「意見與建議」後，送出與關閉操作會保持可點選，不必轉成橫向才能完成回報。
+      - category: improved
+        text: 回報對話框與提示會位於持續顯示的手機導覽列之上，表單流程保持完整可操作。
+      - category: fixed
+        text: 回報內容、附件、處理狀態、API、權限與後端資料流程維持不變。
+    source_refs:
+      - "changelog:2026-09-12:feedback-mobile-action-layer"
+      - "in-app:#274"
+      - "issue:#2606"
+
   - id: staff-2026-09-12-learning-save-response-confirmation
     published_at: "2026-09-12"
     audiences:

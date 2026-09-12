@@ -127,8 +127,10 @@
   --ds-z-dropdown: 1000;
   --ds-z-sticky: 1100;
   --ds-z-overlay: 1200;
-  --ds-z-modal: 1300;
-  --ds-z-toast: 1400;
+  /* Mobile navigation and its "more" sheet occupy 10000–10002. Dialogs
+     and confirmations must remain operable above that persistent control. */
+  --ds-z-modal: 12001;
+  --ds-z-toast: 12002;
 
   --ds-motion-fast: 120ms;
   --ds-motion-base: 180ms;
