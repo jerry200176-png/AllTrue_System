@@ -236,6 +236,27 @@ class BugReportApiTest extends TestCase
         $this->assertNotEmpty($atts[0]['url'] ?? null);
     }
 
+    public function test_upload_validation_rejects_wildcard_like_key_and_disallowed_file(): void
+    {
+        [$token] = $this->createUserToken([1], 'bugWildcardUpload@test.com', 'T');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->post('/api/v1/bugs', [
+            'title' => '拒絕惡意附件鍵名',
+            'description' => 'wildcard-like array key must not bypass file validation',
+            'severity' => 'high',
+            'branch_id' => 1,
+            'attachments' => [
+                '__asterisk__' => UploadedFile::fake()->create('payload.php', 1, 'application/x-php'),
+            ],
+        ]);
+
+        $res->assertStatus(422)->assertJsonValidationErrors(['attachments.__asterisk__']);
+        $this->assertDatabaseMissing('bug_reports', ['title' => '拒絕惡意附件鍵名']);
+    }
+
     /**
      * RC-1 regression: when the public storage disk is broken / symlink missing,
      * the bug report itself must still be created (HTTP 201) and attachment_errors
