@@ -932,11 +932,28 @@
           {{ billingCorrectionCourse?.student_name || '此學生' }}／{{ billingCorrectionCourse?.subject_name || billingCorrectionCourse?.subject || '課程' }}
         </p>
         <div class="billing-correction-warning">
-          僅適用於尚未收款的按堂課程。已上課紀錄不會被刪除；超出新堂數的未上課排程會取消，並留下稽核紀錄。
+          僅適用於尚未收款的按堂課程。已上課紀錄不會被刪除；若更正後堂數少於目前排程，系統會先列出需處理的未來堂次，不會自動取消。
         </div>
-        <AtInlineAlert v-if="billingCorrectionBlocked" tone="danger" title="無法更正" style="margin-bottom: 12px;">
+        <AtInlineAlert v-if="billingCorrectionBlocked" tone="danger" title="還不能更正" style="margin-bottom: 12px;">
           <p style="margin: 0;">{{ billingCorrectionBlocked.message }}</p>
           <p v-if="billingCorrectionBlocked.hint" style="margin: 6px 0 0;">{{ billingCorrectionBlocked.hint }}</p>
+          <ul
+            v-if="billingCorrectionBlocked.affectedSessions.length"
+            class="billing-correction-affected-sessions"
+            aria-label="需先處理的未來堂次"
+          >
+            <li v-for="session in billingCorrectionBlocked.affectedSessions" :key="session.sessionId">
+              <time :datetime="`${session.sessionDate}T${session.startTime}`">{{ formatBillingCorrectionSessionLabel(session) }}</time>
+            </li>
+          </ul>
+          <button
+            v-if="billingCorrectionBlocked.canOpenCalendar"
+            type="button"
+            class="ghost billing-correction-calendar-action"
+            @click="openBillingCorrectionCalendar"
+          >
+            前往行事曆處理
+          </button>
         </AtInlineAlert>
         <label class="form-label">更正後購買堂數
           <input v-model.number="billingCorrectionForm.new_session_count" type="number" min="1" step="1" class="form-input" />
@@ -1385,6 +1402,10 @@ import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDec
 import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
+import {
+  buildBillingCorrectionBlockedState,
+  formatBillingCorrectionSessionLabel,
+} from '../lib/billingCorrectionUx.js';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
@@ -2258,9 +2279,6 @@ const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
 const billingCorrectionBlocked = ref(null);
-const BILLING_CORRECTION_NEXT_STEP_HINT = {
-  edit_charge_only: '堂數不能再改了，但費用還能改：請關閉本視窗，改到課程「編輯」畫面直接調整總費用，堂數維持不變即可。',
-};
 const billingCorrectionExpectedCharge = computed(() => {
   const course = billingCorrectionCourse.value;
   const count = Number(billingCorrectionForm.value.new_session_count || 0);
@@ -2279,6 +2297,19 @@ function openBillingCorrectionModal(course) {
   };
   billingCorrectionBlocked.value = null;
   showBillingCorrectionModal.value = true;
+}
+
+function openBillingCorrectionCalendar() {
+  const course = billingCorrectionCourse.value;
+  const date = billingCorrectionBlocked.value?.firstAffectedDate;
+  if (!course || !date) return;
+  showBillingCorrectionModal.value = false;
+  emit('navigate', {
+    target: 'calendar',
+    studentId: course.student_id ?? course.StudentID ?? null,
+    courseId: course.id ?? course.ID ?? null,
+    date,
+  });
 }
 
 function isBillingCorrectionStructureEligible(course) {
@@ -2427,10 +2458,7 @@ async function submitBillingCorrection() {
     if (!res.ok) {
       // Keep this on-screen (not just a toast that vanishes) — the person acting on
       // it needs to see *why* it's blocked and what to do instead, not just retry.
-      billingCorrectionBlocked.value = {
-        message: body?.message || '更正失敗',
-        hint: BILLING_CORRECTION_NEXT_STEP_HINT[body?.next_step] || null,
-      };
+      billingCorrectionBlocked.value = buildBillingCorrectionBlockedState(body);
       return;
     }
     showBillingCorrectionModal.value = false;
@@ -2442,7 +2470,7 @@ async function submitBillingCorrection() {
       durationMs: 5000,
     });
   } catch (error) {
-    billingCorrectionBlocked.value = { message: error?.message || '請稍後再試。', hint: null };
+    billingCorrectionBlocked.value = buildBillingCorrectionBlockedState({ message: error?.message || '請稍後再試。' });
   } finally {
     billingCorrectionSubmitting.value = false;
   }
@@ -7021,6 +7049,18 @@ button.danger:disabled {
   font-size: 13px;
   margin-bottom: 20px;
   line-height: 1.6;
+}
+
+.billing-correction-affected-sessions {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}
+
+.billing-correction-calendar-action {
+  min-height: 44px;
+  margin-top: 12px;
 }
 
 .premium-danger-modal,
