@@ -181,15 +181,7 @@
                   :class="['subject-pill', { low: isSessionPaymentLowRemaining(course) }]"
                 >
                   {{ getSubjectLabel(course.subject).split('(')[0].trim() }}
-                  <template v-if="String(course.payment_type || '').toLowerCase() === 'monthly'">
-                    <template v-if="parseCourseNumber(course.monthly_sessions) != null && parseCourseNumber(course.monthly_sessions) > 0">
-                      每月<strong>{{ parseCourseNumber(course.monthly_sessions) }}</strong>堂
-                    </template>
-                    <template v-else>月結</template>
-                  </template>
-                  <template v-else>
-                    <strong>{{ course.PackageID ? (course.package_remaining_sessions ?? 0) : (course.remaining_sessions ?? 0) }}</strong>堂
-                  </template>
+                  <strong>{{ courseBadgeSessionLabel(course) }}</strong>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -903,6 +895,7 @@ import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/cons
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { getPerSessionFee } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
+import { courseBadgeSessionLabel } from '../lib/courseBadgeDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';

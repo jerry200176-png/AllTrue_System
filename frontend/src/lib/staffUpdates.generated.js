@@ -161,6 +161,38 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-students-session-count-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生清單會標示待確認堂數",
+    "summary": "課程堂數資料不完整時，學生清單會顯示「堂數待確認」，不再誤顯示為零堂課程。",
+    "items": [
+      "已設定堂數、月結與共用方案維持原有顯示；課程、排課、帳務、權限與資料不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已設定堂數、月結與共用方案維持原有顯示；課程、排課、帳務、權限與資料不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:students-session-count-clarity",
+      "in-app:#291",
+      "github:#2807"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-students-purchase-error-visible",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

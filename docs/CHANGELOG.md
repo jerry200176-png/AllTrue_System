@@ -1,3 +1,8 @@
+## 2026-09-13 — fix(students): 未設定堂數不再誤顯示為 0 堂
+<!-- release-notes: staff_update=staff-2026-09-13-students-session-count-clarity -->
+- 學生清單的堂數制課程若沒有可確認的購買堂數或剩餘資料，會顯示「堂數待確認」，不再把不完整資料誤當成零堂課程。
+- 已設定堂數的課程仍顯示實際剩餘；月結與共用方案沿用既有顯示。這次只改善呈現，不更改課程、排課、帳務、權限或資料。
+
 ## 2026-09-13 — fix(calendar): 單堂視窗不再直接刪除整門課
 <!-- release-notes: staff_update=staff-2026-09-13-calendar-whole-course-delete-guard -->
 - 行事曆的單堂檢視不再提供「刪除整門課」；避免把單堂處理誤當成可直接移除整門課程與其歷史堂次。
