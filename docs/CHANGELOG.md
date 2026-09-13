@@ -1,3 +1,8 @@
+## 2026-09-13 — improved(chat): 對話操作提示與手機觸控更清楚
+<!-- release-notes: staff_update=staff-2026-09-13-chat-accessibility -->
+- 對話列表與訊息載入狀態會提供明確提示；附件、傳送、返回與回覆操作補上可辨識名稱。
+- 手機常用操作維持至少 44px 觸控高度，課務、訊息傳送、刪除確認、權限與 API 請求不變。
+
 ## 2026-09-13 — improved(tuition): 學收佇列在手機上更容易查看
 <!-- release-notes: staff_update=staff-2026-09-13-tuition-collection-clarity -->
 - 待處理收款、已核帳收款與已結清課程在窄螢幕改以可閱讀的卡片排列；載入、空白、錯誤與重試提示更明確。

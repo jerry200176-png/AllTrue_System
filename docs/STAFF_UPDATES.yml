@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-chat-accessibility
+    published_at: "2026-09-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 對話操作在手機上更容易辨識
+    summary: 聊天載入與常用按鈕補上清楚提示，手機操作範圍也更容易點選。
+    items:
+      - category: improved
+        text: 返回、附件、傳送與取消回覆可由輔助工具辨識；對話、權限與送出流程不變。
+    source_refs:
+      - "changelog:2026-09-13:chat-accessibility"
+      - "github:#2531"
+
   - id: staff-2026-09-13-tuition-collection-clarity
     published_at: "2026-09-13"
     audiences:

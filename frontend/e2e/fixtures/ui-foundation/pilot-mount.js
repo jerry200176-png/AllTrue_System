@@ -47,6 +47,7 @@ const pageModules = {
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
   'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
+  chat: () => import('../../../src/pages/ChatPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;

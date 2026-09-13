@@ -96,6 +96,39 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-chat-accessibility",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "對話操作在手機上更容易辨識",
+    "summary": "聊天載入與常用按鈕補上清楚提示，手機操作範圍也更容易點選。",
+    "items": [
+      "返回、附件、傳送與取消回覆可由輔助工具辨識；對話、權限與送出流程不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "返回、附件、傳送與取消回覆可由輔助工具辨識；對話、權限與送出流程不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:chat-accessibility",
+      "github:#2531"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-12-tutoring-continuation",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
