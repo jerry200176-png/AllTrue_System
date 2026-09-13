@@ -48,6 +48,8 @@ export default defineConfig({
     /tuition-collection-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
     /line-integration-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in teacher-eligibility-playwright.config.js.
+    /teacher-eligibility-clarity\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
