@@ -1,0 +1,177 @@
+name: In-app #289 pre-incident target manifest (read-only)
+
+# governance-capability: non-production
+# Founder-approved, one-case evidence collection for the reported Muzha course.
+# This workflow has no caller-provided lookup values and never connects a backup
+# to the application or production database. It fails closed unless one and
+# only one pre-incident StudentClass matches the committed identity digest.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inapp-289-preincident-target-manifest
+  cancel-in-progress: false
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - name: Checkout pinned production SSH trust helper
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Install SSH key
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Build a sanitized single-course manifest from the pre-incident backup
+        env:
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+
+          # This is an identity digest of the Founder-scoped student, subject,
+          # and teacher tuple. Names are deliberately not emitted or accepted as
+          # workflow inputs, so this workflow cannot become a backup browser.
+          target_identity_sha256=0ead8c52fbbc1b046d0a7c6b473b4c46ae3cefc717f5dd81bc710e5a74f37025
+          incident_cutoff_epoch=1789280220
+          backup_dir=/home/admin/backups/sixhour
+          test -d "$backup_dir"
+
+          mapfile -t snapshots < <(
+            find "$backup_dir" -maxdepth 1 -type f -name 'alltrue_6h_*.sql.gz' \
+              -printf '%T@\t%f\n' | sort -n
+          )
+          test "${#snapshots[@]}" -gt 0
+
+          selected=''
+          for row in "${snapshots[@]}"; do
+            epoch=${row%%$'\t'*}
+            integer_epoch=${epoch%%.*}
+            if [ "$integer_epoch" -le "$incident_cutoff_epoch" ]; then
+              selected=$row
+            fi
+          done
+          test -n "$selected"
+          snapshot_epoch=${selected%%$'\t'*}
+          snapshot_name=${selected#*$'\t'}
+          snapshot="$backup_dir/$snapshot_name"
+          test -f "$snapshot"
+          gzip -t "$snapshot"
+
+          db_value() {
+            sed -n "s/^$1=//p" /home/admin/backend/.env | head -n 1
+          }
+          db_user=$(db_value DB_USERNAME)
+          db_pass=$(db_value DB_PASSWORD)
+          test -n "$db_user"
+          test -n "$db_pass"
+
+          temporary_db="alltrue_inapp289_manifest_$(date +%s)_$$"
+          cleanup() {
+            trap - EXIT
+            if ! mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" \
+              -e "DROP DATABASE IF EXISTS \`$temporary_db\`;"; then
+              echo 'temporary_manifest_database_cleanup=failed' >&2
+              exit 1
+            fi
+            echo 'temporary_manifest_database_cleanup=ok'
+          }
+          trap cleanup EXIT
+
+          mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" \
+            -e "CREATE DATABASE \`$temporary_db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          zcat "$snapshot" | mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db"
+
+          match_rows=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+            --batch --skip-column-names -e "
+              SELECT sc.ID, sc.StudentID, sc.SubjectID, sc.TeacherID, st.CampusID
+              FROM \`StudentClass\` sc
+              INNER JOIN \`Student\` st ON st.id = sc.StudentID
+              INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+              INNER JOIN \`User\` teacher ON teacher.id = sc.TeacherID
+              WHERE SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(sub.Subject_Name), CHAR(31), TRIM(teacher.Name)), 256)
+                = '$target_identity_sha256'
+              ORDER BY sc.ID;")
+          if [ -z "$match_rows" ]; then
+            match_count=0
+          else
+            match_count=$(printf '%s\n' "$match_rows" | wc -l | tr -d '[:space:]')
+          fi
+          if [ "$match_count" -ne 1 ]; then
+            printf 'case=in-app-289\n'
+            printf 'read_only=true\n'
+            printf 'identity_match_count=%s\n' "$match_count"
+            echo 'manifest_result=ambiguous_or_missing_fail_closed' >&2
+            exit 1
+          fi
+
+          IFS=$'\t' read -r student_class_id student_id subject_id teacher_id campus_id <<< "$match_rows"
+          case "$student_class_id:$student_id:$subject_id:$teacher_id:$campus_id" in
+            *[!0-9:]*|::::) echo 'manifest_result=invalid_identifier_fail_closed' >&2; exit 1 ;;
+          esac
+
+          sessions=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+            --batch --skip-column-names -e "
+              SELECT id, SessionDate, TIME_FORMAT(StartTime, '%H:%i'), TIME_FORMAT(EndTime, '%H:%i'), Status
+              FROM \`ClassSession\`
+              WHERE StudentClassID = $student_class_id
+              ORDER BY SessionDate, StartTime, id;")
+          if [ -z "$sessions" ]; then
+            session_count=0
+          else
+            session_count=$(printf '%s\n' "$sessions" | wc -l | tr -d '[:space:]')
+          fi
+
+          printf 'case=in-app-289\n'
+          printf 'read_only=true\n'
+          printf 'backup_filename=%s\n' "$snapshot_name"
+          printf 'backup_epoch=%s\n' "${snapshot_epoch%%.*}"
+          printf 'backup_sha256=%s\n' "$(sha256sum "$snapshot" | awk '{print $1}')"
+          printf 'identity_match_count=%s\n' "$match_count"
+          printf 'student_class_id=%s\n' "$student_class_id"
+          printf 'student_id=%s\n' "$student_id"
+          printf 'subject_id=%s\n' "$subject_id"
+          printf 'teacher_id=%s\n' "$teacher_id"
+          printf 'campus_id=%s\n' "$campus_id"
+          printf 'class_session_count=%s\n' "$session_count"
+          if [ -n "$sessions" ]; then
+            printf '%s\n' "$sessions" | while IFS=$'\t' read -r session_id session_date start_time end_time status; do
+              printf 'class_session=%s,%s,%s,%s,%s\n' "$session_id" "$session_date" "$start_time" "$end_time" "$status"
+            done
+          fi
+          printf 'manifest_result=single_target_found\n'
+          REMOTE
+
+      - name: Record the strict boundary
+        if: always()
+        run: |
+          {
+            echo '### In-app #289 pre-incident target manifest'
+            echo ''
+            echo 'A single pre-incident backup is restored only into an isolated temporary database to locate one Founder-scoped course.'
+            echo 'The workflow cannot accept arbitrary lookup inputs, fails closed unless exactly one match exists, and emits no names or other-course records.'
+            echo 'It never writes to the production application database, reconstructs a course, or changes attendance, evaluation, billing, scheduling, or history.'
+          } >> "$GITHUB_STEP_SUMMARY"

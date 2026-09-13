@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "a72daa35ed754550a5129ed01475d8ba",
+  "session_id": "b2720eab5c324bea8bc68c985427e06e",
   "project": "alltrue",
-  "task_id": "UI-LINE-INTEGRATION-A11Y-R3-20260913",
+  "task_id": "INAPP-289-TARGETED-MANIFEST-R2-20260914",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "bced1cb74db54f4f2079c515e5baf105fca0a74a",
-  "branch": "chore/task-UI-LINE-INTEGRATION-A11Y-R3-20260913",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/UI-LINE-INTEGRATION-A11Y-R3-20260913",
-  "started_at": "2026-09-13T10:59:26Z",
+  "base_sha": "1a0db19a31646e8f363992dbae5b07f5889a6c26",
+  "branch": "chore/task-INAPP-289-TARGETED-MANIFEST-R2-20260914",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INAPP-289-TARGETED-MANIFEST-R2-20260914",
+  "started_at": "2026-09-13T17:43:14Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.0"
 }
