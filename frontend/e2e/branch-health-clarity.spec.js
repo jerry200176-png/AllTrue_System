@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.BRANCH_HEALTH_SHOT_DIR
-  || path.resolve(__dirname, '../../docs/design/evidence/branch-health-clarity');
+  || path.resolve(__dirname, '../test-results/branch-health-clarity');
 const viewports = [
   { name: '390', width: 390, height: 844 },
   { name: '412', width: 412, height: 915 },
