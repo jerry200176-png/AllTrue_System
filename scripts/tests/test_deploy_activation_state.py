@@ -18,6 +18,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     classify_activation_scope,
     classify_activation_provenance,
     classify_production_runtime,
+    wait_for_exact_successful_provenance,
     classify_scope,
     decide_activation,
     decide_manual_activation,
@@ -564,6 +565,30 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertFalse(unknown_provenance["retry_allowed"])
         self.assertFalse(invalid_manifest["retry_allowed"])
 
+    def test_same_sha_provenance_recheck_accepts_only_delayed_exact_success(self):
+        expected = "a" * 40
+        responses = iter([None, None, expected])
+        sleeps = []
+        result = wait_for_exact_successful_provenance(
+            lookup=lambda _sha: next(responses), expected_sha=expected,
+            sleep_fn=sleeps.append,
+        )
+        self.assertEqual(result, expected)
+        self.assertEqual(sleeps, [10, 10])
+
+    def test_same_sha_provenance_recheck_times_out_and_rejects_wrong_or_missing_sha(self):
+        expected = "a" * 40
+        sleeps = []
+        self.assertIsNone(wait_for_exact_successful_provenance(
+            lookup=lambda _sha: "b" * 40, expected_sha=expected,
+            sleep_fn=sleeps.append,
+        ))
+        self.assertEqual(sleeps, [10, 10, 10, 10, 10, 10])
+        self.assertIsNone(wait_for_exact_successful_provenance(
+            lookup=lambda _sha: None, expected_sha=expected,
+            sleep_fn=lambda _seconds: None,
+        ))
+
     def test_static_environment_requires_founder_reviewer_and_allows_self_review(self):
         for event_name, phase in (
             ("workflow_run", "application-deploy"),
@@ -772,6 +797,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("expected_deployed_application_sha", self.workflow)
         self.assertIn("parent-portal-safe", self.workflow)
         self.assertIn("application-runtime-delta", self.workflow)
+        self.assertIn("deployed == head", self.workflow)
+        self.assertIn("attempts=7", self.workflow)
+        self.assertIn("interval_seconds=10", self.workflow)
 
     def test_admissions_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
         self.assertIn("admissions_funnel_v1:", self.workflow)
