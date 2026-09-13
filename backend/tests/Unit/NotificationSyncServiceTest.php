@@ -17,7 +17,7 @@ class NotificationSyncServiceTest extends TestCase
             23000
         );
         $previous->errorInfo = ['23000', 1062, "Duplicate entry '1' for key 'other_unique'"];
-        $exception = new QueryException('insert into example values (?)', [1], $previous);
+        $exception = new QueryException('mysql', 'insert into example values (?)', [1], $previous);
 
         $method = new ReflectionMethod(NotificationSyncService::class, 'isSourceKeyDuplicate');
         $method->setAccessible(true);
