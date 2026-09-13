@@ -30,6 +30,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "對話操作提示與手機觸控更清楚",
           "加購或延續失敗提示保留在原視窗"
         ]
       }
@@ -37,6 +38,7 @@ export const changelogDraftNotes = [
     "items": [
       "多校老師登入後補填提醒會同步完整校區",
       "學收佇列在手機上更容易查看",
+      "對話操作提示與手機觸控更清楚",
       "加購或延續失敗提示保留在原視窗"
     ]
   },
