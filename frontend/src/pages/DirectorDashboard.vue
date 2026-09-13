@@ -19,15 +19,16 @@
             <span class="director-workbench-v2__updated" role="status">
               {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
             </span>
-            <button
-              type="button"
+            <AtButton
               class="director-workbench-v2__refresh"
-              :disabled="dashboardLoading"
+              variant="secondary"
+              shape="rect"
+              icon="refresh"
+              :loading="dashboardLoading"
               @click="refreshDashboard"
             >
-              <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
               重新整理
-            </button>
+            </AtButton>
           </div>
         </header>
 
@@ -116,7 +117,7 @@
             <div v-else-if="dashboardPrimaryError" class="director-state director-state--error" role="alert">
               <strong>今日資料暫時無法載入</strong>
               <span>{{ dashboardPrimaryError }}</span>
-              <button type="button" class="text-action" @click="refreshDashboard">再試一次</button>
+              <AtButton variant="secondary" shape="rect" @click="refreshDashboard">再試一次</AtButton>
             </div>
             <div v-else-if="!dashboardPrimaryTasks.length" class="director-state">
               <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
@@ -142,10 +143,15 @@
                     <span>{{ task.dueAt }}</span>
                   </div>
                 </div>
-                <button type="button" class="director-task__action" @click="openDashboardTask(task)">
+                <AtButton
+                  class="director-task__action"
+                  variant="primary"
+                  shape="rect"
+                  icon="arrow_forward"
+                  @click="openDashboardTask(task)"
+                >
                   {{ task.actionLabel }}
-                  <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-                </button>
+                </AtButton>
               </li>
             </ol>
 
@@ -373,6 +379,7 @@ import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
+import AtButton from '../components/design-system/AtButton.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -2995,20 +3002,8 @@ onBeforeUnmount(() => {
 .text-action,
 .button { font: inherit; cursor: pointer; }
 .director-workbench-v2__refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 36px;
-  padding: 7px 12px;
-  border: 1px solid var(--ds-hairline-input);
-  border-radius: 7px;
-  background: var(--ds-canvas);
-  color: var(--ds-ink-secondary);
-  font-size: 12px;
-  font-weight: 700;
+  min-height: 44px;
 }
-.director-workbench-v2__refresh:hover { border-color: var(--ds-cta); color: var(--ds-cta); }
-.director-workbench-v2__refresh:disabled { cursor: wait; opacity: 0.6; }
 .director-workbench-v2__refresh:focus-visible,
 .director-workbench-v2__nav button:focus-visible,
 .text-action:focus-visible,
@@ -3047,10 +3042,7 @@ onBeforeUnmount(() => {
 .director-task__count { flex: 0 0 auto; color: var(--ds-ink); font-size: 15px; font-variant-numeric: tabular-nums; }
 .director-task__body > p { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.55; }
 .director-task__meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 7px; color: var(--ds-ink-mute); font-size: 11px; }
-.director-task__action { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 5px 0; border: 0; border-bottom: 1px solid transparent; background: transparent; color: var(--ds-cta); font-size: 12px; font-weight: 800; white-space: nowrap; }
-.director-task__action .material-symbols-outlined { font-size: 16px; transition: transform 160ms ease; }
-.director-task__action:hover .material-symbols-outlined { transform: translateX(2px); }
-.director-task__action:hover { border-bottom-color: currentColor; }
+.director-task__action { min-height: 44px; }
 .director-task--loading { min-height: 92px; background: transparent; }
 .director-task--loading > span { display: block; background: var(--ds-canvas-soft); animation: director-workbench-loading 1.4s ease-in-out infinite; }
 .director-skeleton__index { width: 20px; height: 12px; border-radius: 3px; }
@@ -3219,15 +3211,8 @@ onBeforeUnmount(() => {
   .director-task__action {
     grid-column: 2;
     justify-self: start;
-    min-height: 44px;
     margin-top: 3px;
-    padding: 9px 12px;
-    border: 1px solid var(--ds-cta);
-    border-radius: 7px;
-    background: var(--ds-cta);
-    color: var(--ds-on-cta);
   }
-  .director-task__action:hover { border-color: var(--ds-cta-hover); background: var(--ds-cta-hover); color: var(--ds-on-cta); }
   .director-workbench-v2__more { margin-left: 54px; margin-right: 16px; }
   .director-summary-list { padding-inline: 16px; }
   .director-schedule-row { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 7px; }
