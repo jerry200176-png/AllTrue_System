@@ -42,6 +42,7 @@ const pageModules = {
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
+  classroom: () => import('../../../src/pages/ClassroomManagement.vue'),
   'course-edit': () => import('../../../src/components/CourseEditForm.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
@@ -112,6 +113,9 @@ createApp({
         userId: 9001,
         userRole: role,
       });
+    }
+    if (page === 'classroom') {
+      return () => h(PageComponent, { branchId: 1 });
     }
     if (page === 'parent') {
       return () => h(PageComponent, { standalone: true });

@@ -47,7 +47,7 @@ test.describe('Classroom clarity browser verification', () => {
 
     for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
-      await page.goto('/classroom-pilot-mount.html?mode=normal');
+      await page.goto('/pilot-mount.html?page=classroom&mode=normal');
       await expect(page.getByRole('heading', { name: '教室管理' })).toBeVisible();
       await expect(page.getByRole('button', { name: '新增教室' }).first()).toBeVisible();
       if (viewport.width <= 720) {
@@ -73,11 +73,11 @@ test.describe('Classroom clarity browser verification', () => {
 
   test('shared states and dialogs remain recoverable', async ({ page }) => {
     await installMock(page);
-    await page.goto('/classroom-pilot-mount.html?mode=loading');
+    await page.goto('/pilot-mount.html?page=classroom&mode=loading');
     await expect(page.getByTestId('at-skeleton')).toBeVisible();
     await expect(page.locator('.room-mobile-card').first()).toContainText('201 教室');
 
-    await page.goto('/classroom-pilot-mount.html?mode=empty');
+    await page.goto('/pilot-mount.html?page=classroom&mode=empty');
     await expect(page.getByText('目前此分校尚無教室', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '新增教室' }).last().click();
     const createDialog = page.getByRole('dialog', { name: '新增教室' });
@@ -86,7 +86,7 @@ test.describe('Classroom clarity browser verification', () => {
     await page.keyboard.press('Escape');
     await expect(createDialog).toBeHidden();
 
-    await page.goto('/classroom-pilot-mount.html?mode=error');
+    await page.goto('/pilot-mount.html?page=classroom&mode=error');
     const error = page.getByRole('alert');
     await expect(error).toContainText('教室清單暫時無法載入');
     await page.evaluate(() => { window.__classroomRetryAllowed = true; });
@@ -97,7 +97,7 @@ test.describe('Classroom clarity browser verification', () => {
   test('long Chinese content remains usable at mobile width', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto('/classroom-pilot-mount.html?mode=long');
+    await page.goto('/pilot-mount.html?page=classroom&mode=long');
     await expect(page.locator('.room-mobile-card').first()).toContainText('超長中文教室名稱');
     await expect(page.getByRole('button', { name: /編輯教室：超長中文/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
