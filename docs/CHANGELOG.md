@@ -1,9 +1,3 @@
-## 2026-09-13 — improved(tuition): 學收佇列在手機上更容易查看
-<!-- release-notes: staff_update=staff-2026-09-13-tuition-collection-clarity -->
-- 待處理收款、已核帳收款與已結清課程在窄螢幕改以可閱讀的卡片排列；載入、空白、錯誤與重試提示更明確。
-- 排序欄位與既有堂次明細視窗可用鍵盤操作，視窗在手機畫面內維持可用範圍。
-- 不改收款、核帳、收據、計算、資料顯示權限、API payload 或任何帳務規則。
-
 ## 2026-09-13 — fix(teacher-home): 多校老師登入後補填提醒會同步完整校區
 <!-- release-notes: staff_update=staff-2026-09-13-teacher-home-profile-queue -->
 - 老師登入後，個人資料稍晚補齊全部分校時，「補填提醒」和本週課表會一起重新載入；較早、僅含目前分校的回應不會覆蓋完整清單。

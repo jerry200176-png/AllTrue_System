@@ -4,36 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-09-13-tuition-collection-clarity",
-    "publishedAt": "2026-09-13",
-    "effectiveAt": null,
-    "audiences": [
-      "director"
-    ],
-    "audience": [
-      "director"
-    ],
-    "importance": "digest",
-    "title": "學收佇列在手機上更容易查看",
-    "summary": "待處理、已核帳與已結清資料在窄螢幕可清楚閱讀，並補齊載入與錯誤提示。",
-    "items": [
-      "篩選、重試、排序與明細視窗支援鍵盤與手機操作；收款、核帳、權限與計算規則不變。"
-    ],
-    "sections": [
-      {
-        "title": "操作更順手",
-        "items": [
-          "篩選、重試、排序與明細視窗支援鍵盤與手機操作；收款、核帳、權限與計算規則不變。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "changelog:2026-09-13:tuition-collection-clarity"
-    ],
-    "date": "2026-09-13",
-    "version": "2026.09.13"
-  },
-  {
     "id": "staff-2026-09-13-teacher-home-profile-queue",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
