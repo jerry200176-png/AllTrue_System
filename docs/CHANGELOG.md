@@ -3,6 +3,10 @@
 - 科目清單在窄螢幕改為易讀卡片；載入、空白與可重試錯誤提示保持清楚。
 - 更名與刪除操作維持鍵盤可及與至少 44px 觸控尺寸；共用科目的既有刪除授權與確認流程不變。
 - 不改科目新增、更名、刪除的 API、payload、資料、帳務或課程規則。
+## 2026-09-13 — improved(admissions): 招生問班操作在手機更容易辨識
+<!-- release-notes: staff_update=staff-2026-09-13-admissions-clarity -->
+- 新生問班的常用操作、載入提示與長內容在手機及桌面維持清楚、可點選的控制範圍。
+- 問班狀態、認領、聯絡、試聽、轉正式報名、公開表單、權限與 API 請求維持原規則。
 
 ## 2026-09-13 — improved(chat): 對話操作提示與手機觸控更清楚
 <!-- release-notes: staff_update=staff-2026-09-13-chat-accessibility -->
