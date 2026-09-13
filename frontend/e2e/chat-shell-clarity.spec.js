@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+// This suite mounts a mocked Vue pilot page. Production smoke exercises only
+// deployed endpoints, while the UI-foundation build job owns this matrix.
+test.skip(Boolean(process.env.SMOKE_BASE_URL), 'Pilot visual matrix runs in the UI-foundation build job.');
+
 const widths = [390, 412, 768, 1280, 1440];
 
 const threads = [{
