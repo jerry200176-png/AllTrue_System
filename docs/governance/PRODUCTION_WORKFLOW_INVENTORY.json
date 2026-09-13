@@ -121,6 +121,7 @@
     },
     "attendance-case-diagnose.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Push/request and manual diagnose path reviewed; tinker query writes only local evidence."},
     "backup-restore-test.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Pi SSH reads a backup and restores into an isolated restore-test database, not the application database."},
+    "inapp-289-backup-candidate-read.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Case-specific workflow lists fixed pre-incident backup metadata, runs gzip integrity checks, and checks only dump table-definition signatures; it has no restore, database creation, SQL, or production-data write path."},
     "bug-detail-dump.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Tinker selects and emits a PII-safe dump; no model save or apply command."},
     "bug-followup-comment.yml": {
       "classification": "in-app-lifecycle-writeback",
