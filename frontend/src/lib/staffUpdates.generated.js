@@ -98,6 +98,37 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-subject-settings-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "科目設定在手機上更容易操作",
+    "summary": "科目清單、錯誤重試與更名操作在窄螢幕更容易閱讀與操作。",
+    "items": [
+      "科目新增、更名、刪除確認、共用科目授權、資料與 API 維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "科目新增、更名、刪除確認、共用科目授權、資料與 API 維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:subject-settings-clarity",
+      "github:#2659"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-students-purchase-error-visible",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
