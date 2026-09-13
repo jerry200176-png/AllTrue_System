@@ -33,6 +33,8 @@ export default defineConfig({
     /profile-controls-clarity\.spec\.js$/,
     /question-bank-clarity\.spec\.js$/,
     /attendance-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
+    /students-list-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in subject-units-playwright.config.js.
     /subject-units-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.chat-accessibility.config.js.
