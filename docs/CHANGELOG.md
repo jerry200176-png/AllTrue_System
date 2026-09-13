@@ -3,6 +3,10 @@
 - 科目清單在窄螢幕改為易讀卡片；載入、空白與可重試錯誤提示保持清楚。
 - 更名與刪除操作維持鍵盤可及與至少 44px 觸控尺寸；共用科目的既有刪除授權與確認流程不變。
 - 不改科目新增、更名、刪除的 API、payload、資料、帳務或課程規則。
+## 2026-09-13 — improved(dashboard): 主任總覽的常用操作更容易辨識
+<!-- release-notes: staff_update=staff-2026-09-13-director-dashboard-clarity -->
+- 總覽的重新整理、錯誤重試與待辦下一步使用一致的按鈕、載入與鍵盤焦點提示；手機觸控範圍至少為 44px。
+- 不改總覽導航、待辦導向、點名、請假、評量、帳務、信任判斷、權限或 API。
 
 ## 2026-09-13 — improved(chat): 對話操作提示與手機觸控更清楚
 <!-- release-notes: staff_update=staff-2026-09-13-chat-accessibility -->
