@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-13-calendar-whole-course-delete-guard",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "行事曆不再直接刪除整門課",
+    "summary": "從行事曆查看單堂時，不再提供直接刪除整門課程的操作。",
+    "items": [
+      "調課與補課操作維持原規則；既有課程、排課、點名、評量與帳務資料不會因本次更新被改寫。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "調課與補課操作維持原規則；既有課程、排課、點名、評量與帳務資料不會因本次更新被改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:calendar-whole-course-delete-guard",
+      "in-app:#289",
+      "github:#2799"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-tuition-collection-clarity",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

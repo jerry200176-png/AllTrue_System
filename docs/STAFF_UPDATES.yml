@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-calendar-whole-course-delete-guard
+    published_at: "2026-09-13"
+    audiences:
+      - director
+    importance: action_required
+    title: 行事曆不再直接刪除整門課
+    summary: 從行事曆查看單堂時，不再提供直接刪除整門課程的操作。
+    items:
+      - category: fixed
+        text: 調課與補課操作維持原規則；既有課程、排課、點名、評量與帳務資料不會因本次更新被改寫。
+    source_refs:
+      - "changelog:2026-09-13:calendar-whole-course-delete-guard"
+      - "in-app:#289"
+      - "github:#2799"
   - id: staff-2026-09-13-course-completed-renewal-entry
     published_at: "2026-09-13"
     audiences:

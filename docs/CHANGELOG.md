@@ -1,3 +1,8 @@
+## 2026-09-13 — fix(calendar): 單堂視窗不再直接刪除整門課
+<!-- release-notes: staff_update=staff-2026-09-13-calendar-whole-course-delete-guard -->
+- 行事曆的單堂檢視不再提供「刪除整門課」；避免把單堂處理誤當成可直接移除整門課程與其歷史堂次。
+- 調課與補課的既有處理維持可用；課程管理中既有的明確刪除警示流程不變。本次不復原或改寫既有課程、排課、點名、評量或帳務資料。
+
 ## 2026-09-13 — fix(course): 已完課歷史可直接續報加購
 <!-- release-notes: staff_update=staff-2026-09-13-course-completed-renewal-entry -->
 - 行事曆保留已發生堂次作歷史查看；課程管理的「已完課」歷史卡現在可開啟既有續報加購入口，不必另找進行中卡片。
