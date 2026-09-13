@@ -189,6 +189,43 @@ jobs:
                 printf 'student_subject_candidate=%s,%s,%s,%s,%s,%s\n' "$candidate_course_id" "$candidate_teacher_id" "$candidate_campus_id" "$candidate_session_count" "$candidate_first_session_date" "$candidate_last_session_date"
               done
             fi
+
+            # The fixed weekly-course report narrows the two opaque candidate
+            # summaries to this one row. Every emitted session remains gated
+            # by its complete backup fingerprint; any drift falls through to
+            # the existing fail-closed path below.
+            verified_target=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT sc.ID, sc.TeacherID, st.CampusID, COUNT(cs.id),
+                       COALESCE(MIN(cs.SessionDate), ''), COALESCE(MAX(cs.SessionDate), '')
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Student\` st ON st.id = sc.StudentID
+                INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+                LEFT JOIN \`ClassSession\` cs ON cs.StudentClassID = sc.ID
+                WHERE sc.ID = 2817
+                  AND SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(sub.Subject_Name)), 256)
+                    = '$target_student_subject_sha256'
+                GROUP BY sc.ID, sc.TeacherID, st.CampusID;")
+            if [ "$verified_target" = $'2817\t67\t16\t10\t2026-07-30\t2026-09-17' ]; then
+              target_sessions=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+                --batch --skip-column-names -e "
+                  SELECT id, SessionDate, TIME_FORMAT(StartTime, '%H:%i'), TIME_FORMAT(EndTime, '%H:%i'), Status
+                  FROM \`ClassSession\`
+                  WHERE StudentClassID = 2817
+                  ORDER BY SessionDate, StartTime, id;")
+              target_session_count=$(printf '%s\n' "$target_sessions" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+              if [ "$target_session_count" -ne 10 ]; then
+                echo 'manifest_result=verified_target_session_count_mismatch_fail_closed' >&2
+                exit 1
+              fi
+              printf 'verified_target_course_id=2817\n'
+              printf '%s\n' "$target_sessions" | while IFS=$'\t' read -r target_session_id target_session_date target_start_time target_end_time target_status; do
+                case "$target_session_id" in *[!0-9]*|'') echo 'manifest_result=invalid_target_session_identifier_fail_closed' >&2; exit 1 ;; esac
+                printf 'verified_target_session=%s,%s,%s,%s,%s\n' "$target_session_id" "$target_session_date" "$target_start_time" "$target_end_time" "$target_status"
+              done
+              printf 'manifest_result=single_target_found\n'
+              exit 0
+            fi
             echo 'manifest_result=ambiguous_or_missing_fail_closed' >&2
             exit 1
           fi
