@@ -74,6 +74,16 @@ describe('CalendarSessionEditModal', () => {
     expect(w.emitted('substitute-v2')).toHaveLength(1);
   });
 
+  it('never exposes whole-course deletion from a single calendar session', () => {
+    const w = mount(CalendarSessionEditModal, {
+      props: { show: true, form, session, options: {} },
+      global: { stubs: { SearchableSelect: true } },
+    });
+
+    expect(w.text()).not.toContain('刪除整門課');
+    expect(w.emitted('delete-course')).toBeUndefined();
+  });
+
   it('shows a guarded recovery action only for a server-approved candidate', async () => {
     const w = mount(CalendarSessionEditModal, {
       props: {

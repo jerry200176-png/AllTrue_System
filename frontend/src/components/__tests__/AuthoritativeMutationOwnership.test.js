@@ -51,4 +51,13 @@ describe('authoritative mutation ownership (slice 3: course-mgmt + calendar + bi
     expect(calendar).not.toContain('/api/v1/attendance');
     expect(guide).toContain('出缺勤請至「出缺勤管理」登記');
   });
+
+  it('does not let a calendar session delete its entire course', () => {
+    const calendar = read('pages/SmartCalendar.vue');
+    const modal = read('components/calendar/modals/CalendarSessionEditModal.vue');
+    expect(calendar).not.toContain('@delete-course=');
+    expect(calendar).not.toContain("const deleteCourse = async");
+    expect(modal).not.toContain("'delete-course'");
+    expect(modal).not.toContain('刪除整門課');
+  });
 });

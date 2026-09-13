@@ -452,7 +452,6 @@
       @confirm-cancel="doConfirmCancelSession"
       @restore-session="restoreCancelledSession"
       @delete-exception="deleteException"
-      @delete-course="deleteCourse"
       @cancel-makeup="cancelMakeupClass"
       @teacher-change="checkConflict"
       @goto-attendance="goToAttendanceFromSession"
@@ -2279,14 +2278,6 @@ const submitModal = async () => {
   showModal.value = false;
   await loadCourses();
   alert('已儲存');
-};
-
-const deleteCourse = async () => {
-  if (!confirm('確定刪除此排課？')) return;
-  await supabase.from('student-classes').delete().eq('id', editingCourseId.value);
-  editingActionDate.value = '';
-  showModal.value = false;
-  await loadCourses();
 };
 
 const deleteException = async () => {
