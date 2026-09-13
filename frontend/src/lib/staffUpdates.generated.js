@@ -4,6 +4,37 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-13-teacher-home-profile-queue",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "多分校補填提醒會同步更新",
+    "summary": "登入後完整分校資料載入時，補填提醒會同步顯示全部可查看的分校。",
+    "items": [
+      "較早的單一分校回應不會覆蓋完整提醒清單；課表與工作流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "較早的單一分校回應不會覆蓋完整提醒清單；課表與工作流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:teacher-home-profile-queue",
+      "github:#2784"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-students-purchase-error-visible",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

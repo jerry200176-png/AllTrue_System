@@ -23,11 +23,12 @@ assert.equal(notesForRole('admin').length, notesForRole('super_admin').length);
 assert.ok(latestReleaseVersionForRole('super_admin'));
 
 const latest = notesForRole('director')[0];
+const latestDirectorUpdate = allStaffUpdates.find((note) => note.audiences.includes('director'));
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
-assert.strictEqual(latest.publishedAt, allStaffUpdates[0].publishedAt);
-assert.strictEqual(latest.id, allStaffUpdates[0].id);
+assert.strictEqual(latest.publishedAt, latestDirectorUpdate.publishedAt);
+assert.strictEqual(latest.id, latestDirectorUpdate.id);
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-11-course-unarranged-session-detail'));
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-tutoring-payment-policy'));
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-monthly-leave-invariant'));

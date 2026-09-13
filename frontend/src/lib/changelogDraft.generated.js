@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.13",
     "date": "2026-09-13",
     "title": "2026.09.13 草稿（未發布）",
-    "summary": "加購或延續失敗提示保留在原視窗",
+    "summary": "多校老師登入後補填提醒會同步完整校區；加購或延續失敗提示保留在原視窗",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "多校老師登入後補填提醒會同步完整校區"
+        ]
+      },
       {
         "title": "其他改善",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "多校老師登入後補填提醒會同步完整校區",
       "加購或延續失敗提示保留在原視窗"
     ]
   },
