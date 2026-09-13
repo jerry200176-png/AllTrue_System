@@ -33,6 +33,8 @@ export default defineConfig({
     /profile-controls-clarity\.spec\.js$/,
     /question-bank-clarity\.spec\.js$/,
     /attendance-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.tuition-collection.config.js.
+    /tuition-collection-clarity\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
