@@ -473,7 +473,7 @@ input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; bor
 }
 .admission-page .at-btn.admission-button.at-btn--danger {
   background: var(--ds-danger);
-  color: #fff;
+  color: var(--ds-on-cta);
 }
 
 @media (max-width: 720px) {
