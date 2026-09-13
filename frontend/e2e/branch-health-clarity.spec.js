@@ -43,6 +43,11 @@ async function installMock(page) {
 }
 
 test.describe('Branch health clarity browser verification', () => {
+  test.skip(
+    process.env.BRANCH_HEALTH_CLARITY_PILOT !== '1',
+    'requires the dedicated Vite fixture configuration, not the production smoke target',
+  );
+
   test('uses cards on smaller screens and a structured table on desktop', async ({ page }) => {
     await installMock(page);
     const consoleErrors = [];
