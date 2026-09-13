@@ -8,9 +8,9 @@ const source = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 
 const nativeButtonTags = [...source.matchAll(/<button\b(?:[^>"']|"[^"]*"|'[^']*')*>/g)].map(([tag]) => tag);
 
 describe('StudentsList row disclosure accessibility', () => {
-  it('uses a keyboard-accessible native button for student import', () => {
+  it('uses a named shared button for student import', () => {
     expect(source).not.toContain('<label class="button-outline">');
-    expect(source).toContain('class="button-outline"');
+    expect(source).toContain('<AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">');
     expect(source).toContain('aria-label="匯入學生名單"');
     expect(source).toContain('@click="openImportDialog"');
     expect(source).toContain('ref="importInput"');
