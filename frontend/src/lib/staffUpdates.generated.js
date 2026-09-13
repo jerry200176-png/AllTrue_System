@@ -129,6 +129,37 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-students-list-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生清單在手機更容易操作",
+    "summary": "篩選、重試與常用操作更清楚，手機觸控範圍也更容易點選。",
+    "items": [
+      "學生資料、課程、監護人、跨分校身份、帳務入口、權限與 API 維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生資料、課程、監護人、跨分校身份、帳務入口、權限與 API 維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:students-list-clarity",
+      "github:#2791"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-chat-accessibility",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
