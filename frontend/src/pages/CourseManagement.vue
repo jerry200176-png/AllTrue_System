@@ -610,6 +610,13 @@
                         <p class="action-section-label">課程與帳務</p>
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
                         <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
+                        <button
+                          v-if="effectiveClosedReason(hc) === 'completed'"
+                          class="action-dropdown-item action-dropdown-renew"
+                          role="menuitem"
+                          title="從這期已完課課程建立下一期；既有課程與帳務紀錄不會變更"
+                          @click="openCommercialPurchaseEntry(hc); closeActionMenu()"
+                        ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(hc) }}</button>
                         <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                         <p class="action-section-label">狀態管理</p>
                         <button class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
