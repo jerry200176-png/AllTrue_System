@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import fnmatch
 import re
+from collections import Counter
 from typing import Iterable
 
 
@@ -61,6 +62,7 @@ _T2_PREFIXES = (
 _NON_DEPLOYABLE_PATTERNS = (
     "backend/tests/**",
     "frontend/e2e/**",
+    "frontend/playwright*.config.js",
     "frontend/**/__tests__/**",
     "frontend/**/*.test.js",
     "frontend/**/*.test.ts",
@@ -248,15 +250,36 @@ def _semantic_runtime_patch(paths: list[str], patch: str) -> str:
 
 
 def _changed_code_lines(patch: str) -> str:
-    lines = []
+    """Return the net semantic lines of a unified diff.
+
+    A line which is present on both sides of a hunk is context moved by a
+    neighbouring edit, not an effect of the change.  Keeping both copies made
+    unrelated markers (for example an existing attendance matcher) escalate a
+    display-only change.  Only cancel exact added/removed pairs; unmatched
+    additions and removals remain conservative classification evidence.
+    """
+
+    changes: list[tuple[str, str]] = []
     for line in (patch or "").splitlines():
         if not line.startswith(("+", "-")) or line.startswith(("+++", "---")):
             continue
         code = line[1:].lstrip()
         if code.startswith(("#", "//", "/*", "*", "<!--", "-->", "<!--")):
             continue
+        changes.append((line[0], code.lower()))
+
+    additions = Counter(code for sign, code in changes if sign == "+")
+    removals = Counter(code for sign, code in changes if sign == "-")
+    cancelled = {code: min(additions[code], removals[code]) for code in additions.keys() & removals.keys()}
+    seen: Counter[tuple[str, str]] = Counter()
+    lines: list[str] = []
+    for sign, code in changes:
+        if seen[(sign, code)] < cancelled.get(code, 0):
+            seen[(sign, code)] += 1
+            continue
+        seen[(sign, code)] += 1
         lines.append(code)
-    return "\n".join(lines).lower()
+    return "\n".join(lines)
 
 
 _CSS_SELECTOR_LINE_RE = re.compile(r"^\s*[.#][a-z_][a-z0-9_-]*(?:::[a-z-]+|:[a-z-]+)?(?:[\s,>{].*)?$", re.IGNORECASE)

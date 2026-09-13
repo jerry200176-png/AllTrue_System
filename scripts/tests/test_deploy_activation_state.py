@@ -247,6 +247,37 @@ diff --git a/frontend/src/lib/changelogDraft.generated.js b/frontend/src/lib/cha
         self.assertEqual(scope["tier_name"], "T1")
         self.assertNotIn("payment", " ".join(scope["reasons"]))
 
+    def test_replaced_unchanged_marker_line_does_not_escalate_ui_change(self):
+        patch = """diff --git a/frontend/src/pages/StudentsList.vue b/frontend/src/pages/StudentsList.vue
++++ b/frontend/src/pages/StudentsList.vue
+@@ -10,1 +10,1 @@
+-<button @click=\"openIdentityModal\">跨分校身份</button>
++<AtButton @click=\"openIdentityModal\">跨分校身份</AtButton>
+diff --git a/frontend/playwright.ui-foundation.config.js b/frontend/playwright.ui-foundation.config.js
++++ b/frontend/playwright.ui-foundation.config.js
+@@ -1,1 +1,1 @@
+-testMatch: /(?:attendance-clarity)\\.spec\\.js$/
++testMatch: /(?:attendance-clarity|students-list-clarity)\\.spec\\.js$/
+"""
+        scope = classify_activation_scope(
+            ["frontend/src/pages/StudentsList.vue", "frontend/playwright.ui-foundation.config.js"],
+            patch,
+        )
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertNotIn("identity", " ".join(scope["reasons"]))
+        self.assertNotIn("attendance", " ".join(scope["reasons"]))
+
+    def test_actual_protected_marker_remains_after_net_diff_filtering(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -10,1 +10,1 @@
+-<button>Continue</button>
++<button @click=\"await logout()\">Continue</button>
+"""
+        scope = classify_activation_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T3")
+        self.assertTrue(scope["protected_activation"])
+
     def test_real_billing_identity_and_permission_operations_stay_t3(self):
         cases = (
             (["backend/app/Http/Controllers/BillingController.php"], "+$invoice->TotalAmount = $amount;"),
