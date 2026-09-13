@@ -318,6 +318,39 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-classroom-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "教室管理在手機更容易操作",
+    "summary": "教室清單的狀態提示與手機操作更清楚，原有管理規則維持不變。",
+    "items": [
+      "窄螢幕會以卡片呈現教室資訊；載入、空白與可重試錯誤提示更容易辨識。",
+      "編輯、啟用／停用與刪除操作保有觸控與鍵盤可及性；刪除確認、容量、排課、權限與 API 維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "窄螢幕會以卡片呈現教室資訊；載入、空白與可重試錯誤提示更容易辨識。",
+          "編輯、啟用／停用與刪除操作保有觸控與鍵盤可及性；刪除確認、容量、排課、權限與 API 維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:classroom-clarity",
+      "supersedes-pr:#2662"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-chat-accessibility",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
