@@ -244,6 +244,26 @@
 
         <!-- Table -->
         <div v-else class="tc-table-wrap">
+          <div class="tc-mobile-list-controls" aria-label="待處理行動版清單控制">
+            <label>
+              排序
+              <select :value="sortKey" aria-label="待處理排序" @change="chooseMobileSort($event.target.value)">
+                <option value="">不排序</option>
+                <option v-for="column in SORTABLE_COLS" :key="column.key" :value="column.key">{{ column.label }}</option>
+              </select>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                :checked="allVisibleSelected"
+                :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
+                :disabled="!selectableRows.length"
+                @change="toggleSelectAll($event.target.checked)"
+                aria-label="行動版全選待處理"
+              />
+              全選
+            </label>
+          </div>
           <table class="tc-table">
             <thead>
               <tr>
@@ -571,6 +591,20 @@
               <span class="material-symbols-outlined" style="font-size:16px">download</span>
               匯出已選取
             </button>
+          </div>
+          <div class="tc-mobile-list-controls" aria-label="收據行動版清單控制">
+            <label>
+              排序
+              <select :value="accountingSortKey" aria-label="收據排序" @change="chooseMobileAccountingSort($event.target.value)">
+                <option value="payment_date">繳費日期／收據編號</option>
+                <option value="student_name">學生</option>
+                <option value="total_amount">合計</option>
+              </select>
+            </label>
+            <label>
+              <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="行動版全選收據" />
+              全選
+            </label>
           </div>
           <table class="tc-table acct-table acct-table--payments">
             <thead>
@@ -1052,6 +1086,10 @@ function toggleAccountingSort(key) {
     accountingSortKey.value = key;
     accountingSortDir.value = key === 'total_amount' ? 'desc' : 'asc';
   }
+}
+
+function chooseMobileAccountingSort(key) {
+  if (accountingSortKey.value !== key) toggleAccountingSort(key);
 }
 
 const sortedAccountingRows = computed(() => {
@@ -1585,6 +1623,15 @@ function toggleSort(key) {
     sortKey.value = '';
     sortDir.value = '';
   }
+}
+
+function chooseMobileSort(key) {
+  if (!key) {
+    sortKey.value = '';
+    sortDir.value = '';
+    return;
+  }
+  if (sortKey.value !== key) toggleSort(key);
 }
 
 // ═══ Filtered + Sorted Rows (3-layer pipeline) ═══
@@ -3338,6 +3385,8 @@ loadAlerts();
 @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 @keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 
+.tc-mobile-list-controls { display: none; }
+
 /* fade transition for dialog */
 .fade-enter-active { transition: opacity 0.2s ease; }
 .fade-leave-active { transition: opacity 0.15s ease; }
@@ -3352,6 +3401,23 @@ loadAlerts();
   .tc-card--outstanding .tc-card-num { font-size: 15px; }
   .tc-search-wrap { width: 100%; }
   .acct-filter-grid { grid-template-columns: 1fr 1fr; }
+  .tc-mobile-list-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 10px;
+  }
+  .tc-mobile-list-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    color: var(--text-light);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .tc-mobile-list-controls select { min-height: 44px; }
   .tc-table-wrap:has(.tc-table:not(.acct-table)) {
     overflow: visible;
     margin: 0;

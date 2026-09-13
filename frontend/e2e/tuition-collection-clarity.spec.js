@@ -139,6 +139,24 @@ test.describe('Tuition Collection clarity browser verification', () => {
     expect(failedRequests).toEqual([]);
   });
 
+  test('keeps existing sorting and bulk selection reachable on mobile cards', async ({ page }) => {
+    await installMock(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+
+    await page.getByLabel('待處理排序').selectOption('due_date');
+    await expect(page.locator('.tc-table tbody tr').first().locator('.tc-cell-name')).toHaveText(/陳品妤/);
+    await page.getByLabel('行動版全選待處理').check();
+    await expect(page.getByText('已選 2 筆', { exact: true })).toBeVisible();
+
+    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    await page.getByLabel('收據排序').selectOption('total_amount');
+    await expect(page.locator('.acct-table tbody tr').first().locator('.tc-cell-name')).toHaveText(/陳品妤/);
+    await page.getByLabel('行動版全選收據').check();
+    await expect(page.getByText('已選取 2 筆', { exact: true })).toBeVisible();
+    await expectNoOverflowAndReachableControls(page);
+  });
+
   test('uses clear loading, empty, error, and retry feedback', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
