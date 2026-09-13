@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-director-dashboard-clarity
+    published_at: "2026-09-13"
+    audiences:
+      - director
+    importance: digest
+    title: 主任總覽的常用操作更容易辨識
+    summary: 重新整理、重試與待辦下一步在手機上有一致的觸控與載入提示。
+    items:
+      - category: improved
+        text: 總覽導航、待辦導向、點名、請假、評量、帳務與權限規則維持不變。
+    source_refs:
+      - "changelog:2026-09-13:director-dashboard-clarity"
+      - "github:#2658"
+
   - id: staff-2026-09-13-students-list-clarity
     published_at: "2026-09-13"
     audiences:

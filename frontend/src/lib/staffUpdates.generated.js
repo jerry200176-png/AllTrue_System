@@ -160,6 +160,37 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-director-dashboard-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任總覽的常用操作更容易辨識",
+    "summary": "重新整理、重試與待辦下一步在手機上有一致的觸控與載入提示。",
+    "items": [
+      "總覽導航、待辦導向、點名、請假、評量、帳務與權限規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "總覽導航、待辦導向、點名、請假、評量、帳務與權限規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:director-dashboard-clarity",
+      "github:#2658"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-chat-accessibility",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

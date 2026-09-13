@@ -1,3 +1,8 @@
+## 2026-09-13 — improved(dashboard): 主任總覽的常用操作更容易辨識
+<!-- release-notes: staff_update=staff-2026-09-13-director-dashboard-clarity -->
+- 總覽的重新整理、錯誤重試與待辦下一步使用一致的按鈕、載入與鍵盤焦點提示；手機觸控範圍至少為 44px。
+- 不改總覽導航、待辦導向、點名、請假、評量、帳務、信任判斷、權限或 API。
+
 ## 2026-09-13 — improved(chat): 對話操作提示與手機觸控更清楚
 <!-- release-notes: staff_update=staff-2026-09-13-chat-accessibility -->
 - 對話列表與訊息載入狀態會提供明確提示；附件、傳送、返回與回覆操作補上可辨識名稱。
