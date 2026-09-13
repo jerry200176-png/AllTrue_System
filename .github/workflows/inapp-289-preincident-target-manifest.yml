@@ -1,5 +1,6 @@
 name: In-app #289 pre-incident target manifest (read-only)
 
+# governance-capability: non-production
 # Founder-approved, one-case evidence collection for the reported Muzha course.
 # This workflow has no caller-provided lookup values and never connects a backup
 # to the application or production database. It fails closed unless one and
