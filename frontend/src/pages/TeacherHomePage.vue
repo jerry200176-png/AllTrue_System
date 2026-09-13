@@ -993,7 +993,13 @@ watch(() => props.branchId, () => {
   fetchPendingAttendance();
   fetchOverdueLearning();
 });
-watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
+watch(() => props.teacherBranchIds, () => {
+  // The login payload can name only the current campus while /me later
+  // hydrates the full teacher campus list. Refresh both campus-scoped queues
+  // so overdue learning work is never left limited to that first campus.
+  fetchOverdueLearning();
+  loadWeekSchedule();
+}, { deep: true });
 onBeforeUnmount(() => {
   weekLoadSequence++;
   stopPolling();

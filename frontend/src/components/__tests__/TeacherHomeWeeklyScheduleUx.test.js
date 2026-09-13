@@ -35,4 +35,9 @@ describe('TeacherHome weekly schedule disclosure', () => {
     expect(appSource).toContain("isTeacher && active === 'teacher-home'");
     expect(appSource).toContain("isDirector && active === 'director'");
   });
+
+  it('refreshes every campus-scoped teacher queue when the full profile arrives', () => {
+    expect(source).toContain('watch(() => props.teacherBranchIds, () => {');
+    expect(source).toContain('fetchOverdueLearning();\n  loadWeekSchedule();');
+  });
 });
