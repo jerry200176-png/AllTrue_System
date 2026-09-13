@@ -318,6 +318,41 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-chat-message-retry",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "聊天訊息載入失敗可直接重試",
+    "summary": "訊息暫時無法載入時，可在原對話查看提示並直接重試。",
+    "items": [
+      "新對話、返回、附件與取消回覆使用一致的可辨識操作元件，手機觸控範圍更容易點選。",
+      "訊息內容、傳送、附件、即時同步、刪除確認、群組管理、分校篩選、權限與 API 維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新對話、返回、附件與取消回覆使用一致的可辨識操作元件，手機觸控範圍更容易點選。",
+          "訊息內容、傳送、附件、即時同步、刪除確認、群組管理、分校篩選、權限與 API 維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:chat-message-retry",
+      "supersedes-pr:#2657"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-chat-accessibility",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
