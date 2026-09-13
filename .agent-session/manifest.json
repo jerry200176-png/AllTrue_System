@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "778dac18b3c2467983a42b67134d1e13",
+  "session_id": "a72daa35ed754550a5129ed01475d8ba",
   "project": "alltrue",
-  "task_id": "UI-2813-CHAT-REINTEGRATE-20260913",
+  "task_id": "UI-LINE-INTEGRATION-A11Y-R3-20260913",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "ba17c56b1efaf59d432c297148e93aff45e2bd6d",
-  "branch": "chore/task-UI-2813-CHAT-REINTEGRATE-20260913",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/UI-2813-CHAT-REINTEGRATE-20260913",
-  "started_at": "2026-09-13T07:46:04Z",
+  "base_sha": "bced1cb74db54f4f2079c515e5baf105fca0a74a",
+  "branch": "chore/task-UI-LINE-INTEGRATION-A11Y-R3-20260913",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/UI-LINE-INTEGRATION-A11Y-R3-20260913",
+  "started_at": "2026-09-13T10:59:26Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
