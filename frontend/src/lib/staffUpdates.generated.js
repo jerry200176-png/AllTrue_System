@@ -65,6 +65,39 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-subject-units-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "科目數統計手機版更易查看",
+    "summary": "日明細在手機可直接閱讀，搜尋、篩選與錯誤提示也更清楚。",
+    "items": [
+      "手機觸控、鍵盤焦點與長中文內容維持可用；統計、權限與核薪規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "手機觸控、鍵盤焦點與長中文內容維持可用；統計、權限與核薪規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:subject-units-clarity",
+      "github:#2790"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-students-purchase-error-visible",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

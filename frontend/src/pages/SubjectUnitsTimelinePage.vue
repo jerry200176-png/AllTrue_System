@@ -263,11 +263,10 @@
           </div>
 
           <div class="mobile-entry-list" role="list" aria-label="科目數日明細手機檢視">
-            <section v-for="group in groupedEntries" :key="`mobile-${group.date}`" class="mobile-day-group">
+            <section v-for="group in groupedEntries" :key="`mobile-${group.date}`" class="mobile-day-group" role="group" :aria-label="`${formatDate(group.date)}，${group.entries.length} 個科目明細`">
               <div class="mobile-day-heading">
                 <strong>{{ formatDate(group.date) }}</strong>
                 <span>{{ group.entries.length }} 個科目明細</span>
-                <span class="mobile-day-total">核薪 {{ formatCount(group.summary.payroll_subject_count) }}</span>
               </div>
               <article v-for="entry in group.entries" :key="`mobile-${entryKey(entry)}`" class="mobile-entry-card" role="listitem">
                 <div class="mobile-entry-card__heading">
@@ -509,6 +508,7 @@ onMounted(async () => { await loadBranches(); loadData(); });
 .date-field, .branch-field { display: flex; flex-direction: column; gap: 4px; }
 .date-field span, .branch-field span, .filter-field span { color: var(--ds-ink-mute); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 button, input, select { min-height: 44px; font: inherit; }
+.subject-units-page :deep(.at-btn) { min-height: var(--ds-control-height-touch, 44px); }
 input, select { border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-ink); padding: 7px 10px; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ds-focus-ring); border-color: var(--ds-primary); }
 .scope-strip { display: flex; align-items: center; gap: 8px; margin: -4px 0 16px; color: var(--ds-ink-mute); font-size: 13px; }
@@ -523,7 +523,6 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: none;
 .mobile-day-group + .mobile-day-group { margin-top: 12px; }
 .mobile-day-heading { display: flex; align-items: baseline; gap: 8px; padding: 8px 2px; color: var(--ds-ink-mute); font-size: 12px; }
 .mobile-day-heading strong { color: var(--ds-ink); font-size: 14px; }
-.mobile-day-total { margin-left: auto; color: var(--ds-cta); font-weight: 700; font-variant-numeric: tabular-nums; }
 .mobile-entry-card { padding: 12px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md, 6px); background: var(--ds-canvas); }
 .mobile-entry-card + .mobile-entry-card { margin-top: 8px; }
 .mobile-entry-card__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
