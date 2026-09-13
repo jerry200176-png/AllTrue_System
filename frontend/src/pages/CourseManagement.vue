@@ -407,8 +407,16 @@
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
                         <div class="action-menu-wrapper">
-                          <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="其他課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === c.id">更多 ▾</button>
-                          <div v-if="activeActionMenu === c.id" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop>
+                          <button
+                            :ref="(el) => setActionMenuTrigger(c.id, el)"
+                            class="small ghost action-menu-trigger"
+                            @click.stop="toggleActionMenu(c.id)"
+                            @keydown="handleActionMenuKeydown(c.id, $event)"
+                            title="其他課程操作"
+                            aria-haspopup="menu"
+                            :aria-expanded="activeActionMenu === c.id"
+                          >更多 ▾</button>
+                          <div v-if="activeActionMenu === c.id" :ref="(el) => setActionMenu(c.id, el)" class="action-dropdown" role="menu" aria-label="其他課程操作" @click.stop @keydown="handleActionMenuKeydown(c.id, $event)">
                             <p v-if="isSessionMode(c) || isMonthlyMode(c)" class="action-section-label">排課與課堂</p>
                             <button
                               v-if="(isSessionMode(c) || isMonthlyMode(c)) && !isManualOccurrenceCourse(c)"
@@ -605,8 +613,16 @@
                       {{ expandedDates.has(hc.id) ? '收起詳情' : '查看詳情' }}
                     </button>
                     <div class="action-menu-wrapper">
-                      <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="其他歷史課程操作" aria-haspopup="menu" :aria-expanded="activeActionMenu === hc.id">更多 ▾</button>
-                      <div v-if="activeActionMenu === hc.id" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop>
+                      <button
+                        :ref="(el) => setActionMenuTrigger(hc.id, el)"
+                        class="small ghost action-menu-trigger"
+                        @click.stop="toggleActionMenu(hc.id)"
+                        @keydown="handleActionMenuKeydown(hc.id, $event)"
+                        title="其他歷史課程操作"
+                        aria-haspopup="menu"
+                        :aria-expanded="activeActionMenu === hc.id"
+                      >更多 ▾</button>
+                      <div v-if="activeActionMenu === hc.id" :ref="(el) => setActionMenu(hc.id, el)" class="action-dropdown" role="menu" aria-label="其他歷史課程操作" @click.stop @keydown="handleActionMenuKeydown(hc.id, $event)">
                         <p class="action-section-label">課程與帳務</p>
                         <button class="action-dropdown-item" role="menuitem" @click="navigateToStudentCourse(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit</span> 編輯</button>
                         <button class="action-dropdown-item" role="menuitem" @click="openInvoiceModal(hc); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">receipt_long</span> 帳單與對帳</button>
@@ -2722,10 +2738,79 @@ function toggleCancelledSessions(courseId) {
 }
 
 const activeActionMenu = ref(null);
+const actionMenuTriggers = new Map();
+const actionMenus = new Map();
+
+const setActionMenuTrigger = (courseId, element) => {
+  if (element) actionMenuTriggers.set(courseId, element);
+  else actionMenuTriggers.delete(courseId);
+};
+
+const setActionMenu = (courseId, element) => {
+  if (element) actionMenus.set(courseId, element);
+  else actionMenus.delete(courseId);
+};
+
+const actionMenuItems = (courseId) => Array.from(
+  actionMenus.get(courseId)?.querySelectorAll('[role="menuitem"]:not(:disabled)') ?? [],
+);
+
+const focusActionMenuItem = (courseId, direction = 'first') => {
+  const items = actionMenuItems(courseId);
+  if (!items.length) return;
+  if (direction === 'last') {
+    items.at(-1)?.focus();
+    return;
+  }
+  items[0]?.focus();
+};
+
 const toggleActionMenu = (courseId) => {
   activeActionMenu.value = activeActionMenu.value === courseId ? null : courseId;
 };
-const closeActionMenu = () => { activeActionMenu.value = null; };
+
+const closeActionMenu = async ({ restoreFocus = false } = {}) => {
+  const courseId = activeActionMenu.value;
+  activeActionMenu.value = null;
+  if (restoreFocus && courseId !== null) {
+    await nextTick();
+    actionMenuTriggers.get(courseId)?.focus();
+  }
+};
+
+const handleActionMenuKeydown = async (courseId, event) => {
+  const key = event.key;
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].includes(key)) return;
+  event.preventDefault();
+
+  if (key === 'Escape') {
+    await closeActionMenu({ restoreFocus: true });
+    return;
+  }
+
+  if (activeActionMenu.value !== courseId) {
+    activeActionMenu.value = courseId;
+    await nextTick();
+    focusActionMenuItem(courseId, key === 'ArrowUp' || key === 'End' ? 'last' : 'first');
+    return;
+  }
+
+  const items = actionMenuItems(courseId);
+  if (!items.length) return;
+  if (key === 'Home') {
+    items[0]?.focus();
+    return;
+  }
+  if (key === 'End') {
+    items.at(-1)?.focus();
+    return;
+  }
+  const currentIndex = Math.max(0, items.indexOf(document.activeElement));
+  const nextIndex = key === 'ArrowDown'
+    ? (currentIndex + 1) % items.length
+    : (currentIndex - 1 + items.length) % items.length;
+  items[nextIndex]?.focus();
+};
 
 const localTodayYmd = () => {
   const d = new Date();
