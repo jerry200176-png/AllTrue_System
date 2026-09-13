@@ -549,8 +549,10 @@ async function fetchAwaitingReplyCount() {
 const loadingOverdue = ref(false);
 const overdueRecords = ref([]);
 const overdueLoadError = ref('');
+let overdueLoadSequence = 0;
 
 async function fetchOverdueLearning() {
+  const requestSequence = ++overdueLoadSequence;
   loadingOverdue.value = true;
   overdueLoadError.value = '';
   try {
@@ -608,11 +610,13 @@ async function fetchOverdueLearning() {
     });
 
     missing.sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
+    if (requestSequence !== overdueLoadSequence) return;
     overdueRecords.value = missing;
   } catch {
+    if (requestSequence !== overdueLoadSequence) return;
     overdueLoadError.value = '補填提醒資料暫時無法載入';
   } finally {
-    loadingOverdue.value = false;
+    if (requestSequence === overdueLoadSequence) loadingOverdue.value = false;
   }
 }
 
@@ -1001,6 +1005,7 @@ watch(() => props.teacherBranchIds, () => {
   loadWeekSchedule();
 }, { deep: true });
 onBeforeUnmount(() => {
+  overdueLoadSequence++;
   weekLoadSequence++;
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);

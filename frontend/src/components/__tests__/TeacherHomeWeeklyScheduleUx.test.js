@@ -40,4 +40,11 @@ describe('TeacherHome weekly schedule disclosure', () => {
     expect(source).toContain('watch(() => props.teacherBranchIds, () => {');
     expect(source).toContain('fetchOverdueLearning();\n  loadWeekSchedule();');
   });
+
+  it('prevents an older partial-campus overdue request from overwriting the full queue', () => {
+    expect(source).toContain('let overdueLoadSequence = 0;');
+    expect(source).toContain('const requestSequence = ++overdueLoadSequence;');
+    expect(source).toContain('if (requestSequence !== overdueLoadSequence) return;\n    overdueRecords.value = missing;');
+    expect(source).toContain('if (requestSequence === overdueLoadSequence) loadingOverdue.value = false;');
+  });
 });
