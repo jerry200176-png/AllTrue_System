@@ -1237,7 +1237,7 @@ function formatTime(iso) {
   justify-content: space-between;
   gap: 12px;
   padding: 20px 16px;
-  color: var(--danger, #b91c1c);
+  color: var(--danger);
 }
 
 /* Context menu */
