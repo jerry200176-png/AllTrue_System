@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.TUITION_COLLECTION_SHOT_DIR
   || path.resolve(__dirname, '../../docs/design/evidence/tuition-collection-clarity');
@@ -13,7 +12,6 @@ const viewports = [
   { name: '1280', width: 1280, height: 800 },
   { name: '1440', width: 1440, height: 900 },
 ];
-
 const rows = [
   {
     id: 101, student_name: '林宥辰', subject: '國中數學', schedule_mode: 'date', payment_status: 'unpaid',
@@ -40,7 +38,6 @@ const settledRows = [
   { student_class_id: 101, course_ref: '000101', student_name: '林宥辰', subject: '國中數學', schedule_mode: 'date', paid_amount: 4200, last_paid_at: '2026-09-08' },
   { student_class_id: 102, course_ref: '000102', student_name: '陳品妤', subject: '高中英文', schedule_mode: 'count', paid_amount: 5600, last_paid_at: '2026-09-07', pending_reconciliation: true },
 ];
-
 function payload(mode) {
   if (mode === 'empty') return [];
   if (mode === 'long') {
@@ -52,7 +49,6 @@ function payload(mode) {
   }
   return rows;
 }
-
 async function installMock(page) {
   await page.addInitScript(() => { window.__tuitionCollectionRetryAllowed = false; });
   await page.route('**/api/v1/alerts/tuition**', async (route) => {
@@ -109,7 +105,6 @@ async function installMock(page) {
     ] }),
   }));
 }
-
 async function expectNoOverflowAndReachableControls(page) {
   const controls = await page.locator('button, input:not([type="checkbox"]), select, textarea').evaluateAll((nodes) => nodes.filter((node) => {
     const rect = node.getBoundingClientRect();
@@ -119,7 +114,6 @@ async function expectNoOverflowAndReachableControls(page) {
   if (!process.env.TUITION_COLLECTION_BASELINE) expect(controls.filter((control) => control.height < 44)).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2)).toBe(true);
 }
-
 test.describe('Tuition Collection clarity browser verification', () => {
   test('keeps the real receivables queue readable across responsive widths', async ({ page }) => {
     await installMock(page);
@@ -138,7 +132,6 @@ test.describe('Tuition Collection clarity browser verification', () => {
     expect(consoleErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
   });
-
   test('keeps existing sorting and bulk selection reachable on mobile cards', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -156,7 +149,6 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.getByText('已選取 2 筆', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
-
   test('uses clear loading, empty, error, and retry feedback', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -171,7 +163,6 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.getByText('林宥辰', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
-
   test('keeps long Chinese content and keyboard disclosure usable', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -183,7 +174,6 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await expect(page.getByText('照順序完成，不用記入口', { exact: true })).toBeVisible();
     await expectNoOverflowAndReachableControls(page);
   });
-
   test('keeps the existing session detail dialog within the usable viewport', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });
@@ -202,7 +192,6 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
   });
-
   test('captures the accounting tabs without page overflow', async ({ page }) => {
     await installMock(page);
     for (const tab of ['payments', 'settled']) {
