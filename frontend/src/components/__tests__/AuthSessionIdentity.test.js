@@ -12,7 +12,9 @@ const valid = { user: { id: 'user-a' }, access_token: 'token-a' };
 describe('auth session identity', () => {
   it('fails closed for a damaged local session but accepts a valid identity', () => {
     expect(getSessionUserId(valid)).toBe('user-a');
+    expect(getSessionUserId({ user: { id: 42 } })).toBe('42');
     expect(isLocallyCorruptSession(valid)).toBe(false);
+    expect(isLocallyCorruptSession({ user: { id: 42 } })).toBe(false);
     expect(isLocallyCorruptSession({ user: {} })).toBe(true);
     expect(isLocallyCorruptSession({})).toBe(true);
   });
@@ -40,5 +42,6 @@ describe('auth session identity', () => {
     expect(app).toContain('shouldClearLocalIdentity({ event, session: nextSession })');
     expect(app).toContain('shouldClearLocalIdentity({ responseStatus: res.status, session: session.value })');
     expect(app).toContain('if (!isCurrentAuth(revision) || getSessionUserId(session.value) !== _uid) return;');
+    expect(app).toContain('await fetchProfile(getSessionUserId(data.session), revision);');
   });
 });

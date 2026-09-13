@@ -1,6 +1,8 @@
 export function getSessionUserId(candidate) {
   const id = candidate?.user?.id;
-  return typeof id === 'string' && id.trim() ? id : null;
+  if (typeof id !== 'string' && typeof id !== 'number') return null;
+  const normalized = String(id).trim();
+  return normalized || null;
 }
 
 export function isLocallyCorruptSession(candidate) {
