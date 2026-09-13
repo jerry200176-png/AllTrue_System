@@ -40,6 +40,11 @@ assert.match(
   /284 => \[[\s\S]*?"rev" => "921fe606766172e63252f03805504ae08c8ac8d8",[\s\S]*?"deploy" => "34675463987",/,
   'in-app #284 must resolve only against its exact verified production revision and deploy run',
 );
+assert.match(
+  phaseCSource,
+  /289 => \[[\s\S]*?"rev" => "2c51617cdd8e5f0795bd1de9bdb08360a2dfa0c4",[\s\S]*?"deploy" => "34741599806",/,
+  'in-app #289 must resolve only against its exact verified production revision and deploy run',
+);
 assert.ok(
   !phaseCSource.includes('repair_resolved'),
   'Phase-C allowlist entries must not replay already-resolved reports during unrelated runs',
