@@ -32,7 +32,7 @@
               </button>
             </div>
 
-            <div v-if="loadingThreads" class="loading-box" role="status" aria-live="off">載入聊天列表中…</div>
+            <div v-if="loadingThreads" class="loading-box" role="status" :aria-live="announceThreadLoading ? 'polite' : 'off'">載入聊天列表中…</div>
             <div v-else-if="threads.length === 0" class="empty-threads" role="status" aria-live="off">
               <span class="material-symbols-outlined empty-icon">chat_bubble_outline</span>
               <p>{{ superAdmin ? '尚無聊天記錄' : '此分校尚無聊天記錄' }}</p>
@@ -443,6 +443,7 @@ const messages         = ref([]);
 const newMessage       = ref('');
 const sending          = ref(false);
 const loadingThreads   = ref(false);
+const announceThreadLoading = ref(false);
 const threadsLoadError = ref('');
 const loadingMessages  = ref(false);
 
@@ -556,7 +557,7 @@ function messagePeerAvatar(msg) {
 // ── Lifecycle ────────────────────────────────────────────────────
 
 onMounted(async () => {
-  await loadThreads();
+  await loadThreads({ announce: true });
   await loadStaff();
   initEcho();
   threadPollTimer = setInterval(loadThreads, 8000);
@@ -581,9 +582,10 @@ watch(() => props.branchId, () => {
 
 // ── Data loading ─────────────────────────────────────────────────
 
-async function loadThreads() {
+async function loadThreads({ announce = false } = {}) {
   if (!props.branchId) return;
   try {
+    announceThreadLoading.value = announce;
     loadingThreads.value   = threads.value.length === 0;
     threadsLoadError.value = '';
     const data             = await fetchThreads(props.branchId);
@@ -594,6 +596,7 @@ async function loadThreads() {
     threads.value          = [];
   } finally {
     loadingThreads.value = false;
+    announceThreadLoading.value = false;
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
     }

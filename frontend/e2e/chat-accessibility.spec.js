@@ -31,7 +31,7 @@ test('chat loading and composer controls announce purpose without changing reque
     if (request.url().includes('/api/v1/chat/')) requests.push(`${request.method()} ${new URL(request.url()).pathname}`);
   });
   const opening = openChat(page, { delayed: true });
-  await expect(page.getByText('載入聊天列表中…')).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('載入聊天列表中');
   await opening;
   await page.getByText('教務協作', { exact: true }).click();
   await expect(page.getByRole('button', { name: '返回對話列表' })).toBeVisible();
