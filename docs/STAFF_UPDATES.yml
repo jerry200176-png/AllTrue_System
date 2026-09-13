@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-subject-settings-clarity
+    published_at: "2026-09-13"
+    audiences:
+      - director
+    importance: digest
+    title: 科目設定在手機上更容易操作
+    summary: 科目清單、錯誤重試與更名操作在窄螢幕更容易閱讀與操作。
+    items:
+      - category: improved
+        text: 科目新增、更名、刪除確認、共用科目授權、資料與 API 維持不變。
+    source_refs:
+      - "changelog:2026-09-13:subject-settings-clarity"
+      - "github:#2659"
+
   - id: staff-2026-09-13-students-list-clarity
     published_at: "2026-09-13"
     audiences:

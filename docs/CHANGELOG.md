@@ -1,3 +1,9 @@
+## 2026-09-13 — improved(subject-settings): 科目設定在手機上更容易操作
+<!-- release-notes: staff_update=staff-2026-09-13-subject-settings-clarity -->
+- 科目清單在窄螢幕改為易讀卡片；載入、空白與可重試錯誤提示保持清楚。
+- 更名與刪除操作維持鍵盤可及與至少 44px 觸控尺寸；共用科目的既有刪除授權與確認流程不變。
+- 不改科目新增、更名、刪除的 API、payload、資料、帳務或課程規則。
+
 ## 2026-09-13 — improved(chat): 對話操作提示與手機觸控更清楚
 <!-- release-notes: staff_update=staff-2026-09-13-chat-accessibility -->
 - 對話列表與訊息載入狀態會提供明確提示；附件、傳送、返回與回覆操作補上可辨識名稱。
