@@ -97,6 +97,39 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-teacher-eligibility-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "正職薪資要件提示更清楚",
+    "summary": "薪資要件在載入、查無資料或暫時失敗時，會顯示清楚的下一步。",
+    "items": [
+      "可在原頁查看錯誤並重試；手機與桌面的既有薪資要件檢視維持可讀與可操作。",
+      "薪資計算、核薪／鎖定、資料顯示權限、API、課務與帳務規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "可在原頁查看錯誤並重試；手機與桌面的既有薪資要件檢視維持可讀與可操作。",
+          "薪資計算、核薪／鎖定、資料顯示權限、API、課務與帳務規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:teacher-eligibility-clarity",
+      "github:#2676"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-subject-units-clarity",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

@@ -1,3 +1,9 @@
+## 2026-09-13 — improved(teacher-eligibility): 正職薪資要件的提示更清楚
+<!-- release-notes: staff_update=staff-2026-09-13-teacher-eligibility-clarity -->
+- 正職薪資要件在載入、無符合老師或暫時無法載入時，會顯示一致的提示與下一步；失敗可在原頁重試。
+- 手機與桌面的既有檢視維持可讀，現有控制項符合至少 44px 觸控高度。
+- 不改薪資計算、核薪／鎖定流程、資料顯示權限、API 請求或任何課務與帳務規則。
+
 ## 2026-09-13 — improved(branch-health): 分校健康看板在手機更容易查看
 <!-- release-notes: staff_update=staff-2026-09-13-branch-health-clarity -->
 - 分校健康看板在窄螢幕改為易讀卡片；長分校名稱與訊號說明不會造成水平捲動。
