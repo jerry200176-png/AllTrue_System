@@ -31,7 +31,7 @@ test('chat loading and composer controls announce purpose without changing reque
     if (request.url().includes('/api/v1/chat/')) requests.push(`${request.method()} ${new URL(request.url()).pathname}`);
   });
   const opening = openChat(page, { delayed: true });
-  await expect(page.getByRole('status')).toContainText('載入聊天列表中');
+  await expect(page.getByText('載入聊天列表中…')).toBeVisible();
   await opening;
   await page.getByText('教務協作', { exact: true }).click();
   await expect(page.getByRole('button', { name: '返回對話列表' })).toBeVisible();
@@ -50,5 +50,10 @@ test('visible chat input and action controls meet the mobile touch target', asyn
     .map((element) => ({ label: element.getAttribute('aria-label') || element.textContent?.trim(), height: element.getBoundingClientRect().height }))
     .filter(({ height }) => height < 44));
   expect(tooSmall).toEqual([]);
+  const uncenteredIcons = await page.locator('.btn-back-mobile, .btn-header-action, .reply-bar-close, .btn-attach').evaluateAll((elements) => elements
+    .filter((element) => element.getClientRects().length > 0)
+    .map((element) => getComputedStyle(element).justifyContent)
+    .filter((justifyContent) => justifyContent !== 'center'));
+  expect(uncenteredIcons).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

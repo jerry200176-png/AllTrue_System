@@ -32,8 +32,8 @@
               </button>
             </div>
 
-            <div v-if="loadingThreads" class="loading-box" role="status" aria-live="polite">載入聊天列表中…</div>
-            <div v-else-if="threads.length === 0" class="empty-threads" role="status">
+            <div v-if="loadingThreads" class="loading-box" role="status" aria-live="off">載入聊天列表中…</div>
+            <div v-else-if="threads.length === 0" class="empty-threads" role="status" aria-live="off">
               <span class="material-symbols-outlined empty-icon">chat_bubble_outline</span>
               <p>{{ superAdmin ? '尚無聊天記錄' : '此分校尚無聊天記錄' }}</p>
               <p class="hint">{{ superAdmin ? '按「新對話」開始。' : '按「新對話」開始，或切換左上角分校查看其他校區的對話。' }}</p>
@@ -108,7 +108,7 @@
               </div>
 
               <div class="message-list" ref="messageListEl" @scroll="onMessageScroll">
-              <div v-if="loadingMessages" class="loading-box" role="status" aria-live="polite">載入訊息中…</div>
+              <div v-if="loadingMessages" class="loading-box" role="status" aria-live="off">載入訊息中…</div>
                 <div
                   v-for="msg in sortedMessages"
                   :key="msg.id"
@@ -1105,10 +1105,10 @@ function formatTime(iso) {
   padding: 12px 16px; border-bottom: 1px solid var(--border);
   font-weight: 600; font-size: 15px;
 }
-.btn-back-mobile { display: none; min-width: 44px; min-height: 44px; background: none; border: none; cursor: pointer; }
+.btn-back-mobile { display: none; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; }
 .message-header-name { flex: 1; }
 .btn-header-action {
-  min-width: 44px; min-height: 44px; background: none; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; background: none; border: none; cursor: pointer;
   color: var(--text-light); border-radius: 6px;
 }
 .btn-header-action:hover { background: var(--primary-bg); color: var(--primary); }
@@ -1183,7 +1183,7 @@ function formatTime(iso) {
 .reply-bar-content { flex: 1; min-width: 0; }
 .reply-bar-sender { font-weight: 600; color: var(--primary); display: block; }
 .reply-bar-body { color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
-.reply-bar-close { min-width: 44px; min-height: 44px; background: none; border: none; cursor: pointer; color: var(--text-light); }
+.reply-bar-close { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; background: none; border: none; cursor: pointer; color: var(--text-light); }
 .reply-bar-close:hover { color: var(--danger); }
 
 .message-input-bar {
@@ -1192,7 +1192,7 @@ function formatTime(iso) {
 }
 .btn-attach {
   min-width: 44px; min-height: 44px; background: none; border: none; cursor: pointer; color: var(--text-light);
-  border-radius: 50%; display: flex; align-items: center;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
 .btn-attach:hover { background: var(--primary-bg); color: var(--primary); }
@@ -1412,7 +1412,7 @@ function formatTime(iso) {
   .thread-panel { width: 100%; min-width: 0; border-right: none; }
   .thread-panel.hidden-mobile { display: none; }
   .message-panel.hidden-mobile { display: none; }
-  .btn-back-mobile { display: block; }
+  .btn-back-mobile { display: inline-flex; }
   .message-header-name { flex: 1; }
 }
 </style>
