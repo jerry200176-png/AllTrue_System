@@ -1,3 +1,8 @@
+## 2026-09-13 — fix(teacher-home): 多校老師登入後補填提醒會同步完整校區
+<!-- release-notes: staff_update=staff-2026-09-13-teacher-home-profile-queue -->
+- 老師登入後，個人資料稍晚補齊全部分校時，「補填提醒」和本週課表會一起重新載入；較早、僅含目前分校的回應不會覆蓋完整清單。
+- 不改變登入身分、分校權限、課表、點名、評量、帳務或既有資料。
+
 ## 2026-09-13 — improved(students): 加購或延續失敗提示保留在原視窗
 <!-- release-notes: staff_update=staff-2026-09-13-students-purchase-error-visible -->
 - 加購或延續課程時，操作失敗的提示會保留在原視窗，方便查看原因。本次僅改善提示呈現，課程與收費規則不變。
