@@ -42,6 +42,6 @@ describe('auth session identity', () => {
     expect(app).toContain('shouldClearLocalIdentity({ event, session: nextSession })');
     expect(app).toContain('shouldClearLocalIdentity({ responseStatus: res.status, session: session.value })');
     expect(app).toContain('if (!isCurrentAuth(revision) || getSessionUserId(session.value) !== _uid) return;');
-    expect(app).toContain('await fetchProfile(getSessionUserId(data.session), revision);');
+    expect(app).toContain('void fetchProfile(getSessionUserId(data.session), revision);');
   });
 });

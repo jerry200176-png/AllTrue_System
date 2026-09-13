@@ -2471,7 +2471,7 @@ const handleLoginSuccess = async ({ user, profile }) => {
     // SIGNED_IN may already have started a profile request with the previous
     // revision. Refresh it under this revision so that dropping the stale
     // response cannot leave a freshly signed-in user with a partial profile.
-    await fetchProfile(getSessionUserId(data.session), revision);
+    void fetchProfile(getSessionUserId(data.session), revision);
 
     if (mustChangePassword) active.value = 'profile';
     else if ((profile?.role ?? session.value?.user?.role) === 'teacher') {
