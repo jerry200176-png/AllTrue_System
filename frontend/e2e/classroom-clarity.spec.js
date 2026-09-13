@@ -3,6 +3,11 @@ import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// This suite mounts a mocked Vue pilot page. Production smoke has its own
+// classroom-management-production-smoke.spec.js and must not treat the pilot
+// route as a deployed runtime endpoint.
+test.skip(Boolean(process.env.SMOKE_BASE_URL), 'Pilot visual matrix runs in the UI-foundation build job.');
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.env.CLASSROOM_SHOT_DIR
   || path.resolve(__dirname, '../../docs/design/evidence/classroom-clarity');
