@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-course-completed-renewal-entry
+    published_at: "2026-09-13"
+    audiences:
+      - director
+    importance: digest
+    title: 已完課可直接續報
+    summary: 已完課課程的歷史卡可直接開啟既有續報加購入口。
+    items:
+      - category: fixed
+        text: 已結算或待對帳課程維持原限制；課程與收費規則不變。
+    source_refs:
+      - "changelog:2026-09-13:course-completed-renewal-entry"
+      - "in-app:#289"
+      - "github:#2799"
   - id: staff-2026-09-13-subject-settings-clarity
     published_at: "2026-09-13"
     audiences:

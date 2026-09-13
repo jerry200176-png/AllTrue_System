@@ -26,6 +26,16 @@ describe('authoritative mutation ownership (slice 3: course-mgmt + calendar + bi
     expect(courseMgmt).toContain('/api/v1/student-classes/${course.id}/convert-trial');
   });
 
+  it('keeps an already-completed course eligible for the existing renewal entry, not a new mutation path', () => {
+    const courseMgmt = read('pages/CourseManagement.vue');
+    const historyStart = courseMgmt.indexOf('class="history-course-card__actions"');
+    const historyEnd = courseMgmt.indexOf('<div v-if="expandedDates.has(hc.id)"', historyStart);
+    const historyActions = courseMgmt.slice(historyStart, historyEnd);
+    expect(historyActions).toContain("effectiveClosedReason(hc) === 'completed'");
+    expect(historyActions).toContain('@click="openCommercialPurchaseEntry(hc); closeActionMenu()"');
+    expect(historyActions).not.toContain('/api/v1/student-classes/${hc.id}/purchase-batch');
+  });
+
   it('accepts binding-management student-name focus context', () => {
     const binding = read('pages/BindingManagementPage.vue');
     expect(binding).toContain('initialStudentName');

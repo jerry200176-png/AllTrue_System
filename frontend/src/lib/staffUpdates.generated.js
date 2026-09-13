@@ -222,6 +222,38 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-course-completed-renewal-entry",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "已完課可直接續報",
+    "summary": "已完課課程的歷史卡可直接開啟既有續報加購入口。",
+    "items": [
+      "已結算或待對帳課程維持原限制；課程與收費規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已結算或待對帳課程維持原限制；課程與收費規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:course-completed-renewal-entry",
+      "in-app:#289",
+      "github:#2799"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-chat-accessibility",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
