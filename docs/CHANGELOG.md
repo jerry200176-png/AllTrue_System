@@ -7,6 +7,10 @@
 <!-- release-notes: staff_update=staff-2026-09-13-director-dashboard-clarity -->
 - 總覽的重新整理、錯誤重試與待辦下一步使用一致的按鈕、載入與鍵盤焦點提示；手機觸控範圍至少為 44px。
 - 不改總覽導航、待辦導向、點名、請假、評量、帳務、信任判斷、權限或 API。
+## 2026-09-13 — improved(admissions): 招生問班操作在手機更容易辨識
+<!-- release-notes: staff_update=staff-2026-09-13-admissions-clarity -->
+- 新生問班的常用操作、載入提示與長內容在手機及桌面維持清楚、可點選的控制範圍。
+- 問班狀態、認領、聯絡、試聽、轉正式報名、公開表單、權限與 API 請求維持原規則。
 
 ## 2026-09-13 — improved(chat): 對話操作提示與手機觸控更清楚
 <!-- release-notes: staff_update=staff-2026-09-13-chat-accessibility -->
