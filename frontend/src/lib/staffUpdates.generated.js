@@ -419,6 +419,39 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-branch-health-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "分校健康看板在手機更容易查看",
+    "summary": "分校健康訊號在窄螢幕以易讀卡片呈現，查看詳情與錯誤重試更容易操作。",
+    "items": [
+      "長分校名稱與訊號說明可正常換行；選取分校查看詳情保有鍵盤可及與至少 44px 觸控範圍。",
+      "分校健康資料、計算、資料顯示權限、API、課務、點名、評量、帳務與既有規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "長分校名稱與訊號說明可正常換行；選取分校查看詳情保有鍵盤可及與至少 44px 觸控範圍。",
+          "分校健康資料、計算、資料顯示權限、API、課務、點名、評量、帳務與既有規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:branch-health-clarity",
+      "github:#2826"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-13-admissions-clarity",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

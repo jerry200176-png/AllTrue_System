@@ -1,3 +1,9 @@
+## 2026-09-13 — improved(branch-health): 分校健康看板在手機更容易查看
+<!-- release-notes: staff_update=staff-2026-09-13-branch-health-clarity -->
+- 分校健康看板在窄螢幕改為易讀卡片；長分校名稱與訊號說明不會造成水平捲動。
+- 載入、空白與可重試錯誤提示維持清楚，選取分校查看詳情的操作保有鍵盤可及與至少 44px 觸控範圍。
+- 不改分校健康資料、計算、資料顯示權限、API 請求、課務、點名、評量、帳務或任何業務規則。
+
 ## 2026-09-13 — improved(classroom): 教室管理在手機更容易操作
 <!-- release-notes: staff_update=staff-2026-09-13-classroom-clarity -->
 - 教室清單在窄螢幕會以易讀卡片呈現；載入、空白與可重試錯誤提示更清楚。
