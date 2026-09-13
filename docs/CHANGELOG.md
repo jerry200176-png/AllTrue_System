@@ -1,3 +1,8 @@
+## 2026-09-13 — fix(course): 已完課歷史可直接續報加購
+<!-- release-notes: staff_update=staff-2026-09-13-course-completed-renewal-entry -->
+- 行事曆保留已發生堂次作歷史查看；課程管理的「已完課」歷史卡現在可開啟既有續報加購入口，不必另找進行中卡片。
+- 只適用於已完課；已結算或待對帳課程維持原限制。課程、排課、收費、帳務、權限與既有歷史資料不變。
+
 ## 2026-09-13 — improved(subject-settings): 科目設定在手機上更容易操作
 <!-- release-notes: staff_update=staff-2026-09-13-subject-settings-clarity -->
 - 科目清單在窄螢幕改為易讀卡片；載入、空白與可重試錯誤提示保持清楚。
