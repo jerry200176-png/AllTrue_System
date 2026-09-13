@@ -370,6 +370,12 @@ def is_production_activation_sensitive_path(path: str) -> bool:
     """Return whether a path needs the protected production activation boundary."""
 
     normalized = path.replace("\\", "/")
+    # Test and evidence files never run in production.  Their filenames may
+    # legitimately contain domain words (for example ``Authoritative...``)
+    # that share a prefix with a protected path term such as ``auth``.  They
+    # are regression evidence, not an activation effect.
+    if _is_non_runtime_path(normalized):
+        return False
     if normalized.startswith(".github/workflows/"):
         return normalized not in _SAFE_NON_PRODUCTION_WORKFLOWS
     if any(normalized.startswith(prefix) for prefix in _ACTIVATION_T3_PREFIXES):
