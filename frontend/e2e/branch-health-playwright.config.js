@@ -1,6 +1,8 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
 
+process.env.BRANCH_HEALTH_CLARITY_PILOT = '1';
+
 export default defineConfig({
   testDir: '.',
   testMatch: /branch-health-clarity\.spec\.js$/,
