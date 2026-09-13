@@ -193,6 +193,36 @@ export const staffUpdates = [
     "version": "2026.09.13"
   },
   {
+    "id": "staff-2026-09-13-admissions-clarity",
+    "publishedAt": "2026-09-13",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "招生問班在手機更容易操作",
+    "summary": "問班處理的常用操作、載入提示與長內容在手機及桌面更容易辨識。",
+    "items": [
+      "認領、聯絡、試聽、轉正式報名與公開問班流程維持原規則；權限與 API 不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "認領、聯絡、試聽、轉正式報名與公開問班流程維持原規則；權限與 API 不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-13:admissions-clarity"
+    ],
+    "date": "2026-09-13",
+    "version": "2026.09.13"
+  },
+  {
     "id": "staff-2026-09-12-tutoring-continuation",
     "publishedAt": "2026-09-12",
     "effectiveAt": null,
