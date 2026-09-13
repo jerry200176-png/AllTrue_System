@@ -138,6 +138,9 @@ createApp({
     if (page === 'subject-settings') {
       return () => h(PageComponent, { branchId: 1, userRole: role });
     }
+    if (page === 'chat') {
+      return () => h(PageComponent, { branchId: 1, userId: 9001, userRole: 'director' });
+    }
     return () => h(PageComponent, { branchId: 1 });
   },
 }).mount('#app');
