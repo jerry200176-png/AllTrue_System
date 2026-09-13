@@ -31,4 +31,13 @@ describe('CourseManagement disclosure accessibility', () => {
     expect(source).toContain(':id="historyGroupPanelId(group.key)"');
     expect(source).toContain('const historyGroupPanelId = (key)');
   });
+
+  it('supports keyboard navigation and focus restoration for More menus without changing menu actions', () => {
+    expect(source).toContain('@keydown="handleActionMenuKeydown(c.id, $event)"');
+    expect(source).toContain('@keydown="handleActionMenuKeydown(hc.id, $event)"');
+    expect(source).toContain("['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape']");
+    expect(source).toContain("closeActionMenu({ restoreFocus: true })");
+    expect(source).toContain("querySelectorAll('[role=\"menuitem\"]:not(:disabled)')");
+    expect(source).toContain('actionMenuTriggers.get(courseId)?.focus()');
+  });
 });
