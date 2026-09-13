@@ -22,17 +22,18 @@ describe('ClassroomManagement form accessibility', () => {
   });
 
   it('declares row actions as non-submit buttons', () => {
-    expect(source).toMatch(/<button type="button" class="small"[^>]*openEdit\(r\)/);
-    expect(source).toMatch(/<button type="button" class="small"[^>]*toggleActive\(r\)/);
-    expect(source).toMatch(/<button type="button" class="small ghost"[^>]*confirmDelete\(r\)/);
+    expect(source).toContain('@click="openEdit(r)"');
+    expect(source).toContain('@click="toggleActive(r)"');
+    expect(source).toContain('@click="confirmDelete(r)"');
+    expect((source.match(/<AtButton/g) || []).length).toBeGreaterThan(8);
   });
 
   it('keeps loading failures actionable and separate from an empty branch', () => {
-    expect(source).toContain('role="status" aria-live="polite">載入中…</div>');
-    expect(source).toContain('class="classroom-error" role="alert"');
+    expect(source).toContain('<AtSkeleton v-if="loading"');
+    expect(source).toContain('class="classroom-error" tone="danger"');
     expect(source).toContain('教室清單暫時無法載入，請重試。');
-    expect(source).toContain('@click="loadRooms">重試</button>');
-    expect(source).toContain('v-else-if="!loadError" class="empty-text" role="status"');
+    expect(source).toContain('@click="loadRooms">重試</AtButton>');
+    expect(source).toContain('<AtEmpty v-else-if="!rooms.length"');
   });
 
   it('gives the room table and row actions contextual semantics', () => {

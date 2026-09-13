@@ -1,3 +1,9 @@
+## 2026-09-13 — improved(classroom): 教室管理在手機更容易操作
+<!-- release-notes: staff_update=staff-2026-09-13-classroom-clarity -->
+- 教室清單在窄螢幕會以易讀卡片呈現；載入、空白與可重試錯誤提示更清楚。
+- 編輯、啟用／停用與刪除操作維持鍵盤可及與至少 44px 觸控範圍；既有刪除確認流程不變。
+- 不改教室資料、容量、排課、API payload、資料顯示權限或任何業務規則。
+
 ## 2026-09-13 — fix(students): 未設定堂數不再誤顯示為 0 堂
 <!-- release-notes: staff_update=staff-2026-09-13-students-session-count-clarity -->
 - 學生清單的堂數制課程若沒有可確認的購買堂數或剩餘資料，會顯示「堂數待確認」，不再把不完整資料誤當成零堂課程。
