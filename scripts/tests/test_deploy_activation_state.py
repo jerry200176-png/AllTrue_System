@@ -378,6 +378,10 @@ diff --git a/frontend/playwright.ui-foundation.config.js b/frontend/playwright.u
     def test_production_executor_and_sensitive_paths_remain_protected(self):
         self.assertTrue(is_production_activation_sensitive_path(".github/workflows/deploy.yml"))
         self.assertTrue(is_production_activation_sensitive_path("backend/database/migrations/2026_01_flag.php"))
+        self.assertTrue(is_production_activation_sensitive_path("frontend/src/pages/BillingStatus.vue"))
+        self.assertFalse(is_production_activation_sensitive_path(
+            "frontend/src/components/__tests__/AuthoritativeMutationOwnership.test.js"
+        ))
         self.assertFalse(is_production_activation_sensitive_path(".github/workflows/autonomous-convergence.yml"))
         scope = classify_activation_scope(
             [".github/workflows/deploy.yml", "frontend/src/pages/StudentsList.vue"]
