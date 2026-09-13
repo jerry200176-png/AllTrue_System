@@ -49,6 +49,7 @@ const pageModules = {
   profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
   'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
   chat: () => import('../../../src/pages/ChatPage.vue'),
+  'line-integration': () => import('../../../src/pages/LineIntegration.vue'),
   'subject-settings': () => import('../../../src/pages/SubjectSettingsPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
