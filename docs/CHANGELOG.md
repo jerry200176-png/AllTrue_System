@@ -3143,3 +3143,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 <!-- release-notes: silent_ship=security-2026-09-12-file-validation-bypass-mitigation -->
 - 意見與建議的多附件上傳改為逐一使用固定欄位驗證，避免 Laravel 舊版 wildcard file rule 被惡意陣列鍵名繞過；保留既有圖片格式、大小與附件數限制。
 - 這是 CVE-2025-27515 的 app-level mitigation；Laravel 8→12 的長期升級仍由 #977 另案處理，Dependabot #3 不在本批標記 fixed。
+## 2026-09-13 — improved(ux): 科目數統計在手機上更容易查看
+<!-- release-notes: staff_update=staff-2026-09-13-subject-units-clarity -->
+- 科目數日明細在窄螢幕改以卡片呈現；搜尋、篩選、載入、空白與錯誤狀態都保留清楚提示。
+- 手機觸控、鍵盤焦點與長中文內容維持可用；統計、API、資料顯示權限與核薪規則不變。

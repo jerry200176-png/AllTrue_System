@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-subject-units-clarity
+    published_at: "2026-09-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 科目數統計手機版更易查看
+    summary: 日明細在手機可直接閱讀，搜尋、篩選與錯誤提示也更清楚。
+    items:
+      - category: improved
+        text: 手機觸控、鍵盤焦點與長中文內容維持可用；統計、權限與核薪規則不變。
+    source_refs:
+      - "changelog:2026-09-13:subject-units-clarity"
+      - "github:#2790"
+
   - id: staff-2026-09-13-chat-accessibility
     published_at: "2026-09-13"
     audiences:
