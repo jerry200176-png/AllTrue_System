@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-13-chat-message-retry
+    published_at: "2026-09-13"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 聊天訊息載入失敗可直接重試
+    summary: 訊息暫時無法載入時，可在原對話查看提示並直接重試。
+    items:
+      - category: improved
+        text: 新對話、返回、附件與取消回覆使用一致的可辨識操作元件，手機觸控範圍更容易點選。
+      - category: improved
+        text: 訊息內容、傳送、附件、即時同步、刪除確認、群組管理、分校篩選、權限與 API 維持原規則。
+    source_refs:
+      - "changelog:2026-09-13:chat-message-retry"
+      - "supersedes-pr:#2657"
+
   - id: staff-2026-09-13-classroom-clarity
     published_at: "2026-09-13"
     audiences:
