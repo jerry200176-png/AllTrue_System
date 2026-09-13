@@ -201,6 +201,9 @@ jobs:
       - name: Verify generated API route reference
         run: bash scripts/generate-ref-api-routes.sh --check
 
+      - name: Verify Composer audit parser
+        run: python3 scripts/tests/test_composer_audit_shape.py
+
       - name: Composer audit (security)
         working-directory: backend
         run: |
@@ -223,6 +226,14 @@ jobs:
               return []
 
           advisories = data.get("advisories", {})
+          # Composer emits [] rather than {} when there are no advisories.
+          # Package iteration below is intentionally map-only so that an
+          # empty successful audit remains a successful audit.
+          if not isinstance(advisories, dict):
+              advisories = {}
+          ignored_advisories = data.get("ignored-advisories", {})
+          if not isinstance(ignored_advisories, dict):
+              ignored_advisories = {}
           has_high = False
           for pkg, adv_list in advisories.items():
               for adv in normalize_advisories(adv_list):
@@ -235,7 +246,7 @@ jobs:
                       has_high = True
                   else:
                       print(f"::warning::{pkg}: [{sev}] {title}")
-          for pkg, adv_list in data.get("ignored-advisories", {}).items():
+          for pkg, adv_list in ignored_advisories.items():
               for adv in normalize_advisories(adv_list):
                   if not isinstance(adv, dict):
                       continue
