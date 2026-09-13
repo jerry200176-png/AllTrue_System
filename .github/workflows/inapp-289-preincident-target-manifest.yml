@@ -56,6 +56,12 @@ jobs:
           # and teacher tuple. Names are deliberately not emitted or accepted as
           # workflow inputs, so this workflow cannot become a backup browser.
           target_identity_sha256=0ead8c52fbbc1b046d0a7c6b473b4c46ae3cefc717f5dd81bc710e5a74f37025
+          # These pair digests are only a fail-closed diagnostic for this one
+          # Founder-scoped identity. They reveal counts, never any names or
+          # alternate records, when the full persisted-label tuple misses.
+          target_student_teacher_sha256=cec1271fe342a1e81bc34e6da668d637569e0110a964a4757399ea7dec011a31
+          target_student_subject_sha256=ef9197a386943c1928ba89a267ada995248806f6f47892b1d7f76cbcff18b342
+          target_subject_teacher_sha256=235a141b5c4ad77bad4cdfffda1873ba1156429f842e6d763da5951c617a79dc
           incident_cutoff_epoch=1789280220
           backup_dir=/home/admin/backups/sixhour
           test -d "$backup_dir"
@@ -121,9 +127,36 @@ jobs:
             match_count=$(printf '%s\n' "$match_rows" | wc -l | tr -d '[:space:]')
           fi
           if [ "$match_count" -ne 1 ]; then
+            student_teacher_match_count=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT COUNT(*)
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Student\` st ON st.id = sc.StudentID
+                INNER JOIN \`User\` teacher ON teacher.id = sc.TeacherID
+                WHERE SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(teacher.Name)), 256)
+                  = '$target_student_teacher_sha256';")
+            student_subject_match_count=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT COUNT(*)
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Student\` st ON st.id = sc.StudentID
+                INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+                WHERE SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(sub.Subject_Name)), 256)
+                  = '$target_student_subject_sha256';")
+            subject_teacher_match_count=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT COUNT(*)
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+                INNER JOIN \`User\` teacher ON teacher.id = sc.TeacherID
+                WHERE SHA2(CONCAT(TRIM(sub.Subject_Name), CHAR(31), TRIM(teacher.Name)), 256)
+                  = '$target_subject_teacher_sha256';")
             printf 'case=in-app-289\n'
             printf 'read_only=true\n'
             printf 'identity_match_count=%s\n' "$match_count"
+            printf 'student_teacher_match_count=%s\n' "$student_teacher_match_count"
+            printf 'student_subject_match_count=%s\n' "$student_subject_match_count"
+            printf 'subject_teacher_match_count=%s\n' "$subject_teacher_match_count"
             echo 'manifest_result=ambiguous_or_missing_fail_closed' >&2
             exit 1
           fi
