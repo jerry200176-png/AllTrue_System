@@ -86,7 +86,7 @@ jobs:
           source_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($ids);")
           test "$source_count" = 9; echo "source_row_count=$source_count"
           echo "source_hashes=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT id,SHA2(CONCAT($common),256) FROM LearningRecord WHERE id IN ($ids) ORDER BY id;" | tr '\n' ';')"
-          echo "source_aggregate_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($common),256)) ORDER BY id SEPARATOR CHAR(10)),256) FROM LearningRecord WHERE id IN ($ids);")"
+          echo "source_aggregate_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($common),256)) ORDER BY id SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($ids);")"
           echo "production_id_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($ids);")"
           echo "production_course_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE StudentClassID=2817;")"
           echo "production_session_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN (25919,25920,25921,25922,27641,25923,25926,25924,25925);")"
@@ -100,12 +100,12 @@ jobs:
             if [ "$prod_exists" = 1 ]; then
               prod_cols=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(',COLUMN_NAME,' AS CHAR),''<NULL>'')') ORDER BY ORDINAL_POSITION SEPARATOR ',CHAR(31),') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$prod_db' AND TABLE_NAME='$table';")
               prod_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM $table WHERE learning_record_id IN ($ids);")
-              prod_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($prod_cols),256) ORDER BY id SEPARATOR CHAR(10)),256),'EMPTY') FROM $table WHERE learning_record_id IN ($ids);")
+              prod_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($prod_cols),256) ORDER BY id SEPARATOR '|'),256),'EMPTY') FROM $table WHERE learning_record_id IN ($ids);")
             fi
             if [ "$backup_exists" = 1 ]; then
               backup_cols=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(',COLUMN_NAME,' AS CHAR),''<NULL>'')') ORDER BY ORDINAL_POSITION SEPARATOR ',CHAR(31),') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$tmp' AND TABLE_NAME='$table';")
               backup_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT COUNT(*) FROM $table WHERE learning_record_id IN ($ids);" 2>/dev/null || echo 0)
-              backup_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($backup_cols),256) ORDER BY id SEPARATOR CHAR(10)),256),'EMPTY') FROM $table WHERE learning_record_id IN ($ids);" 2>/dev/null || echo ERROR)
+              backup_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($backup_cols),256) ORDER BY id SEPARATOR '|'),256),'EMPTY') FROM $table WHERE learning_record_id IN ($ids);" 2>/dev/null || echo ERROR)
             fi
             echo "downstream_table=$table production_count=$prod_count production_hash=$prod_hash backup_count=$backup_count backup_hash=$backup_hash"
           done
@@ -119,7 +119,7 @@ jobs:
             if [ -n "$fids" ]; then
               cols=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$db" --batch --skip-column-names -e "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(',COLUMN_NAME,' AS CHAR),''<NULL>'')') ORDER BY ORDINAL_POSITION SEPARATOR ',CHAR(31),') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$db' AND TABLE_NAME='learning_record_feedback_replies';")
               count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$db" --batch --skip-column-names -e "SELECT COUNT(*) FROM learning_record_feedback_replies WHERE feedback_id IN ($fids);")
-              hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$db" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($cols),256) ORDER BY id SEPARATOR CHAR(10)),256),'EMPTY') FROM learning_record_feedback_replies WHERE feedback_id IN ($fids);")
+              hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$db" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($cols),256) ORDER BY id SEPARATOR '|'),256),'EMPTY') FROM learning_record_feedback_replies WHERE feedback_id IN ($fids);")
             fi
             label=production; [ "$db" = "$tmp" ] && label=backup
             echo "indirect_downstream_table=learning_record_feedback_replies side=$label count=$count hash=$hash"
