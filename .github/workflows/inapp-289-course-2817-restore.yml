@@ -163,7 +163,9 @@ jobs:
           [ "$parent_count" = 1 ] && [ "$session_count" = 9 ] && [ "$lr_count" = 9 ] && [ "$excluded_count" = 1 ] || { echo '::error::source_row_count_mismatch'; exit 1; }
           parent_hash="$(scalar "$TMP_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
           session_lines="$(mysqlq "$TMP_DB" "SELECT id,SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id IN ($SESSIONS) ORDER BY FIELD(id,$SESSIONS);")"
-          session_agg="$(scalar "$TMP_DB" "SELECT SHA2(CONCAT(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($SESSION_EXPR),256)) ORDER BY FIELD(id,$SESSIONS) SEPARATOR '\\n'),'\\n'),256) FROM ClassSession WHERE id IN ($SESSIONS);")"
+          # Use a hex LF separator so the canonical manifest format is not
+          # affected by shell/MySQL backslash escaping.
+          session_agg="$(scalar "$TMP_DB" "SELECT SHA2(CONCAT(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($SESSION_EXPR),256)) ORDER BY FIELD(id,$SESSIONS) SEPARATOR 0x0A),0x0A),256) FROM ClassSession WHERE id IN ($SESSIONS);")"
           lr_lines="$(mysqlq "$TMP_DB" "SELECT id,SHA2(CONCAT($LR_EXPR),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS) ORDER BY FIELD(id,$LEARNING_RECORDS);")"
           lr_agg="$(scalar "$TMP_DB" "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
           echo "source_parent_count=$parent_count source_parent_hash=$parent_hash"
@@ -222,7 +224,7 @@ jobs:
             AND (SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS))=9
             AND (SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS))=9
             AND (SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817)='$parent_hash'
-            AND (SELECT SHA2(CONCAT(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($SESSION_EXPR),256)) ORDER BY FIELD(id,$SESSIONS) SEPARATOR '\\n'),'\\n'),256) FROM ClassSession WHERE id IN ($SESSIONS))='$session_agg'
+            AND (SELECT SHA2(CONCAT(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($SESSION_EXPR),256)) ORDER BY FIELD(id,$SESSIONS) SEPARATOR 0x0A),0x0A),256) FROM ClassSession WHERE id IN ($SESSIONS))='$session_agg'
             AND (SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS))='$lr_agg'
             AND (SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN ($SESSIONS))=9
             AND (SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17'))=0
@@ -284,7 +286,7 @@ jobs:
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")" = 9 ]
           [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate=\"2026-09-17\");')" = 0 ]
           post_parent_hash="$(scalar "$PROD_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
-          post_session_agg="$(scalar "$PROD_DB" "SELECT SHA2(CONCAT(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($SESSION_EXPR),256)) ORDER BY FIELD(id,$SESSIONS) SEPARATOR '\\n'),'\\n'),256) FROM ClassSession WHERE id IN ($SESSIONS);")"
+          post_session_agg="$(scalar "$PROD_DB" "SELECT SHA2(CONCAT(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($SESSION_EXPR),256)) ORDER BY FIELD(id,$SESSIONS) SEPARATOR 0x0A),0x0A),256) FROM ClassSession WHERE id IN ($SESSIONS);")"
           post_lr_agg="$(scalar "$PROD_DB" "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
           [ "$post_parent_hash" = "$parent_hash" ] || { echo '::error::post_commit_parent_hash_mismatch'; exit 1; }
           [ "$post_session_agg" = "$session_agg" ] || { echo '::error::post_commit_session_hash_mismatch'; exit 1; }
