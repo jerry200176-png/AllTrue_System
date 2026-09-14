@@ -112,6 +112,39 @@ export const staffUpdates = [
     "version": "2026.09.14"
   },
   {
+    "id": "staff-2026-09-14-branch-management-clarity",
+    "publishedAt": "2026-09-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "分校管理在手機更容易操作",
+    "summary": "窄螢幕以易讀卡片呈現分校資料，載入、空白、錯誤與對話框操作更清楚。",
+    "items": [
+      "分校資料與常用編輯、建立、刪除控制項在手機維持可讀與至少 44px 觸控範圍。",
+      "載入、空白、錯誤重試與鍵盤對話框提示更明確；API、權限與確認流程維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "分校資料與常用編輯、建立、刪除控制項在手機維持可讀與至少 44px 觸控範圍。",
+          "載入、空白、錯誤重試與鍵盤對話框提示更明確；API、權限與確認流程維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-14:branch-management-clarity",
+      "github:#2648"
+    ],
+    "date": "2026-09-14",
+    "version": "2026.09.14"
+  },
+  {
     "id": "staff-2026-09-14-binding-mobile-clarity",
     "publishedAt": "2026-09-14",
     "effectiveAt": null,

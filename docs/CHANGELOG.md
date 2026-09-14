@@ -3223,3 +3223,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 <!-- release-notes: staff_update=staff-2026-09-14-binding-mobile-clarity -->
 - LINE 綁定管理在窄螢幕會以可掃讀的作業卡片顯示學生、遮罩後的 LINE ID、分校、綁定時間與驗證狀態；桌面維持既有資料表。
 - 解除綁定仍會開啟既有的二次確認視窗，篩選、分頁、資料顯示權限與 API 請求不變。
+## 2026-09-14 — improved(branch-management): 分校管理在手機更容易操作
+<!-- release-notes: staff_update=staff-2026-09-14-branch-management-clarity -->
+- 分校管理在窄螢幕改為易讀卡片；載入、空白與可重試錯誤提示更清楚，對話框可用鍵盤操作。
+- 編輯、新增與刪除仍使用既有 API、權限與確認流程；本次不改分校資料或任何業務規則。
