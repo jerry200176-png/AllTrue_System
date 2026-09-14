@@ -15,6 +15,7 @@ describe('DuplicateSessionReviewPage presentation contract', () => {
     expect(page).toContain('<AtSkeleton v-if="loading" :rows="6" />');
     expect(page).toContain('title="無法載入重複課程審核"');
     expect(page).toContain('title="沒有待審核的重複課程時段"');
+    expect(page).toContain('min-height: 44px;');
     expect(page).not.toContain('fetch(');
     expect(page).not.toContain('/api/v1/admin/duplicate-sessions');
   });
