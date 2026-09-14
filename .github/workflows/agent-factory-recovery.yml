@@ -1,0 +1,93 @@
+name: Agent Factory Recovery
+
+# Retry only the read-only CI/deploy handoff. This workflow never dispatches
+# production directly and stops when any exact-SHA downstream run exists.
+on:
+  workflow_run:
+    workflows: ["Autonomous main convergence"]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: agent-factory-recovery
+  cancel-in-progress: false
+
+jobs:
+  retry-handoff:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 3 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+    steps:
+      - name: Retry only an unclaimed handoff
+        id: decision
+        run: |
+          set -euo pipefail
+          # Allow a preceding repository_dispatch to become visible before
+          # deciding that this handoff is unclaimed.
+          sleep 20
+          TARGET_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
+          DEPLOY_JSON="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?branch=main&head_sha=${TARGET_SHA}&per_page=100")"
+          CI_JSON="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TARGET_SHA}&per_page=100")"
+          DECISION="$(TARGET_SHA="$TARGET_SHA" DEPLOY_JSON="$DEPLOY_JSON" CI_JSON="$CI_JSON" ATTEMPT="$ATTEMPT" python3 - <<'PY'
+          import json, os
+          deploy = json.loads(os.environ["DEPLOY_JSON"]).get("workflow_runs", [])
+          ci = json.loads(os.environ["CI_JSON"]).get("workflow_runs", [])
+          active_ci = any(r.get("status") in {"queued", "in_progress", "waiting"} for r in ci)
+          if deploy or active_ci:
+              print("STOP existing exact-SHA downstream evidence")
+          else:
+              print("RETRY unclaimed CI handoff")
+          PY
+          )"
+          echo "$DECISION"
+          printf '%s\n' "$DECISION" > "$RUNNER_TEMP/recovery-decision.txt"
+          if [[ "$DECISION" != RETRY* ]]; then exit 0; fi
+          sleep $((15 * 2 ** (ATTEMPT - 1)))
+          gh run rerun "$SOURCE_RUN_ID" --failed --repo "$REPO"
+          echo "retry=true" >> "$GITHUB_OUTPUT"
+
+      - name: Record retry telemetry
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          decision = Path(os.environ["RUNNER_TEMP"], "recovery-decision.txt")
+          reason = decision.read_text(encoding="utf-8").strip() if decision.exists() else "recovery step did not produce a decision"
+          event = {
+              "schema_version": "1.0",
+              "event_type": "retry" if reason.startswith("RETRY") else "recovery_evaluated",
+              "event_id": os.environ["GITHUB_RUN_ID"] + ":" + os.environ["ATTEMPT"],
+              "task_id": None,
+              "session_id": None,
+              "target_sha": os.environ.get("TARGET_SHA", "unknown"),
+              "actor_type": "workflow",
+              "provider": None,
+              "model": None,
+              "retry_reason": reason[:500],
+              "attempt": int(os.environ["ATTEMPT"]),
+              "workflow_run_id": os.environ["SOURCE_RUN_ID"],
+          }
+          output = Path(os.environ["RUNNER_TEMP"], "recovery-events.jsonl")
+          output.write_text(json.dumps(event, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+      - name: Upload retry telemetry
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-events.jsonl
+          retention-days: 90
+          if-no-files-found: error
