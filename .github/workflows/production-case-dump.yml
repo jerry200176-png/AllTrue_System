@@ -15,6 +15,7 @@ on:
           - parent_lou
           - parent_binding
           - transfer_capacity_chen
+          - course_2817_incident
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -76,7 +77,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else '林奕安')))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -245,6 +246,66 @@ jobs:
               'read_only'=>true,
             ];
             $out['weekday_keys'] = $weekdayKeys;
+          }} elseif ($case === 'course_2817_incident') {{
+            // #289 incident reconstruction: this is deliberately a fixed, read-only
+            // scope. It emits identifiers and lifecycle states, never names, phones,
+            // money amounts, or arbitrary query inputs.
+            $courseId = 2817;
+            $baselineSessionIds = [25919, 25920, 25921, 25922, 27641, 25923, 25926, 25924, 25925, 30444];
+            $tableExists = fn (string $table): bool => \Illuminate\Support\Facades\Schema::hasTable($table);
+            $countForCourse = function (string $table, string $column) use ($db, $courseId, $tableExists): ?int {{
+              return $tableExists($table) ? (int) $db::table($table)->where($column, $courseId)->count() : null;
+            }};
+            $countForSessions = function (string $table, string $column) use ($db, $baselineSessionIds, $tableExists): ?int {{
+              return $tableExists($table) ? (int) $db::table($table)->whereIn($column, $baselineSessionIds)->count() : null;
+            }};
+            $course = $db::table('StudentClass')->where('ID', $courseId)->first([
+              'ID as class_id', 'StudentID as student_id', 'SubjectID as subject_id', 'TeacherID as teacher_id',
+              'ScheduleMode as schedule_mode', 'StartDate as start_date', 'EndDate as end_date',
+              'SessionCount as session_count', 'Stop as stop', 'PackageID as package_id',
+            ]);
+            $sessions = $db::table('ClassSession')->where(function ($q) use ($courseId, $baselineSessionIds) {{
+              $q->where('StudentClassID', $courseId)->orWhereIn('id', $baselineSessionIds);
+            }})->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+              ->get(['id', 'StudentClassID as class_id', 'SessionDate as session_date', 'StartTime as start_time', 'EndTime as end_time', 'Status as status'])
+              ->map(fn ($r) => ['id'=>(int) $r->id, 'class_id'=>(int) $r->class_id,
+                'session_date'=>(string) $r->session_date, 'start_time'=>substr((string) $r->start_time, 0, 5),
+                'end_time'=>substr((string) $r->end_time, 0, 5), 'status'=>(string) $r->status])->values()->all();
+            $schedules = $tableExists('schedules') ? $db::table('schedules')->where('student_course_id', $courseId)
+              ->orderBy('schedule_date')->orderBy('start_time')->get(['id', 'student_course_id as class_id', 'schedule_date', 'start_time', 'end_time', 'status'])
+              ->map(fn ($r) => ['id'=>(int) $r->id, 'class_id'=>(int) $r->class_id,
+                'schedule_date'=>(string) $r->schedule_date, 'start_time'=>substr((string) $r->start_time, 0, 5),
+                'end_time'=>substr((string) $r->end_time, 0, 5), 'status'=>(string) $r->status])->values()->all() : null;
+            $out['scope_lock'] = [
+              'course_id'=>$courseId, 'baseline_session_ids'=>$baselineSessionIds,
+              'production_mutation'=>false, 'allow_prod_repair'=>false, 'force'=>false,
+            ];
+            $out['current_course'] = $course === null ? null : [
+              'class_id'=>(int) $course->class_id, 'student_id'=>(int) $course->student_id,
+              'subject_id'=>(int) $course->subject_id, 'teacher_id'=>(int) $course->teacher_id,
+              'schedule_mode'=>(string) ($course->schedule_mode ?? ''), 'start_date'=>$course->start_date,
+              'end_date'=>$course->end_date, 'session_count'=>(int) ($course->session_count ?? 0),
+              'stop'=>(int) ($course->stop ?? 0), 'package_id'=>$course->package_id === null ? null : (int) $course->package_id,
+            ];
+            $out['current_class_sessions'] = $sessions;
+            $out['current_schedules'] = $schedules;
+            $out['related_row_counts'] = [
+              'attendance_by_course'=>$countForCourse('StudentSingIn', 'StudentClassID'),
+              'attendance_by_preincident_session'=>$countForSessions('StudentSingIn', 'ClassSessionID'),
+              'learning_records_by_course'=>$countForCourse('LearningRecord', 'StudentClassID'),
+              'learning_records_by_preincident_session'=>$countForSessions('LearningRecord', 'ClassSessionID'),
+              'invoices_by_course'=>$countForCourse('Invoice', 'StudentClassID'),
+              'payment_reports_by_course'=>$countForCourse('PaymentReport', 'StudentClassID'),
+              'session_deduction_ledger_by_course'=>$countForCourse('session_deduction_ledger', 'student_class_id'),
+              'session_deduction_ledger_by_preincident_session'=>$countForSessions('session_deduction_ledger', 'class_session_id'),
+              'schedule_audit_rows_by_preincident_session'=>$countForSessions('schedule_audit_logs', 'session_id'),
+            ];
+            $out['verification'] = [
+              'course_row_present'=>$course !== null,
+              'preincident_session_rows_present'=>count($sessions),
+              'no_unbounded_lookup'=>true,
+              'read_only'=>true,
+            ];
           }} elseif ($case === 'transfer_capacity_chen') {{
             $studentIds = $targetStudentClassId !== null
               ? $db::table('StudentClass as sc')->where('sc.ID', $targetStudentClassId)->pluck('sc.StudentID')->map(fn ($id) => (int)$id)->all()
