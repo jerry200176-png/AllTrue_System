@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-14-branch-management-clarity
+    published_at: "2026-09-14"
+    audiences:
+      - director
+    importance: digest
+    title: 分校管理在手機更容易操作
+    summary: 窄螢幕以易讀卡片呈現分校資料，載入、空白、錯誤與對話框操作更清楚。
+    items:
+      - category: improved
+        text: 分校資料與常用編輯、建立、刪除控制項在手機維持可讀與至少 44px 觸控範圍。
+      - category: improved
+        text: 載入、空白、錯誤重試與鍵盤對話框提示更明確；API、權限與確認流程維持原規則。
+    source_refs:
+      - "changelog:2026-09-14:branch-management-clarity"
+      - "github:#2648"
+
   - id: staff-2026-09-14-schedule-discrepancy-a11y
     published_at: "2026-09-14"
     audiences:
