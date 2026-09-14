@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-14-calendar-contract-cap",
+    "publishedAt": "2026-09-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "已完成堂數的未來預排不再誤顯示",
+    "summary": "已完成堂數的課程，行事曆與課程查找會使用一致的有效堂次集合。",
+    "items": [
+      "若遺留的未來預排已超出已完成的堂數，行事曆不再顯示它；已上課、請假與改期歷史仍保留。",
+      "本次只修正堂次顯示一致性，不改課程資料、點名、評量、扣堂、帳務、權限或 API。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "若遺留的未來預排已超出已完成的堂數，行事曆不再顯示它；已上課、請假與改期歷史仍保留。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "本次只修正堂次顯示一致性，不改課程資料、點名、評量、扣堂、帳務、權限或 API。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-14:calendar-contract-cap",
+      "in-app:#289",
+      "github:#2799"
+    ],
+    "date": "2026-09-14",
+    "version": "2026.09.14"
+  },
+  {
     "id": "staff-2026-09-13-calendar-whole-course-delete-guard",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,

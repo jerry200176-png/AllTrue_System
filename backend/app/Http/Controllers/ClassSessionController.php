@@ -485,6 +485,51 @@ class ClassSessionController extends Controller
         return $items;
     }
 
+    /**
+     * Calendar projection must use the same count-contract boundary as course
+     * management. A materialized future reservation is not actionable once
+     * attendance/ledger evidence has consumed the full contract (in-app #289).
+     *
+     * @param list<object> $items
+     * @return list<object>
+     */
+    private function withoutContractCappedFutureReservations(array $items): array
+    {
+        $classIds = array_values(array_unique(array_filter(array_map(
+            fn ($item) => (int) ($item->student_class_id ?? 0),
+            $items
+        ), fn (int $id) => $id > 0)));
+        if ($classIds === []) {
+            return $items;
+        }
+
+        $diagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
+        $today = Carbon::today()->toDateString();
+
+        return array_values(array_filter($items, function ($item) use ($diagnostics, $today): bool {
+            $classId = (int) ($item->student_class_id ?? 0);
+            if (!$this->isCountContractCapped($diagnostics[$classId] ?? null)) {
+                return true;
+            }
+
+            $status = strtolower((string) ($item->status ?? ''));
+            $date = substr((string) ($item->session_date ?? ''), 0, 10);
+
+            return $date === ''
+                || $date <= $today
+                || !in_array($status, ['scheduled', 'rescheduled'], true);
+        }));
+    }
+
+    /** @param array<string, mixed>|null $diagnostic */
+    private function isCountContractCapped(?array $diagnostic): bool
+    {
+        return $diagnostic !== null
+            && !empty($diagnostic['is_session_mode'])
+            && (int) ($diagnostic['session_count'] ?? 0) > 0
+            && (int) ($diagnostic['expected_used'] ?? 0) >= (int) ($diagnostic['session_count'] ?? 0);
+    }
+
     private function buildByClassMapFromItems(iterable $items): array
     {
         $byClass = [];
@@ -590,6 +635,7 @@ class ClassSessionController extends Controller
 
         $query = $this->buildClassSessionIndexQuery($request);
         $items = $this->fetchAllClassSessionIndexRows($query);
+        $items = $this->withoutContractCappedFutureReservations($items);
 
         if (count($items) > self::PROJECTION_MAX_ROWS) {
             return response()->json([
@@ -612,7 +658,7 @@ class ClassSessionController extends Controller
             'api_kind' => 'projection',
             'completeness' => 'full',
             'total' => count($items),
-            'data' => array_values($items),
+            'data' => $items,
             'by_class' => $byClass,
             'projected' => ['by_class' => $projectedByClass],
         ]);
@@ -694,6 +740,7 @@ class ClassSessionController extends Controller
         $classesQuery = StudentClass::query()->with(['student', 'teacher', 'subjectRecord', 'room']);
         $classesQuery->whereIn('ID', $classIds);
         $classes = $classesQuery->get()->keyBy('ID');
+        $capacityDiagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
         $scheduleSince = $classes->pluck('StartDate')->filter()->map(function ($date) use ($rangeStart) {
             try {
                 return Carbon::parse((string) $date)->toDateString();
@@ -737,6 +784,11 @@ class ClassSessionController extends Controller
         foreach ($classIds as $classId) {
             $class = $classes->get($classId);
             if (!$class) {
+                continue;
+            }
+            if ($this->isCountContractCapped($capacityDiagnostics[$classId] ?? null)) {
+                // Historical materialized rows remain in the response, but a
+                // completed count contract cannot project another occurrence.
                 continue;
             }
             $rows = $rowsByClassId[$classId] ?? [];
