@@ -90,25 +90,25 @@ jobs:
           echo "production_id_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($ids);")"
           echo "production_course_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE StudentClassID=2817;")"
           echo "production_session_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN (25919,25920,25921,25922,27641,25923,25926,25924,25925);")"
-          # Enumerate every direct learning_record_id reference in either schema.
-          tables=$( { mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$prod_db' AND LOWER(COLUMN_NAME) LIKE '%learning_record_id%';"; mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT DISTINCT TABLE_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$tmp' AND LOWER(COLUMN_NAME) LIKE '%learning_record_id%';"; } | sort -u )
-          for table in $tables; do
+          # Enumerate each reference column (including preserved/keeper variants) in either schema.
+          while IFS=$'\t' read -r table ref; do
             case "$table" in (*[!a-zA-Z0-9_]*|'') continue;; esac
+            case "$ref" in (*[!a-zA-Z0-9_]*|'') continue;; esac
             prod_exists=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$prod_db' AND TABLE_NAME='$table';")
             backup_exists=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$tmp' AND TABLE_NAME='$table';")
             prod_count=0; backup_count=0; prod_hash=absent; backup_hash=absent
             if [ "$prod_exists" = 1 ]; then
               prod_cols=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(',COLUMN_NAME,' AS CHAR),''<NULL>'')') ORDER BY ORDINAL_POSITION SEPARATOR ',CHAR(31),') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$prod_db' AND TABLE_NAME='$table';")
-              prod_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM $table WHERE learning_record_id IN ($ids);")
-              prod_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($prod_cols),256) ORDER BY id SEPARATOR '|'),256),'EMPTY') FROM $table WHERE learning_record_id IN ($ids);")
+              prod_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM $table WHERE $ref IN ($ids);")
+              prod_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($prod_cols),256) ORDER BY SHA2(CONCAT($prod_cols),256) SEPARATOR '|'),256),'EMPTY') FROM $table WHERE $ref IN ($ids);")
             fi
             if [ "$backup_exists" = 1 ]; then
               backup_cols=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(',COLUMN_NAME,' AS CHAR),''<NULL>'')') ORDER BY ORDINAL_POSITION SEPARATOR ',CHAR(31),') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$tmp' AND TABLE_NAME='$table';")
-              backup_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT COUNT(*) FROM $table WHERE learning_record_id IN ($ids);" 2>/dev/null || echo 0)
-              backup_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($backup_cols),256) ORDER BY id SEPARATOR '|'),256),'EMPTY') FROM $table WHERE learning_record_id IN ($ids);" 2>/dev/null || echo ERROR)
+              backup_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT COUNT(*) FROM $table WHERE $ref IN ($ids);" 2>/dev/null || echo 0)
+              backup_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT IFNULL(SHA2(GROUP_CONCAT(SHA2(CONCAT($backup_cols),256) ORDER BY SHA2(CONCAT($backup_cols),256) SEPARATOR '|'),256),'EMPTY') FROM $table WHERE $ref IN ($ids);" 2>/dev/null || echo ERROR)
             fi
-            echo "downstream_table=$table production_count=$prod_count production_hash=$prod_hash backup_count=$backup_count backup_hash=$backup_hash"
-          done
+            echo "downstream_reference=$table.$ref production_count=$prod_count production_hash=$prod_hash backup_count=$backup_count backup_hash=$backup_hash"
+          done < <( { mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT DISTINCT TABLE_NAME,COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$prod_db' AND LOWER(COLUMN_NAME) LIKE '%learning_record_id%';"; mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT DISTINCT TABLE_NAME,COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$tmp' AND LOWER(COLUMN_NAME) LIKE '%learning_record_id%';"; } | sort -u )
           # Feedback replies refer to feedback_id, so account for them through the surviving
           # feedback IDs without exposing reply text.
           for db in "$prod_db" "$tmp"; do
