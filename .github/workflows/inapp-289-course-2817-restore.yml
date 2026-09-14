@@ -79,6 +79,7 @@ jobs:
           MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
+          trap 'rc=$?; echo "::error::preflight_command_failed line=$LINENO status=$rc"' ERR
           mkdir -p out
           ssh -i "$HOME/.ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
             -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
