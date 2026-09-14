@@ -163,11 +163,17 @@ jobs:
           PARENT_HASH_ERR="$(mktemp /tmp/course2817-parent-hash-error.XXXXXX)"
           SESSION_HASH_ERR="$(mktemp /tmp/course2817-session-hash-error.XXXXXX)"
           LR_HASH_ERR="$(mktemp /tmp/course2817-lr-hash-error.XXXXXX)"
+          PARENT_HASH_OUT="$(mktemp /tmp/course2817-parent-hash-out.XXXXXX)"
+          SESSION_HASH_OUT="$(mktemp /tmp/course2817-session-hash-out.XXXXXX)"
+          LR_HASH_OUT="$(mktemp /tmp/course2817-lr-hash-out.XXXXXX)"
           set +e
-          PARENT_EXPR="$(hash_expr "$PROD_DB" StudentClass 2>"$PARENT_HASH_ERR")"; parent_expr_status=$?
-          SESSION_EXPR="$(hash_expr "$PROD_DB" ClassSession 2>"$SESSION_HASH_ERR")"; session_expr_status=$?
-          LR_EXPR="$(hash_expr "$PROD_DB" LearningRecord 2>"$LR_HASH_ERR")"; lr_expr_status=$?
+          hash_expr "$PROD_DB" StudentClass >"$PARENT_HASH_OUT" 2>"$PARENT_HASH_ERR"; parent_expr_status=$?
+          hash_expr "$PROD_DB" ClassSession >"$SESSION_HASH_OUT" 2>"$SESSION_HASH_ERR"; session_expr_status=$?
+          hash_expr "$PROD_DB" LearningRecord >"$LR_HASH_OUT" 2>"$LR_HASH_ERR"; lr_expr_status=$?
           set -e
+          PARENT_EXPR="$(tr -d '\r\n' < "$PARENT_HASH_OUT")"
+          SESSION_EXPR="$(tr -d '\r\n' < "$SESSION_HASH_OUT")"
+          LR_EXPR="$(tr -d '\r\n' < "$LR_HASH_OUT")"
           [ "$parent_expr_status" -eq 0 ] || { echo '::error::studentclass_hash_expression_failed'; sed -n '1,4p' "$PARENT_HASH_ERR"; exit 1; }
           [ "$session_expr_status" -eq 0 ] || { echo '::error::classsession_hash_expression_failed'; sed -n '1,4p' "$SESSION_HASH_ERR"; exit 1; }
           [ "$lr_expr_status" -eq 0 ] || { echo '::error::learningrecord_hash_expression_failed'; sed -n '1,4p' "$LR_HASH_ERR"; exit 1; }
