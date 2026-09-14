@@ -157,7 +157,14 @@ jobs:
           test -n "$PARENT_COLS"; test -n "$SESSION_COLS"; test -n "$LR_COLS"
           PARENT_EXPR="$(hash_expr "$PROD_DB" StudentClass)"; SESSION_EXPR="$(hash_expr "$PROD_DB" ClassSession)"; LR_EXPR="$(hash_expr "$PROD_DB" LearningRecord)"
           canonical_session_agg() {
-            printf '%s\n' "$1" | awk -F '\t' 'NF == 2 { printf "%s:%s\n", $1, $2 }' | sha256sum | awk '{print $1}'
+            local input="$1" session_id expected_hash
+            {
+              while IFS=$'\t' read -r session_id expected_hash; do
+                [ -n "$session_id" ] || continue
+                [ -n "$expected_hash" ] || exit 1
+                printf '%s:%s\n' "$session_id" "$expected_hash"
+              done <<< "$input"
+            } | sha256sum | awk '{print $1}'
           }
           session_hash_guard=''
           while IFS=: read -r session_id expected_hash; do
