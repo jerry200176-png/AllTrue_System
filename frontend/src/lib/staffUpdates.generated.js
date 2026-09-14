@@ -79,6 +79,39 @@ export const staffUpdates = [
     "version": "2026.09.14"
   },
   {
+    "id": "staff-2026-09-14-binding-mobile-clarity",
+    "publishedAt": "2026-09-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "LINE 綁定清單在手機更容易查看",
+    "summary": "窄螢幕會以易讀卡片呈現綁定資料，保留既有篩選、分頁與解除綁定流程。",
+    "items": [
+      "學生、遮罩後的 LINE ID、分校、綁定時間與驗證狀態可在同一張卡片查看，常用控制項保有至少 44px 觸控範圍。",
+      "解除綁定仍先顯示既有確認視窗；資料顯示權限、篩選、分頁與 API 請求維持原規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生、遮罩後的 LINE ID、分校、綁定時間與驗證狀態可在同一張卡片查看，常用控制項保有至少 44px 觸控範圍。",
+          "解除綁定仍先顯示既有確認視窗；資料顯示權限、篩選、分頁與 API 請求維持原規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-14:binding-mobile-clarity",
+      "supersedes-pr:#2660"
+    ],
+    "date": "2026-09-14",
+    "version": "2026.09.14"
+  },
+  {
     "id": "staff-2026-09-13-calendar-whole-course-delete-guard",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
