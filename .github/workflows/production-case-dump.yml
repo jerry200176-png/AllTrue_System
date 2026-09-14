@@ -331,7 +331,7 @@ jobs:
                 return ['id'=>(int) $r->id, 'session_id'=>(int) $r->session_id,
                   'action_type'=>(string) $r->action_type, 'created_at'=>$r->created_at,
                   'old'=>$redact($r->old_data), 'new'=>$redact($r->new_data)];
-              })->values()->all() : null;
+              }})->values()->all() : null;
             $out['related_row_counts'] = [
               'attendance_by_course'=>$countForCourse('StudentSingIn', 'StudentClassID'),
               'attendance_by_preincident_session'=>$countForSessions('StudentSingIn', 'ClassSessionID'),
