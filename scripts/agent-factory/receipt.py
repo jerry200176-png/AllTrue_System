@@ -116,6 +116,19 @@ def retry_decision(receipt: dict, escalation: str, *, reason="") -> dict:
     }
 
 
+def recovery_decision(source_attempt: int, observed_attempt: int, downstream: dict) -> dict:
+    """Claim one failed convergence attempt before issuing a rerun."""
+    if int(observed_attempt) != int(source_attempt):
+        return {"action": "STOP", "reason": "recovery already claimed by another run", "backoff_seconds": 0}
+    if int(source_attempt) >= MAX_ATTEMPTS:
+        return {"action": "STOP", "reason": "retry exhaustion", "backoff_seconds": 0}
+    deploy = downstream.get("deploy", [])
+    ci = downstream.get("ci", [])
+    if deploy or any(run.get("status") in {"queued", "in_progress", "waiting"} for run in ci):
+        return {"action": "STOP", "reason": "exact-SHA downstream evidence already exists", "backoff_seconds": 0}
+    return {"action": "RETRY", "reason": "unclaimed convergence handoff", "backoff_seconds": BACKOFF_SECONDS[int(source_attempt) - 1]}
+
+
 def terminal_state(receipt: dict, *, escalation=None) -> str | None:
     if escalation:
         escalation = escalation.upper()
@@ -239,7 +252,7 @@ def collect(event_path: str, repo: str, run_id: str, output: str, events: str | 
         except Exception:
             session_id = ""
     body = pr_data.get("body") or ""
-    acceptance = [safe_text(x.strip()[5:]) for x in re.findall(r"(?ms)^## (?:Acceptance Criteria|Test Plan|Verification)\s*(.*?)(?=^## |\Z)", body) for x in re.findall(r"^[-*] \[[ xX]\] (.+)$", x)]
+    acceptance = [safe_text(x.strip()[5:]) for section in re.findall(r"(?ms)^## (?:Acceptance Criteria|Test Plan|Verification)\s*(.*?)(?=^## |\Z)", body) for x in re.findall(r"^[-*] \[[ xX]\] (.+)$", section, re.M)]
     issue_refs = [int(value) for value in re.findall(r"(?<![\w/])#(\d+)\b", body)]
     issue = next((value for value in issue_refs if value != pr_number), None)
     receipt = new_receipt(task_id, session_id, target_sha, issue=issue, pr=pr_number,
@@ -275,15 +288,41 @@ def collect(event_path: str, repo: str, run_id: str, output: str, events: str | 
             with tempfile.TemporaryDirectory(prefix="ui-smoke-receipt-") as directory:
                 artifact = f"ui-smoke-verification-{workflow.get('id')}-{workflow.get('run_attempt') or 1}"
                 result = subprocess.run(["gh", "run", "download", str(workflow.get("id")), "--repo", repo, "--name", artifact, "--dir", directory], capture_output=True, text=True)
-                if result.returncode == 0:
-                    for path in Path(directory).rglob("*.json"):
-                        try:
-                            outcome = json.loads(path.read_text(encoding="utf-8"))["checks"][0]
-                            add_check(receipt, "UI Smoke (Playwright)", outcome["status"], reason=outcome.get("reason", ""), acceptance_relevant=bool(outcome.get("acceptance_relevant")))
-                        except (KeyError, TypeError, ValueError):
-                            receipt["unresolved_warnings"].append("ui_smoke_artifact_invalid")
-                else:
+                frontend_relevant = "UI Smoke (Playwright)" in receipt["required_checks"]
+                if workflow.get("conclusion") != "success":
+                    add_check(receipt, "UI Smoke (Playwright)", "FAILED", reason="UI Smoke job failed", acceptance_relevant=frontend_relevant)
+                elif result.returncode != 0:
+                    add_check(receipt, "UI Smoke (Playwright)", "SKIPPED", reason="UI verification artifact unavailable", acceptance_relevant=frontend_relevant)
                     receipt["unresolved_warnings"].append("ui_smoke_artifact_missing")
+                else:
+                    artifact_files = list(Path(directory).rglob("*.json"))
+                    try:
+                        if len(artifact_files) != 1:
+                            raise ValueError("artifact count is not exactly one")
+                        artifact_payload = json.loads(artifact_files[0].read_text(encoding="utf-8"))
+                        artifact_checks = artifact_payload["checks"]
+                        if not isinstance(artifact_checks, list) or len(artifact_checks) != 1:
+                            raise ValueError("artifact checks are not exactly one record")
+                        outcome = artifact_checks[0]
+                        outcome_status = str(outcome["status"]).upper()
+                        outcome_relevant = bool(outcome.get("acceptance_relevant"))
+                        prior_ui = next((check for check in receipt["checks"]
+                                        if check.get("name") == "UI Smoke (Playwright)"), None)
+                        inconsistent = (
+                            outcome_status not in VERIFICATION
+                            or (frontend_relevant and (outcome_status == "NOT_APPLICABLE" or not outcome_relevant))
+                            or (not frontend_relevant and (outcome_status != "NOT_APPLICABLE" or outcome_relevant))
+                            or (prior_ui and prior_ui.get("status") == "FAILED" and outcome_status == "PASSED")
+                        )
+                        if inconsistent:
+                            raise ValueError("artifact outcome is inconsistent with changed paths")
+                        add_check(receipt, "UI Smoke (Playwright)", outcome_status,
+                                  reason=outcome.get("reason", ""), acceptance_relevant=outcome_relevant)
+                    except (KeyError, TypeError, ValueError, OSError, json.JSONDecodeError):
+                        add_check(receipt, "UI Smoke (Playwright)", "SKIPPED",
+                                  reason="UI verification artifact malformed or unreadable",
+                                  acceptance_relevant=frontend_relevant)
+                        receipt["unresolved_warnings"].append("ui_smoke_artifact_invalid")
     merge_sha = pr_data.get("merge_commit_sha") or ""
     receipt["merge"] = {"status": "PASSED" if pr_data.get("merged_at") else "NOT_APPLICABLE", "sha": merge_sha or None}
     deploy_sha = merge_sha if pr_data.get("merged_at") else target_sha
@@ -356,6 +395,7 @@ def cli() -> int:
     event = sub.add_parser("event"); event.add_argument("--output", required=True); event.add_argument("--task-id", required=True); event.add_argument("--session-id", default=""); event.add_argument("--sha", required=True); event.add_argument("--type", required=True); event.add_argument("--actor", default="agent"); event.add_argument("--provider"); event.add_argument("--model"); event.add_argument("--reason", default=""); event.add_argument("--duration-minutes", type=float); event.add_argument("--run-id")
     shadow = sub.add_parser("shadow"); shadow.add_argument("--paths", nargs="*", default=[]); shadow.add_argument("--patch", default=""); shadow.add_argument("--existing", default="UNKNOWN")
     collect_cmd = sub.add_parser("collect"); collect_cmd.add_argument("--event", required=True); collect_cmd.add_argument("--repo", required=True); collect_cmd.add_argument("--run-id", required=True); collect_cmd.add_argument("--output", required=True); collect_cmd.add_argument("--events")
+    recovery = sub.add_parser("recovery-decision"); recovery.add_argument("--source-attempt", required=True, type=int); recovery.add_argument("--observed-attempt", required=True, type=int); recovery.add_argument("--downstream-json", required=True)
     args = parser.parse_args()
     if args.command == "init":
         write_once(args.output, new_receipt(args.task_id, args.session_id, args.sha, acceptance=args.acceptance, run_id=args.run_id)); return 0
@@ -363,6 +403,8 @@ def cli() -> int:
         data = json.loads(Path(args.output).read_text(encoding="utf-8")); add_check(data, args.name, args.status, reason=args.reason, acceptance_relevant=args.acceptance_relevant); Path(args.output).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"); return 0
     if args.command == "event":
         append_event(args.output, {"event_type": args.type, "task_id": args.task_id, "session_id": args.session_id or None, "target_sha": args.sha, "actor_type": args.actor, "provider": args.provider, "model": args.model, "reason": args.reason, "founder_attention_minutes": args.duration_minutes, "workflow_run_id": args.run_id}); return 0
+    if args.command == "recovery-decision":
+        print(json.dumps(recovery_decision(args.source_attempt, args.observed_attempt, json.loads(args.downstream_json)), sort_keys=True)); return 0
     if args.command == "collect":
         collect(args.event, args.repo, args.run_id, args.output, args.events); return 0
     print(json.dumps(shadow_effects(args.paths, args.patch, args.existing), sort_keys=True)); return 0

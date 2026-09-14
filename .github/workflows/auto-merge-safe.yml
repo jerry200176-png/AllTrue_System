@@ -83,14 +83,6 @@ jobs:
           )
 
           output = Path(os.environ["GITHUB_OUTPUT"])
-          # Low-risk machine classification is already conservative. If a
-          # generated PR omitted the template declaration, use that existing
-          # T0/T1 result instead of interrupting the Founder. Never infer T2+
-          # and never override a contradictory or under-declared value.
-          if error == "missing or invalid risk/tier declaration" and int(scope["machine_minimum_tier"]) <= 1:
-              tier = int(scope["machine_minimum_tier"])
-              error = None
-              print(f"Declaration absent; using machine-validated T{tier} fallback")
           if error:
               output.write_text(
                   f"decision=hold\ntier={scope['tier_name']}\n",

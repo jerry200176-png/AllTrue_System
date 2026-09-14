@@ -631,14 +631,6 @@ jobs:
                               f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"
                           )
                       declared_risk, declared_tier = parse_declaration(pr.get("body") or "")
-                      if declared_risk is None or declared_tier is None:
-                          # Preserve the fail-closed boundary for T2/T3 while
-                          # allowing the existing machine classifier to repair
-                          # an omitted declaration for a bounded T0/T1 PR.
-                          machine_scope = classify_scope(pr_paths, "\n".join(patch_parts))
-                          if int(machine_scope["machine_minimum_tier"]) <= 1:
-                              declared_risk = int(machine_scope["machine_minimum_tier"])
-                              declared_tier = int(machine_scope["machine_minimum_tier"])
                       merged.append({
                           "number": pr_number,
                           "merged_at": pr.get("merged_at"),

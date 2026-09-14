@@ -7,3 +7,4 @@ _module = module_from_spec(_spec)
 assert _spec.loader
 _spec.loader.exec_module(_module)
 globals().update({name: getattr(_module, name) for name in dir(_module) if not name.startswith("_")})
+implementation = _module

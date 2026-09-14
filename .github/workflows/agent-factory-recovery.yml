@@ -12,7 +12,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: agent-factory-recovery
+  # Serialize recovery decisions for one failed convergence attempt. Different
+  # source run attempts remain independently observable and bounded.
+  group: agent-factory-recovery-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
 jobs:
@@ -26,6 +28,13 @@ jobs:
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
       ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
     steps:
+      - name: Load trusted recovery decision code
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          sparse-checkout: scripts/agent-factory
+
       - name: Retry only an unclaimed handoff
         id: decision
         run: |
@@ -37,21 +46,22 @@ jobs:
           echo "TARGET_SHA=$TARGET_SHA" >> "$GITHUB_ENV"
           DEPLOY_JSON="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?branch=main&head_sha=${TARGET_SHA}&per_page=100")"
           CI_JSON="$(gh api "/repos/${REPO}/actions/workflows/ci.yml/runs?branch=main&head_sha=${TARGET_SHA}&per_page=100")"
-          DECISION="$(TARGET_SHA="$TARGET_SHA" DEPLOY_JSON="$DEPLOY_JSON" CI_JSON="$CI_JSON" ATTEMPT="$ATTEMPT" python3 - <<'PY'
-          import json, os
-          deploy = json.loads(os.environ["DEPLOY_JSON"]).get("workflow_runs", [])
-          ci = json.loads(os.environ["CI_JSON"]).get("workflow_runs", [])
-          active_ci = any(r.get("status") in {"queued", "in_progress", "waiting"} for r in ci)
-          if deploy or active_ci:
-              print("STOP existing exact-SHA downstream evidence")
-          else:
-              print("RETRY unclaimed CI handoff")
-          PY
-          )"
-          echo "$DECISION"
-          printf '%s\n' "$DECISION" > "$RUNNER_TEMP/recovery-decision.txt"
-          if [[ "$DECISION" != RETRY* ]]; then exit 0; fi
-          sleep $((15 * 2 ** (ATTEMPT - 1)))
+          OBSERVED_ATTEMPT="$(gh run view "$SOURCE_RUN_ID" --repo "$REPO" --json attempt --jq '.attempt')"
+          DOWNSTREAM_JSON="$(DEPLOY_JSON="$DEPLOY_JSON" CI_JSON="$CI_JSON" python3 -c 'import json, os; print(json.dumps({"deploy": json.loads(os.environ["DEPLOY_JSON"]).get("workflow_runs", []), "ci": json.loads(os.environ["CI_JSON"]).get("workflow_runs", [])}))')"
+          DECISION_JSON="$(python3 scripts/agent-factory/receipt.py recovery-decision --source-attempt "$ATTEMPT" --observed-attempt "$OBSERVED_ATTEMPT" --downstream-json "$DOWNSTREAM_JSON")"
+          DECISION="$(DECISION_JSON="$DECISION_JSON" python3 -c 'import json, os; print(json.loads(os.environ["DECISION_JSON"])["action"])')"
+          REASON="$(DECISION_JSON="$DECISION_JSON" python3 -c 'import json, os; print(json.loads(os.environ["DECISION_JSON"])["reason"])')"
+          BACKOFF="$(DECISION_JSON="$DECISION_JSON" python3 -c 'import json, os; print(json.loads(os.environ["DECISION_JSON"])["backoff_seconds"])')"
+          echo "$DECISION: $REASON"
+          printf '%s: %s\n' "$DECISION" "$REASON" > "$RUNNER_TEMP/recovery-decision.txt"
+          if [[ "$DECISION" != RETRY ]]; then exit 0; fi
+          sleep "$BACKOFF"
+          LATEST_ATTEMPT="$(gh run view "$SOURCE_RUN_ID" --repo "$REPO" --json attempt --jq '.attempt')"
+          if [[ "$LATEST_ATTEMPT" != "$ATTEMPT" ]]; then
+            echo "Recovery claim lost to another run; no rerun issued."
+            printf '%s\n' 'STOP: recovery claim lost before rerun' > "$RUNNER_TEMP/recovery-decision.txt"
+            exit 0
+          fi
           gh run rerun "$SOURCE_RUN_ID" --failed --repo "$REPO"
           echo "retry=true" >> "$GITHUB_OUTPUT"
 
