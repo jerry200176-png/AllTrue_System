@@ -160,10 +160,17 @@ jobs:
           [ -n "$SESSION_COLS" ] || { echo '::error::classsession_common_columns_empty'; exit 1; }
           [ -n "$LR_COLS" ] || { echo '::error::learningrecord_common_columns_empty'; exit 1; }
           echo "schema_common_column_counts student_class=$(printf '%s' "$PARENT_COLS" | awk -F',' '{print NF}') class_session=$(printf '%s' "$SESSION_COLS" | awk -F',' '{print NF}') learning_record=$(printf '%s' "$LR_COLS" | awk -F',' '{print NF}')"
-          HASH_ERR="$(mktemp /tmp/course2817-hash-error.XXXXXX)"
-          PARENT_EXPR="$(hash_expr "$PROD_DB" StudentClass 2>"$HASH_ERR")" || { echo '::error::studentclass_hash_expression_failed'; sed -n '1,4p' "$HASH_ERR"; exit 1; }
-          SESSION_EXPR="$(hash_expr "$PROD_DB" ClassSession 2>"$HASH_ERR")" || { echo '::error::classsession_hash_expression_failed'; sed -n '1,4p' "$HASH_ERR"; exit 1; }
-          LR_EXPR="$(hash_expr "$PROD_DB" LearningRecord 2>"$HASH_ERR")" || { echo '::error::learningrecord_hash_expression_failed'; sed -n '1,4p' "$HASH_ERR"; exit 1; }
+          PARENT_HASH_ERR="$(mktemp /tmp/course2817-parent-hash-error.XXXXXX)"
+          SESSION_HASH_ERR="$(mktemp /tmp/course2817-session-hash-error.XXXXXX)"
+          LR_HASH_ERR="$(mktemp /tmp/course2817-lr-hash-error.XXXXXX)"
+          set +e
+          PARENT_EXPR="$(hash_expr "$PROD_DB" StudentClass 2>"$PARENT_HASH_ERR")"; parent_expr_status=$?
+          SESSION_EXPR="$(hash_expr "$PROD_DB" ClassSession 2>"$SESSION_HASH_ERR")"; session_expr_status=$?
+          LR_EXPR="$(hash_expr "$PROD_DB" LearningRecord 2>"$LR_HASH_ERR")"; lr_expr_status=$?
+          set -e
+          [ "$parent_expr_status" -eq 0 ] || { echo '::error::studentclass_hash_expression_failed'; sed -n '1,4p' "$PARENT_HASH_ERR"; exit 1; }
+          [ "$session_expr_status" -eq 0 ] || { echo '::error::classsession_hash_expression_failed'; sed -n '1,4p' "$SESSION_HASH_ERR"; exit 1; }
+          [ "$lr_expr_status" -eq 0 ] || { echo '::error::learningrecord_hash_expression_failed'; sed -n '1,4p' "$LR_HASH_ERR"; exit 1; }
           [ -n "$PARENT_EXPR" ] || { echo '::error::studentclass_hash_expression_empty'; exit 1; }
           [ -n "$SESSION_EXPR" ] || { echo '::error::classsession_hash_expression_empty'; exit 1; }
           [ -n "$LR_EXPR" ] || { echo '::error::learningrecord_hash_expression_empty'; exit 1; }
