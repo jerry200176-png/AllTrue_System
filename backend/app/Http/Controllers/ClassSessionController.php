@@ -658,7 +658,7 @@ class ClassSessionController extends Controller
             'api_kind' => 'projection',
             'completeness' => 'full',
             'total' => count($items),
-            'data' => array_values($items),
+            'data' => $items,
             'by_class' => $byClass,
             'projected' => ['by_class' => $projectedByClass],
         ]);

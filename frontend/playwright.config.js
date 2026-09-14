@@ -42,7 +42,10 @@ export default defineConfig({
     /director-dashboard-shell-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in subject-units-playwright.config.js.
     /subject-units-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in teacher-eligibility-playwright.config.js.
+    /teacher-eligibility-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.chat-accessibility.config.js.
+    /chat-shell-clarity\.spec\.js$/,
     /chat-accessibility\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.tuition-collection.config.js.
     /tuition-collection-clarity\.spec\.js$/,
