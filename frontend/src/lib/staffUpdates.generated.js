@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-14-duplicate-review-clarity",
+    "publishedAt": "2026-09-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "重複課程審核的狀態與重試更清楚",
+    "summary": "重複課程審核在載入、無案件與暫時失敗時，會顯示一致的提示與原頁重試操作。",
+    "items": [
+      "篩選、重試、展開與確認送出的既有控制項，在手機維持至少 44px 觸控高度與鍵盤可及性。",
+      "審核送出 API、保留／取消判定、扣堂沖回、資料顯示權限、課務與帳務規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "篩選、重試、展開與確認送出的既有控制項，在手機維持至少 44px 觸控高度與鍵盤可及性。",
+          "審核送出 API、保留／取消判定、扣堂沖回、資料顯示權限、課務與帳務規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-14:duplicate-review-clarity",
+      "supersedes-pr:#2673",
+      "github:#2843"
+    ],
+    "date": "2026-09-14",
+    "version": "2026.09.14"
+  },
+  {
     "id": "staff-2026-09-14-calendar-contract-cap",
     "publishedAt": "2026-09-14",
     "effectiveAt": null,
