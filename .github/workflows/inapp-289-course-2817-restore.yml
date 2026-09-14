@@ -178,9 +178,24 @@ jobs:
           [ "$parent_expr_status" -eq 0 ] || { echo '::error::studentclass_hash_expression_failed'; sed -n '1,4p' "$PARENT_HASH_ERR"; exit 1; }
           [ "$session_expr_status" -eq 0 ] || { echo '::error::classsession_hash_expression_failed'; sed -n '1,4p' "$SESSION_HASH_ERR"; exit 1; }
           [ "$lr_expr_status" -eq 0 ] || { echo '::error::learningrecord_hash_expression_failed'; sed -n '1,4p' "$LR_HASH_ERR"; exit 1; }
-          [ -n "$PARENT_EXPR" ] || { echo '::error::studentclass_hash_expression_empty'; exit 1; }
-          [ -n "$SESSION_EXPR" ] || { echo '::error::classsession_hash_expression_empty'; exit 1; }
-          [ -n "$LR_EXPR" ] || { echo '::error::learningrecord_hash_expression_empty'; exit 1; }
+          if [ -z "$PARENT_EXPR" ]; then
+            echo '::error::studentclass_hash_expression_empty'
+            echo 'studentclass_hash_expression_stderr:'
+            sed -n '1,8p' "$PARENT_HASH_ERR"
+            exit 1
+          fi
+          if [ -z "$SESSION_EXPR" ]; then
+            echo '::error::classsession_hash_expression_empty'
+            echo 'classsession_hash_expression_stderr:'
+            sed -n '1,8p' "$SESSION_HASH_ERR"
+            exit 1
+          fi
+          if [ -z "$LR_EXPR" ]; then
+            echo '::error::learningrecord_hash_expression_empty'
+            echo 'learningrecord_hash_expression_stderr:'
+            sed -n '1,8p' "$LR_HASH_ERR"
+            exit 1
+          fi
           canonical_session_agg() {
             local input="$1" session_id expected_hash count=0
             while IFS=$'\t' read -r session_id expected_hash; do
