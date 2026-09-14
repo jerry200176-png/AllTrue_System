@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.14",
     "date": "2026-09-14",
     "title": "2026.09.14 草稿（未發布）",
-    "summary": "已完成堂數的未來預排不再誤顯示",
+    "summary": "已完成堂數的未來預排不再誤顯示；重複課程審核的狀態與重試更清楚",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "已完成堂數的未來預排不再誤顯示"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "重複課程審核的狀態與重試更清楚"
+        ]
       }
     ],
     "items": [
-      "已完成堂數的未來預排不再誤顯示"
+      "已完成堂數的未來預排不再誤顯示",
+      "重複課程審核的狀態與重試更清楚"
     ]
   },
   {
