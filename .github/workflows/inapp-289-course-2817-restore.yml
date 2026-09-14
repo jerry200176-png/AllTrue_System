@@ -114,11 +114,11 @@ jobs:
           schema_report() {
             local table="$1"
             echo "schema_table=$table"
-            mysqlq "$PROD_DB" "SELECT CONCAT(COLUMN_NAME,'|',COLUMN_TYPE,'|',IS_NULLABLE,'|',IFNULL(COLUMN_DEFAULT,'<NULL>'),'|',EXTRA,'|',IF(b.COLUMN_NAME IS NULL,'backup_only','common'))
+            mysqlq "$PROD_DB" "SELECT CONCAT(p.COLUMN_NAME,'|',p.COLUMN_TYPE,'|',p.IS_NULLABLE,'|',IFNULL(p.COLUMN_DEFAULT,'<NULL>'),'|',p.EXTRA,'|',IF(b.COLUMN_NAME IS NULL,'backup_only','common'))
               FROM information_schema.COLUMNS p LEFT JOIN information_schema.COLUMNS b
                 ON b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$table' AND b.COLUMN_NAME=p.COLUMN_NAME
               WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$table' ORDER BY p.ORDINAL_POSITION;" | sed 's/^/schema_column=/'
-            mysqlq "$TMP_DB" "SELECT CONCAT(COLUMN_NAME,'|',COLUMN_TYPE,'|',IS_NULLABLE,'|',IFNULL(COLUMN_DEFAULT,'<NULL>'),'|',EXTRA)
+            mysqlq "$TMP_DB" "SELECT CONCAT(b.COLUMN_NAME,'|',b.COLUMN_TYPE,'|',b.IS_NULLABLE,'|',IFNULL(b.COLUMN_DEFAULT,'<NULL>'),'|',b.EXTRA)
               FROM information_schema.COLUMNS b WHERE b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$table'
               AND NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS p WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$table' AND p.COLUMN_NAME=b.COLUMN_NAME)
               ORDER BY b.ORDINAL_POSITION;" | sed 's/^/schema_backup_only=/'
@@ -283,7 +283,14 @@ jobs:
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")" = 9 ]
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")" = 9 ]
           [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate=\"2026-09-17\");')" = 0 ]
+          post_parent_hash="$(scalar "$PROD_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
+          post_session_agg="$(scalar "$PROD_DB" "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($SESSION_EXPR),256)) ORDER BY FIELD(id,$SESSIONS) SEPARATOR '|'),256) FROM ClassSession WHERE id IN ($SESSIONS);")"
+          post_lr_agg="$(scalar "$PROD_DB" "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
+          [ "$post_parent_hash" = "$parent_hash" ] || { echo '::error::post_commit_parent_hash_mismatch'; exit 1; }
+          [ "$post_session_agg" = "$session_agg" ] || { echo '::error::post_commit_session_hash_mismatch'; exit 1; }
+          [ "$post_lr_agg" = "$lr_agg" ] || { echo '::error::post_commit_learning_record_hash_mismatch'; exit 1; }
           echo "post_commit=verified parent=1 sessions=9 learning_records=9 forbidden_30444=0 phantom_2026-09-17=0"
+          echo "post_commit_hashes=verified parent=$post_parent_hash session_set=$post_session_agg learning_record_set=$post_lr_agg"
           echo 'production_write=19_inserts_only'
           echo 'rollback_boundary=delete_only_if_all_19_rows_still_match_approved_hashes_and_no_legitimate_dependents'
           REMOTE
