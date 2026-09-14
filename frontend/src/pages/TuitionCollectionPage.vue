@@ -2,11 +2,11 @@
   <div class="tc-page">
     <AtPageHeader
       title="帳務中心"
-      description="處理未繳待收、待對帳、續課提醒與已結清課程。"
+      description="處理應收、已回報待查帳、確認入帳與續課提醒。"
       icon="account_balance"
       data-guide="tuition-header"
     >
-      <template #meta><span>先確認對象，再完成回報或入帳</span></template>
+      <template #meta><span>先確認對象，再回報，最後確認入帳</span></template>
       <template #actions>
         <AtButton
           variant="ghost"
@@ -96,7 +96,7 @@
           </div>
           <div class="tc-card tc-card--danger">
             <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
-            <span class="tc-card-label">未繳費</span>
+            <span class="tc-card-label">應收／未完成</span>
           </div>
           <div class="tc-card tc-card--overdue">
             <span class="tc-card-num">{{ overdueRows.length }}</span>
@@ -104,7 +104,7 @@
           </div>
           <div class="tc-card tc-card--warn">
             <span class="tc-card-num">{{ statusCounts.pending_report + statusCounts.pending_reconciliation }}</span>
-            <span class="tc-card-label">待對帳</span>
+            <span class="tc-card-label">已回報／待查帳</span>
           </div>
           <div class="tc-card tc-card--outstanding">
             <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
@@ -1176,10 +1176,10 @@ const activeTab = ref('action');
 const TAB_DEFS = [
   { key: 'action', label: '待處理' },
   { key: 'all', label: '全部' },
-  { key: 'unpaid', label: '未繳' },
-  { key: 'overdue', label: '逾期' },
-  { key: 'pending_report', label: '待對帳' },
-  { key: 'pending_reconciliation', label: '結案待對帳' },
+  { key: 'unpaid', label: '應收／尚未回報' },
+  { key: 'overdue', label: '逾期應收' },
+  { key: 'pending_report', label: '已回報／待查帳' },
+  { key: 'pending_reconciliation', label: '結案／待查帳' },
   { key: 'renewal', label: '續課/將到期' },
 ];
 
@@ -1193,7 +1193,7 @@ const billingFlowCurrentId = computed(() => {
 const billingFlowSteps = [
   { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看待處理' },
   { id: 'report', icon: 'mark_email_read', title: '登記繳費回報', description: '家長已付款時先登記回報。', action: '查看未繳' },
-  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看待對帳' },
+  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看已回報／待查帳' },
 ];
 
 const billingWorkflowStarts = new Map();
@@ -1423,11 +1423,11 @@ async function submitBatchConfirm() {
 
 // ═══ Payment Status Helpers ═══
 const STATUS_CONFIG = {
-  unpaid:           { label: '未繳費',        cls: 'st-unpaid' },
-  partial:          { label: '部分付款',      cls: 'st-partial' },
-  pending_report:   { label: '待對帳',        cls: 'st-pending' },
-  pending_reconciliation: { label: '結案待對帳', cls: 'st-pending' },
-  paid:             { label: '已繳費',        cls: 'st-paid' },
+  unpaid:           { label: '應收／尚未回報', cls: 'st-unpaid' },
+  partial:          { label: '部分已入帳',      cls: 'st-partial' },
+  pending_report:   { label: '已回報／待查帳', cls: 'st-pending' },
+  pending_reconciliation: { label: '結案／待查帳', cls: 'st-pending' },
+  paid:             { label: '已確認入帳',        cls: 'st-paid' },
   renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
 };
@@ -1435,7 +1435,7 @@ const STATUS_CONFIG = {
 function statusLabel(r) {
   const ps = r.payment_status;
   if (ps && STATUS_CONFIG[ps]) return STATUS_CONFIG[ps].label;
-  return r.paid ? '已繳費' : '未繳費';
+  return r.paid ? '已確認入帳' : '應收／尚未回報';
 }
 
 function statusClass(r) {
@@ -2271,6 +2271,9 @@ watch(() => props.initialTab, (tab) => {
   } else if (tab === 'unpaid') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'unpaid';
+  } else if (tab === 'pending_reconciliation') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'pending_reconciliation';
   } else if (tab === 'renewal') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'renewal';
