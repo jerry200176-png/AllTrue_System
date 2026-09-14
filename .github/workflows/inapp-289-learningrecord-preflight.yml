@@ -1,0 +1,91 @@
+name: In-app #289 LearningRecord preflight (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Install SSH key
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Server-side LearningRecord schema and hash preflight
+        env:
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          db_value() { sed -n "s/^$1=//p" /home/admin/backend/.env | head -n 1; }
+          db_user=$(db_value DB_USERNAME); db_pass=$(db_value DB_PASSWORD); prod_db=$(db_value DB_DATABASE)
+          test -n "$db_user" -a -n "$db_pass" -a -n "$prod_db"
+          backup_dir=/home/admin/backups/sixhour; cutoff=1789280220; selected=''
+          while IFS=$'\t' read -r epoch name; do
+            [ "${epoch%%.*}" -le "$cutoff" ] && selected="$name"
+          done < <(find "$backup_dir" -maxdepth 1 -type f -name 'alltrue_6h_*.sql.gz' -printf '%T@\t%f\n' | sort -n)
+          test -n "$selected"; snapshot="$backup_dir/$selected"; gzip -t "$snapshot"
+          tmp="alltrue_inapp289_lr_$(date +%s)_$$"
+          cleanup() { mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" -e "DROP DATABASE IF EXISTS \`$tmp\`;" >/dev/null; }
+          trap cleanup EXIT
+          mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" -e "CREATE DATABASE \`$tmp\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          zcat "$snapshot" | mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp"
+          echo "backup_snapshot_sha256=$(sha256sum "$snapshot" | awk '{print $1}')"
+          echo 'table=LearningRecord'
+          mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "
+            SELECT c.COLUMN_NAME,c.COLUMN_TYPE,c.IS_NULLABLE,IFNULL(c.COLUMN_DEFAULT,'<NULL>'),c.EXTRA,
+              IF(b.COLUMN_NAME IS NULL,'no','yes')
+            FROM information_schema.COLUMNS c LEFT JOIN information_schema.COLUMNS b
+              ON b.TABLE_SCHEMA='$tmp' AND b.TABLE_NAME='LearningRecord' AND b.COLUMN_NAME=c.COLUMN_NAME
+            WHERE c.TABLE_SCHEMA='$prod_db' AND c.TABLE_NAME='LearningRecord' ORDER BY c.ORDINAL_POSITION;" \
+            | sed 's/^/column_metadata=/'
+          mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "
+            SELECT COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,IFNULL(COLUMN_DEFAULT,'<NULL>'),EXTRA
+            FROM information_schema.COLUMNS b WHERE b.TABLE_SCHEMA='$tmp' AND b.TABLE_NAME='LearningRecord'
+              AND NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS p WHERE p.TABLE_SCHEMA='$prod_db'
+                AND p.TABLE_NAME='LearningRecord' AND p.COLUMN_NAME=b.COLUMN_NAME) ORDER BY ORDINAL_POSITION;" \
+            | tr '\n' ';' | sed 's/^/backup_only_columns=/'
+          common=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "
+            SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(\\`',c.COLUMN_NAME,'\\` AS CHAR),''<NULL>'')')
+              ORDER BY c.ORDINAL_POSITION SEPARATOR ',CHAR(31),') FROM information_schema.COLUMNS c
+              JOIN information_schema.COLUMNS b ON b.TABLE_SCHEMA='$tmp' AND b.TABLE_NAME='LearningRecord'
+                AND b.COLUMN_NAME=c.COLUMN_NAME WHERE c.TABLE_SCHEMA='$prod_db' AND c.TABLE_NAME='LearningRecord';")
+          test -n "$common"
+          ids='14596,15597,16286,17518,17803,17861,17902,18413,19053'
+          source_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($ids);")
+          test "$source_count" = 9; echo "source_row_count=$source_count"
+          echo "source_hashes=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT id,SHA2(CONCAT($common),256) FROM LearningRecord WHERE id IN ($ids) ORDER BY id;" | tr '\n' ';')"
+          echo "source_aggregate_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($common),256)) ORDER BY id SEPARATOR CHAR(10)),256) FROM LearningRecord WHERE id IN ($ids);")"
+          echo "production_id_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($ids);")"
+          echo "production_course_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE StudentClassID=2817;")"
+          echo "production_session_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN (25919,25920,25921,25922,27641,25923,25926,25924,25925);")"
+          for table in learning_record_teacher_comments learning_record_feedbacks; do
+            exists=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$prod_db' AND TABLE_NAME='$table';")
+            [ "$exists" = 1 ] || { echo "downstream_table=$table absent_in_production"; continue; }
+            cols=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(\\`',COLUMN_NAME,'\\` AS CHAR),''<NULL>'')') ORDER BY ORDINAL_POSITION SEPARATOR ',CHAR(31),') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$prod_db' AND TABLE_NAME='$table';")
+            echo "downstream_table=$table production_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT COUNT(*) FROM \`$table\` WHERE learning_record_id IN ($ids);") production_hash=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$prod_db" --batch --skip-column-names -e "SELECT SHA2(GROUP_CONCAT(SHA2(CONCAT($cols),256) ORDER BY id SEPARATOR CHAR(10)),256) FROM \`$table\` WHERE learning_record_id IN ($ids);")"
+            echo "downstream_table=$table backup_count=$(mysql -h127.0.0.1 -u"$db_user" -p"$db_pass" "$tmp" --batch --skip-column-names -e "SELECT COUNT(*) FROM \`$table\` WHERE learning_record_id IN ($ids);" 2>/dev/null || echo 0)"
+          done
+          echo 'excluded_30444=false_for_learning_records=true'
+          echo 'read_only=true'
+          REMOTE
