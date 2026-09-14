@@ -1,3 +1,8 @@
+## 2026-09-14 — fix(calendar): 已完成堂數的未來預排不再誤顯示
+<!-- release-notes: staff_update=staff-2026-09-14-calendar-contract-cap -->
+- 堂數制課程已依點名與扣堂資料完成合約堂數時，行事曆不再顯示遺留的未來預排；課程查找與行事曆使用一致的有效堂次集合。
+- 已上課、請假、改期、點名、評量、扣堂、帳務、課程資料與既有排課不會因本次顯示修正被改寫。
+
 ## 2026-09-13 — improved(teacher-eligibility): 正職薪資要件的提示更清楚
 <!-- release-notes: staff_update=staff-2026-09-13-teacher-eligibility-clarity -->
 - 正職薪資要件在載入、無符合老師或暫時無法載入時，會顯示一致的提示與下一步；失敗可在原頁重試。

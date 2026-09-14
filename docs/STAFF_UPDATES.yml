@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-14-calendar-contract-cap
+    published_at: "2026-09-14"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 已完成堂數的未來預排不再誤顯示
+    summary: 已完成堂數的課程，行事曆與課程查找會使用一致的有效堂次集合。
+    items:
+      - category: fixed
+        text: 若遺留的未來預排已超出已完成的堂數，行事曆不再顯示它；已上課、請假與改期歷史仍保留。
+      - category: improved
+        text: 本次只修正堂次顯示一致性，不改課程資料、點名、評量、扣堂、帳務、權限或 API。
+    source_refs:
+      - "changelog:2026-09-14:calendar-contract-cap"
+      - "in-app:#289"
+      - "github:#2799"
+
   - id: staff-2026-09-13-teacher-eligibility-clarity
     published_at: "2026-09-13"
     audiences:
