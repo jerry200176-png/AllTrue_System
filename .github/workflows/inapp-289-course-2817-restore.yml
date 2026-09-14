@@ -110,7 +110,7 @@ jobs:
             mysqlq "$1" "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(',CHAR(96),p.COLUMN_NAME,CHAR(96),' AS CHAR),''<NULL>'')') ORDER BY p.ORDINAL_POSITION SEPARATOR ',CHAR(31),')
               FROM information_schema.COLUMNS p JOIN information_schema.COLUMNS b
                 ON b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$2' AND b.COLUMN_NAME=p.COLUMN_NAME
-              WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$2';"
+              WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$2';" || true
           }
           schema_report() {
             local table="$1"
