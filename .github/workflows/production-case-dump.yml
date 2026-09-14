@@ -317,6 +317,10 @@ jobs:
                 $redact = function ($snapshot) {{
                   if (is_string($snapshot)) $snapshot = json_decode($snapshot, true);
                   if (!is_array($snapshot)) return null;
+                  $note = (string) ($snapshot['Note'] ?? '');
+                  $noteKind = $note === '' ? 'none'
+                    : (str_contains($note, 'projected-monthly-materialized') ? 'projection'
+                    : (str_contains($note, 'auto-materialized-from-schedule') ? 'schedule' : 'other'));
                   return [
                     'id'=>isset($snapshot['id']) ? (int) $snapshot['id'] : null,
                     'class_id'=>isset($snapshot['StudentClassID']) ? (int) $snapshot['StudentClassID'] : null,
@@ -326,6 +330,7 @@ jobs:
                     'end_time'=>isset($snapshot['EndTime']) ? substr((string) $snapshot['EndTime'], 0, 5) : null,
                     'status'=>$snapshot['Status'] ?? null,
                     'is_contract_exception'=>isset($snapshot['IsContractException']) ? (bool) $snapshot['IsContractException'] : null,
+                    'note_kind'=>$noteKind,
                   ];
                 }};
                 return ['id'=>(int) $r->id, 'session_id'=>(int) $r->session_id,
