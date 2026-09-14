@@ -4,6 +4,39 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-14-schedule-discrepancy-a11y",
+    "publishedAt": "2026-09-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課表回報狀態提示更容易被讀取",
+    "summary": "載入、錯誤與無回報狀態補上正確的輔助科技提示，處理動作與資料規則維持不變。",
+    "items": [
+      "主任在課表回報頁可由輔助科技即時辨識載入進度、錯誤與空白結果。",
+      "本次只改善提示呈現，不改回報 API、處理動作、權限、課務或帳務規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任在課表回報頁可由輔助科技即時辨識載入進度、錯誤與空白結果。",
+          "本次只改善提示呈現，不改回報 API、處理動作、權限、課務或帳務規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-14:schedule-discrepancy-a11y",
+      "github:#2654"
+    ],
+    "date": "2026-09-14",
+    "version": "2026.09.14"
+  },
+  {
     "id": "staff-2026-09-14-duplicate-review-clarity",
     "publishedAt": "2026-09-14",
     "effectiveAt": null,
