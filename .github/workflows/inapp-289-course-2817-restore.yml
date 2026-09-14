@@ -199,6 +199,7 @@ jobs:
             sed -n '1,8p' "$LR_HASH_ERR"
             exit 1
           fi
+          echo 'hash_capture=expressions_ready'
           canonical_session_agg() {
             local input="$1" session_id expected_hash count=0
             while IFS=$'\t' read -r session_id expected_hash; do
@@ -238,10 +239,19 @@ jobs:
           session_count="$(scalar "$TMP_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")"
           lr_count="$(scalar "$TMP_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
           excluded_count="$(scalar "$TMP_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444 AND StudentClassID=2817;')"
+          echo "source_counts_read parent=$parent_count sessions=$session_count learning_records=$lr_count excluded=$excluded_count"
           [ "$parent_count" = 1 ] && [ "$session_count" = 9 ] && [ "$lr_count" = 9 ] && [ "$excluded_count" = 1 ] || { echo '::error::source_row_count_mismatch'; exit 1; }
+          echo 'source_hashes=parent_begin'
           parent_hash="$(scalar "$TMP_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
+          echo 'source_hashes=parent_done'
           session_lines="$(mysqlq "$TMP_DB" "SELECT id,SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id IN ($SESSIONS) ORDER BY FIELD(id,$SESSIONS);")"
-          session_agg="$(canonical_session_agg "$session_lines")"
+          echo "source_hashes=session_lines_read count=$(printf '%s\n' "$session_lines" | awk 'NF {n++} END {print n+0}')"
+          if ! session_agg="$(canonical_session_agg "$session_lines")"; then
+            echo '::error::source_session_canonicalization_failed'
+            echo "source_session_lines=$(printf '%s' "$session_lines" | tr '\n' ';')"
+            exit 1
+          fi
+          echo 'source_hashes=session_done'
           lr_lines="$(mysqlq "$TMP_DB" "SELECT id,SHA2(CONCAT($LR_EXPR),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS) ORDER BY FIELD(id,$LEARNING_RECORDS);")"
           lr_agg="$(scalar "$TMP_DB" "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
           echo "source_parent_count=$parent_count source_parent_hash=$parent_hash"
