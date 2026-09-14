@@ -30,6 +30,7 @@ const [{ createApp, h }, styles] = await Promise.all([
 ]);
 
 const pageModules = {
+  app: () => import('../../../src/App.vue'),
   inbox: () => import('../../../src/pages/NotificationsCenter.vue'),
   students: () => import('../../../src/pages/StudentsList.vue'),
   director: () => import('../../../src/pages/DirectorDashboard.vue'),
@@ -61,6 +62,9 @@ void styles;
 createApp({
   name: 'UiFoundationPilotMount',
   setup() {
+    if (page === 'app') {
+      return () => h(PageComponent);
+    }
     if (page === 'course-edit') {
       return () => h(PageComponent, {
         modelValue: { class_type: mode === 'paid' ? 'one_on_one' : 'tutoring', rate_per_30min: 1500, rate_unit: 'session', sessions_purchased: 8 },

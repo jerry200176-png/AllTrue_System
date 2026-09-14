@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.14",
     "date": "2026-09-14",
     "title": "2026.09.14 草稿（未發布）",
-    "summary": "已完成堂數的未來預排不再誤顯示；課表回報狀態提示更容易被讀取",
+    "summary": "主任繳費入口回到帳務中心；已完成堂數的未來預排不再誤顯示",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "主任繳費入口回到帳務中心",
           "已完成堂數的未來預排不再誤顯示"
         ]
       },
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "主任繳費入口回到帳務中心",
       "已完成堂數的未來預排不再誤顯示",
       "課表回報狀態提示更容易被讀取",
       "重複課程審核的狀態與重試更清楚",
