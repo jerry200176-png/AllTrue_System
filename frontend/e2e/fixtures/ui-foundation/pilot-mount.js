@@ -51,6 +51,7 @@ const pageModules = {
   chat: () => import('../../../src/pages/ChatPage.vue'),
   'line-integration': () => import('../../../src/pages/LineIntegration.vue'),
   'subject-settings': () => import('../../../src/pages/SubjectSettingsPage.vue'),
+  'branch-management': () => import('../../../src/pages/BranchManagementPage.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -138,6 +139,9 @@ createApp({
     }
     if (page === 'subject-settings') {
       return () => h(PageComponent, { branchId: 1, userRole: role });
+    }
+    if (page === 'branch-management') {
+      return () => h(PageComponent, { branchId: 1, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
     }
     if (page === 'chat') {
       return () => h(PageComponent, { branchId: 1, userId: 9001, userRole: 'director' });
