@@ -310,6 +310,28 @@ jobs:
               ->orderBy('id')->get(['id', 'StudentClassID as class_id', 'Status as status'])
               ->map(fn ($r) => ['id'=>(int) $r->id, 'class_id'=>(int) $r->class_id,
                 'status'=>(string) ($r->status ?? '')])->values()->all() : null;
+            $out['session_audit_snapshots'] = $tableExists('schedule_audit_logs') ? $db::table('schedule_audit_logs')
+              ->whereIn('session_id', $baselineSessionIds)->orderBy('session_id')->orderBy('id')
+              ->get(['id', 'session_id', 'action_type', 'old_data', 'new_data', 'created_at'])
+              ->map(function ($r) {{
+                $redact = function ($snapshot) {{
+                  if (is_string($snapshot)) $snapshot = json_decode($snapshot, true);
+                  if (!is_array($snapshot)) return null;
+                  return [
+                    'id'=>isset($snapshot['id']) ? (int) $snapshot['id'] : null,
+                    'class_id'=>isset($snapshot['StudentClassID']) ? (int) $snapshot['StudentClassID'] : null,
+                    'subject_id'=>isset($snapshot['SubjectID']) ? (int) $snapshot['SubjectID'] : null,
+                    'session_date'=>$snapshot['SessionDate'] ?? null,
+                    'start_time'=>isset($snapshot['StartTime']) ? substr((string) $snapshot['StartTime'], 0, 5) : null,
+                    'end_time'=>isset($snapshot['EndTime']) ? substr((string) $snapshot['EndTime'], 0, 5) : null,
+                    'status'=>$snapshot['Status'] ?? null,
+                    'is_contract_exception'=>isset($snapshot['IsContractException']) ? (bool) $snapshot['IsContractException'] : null,
+                  ];
+                }};
+                return ['id'=>(int) $r->id, 'session_id'=>(int) $r->session_id,
+                  'action_type'=>(string) $r->action_type, 'created_at'=>$r->created_at,
+                  'old'=>$redact($r->old_data), 'new'=>$redact($r->new_data)];
+              })->values()->all() : null;
             $out['related_row_counts'] = [
               'attendance_by_course'=>$countForCourse('StudentSingIn', 'StudentClassID'),
               'attendance_by_preincident_session'=>$countForSessions('StudentSingIn', 'ClassSessionID'),

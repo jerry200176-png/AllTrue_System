@@ -207,9 +207,20 @@ jobs:
                     = '$target_student_subject_sha256'
                 GROUP BY sc.ID, sc.TeacherID, st.CampusID;")
             if [ "$verified_target" = $'2817\t67\t16\t10\t2026-07-30\t2026-09-17' ]; then
+              target_course=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+                --batch --skip-column-names -e "
+                  SELECT ID, StudentID, SubjectID, TeacherID, PackageID,
+                         COALESCE(ScheduleMode, ''), COALESCE(StartDate, ''), COALESCE(EndDate, ''),
+                         COALESCE(SessionCount, 0), COALESCE(Stop, 0)
+                  FROM \`StudentClass\` WHERE ID = 2817;")
+              if [ "$(printf '%s\n' "$target_course" | sed '/^$/d' | wc -l | tr -d '[:space:]')" -ne 1 ]; then
+                echo 'manifest_result=verified_target_course_snapshot_mismatch_fail_closed' >&2
+                exit 1
+              fi
               target_sessions=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
                 --batch --skip-column-names -e "
-                  SELECT id, SessionDate, TIME_FORMAT(StartTime, '%H:%i'), TIME_FORMAT(EndTime, '%H:%i'), Status
+                  SELECT id, StudentClassID, SubjectID, SessionDate, TIME_FORMAT(StartTime, '%H:%i'), TIME_FORMAT(EndTime, '%H:%i'),
+                         Status, COALESCE(IsContractException, 0)
                   FROM \`ClassSession\`
                   WHERE StudentClassID = 2817
                   ORDER BY SessionDate, StartTime, id;")
@@ -219,10 +230,23 @@ jobs:
                 exit 1
               fi
               printf 'verified_target_course_id=2817\n'
-              printf '%s\n' "$target_sessions" | while IFS=$'\t' read -r target_session_id target_session_date target_start_time target_end_time target_status; do
+              IFS=$'\t' read -r target_course_id target_student_id target_subject_id target_teacher_id target_package_id target_schedule_mode target_start_date target_end_date target_session_count target_stop <<< "$target_course"
+              printf 'verified_target_course=%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$target_course_id" "$target_student_id" "$target_subject_id" "$target_teacher_id" "$target_package_id" "$target_schedule_mode" "$target_start_date" "$target_end_date" "$target_session_count" "$target_stop"
+              printf '%s\n' "$target_sessions" | while IFS=$'\t' read -r target_session_id target_session_course_id target_session_subject_id target_session_date target_start_time target_end_time target_status target_contract_exception; do
                 case "$target_session_id" in *[!0-9]*|'') echo 'manifest_result=invalid_target_session_identifier_fail_closed' >&2; exit 1 ;; esac
-                printf 'verified_target_session=%s,%s,%s,%s,%s\n' "$target_session_id" "$target_session_date" "$target_start_time" "$target_end_time" "$target_status"
+                printf 'verified_target_session=%s,%s,%s,%s,%s,%s,%s,%s\n' "$target_session_id" "$target_session_course_id" "$target_session_subject_id" "$target_session_date" "$target_start_time" "$target_end_time" "$target_status" "$target_contract_exception"
               done
+              target_learning_records=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+                --batch --skip-column-names -e "
+                  SELECT id, StudentClassID, ClassSessionID
+                  FROM \`LearningRecord\`
+                  WHERE StudentClassID = 2817 OR ClassSessionID IN (SELECT id FROM \`ClassSession\` WHERE StudentClassID = 2817)
+                  ORDER BY id;")
+              if [ -n "$target_learning_records" ]; then
+                printf '%s\n' "$target_learning_records" | while IFS=$'\t' read -r learning_record_id learning_record_course_id learning_record_session_id; do
+                  printf 'verified_target_learning_record=%s,%s,%s\n' "$learning_record_id" "$learning_record_course_id" "$learning_record_session_id"
+                done
+              fi
               printf 'manifest_result=single_target_found\n'
               exit 0
             fi
