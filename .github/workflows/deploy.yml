@@ -72,6 +72,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
+      already_deployed: ${{ steps.resolve.outputs.already_deployed }}
     steps:
       - name: Validate target SHA and CI evidence
         id: resolve
@@ -83,6 +84,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          echo "already_deployed=false" >> "$GITHUB_OUTPUT"
           TARGET_SHA="${TARGET_SHA_INPUT,,}"
           if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Activation requires a full 40-character commit SHA."
@@ -115,6 +117,22 @@ jobs:
             if [[ "$CI_OK" -lt 1 ]]; then
               echo "::error::The exact target SHA has no successful main CI run; activation refused."
               exit 1
+            fi
+
+            if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+              DEPLOY_RUNS="$(gh api "/repos/${REPO}/actions/workflows/deploy.yml/runs?branch=main&head_sha=${TARGET_SHA}&status=completed&per_page=100")"
+              ALREADY_DEPLOYED="$(DEPLOY_RUNS="$DEPLOY_RUNS" python3 - <<'PY'
+          import json
+          import os
+
+          runs = json.loads(os.environ["DEPLOY_RUNS"]).get("workflow_runs", [])
+          print(any(run.get("name") == "Deploy to Pi" and run.get("conclusion") == "success" for run in runs))
+          PY
+              )"
+              if [[ "$ALREADY_DEPLOYED" == "True" ]]; then
+                echo "Exact-SHA deployment already succeeded; duplicate handoff will not activate production again."
+                echo "already_deployed=true" >> "$GITHUB_OUTPUT"
+              fi
             fi
           fi
 
@@ -542,6 +560,7 @@ jobs:
                   is_founder_approval_eligible,
                   is_deployable_path,
                   is_production_activation_sensitive_path,
+                  classify_scope,
                   parse_declaration,
               )
 
@@ -734,7 +753,7 @@ jobs:
   production-activation:
     name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && (((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && needs.classify-activation.outputs.mode == 'manual')) }}
+    if: ${{ always() && needs.resolve-target.outputs.already_deployed != 'true' && needs.classify-activation.result == 'success' && (((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && needs.classify-activation.outputs.mode == 'manual')) }}
     environment:
       name: production-activation
     runs-on: ubuntu-latest
@@ -871,7 +890,7 @@ jobs:
   deploy:
     name: Deploy to Production
     needs: [resolve-target, detect-deployable, classify-activation, production-activation]
-    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
+    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.outputs.already_deployed != 'true' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
     # Serialize only the side-effecting executor. Read-only preflight and

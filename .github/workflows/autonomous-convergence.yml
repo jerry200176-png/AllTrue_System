@@ -66,7 +66,28 @@ jobs:
             fi
           fi
 
+          TASK_ID="unknown"
+          if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
+            TASK_ID="${{ github.event.pull_request.head.ref }}"
+          elif [[ -n "${PR_NUMBER:-}" ]]; then
+            TASK_ID="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}" --jq '.head.ref')"
+          fi
+          TASK_ID="$(TASK_ID="$TASK_ID" python3 - <<'PY'
+          import os
+          import re
+          branch = os.environ["TASK_ID"]
+          match = re.search(r"(?:task[-/])([^/]+)$", branch)
+          print(match.group(1) if match else (branch.rsplit("/", 1)[-1] or "unknown"))
+          PY
+          )"
+
           MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+          IDEMPOTENCY_KEY="$(TASK_ID="$TASK_ID" MAIN_SHA="$MAIN_SHA" python3 - <<'PY'
+          import hashlib
+          import os
+          print(hashlib.sha256(f"{os.environ['TASK_ID']}:{os.environ['MAIN_SHA']}".encode()).hexdigest())
+          PY
+          )"
           CI_JSON_FILE="$(mktemp)"
           DEPLOY_JSON_FILE="$(mktemp)"
           trap 'rm -f "$CI_JSON_FILE" "$DEPLOY_JSON_FILE"' EXIT
@@ -157,6 +178,8 @@ jobs:
             gh api --method POST "/repos/${REPO}/dispatches" \
               -f event_type=autonomous-production-deploy \
               -f "client_payload[target_sha]=${MAIN_SHA}" \
+              -f "client_payload[task_id]=${TASK_ID}" \
+              -f "client_payload[idempotency_key]=${IDEMPOTENCY_KEY}" \
               -f "client_payload[source]=autonomous-main-convergence"
-            echo "Dispatched autonomous production handoff for exact main SHA ${MAIN_SHA}; deploy.yml remains the only production executor."
+            echo "Dispatched autonomous production handoff for exact main SHA ${MAIN_SHA} (idempotency ${IDEMPOTENCY_KEY}); deploy.yml remains the only production executor."
           fi

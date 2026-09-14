@@ -106,6 +106,7 @@ jobs:
           exit 0
 
       - name: Run UI smoke
+        id: run-smoke
         if: steps.detect.outputs.run == 'true'
         working-directory: frontend
         env:
@@ -117,6 +118,41 @@ jobs:
           SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
         run: npm run test:e2e
 
+      - name: Record explicit UI verification outcome
+        if: always()
+        env:
+          RUN_SMOKE: ${{ steps.detect.outputs.run }}
+          SMOKE_OUTCOME: ${{ steps.run-smoke.outcome }}
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+          SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
+          SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
+        run: |
+          set -euo pipefail
+          status=NOT_APPLICABLE
+          reason="no frontend diff"
+          relevant=false
+          if [[ "$RUN_SMOKE" == "true" ]]; then
+            relevant=true
+            if [[ "$SMOKE_OUTCOME" == "failure" || "$SMOKE_OUTCOME" == "cancelled" ]]; then
+              status=FAILED; reason="Playwright did not complete successfully"
+            elif [[ -z "$SMOKE_BASE_URL" || -z "$SMOKE_TEACHER_USER" || -z "$SMOKE_TEACHER_PASS" || -z "$SMOKE_DIRECTOR_USER" || -z "$SMOKE_DIRECTOR_PASS" ]]; then
+              status=SKIPPED; reason="authenticated smoke credentials unavailable; no credentials were introduced"
+            elif [[ "$SMOKE_OUTCOME" != "success" ]]; then
+              status=FAILED; reason="Playwright did not execute"
+            else
+              status=PASSED; reason="authenticated Playwright suite completed"
+            fi
+          fi
+          python3 scripts/agent-factory/receipt.py init \
+            --task-id "ui-smoke-${GITHUB_RUN_ID}" --session-id "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --sha "$GITHUB_SHA" --output "$RUNNER_TEMP/ui-smoke-receipt.json" \
+            --acceptance "authenticated UI smoke"
+          args=(--output "$RUNNER_TEMP/ui-smoke-receipt.json" --name "UI Smoke (Playwright)" --status "$status" --reason "$reason")
+          [[ "$relevant" == "true" ]] && args+=(--acceptance-relevant)
+          python3 scripts/agent-factory/receipt.py check "${args[@]}"
+
       - name: Upload Playwright report
         if: ${{ steps.detect.outputs.run == 'true' && !cancelled() }}
         uses: actions/upload-artifact@v7
@@ -125,3 +161,12 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
+
+      - name: Upload verification outcome
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-smoke-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ui-smoke-receipt.json
+          retention-days: 90
+          if-no-files-found: error

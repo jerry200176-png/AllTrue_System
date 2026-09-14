@@ -1,0 +1,45 @@
+name: Agent Factory Receipt
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+  workflow_run:
+    workflows: ["Autonomous safe merge", "Presubmit Gate", "CI — PHPUnit Tests", "UI Smoke (Playwright)", "Deploy to Pi"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  receipt:
+    name: Write append-only task receipt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Collect receipt and event
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/agent-receipt"
+          python3 scripts/agent-factory/receipt.py collect \
+            --event "$GITHUB_EVENT_PATH" --repo "$REPO" --run-id "$RUN_ID" \
+            --output "$RUNNER_TEMP/agent-receipt/receipt.json" \
+            --events "$RUNNER_TEMP/agent-receipt/events.jsonl"
+      - name: Upload immutable receipt evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/agent-receipt/
+          retention-days: 90
+          if-no-files-found: error
