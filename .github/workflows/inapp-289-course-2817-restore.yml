@@ -153,9 +153,19 @@ jobs:
             engine="$(scalar "$PROD_DB" "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA='$PROD_DB' AND TABLE_NAME='$table';")"
             [ "$engine" = InnoDB ] || { echo "::error::non_innodb_table=$table engine=$engine"; exit 1; }
           done
-          PARENT_COLS="$(quote_cols "$PROD_DB" StudentClass)"; SESSION_COLS="$(quote_cols "$PROD_DB" ClassSession)"; LR_COLS="$(quote_cols "$PROD_DB" LearningRecord)"
-          test -n "$PARENT_COLS"; test -n "$SESSION_COLS"; test -n "$LR_COLS"
-          PARENT_EXPR="$(hash_expr "$PROD_DB" StudentClass)"; SESSION_EXPR="$(hash_expr "$PROD_DB" ClassSession)"; LR_EXPR="$(hash_expr "$PROD_DB" LearningRecord)"
+          PARENT_COLS="$(quote_cols "$PROD_DB" StudentClass)" || { echo '::error::studentclass_column_query_failed'; exit 1; }
+          SESSION_COLS="$(quote_cols "$PROD_DB" ClassSession)" || { echo '::error::classsession_column_query_failed'; exit 1; }
+          LR_COLS="$(quote_cols "$PROD_DB" LearningRecord)" || { echo '::error::learningrecord_column_query_failed'; exit 1; }
+          [ -n "$PARENT_COLS" ] || { echo '::error::studentclass_common_columns_empty'; exit 1; }
+          [ -n "$SESSION_COLS" ] || { echo '::error::classsession_common_columns_empty'; exit 1; }
+          [ -n "$LR_COLS" ] || { echo '::error::learningrecord_common_columns_empty'; exit 1; }
+          echo "schema_common_column_counts student_class=$(printf '%s' "$PARENT_COLS" | tr ',' '\\n' | wc -l) class_session=$(printf '%s' "$SESSION_COLS" | tr ',' '\\n' | wc -l) learning_record=$(printf '%s' "$LR_COLS" | tr ',' '\\n' | wc -l)"
+          PARENT_EXPR="$(hash_expr "$PROD_DB" StudentClass)" || { echo '::error::studentclass_hash_expression_failed'; exit 1; }
+          SESSION_EXPR="$(hash_expr "$PROD_DB" ClassSession)" || { echo '::error::classsession_hash_expression_failed'; exit 1; }
+          LR_EXPR="$(hash_expr "$PROD_DB" LearningRecord)" || { echo '::error::learningrecord_hash_expression_failed'; exit 1; }
+          [ -n "$PARENT_EXPR" ] || { echo '::error::studentclass_hash_expression_empty'; exit 1; }
+          [ -n "$SESSION_EXPR" ] || { echo '::error::classsession_hash_expression_empty'; exit 1; }
+          [ -n "$LR_EXPR" ] || { echo '::error::learningrecord_hash_expression_empty'; exit 1; }
           canonical_session_agg() {
             local input="$1" session_id expected_hash count=0
             while IFS=$'\t' read -r session_id expected_hash; do
