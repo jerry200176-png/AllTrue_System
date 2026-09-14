@@ -1,3 +1,8 @@
+## 2026-09-14 — improved(schedule-discrepancy): 課表回報狀態提示更容易被讀取
+<!-- release-notes: staff_update=staff-2026-09-14-schedule-discrepancy-a11y -->
+- 課表回報的載入、錯誤與無回報狀態補上正確的輔助科技提示，主任可在原頁辨識目前狀態。
+- 本次僅改善提示呈現，不改回報資料、API、處理動作、權限或任何課務規則。
+
 ## 2026-09-14 — improved(duplicate-review): 重複課程審核的狀態與重試更清楚
 <!-- release-notes: staff_update=staff-2026-09-14-duplicate-review-clarity -->
 - 重複課程審核在載入、暫時無法載入與沒有待審核案件時，會顯示一致且可辨識的狀態；失敗可在原頁重試。

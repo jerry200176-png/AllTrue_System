@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-14-schedule-discrepancy-a11y
+    published_at: "2026-09-14"
+    audiences:
+      - director
+    importance: digest
+    title: 課表回報狀態提示更容易被讀取
+    summary: 載入、錯誤與無回報狀態補上正確的輔助科技提示，處理動作與資料規則維持不變。
+    items:
+      - category: improved
+        text: 主任在課表回報頁可由輔助科技即時辨識載入進度、錯誤與空白結果。
+      - category: improved
+        text: 本次只改善提示呈現，不改回報 API、處理動作、權限、課務或帳務規則。
+    source_refs:
+      - "changelog:2026-09-14:schedule-discrepancy-a11y"
+      - "github:#2654"
+
   - id: staff-2026-09-14-binding-mobile-clarity
     published_at: "2026-09-14"
     audiences:

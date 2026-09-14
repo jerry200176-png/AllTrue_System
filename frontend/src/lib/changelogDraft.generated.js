@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.14",
     "date": "2026-09-14",
     "title": "2026.09.14 草稿（未發布）",
-    "summary": "已完成堂數的未來預排不再誤顯示；重複課程審核的狀態與重試更清楚",
+    "summary": "已完成堂數的未來預排不再誤顯示；課表回報狀態提示更容易被讀取",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "課表回報狀態提示更容易被讀取",
           "重複課程審核的狀態與重試更清楚",
           "綁定清單在手機更容易查看"
         ]
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "已完成堂數的未來預排不再誤顯示",
+      "課表回報狀態提示更容易被讀取",
       "重複課程審核的狀態與重試更清楚",
       "綁定清單在手機更容易查看"
     ]
