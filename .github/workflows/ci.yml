@@ -108,6 +108,9 @@ jobs:
               - 'frontend/playwright.ui-foundation.config.js'
               - 'frontend/vite.ui-foundation.config.js'
               - 'scripts/check-no-public-ui-fixtures.sh'
+              - 'frontend/src/pages/TeacherEligibilityPage.vue'
+              - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
+              - 'frontend/e2e/teacher-eligibility-playwright.config.js'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:
