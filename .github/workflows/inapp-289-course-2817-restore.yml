@@ -204,9 +204,11 @@ jobs:
             local input="$1"
             local expected=$'25919\tb46083eee3959d9c1eaa32351c6347d92f33cfa9e4c2c90ec5e590754e391fe\n25920\t4cb4c7b69a87b66588045d9cbe7b5f7a40297c4d2bb23fce67bcbc5c92ac0bfc\n25921\t478fb8fa808b08b985ebe7392a4796417ab094d38c77d5fd5974c6d6b8a798db\n25922\td1ea7d69d619577c90309f047c239c4b2d4f12d4fa6192f6c8412d0708c4ebfe\n27641\t91d4e50ab3f1f5b236ebf7f88af927bbd159cb3a6871ba18968798edd522136d\n25923\tccb1e8efc1a747126179206b23b860e6f949c7d9f8c8e66c3afaf7d58d4da27b\n25926\te60060d3c20acbf62673aafa3b1880e6b67ce355825e5d714d8985c5b373d39a\n25924\t031f39e1226fd68ea93addbe469a5e1220283a1efa9514e49055bcea58d9e513\n25925\t79a54fd26cccda7886eb9766d81090afbff37dd6f8e38fb0743b38d393adc7b1'
             local normalized
-            normalized="$(printf '%s\n' "$input" | awk -F '\t' 'NF==2 { sub(/\r$/, "", $2); sub(/[[:space:]]+$/, "", $2); if (n++) printf "\n"; printf "%s\t%s", $1, $2 }')"
-            [ "$(printf '%s\n' "$input" | awk -F '\t' 'NF==2 { n++ } END { print n+0 }')" -eq 9 ] || return 1
-            [ "$normalized" = "$expected" ] || return 1
+            normalized="$(printf '%s\n' "$input" | tr -d '\r')"
+            [ "$(printf '%s\n' "$normalized" | awk -F '\t' 'NF==2 { n++ } END { print n+0 }')" -eq 9 ] || return 1
+            while IFS= read -r expected_line; do
+              printf '%s\n' "$normalized" | grep -Fqx "$expected_line" || return 1
+            done <<< "$expected"
             printf '%s' "$SESSION_AGG_HASH"
           }
           session_hash_guard=''
