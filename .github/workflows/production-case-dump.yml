@@ -289,6 +289,27 @@ jobs:
             ];
             $out['current_class_sessions'] = $sessions;
             $out['current_schedules'] = $schedules;
+            $out['attendance_refs'] = $tableExists('StudentSingIn') ? $db::table('StudentSingIn')
+              ->where(function ($q) use ($courseId, $baselineSessionIds) {{
+                $q->where('StudentClassID', $courseId)->orWhereIn('ClassSessionID', $baselineSessionIds);
+              }})->orderBy('ClassSessionID')->orderBy('id')
+              ->get(['id', 'StudentClassID as class_id', 'ClassSessionID as session_id', 'Status as status', 'VoidedAt as voided_at'])
+              ->map(fn ($r) => ['id'=>(int) $r->id, 'class_id'=>$r->class_id === null ? null : (int) $r->class_id,
+                'session_id'=>$r->session_id === null ? null : (int) $r->session_id,
+                'status'=>(string) ($r->status ?? ''), 'voided'=>$r->voided_at !== null])->values()->all() : null;
+            $out['deduction_ledger_refs'] = $tableExists('session_deduction_ledger') ? $db::table('session_deduction_ledger')
+              ->where(function ($q) use ($courseId, $baselineSessionIds) {{
+                $q->where('student_class_id', $courseId)->orWhereIn('class_session_id', $baselineSessionIds);
+              }})->orderBy('class_session_id')->orderBy('id')
+              ->get(['id', 'student_class_id as class_id', 'class_session_id as session_id', 'event_type', 'source', 'minutes'])
+              ->map(fn ($r) => ['id'=>(int) $r->id, 'class_id'=>$r->class_id === null ? null : (int) $r->class_id,
+                'session_id'=>$r->session_id === null ? null : (int) $r->session_id,
+                'event_type'=>(string) ($r->event_type ?? ''), 'source'=>(string) ($r->source ?? ''),
+                'minutes'=>$r->minutes === null ? null : (int) $r->minutes])->values()->all() : null;
+            $out['invoice_refs'] = $tableExists('Invoice') ? $db::table('Invoice')->where('StudentClassID', $courseId)
+              ->orderBy('id')->get(['id', 'StudentClassID as class_id', 'Status as status'])
+              ->map(fn ($r) => ['id'=>(int) $r->id, 'class_id'=>(int) $r->class_id,
+                'status'=>(string) ($r->status ?? '')])->values()->all() : null;
             $out['related_row_counts'] = [
               'attendance_by_course'=>$countForCourse('StudentSingIn', 'StudentClassID'),
               'attendance_by_preincident_session'=>$countForSessions('StudentSingIn', 'ClassSessionID'),
