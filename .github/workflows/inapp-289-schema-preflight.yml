@@ -1,5 +1,7 @@
 name: In-app #289 schema-complete preflight (read-only)
 
+# governance-capability: non-production
+
 on:
   workflow_dispatch:
 
