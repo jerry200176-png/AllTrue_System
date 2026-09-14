@@ -63,14 +63,17 @@ jobs:
           BACKUP_SHA: ${{ inputs.backup_sha256 }}
         run: |
           set -euo pipefail
-          [[ "$MODE" == dry-run || "$MODE" == execute ]]
-          [[ "$BACKUP_SHA" == 66007292e0226dca9606c2d08be4b0d8f58de3861d70e3b9afa74717d63d7325 ]]
-          if [[ "$MODE" == execute ]]; then
-            [[ "$PHRASE" == I_APPROVE_2817_HISTORICAL_RESTORE ]]
+          MODE_CLEAN="$(printf '%s' "$MODE" | tr -d '\r\n')"
+          PHRASE_CLEAN="$(printf '%s' "$PHRASE" | tr -d '\r\n')"
+          BACKUP_SHA_CLEAN="$(printf '%s' "$BACKUP_SHA" | tr -d '\r\n')"
+          [[ "$MODE_CLEAN" == dry-run || "$MODE_CLEAN" == execute ]]
+          [[ "$BACKUP_SHA_CLEAN" == 66007292e0226dca9606c2d08be4b0d8f58de3861d70e3b9afa74717d63d7325 ]]
+          if [[ "$MODE_CLEAN" == execute ]]; then
+            [[ "$PHRASE_CLEAN" == I_APPROVE_2817_HISTORICAL_RESTORE ]]
           else
-            [[ "$PHRASE" == DRY_RUN_2817_HISTORICAL_RESTORE ]]
+            [[ "$PHRASE_CLEAN" == DRY_RUN_2817_HISTORICAL_RESTORE ]]
           fi
-          echo "founder_gate=passed mode=$MODE scope=course_2817 approved_inserts=19 dependent_writes=0"
+          echo "founder_gate=passed mode=$MODE_CLEAN scope=course_2817 approved_inserts=19 dependent_writes=0"
 
       - name: Run bounded server-side restore and read-back
         env:
