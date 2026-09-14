@@ -178,6 +178,40 @@ export const staffUpdates = [
     "version": "2026.09.14"
   },
   {
+    "id": "staff-2026-09-14-billing-journey-entry",
+    "publishedAt": "2026-09-14",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任繳費入口回到帳務中心",
+    "summary": "繳費明細會帶著學生與課程脈絡前往帳務中心，回報、確認入帳與退回集中在同一個工作入口。",
+    "items": [
+      "主任可從總覽直接前往帳務中心處理應收、已回報待查帳與結案待處理帳務；唯讀繳費通知仍可直接查看。",
+      "帳務狀態改用「應收／尚未回報」、「已回報／待查帳」與「已確認入帳」等明確文案，不改付款、收據、金額、續課或權限規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任可從總覽直接前往帳務中心處理應收、已回報待查帳與結案待處理帳務；唯讀繳費通知仍可直接查看。",
+          "帳務狀態改用「應收／尚未回報」、「已回報／待查帳」與「已確認入帳」等明確文案，不改付款、收據、金額、續課或權限規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-14:billing-journey-entry",
+      "github:#2567",
+      "github:#2575"
+    ],
+    "date": "2026-09-14",
+    "version": "2026.09.14"
+  },
+  {
     "id": "staff-2026-09-13-calendar-whole-course-delete-guard",
     "publishedAt": "2026-09-13",
     "effectiveAt": null,
