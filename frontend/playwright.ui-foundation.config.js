@@ -7,7 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /(?:ui-foundation-pages|ui-foundation-role-matrix|learning-records-polish|learning-records-preview|teacher-daily-workflow|teacher-calendar-ux|product-clarity-browser|admissions-workflow-clarity|admissions-clarity|bug-reports-clarity|profile-controls-clarity|question-bank-clarity|attendance-clarity|students-list-clarity|subject-settings-clarity|director-dashboard-shell-clarity|classroom-clarity|chat-shell-clarity|line-integration-clarity|branch-management-clarity)\.spec\.js$/,
+  testMatch: /(?:ui-foundation-pages|ui-foundation-role-matrix|learning-records-polish|learning-records-preview|teacher-daily-workflow|teacher-calendar-ux|product-clarity-browser|admissions-workflow-clarity|admissions-clarity|bug-reports-clarity|profile-controls-clarity|question-bank-clarity|attendance-clarity|students-list-clarity|subject-settings-clarity|director-dashboard-shell-clarity|classroom-clarity|chat-shell-clarity|line-integration-clarity|branch-management-clarity|binding-health-clarity)\.spec\.js$/,
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-15-binding-health-clarity
+    published_at: "2026-09-15"
+    audiences:
+      - director
+    importance: digest
+    title: 綁定健康狀態與控制項更清楚
+    summary: 綁定健康看板更容易辨識目前狀態，常用控制項在鍵盤與手機操作時更清楚。
+    items:
+      - category: improved
+        text: 正常、待確認與需要處理的綁定狀態會以一致的標示呈現，主任可在原頁判斷下一步。
+      - category: improved
+        text: 本次只改善狀態呈現與操作可辨識性，不改資料、API、權限、帳務、點名、評量或其他業務規則。
+    source_refs:
+      - "github:#2913"
+
   - id: staff-2026-09-15-student-import-template
     published_at: "2026-09-15"
     audiences:

@@ -1,3 +1,8 @@
+## 2026-09-15 — improved(binding-health): 綁定健康狀態與控制項更清楚
+<!-- release-notes: staff_update=staff-2026-09-15-binding-health-clarity -->
+- 綁定健康看板會更清楚區分正常、待確認與需要處理的狀態，常用控制項在鍵盤與手機操作時更容易辨識。
+- 本次只改善狀態呈現與測試流程，不改資料、API、權限、帳務、點名、評量或其他業務規則。
+
 ## 2026-09-14 — fix(billing): 主任繳費入口回到帳務中心
 <!-- release-notes: staff_update=staff-2026-09-14-billing-journey-entry -->
 - 主任總覽的繳費明細會帶著學生與課程脈絡前往帳務中心；帳務回報、確認入帳與退回仍集中在同一個工作入口。
