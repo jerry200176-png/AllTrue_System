@@ -1,3 +1,8 @@
+## 2026-09-15 — improved(calendar): 跨校滿席時段提示更清楚
+<!-- release-notes: staff_update=staff-2026-09-15-cross-campus-calendar-hint -->
+- 老師在其他分校已有滿席課程時，日曆會以紅色虛線標示該時段，方便主任安排課程時辨識跨校占用。
+- 本次僅增加唯讀提示，不改排課規則、API payload、權限、課程資料、帳務或任何破壞性操作。
+
 ## 2026-09-15 — improved(binding-health): 綁定健康狀態與控制項更清楚
 <!-- release-notes: staff_update=staff-2026-09-15-binding-health-clarity -->
 - 綁定健康看板會更清楚區分正常、待確認與需要處理的狀態，常用控制項在鍵盤與手機操作時更容易辨識。

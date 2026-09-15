@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-15-cross-campus-calendar-hint
+    published_at: "2026-09-15"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆標示跨校滿席時段
+    summary: 老師在其他分校已有滿席課程時，主任可在日曆上辨識跨校忙碌時段。
+    items:
+      - category: improved
+        text: 日曆以紅色虛線標示老師在其他分校的滿席課程時段，協助安排時避開已占用時間。
+      - category: improved
+        text: 本次僅增加唯讀提示，不改排課規則、資料介面格式、權限、課程資料、帳務或任何破壞性操作。
+    source_refs:
+      - "github:#2919"
+
   - id: staff-2026-09-15-binding-health-clarity
     published_at: "2026-09-15"
     audiences:

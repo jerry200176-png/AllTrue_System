@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.09.15"
   },
   {
+    "id": "staff-2026-09-15-cross-campus-calendar-hint",
+    "publishedAt": "2026-09-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "行事曆標示跨校滿席時段",
+    "summary": "老師在其他分校已有滿席課程時，主任可在日曆上辨識跨校忙碌時段。",
+    "items": [
+      "日曆以紅色虛線標示老師在其他分校的滿席課程時段，協助安排時避開已占用時間。",
+      "本次僅增加唯讀提示，不改排課規則、資料介面格式、權限、課程資料、帳務或任何破壞性操作。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "日曆以紅色虛線標示老師在其他分校的滿席課程時段，協助安排時避開已占用時間。",
+          "本次僅增加唯讀提示，不改排課規則、資料介面格式、權限、課程資料、帳務或任何破壞性操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#2919"
+    ],
+    "date": "2026-09-15",
+    "version": "2026.09.15"
+  },
+  {
     "id": "staff-2026-09-15-binding-health-clarity",
     "publishedAt": "2026-09-15",
     "effectiveAt": null,
