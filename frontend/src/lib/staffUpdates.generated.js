@@ -132,6 +132,38 @@ export const staffUpdates = [
     "version": "2026.09.15"
   },
   {
+    "id": "staff-2026-09-15-course-reconciliation-guidance",
+    "publishedAt": "2026-09-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "堂數待對帳提示提供處理入口",
+    "summary": "課程管理的堂數待對帳提示可直接查看既有對帳明細，處理方向更清楚。",
+    "items": [
+      "課程管理看到「堂數待對帳」時，可直接開啟既有對帳明細查看原因與下一步。",
+      "本次只改善提示呈現與導覽，不改帳務計算、付款資料、權限或破壞性操作。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程管理看到「堂數待對帳」時，可直接開啟既有對帳明細查看原因與下一步。",
+          "本次只改善提示呈現與導覽，不改帳務計算、付款資料、權限或破壞性操作。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-305"
+    ],
+    "date": "2026-09-15",
+    "version": "2026.09.15"
+  },
+  {
     "id": "staff-2026-09-15-binding-health-clarity",
     "publishedAt": "2026-09-15",
     "effectiveAt": null,

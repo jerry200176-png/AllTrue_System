@@ -315,12 +315,14 @@
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-else-if="['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '待對帳結案' : '已結案' }}</span>
-                        <span
+                        <button
                           v-if="c.usage_balance_status === 'review_required'"
-                          class="tag tag-usage-review"
-                          :title="usageBalanceWarningTitle(c)"
+                          type="button"
+                          class="tag tag-usage-review tag-usage-review--action"
+                          :title="`${usageBalanceWarningTitle(c)} 點擊查看對帳明細。`"
                           aria-label="堂數待對帳"
-                        >⚠ 堂數待對帳</span>
+                          @click.stop="openLedgerForCourse(c)"
+                        >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                       </div>
                       <div class="price-line">
                         <span>{{ getRateUnitDisplayLabel(c) }} ${{ sessionPrice(c) }}</span>
@@ -595,12 +597,14 @@
                     <span v-else-if="effectiveClosedReason(hc) === 'settled_pending' || (effectiveClosedReason(hc) === 'contract_amended' && hc.payment_status !== 'paid')" class="tag tag-history tag-history--pending">已結算 · 待對帳</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled' || effectiveClosedReason(hc) === 'contract_amended'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
-                    <span
+                    <button
                       v-if="hc.usage_balance_status === 'review_required'"
-                      class="tag tag-usage-review"
-                      :title="usageBalanceWarningTitle(hc)"
+                      type="button"
+                      class="tag tag-usage-review tag-usage-review--action"
+                      :title="`${usageBalanceWarningTitle(hc)} 點擊查看對帳明細。`"
                       aria-label="堂數待對帳"
-                    >⚠ 堂數待對帳</span>
+                      @click.stop="openLedgerForCourse(hc)"
+                    >⚠ 堂數待對帳 <span class="tag-usage-review__action">查看對帳明細</span></button>
                   </div>
                   <div class="history-course-card__details">
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
@@ -6694,6 +6698,20 @@ onUnmounted(() => {
   background: var(--ds-danger-wash);
   border: 1px solid var(--ds-danger);
   font-weight: 800;
+}
+.tag-usage-review--action {
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.tag-usage-review--action:hover,
+.tag-usage-review--action:focus-visible {
+  background: color-mix(in srgb, var(--ds-danger-wash) 82%, var(--ds-danger));
+}
+.tag-usage-review__action {
+  margin-left: 4px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .cell-remaining {
