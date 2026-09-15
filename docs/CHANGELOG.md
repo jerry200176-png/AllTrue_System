@@ -1,3 +1,8 @@
+## 2026-09-15 — improved(billing): 對帳帳單改以科目與上課日期辨識
+<!-- release-notes: staff_update=staff-2026-09-15-accounting-ledger-context -->
+- 學生帳務對帳的帳單主標改顯示科目與第一堂上課日期，主任可用熟悉的課程脈絡辨識紀錄，不必記帳單編號。
+- 帳單編號仍保留於機器與稽核資料；金額、付款狀態、收款／收據對齊、權限與既有帳務流程不變。
+
 ## 2026-09-15 — improved(calendar): 跨校滿席時段提示更清楚
 <!-- release-notes: staff_update=staff-2026-09-15-cross-campus-calendar-hint -->
 - 老師在其他分校已有滿席課程時，日曆會以紅色虛線標示該時段，方便主任安排課程時辨識跨校占用。
