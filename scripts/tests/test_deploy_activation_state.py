@@ -32,6 +32,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     is_deployable_path,
     is_production_activation_sensitive_path,
     parse_declaration,
+    reconcile_preexisting_pr_provenance,
 )
 
 
@@ -47,6 +48,187 @@ class DeployActivationPolicyTest(unittest.TestCase):
             "declared_risk": risk,
             "declared_tier": tier,
         }
+
+    @staticmethod
+    def _reconciliation_case():
+        parent = "b" * 40
+        tree = "c" * 40
+        target = "a" * 40
+        head = "d" * 40
+        patch = "@@ -1,1 +1,2 @@\n-old\n+new\n"
+        files = [{
+            "filename": "frontend/src/pages/CourseManagement.vue",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 1,
+            "changes": 2,
+            "patch": patch,
+        }]
+        target_commit = {
+            "sha": target,
+            "committer_date": "2026-09-13T09:20:03Z",
+            "parents": [{"sha": parent}],
+            "tree": {"sha": tree},
+        }
+        pr = {
+            "number": 2817,
+            "state": "closed",
+            "merged_at": None,
+            "created_at": "2026-09-13T08:43:57Z",
+            "closed_at": "2026-09-13T11:29:44Z",
+            "head": {"sha": head},
+            "base": {"ref": "main"},
+            "body": "Risk-Class: R1\nAutonomy-Tier: T1",
+        }
+        head_commit = {
+            "committer_date": "2026-09-13T08:43:52Z",
+            "parents": [{"sha": parent}],
+            "tree": {"sha": tree},
+        }
+        evidence = {
+            "check_runs": [
+                {"name": "Required check", "app": {"id": 15368}, "status": "completed", "conclusion": "success"},
+                {"name": "Other check", "app": {"id": 15368}, "status": "completed", "conclusion": "skipped"},
+            ],
+            "check_runs_total": 2,
+            "statuses": [],
+            "statuses_total": 0,
+            "required_status_checks": [
+                {"context": "Required check", "integration_id": 15368},
+            ],
+        }
+        comments = [{
+            "created_at": "2026-09-13T11:29:44Z",
+            "author_association": "OWNER",
+            "body": (
+                "Closing as already integrated: target `aaaaaaaa` contains the same "
+                "change as PR head `dddddddd`."
+            ),
+        }]
+        return {
+            "target_commit": target_commit,
+            "pr": pr,
+            "pr_files": files,
+            "target_files": list(files),
+            "pr_head_commit": head_commit,
+            "check_evidence": evidence,
+            "closeout_comments": comments,
+        }
+
+    def _reconcile(self, **changes):
+        case = self._reconciliation_case()
+        case.update(changes)
+        return reconcile_preexisting_pr_provenance(**case)
+
+    def test_preexisting_exact_equivalent_closed_pr_is_reconciled(self):
+        result = self._reconcile()
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["record"]["provenance_state"], "reconciled")
+        self.assertEqual(result["record"]["reconciliation_basis"], "pre-existing-exact-equivalent")
+        self.assertNotIn("merged_at", result["record"])
+
+        classified = classify_activation_provenance([result["record"]])
+        self.assertFalse(classified["blocked"])
+        self.assertEqual(classified["tier_name"], "T1")
+        self.assertEqual(classified["application_prs"][0]["provenance_state"], "reconciled")
+
+    def test_reconciliation_rejects_pr_created_after_target(self):
+        pr = dict(self._reconciliation_case()["pr"])
+        pr["created_at"] = "2026-09-13T09:20:04Z"
+        result = self._reconcile(pr=pr)
+        self.assertFalse(result["accepted"])
+        self.assertIn("created after", result["reason"])
+
+    def test_reconciliation_rejects_one_line_patch_difference(self):
+        target_files = list(self._reconciliation_case()["target_files"])
+        target_files[0] = dict(target_files[0], patch="@@ -1,1 +1,2 @@\n-old\n+different\n")
+        result = self._reconcile(target_files=target_files)
+        self.assertFalse(result["accepted"])
+        self.assertIn("exact-equivalent", result["reason"])
+
+    def test_reconciliation_rejects_missing_or_failed_required_checks(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["check_runs"] = [{"status": "completed", "conclusion": "failure"}]
+        evidence["check_runs_total"] = 1
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+        result = self._reconcile(check_evidence={"check_runs": [], "check_runs_total": 0, "statuses": [], "statuses_total": 0})
+        self.assertFalse(result["accepted"])
+
+    def test_reconciliation_rejects_green_existing_checks_when_required_context_is_missing(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["required_status_checks"] = [{"context": "Missing required check", "integration_id": 15368}]
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+
+    def test_reconciliation_rejects_required_context_with_wrong_integration_identity(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["required_status_checks"] = [{"context": "Required check", "integration_id": 99999}]
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+
+    def test_reconciliation_rejects_r2_t2_declaration(self):
+        pr = dict(self._reconciliation_case()["pr"])
+        pr["body"] = "Risk-Class: R2\nAutonomy-Tier: T2"
+        result = self._reconcile(pr=pr)
+        self.assertFalse(result["accepted"])
+        self.assertIn("R0/T0 or R1/T1", result["reason"])
+
+    def test_reconciliation_rejects_protected_path(self):
+        protected_files = [{
+            "filename": ".github/workflows/deploy.yml",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 1,
+            "changes": 2,
+            "patch": "@@ -1,1 +1,1 @@\n-old\n+new\n",
+        }]
+        result = self._reconcile(pr_files=protected_files, target_files=protected_files)
+        self.assertFalse(result["accepted"])
+        self.assertIn("reversible", result["reason"])
+
+    def test_reconciliation_rejects_review_rejection_closeout(self):
+        comments = [{
+            "created_at": "2026-09-13T11:29:44Z",
+            "body": "Closed after review rejection; target aaaaaaaa and head dddddddd.",
+        }]
+        result = self._reconcile(closeout_comments=comments)
+        self.assertFalse(result["accepted"])
+        self.assertIn("closeout", result["reason"])
+
+    def test_reconciliation_rejects_untrusted_already_integrated_closeout(self):
+        comments = [{
+            "created_at": "2026-09-13T11:29:44Z",
+            "author_association": "CONTRIBUTOR",
+            "body": (
+                "Closing as already integrated: target `aaaaaaaa` contains the same "
+                "change as PR head `dddddddd`."
+            ),
+        }]
+        result = self._reconcile(closeout_comments=comments)
+        self.assertFalse(result["accepted"])
+        self.assertIn("closeout", result["reason"])
+
+    def test_reconciliation_rejects_message_only_without_patch_proof(self):
+        result = self._reconcile(target_files=[])
+        self.assertFalse(result["accepted"])
+        self.assertIn("exact-equivalent", result["reason"])
+
+    def test_normal_merged_pr_provenance_path_remains_supported(self):
+        result = classify_activation_provenance([
+            self._provenance(
+                2817,
+                ["frontend/src/pages/CourseManagement.vue"],
+                "+display only",
+                1,
+                1,
+            ),
+        ])
+        self.assertFalse(result["blocked"])
+        self.assertEqual(result["tier_name"], "T1")
 
     def test_control_plane_only_t3_does_not_raise_following_t2_app(self):
         result = classify_activation_provenance([
@@ -722,7 +904,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("has_independent_review", self.workflow)
         self.assertNotIn("has_trusted_verifier_evidence", self.workflow)
         self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
-        self.assertNotIn("/check-runs?per_page=100", self.workflow)
+        self.assertIn("/check-runs?per_page=100", self.workflow)
         self.assertIn("is_founder_approval_eligible", self.workflow)
         self.assertIn("bool(provenance.get(\"protected_activation\"))", self.workflow)
 
@@ -744,6 +926,15 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("effective_tier", self.workflow)
         self.assertIn("classify_activation_provenance", self.workflow)
         self.assertNotIn("re.search(r\"(?m)^\\*\\*Risk-Class", self.workflow)
+
+    def test_preexisting_reconciliation_is_explicit_and_message_is_only_a_locator(self):
+        self.assertIn("reconcile_preexisting_pr_provenance", self.workflow)
+        self.assertIn('recovered.append(reconciliation["record"])', self.workflow)
+        self.assertIn("referenced_prs", self.workflow)
+        self.assertIn("Commit-message PR references are only candidate locators", (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
+        self.assertIn("active_main_required_status_checks", self.workflow)
+        self.assertIn('"required_status_checks"', self.workflow)
+        self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
 
     def test_state_machine_has_fail_closed_modes(self):
         policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
