@@ -599,6 +599,69 @@ def _file_evidence(files: Iterable[Mapping[str, object]]) -> dict[str, tuple[obj
     return normalized
 
 
+def aggregate_landed_pr_effects(
+    commit_effects: Iterable[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Aggregate actual landed commit effects by their merged PR.
+
+    A PR's historical branch file list can contain work that landed through a
+    different PR while the branch was being rebased or integrated.  Activation
+    classification must therefore consume only the commit effects in the
+    undeployed main range.  The caller supplies those commit effects in main
+    order; this helper preserves patch order while deterministically unioning
+    their changed paths for each PR.
+    """
+
+    grouped: dict[str, dict[str, object]] = {}
+    for effect in commit_effects:
+        number = str(effect.get("number") or "").strip()
+        if not number:
+            continue
+        group = grouped.setdefault(
+            number,
+            {
+                "number": number,
+                "merged_at": effect.get("merged_at"),
+                "declared_risk": effect.get("declared_risk"),
+                "declared_tier": effect.get("declared_tier"),
+                "paths": [],
+                "patch_parts": [],
+                "patch_complete": True,
+                "metadata_consistent": True,
+            },
+        )
+        for key in ("merged_at", "declared_risk", "declared_tier"):
+            if group[key] != effect.get(key):
+                group["metadata_consistent"] = False
+        paths = effect.get("paths")
+        if not isinstance(paths, list):
+            group["patch_complete"] = False
+        else:
+            group["paths"].extend(str(path).replace("\\", "/") for path in paths if path)
+        patch = effect.get("patch")
+        if not isinstance(patch, str):
+            group["patch_complete"] = False
+        else:
+            commit_sha = str(effect.get("commit_sha") or "").strip()
+            prefix = f"commit {commit_sha}\n" if commit_sha else ""
+            group["patch_parts"].append(prefix + patch)
+        if effect.get("patch_complete") is not True:
+            group["patch_complete"] = False
+
+    aggregated = []
+    for number, group in grouped.items():
+        aggregated.append({
+            "number": number,
+            "merged_at": group["merged_at"],
+            "paths": sorted(set(group["paths"])),
+            "patch": "\n".join(group["patch_parts"]),
+            "patch_complete": bool(group["patch_complete"] and group["metadata_consistent"]),
+            "declared_risk": group["declared_risk"] if group["metadata_consistent"] else None,
+            "declared_tier": group["declared_tier"] if group["metadata_consistent"] else None,
+        })
+    return aggregated
+
+
 def _required_check_contract(value: object) -> list[tuple[str, int | None]] | None:
     if not isinstance(value, list) or not value:
         return None
@@ -1139,6 +1202,7 @@ def effective_tier(
 __all__ = [
     "classify_activation_scope",
     "classify_activation_provenance",
+    "aggregate_landed_pr_effects",
     "reconcile_preexisting_pr_provenance",
     "classify_scope",
     "decide_activation",

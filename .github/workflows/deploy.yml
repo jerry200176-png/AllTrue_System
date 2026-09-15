@@ -572,6 +572,7 @@ jobs:
           try:
               from scripts.governance.autonomy_gate import (
                   classify_activation_provenance,
+                  aggregate_landed_pr_effects,
                   decide_activation,
                   has_rollback_evidence,
                   is_founder_approval_eligible,
@@ -597,7 +598,8 @@ jobs:
               # Each application record still uses classify_activation_scope
               # so its complete effect remains subject to the existing boundary.
               attributed = []
-              seen_prs = set()
+              landed_effects = []
+              seen_reconciled_prs = set()
               attributed_commits = set()
               provenance_complete = True
               for commit in comparison.get("commits") or []:
@@ -605,12 +607,33 @@ jobs:
                   if not commit_sha:
                       provenance_complete = False
                       continue
+                  commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")
+                  actual_files = commit_detail.get("files")
+                  if not isinstance(actual_files, list):
+                      provenance_complete = False
+                      continue
+                  actual_paths = [item.get("filename", "") for item in actual_files]
+                  actual_patch_parts = []
+                  actual_patch_complete = True
+                  for item in actual_files:
+                      path = item.get("filename", "")
+                      item_patch = item.get("patch")
+                      if item_patch is None:
+                          actual_patch_complete = False
+                      actual_patch_parts.append(
+                          f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"
+                      )
+                  actual_effect = {
+                      "commit_sha": commit_sha,
+                      "paths": actual_paths,
+                      "patch": "\n".join(actual_patch_parts),
+                      "patch_complete": actual_patch_complete,
+                  }
                   candidates = gh_api(
                       f"/repos/{repo}/commits/{commit_sha}/pulls",
                       "--header", "Accept: application/vnd.github+json",
                   )
                   if not candidates:
-                      commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")
                       referenced_prs = sorted(set(re.findall(
                           r"(?<![A-Za-z0-9])#([1-9][0-9]*)\b",
                           str((commit.get("commit") or {}).get("message") or ""),
@@ -669,58 +692,39 @@ jobs:
                               print(f"PR #{pr_number} reconciliation evidence unavailable: {error}")
                       if len(recovered) == 1:
                           attributed.append(recovered[0])
-                          seen_prs.add(recovered[0]["number"])
+                          seen_reconciled_prs.add(recovered[0]["number"])
                           attributed_commits.add(commit_sha)
                           continue
                       provenance_complete = False
                   for candidate in candidates:
                       pr_number = candidate.get("number")
-                      if pr_number in seen_prs:
-                          attributed_commits.add(commit_sha)
-                          continue
                       if (
                           not pr_number
                           or candidate.get("base", {}).get("ref") != "main"
                           or not candidate.get("merged_at")
                       ):
                           continue
-                      pr_pages = gh_api(
-                          f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
-                          "--paginate", "--slurp",
-                      )
-                      pr_files = pages(pr_pages)
-                      pr_paths = [item.get("filename", "") for item in pr_files]
+                      if pr_number in seen_reconciled_prs:
+                          attributed_commits.add(commit_sha)
+                          continue
+                      pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
                       if not any(
                           is_deployable_path(path)
                           or is_production_activation_sensitive_path(path)
-                          for path in pr_paths
+                          for path in actual_paths
                       ):
-                          seen_prs.add(pr_number)
                           attributed_commits.add(commit_sha)
                           continue
-                      seen_prs.add(pr_number)
-                      pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
-                      patch_parts = []
-                      patch_complete = True
-                      for item in pr_files:
-                          path = item.get("filename", "")
-                          item_patch = item.get("patch")
-                          if item_patch is None:
-                              patch_complete = False
-                          patch_parts.append(
-                              f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"
-                          )
                       declared_risk, declared_tier = parse_declaration(pr.get("body") or "")
-                      attributed.append({
+                      landed_effects.append({
                           "number": pr_number,
                           "merged_at": pr.get("merged_at"),
-                          "paths": pr_paths,
-                          "patch": "\n".join(patch_parts),
-                          "patch_complete": patch_complete,
+                          **actual_effect,
                           "declared_risk": declared_risk,
                           "declared_tier": declared_tier,
                       })
                       attributed_commits.add(commit_sha)
+              attributed.extend(aggregate_landed_pr_effects(landed_effects))
               if not provenance_complete or not attributed:
                   emit("awaiting-activation", "unknown", "none", "incomplete merged PR provenance; fail closed")
                   sys.exit(0)
