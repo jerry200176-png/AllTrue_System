@@ -13,6 +13,7 @@
         </template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">匯入名單</AtButton>
+          <AtButton shape="rect" variant="ghost" icon="download" aria-label="下載學生名單匯入範例" @click="downloadImportTemplate">下載範例</AtButton>
           <input
             ref="importInput"
             class="student-import-input"
@@ -3193,6 +3194,19 @@ const submitRenewMonthly = async (endDate) => {
 // --- CSV Import ---
 const openImportDialog = () => {
   importInput.value?.click();
+};
+
+// Header-only template: it documents the accepted import shape without
+// shipping placeholder student data that could be accidentally imported.
+const downloadImportTemplate = () => {
+  const csv = '\uFEFF學生姓名,年級,學校,手機\r\n';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '學生名單匯入範例.csv';
+  link.click();
+  URL.revokeObjectURL(url);
 };
 
 const importStudents = async (event) => {
