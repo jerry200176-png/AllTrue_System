@@ -444,6 +444,11 @@ jobs:
               "rev" => "09be02bf8f6ca559d8173091c7171b5a8e2b0189",
               "deploy" => "34927408130",
             ],
+            298 => [
+              "reply" => "已完成並上線：學生名單匯入旁新增「下載範例」，可先下載只有欄位標題的 CSV，再填寫後依原規格匯入；既有匯入流程、API、驗證、權限與學生資料都不變。請重新整理學生管理頁確認；若仍找不到「下載範例」，請回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2907",
+              "rev" => "b4a5f64b1549a0ca8c154e7a7253948597f99f09",
+              "deploy" => "34954544684",
+            ],
           ];
           $results = [];
           foreach ($items as $bugId => $cfg) {
