@@ -1,0 +1,39 @@
+id: INT-20260915-154041-QEBE
+title: UI-2668 provenance persistence R3
+intent: UI-2668 provenance persistence R3
+kind: intent
+brain_dump: 'Persist the already-finished governed #2668 UI delivery provenance and
+  correct fixture scope metadata without changing product behavior.'
+boundary: No product code, API, calculations, permissions, billing, attendance, LearningRecord,
+  auth, migrations, production data, deployment behavior, or destructive actions.
+success_condition: Existing governed UI commit remains covered; provenance/index/ticket
+  metadata persists and exo pr-check passes.
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/**
+  - .agent-session/manifest.json
+  - .exo/memory/sessions/**
+  - .exo/tickets/**
+  - .exo/policy.sealed.json
+  - .exo/cache/**
+  - .exo/locks/**
+  - .exo/logs/**
+  - .exo/memory/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 450
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-15T15:40:41+08:00'
+children: []
+resource_profile: default
