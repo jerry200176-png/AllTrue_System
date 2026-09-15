@@ -535,13 +535,20 @@ jobs:
                   ruleset.get("name") == "main-protection"
                   and ruleset.get("target") == "branch"
                   and ruleset.get("enforcement") == "active"
-                  and "~DEFAULT_BRANCH" in (
-                      ruleset.get("conditions", {}).get("ref_name", {}).get("include", [])
-                  )
+                  and ruleset.get("id")
               )]
               if len(candidates) != 1 or not candidates[0].get("id"):
                   raise ValueError("active main-protection ruleset evidence is unavailable or ambiguous")
               detail = gh_api(f"/repos/{repo}/rulesets/{candidates[0]['id']}")
+              if (
+                  detail.get("name") != "main-protection"
+                  or detail.get("target") != "branch"
+                  or detail.get("enforcement") != "active"
+                  or "~DEFAULT_BRANCH" not in (
+                      detail.get("conditions", {}).get("ref_name", {}).get("include", [])
+                  )
+              ):
+                  raise ValueError("active main-protection default-branch evidence is unavailable or invalid")
               required_rules = [rule for rule in detail.get("rules", []) if (
                   rule.get("type") == "required_status_checks"
               )]
