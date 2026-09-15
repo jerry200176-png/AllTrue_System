@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.15",
     "date": "2026-09-15",
     "title": "2026.09.15 草稿（未發布）",
-    "summary": "堂數待對帳提供處理入口；對帳帳單改以科目與上課日期辨識",
+    "summary": "帳務中心窄視窗操作不再被裁切；堂數待對帳提供處理入口",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "體驗調整",
+        "items": [
+          "帳務中心窄視窗操作不再被裁切"
+        ]
+      },
       {
         "title": "其他改善",
         "items": [
@@ -27,6 +33,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "帳務中心窄視窗操作不再被裁切",
       "堂數待對帳提供處理入口",
       "對帳帳單改以科目與上課日期辨識",
       "跨校滿席時段提示更清楚",

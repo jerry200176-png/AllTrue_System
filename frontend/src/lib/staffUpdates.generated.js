@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-15-tuition-viewport-containment",
+    "publishedAt": "2026-09-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務中心窄視窗操作不再被裁切",
+    "summary": "手機與平板查看帳務時，篩選與操作按鈕會依寬度排列，右側內容不會被擋住。",
+    "items": [
+      "帳務中心在手機與平板寬度會自動收合篩選欄位，收款明細與操作按鈕會換行完整顯示。",
+      "金額、收款資料、權限與既有帳務處理流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務中心在手機與平板寬度會自動收合篩選欄位，收款明細與操作按鈕會換行完整顯示。",
+          "金額、收款資料、權限與既有帳務處理流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-306"
+    ],
+    "date": "2026-09-15",
+    "version": "2026.09.15"
+  },
+  {
     "id": "staff-2026-09-15-student-import-template",
     "publishedAt": "2026-09-15",
     "effectiveAt": null,
