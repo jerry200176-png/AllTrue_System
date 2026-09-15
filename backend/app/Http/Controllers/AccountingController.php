@@ -205,6 +205,12 @@ class AccountingController extends Controller
             ->orderByDesc('ID')
             ->get();
         $classIds = $classes->pluck('ID')->map(fn ($id) => (int) $id)->values()->all();
+        $firstSessionDates = ClassSession::query()
+            ->whereIn('StudentClassID', $classIds)
+            ->select('StudentClassID')
+            ->selectRaw('MIN(SessionDate) AS first_session_date')
+            ->groupBy('StudentClassID')
+            ->pluck('first_session_date', 'StudentClassID');
 
         $invoices = Invoice::with(['studentClass', 'payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
@@ -228,7 +234,7 @@ class AccountingController extends Controller
         $reportsByInvoiceId = $reports->whereNotNull('InvoiceID')->groupBy('InvoiceID');
         $anomalies = [];
 
-        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($reportsByPaymentId, $reportsById, $reportsByInvoiceId, &$anomalies) {
+        $invoiceRows = $invoices->map(function (Invoice $invoice) use ($reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, &$anomalies) {
             $payments = $invoice->payments;
             $positivePayments = $payments
                 ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
@@ -356,6 +362,8 @@ class AccountingController extends Controller
                 'invoice_no' => $this->invoiceNo($invoice),
                 'student_class_id' => (int) $invoice->StudentClassID,
                 'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
+                'subject' => $invoice->studentClass?->displaySubjectName(),
+                'first_session_date' => $firstSessionDates->get((int) $invoice->StudentClassID),
                 'billing_period' => $invoice->billing_period,
                 'issue_date' => $invoice->IssueDate ? substr((string) $invoice->IssueDate, 0, 10) : null,
                 'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
@@ -463,6 +471,7 @@ class AccountingController extends Controller
                 'paid' => (int) ($class->Paid ?? 0) === 1,
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
+                'first_session_date' => $firstSessionDates->get((int) $class->ID),
                 'stop' => (int) ($class->Stop ?? 0) === 1,
             ])->values()->all(),
             'invoices' => $invoiceRows->all(),
