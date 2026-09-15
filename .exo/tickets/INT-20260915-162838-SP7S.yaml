@@ -1,0 +1,40 @@
+id: INT-20260915-162838-SP7S
+title: Publish student import template note
+intent: Publish student import template note
+kind: intent
+brain_dump: 'Publish the required existing staff update and changelog marker for the
+  already-governed #2907 student import template UI improvement.'
+boundary: 'Only update the existing release-note source and generated output for #2907;
+  no application behavior, API, permissions, schema, or production data changes.'
+success_condition: CHANGELOG entry has the required staff_update marker and staff
+  update source/generated output accurately describe the header-only template.
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/staffUpdates.generated.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - database/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-15T16:28:38+08:00'
+children: []
+resource_profile: default

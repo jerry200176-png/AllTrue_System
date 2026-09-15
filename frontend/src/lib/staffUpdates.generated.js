@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-15-student-import-template",
+    "publishedAt": "2026-09-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生名單匯入提供範例格式",
+    "summary": "學生管理可先下載欄位範例，再依既有 CSV／Excel 規格匯入名單。",
+    "items": [
+      "「下載範例」只提供 UTF-8 CSV 欄位標題，不帶任何學生資料，方便先準備匯入檔。",
+      "既有匯入 API、欄位驗證、分校權限與新增／更新規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "「下載範例」只提供 UTF-8 CSV 欄位標題，不帶任何學生資料，方便先準備匯入檔。",
+          "既有匯入 API、欄位驗證、分校權限與新增／更新規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#2907"
+    ],
+    "date": "2026-09-15",
+    "version": "2026.09.15"
+  },
+  {
     "id": "staff-2026-09-14-schedule-discrepancy-a11y",
     "publishedAt": "2026-09-14",
     "effectiveAt": null,

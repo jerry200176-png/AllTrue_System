@@ -1,34 +1,34 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: INT-20260915-162142-TZFR | actor: human     ║
+║  ticket: INT-20260915-162838-SP7S | actor: human     ║
 ║  branch: exo/INT-20260915-162142-TZFR                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260915162146-EFB5E1BE
+session_id: SES-20260915162841-671BF68E
 actor: human
 vendor: unknown
 model: unknown
 mode: work
 context_window_tokens: unknown
-ticket_id: INT-20260915-162142-TZFR
-ticket_title: Student import example template
+ticket_id: INT-20260915-162838-SP7S
+ticket_title: Publish student import template note
 ticket_status: todo
 ticket_priority: 3
 topic_id: repo:default
 lock_owner: human
 git_branch: exo/INT-20260915-162142-TZFR
-lock_branch: exo/INT-20260915-162142-TZFR
-lock_expires_at: 2026-09-15T20:21:46+08:00
+lock_branch: exo/INT-20260915-162838-SP7S
+lock_expires_at: 2026-09-15T20:28:41+08:00
 
 ## Scope
-- allow: ["frontend/src/pages/StudentsList.vue", "frontend/src/components/__tests__/StudentsListAccessibility.test.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: ["docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/staffUpdates.generated.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: ["backend/**", "database/**"]
 
 ## Checks
-- ["npm run test:unit", "npm run lint:no-undef"]
+- ["npm run lint:no-undef"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -37,8 +37,8 @@ lock_expires_at: 2026-09-15T20:21:46+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 1.3
-- ram: 5.4GB available / 7.8GB total
+- load_avg_1m: 1.2
+- ram: 5.2GB available / 7.8GB total
 
 ## Start Advisories
 - [INFO] Unmerged work on branch exo/TKT-20260912-135926-9P4S (ticket=TKT-20260912-135926-9P4S, actor=human) — Integrated PR #2757 source head 458b6417 onto current main in a fresh governed s
@@ -117,7 +117,7 @@ After building a reusable utility, REGISTER it:
 (not provided)
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id INT-20260915-162142-TZFR --owner human
+- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id INT-20260915-162838-SP7S --owner human
 - run worker once: EXO_ACTOR=human python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=human python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260915-162142-TZFR
+- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260915-162838-SP7S
