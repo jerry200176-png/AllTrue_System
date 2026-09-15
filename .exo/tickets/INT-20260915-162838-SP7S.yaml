@@ -30,7 +30,7 @@ budgets:
 checks:
 - npm run lint:no-undef
 type: feature
-status: todo
+status: review
 parent_id: null
 spec_ref: null
 notes: []
@@ -38,3 +38,5 @@ blockers: []
 created_at: '2026-09-15T16:28:38+08:00'
 children: []
 resource_profile: default
+commits:
+- 60d0d613ed36cc8ee2656ccb8850ce78a8c7926e

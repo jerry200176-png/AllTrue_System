@@ -1,31 +1,31 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: INT-20260915-162838-SP7S | actor: human     ║
+║  ticket: INT-20260915-163301-OZ4F | actor: human     ║
 ║  branch: exo/INT-20260915-162142-TZFR                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260915162841-671BF68E
+session_id: SES-20260915163305-D2D75630
 actor: human
 vendor: unknown
 model: unknown
 mode: work
 context_window_tokens: unknown
-ticket_id: INT-20260915-162838-SP7S
-ticket_title: Publish student import template note
+ticket_id: INT-20260915-163301-OZ4F
+ticket_title: Sync generated changelog draft
 ticket_status: todo
 ticket_priority: 3
 topic_id: repo:default
 lock_owner: human
 git_branch: exo/INT-20260915-162142-TZFR
-lock_branch: exo/INT-20260915-162838-SP7S
-lock_expires_at: 2026-09-15T20:28:41+08:00
+lock_branch: exo/INT-20260915-163301-OZ4F
+lock_expires_at: 2026-09-15T20:33:05+08:00
 
 ## Scope
-- allow: ["docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/staffUpdates.generated.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
-- deny: ["backend/**", "database/**"]
+- allow: ["frontend/src/lib/changelogDraft.generated.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- deny: []
 
 ## Checks
 - ["npm run lint:no-undef"]
@@ -37,8 +37,8 @@ lock_expires_at: 2026-09-15T20:28:41+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 1.2
-- ram: 5.2GB available / 7.8GB total
+- load_avg_1m: 1.1
+- ram: 5.3GB available / 7.8GB total
 
 ## Start Advisories
 - [INFO] Unmerged work on branch exo/TKT-20260912-135926-9P4S (ticket=TKT-20260912-135926-9P4S, actor=human) — Integrated PR #2757 source head 458b6417 onto current main in a fresh governed s
@@ -117,7 +117,7 @@ After building a reusable utility, REGISTER it:
 (not provided)
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id INT-20260915-162838-SP7S --owner human
+- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id INT-20260915-163301-OZ4F --owner human
 - run worker once: EXO_ACTOR=human python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=human python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260915-162838-SP7S
+- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260915-163301-OZ4F

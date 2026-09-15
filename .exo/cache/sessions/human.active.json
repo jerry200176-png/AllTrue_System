@@ -4,27 +4,27 @@
   "concurrent": false,
   "context_window_tokens": null,
   "git_branch": "exo/INT-20260915-162142-TZFR",
-  "git_head_sha": "abb8fa0d910871dea880a83ea11b6f3a8447cf9e",
+  "git_head_sha": "60d0d613ed36cc8ee2656ccb8850ce78a8c7926e",
   "handoff_from": null,
   "lock": {
-    "created_at": "2026-09-15T16:28:41+08:00",
-    "expires_at": "2026-09-15T20:28:41+08:00",
-    "fencing_token": 14,
-    "heartbeat_at": "2026-09-15T16:28:41+08:00",
-    "lease_expires_at": "2026-09-15T20:28:41+08:00",
+    "created_at": "2026-09-15T16:33:05+08:00",
+    "expires_at": "2026-09-15T20:33:05+08:00",
+    "fencing_token": 15,
+    "heartbeat_at": "2026-09-15T16:33:05+08:00",
+    "lease_expires_at": "2026-09-15T20:33:05+08:00",
     "owner": "human",
     "role": "developer",
-    "ticket_id": "INT-20260915-162838-SP7S",
-    "updated_at": "2026-09-15T16:28:41+08:00",
+    "ticket_id": "INT-20260915-163301-OZ4F",
+    "updated_at": "2026-09-15T16:33:05+08:00",
     "workspace": {
       "base": "main",
-      "branch": "exo/INT-20260915-162838-SP7S"
+      "branch": "exo/INT-20260915-163301-OZ4F"
     }
   },
   "machine_snapshot": {
     "cpu_count": 12,
-    "load_avg_1m": 1.2,
-    "ram_available_gb": 5.2,
+    "load_avg_1m": 1.1,
+    "ram_available_gb": 5.3,
     "ram_total_gb": 7.8
   },
   "mode": "work",
@@ -32,20 +32,17 @@
   "pid": 1395820,
   "pr_check": null,
   "role": null,
-  "session_id": "SES-20260915162841-671BF68E",
+  "session_id": "SES-20260915163305-D2D75630",
   "start_advisories": [
     {
       "detail": {
         "actor": "human",
         "branch": "exo/TKT-20260912-135926-9P4S",
         "overlapping_patterns": [
-          "docs/**",
-          "docs/CHANGELOG.md",
-          "docs/STAFF_UPDATES.yml",
           "frontend/src/**",
           "frontend/src/lib/**",
           "frontend/**",
-          "frontend/src/lib/staffUpdates.generated.js",
+          "frontend/src/lib/changelogDraft.generated.js",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -85,13 +82,10 @@
         "actor": "agent:codex",
         "branch": "exo/INT-20260907-074745-682Y",
         "overlapping_patterns": [
-          "docs/CHANGELOG.md",
-          "docs/**",
-          "docs/STAFF_UPDATES.yml",
           "frontend/src/**",
           "frontend/**",
+          "frontend/src/lib/changelogDraft.generated.js",
           "frontend/src/lib/**",
-          "frontend/src/lib/staffUpdates.generated.js",
           ".exo/**",
           ".exo/cache/**",
           ".exo/memory/**",
@@ -111,13 +105,10 @@
         "actor": "agent:codex",
         "branch": "exo/INT-20260907-071544-9K2N",
         "overlapping_patterns": [
-          "docs/CHANGELOG.md",
-          "docs/**",
-          "docs/STAFF_UPDATES.yml",
           "frontend/src/**",
           "frontend/**",
+          "frontend/src/lib/changelogDraft.generated.js",
           "frontend/src/lib/**",
-          "frontend/src/lib/staffUpdates.generated.js",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -137,13 +128,10 @@
         "actor": "agent:codex",
         "branch": "exo/INT-20260907-063735-M93H",
         "overlapping_patterns": [
-          "docs/CHANGELOG.md",
-          "docs/**",
-          "docs/STAFF_UPDATES.yml",
           "frontend/src/**",
           "frontend/src/lib/**",
           "frontend/**",
-          "frontend/src/lib/staffUpdates.generated.js",
+          "frontend/src/lib/changelogDraft.generated.js",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -163,8 +151,6 @@
         "actor": "agent:codex",
         "branch": "chore/task-onboarding-v1-convergence-20260905",
         "overlapping_patterns": [
-          "docs/CHANGELOG.md",
-          "docs/**",
           "frontend/src/**",
           "frontend/src/lib/**",
           ".exo/**",
@@ -221,10 +207,10 @@
       "severity": "info"
     }
   ],
-  "started_at": "2026-09-15T16:28:41+08:00",
+  "started_at": "2026-09-15T16:33:05+08:00",
   "status": "active",
   "task": null,
-  "ticket_id": "INT-20260915-162838-SP7S",
+  "ticket_id": "INT-20260915-163301-OZ4F",
   "topic_id": "repo:default",
   "vendor": "unknown",
   "writing_session": null
