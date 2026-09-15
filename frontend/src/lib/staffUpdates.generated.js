@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.09.15"
   },
   {
+    "id": "staff-2026-09-15-session-reconcile-guidance",
+    "publishedAt": "2026-09-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "堂數待對帳有清楚下一步",
+    "summary": "課程管理的堂數提醒可直接查看對帳明細，主任先核對再處理。",
+    "items": [
+      "課程列的「堂數待對帳」提醒可直接開啟學生帳務對帳明細，先確認課堂狀態與扣堂紀錄。",
+      "本次只增加唯讀操作導引，不自動修改堂數、帳務、收款、權限或課程資料。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程列的「堂數待對帳」提醒可直接開啟學生帳務對帳明細，先確認課堂狀態與扣堂紀錄。",
+          "本次只增加唯讀操作導引，不自動修改堂數、帳務、收款、權限或課程資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-305"
+    ],
+    "date": "2026-09-15",
+    "version": "2026.09.15"
+  },
+  {
     "id": "staff-2026-09-15-cross-campus-calendar-hint",
     "publishedAt": "2026-09-15",
     "effectiveAt": null,

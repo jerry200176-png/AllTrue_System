@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.15",
     "date": "2026-09-15",
     "title": "2026.09.15 草稿（未發布）",
-    "summary": "對帳帳單改以科目與上課日期辨識；跨校滿席時段提示更清楚",
+    "summary": "堂數待對帳提供處理入口；對帳帳單改以科目與上課日期辨識",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "堂數待對帳提供處理入口",
           "對帳帳單改以科目與上課日期辨識",
           "跨校滿席時段提示更清楚",
           "綁定健康狀態與控制項更清楚",
@@ -26,6 +27,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "堂數待對帳提供處理入口",
       "對帳帳單改以科目與上課日期辨識",
       "跨校滿席時段提示更清楚",
       "綁定健康狀態與控制項更清楚",
