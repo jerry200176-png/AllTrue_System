@@ -1,3 +1,8 @@
+## 2026-09-15 — improved(course-management): 堂數待對帳提供處理入口
+<!-- release-notes: staff_update=staff-2026-09-15-session-reconcile-guidance -->
+- 課程管理看到「堂數待對帳」時，可直接開啟學生帳務對帳明細，先核對課堂狀態與扣堂紀錄，再依既有流程處理。
+- 本次僅增加唯讀導引，不自動改變堂數、帳務、收款、權限或任何課程資料。
+
 ## 2026-09-15 — improved(billing): 對帳帳單改以科目與上課日期辨識
 <!-- release-notes: staff_update=staff-2026-09-15-accounting-ledger-context -->
 - 學生帳務對帳的帳單主標改顯示科目與第一堂上課日期，主任可用熟悉的課程脈絡辨識紀錄，不必記帳單編號。
