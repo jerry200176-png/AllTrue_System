@@ -2339,6 +2339,9 @@ loadAlerts();
   border-radius: 14px;
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 .tc-page button,
 .tc-page input:not([type="checkbox"]),
@@ -2517,6 +2520,11 @@ loadAlerts();
 }
 .acct-table .tc-btn {
   white-space: nowrap;
+}
+
+/* Keep the dense accounting surface inside its flex parent at tablet widths. */
+@media (max-width: 1100px) {
+  .acct-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* ─── Summary cards ─── */
@@ -2788,6 +2796,7 @@ loadAlerts();
 .tc-table-wrap {
   overflow-x: auto;
   margin: 0 -4px;
+  min-width: 0;
 }
 .tc-table {
   width: 100%;
@@ -3507,6 +3516,17 @@ loadAlerts();
   }
   .tc-table.acct-table .tc-actions { justify-content: flex-start; }
   .tc-table.acct-table .acct-col-check { width: 44px; }
+  .tc-table.acct-table .tc-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .tc-table.acct-table .tc-actions .tc-btn {
+    flex: 1 1 9rem;
+    min-width: 0;
+    justify-content: center;
+  }
+  .acct-bulkbar { flex-wrap: wrap; }
+  .acct-bulkbar .tc-btn { flex: 1 1 10rem; justify-content: center; }
 
   .tc-table.acct-table--payments td:nth-child(1) { grid-column: 2; grid-row: 1; }
   .tc-table.acct-table--payments td:nth-child(2) { grid-column: 1; grid-row: 1; }
@@ -3546,6 +3566,9 @@ loadAlerts();
   .tc-table.acct-table--settled td:nth-child(4)::before { content: '模式'; }
   .tc-table.acct-table--settled td:nth-child(5)::before { content: '已記入'; }
   .tc-table.acct-table--settled td:nth-child(6)::before { content: '最近付款'; }
+}
+@media (max-width: 900px) and (min-width: 769px) {
+  .acct-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .acct-tabs { white-space: nowrap; }

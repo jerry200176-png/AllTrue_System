@@ -3257,3 +3257,9 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 <!-- release-notes: staff_update=staff-2026-09-15-student-import-template -->
 - 學生管理在既有「匯入名單」旁提供「下載範例」，下載只含 UTF-8 CSV 欄位標題（學生姓名、年級、學校、手機），不帶任何學生資料。
 - 既有匯入 API、欄位驗證、分校權限與新增／更新規則維持不變。
+
+## 2026-09-15 — improved(tuition): 帳務中心窄視窗操作不再被裁切
+
+<!-- release-notes: staff_update=staff-2026-09-15-tuition-viewport-containment -->
+
+- 帳務中心在手機與平板寬度會自動收合篩選欄位，操作按鈕會換行完整顯示；既有金額、收款、權限與資料流程不變。

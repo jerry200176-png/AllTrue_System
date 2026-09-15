@@ -4041,3 +4041,18 @@ updates:
         text: 暫停課程時可勾選是否取消剩餘排課（預設勾選）。
     source_refs:
       - "2026-07-24"
+
+  - id: staff-2026-09-15-tuition-viewport-containment
+    published_at: "2026-09-15"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心窄視窗操作不再被裁切
+    summary: 手機與平板查看帳務時，篩選與操作按鈕會依寬度排列，右側內容不會被擋住。
+    items:
+      - category: improved
+        text: 帳務中心在手機與平板寬度會自動收合篩選欄位，收款明細與操作按鈕會換行完整顯示。
+      - category: improved
+        text: 金額、收款資料、權限與既有帳務處理流程維持不變。
+    source_refs:
+      - "github:in-app-306"
