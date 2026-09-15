@@ -416,7 +416,7 @@ jobs:
           [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM StudentClass WHERE ID=2817;')" = 0 ] || fail 'parent_appeared_during_lock'
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")" = 0 ] || fail 'session_appeared_during_lock'
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")" = 0 ] || fail 'learning_record_appeared_during_lock'
-          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate=\"2026-09-17\");')" = 0 ] || fail 'forbidden_target_present'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17');")" = 0 ] || fail 'forbidden_target_present'
           mysqlq "$PROD_DB" "INSERT INTO StudentClass ($PARENT_COLS) SELECT $PARENT_COLS FROM \`$TMP_DB\`.StudentClass WHERE ID=2817;"
           [ "$(scalar "$PROD_DB" 'SELECT ROW_COUNT();')" = 1 ] || fail 'parent_insert_count'
           mysqlq "$PROD_DB" "INSERT INTO ClassSession ($SESSION_COLS) SELECT $SESSION_COLS FROM \`$TMP_DB\`.ClassSession WHERE id IN ($SESSIONS);"
@@ -431,7 +431,7 @@ jobs:
           [ "$(printf '%s\n' "$restored_session_lines" | sha256sum | awk '{print $1}')" = "$session_agg" ] || fail 'restored_session_hash_mismatch'
           [ "$(printf '%s\n' "$restored_lr_lines" | sha256sum | awk '{print $1}')" = "$lr_agg" ] || fail 'restored_learning_record_hash_mismatch'
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN ($SESSIONS);")" = 9 ] || fail 'learning_record_fk_mismatch'
-          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate=\"2026-09-17\");')" = 0 ] || fail 'forbidden_row_created'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17');")" = 0 ] || fail 'forbidden_row_created'
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM StudentSingIn WHERE StudentClassID=2817 OR ClassSessionID IN ($SESSIONS);")" = "$attendance" ] || fail 'attendance_changed'
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM session_deduction_ledger WHERE student_class_id=2817 OR class_session_id IN ($SESSIONS);")" = "$ledger" ] || fail 'ledger_changed'
           [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM Invoice WHERE StudentClassID=2817;')" = "$invoice" ] || fail 'invoice_changed'
@@ -449,7 +449,7 @@ jobs:
           [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM StudentClass WHERE ID=2817;')" = 1 ]
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")" = 9 ]
           [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")" = 9 ]
-          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate=\"2026-09-17\");')" = 0 ]
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17');")" = 0 ]
           post_parent_hash="$(scalar "$PROD_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
           post_session_lines="$(mysqlq "$PROD_DB" "SELECT id,SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id IN ($SESSIONS) ORDER BY FIELD(id,$SESSIONS);")"
           post_session_agg="$(canonical_session_agg "$post_session_lines")"
