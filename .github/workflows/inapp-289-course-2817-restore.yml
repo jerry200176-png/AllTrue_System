@@ -158,7 +158,7 @@ jobs:
           if [ "$MODE" = diagnostic ]; then
             FIXTURE_DB="alltrue_2817_verifier_fixture_${RANDOM}_$$"
             mysqlq "$REAL_PROD_DB" "CREATE DATABASE \`$FIXTURE_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-            mysqldump --single-transaction --quick "$TMP_DB" | mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$FIXTURE_DB"
+            mysqldump --single-transaction --quick -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$TMP_DB" | mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$FIXTURE_DB"
             mysqlq "$FIXTURE_DB" "SET FOREIGN_KEY_CHECKS=0; DELETE FROM LearningRecord WHERE id IN ($LEARNING_RECORDS); DELETE FROM ClassSession WHERE id IN ($SESSIONS); DELETE FROM StudentClass WHERE ID=2817; SET FOREIGN_KEY_CHECKS=1;"
             PROD_DB="$FIXTURE_DB"
             echo 'diagnostic_fixture=isolated_source_clone target_rows_removed production_write=0'
