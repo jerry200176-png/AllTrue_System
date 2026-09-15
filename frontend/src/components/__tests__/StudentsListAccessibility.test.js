@@ -20,6 +20,14 @@ describe('StudentsList row disclosure accessibility', () => {
     expect(source).toContain('importInput.value?.click();');
   });
 
+  it('offers a header-only import template without changing the import flow', () => {
+    expect(source).toContain('aria-label="下載學生名單匯入範例"');
+    expect(source).toContain('@click="downloadImportTemplate"');
+    expect(source).toContain('const downloadImportTemplate = () => {');
+    expect(source).toContain('學生姓名,年級,學校,手機');
+    expect(source).toContain("link.download = '學生名單匯入範例.csv';");
+  });
+
   it('makes the student row keyboard-operable with an explicit detail relationship', () => {
     expect(source).toContain('class="student-row"');
     expect(source).toContain('tabindex="0"');
