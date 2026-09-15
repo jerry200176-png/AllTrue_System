@@ -4,18 +4,18 @@
   "concurrent": false,
   "context_window_tokens": null,
   "git_branch": "exo/INT-20260915-151810-DTL6",
-  "git_head_sha": "88647214a86b2b57014b0a1192b3104238a051d8",
+  "git_head_sha": "c4d28bfa8807c0b60362e83bfa9ab750b0298a8a",
   "handoff_from": null,
   "lock": {
-    "created_at": "2026-09-15T15:18:17+08:00",
-    "expires_at": "2026-09-15T19:18:17+08:00",
-    "fencing_token": 12,
-    "heartbeat_at": "2026-09-15T15:18:17+08:00",
-    "lease_expires_at": "2026-09-15T19:18:17+08:00",
+    "created_at": "2026-09-15T15:22:21+08:00",
+    "expires_at": "2026-09-15T17:22:21+08:00",
+    "fencing_token": 13,
+    "heartbeat_at": "2026-09-15T15:22:21+08:00",
+    "lease_expires_at": "2026-09-15T17:22:21+08:00",
     "owner": "human",
     "role": "implementer",
     "ticket_id": "INT-20260915-151810-DTL6",
-    "updated_at": "2026-09-15T15:18:17+08:00",
+    "updated_at": "2026-09-15T15:22:21+08:00",
     "workspace": {
       "base": "main",
       "branch": "exo/INT-20260915-151810-DTL6"
@@ -23,7 +23,7 @@
   },
   "machine_snapshot": {
     "cpu_count": 12,
-    "load_avg_1m": 0.4,
+    "load_avg_1m": 0.1,
     "ram_available_gb": 5.3,
     "ram_total_gb": 7.8
   },
@@ -32,13 +32,14 @@
   "pid": 1395820,
   "pr_check": null,
   "role": "implementer",
-  "session_id": "SES-20260915151817-3D646AA0",
+  "session_id": "SES-20260915152221-442F545B",
   "start_advisories": [
     {
       "detail": {
         "actor": "human",
         "branch": "exo/TKT-20260912-135926-9P4S",
         "overlapping_patterns": [
+          ".agent-session/manifest.json",
           "frontend/src/pages/**",
           "frontend/src/**",
           "frontend/**",
@@ -84,6 +85,7 @@
         "actor": "agent:codex",
         "branch": "exo/INT-20260907-074745-682Y",
         "overlapping_patterns": [
+          ".agent-session/manifest.json",
           "frontend/src/pages/**",
           "frontend/src/**",
           "frontend/**",
@@ -174,6 +176,7 @@
         "actor": "agent:codex",
         "branch": "chore/task-transfer-contract-integrity-20260903",
         "overlapping_patterns": [
+          ".agent-session/**",
           "frontend/src/pages/**",
           "frontend/src/**",
           "frontend/src/components/__tests__/**",
@@ -197,6 +200,7 @@
         "actor": "agent:codex",
         "branch": "chore/task-contract-session-date-overlap-20260903-final",
         "overlapping_patterns": [
+          ".agent-session/**",
           ".exo/cache/**",
           ".exo/**",
           ".exo/memory/**",
@@ -212,9 +216,9 @@
       "severity": "info"
     }
   ],
-  "started_at": "2026-09-15T15:18:17+08:00",
+  "started_at": "2026-09-15T15:22:21+08:00",
   "status": "active",
-  "task": "Reconcile #2668 binding-health UI clarity onto current main",
+  "task": "Persist corrected scope for #2668 provenance metadata",
   "ticket_id": "INT-20260915-151810-DTL6",
   "topic_id": "repo:default",
   "vendor": "unknown",

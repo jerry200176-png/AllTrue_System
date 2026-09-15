@@ -7,7 +7,7 @@
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260915151817-3D646AA0
+session_id: SES-20260915152221-442F545B
 actor: human
 vendor: unknown
 model: unknown
@@ -15,16 +15,16 @@ mode: work
 context_window_tokens: unknown
 ticket_id: INT-20260915-151810-DTL6
 ticket_title: Binding health dashboard clarity
-ticket_status: todo
+ticket_status: review
 ticket_priority: 2
 topic_id: repo:default
 lock_owner: human
 git_branch: exo/INT-20260915-151810-DTL6
 lock_branch: exo/INT-20260915-151810-DTL6
-lock_expires_at: 2026-09-15T19:18:17+08:00
+lock_expires_at: 2026-09-15T17:22:21+08:00
 
 ## Scope
-- allow: ["frontend/src/pages/BindingHealthDashboard.vue", "frontend/src/components/__tests__/BindingHealthDashboardAccessibility.test.js", "frontend/e2e/binding-health-clarity.spec.js", "frontend/e2e/binding-health-playwright.config.js", "frontend/e2e/fixtures/ui-foundation/binding-health-pilot-mount.html", "frontend/e2e/fixtures/ui-foundation/binding-health-pilot-mount.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: [".agent-session/manifest.json", "frontend/src/pages/BindingHealthDashboard.vue", "frontend/src/components/__tests__/BindingHealthDashboardAccessibility.test.js", "frontend/e2e/binding-health-clarity.spec.js", "frontend/e2e/binding-health-playwright.config.js", "frontend/e2e/fixtures/ui-foundation/binding-health-pilot-mount.html", "frontend/e2e/fixtures/ui-foundation/binding-health-pilot-mount.js", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: []
 
 ## Checks
@@ -37,7 +37,7 @@ lock_expires_at: 2026-09-15T19:18:17+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 0.4
+- load_avg_1m: 0.1
 - ram: 5.3GB available / 7.8GB total
 
 ## Start Advisories
@@ -51,7 +51,7 @@ lock_expires_at: 2026-09-15T19:18:17+08:00
 - [INFO] Unmerged work on branch chore/task-contract-session-date-overlap-20260903-final (ticket=TKT-20260903-155417-MUVF, actor=agent:codex) — Fixed student slot conflict queries to ignore ClassSession and schedule residue
 
 ## Prior Session Memento
-(none)
+Reconciled #2668 binding-health UI onto current main with shared empty/error/loading states, 44px accessible controls, and read-only mobile/browser coverage. Focused unit, Playwright, lint, fixture guard, and Vite build passed; no API or production behavior changed.
 
 ## Operational Learnings
 The following patterns have been learned from prior sessions. Heed these to avoid repeating known mistakes.
@@ -114,7 +114,7 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-Reconcile #2668 binding-health UI clarity onto current main
+Persist corrected scope for #2668 provenance metadata
 
 ## Lifecycle Commands
 - heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id INT-20260915-151810-DTL6 --owner human
