@@ -506,6 +506,7 @@ jobs:
           REPO="$REPO" TARGET_SHA="$TARGET_SHA" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
           import json
           import os
+          import re
           import subprocess
           import sys
 
@@ -523,6 +524,33 @@ jobs:
                       result.extend(page if isinstance(page, list) else [page])
                   return result
               return value if isinstance(value, list) else []
+
+          def active_main_required_status_checks(repo):
+              ruleset_pages = gh_api(
+                  f"/repos/{repo}/rulesets?per_page=100",
+                  "--paginate", "--slurp",
+              )
+              rulesets = pages(ruleset_pages)
+              candidates = [ruleset for ruleset in rulesets if (
+                  ruleset.get("name") == "main-protection"
+                  and ruleset.get("target") == "branch"
+                  and ruleset.get("enforcement") == "active"
+                  and "~DEFAULT_BRANCH" in (
+                      ruleset.get("conditions", {}).get("ref_name", {}).get("include", [])
+                  )
+              )]
+              if len(candidates) != 1 or not candidates[0].get("id"):
+                  raise ValueError("active main-protection ruleset evidence is unavailable or ambiguous")
+              detail = gh_api(f"/repos/{repo}/rulesets/{candidates[0]['id']}")
+              required_rules = [rule for rule in detail.get("rules", []) if (
+                  rule.get("type") == "required_status_checks"
+              )]
+              if len(required_rules) != 1:
+                  raise ValueError("main-protection required_status_checks evidence is unavailable or ambiguous")
+              required = required_rules[0].get("parameters", {}).get("required_status_checks")
+              if not isinstance(required, list) or not required:
+                  raise ValueError("main-protection required_status_checks is missing")
+              return required
 
           def emit(mode, tier, pr_number, reason, approval_eligible=False):
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
@@ -543,9 +571,11 @@ jobs:
                   is_deployable_path,
                   is_production_activation_sensitive_path,
                   parse_declaration,
+                  reconcile_preexisting_pr_provenance,
               )
 
               base = os.environ["RUNTIME_BASE_SHA"]
+              required_status_checks = active_main_required_status_checks(repo)
               comparison = gh_api(f"/repos/{repo}/compare/{base}...{target}")
               files = comparison.get("files") or []
               if not files:
@@ -559,7 +589,7 @@ jobs:
               # All provenance evidence is read-only GitHub API metadata.
               # Each application record still uses classify_activation_scope
               # so its complete effect remains subject to the existing boundary.
-              merged = []
+              attributed = []
               seen_prs = set()
               attributed_commits = set()
               provenance_complete = True
@@ -573,6 +603,68 @@ jobs:
                       "--header", "Accept: application/vnd.github+json",
                   )
                   if not candidates:
+                      commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")
+                      referenced_prs = sorted(set(re.findall(
+                          r"(?<![A-Za-z0-9])#([1-9][0-9]*)\b",
+                          str((commit.get("commit") or {}).get("message") or ""),
+                      )))
+                      recovered = []
+                      for pr_number in referenced_prs:
+                          try:
+                              candidate_pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
+                              if candidate_pr.get("base", {}).get("ref") != "main":
+                                  continue
+                              pr_files = pages(gh_api(
+                                  f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
+                                  "--paginate", "--slurp",
+                              ))
+                              target_files = commit_detail.get("files") or []
+                              head_sha = candidate_pr.get("head", {}).get("sha")
+                              head_commit = gh_api(f"/repos/{repo}/commits/{head_sha}")
+                              check_runs = gh_api(
+                                  f"/repos/{repo}/commits/{head_sha}/check-runs?per_page=100",
+                                  "--header", "Accept: application/vnd.github+json",
+                              )
+                              statuses = gh_api(f"/repos/{repo}/commits/{head_sha}/status")
+                              closeout_comments = pages(gh_api(
+                                  f"/repos/{repo}/issues/{pr_number}/comments?per_page=100",
+                                  "--paginate", "--slurp",
+                              ))
+                              reconciliation = reconcile_preexisting_pr_provenance(
+                                  target_commit={
+                                      "sha": commit_sha,
+                                      "committer_date": (commit_detail.get("commit") or {}).get("committer", {}).get("date"),
+                                      "parents": commit_detail.get("parents"),
+                                      "tree": (commit_detail.get("commit") or {}).get("tree"),
+                                  },
+                                  pr=candidate_pr,
+                                  pr_files=pr_files,
+                                  target_files=target_files,
+                                  pr_head_commit={
+                                      "committer_date": (head_commit.get("commit") or {}).get("committer", {}).get("date"),
+                                      "parents": head_commit.get("parents"),
+                                      "tree": (head_commit.get("commit") or {}).get("tree"),
+                                  },
+                                  check_evidence={
+                                      "check_runs": check_runs.get("check_runs") or [],
+                                      "check_runs_total": check_runs.get("total_count"),
+                                      "statuses": statuses.get("statuses") or [],
+                                      "statuses_total": statuses.get("total_count", 0),
+                                      "required_status_checks": required_status_checks,
+                                  },
+                                  closeout_comments=closeout_comments,
+                              )
+                              if reconciliation.get("accepted"):
+                                  recovered.append(reconciliation["record"])
+                              else:
+                                  print(f"PR #{pr_number} reconciliation rejected: {reconciliation.get('reason')}")
+                          except (OSError, ValueError, subprocess.CalledProcessError) as error:
+                              print(f"PR #{pr_number} reconciliation evidence unavailable: {error}")
+                      if len(recovered) == 1:
+                          attributed.append(recovered[0])
+                          seen_prs.add(recovered[0]["number"])
+                          attributed_commits.add(commit_sha)
+                          continue
                       provenance_complete = False
                   for candidate in candidates:
                       pr_number = candidate.get("number")
@@ -612,7 +704,7 @@ jobs:
                               f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"
                           )
                       declared_risk, declared_tier = parse_declaration(pr.get("body") or "")
-                      merged.append({
+                      attributed.append({
                           "number": pr_number,
                           "merged_at": pr.get("merged_at"),
                           "paths": pr_paths,
@@ -622,14 +714,19 @@ jobs:
                           "declared_tier": declared_tier,
                       })
                       attributed_commits.add(commit_sha)
-              if not provenance_complete or not merged:
+              if not provenance_complete or not attributed:
                   emit("awaiting-activation", "unknown", "none", "incomplete merged PR provenance; fail closed")
                   sys.exit(0)
               if len(attributed_commits) != len(comparison.get("commits") or []):
                   emit("awaiting-activation", "unknown", "none", "incomplete commit-to-PR provenance; fail closed")
                   sys.exit(0)
-              merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
-              provenance = classify_activation_provenance(merged)
+              attributed.sort(
+                  key=lambda pr: pr.get("merged_at")
+                  or (pr.get("reconciliation_evidence") or {}).get("target_commit_at")
+                  or "",
+                  reverse=True,
+              )
+              provenance = classify_activation_provenance(attributed)
               if provenance.get("blocked"):
                   emit("awaiting-activation", provenance.get("tier_name", "unknown"), "multiple", provenance["reason"])
                   sys.exit(0)
