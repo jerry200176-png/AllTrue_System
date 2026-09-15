@@ -235,6 +235,8 @@ class AccountingController extends Controller
         $anomalies = [];
 
         $invoiceRows = $invoices->map(function (Invoice $invoice) use ($reportsByPaymentId, $reportsById, $reportsByInvoiceId, $firstSessionDates, &$anomalies) {
+            $invoiceStudentClassId = (int) $invoice->getAttribute('StudentClassID');
+            $invoiceStudentClass = $invoice->getRelationValue('studentClass');
             $payments = $invoice->payments;
             $positivePayments = $payments
                 ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
@@ -362,8 +364,8 @@ class AccountingController extends Controller
                 'invoice_no' => $this->invoiceNo($invoice),
                 'student_class_id' => (int) $invoice->StudentClassID,
                 'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
-                'subject' => $invoice->studentClass?->displaySubjectName(),
-                'first_session_date' => $firstSessionDates->get((int) $invoice->StudentClassID),
+                'subject' => $invoiceStudentClass?->displaySubjectName(),
+                'first_session_date' => $firstSessionDates->get($invoiceStudentClassId),
                 'billing_period' => $invoice->billing_period,
                 'issue_date' => $invoice->IssueDate ? substr((string) $invoice->IssueDate, 0, 10) : null,
                 'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
@@ -471,7 +473,7 @@ class AccountingController extends Controller
                 'paid' => (int) ($class->Paid ?? 0) === 1,
                 'paid_at' => $class->PayDate ? substr((string) $class->PayDate, 0, 10) : null,
                 'start_date' => $class->StartDate ? substr((string) $class->StartDate, 0, 10) : null,
-                'first_session_date' => $firstSessionDates->get((int) $class->ID),
+                'first_session_date' => $firstSessionDates->get((int) $class->getAttribute('ID')),
                 'stop' => (int) ($class->Stop ?? 0) === 1,
             ])->values()->all(),
             'invoices' => $invoiceRows->all(),
