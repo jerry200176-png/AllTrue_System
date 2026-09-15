@@ -936,6 +936,16 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('"required_status_checks"', self.workflow)
         self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
 
+    def test_ruleset_branch_condition_is_verified_from_detail_response(self):
+        lookup = self.workflow[self.workflow.index("          def active_main_required_status_checks(repo):"):]
+        list_lookup = lookup[:lookup.index("              detail = gh_api")]
+        detail_lookup = lookup[lookup.index("              detail = gh_api"):]
+        self.assertIn('and ruleset.get("id")', list_lookup)
+        self.assertNotIn('ruleset.get("conditions")', list_lookup)
+        self.assertIn('detail.get("conditions", {}).get("ref_name", {})', detail_lookup)
+        self.assertIn('"~DEFAULT_BRANCH"', detail_lookup)
+        self.assertIn('raise ValueError("active main-protection default-branch evidence is unavailable or invalid")', detail_lookup)
+
     def test_state_machine_has_fail_closed_modes(self):
         policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
         for mode in ("no-op", "manual", "auto", "awaiting-activation"):
