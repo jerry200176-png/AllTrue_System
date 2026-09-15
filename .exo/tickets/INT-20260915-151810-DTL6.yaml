@@ -18,6 +18,7 @@ labels:
 scope:
   allow:
   - .agent-session/manifest.json
+  - .exo/policy.sealed.json
   - frontend/src/pages/BindingHealthDashboard.vue
   - frontend/src/components/__tests__/BindingHealthDashboardAccessibility.test.js
   - frontend/e2e/binding-health-clarity.spec.js
