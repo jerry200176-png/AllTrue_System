@@ -766,12 +766,14 @@ def reconcile_preexisting_pr_provenance(
 
 
 def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict[str, object]:
-    """Classify an undeployed range from independently attributed merged PRs.
+    """Classify an undeployed range from independently attributed PRs.
 
     Control-plane-only PRs are already effective when merged and therefore do
     not become part of a later application release's effect.  Application
     effects are still accumulated across PRs, while each PR is classified from
-    its own files and patch.  Missing attribution/evidence is a hard hold.
+    its own files and patch.  A separately validated pre-existing exact-
+    equivalent record may be marked ``reconciled``; missing or invalid
+    attribution/evidence remains a hard hold.
     """
 
     normalized = list(records)
