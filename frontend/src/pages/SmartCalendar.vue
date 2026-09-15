@@ -99,6 +99,9 @@
                   <span class="capacity-legend-chip capacity-legend-chip--warn">2/3</span>剩 1 位
                   <span class="capacity-legend-chip capacity-legend-chip--full">3/3</span>已滿
                 </span>
+                <span v-if="!isWeekOverview" class="rc-legend cross-campus-legend" title="紅色虛線表示老師在其他分校已有滿席課程，僅供提示">
+                  <span class="cross-campus-legend-chip" aria-hidden="true"></span>跨校忙碌
+                </span>
               </div>
             </div>
             <div class="toolbar-secondary-line toolbar-secondary-line--filters">
@@ -210,8 +213,10 @@
                 :class="{
                   'no-click': isTeacher,
                   'slot-room-full': isSlotRoomFull(selectedDow, h),
+                  'slot-cross-campus-busy': isCrossCampusBusyAt(teacher.id, h),
                   'drag-over': !isTeacher && dragOverSlot && dragOverSlot.teacherId === teacher.id && dragOverSlot.h === h
                 }"
+                :title="crossCampusBusyTitle(teacher.id, h)"
                 @click="!isTeacher && onSlotClick(selectedDow, h, selectedDateStr, teacher.id)"
                 @dragover.prevent="!isTeacher && (dragOverSlot = { teacherId: teacher.id, h })"
                 @dragleave="dragOverSlot = null"
@@ -557,6 +562,7 @@ import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
+import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
 import { buildAttendanceNav } from '../lib/authoritativeMutationRoutes.js';
 import {
@@ -767,6 +773,11 @@ const evalRecordsLoading = ref(false);
 // Drag-to-reschedule state
 const draggingCourse = ref(null); // { course, originalDate }
 const dragOverSlot = ref(null);   // { dow, h }
+
+// Cross-campus availability is a read-only presentation hint. It never
+// participates in conflict checks or disables existing booking actions.
+const crossCampusBusyByTeacher = ref({});
+let crossCampusAvailabilityRequest = 0;
 
 // Right-click context menu state
 const contextMenu = ref({ show: false, x: 0, y: 0, course: null, date: null });
@@ -1702,6 +1713,41 @@ const dayViewTeacherColumns = computed(() => {
   );
 });
 
+async function loadCrossCampusBusySlots() {
+  const requestId = ++crossCampusAvailabilityRequest;
+  crossCampusBusyByTeacher.value = {};
+  if (isTeacher.value || !Number(props.branchId) || !selectedDateStr.value || isWeekOverview.value) return;
+
+  const date = selectedDateStr.value;
+  const teacherIds = dayViewTeacherColumns.value
+    .map((teacher) => Number(teacher.id))
+    .filter((id) => id > 0);
+  if (teacherIds.length === 0) return;
+
+  const entries = await Promise.all(teacherIds.map(async (teacherId) => {
+    try {
+      const response = await fetchTeacherAvailability(teacherId, date);
+      return [String(teacherId), normalizeCrossCampusBusySlots(response?.busy_slots, props.branchId)];
+    } catch {
+      // Availability is advisory; a failed request must not alter the
+      // existing calendar or booking behavior.
+      return [String(teacherId), []];
+    }
+  }));
+  if (requestId !== crossCampusAvailabilityRequest) return;
+  crossCampusBusyByTeacher.value = Object.fromEntries(entries);
+}
+
+function isCrossCampusBusyAt(teacherId, hour) {
+  return hasCrossCampusBusySlot(crossCampusBusyByTeacher.value[String(teacherId)] || [], hour);
+}
+
+function crossCampusBusyTitle(teacherId, hour) {
+  return isCrossCampusBusyAt(teacherId, hour)
+    ? '老師此時段在其他分校已有課程（僅提示，不會改變排課規則）'
+    : undefined;
+}
+
 /** 週檢視目前選定老師名稱（多選時顯示聯集） */
 const weekViewSelectedLabel = computed(() => {
   if (weekViewTeacherIds.value.length === 0) return '全部老師';
@@ -2625,6 +2671,11 @@ watch(
 );
 
 watch(() => props.resetWeekToken, () => { focusCalendarToday(); }, { immediate: true });
+watch(
+  [selectedDateStr, dayViewTeacherColumns, () => props.branchId, isWeekOverview, isTeacher],
+  loadCrossCampusBusySlots,
+  { immediate: true },
+);
 watch(() => props.initialTeacherId, (id) => {
   if (id != null && id !== '') {
     filterTeacherId.value = String(id);
@@ -3234,6 +3285,31 @@ onMounted(() => {
   position: relative;
   cursor: pointer;
   transition: background 0.15s;
+}
+.slot.slot-cross-campus-busy {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 5px,
+    rgba(220, 38, 38, 0.08) 5px,
+    rgba(220, 38, 38, 0.08) 10px
+  );
+  outline: 1px dashed rgba(220, 38, 38, 0.65);
+  outline-offset: -3px;
+}
+.slot.slot-cross-campus-busy::after {
+  content: '跨校忙碌';
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  z-index: 1;
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: var(--ds-danger, #b91c1c);
+  background: var(--ds-canvas, #fff);
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
 }
 .slot:hover { background: var(--ds-warning-wash); }
 .slot.no-click { cursor: default; }
@@ -3938,6 +4014,20 @@ onMounted(() => {
 .capacity-legend-chip--ok { background: var(--ds-success, var(--ds-success)); }
 .capacity-legend-chip--warn { background: var(--ds-warning, var(--ds-warning)); }
 .capacity-legend-chip--full { background: var(--ds-danger, var(--ds-danger)); }
+.cross-campus-legend-chip {
+  display: inline-block;
+  width: 26px;
+  height: 16px;
+  border: 1px dashed rgba(220, 38, 38, 0.7);
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 4px,
+    rgba(220, 38, 38, 0.08) 4px,
+    rgba(220, 38, 38, 0.08) 8px
+  );
+  border-radius: 4px;
+}
 @media (max-width: 768px) {
   .capacity-badge {
     font-size: 8px;
