@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-15-student-import-template
+    published_at: "2026-09-15"
+    audiences:
+      - director
+    importance: digest
+    title: 學生名單匯入提供範例格式
+    summary: 學生管理可先下載欄位範例，再依既有 CSV／Excel 規格匯入名單。
+    items:
+      - category: improved
+        text: 「下載範例」只提供 UTF-8 CSV 欄位標題，不帶任何學生資料，方便先準備匯入檔。
+      - category: improved
+        text: 既有匯入 API、欄位驗證、分校權限與新增／更新規則維持不變。
+    source_refs:
+      - "github:#2907"
+
   - id: staff-2026-09-14-billing-journey-entry
     published_at: "2026-09-14"
     audiences:
