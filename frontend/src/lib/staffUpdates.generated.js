@@ -100,6 +100,38 @@ export const staffUpdates = [
     "version": "2026.09.15"
   },
   {
+    "id": "staff-2026-09-15-accounting-ledger-context",
+    "publishedAt": "2026-09-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "對帳帳單辨識更直觀",
+    "summary": "帳單主標顯示科目與第一堂上課日期，主任更容易找到對應紀錄。",
+    "items": [
+      "學生帳務對帳會優先顯示科目與第一堂上課日期，減少查找帳單編號的負擔。",
+      "帳單金額、付款狀態、收款與收據對齊、權限及既有帳務流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生帳務對帳會優先顯示科目與第一堂上課日期，減少查找帳單編號的負擔。",
+          "帳單金額、付款狀態、收款與收據對齊、權限及既有帳務流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#2920"
+    ],
+    "date": "2026-09-15",
+    "version": "2026.09.15"
+  },
+  {
     "id": "staff-2026-09-14-schedule-discrepancy-a11y",
     "publishedAt": "2026-09-14",
     "effectiveAt": null,

@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-15-accounting-ledger-context
+    published_at: "2026-09-15"
+    audiences:
+      - director
+    importance: digest
+    title: 對帳帳單辨識更直觀
+    summary: 帳單主標顯示科目與第一堂上課日期，主任更容易找到對應紀錄。
+    items:
+      - category: improved
+        text: 學生帳務對帳會優先顯示科目與第一堂上課日期，減少查找帳單編號的負擔。
+      - category: improved
+        text: 帳單金額、付款狀態、收款與收據對齊、權限及既有帳務流程維持不變。
+    source_refs:
+      - "github:#2920"
+
   - id: staff-2026-09-15-cross-campus-calendar-hint
     published_at: "2026-09-15"
     audiences:
