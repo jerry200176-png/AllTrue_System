@@ -78,6 +78,21 @@ updates:
     source_refs:
       - "github:#2907"
 
+  - id: staff-2026-09-15-course-reconciliation-guidance
+    published_at: "2026-09-15"
+    audiences:
+      - director
+    importance: digest
+    title: 堂數待對帳提示提供處理入口
+    summary: 課程管理的堂數待對帳提示可直接查看既有對帳明細，處理方向更清楚。
+    items:
+      - category: improved
+        text: 課程管理看到「堂數待對帳」時，可直接開啟既有對帳明細查看原因與下一步。
+      - category: improved
+        text: 本次只改善提示呈現與導覽，不改帳務計算、付款資料、權限或破壞性操作。
+    source_refs:
+      - "github:in-app-305"
+
   - id: staff-2026-09-14-billing-journey-entry
     published_at: "2026-09-14"
     audiences:
