@@ -300,26 +300,96 @@ jobs:
           INSERT INTO StudentClass ($PARENT_COLS) SELECT $PARENT_COLS FROM \`$TMP_DB\`.StudentClass WHERE ID=2817;
           INSERT INTO ClassSession ($SESSION_COLS) SELECT $SESSION_COLS FROM \`$TMP_DB\`.ClassSession WHERE id IN ($SESSIONS);
           INSERT INTO LearningRecord ($LR_COLS) SELECT $LR_COLS FROM \`$TMP_DB\`.LearningRecord WHERE id IN ($LEARNING_RECORDS);
-          SET @hash_ok = ((SELECT COUNT(*) FROM StudentClass WHERE ID=2817)=1
-            AND (SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS))=9
-            AND (SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS))=9
-            AND (SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817)='$parent_hash'
-            $session_hash_guard
-            AND (SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS))='$lr_agg'
-            AND (SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN ($SESSIONS))=9
-            AND (SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17'))=0
-            AND (SELECT COUNT(*) FROM StudentSingIn WHERE StudentClassID=2817 OR ClassSessionID IN ($SESSIONS))=$attendance
-            AND (SELECT COUNT(*) FROM session_deduction_ledger WHERE student_class_id=2817 OR class_session_id IN ($SESSIONS))=$ledger
-            AND (SELECT COUNT(*) FROM Invoice WHERE StudentClassID=2817)=$invoice
-            AND (SELECT COUNT(*) FROM schedules WHERE id IN (6906,8890,8891))=$schedules
-            AND (SELECT COUNT(*) FROM schedule_audit_logs WHERE session_id IN ($SESSIONS))=$audit
-            AND (SELECT COUNT(*) FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS))=$feedback
-            AND (SELECT COUNT(*) FROM learning_record_feedback_replies WHERE feedback_id IN (SELECT id FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS)))=$replies
-            AND (SELECT COUNT(*) FROM user_engagement_xp_events WHERE learning_record_id IN ($LEARNING_RECORDS))=$xp);
-          SET @guard_sql = IF(@hash_ok, 'SELECT 1', 'SELECT * FROM __course2817_verification_abort__');
-          PREPARE guard_stmt FROM @guard_sql; EXECUTE guard_stmt; DEALLOCATE PREPARE guard_stmt;
-          SELECT 19 AS authorized_insert_count;
-          COMMIT;
+          SET @parent_count_actual=(SELECT COUNT(*) FROM StudentClass WHERE ID=2817),
+              @parent_hash_actual=(SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817),
+              @session_count_actual=(SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS)),
+              @learning_record_count_actual=(SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS)),
+              @learning_record_fk_count_actual=(SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN ($SESSIONS)),
+              @forbidden_30444_actual=(SELECT COUNT(*) FROM ClassSession WHERE id=30444),
+              @forbidden_20260917_actual=(SELECT COUNT(*) FROM ClassSession WHERE StudentClassID=2817 AND SessionDate='2026-09-17'),
+              @attendance_actual=(SELECT COUNT(*) FROM StudentSingIn WHERE StudentClassID=2817 OR ClassSessionID IN ($SESSIONS)),
+              @ledger_actual=(SELECT COUNT(*) FROM session_deduction_ledger WHERE student_class_id=2817 OR class_session_id IN ($SESSIONS)),
+              @invoice_actual=(SELECT COUNT(*) FROM Invoice WHERE StudentClassID=2817),
+              @schedules_actual=(SELECT COUNT(*) FROM schedules WHERE id IN (6906,8890,8891)),
+              @schedule_audit_actual=(SELECT COUNT(*) FROM schedule_audit_logs WHERE session_id IN ($SESSIONS)),
+              @feedback_actual=(SELECT COUNT(*) FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS)),
+              @replies_actual=(SELECT COUNT(*) FROM learning_record_feedback_replies WHERE feedback_id IN (SELECT id FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS))),
+              @xp_actual=(SELECT COUNT(*) FROM user_engagement_xp_events WHERE learning_record_id IN ($LEARNING_RECORDS)),
+              @learning_record_set_hash_actual=(SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS));
+          SET @parent_count_ok=(@parent_count_actual=1),
+              @session_count_ok=(@session_count_actual=9),
+              @learning_record_count_ok=(@learning_record_count_actual=9),
+              @parent_hash_ok=(@parent_hash_actual='$parent_hash'),
+              @learning_record_set_hash_ok=(@learning_record_set_hash_actual='$lr_agg'),
+              @learning_record_fk_count_ok=(@learning_record_fk_count_actual=9),
+              @forbidden_30444_ok=(@forbidden_30444_actual=0),
+              @forbidden_20260917_ok=(@forbidden_20260917_actual=0),
+              @attendance_unchanged=(@attendance_actual=$attendance),
+              @ledger_unchanged=(@ledger_actual=$ledger),
+              @invoice_unchanged=(@invoice_actual=$invoice),
+              @schedules_unchanged=(@schedules_actual=$schedules),
+              @schedule_audit_unchanged=(@schedule_audit_actual=$audit),
+              @feedback_unchanged=(@feedback_actual=$feedback),
+              @replies_unchanged=(@replies_actual=$replies),
+              @xp_unchanged=(@xp_actual=$xp);
+          SET @session_25919_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25919),
+              @session_25920_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25920),
+              @session_25921_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25921),
+              @session_25922_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25922),
+              @session_27641_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=27641),
+              @session_25923_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25923),
+              @session_25926_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25926),
+              @session_25924_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25924),
+              @session_25925_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25925);
+          SET @session_25919_ok=(@session_25919_actual='b46083eee3959d9c1eaa32351c6347d92f33cfa9e4c2c90ec5e590754e391fe'),
+              @session_25920_ok=(@session_25920_actual='4cb4c7b69a87b66588045d9cbe7b5f7a40297c4d2bb23fce67bcbc5c92ac0bfc'),
+              @session_25921_ok=(@session_25921_actual='478fb8fa808b08b985ebe7392a4796417ab094d38c77d5fd5974c6d6b8a798db'),
+              @session_25922_ok=(@session_25922_actual='d1ea7d69d619577c90309f047c239c4b2d4f12d4fa6192f6c8412d0708c4ebfe'),
+              @session_27641_ok=(@session_27641_actual='91d4e50ab3f1f5b236ebf7f88af927bbd159cb3a6871ba18968798edd522136d'),
+              @session_25923_ok=(@session_25923_actual='ccb1e8efc1a747126179206b23b860e6f949c7d9f8c8e66c3afaf7d58d4da27b'),
+              @session_25926_ok=(@session_25926_actual='e60060d3c20acbf62673aafa3b1880e6b67ce355825e5d714d8985c5b373d39a'),
+              @session_25924_ok=(@session_25924_actual='031f39e1226fd68ea93addbe469a5e1220283a1efa9514e49055bcea58d9e513'),
+              @session_25925_ok=(@session_25925_actual='79a54fd26cccda7886eb9766d81090afbff37dd6f8e38fb0743b38d393adc7b1');
+          SELECT CONCAT('predicate=parent_count_ok expected=1 actual=',@parent_count_actual,' result=',IF(@parent_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_count_ok expected=9 actual=',@session_count_actual,' result=',IF(@session_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=learning_record_count_ok expected=9 actual=',@learning_record_count_actual,' result=',IF(@learning_record_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=parent_hash_ok expected=$parent_hash actual=',COALESCE(@parent_hash_actual,'<NULL>'),' result=',IF(@parent_hash_ok,'PASS','FAIL')),
+            CONCAT('predicate=learning_record_set_hash_ok expected=$lr_agg actual=',COALESCE(@learning_record_set_hash_actual,'<NULL>'),' result=',IF(@learning_record_set_hash_ok,'PASS','FAIL')),
+            CONCAT('predicate=learning_record_fk_count_ok expected=9 actual=',@learning_record_fk_count_actual,' result=',IF(@learning_record_fk_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=forbidden_30444_ok expected=0 actual=',@forbidden_30444_actual,' result=',IF(@forbidden_30444_ok,'PASS','FAIL')),
+            CONCAT('predicate=forbidden_2026_09_17_ok expected=0 actual=',@forbidden_20260917_actual,' result=',IF(@forbidden_20260917_ok,'PASS','FAIL')),
+            CONCAT('predicate=attendance_unchanged expected=$attendance actual=',@attendance_actual,' result=',IF(@attendance_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=ledger_unchanged expected=$ledger actual=',@ledger_actual,' result=',IF(@ledger_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=invoice_unchanged expected=$invoice actual=',@invoice_actual,' result=',IF(@invoice_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=schedules_unchanged expected=$schedules actual=',@schedules_actual,' result=',IF(@schedules_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=schedule_audit_unchanged expected=$audit actual=',@schedule_audit_actual,' result=',IF(@schedule_audit_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=feedback_unchanged expected=$feedback actual=',@feedback_actual,' result=',IF(@feedback_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=replies_unchanged expected=$replies actual=',@replies_actual,' result=',IF(@replies_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=xp_unchanged expected=$xp actual=',@xp_actual,' result=',IF(@xp_unchanged,'PASS','FAIL'));
+          SELECT CONCAT('predicate=session_25919_hash_ok expected=b46083eee3959d9c1eaa32351c6347d92f33cfa9e4c2c90ec5e590754e391fe actual=',COALESCE(@session_25919_actual,'<NULL>'),' result=',IF(@session_25919_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25920_hash_ok expected=4cb4c7b69a87b66588045d9cbe7b5f7a40297c4d2bb23fce67bcbc5c92ac0bfc actual=',COALESCE(@session_25920_actual,'<NULL>'),' result=',IF(@session_25920_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25921_hash_ok expected=478fb8fa808b08b985ebe7392a4796417ab094d38c77d5fd5974c6d6b8a798db actual=',COALESCE(@session_25921_actual,'<NULL>'),' result=',IF(@session_25921_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25922_hash_ok expected=d1ea7d69d619577c90309f047c239c4b2d4f12d4fa6192f6c8412d0708c4ebfe actual=',COALESCE(@session_25922_actual,'<NULL>'),' result=',IF(@session_25922_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_27641_hash_ok expected=91d4e50ab3f1f5b236ebf7f88af927bbd159cb3a6871ba18968798edd522136d actual=',COALESCE(@session_27641_actual,'<NULL>'),' result=',IF(@session_27641_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25923_hash_ok expected=ccb1e8efc1a747126179206b23b860e6f949c7d9f8c8e66c3afaf7d58d4da27b actual=',COALESCE(@session_25923_actual,'<NULL>'),' result=',IF(@session_25923_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25926_hash_ok expected=e60060d3c20acbf62673aafa3b1880e6b67ce355825e5d714d8985c5b373d39a actual=',COALESCE(@session_25926_actual,'<NULL>'),' result=',IF(@session_25926_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25924_hash_ok expected=031f39e1226fd68ea93addbe469a5e1220283a1efa9514e49055bcea58d9e513 actual=',COALESCE(@session_25924_actual,'<NULL>'),' result=',IF(@session_25924_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25925_hash_ok expected=79a54fd26cccda7886eb9766d81090afbff37dd6f8e38fb0743b38d393adc7b1 actual=',COALESCE(@session_25925_actual,'<NULL>'),' result=',IF(@session_25925_ok,'PASS','FAIL'));
+          SET @verification_ok=(@parent_count_ok AND @session_count_ok AND @learning_record_count_ok AND @parent_hash_ok
+            AND @session_25919_ok AND @session_25920_ok AND @session_25921_ok AND @session_25922_ok AND @session_27641_ok
+            AND @session_25923_ok AND @session_25926_ok AND @session_25924_ok AND @session_25925_ok
+            AND @learning_record_set_hash_ok AND @learning_record_fk_count_ok AND @forbidden_30444_ok AND @forbidden_20260917_ok
+            AND @attendance_unchanged AND @ledger_unchanged AND @invoice_unchanged AND @schedules_unchanged
+            AND @schedule_audit_unchanged AND @feedback_unchanged AND @replies_unchanged AND @xp_unchanged);
+          SELECT CONCAT('verification_boolean expected=1 actual=',@verification_ok,' result=',IF(@verification_ok,'PASS','FAIL'));
+          SET @rollback_sql=IF(@verification_ok,'SELECT 1','ROLLBACK');
+          PREPARE rollback_stmt FROM @rollback_sql; EXECUTE rollback_stmt; DEALLOCATE PREPARE rollback_stmt;
+          SET @rollback_parent=(SELECT COUNT(*) FROM StudentClass WHERE ID=2817),
+              @rollback_sessions=(SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS)),
+              @rollback_learning_records=(SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS));
+          SELECT CONCAT('rollback_proof expected=0,0,0 actual=',@rollback_parent,',',@rollback_sessions,',',@rollback_learning_records,' result=',IF(@verification_ok,'NOT_REQUIRED',IF(@rollback_parent=0 AND @rollback_sessions=0 AND @rollback_learning_records=0,'PASS','FAIL')));
+          SET @finish_sql=IF(@verification_ok,'COMMIT','SELECT * FROM __course2817_verification_abort__');
+          PREPARE finish_stmt FROM @finish_sql; EXECUTE finish_stmt; DEALLOCATE PREPARE finish_stmt;
           SELECT RELEASE_LOCK('alltrue:course2817:historical-restore') AS lock_released;
           SQL
           mysql --batch --skip-column-names -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$PROD_DB" < "$tx_sql"
