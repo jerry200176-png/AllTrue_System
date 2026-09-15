@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.09.15"
   },
   {
+    "id": "staff-2026-09-15-binding-health-clarity",
+    "publishedAt": "2026-09-15",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "綁定健康狀態與控制項更清楚",
+    "summary": "綁定健康看板更容易辨識目前狀態，常用控制項在鍵盤與手機操作時更清楚。",
+    "items": [
+      "正常、待確認與需要處理的綁定狀態會以一致的標示呈現，主任可在原頁判斷下一步。",
+      "本次只改善狀態呈現與操作可辨識性，不改資料、API、權限、帳務、點名、評量或其他業務規則。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "正常、待確認與需要處理的綁定狀態會以一致的標示呈現，主任可在原頁判斷下一步。",
+          "本次只改善狀態呈現與操作可辨識性，不改資料、API、權限、帳務、點名、評量或其他業務規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#2913"
+    ],
+    "date": "2026-09-15",
+    "version": "2026.09.15"
+  },
+  {
     "id": "staff-2026-09-14-schedule-discrepancy-a11y",
     "publishedAt": "2026-09-14",
     "effectiveAt": null,

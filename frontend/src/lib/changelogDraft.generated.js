@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.15",
     "date": "2026-09-15",
     "title": "2026.09.15 草稿（未發布）",
-    "summary": "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+    "summary": "綁定健康狀態與控制項更清楚；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "綁定健康狀態與控制項更清楚",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗"
         ]
       }
     ],
     "items": [
+      "綁定健康狀態與控制項更清楚",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗"
     ]
   },
