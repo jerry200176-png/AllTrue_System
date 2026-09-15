@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
+    aggregate_landed_pr_effects,
     classify_activation_scope,
     classify_activation_provenance,
     classify_production_runtime,
@@ -37,6 +38,58 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
 
 
 class DeployActivationPolicyTest(unittest.TestCase):
+    @staticmethod
+    def _landed_effect(number, commit_sha, paths, patch, risk=1, tier=1):
+        return {
+            "number": number,
+            "commit_sha": commit_sha,
+            "merged_at": "2026-09-14T00:00:00Z",
+            "paths": paths,
+            "patch": patch,
+            "patch_complete": True,
+            "declared_risk": risk,
+            "declared_tier": tier,
+        }
+
+    def test_merged_pr_uses_landed_effect_not_historical_branch_files(self):
+        protected_workflow = ".github/workflows/inapp-289-course-2817-restore.yml"
+        landed = aggregate_landed_pr_effects([
+            self._landed_effect(
+                "B", "a" * 40,
+                ["frontend/src/pages/DirectorDashboard.vue"],
+                "diff --git a/frontend/src/pages/DirectorDashboard.vue b/frontend/src/pages/DirectorDashboard.vue\n+@@ -1 +1 @@\n-old\n+new",
+            ),
+        ])
+        self.assertEqual(landed[0]["paths"], ["frontend/src/pages/DirectorDashboard.vue"])
+        self.assertNotIn(protected_workflow, landed[0]["paths"])
+        classified = classify_activation_provenance(landed)
+        self.assertFalse(classified["blocked"])
+        self.assertEqual(classified["tier_name"], "T1")
+
+    def test_multiple_landed_commits_for_one_pr_are_aggregated(self):
+        landed = aggregate_landed_pr_effects([
+            self._landed_effect("B", "a" * 40, ["frontend/src/pages/One.vue"], "first"),
+            self._landed_effect("B", "b" * 40, ["frontend/src/pages/Two.vue"], "second"),
+        ])
+        self.assertEqual(len(landed), 1)
+        self.assertEqual(landed[0]["paths"], ["frontend/src/pages/One.vue", "frontend/src/pages/Two.vue"])
+        self.assertLess(landed[0]["patch"].index("commit " + "a" * 40), landed[0]["patch"].index("commit " + "b" * 40))
+
+    def test_actual_landed_protected_effect_remains_t3(self):
+        landed = aggregate_landed_pr_effects([
+            self._landed_effect(
+                "A", "a" * 40,
+                [".github/workflows/inapp-289-course-2817-restore.yml", "frontend/src/pages/One.vue"],
+                "diff --git a/.github/workflows/inapp-289-course-2817-restore.yml b/.github/workflows/inapp-289-course-2817-restore.yml\n+@@ -1 +1 @@\n-old\n+new",
+                risk=3,
+                tier=3,
+            ),
+        ])
+        classified = classify_activation_provenance(landed)
+        self.assertFalse(classified["blocked"])
+        self.assertEqual(classified["tier_name"], "T3")
+        self.assertTrue(classified["protected_activation"])
+
     @staticmethod
     def _provenance(number, paths, patch, risk, tier, *, patch_complete=True):
         return {
@@ -935,6 +988,15 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("active_main_required_status_checks", self.workflow)
         self.assertIn('"required_status_checks"', self.workflow)
         self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
+
+    def test_merged_pr_attribution_uses_actual_landed_commit_effects(self):
+        attribution = self.workflow[self.workflow.index("              for commit in comparison.get(\"commits\") or []:"):]
+        attribution = attribution[:attribution.index("              if not provenance_complete or not attributed:")]
+        self.assertIn('commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")', attribution)
+        self.assertIn('actual_files = commit_detail.get("files")', attribution)
+        self.assertIn('landed_effects.append({', attribution)
+        self.assertIn('attributed.extend(aggregate_landed_pr_effects(landed_effects))', attribution)
+        self.assertNotIn('pr_pages = gh_api', attribution)
 
     def test_ruleset_branch_condition_is_verified_from_detail_response(self):
         lookup = self.workflow[self.workflow.index("          def active_main_required_status_checks(repo):"):]
