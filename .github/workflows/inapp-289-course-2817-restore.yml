@@ -9,7 +9,7 @@ on:
         description: dry-run or execute
         required: true
         type: choice
-        options: [dry-run, execute]
+        options: [dry-run, diagnostic, execute]
         default: dry-run
       confirm_phrase:
         description: Exact Founder confirmation for execute
@@ -66,10 +66,12 @@ jobs:
           MODE_CLEAN="$(printf '%s' "$MODE" | tr -d '\r\n')"
           PHRASE_CLEAN="$(printf '%s' "$PHRASE" | tr -d '\r\n')"
           BACKUP_SHA_CLEAN="$(printf '%s' "$BACKUP_SHA" | tr -d '\r\n')"
-          [[ "$MODE_CLEAN" == dry-run || "$MODE_CLEAN" == execute ]]
+          [[ "$MODE_CLEAN" == dry-run || "$MODE_CLEAN" == diagnostic || "$MODE_CLEAN" == execute ]]
           [[ "$BACKUP_SHA_CLEAN" == 66007292e0226dca9606c2d08be4b0d8f58de3861d70e3b9afa74717d63d7325 ]]
           if [[ "$MODE_CLEAN" == execute ]]; then
             [[ "$PHRASE_CLEAN" == I_APPROVE_2817_HISTORICAL_RESTORE ]]
+          elif [[ "$MODE_CLEAN" == diagnostic ]]; then
+            [[ "$PHRASE_CLEAN" == VERIFY_FIXTURE_2817_RESTORE ]]
           else
             [[ "$PHRASE_CLEAN" == DRY_RUN_2817_HISTORICAL_RESTORE ]]
           fi
@@ -94,6 +96,7 @@ jobs:
           db_value() { sed -n "s/^$1=//p" .env | head -n 1; }
           DB_USER="$(db_value DB_USERNAME)"; DB_PASS="$(db_value DB_PASSWORD)"; PROD_DB="$(db_value DB_DATABASE)"
           test -n "$DB_USER"; test -n "$DB_PASS"; test -n "$PROD_DB"
+          REAL_PROD_DB="$PROD_DB"; FIXTURE_DB=''
           APPROVED_SHA=66007292e0226dca9606c2d08be4b0d8f58de3861d70e3b9afa74717d63d7325
           PARENT_HASH=feed665f143f27792b9ac5acfee79336352cdc6b556ef67788383000e097d9cd
           SESSION_AGG_HASH=fcb3721981ca560dd77a2c03be67c85a5bff1d5dcb852972d592a6bee8179a22
@@ -148,10 +151,18 @@ jobs:
           echo "backup_fingerprint=$APPROVED_SHA"
           echo "backup_snapshot_source=validated_server_side"
           TMP_DB="alltrue_2817_restore_${RANDOM}_$$"
-          cleanup() { mysqlq "$PROD_DB" "DROP DATABASE IF EXISTS \`$TMP_DB\`; SELECT RELEASE_LOCK('alltrue:course2817:historical-restore');" >/dev/null 2>&1 || true; }
+          cleanup() { mysqlq "$REAL_PROD_DB" "DROP DATABASE IF EXISTS \`$TMP_DB\`; ${FIXTURE_DB:+DROP DATABASE IF EXISTS \`$FIXTURE_DB\`; } SELECT RELEASE_LOCK('alltrue:course2817:historical-restore');" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           mysqlq "$PROD_DB" "CREATE DATABASE \`$TMP_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
           zcat "$SNAPSHOT" | mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$TMP_DB"
+          if [ "$MODE" = diagnostic ]; then
+            FIXTURE_DB="alltrue_2817_verifier_fixture_${RANDOM}_$$"
+            mysqlq "$REAL_PROD_DB" "CREATE DATABASE \`$FIXTURE_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            mysqldump --single-transaction --quick "$TMP_DB" | mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$FIXTURE_DB"
+            mysqlq "$FIXTURE_DB" "SET FOREIGN_KEY_CHECKS=0; DELETE FROM LearningRecord WHERE id IN ($LEARNING_RECORDS); DELETE FROM ClassSession WHERE id IN ($SESSIONS); DELETE FROM StudentClass WHERE ID=2817; SET FOREIGN_KEY_CHECKS=1;"
+            PROD_DB="$FIXTURE_DB"
+            echo 'diagnostic_fixture=isolated_source_clone target_rows_removed production_write=0'
+          fi
           for table in StudentClass ClassSession LearningRecord; do
             schema_report "$table"
             engine="$(scalar "$PROD_DB" "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA='$PROD_DB' AND TABLE_NAME='$table';")"
@@ -382,18 +393,22 @@ jobs:
             AND @attendance_unchanged AND @ledger_unchanged AND @invoice_unchanged AND @schedules_unchanged
             AND @schedule_audit_unchanged AND @feedback_unchanged AND @replies_unchanged AND @xp_unchanged);
           SELECT CONCAT('verification_boolean expected=1 actual=',@verification_ok,' result=',IF(@verification_ok,'PASS','FAIL'));
-          SET @rollback_sql=IF(@verification_ok,'SELECT 1','ROLLBACK');
+          SET @rollback_sql=IF(@verification_ok AND '$MODE' <> 'diagnostic','SELECT 1','ROLLBACK');
           PREPARE rollback_stmt FROM @rollback_sql; EXECUTE rollback_stmt; DEALLOCATE PREPARE rollback_stmt;
           SET @rollback_parent=(SELECT COUNT(*) FROM StudentClass WHERE ID=2817),
               @rollback_sessions=(SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS)),
               @rollback_learning_records=(SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS));
-          SELECT CONCAT('rollback_proof expected=0,0,0 actual=',@rollback_parent,',',@rollback_sessions,',',@rollback_learning_records,' result=',IF(@verification_ok,'NOT_REQUIRED',IF(@rollback_parent=0 AND @rollback_sessions=0 AND @rollback_learning_records=0,'PASS','FAIL')));
-          SET @finish_sql=IF(@verification_ok,'COMMIT','SELECT * FROM __course2817_verification_abort__');
+          SELECT CONCAT('rollback_proof expected=0,0,0 actual=',@rollback_parent,',',@rollback_sessions,',',@rollback_learning_records,' result=',IF(@verification_ok AND '$MODE' <> 'diagnostic','NOT_REQUIRED',IF(@rollback_parent=0 AND @rollback_sessions=0 AND @rollback_learning_records=0,'PASS','FAIL')));
+          SET @finish_sql=IF(@verification_ok AND '$MODE' <> 'diagnostic','COMMIT',IF(@verification_ok,'SELECT 1','SELECT * FROM __course2817_verification_abort__'));
           PREPARE finish_stmt FROM @finish_sql; EXECUTE finish_stmt; DEALLOCATE PREPARE finish_stmt;
           SELECT RELEASE_LOCK('alltrue:course2817:historical-restore') AS lock_released;
           SQL
           mysql --batch --skip-column-names -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$PROD_DB" < "$tx_sql"
           rm -f "$tx_sql"
+          if [ "$MODE" = diagnostic ]; then
+            echo 'diagnostic_verifier=complete production_write=0 fixture_transaction=rolled_back'
+            exit 0
+          fi
           if false; then
           : <<'DISABLED_OLD_TX'
           rollback_needed=1
