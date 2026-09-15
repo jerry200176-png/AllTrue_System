@@ -1,0 +1,45 @@
+id: INT-20260915-151810-DTL6
+title: Binding health dashboard clarity
+intent: Binding health dashboard clarity
+kind: intent
+brain_dump: 'Reconcile existing UI draft #2668 onto current main: improve empty/loading/error
+  states and keyboard/touch presentation for the read-only binding health dashboard
+  without changing API payloads, calculations, permissions, or business state.'
+boundary: Do not change API payloads, calculations, data access permissions, billing,
+  attendance, learning records, auth, migrations, production data, destructive actions,
+  or backend behavior.
+success_condition: Current-main diff limited to frontend BindingHealthDashboard presentation
+  and tests/fixtures; focused unit and Playwright checks pass; no network mutation
+  paths added.
+risk: low
+priority: 2
+labels:
+- ui
+scope:
+  allow:
+  - frontend/src/pages/BindingHealthDashboard.vue
+  - frontend/src/components/__tests__/BindingHealthDashboardAccessibility.test.js
+  - frontend/e2e/binding-health-clarity.spec.js
+  - frontend/e2e/binding-health-playwright.config.js
+  - frontend/e2e/fixtures/ui-foundation/binding-health-pilot-mount.html
+  - frontend/e2e/fixtures/ui-foundation/binding-health-pilot-mount.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-15T15:18:10+08:00'
+children: []
+resource_profile: default
