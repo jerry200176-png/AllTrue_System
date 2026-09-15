@@ -11,7 +11,8 @@ from __future__ import annotations
 import fnmatch
 import re
 from collections import Counter
-from typing import Iterable
+from datetime import datetime
+from typing import Iterable, Mapping
 
 
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
@@ -567,13 +568,212 @@ def classify_activation_scope(paths: Iterable[str], patch: str = "") -> dict[str
     }
 
 
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _full_sha(value: object) -> str | None:
+    candidate = str(value or "").strip().lower()
+    return candidate if _FULL_SHA_RE.fullmatch(candidate) else None
+
+
+def _file_evidence(files: Iterable[Mapping[str, object]]) -> dict[str, tuple[object, ...]] | None:
+    normalized: dict[str, tuple[object, ...]] = {}
+    for item in files:
+        path = str(item.get("filename") or "").replace("\\", "/")
+        patch = item.get("patch")
+        if not path or patch is None or path in normalized:
+            return None
+        normalized[path] = (
+            item.get("status"),
+            item.get("additions"),
+            item.get("deletions"),
+            item.get("changes"),
+            str(patch),
+        )
+    return normalized
+
+
+def _check_evidence_is_green(check_evidence: Mapping[str, object]) -> bool:
+    check_runs = check_evidence.get("check_runs")
+    statuses = check_evidence.get("statuses")
+    if not isinstance(check_runs, list) or not isinstance(statuses, list) or not check_runs:
+        return False
+    if check_evidence.get("check_runs_total") != len(check_runs):
+        return False
+    if check_evidence.get("statuses_total") != len(statuses):
+        return False
+    if any(
+        not isinstance(item, Mapping)
+        or item.get("status") != "completed"
+        or item.get("conclusion") not in {"success", "neutral", "skipped"}
+        for item in check_runs
+    ):
+        return False
+    if any(
+        not isinstance(item, Mapping) or item.get("state") != "success"
+        for item in statuses
+    ):
+        return False
+    return True
+
+
+def _already_integrated_closeout(
+    comments: Iterable[Mapping[str, object]],
+    *,
+    target_sha: str,
+    head_sha: str,
+    target_timestamp: datetime,
+) -> bool:
+    marker = re.compile(r"(?:closing|closed)\s+as\s+already\s+integrated|already\s+integrated|已整合", re.IGNORECASE)
+    rejected = re.compile(
+        r"review\s+rejection|product\s+rejection|security\s+finding|ci\s+(?:failure|failed)|rejected|遭拒|退回",
+        re.IGNORECASE,
+    )
+    target_prefix = target_sha[:8]
+    head_prefix = head_sha[:8]
+    for comment in comments:
+        body = str(comment.get("body") or "")
+        created_at = _parse_timestamp(comment.get("created_at"))
+        if (
+            marker.search(body)
+            and not rejected.search(body)
+            and target_prefix in body.lower()
+            and head_prefix in body.lower()
+            and created_at is not None
+            and created_at >= target_timestamp
+        ):
+            return True
+    return False
+
+
+def reconcile_preexisting_pr_provenance(
+    *,
+    target_commit: Mapping[str, object],
+    pr: Mapping[str, object],
+    pr_files: Iterable[Mapping[str, object]],
+    target_files: Iterable[Mapping[str, object]],
+    pr_head_commit: Mapping[str, object],
+    check_evidence: Mapping[str, object],
+    closeout_comments: Iterable[Mapping[str, object]],
+) -> dict[str, object]:
+    """Recover only independently provable, pre-existing PR provenance.
+
+    This path is for a PR whose exact implementation reached main through a
+    direct commit before GitHub recorded a merge.  It never synthesizes
+    ``merged_at`` and returns an explicit ``reconciled`` record only after
+    time, tree, file/patch, check, declaration, review, and closeout evidence
+    all pass.  Commit-message PR references are only candidate locators; they
+    are never validation evidence.
+    """
+
+    def reject(reason: str) -> dict[str, object]:
+        return {"accepted": False, "reason": reason, "record": None}
+
+    target_sha = _full_sha(target_commit.get("sha"))
+    head_sha = _full_sha((pr.get("head") or {}).get("sha") if isinstance(pr.get("head"), Mapping) else None)
+    if not target_sha or not head_sha:
+        return reject("target or PR head SHA is invalid")
+    if pr.get("state") != "closed" or pr.get("merged_at"):
+        return reject("PR is not closed without a merge timestamp")
+    base = pr.get("base")
+    if not isinstance(base, Mapping) or base.get("ref") != "main":
+        return reject("PR base is not main")
+
+    target_timestamp = _parse_timestamp(target_commit.get("committer_date"))
+    head_timestamp = _parse_timestamp(pr_head_commit.get("committer_date"))
+    created_at = _parse_timestamp(pr.get("created_at"))
+    closed_at = _parse_timestamp(pr.get("closed_at"))
+    if not target_timestamp or not head_timestamp or not created_at or not closed_at:
+        return reject("timestamp evidence is incomplete")
+    if created_at >= target_timestamp:
+        return reject("PR was created after the target commit")
+    if head_timestamp > target_timestamp:
+        return reject("PR head was not present before the target commit")
+    if closed_at < target_timestamp:
+        return reject("PR closed before the target commit")
+
+    target_parents = target_commit.get("parents")
+    head_parents = pr_head_commit.get("parents")
+    if not isinstance(target_parents, list) or not isinstance(head_parents, list) or len(target_parents) != 1 or len(head_parents) != 1:
+        return reject("single-parent commit evidence is required")
+    target_parent = _full_sha((target_parents[0] or {}).get("sha")) if isinstance(target_parents[0], Mapping) else None
+    head_parent = _full_sha((head_parents[0] or {}).get("sha")) if isinstance(head_parents[0], Mapping) else None
+    if not target_parent or target_parent != head_parent:
+        return reject("target and PR head do not share the same parent")
+
+    target_tree = _full_sha((target_commit.get("tree") or {}).get("sha") if isinstance(target_commit.get("tree"), Mapping) else None)
+    head_tree = _full_sha((pr_head_commit.get("tree") or {}).get("sha") if isinstance(pr_head_commit.get("tree"), Mapping) else None)
+    if not target_tree or target_tree != head_tree:
+        return reject("target and PR head trees are not identical")
+
+    target_files_map = _file_evidence(target_files)
+    pr_files_map = _file_evidence(pr_files)
+    if not target_files_map or not pr_files_map or target_files_map != pr_files_map:
+        return reject("changed-file set or patch evidence is not exact-equivalent")
+
+    if not _check_evidence_is_green(check_evidence):
+        return reject("PR head required checks are not completely green")
+    if not _already_integrated_closeout(
+        closeout_comments,
+        target_sha=target_sha,
+        head_sha=head_sha,
+        target_timestamp=target_timestamp,
+    ):
+        return reject("already-integrated closeout evidence is missing")
+
+    paths = sorted(target_files_map)
+    patch = "\n".join(
+        f"diff --git a/{path} b/{path}\n+++ b/{path}\n{target_files_map[path][-1]}"
+        for path in paths
+    )
+    scope = classify_activation_scope(paths, patch)
+    declared_risk, declared_tier = parse_declaration(str(pr.get("body") or ""))
+    if declared_risk not in {0, 1} or declared_tier not in {0, 1} or declared_risk != declared_tier:
+        return reject("only matching R0/T0 or R1/T1 declarations are recoverable")
+    if int(scope["machine_minimum_tier"]) > 1 or bool(scope["founder_required"]):
+        return reject("machine classification is outside the reversible R0/R1 boundary")
+    if any(is_production_activation_sensitive_path(path) for path in paths):
+        return reject("changed paths cross a protected activation boundary")
+
+    return {
+        "accepted": True,
+        "reason": "pre-existing exact-equivalent PR accepted as reconciled",
+        "record": {
+            "number": str(pr.get("number") or ""),
+            "provenance_state": "reconciled",
+            "reconciliation_basis": "pre-existing-exact-equivalent",
+            "paths": paths,
+            "patch": patch,
+            "patch_complete": True,
+            "declared_risk": declared_risk,
+            "declared_tier": declared_tier,
+            "reconciliation_evidence": {
+                "target_sha": target_sha,
+                "pr_head_sha": head_sha,
+                "target_tree_sha": target_tree,
+                "pr_head_tree_sha": head_tree,
+                "target_commit_at": target_timestamp.isoformat(),
+                "pr_created_at": created_at.isoformat(),
+            },
+        },
+    }
+
+
 def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict[str, object]:
-    """Classify an undeployed range from independently attributed merged PRs.
+    """Classify an undeployed range from independently attributed PRs.
 
     Control-plane-only PRs are already effective when merged and therefore do
     not become part of a later application release's effect.  Application
     effects are still accumulated across PRs, while each PR is classified from
-    its own files and patch.  Missing attribution/evidence is a hard hold.
+    its own files and patch.  A separately validated pre-existing exact-
+    equivalent record may be marked ``reconciled``; missing or invalid
+    attribution/evidence remains a hard hold.
     """
 
     normalized = list(records)
@@ -597,8 +797,20 @@ def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict
         number = record.get("number")
         paths = [str(path).replace("\\", "/") for path in (record.get("paths") or []) if path]
         patch = str(record.get("patch") or "")
-        if not number or not paths or not record.get("merged_at"):
-            blocked_reasons.append("merged PR attribution is incomplete")
+        provenance_state = record.get("provenance_state", "merged")
+        if not number or not paths:
+            blocked_reasons.append("PR attribution is incomplete")
+            continue
+        if provenance_state == "merged":
+            if not record.get("merged_at"):
+                blocked_reasons.append("merged PR attribution is incomplete")
+                continue
+        elif provenance_state == "reconciled":
+            if record.get("reconciliation_basis") != "pre-existing-exact-equivalent":
+                blocked_reasons.append(f"PR #{number}: reconciled provenance basis is invalid")
+                continue
+        else:
+            blocked_reasons.append(f"PR #{number}: unknown provenance state")
             continue
 
         application = any(is_application_runtime_path(path) for path in paths)
@@ -615,7 +827,11 @@ def classify_activation_provenance(records: Iterable[dict[str, object]]) -> dict
             continue
 
         scope = classify_activation_scope(paths, patch)
-        application_prs.append({"number": str(number), "scope": scope})
+        application_prs.append({
+            "number": str(number),
+            "provenance_state": provenance_state,
+            "scope": scope,
+        })
         minimum = max(minimum, int(scope["machine_minimum_tier"]))
 
         declared_risk = record.get("declared_risk")
@@ -869,6 +1085,7 @@ def effective_tier(
 __all__ = [
     "classify_activation_scope",
     "classify_activation_provenance",
+    "reconcile_preexisting_pr_provenance",
     "classify_scope",
     "decide_activation",
     "decide_manual_activation",
