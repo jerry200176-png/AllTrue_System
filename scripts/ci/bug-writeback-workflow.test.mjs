@@ -42,8 +42,13 @@ assert.match(
 );
 assert.match(
   phaseCSource,
-  /289 => \[[\s\S]*?"rev" => "2c51617cdd8e5f0795bd1de9bdb08360a2dfa0c4",[\s\S]*?"deploy" => "34741599806",/,
+  /289 => \[[\s\S]*?"rev" => "09be02bf8f6ca559d8173091c7171b5a8e2b0189",[\s\S]*?"deploy" => "34927408130",/,
   'in-app #289 must resolve only against its exact verified production revision and deploy run',
+);
+assert.match(
+  phaseCSource,
+  /294 => \[[\s\S]*?"rev" => "09be02bf8f6ca559d8173091c7171b5a8e2b0189",[\s\S]*?"deploy" => "34927408130",/,
+  'in-app #294 must resolve only against its exact verified production revision and repair run',
 );
 assert.ok(
   !phaseCSource.includes('repair_resolved'),
