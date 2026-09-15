@@ -525,6 +525,33 @@ jobs:
                   return result
               return value if isinstance(value, list) else []
 
+          def active_main_required_status_checks(repo):
+              ruleset_pages = gh_api(
+                  f"/repos/{repo}/rulesets?per_page=100",
+                  "--paginate", "--slurp",
+              )
+              rulesets = pages(ruleset_pages)
+              candidates = [ruleset for ruleset in rulesets if (
+                  ruleset.get("name") == "main-protection"
+                  and ruleset.get("target") == "branch"
+                  and ruleset.get("enforcement") == "active"
+                  and "~DEFAULT_BRANCH" in (
+                      ruleset.get("conditions", {}).get("ref_name", {}).get("include", [])
+                  )
+              )]
+              if len(candidates) != 1 or not candidates[0].get("id"):
+                  raise ValueError("active main-protection ruleset evidence is unavailable or ambiguous")
+              detail = gh_api(f"/repos/{repo}/rulesets/{candidates[0]['id']}")
+              required_rules = [rule for rule in detail.get("rules", []) if (
+                  rule.get("type") == "required_status_checks"
+              )]
+              if len(required_rules) != 1:
+                  raise ValueError("main-protection required_status_checks evidence is unavailable or ambiguous")
+              required = required_rules[0].get("parameters", {}).get("required_status_checks")
+              if not isinstance(required, list) or not required:
+                  raise ValueError("main-protection required_status_checks is missing")
+              return required
+
           def emit(mode, tier, pr_number, reason, approval_eligible=False):
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"mode={mode}\n")
@@ -548,6 +575,7 @@ jobs:
               )
 
               base = os.environ["RUNTIME_BASE_SHA"]
+              required_status_checks = active_main_required_status_checks(repo)
               comparison = gh_api(f"/repos/{repo}/compare/{base}...{target}")
               files = comparison.get("files") or []
               if not files:
@@ -594,7 +622,7 @@ jobs:
                               head_sha = candidate_pr.get("head", {}).get("sha")
                               head_commit = gh_api(f"/repos/{repo}/commits/{head_sha}")
                               check_runs = gh_api(
-                                  f"/repos/{repo}/commits/{head_sha}/check-runs",
+                                  f"/repos/{repo}/commits/{head_sha}/check-runs?per_page=100",
                                   "--header", "Accept: application/vnd.github+json",
                               )
                               statuses = gh_api(f"/repos/{repo}/commits/{head_sha}/status")
@@ -622,6 +650,7 @@ jobs:
                                       "check_runs_total": check_runs.get("total_count"),
                                       "statuses": statuses.get("statuses") or [],
                                       "statuses_total": statuses.get("total_count", 0),
+                                      "required_status_checks": required_status_checks,
                                   },
                                   closeout_comments=closeout_comments,
                               )

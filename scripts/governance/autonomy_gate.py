@@ -599,10 +599,35 @@ def _file_evidence(files: Iterable[Mapping[str, object]]) -> dict[str, tuple[obj
     return normalized
 
 
+def _required_check_contract(value: object) -> list[tuple[str, int | None]] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    contract: list[tuple[str, int | None]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, Mapping):
+            return None
+        context = str(item.get("context") or "").strip()
+        if not context or context in seen:
+            return None
+        integration_id = item.get("integration_id")
+        if integration_id is not None:
+            try:
+                integration_id = int(integration_id)
+            except (TypeError, ValueError):
+                return None
+            if integration_id < 0:
+                return None
+        seen.add(context)
+        contract.append((context, integration_id))
+    return contract
+
+
 def _check_evidence_is_green(check_evidence: Mapping[str, object]) -> bool:
+    required = _required_check_contract(check_evidence.get("required_status_checks"))
     check_runs = check_evidence.get("check_runs")
     statuses = check_evidence.get("statuses")
-    if not isinstance(check_runs, list) or not isinstance(statuses, list) or not check_runs:
+    if required is None or not isinstance(check_runs, list) or not isinstance(statuses, list) or not check_runs:
         return False
     if check_evidence.get("check_runs_total") != len(check_runs):
         return False
@@ -619,6 +644,31 @@ def _check_evidence_is_green(check_evidence: Mapping[str, object]) -> bool:
         not isinstance(item, Mapping) or item.get("state") != "success"
         for item in statuses
     ):
+        return False
+
+    for context, integration_id in required:
+        matches = []
+        for item in check_runs:
+            if not isinstance(item, Mapping) or item.get("name") != context:
+                continue
+            app = item.get("app")
+            app_id = item.get("app_id")
+            if app_id is None and isinstance(app, Mapping):
+                app_id = app.get("id")
+            if integration_id is not None:
+                try:
+                    if int(app_id) != integration_id:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            matches.append(item)
+        if matches:
+            continue
+        if integration_id is None and any(
+            isinstance(item, Mapping) and item.get("context") == context
+            for item in statuses
+        ):
+            continue
         return False
     return True
 
@@ -638,6 +688,10 @@ def _already_integrated_closeout(
     target_prefix = target_sha[:8]
     head_prefix = head_sha[:8]
     for comment in comments:
+        if str(comment.get("author_association") or "").upper() not in {
+            "OWNER", "MEMBER", "COLLABORATOR",
+        }:
+            continue
         body = str(comment.get("body") or "")
         created_at = _parse_timestamp(comment.get("created_at"))
         if (

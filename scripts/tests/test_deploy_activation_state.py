@@ -87,15 +87,19 @@ class DeployActivationPolicyTest(unittest.TestCase):
         }
         evidence = {
             "check_runs": [
-                {"status": "completed", "conclusion": "success"},
-                {"status": "completed", "conclusion": "skipped"},
+                {"name": "Required check", "app": {"id": 15368}, "status": "completed", "conclusion": "success"},
+                {"name": "Other check", "app": {"id": 15368}, "status": "completed", "conclusion": "skipped"},
             ],
             "check_runs_total": 2,
             "statuses": [],
             "statuses_total": 0,
+            "required_status_checks": [
+                {"context": "Required check", "integration_id": 15368},
+            ],
         }
         comments = [{
             "created_at": "2026-09-13T11:29:44Z",
+            "author_association": "OWNER",
             "body": (
                 "Closing as already integrated: target `aaaaaaaa` contains the same "
                 "change as PR head `dddddddd`."
@@ -152,6 +156,20 @@ class DeployActivationPolicyTest(unittest.TestCase):
         result = self._reconcile(check_evidence={"check_runs": [], "check_runs_total": 0, "statuses": [], "statuses_total": 0})
         self.assertFalse(result["accepted"])
 
+    def test_reconciliation_rejects_green_existing_checks_when_required_context_is_missing(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["required_status_checks"] = [{"context": "Missing required check", "integration_id": 15368}]
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+
+    def test_reconciliation_rejects_required_context_with_wrong_integration_identity(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["required_status_checks"] = [{"context": "Required check", "integration_id": 99999}]
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+
     def test_reconciliation_rejects_r2_t2_declaration(self):
         pr = dict(self._reconciliation_case()["pr"])
         pr["body"] = "Risk-Class: R2\nAutonomy-Tier: T2"
@@ -176,6 +194,19 @@ class DeployActivationPolicyTest(unittest.TestCase):
         comments = [{
             "created_at": "2026-09-13T11:29:44Z",
             "body": "Closed after review rejection; target aaaaaaaa and head dddddddd.",
+        }]
+        result = self._reconcile(closeout_comments=comments)
+        self.assertFalse(result["accepted"])
+        self.assertIn("closeout", result["reason"])
+
+    def test_reconciliation_rejects_untrusted_already_integrated_closeout(self):
+        comments = [{
+            "created_at": "2026-09-13T11:29:44Z",
+            "author_association": "CONTRIBUTOR",
+            "body": (
+                "Closing as already integrated: target `aaaaaaaa` contains the same "
+                "change as PR head `dddddddd`."
+            ),
         }]
         result = self._reconcile(closeout_comments=comments)
         self.assertFalse(result["accepted"])
@@ -873,7 +904,7 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("has_independent_review", self.workflow)
         self.assertNotIn("has_trusted_verifier_evidence", self.workflow)
         self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
-        self.assertNotIn("/check-runs?per_page=100", self.workflow)
+        self.assertIn("/check-runs?per_page=100", self.workflow)
         self.assertIn("is_founder_approval_eligible", self.workflow)
         self.assertIn("bool(provenance.get(\"protected_activation\"))", self.workflow)
 
@@ -901,6 +932,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('recovered.append(reconciliation["record"])', self.workflow)
         self.assertIn("referenced_prs", self.workflow)
         self.assertIn("Commit-message PR references are only candidate locators", (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
+        self.assertIn("active_main_required_status_checks", self.workflow)
+        self.assertIn('"required_status_checks"', self.workflow)
+        self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
 
     def test_state_machine_has_fail_closed_modes(self):
         policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
