@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.16",
     "date": "2026-09-16",
     "title": "2026.09.16 草稿（未發布）",
-    "summary": "編輯課表不再把自己判成衝堂；排課衝突顯示卡住的學生與排除指引",
+    "summary": "改師後未上課的過去堂次不再卡舊老師；編輯課表不再把自己判成衝堂",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "改師後未上課的過去堂次不再卡舊老師",
           "編輯課表不再把自己判成衝堂",
           "排課衝突顯示卡住的學生與排除指引",
           "兼職薪資依課表代課老師歸屬",
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "改師後未上課的過去堂次不再卡舊老師",
       "編輯課表不再把自己判成衝堂",
       "排課衝突顯示卡住的學生與排除指引",
       "兼職薪資依課表代課老師歸屬",
