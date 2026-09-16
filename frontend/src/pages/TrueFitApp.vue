@@ -92,7 +92,7 @@ watch(selectedSessionId, (id) => {
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(1200px 420px at 10% -10%, rgba(56, 132, 255, 0.08), transparent 60%),
+    radial-gradient(1200px 420px at 10% -10%, color-mix(in srgb, var(--ds-primary) 8%, transparent), transparent 60%),
     var(--ds-canvas);
   color: var(--ds-text-primary);
 }
@@ -125,11 +125,11 @@ watch(selectedSessionId, (id) => {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(145deg, #1d4ed8, #2563eb 55%, #38bdf8);
-  color: #fff;
+  background: linear-gradient(145deg, var(--ds-primary-deep), var(--ds-primary) 55%, var(--ds-primary-soft));
+  color: var(--ds-on-primary);
   font-weight: 800;
   letter-spacing: -0.04em;
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.25);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .truefit-shell__eyebrow {

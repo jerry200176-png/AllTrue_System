@@ -16,7 +16,6 @@ class TrueFitTodaySessionsReadService
         private ClassSessionIndexReadService $indexReadService,
         private ClassSessionIndexProjectionService $projectionService,
         private ClassSessionScheduleExceptionReadService $scheduleExceptionReadService,
-        private SessionProjectionReadService $projectionReader,
     ) {
     }
 

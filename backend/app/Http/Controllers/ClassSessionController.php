@@ -1785,28 +1785,6 @@ class ClassSessionController extends Controller
     }
 
     /**
-     * Align branch filter with StudentClassController::index — room campus when set,
-     * otherwise student CampusID. ClassSession is the calendar projection; eligibility
-     * follows contract room attribution, not attendance snapshots.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @param  array<int>  $campusIds
-     */
-    private function applyClassSessionCampusBranchFilter($query, array $campusIds): void
-    {
-        $query->leftJoin('rooms as cs_branch_room', 'cs_branch_room.id', '=', 'sc.room_id');
-        $query->where(function ($q) use ($campusIds) {
-            $q->where(function ($inner) use ($campusIds) {
-                $inner->whereNotNull('sc.room_id')
-                    ->whereIn('cs_branch_room.campus_id', $campusIds);
-            })->orWhere(function ($inner) use ($campusIds) {
-                $inner->whereNull('sc.room_id')
-                    ->whereIn('s.CampusID', $campusIds);
-            });
-        });
-    }
-
-    /**
      * @return array<int>
      */
     private function normalizeIds($raw): array
@@ -1818,20 +1796,6 @@ class ClassSessionController extends Controller
             return [];
         }
         return array_values(array_filter(array_map('intval', explode(',', $raw)), fn ($v) => $v > 0));
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function normalizeStringList($raw): array
-    {
-        if (is_array($raw)) {
-            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $raw), fn ($v) => $v !== ''));
-        }
-        if (!is_string($raw)) {
-            return [];
-        }
-        return array_values(array_filter(array_map('trim', explode(',', $raw)), fn ($v) => $v !== ''));
     }
 
     /**
