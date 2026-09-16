@@ -1304,7 +1304,15 @@
                 ></textarea>
                 <div class="lr-teacher-comment-actions">
                   <span v-if="feedbackReplyError" class="lr-teacher-comment-error">{{ feedbackReplyError }}</span>
-                  <button type="button" class="primary small" :disabled="feedbackReplySaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
+                  <button
+                    type="button"
+                    class="ghost small"
+                    :disabled="feedbackReplySaving || feedbackDismissSaving"
+                    @click="dismissFeedbackAwaiting"
+                  >
+                    {{ feedbackDismissSaving ? '處理中...' : '標記不需回覆' }}
+                  </button>
+                  <button type="button" class="primary small" :disabled="feedbackReplySaving || feedbackDismissSaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
                     {{ feedbackReplySaving ? '送出中...' : '送出回覆' }}
                   </button>
                 </div>
@@ -2194,6 +2202,7 @@ const submitFeedbackReply = async () => {
     _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
     records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
     feedbackReplyDraft.value = '';
+    emit('feedback-read');
     if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
       await fetchRecords();
     }
@@ -2201,6 +2210,35 @@ const submitFeedbackReply = async () => {
     feedbackReplyError.value = e?.message || '回覆失敗';
   } finally {
     feedbackReplySaving.value = false;
+  }
+};
+
+const dismissFeedbackAwaiting = async () => {
+  const fb = _activeRecordRef.value?.parent_feedback;
+  if (!fb?.id || feedbackDismissSaving.value || feedbackReplySaving.value) return;
+  feedbackDismissSaving.value = true;
+  feedbackReplyError.value = '';
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('請重新登入');
+    const res = await fetch(`/api/v1/learning-record-feedbacks/${fb.id}/dismiss-awaiting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '標記失敗');
+    const rid = Number(_activeRecordRef.value?.id || 0);
+    const newFb = { ...fb, awaiting_staff_reply: false };
+    _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
+    records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
+    emit('feedback-read');
+    if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
+      await fetchRecords();
+    }
+  } catch (e) {
+    feedbackReplyError.value = e?.message || '標記失敗';
+  } finally {
+    feedbackDismissSaving.value = false;
   }
 };
 
@@ -2387,6 +2425,7 @@ const teacherCommentSaving = ref(false);
 const teacherCommentError = ref('');
 const feedbackReplyDraft = ref('');
 const feedbackReplySaving = ref(false);
+const feedbackDismissSaving = ref(false);
 const feedbackReplyError = ref('');
 
 /** 主任從列表／卡片直接開「給老師評語」，不必先進完整編輯 */

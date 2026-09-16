@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-16-feedback-dismiss-awaiting
+    published_at: "2026-09-16"
+    audiences:
+      - director
+      - teacher
+    importance: major
+    title: 家長回饋可標記不需回覆
+    summary: 看過家長留言後若不需公開回覆，可標記離開待辦；家長再留言會重新提醒。
+    items:
+      - category: fixed
+        text: 修正已結束的家長回饋對話仍卡在工作台待辦。
+      - category: improved
+        text: 學習評量提供「標記不需回覆」；公開回覆仍會正常清除待辦。
+    source_refs:
+      - "github:in-app-295"
+
   - id: staff-2026-09-16-calendar-teacher-after-change
     published_at: "2026-09-16"
     audiences:

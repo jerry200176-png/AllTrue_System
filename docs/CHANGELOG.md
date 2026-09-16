@@ -3,6 +3,11 @@
 - 鎖定門禁 RFID v1 產品邊界：刷卡只證明在校，不直接點名、扣堂或 billing backfill；課程出席仍走既有教師／手動點名路徑。
 - 新增 RFC 與程式狀態文件；標註現行 runtime 仍含 auto-attend/deduct，直到 feature flag 重切 `SwipeRfidController`。不改線上行為。
 
+## 2026-09-16 — fix(learning): 家長回饋可標記不需回覆並離開待辦
+<!-- release-notes: staff_update=staff-2026-09-16-feedback-dismiss-awaiting -->
+- 學習評量家長回饋新增「標記不需回覆」，可在不公開回覆家長的情況下離開「尚未回覆」待辦（in-app #295）。
+- 老師送出公開回覆後會同步解除對應站內通知；家長再次留言會重新進入待辦。僅已讀不會結束待回覆（維持原規則）。
+
 ## 2026-09-16 — fix(calendar): 改師後未上課的過去堂次不再卡舊老師
 <!-- release-notes: staff_update=staff-2026-09-16-calendar-teacher-after-change -->
 - 修正更換正班老師後，行事曆仍對「過去但從未上課」的堂次顯示舊老師（in-app #312）。

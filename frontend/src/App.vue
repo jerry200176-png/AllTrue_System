@@ -515,6 +515,7 @@
         :user-role="role"
         :teacher-branch-ids="teacherBranches.map(b => b.id)"
         :unread-feedback-count="unreadFeedbackCount"
+        :feedback-queue-epoch="feedbackQueueEpoch"
         :initial-engagement="userProfile?.engagement ?? null"
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
@@ -527,7 +528,7 @@
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
       />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="refreshUnreadNotifications" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" />
       <AssessmentPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
       <QuestionBankPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
       <ProfileCenterPage
@@ -2756,6 +2757,13 @@ async function mergeBugUnreadBadge() {
     delete next.bugs;
     badgeByType.value = next;
   }
+}
+
+const feedbackQueueEpoch = ref(0);
+
+async function onFeedbackQueueChanged() {
+  feedbackQueueEpoch.value += 1;
+  await refreshUnreadNotifications();
 }
 
 async function refreshUnreadNotifications() {
