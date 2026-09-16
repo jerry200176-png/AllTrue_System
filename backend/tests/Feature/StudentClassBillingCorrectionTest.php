@@ -298,26 +298,31 @@ class StudentClassBillingCorrectionTest extends TestCase
 
     public function test_four_to_three_after_one_attended_cancels_tail_through_confirmed_api_flow(): void
     {
-        [$token] = $this->director();
-        $student = $this->student();
-        $course = $this->course($student->id, ['SessionCount' => 4, 'Charge' => 4400, 'RemainingSessions' => 3, 'UsedSessions' => 1]);
-        $attended = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-05-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
-        SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $attended->id, 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]);
-        $scheduled = collect(['2026-09-01', '2026-09-08', '2026-09-15'])->map(fn (string $date) => ClassSession::create([
-            'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'scheduled',
-        ]));
+        Carbon::setTestNow(Carbon::parse('2026-08-25 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $student = $this->student();
+            $course = $this->course($student->id, ['SessionCount' => 4, 'Charge' => 4400, 'RemainingSessions' => 3, 'UsedSessions' => 1]);
+            $attended = ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-05-01', 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'attended']);
+            SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $attended->id, 'event_type' => 'deduct', 'source' => 'attendance', 'minutes' => 120]);
+            $scheduled = collect(['2026-09-01', '2026-09-08', '2026-09-15'])->map(fn (string $date) => ClassSession::create([
+                'StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '15:00', 'EndTime' => '17:00', 'Status' => 'scheduled',
+            ]));
 
-        $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
-            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認四堂改為三堂', 'preview' => true,
-        ])->assertOk()->assertJsonPath('affected_scheduled_sessions.0.session_id', $scheduled->last()->id);
-        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
-            'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認四堂改為三堂',
-            'confirmation_token' => $preview->json('confirmation_token'),
-        ])->assertOk()->assertJsonPath('remaining_sessions', 2);
+            $preview = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+                'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認四堂改為三堂', 'preview' => true,
+            ])->assertOk()->assertJsonPath('affected_scheduled_sessions.0.session_id', $scheduled->last()->id);
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/billing-correction", [
+                'new_session_count' => 3, 'new_charge' => 3300, 'reason' => '主任確認四堂改為三堂',
+                'confirmation_token' => $preview->json('confirmation_token'),
+            ])->assertOk()->assertJsonPath('remaining_sessions', 2);
 
-        $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 3, 'Charge' => 3300, 'UsedSessions' => 1, 'RemainingSessions' => 2]);
-        $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'cancelled']);
-        $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->count());
+            $this->assertDatabaseHas('StudentClass', ['ID' => $course->ID, 'SessionCount' => 3, 'Charge' => 3300, 'UsedSessions' => 1, 'RemainingSessions' => 2]);
+            $this->assertDatabaseHas('ClassSession', ['id' => $scheduled->last()->id, 'Status' => 'cancelled']);
+            $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->where('Status', 'scheduled')->count());
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_confirmation_uses_the_same_quota_sequence_when_cancelled_and_leave_history_exist(): void
