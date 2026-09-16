@@ -289,7 +289,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/GUIDE_DESIGN_QA_SMOKE.md` | 前端設計 QA / smoke 驗收清單 |
 | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md` | SmartCalendar 受控拆分與元件/ composable 對照 |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
-| `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）|
+| `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）；產品意圖見 RFC |
+| `docs/architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md` | #2809 RFID 在校證明 v1 政策／架構合約（presence ≠ attendance）|
+| `docs/programs/RFID_2809_STATUS.md` | #2809 程式進度（slice / PR / merge / runtime）|
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
 | `docs/RULE_MIGRATION_COMPAT.md` | **Migration 向後相容守則**（Expand/Contract、down() 可逆性、PR 必填欄位）|
 | `docs/AMBIENT_AUDIO_LICENSES.md` | 環境音效彩蛋的音檔授權清單 |
