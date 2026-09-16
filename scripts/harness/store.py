@@ -55,15 +55,6 @@ class HarnessStore:
             );
             CREATE INDEX IF NOT EXISTS idx_tasks_program ON tasks(program_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-            CREATE TABLE IF NOT EXISTS leases (
-              lease_id TEXT PRIMARY KEY,
-              resource_key TEXT NOT NULL UNIQUE,
-              holder_task_id TEXT NOT NULL,
-              holder_worker TEXT NOT NULL,
-              expires_at TEXT NOT NULL,
-              fencing_token INTEGER NOT NULL,
-              payload TEXT NOT NULL
-            );
             CREATE TABLE IF NOT EXISTS escalations (
               escalation_id TEXT PRIMARY KEY,
               dedupe_key TEXT NOT NULL,
@@ -244,45 +235,3 @@ class HarnessStore:
             "SELECT payload FROM escalations WHERE status = 'open' ORDER BY updated_at"
         ).fetchall()
         return [Escalation.from_dict(json.loads(r["payload"])) for r in rows]
-
-    # --- leases ---
-    def get_lease(self, resource_key: str) -> dict[str, Any] | None:
-        row = self._conn.execute(
-            "SELECT * FROM leases WHERE resource_key = ?", (resource_key,)
-        ).fetchone()
-        return dict(row) if row else None
-
-    def put_lease(self, lease: dict[str, Any]) -> None:
-        self._conn.execute(
-            """
-            INSERT INTO leases(
-              lease_id, resource_key, holder_task_id, holder_worker,
-              expires_at, fencing_token, payload
-            ) VALUES(?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(resource_key) DO UPDATE SET
-              lease_id=excluded.lease_id,
-              holder_task_id=excluded.holder_task_id,
-              holder_worker=excluded.holder_worker,
-              expires_at=excluded.expires_at,
-              fencing_token=excluded.fencing_token,
-              payload=excluded.payload
-            """,
-            (
-                lease["lease_id"],
-                lease["resource_key"],
-                lease["holder_task_id"],
-                lease["holder_worker"],
-                lease["expires_at"],
-                lease["fencing_token"],
-                json.dumps(lease.get("payload") or {}),
-            ),
-        )
-        self._conn.commit()
-
-    def delete_lease(self, resource_key: str) -> None:
-        self._conn.execute("DELETE FROM leases WHERE resource_key = ?", (resource_key,))
-        self._conn.commit()
-
-    def list_leases(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute("SELECT * FROM leases ORDER BY resource_key").fetchall()
-        return [dict(r) for r in rows]
