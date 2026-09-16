@@ -82,12 +82,12 @@ class LearningRecordController extends Controller
         if ($studentClassId <= 0) {
             return 0;
         }
-        $studentId = (int) (StudentClass::where('ID', $studentClassId)->value('StudentID') ?? 0);
+        $studentId = (int) (DB::table('StudentClass')->where('ID', $studentClassId)->value('StudentID') ?? 0);
         if ($studentId <= 0) {
             return 0;
         }
 
-        return (int) (Student::where('id', $studentId)->value('CampusID') ?? 0);
+        return (int) (DB::table('Student')->where('id', $studentId)->value('CampusID') ?? 0);
     }
 
     /**

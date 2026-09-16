@@ -798,7 +798,7 @@ const loadCaseItems = async () => {
     if (json?.summary?.cases_candidate_ready != null) {
       casesCandidateReadyCount.value = Number(json.summary.cases_candidate_ready);
     }
-  } catch (err) {
+  } catch {
     caseLaneError.value = true;
     if (caseItemsScopeKey.value !== requestScope) { caseItems.value = []; caseItemsScopeKey.value = ''; }
     if (laneFilter.value === 'case') {
@@ -1021,7 +1021,7 @@ onMounted(async () => {
   if (props.branchId) {
     try {
       await syncNotifications(false);
-    } catch (_) {
+    } catch {
       await loadNotifications(1);
     }
   } else {
