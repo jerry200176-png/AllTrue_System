@@ -8,6 +8,7 @@ import { isTrueFitHost } from '../../lib/truefitHost.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appSource = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
 const workspaceSource = readFileSync(resolve(__dirname, '../../pages/TrueFitWorkspacePage.vue'), 'utf8');
+const prepSource = readFileSync(resolve(__dirname, '../../pages/TrueFitPrepPlaceholderPage.vue'), 'utf8');
 const navSource = readFileSync(resolve(__dirname, '../../lib/navigationRegistry.js'), 'utf8');
 
 describe('TrueFit Slice 0 shell contract', () => {
@@ -46,5 +47,13 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(workspaceSource).toContain('subject_name');
     expect(workspaceSource).toContain('campus_name');
     expect(workspaceSource).toContain('start_time');
+  });
+
+  it('prep page generates structured Teacher Brief instead of textarea notebook', () => {
+    expect(prepSource).toContain('產生 Teacher Brief');
+    expect(prepSource).toContain('learning_objectives');
+    expect(prepSource).toContain('expected_misconceptions');
+    expect(prepSource).toContain('hint_ladders');
+    expect(prepSource).not.toContain('<textarea');
   });
 });
