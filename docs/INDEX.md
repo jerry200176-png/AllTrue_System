@@ -137,7 +137,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 19. **單科堂數制轉多科方案安全流程（2026-08-27，Draft，T3）**：[`plans/2026-08-27-single-course-to-package-conversion.md`](plans/2026-08-27-single-course-to-package-conversion.md) — 預檢、零歷史安全轉換、既有歷史導向新方案；不搬移付款／發票／出席／評量帳本。
 20. **出勤／評量一致性與主任指標（2026-08-28，Implementation slice）**：[`architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md`](architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md) — ClassSession 單一事件來源、到課必有評量、請假／缺席／取消不產生，主任首屏分開顯示缺表與待完成。
 21. **新生問班招生閉環 V1（runtime activated；E2E／retention sign-off pending）**：[`architecture/RFC_ADMISSIONS_FUNNEL_V1.md`](architecture/RFC_ADMISSIONS_FUNNEL_V1.md) · REP [`runbooks/admissions-funnel-v1-activation-execution-package.md`](runbooks/admissions-funnel-v1-activation-execution-package.md) · brief [`runbooks/admissions-funnel-v1-founder-activation-brief.md`](runbooks/admissions-funnel-v1-founder-activation-brief.md) — code default `ADMISSIONS_FUNNEL_V1` 仍為 off；production 已由 Founder-gated deploy 啟用，完整 staff／public E2E 與 retention／PII sign-off 仍需指定安全測試身份。
-22. **TrueFit v0.1（學習工作台）**：[`truefit/PROGRAM_STATUS.md`](truefit/PROGRAM_STATUS.md) — Slice 0–3 程式已在 `main`（Brief、Observation、Diagnosis）；營運驗收卡在 staging（#868）；下一優先 Slice 4 = Remediation（見 [`truefit/REMEDIATION_CONTRACT.md`](truefit/REMEDIATION_CONTRACT.md)）。
+22. **TrueFit v0.1（學習工作台）**：[`truefit/PROGRAM_STATUS.md`](truefit/PROGRAM_STATUS.md) — Slice 0–4 程式已在 `main`（Brief→Remediation）；營運驗收卡在 staging（#868）；下一優先 Slice 5 = Mastery（見 [`truefit/MASTERY_CONTRACT.md`](truefit/MASTERY_CONTRACT.md)）。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
