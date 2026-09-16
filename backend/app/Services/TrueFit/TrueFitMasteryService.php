@@ -5,6 +5,7 @@ namespace App\Services\TrueFit;
 use App\Models\ClassSession;
 use App\Models\StudentClass;
 use App\Models\TrueFitMasteryEvidence;
+use App\Models\TrueFitRemediation;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -58,8 +59,8 @@ final class TrueFitMasteryService
 
         $payload['schema_version'] = TrueFitMasteryContract::SCHEMA_VERSION;
         $payload['session_ref'] = $this->sessionRefFromContext($session);
-        if (!array_key_exists('source_remediation_id', $payload)) {
-            $payload['source_remediation_id'] = null;
+        if (!array_key_exists('source_remediation_id', $payload) || $payload['source_remediation_id'] === null || $payload['source_remediation_id'] === '') {
+            $payload['source_remediation_id'] = $this->resolveSourceRemediationId($teacherId, $session);
         }
         if (!isset($payload['checked_at']) || trim((string) $payload['checked_at']) === '') {
             $payload['checked_at'] = Carbon::now(config('app.timezone', 'Asia/Taipei'))->toIso8601String();
@@ -251,6 +252,26 @@ final class TrueFitMasteryService
         if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
             throw ValidationException::withMessages(['campus_id' => ['Forbidden: campus not accessible']]);
         }
+    }
+
+    /**
+     * @param array{class_session_id:int,student_class_id:int,session_date:string,start_time:string} $session
+     */
+    private function resolveSourceRemediationId(int $teacherId, array $session): ?int
+    {
+        $query = TrueFitRemediation::query()->where('teacher_user_id', $teacherId);
+        if ($session['class_session_id'] > 0) {
+            $query->where('class_session_id', $session['class_session_id']);
+        } else {
+            $query->where('class_session_id', 0)
+                ->where('student_class_id', $session['student_class_id'])
+                ->whereDate('session_date', $session['session_date'])
+                ->where('start_time', $session['start_time']);
+        }
+
+        $id = $query->orderByDesc('id')->value('id');
+
+        return $id !== null ? (int) $id : null;
     }
 
     /**
