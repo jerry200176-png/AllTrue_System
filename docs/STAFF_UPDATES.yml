@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-16-learning-table-status-clarity
+    published_at: "2026-09-16"
+    audiences:
+      - director
+    importance: major
+    title: 評量列表標籤改為填寫／審核分開說明
+    summary: 桌面列表也會顯示「評量內容未填／已填」與「審核：…」，避免和卡片檢視解讀不一致。
+    items:
+      - category: fixed
+        text: 修正主任評量列表只顯示「未填」「待審核」造成誤解。
+      - category: improved
+        text: 列表標籤字級與說明列與卡片檢視對齊。
+    source_refs:
+      - "github:#2715"
+
   - id: staff-2026-09-16-feedback-dismiss-awaiting
     published_at: "2026-09-16"
     audiences:

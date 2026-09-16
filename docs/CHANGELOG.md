@@ -1,3 +1,8 @@
+## 2026-09-16 — fix(learning): 列表檢視也清楚區分填寫與審核
+<!-- release-notes: staff_update=staff-2026-09-16-learning-table-status-clarity -->
+- 主任評量列表（桌面預設）的填寫／審核標籤改與卡片檢視一致，不再只顯示含糊的「未填」「待審核」（#2715）。
+- 列表標籤字級與卡片對齊；說明列文案同步。不改審核流程或資料。
+
 ## 2026-09-16 — docs(attendance): lock RFID campus-presence v1 contract (#2809)
 <!-- release-notes: silent_ship=silent-2026-09-16-rfid-presence-policy -->
 - 鎖定門禁 RFID v1 產品邊界：刷卡只證明在校，不直接點名、扣堂或 billing backfill；課程出席仍走既有教師／手動點名路徑。

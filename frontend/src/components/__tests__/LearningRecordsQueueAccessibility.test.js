@@ -102,4 +102,16 @@ describe('LearningRecords review queue accessibility', () => {
     expect(source).toContain("rejected: '審核：已退回'");
     expect(source).toContain("hasLearningRecordBody(record) ? '評量內容已填' : '評量內容未填'");
   });
+
+  it('uses the same director fill/review labels in table list view', () => {
+    const tableStart = source.indexOf('class="lr-table-scroll"');
+    expect(tableStart).toBeGreaterThanOrEqual(0);
+    const tableSlice = source.slice(tableStart, tableStart + 8000);
+    expect(tableSlice).toContain('{{ cardFillLabel(record) }}');
+    expect(tableSlice).toContain('{{ cardReviewStatusLabel(record.Status) }}');
+    expect(tableSlice).not.toContain('{{ fillLabel(record) }}');
+    expect(tableSlice).not.toContain('{{ statusLabel(record.Status) }}');
+    expect(source).toContain('評量內容：未填／已填');
+    expect(source).toContain('審核：待主任核准／老師需修改／已核准／已退回');
+  });
 });

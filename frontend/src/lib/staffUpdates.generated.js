@@ -122,6 +122,43 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-learning-table-status-clarity",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "評量列表標籤改為填寫／審核分開說明",
+    "summary": "桌面列表也會顯示「評量內容未填／已填」與「審核：…」，避免和卡片檢視解讀不一致。",
+    "items": [
+      "修正主任評量列表只顯示「未填」「待審核」造成誤解。",
+      "列表標籤字級與說明列與卡片檢視對齊。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正主任評量列表只顯示「未填」「待審核」造成誤解。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "列表標籤字級與說明列與卡片檢視對齊。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#2715"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-16-inbox-resolve-on-complete",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,
