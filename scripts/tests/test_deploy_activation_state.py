@@ -739,6 +739,38 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertFalse(has_rollback_evidence("**Rollback:** n/a"))
         self.assertTrue(has_rollback_evidence("**Rollback:** revert commit abc123 and rerun deploy"))
 
+    
+    def test_blocked_understated_migration_provenance_is_founder_eligible(self):
+        """Migration understatement must hold auto-deploy but open Founder Environment."""
+        records = [{
+            "number": 2978,
+            "merged_at": "2026-09-16T11:00:00Z",
+            "paths": [
+                "backend/database/migrations/2026_09_16_190000_create_truefit_lesson_preps_table.php",
+                "backend/app/Http/Controllers/TrueFitController.php",
+            ],
+            "patch": "+Schema::create",
+            "patch_complete": True,
+            "declared_risk": 2,
+            "declared_tier": 2,
+            "provenance_state": "merged",
+        }]
+        provenance = classify_activation_provenance(records)
+        self.assertTrue(provenance["blocked"])
+        self.assertTrue(provenance["protected_activation"])
+        self.assertEqual(provenance["tier_name"], "T3")
+        self.assertTrue(
+            is_founder_approval_eligible(
+                {
+                    "decision": "awaiting-activation",
+                    "effective_tier": provenance["tier_name"],
+                    "reason": provenance["reason"],
+                },
+                protected_activation=bool(provenance.get("protected_activation")),
+            )
+        )
+
+
     def test_understated_and_mismatched_declarations_fail_closed(self):
         understated = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,
@@ -959,6 +991,14 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
         self.assertIn("/check-runs?per_page=100", self.workflow)
         self.assertIn("is_founder_approval_eligible", self.workflow)
+        self.assertIn("if provenance.get(\"blocked\"):", self.workflow)
+        self.assertIn("protected_activation=bool(provenance.get(\"protected_activation\"))", self.workflow)
+        # blocked provenance must not emit without computing approval_eligible
+        blocked_idx = self.workflow.index("if provenance.get(\"blocked\"):")
+        emit_idx = self.workflow.index("emit(", blocked_idx)
+        self.assertLess(blocked_idx, emit_idx)
+        self.assertIn("approval_eligible", self.workflow[blocked_idx:emit_idx+200])
+
         self.assertIn("bool(provenance.get(\"protected_activation\"))", self.workflow)
 
     def test_manual_workflow_revision_is_canonical_main(self):
