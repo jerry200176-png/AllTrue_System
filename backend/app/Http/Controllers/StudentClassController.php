@@ -1906,8 +1906,8 @@ class StudentClassController extends Controller
 
         if (array_key_exists('TeacherID', $mapped)) {
             $newTeacherId = (int) ($studentClass->TeacherID ?? 0);
+            $courseIdForTeacherSync = (int) $studentClass->ID;
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
-                $courseIdForTeacherSync = (int) $studentClass->ID;
                 // in-app #207: pin past attended/history to former teacher BEFORE
                 // future schedule rows move to the new contract teacher.
                 $this->pinPastSessionsToFormerTeacherAfterContractTeacherChange(
@@ -1920,6 +1920,11 @@ class StudentClassController extends Controller
                     $oldTeacherSnapshot,
                     $newTeacherId
                 );
+            }
+            if ($newTeacherId > 0) {
+                // in-app #312: drop false #207 pins on untaught past slots so
+                // calendar follows the live contract teacher (real substitutes kept).
+                $this->clearUntaughtPastFalseHistoryPins($courseIdForTeacherSync, $newTeacherId);
             }
         }
 
@@ -7669,14 +7674,35 @@ class StudentClassController extends Controller
         $subject = (string) (DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '');
         $classType = (string) ($course->class_type ?? $course->ClassType ?? 'one_on_one');
 
-        $pastSessions = DB::table('ClassSession')
-            ->where('StudentClassID', $courseId)
-            ->where(function ($q) use ($today) {
-                $q->whereDate('SessionDate', '<', $today)
-                    ->orWhereIn('Status', ['attended', 'late', 'leave', 'excused', 'completed', 'absent']);
+        // in-app #207: only pin sessions with teaching evidence so calendar history
+        // stays on the former teacher. Past rows that are still merely `scheduled`
+        // must NOT become fake substitute pins — otherwise calendar keeps showing
+        // the old teacher after a contract TeacherID change (in-app #312).
+        $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
+        $pastSessions = DB::table('ClassSession as cs')
+            ->where('cs.StudentClassID', $courseId)
+            ->where(function ($q) use ($today, $taughtStatuses) {
+                $q->whereIn('cs.Status', $taughtStatuses)
+                    ->orWhere(function ($q2) use ($today) {
+                        $q2->whereDate('cs.SessionDate', '<', $today)
+                            ->whereExists(function ($sub) {
+                                $sub->select(DB::raw(1))
+                                    ->from('StudentSingIn as ssi')
+                                    ->whereColumn('ssi.ClassSessionID', 'cs.id');
+                            });
+                    })
+                    ->orWhere(function ($q2) use ($today) {
+                        $q2->whereDate('cs.SessionDate', '<', $today)
+                            ->whereExists(function ($sub) {
+                                $sub->select(DB::raw(1))
+                                    ->from('LearningRecord as lr')
+                                    ->whereColumn('lr.ClassSessionID', 'cs.id');
+                            });
+                    });
             })
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
+            ->orderBy('cs.SessionDate')
+            ->orderBy('cs.StartTime')
+            ->select('cs.*')
             ->get();
 
         foreach ($pastSessions as $session) {
@@ -7795,6 +7821,79 @@ class StudentClassController extends Controller
                 ->whereDate('schedule_date', '>=', $today)
                 ->where('status', 'rescheduled')
                 ->whereIn('id', $staleAnchorIds)
+                ->delete();
+        }
+    }
+
+    /**
+     * Remove false history pins created for untaught past ClassSessions.
+     * Real substitutes and taught-session #207 pins are retained.
+     */
+    private function clearUntaughtPastFalseHistoryPins(int $courseId, int $currentTeacherId): void
+    {
+        if ($courseId <= 0 || $currentTeacherId <= 0) {
+            return;
+        }
+
+        $today = Carbon::today()->toDateString();
+        $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
+
+        $pinRows = DB::table('schedules')
+            ->where('student_course_id', $courseId)
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->whereDate('schedule_date', '<', $today)
+            ->where('teacher_id', '<>', $currentTeacherId)
+            ->get(['id', 'original_schedule_id', 'schedule_date', 'start_time']);
+
+        $anchorIds = [];
+        $pinIds = [];
+        foreach ($pinRows as $pin) {
+            $sessionDate = $pin->schedule_date ? Carbon::parse((string) $pin->schedule_date)->toDateString() : '';
+            $startTime = substr((string) ($pin->start_time ?? ''), 0, 5);
+            if ($sessionDate === '' || $startTime === '') {
+                continue;
+            }
+
+            $session = DB::table('ClassSession')
+                ->where('StudentClassID', $courseId)
+                ->whereDate('SessionDate', $sessionDate)
+                ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$startTime])
+                ->first();
+            if (!$session) {
+                continue;
+            }
+
+            $status = (string) ($session->Status ?? '');
+            if (in_array($status, $taughtStatuses, true)) {
+                continue;
+            }
+
+            $sessionId = (int) ($session->id ?? 0);
+            $hasSignIn = $sessionId > 0 && DB::table('StudentSingIn')
+                ->where('ClassSessionID', $sessionId)
+                ->exists();
+            $hasLr = $sessionId > 0 && DB::table('LearningRecord')
+                ->where('ClassSessionID', $sessionId)
+                ->exists();
+            if ($hasSignIn || $hasLr) {
+                continue;
+            }
+
+            $anchorIds[] = (int) $pin->original_schedule_id;
+            $pinIds[] = (int) $pin->id;
+        }
+
+        if (!empty($pinIds)) {
+            DB::table('schedules')->whereIn('id', $pinIds)->delete();
+        }
+
+        $anchorIds = array_values(array_unique(array_filter($anchorIds)));
+        if (!empty($anchorIds)) {
+            DB::table('schedules')
+                ->where('student_course_id', $courseId)
+                ->where('status', 'rescheduled')
+                ->whereIn('id', $anchorIds)
                 ->delete();
         }
     }

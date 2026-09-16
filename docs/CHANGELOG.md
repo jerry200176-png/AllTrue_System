@@ -1,3 +1,8 @@
+## 2026-09-16 — fix(calendar): 改師後未上課的過去堂次不再卡舊老師
+<!-- release-notes: staff_update=staff-2026-09-16-calendar-teacher-after-change -->
+- 修正更換正班老師後，行事曆仍對「過去但從未上課」的堂次顯示舊老師（in-app #312）。
+- 已實際上過／有點名或評量的歷史堂次仍保留原老師；真實代課優先不變。儲存課程（含再存一次老師）會清掉這類錯誤釘選。
+
 ## 2026-09-16 — fix(scheduling): 編輯課表不再把自己判成衝堂
 <!-- release-notes: staff_update=staff-2026-09-16-course-edit-self-conflict -->
 - 修正編輯既有課程固定時段時，系統把同一學生（含雙合約）自己的佔用誤判為一對一衝堂（in-app #311）。

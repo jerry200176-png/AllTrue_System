@@ -155,6 +155,88 @@ class ContractTeacherChangePreservesHistoryTest extends TestCase
         }
     }
 
+    /**
+     * in-app #312: past ClassSessions that were never taught must not become
+     * false substitute pins; calendar/API should follow the new contract teacher.
+     */
+    public function test_untaught_past_session_follows_new_contract_teacher_after_change(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            $token = $this->directorToken([1]);
+            $oldTeacherId = $this->teacher(1, 'chen-312@example.com', '陳可容');
+            $newTeacherId = $this->teacher(1, 'huang-312@example.com', '黃筠喬');
+
+            $student = Student::create([
+                'name' => '林奕安測試',
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+
+            $course = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => $oldTeacherId,
+                'by1' => 1,
+                'Period' => 8,
+                'StartDate' => '2026-08-01',
+                'TotalHours' => 16,
+                'Charge' => 0,
+                'Rate' => 1000,
+                'SessionCount' => 8,
+                'RemainingSessions' => 6,
+                'SessionDuration' => 120,
+                'week' => 6,
+                'time' => '10:00:00',
+                'class_type' => 'one_on_one',
+                'ScheduleMode' => 'count',
+                'Stop' => 0,
+                'Paid' => 1,
+                'MDT' => now(),
+            ]);
+
+            $pastScheduled = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-09-13', // Saturday before "today"
+                'StartTime' => '10:00:00',
+                'EndTime' => '12:00:00',
+                'Status' => 'scheduled',
+            ]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->putJson("/api/v1/student-classes/{$course->ID}", [
+                'teacher_id' => $newTeacherId,
+            ]);
+            $res->assertOk();
+
+            $falsePin = Schedule::where('student_course_id', $course->ID)
+                ->whereDate('schedule_date', '2026-09-13')
+                ->where('status', 'scheduled')
+                ->whereNotNull('original_schedule_id')
+                ->where('teacher_id', $oldTeacherId)
+                ->exists();
+            $this->assertFalse($falsePin, 'untaught past slots must not get false history pins');
+
+            $list = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->getJson("/api/v1/class-sessions?branch_id=1&student_class_id={$course->ID}&per_page=100");
+            $list->assertOk();
+            $hit = collect($list->json('data'))->firstWhere('id', $pastScheduled->id);
+            $this->assertNotNull($hit);
+            $this->assertSame($newTeacherId, (int) ($hit['teacher_id'] ?? 0));
+            $this->assertSame('黃筠喬', $hit['teacher_name'] ?? '');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     private function directorToken(array $campusIds): string
     {
         $user = User::create([

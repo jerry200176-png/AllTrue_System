@@ -159,6 +159,43 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-calendar-teacher-after-change",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "改師後行事曆不再卡舊老師",
+    "summary": "更換正班老師後，尚未上課的過去堂次會跟新老師；真正上過的課仍顯示原老師。",
+    "items": [
+      "修正改師後行事曆對未上課的過去堂次仍顯示舊老師。",
+      "已上課／有點名或評量的歷史與真實代課顯示不變；存檔課程可清掉錯誤釘選。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正改師後行事曆對未上課的過去堂次仍顯示舊老師。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "已上課／有點名或評量的歷史與真實代課顯示不變；存檔課程可清掉錯誤釘選。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-312"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-16-tuition-remaining-sort",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,
