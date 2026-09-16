@@ -1,4 +1,4 @@
-"""Local lease manager for program WIP and shared contracts."""
+"""Atomic lease manager: acquire / renew / release / reclaim (fencing + identity)."""
 
 from __future__ import annotations
 
@@ -28,10 +28,6 @@ def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _parse(iso: str) -> datetime:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
-
-
 def program_resource(program_id: str) -> str:
     return f"program:{program_id}:mutating"
 
@@ -51,56 +47,62 @@ def acquire(
     ttl_sec: int = DEFAULT_TTL_SEC,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Acquire or reclaim a lease. Stale (expired) leases are recoverable."""
+    """Initial acquire only. Does not renew; same task_id alone cannot steal a live lease."""
     now = now or _now()
-    existing = store.get_lease(resource_key)
-    if existing:
-        expires = _parse(str(existing["expires_at"]))
-        if expires > now and existing["holder_task_id"] != task_id:
-            raise LeaseBusyError(
-                f"{resource_key} held by task={existing['holder_task_id']} "
-                f"worker={existing['holder_worker']} until {existing['expires_at']}"
-            )
-        fencing = int(existing["fencing_token"]) + 1
-    else:
-        fencing = 1
-
     lease = {
         "lease_id": f"lease_{uuid.uuid4().hex[:12]}",
         "resource_key": resource_key,
         "holder_task_id": task_id,
         "holder_worker": worker,
         "expires_at": _iso(now + timedelta(seconds=ttl_sec)),
-        "fencing_token": fencing,
+        "fencing_token": 1,
         "payload": {"acquired_at": _iso(now)},
     }
-    store.put_lease(lease)
-    return lease
+    return store.cas_acquire_lease(lease, now_iso=_iso(now))
+
+
+def renew(
+    store: HarnessStore,
+    resource_key: str,
+    *,
+    lease_id: str,
+    fencing_token: int,
+    task_id: str,
+    worker: str,
+    ttl_sec: int = DEFAULT_TTL_SEC,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Extend ownership; requires current lease_id + fencing_token + task_id."""
+    now = now or _now()
+    return store.cas_renew_lease(
+        resource_key,
+        lease_id=lease_id,
+        fencing_token=fencing_token,
+        task_id=task_id,
+        worker=worker,
+        expires_at=_iso(now + timedelta(seconds=ttl_sec)),
+        now_iso=_iso(now),
+    )
 
 
 def release(
     store: HarnessStore,
     resource_key: str,
     *,
+    lease_id: str,
+    fencing_token: int,
     task_id: str,
-    fencing_token: int | None = None,
 ) -> None:
-    existing = store.get_lease(resource_key)
-    if not existing:
-        return
-    if existing["holder_task_id"] != task_id:
-        raise LeaseError("cannot release lease held by another task")
-    if fencing_token is not None and int(existing["fencing_token"]) != fencing_token:
-        raise LeaseError("stale fencing token")
-    store.delete_lease(resource_key)
+    """Release requires lease identity + fencing; stale holders cannot delete newer leases."""
+    store.cas_release_lease(
+        resource_key,
+        lease_id=lease_id,
+        fencing_token=fencing_token,
+        task_id=task_id,
+    )
 
 
 def reclaim_stale(store: HarnessStore, now: datetime | None = None) -> list[str]:
-    """Delete expired leases; returns reclaimed resource keys."""
+    """Conditionally delete each expired lease by identity+fencing+expiry (no blind delete)."""
     now = now or _now()
-    reclaimed: list[str] = []
-    for lease in store.list_leases():
-        if _parse(str(lease["expires_at"])) <= now:
-            store.delete_lease(lease["resource_key"])
-            reclaimed.append(lease["resource_key"])
-    return reclaimed
+    return store.cas_reclaim_stale_leases(now_iso=_iso(now))

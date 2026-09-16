@@ -25,7 +25,8 @@ class HarnessStore:
     def __init__(self, db_path: Path | str | None = None) -> None:
         self.db_path = Path(db_path) if db_path else default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.db_path), timeout=30)
+        # isolation_level=None enables explicit BEGIN IMMEDIATE for lease CAS.
+        self._conn = sqlite3.connect(str(self.db_path), timeout=30, isolation_level=None)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
@@ -288,6 +289,7 @@ class HarnessStore:
         ).fetchone())
 
     def put_lease(self, lease: dict[str, Any]) -> None:
+        """Test/seed helper only — production paths must use cas_* methods."""
         self._conn.execute(
             """
             INSERT INTO leases(lease_id, resource_key, holder_task_id, holder_worker,
@@ -305,6 +307,7 @@ class HarnessStore:
         self._conn.commit()
 
     def delete_lease(self, resource_key: str) -> None:
+        """Test helper — prefer cas_release_lease / cas_reclaim_stale_leases."""
         self._conn.execute("DELETE FROM leases WHERE resource_key = ?", (resource_key,))
         self._conn.commit()
 
@@ -313,6 +316,158 @@ class HarnessStore:
             self._lease_row(r)  # type: ignore[misc]
             for r in self._conn.execute("SELECT * FROM leases ORDER BY resource_key")
         ]
+
+    def cas_acquire_lease(self, lease: dict[str, Any], *, now_iso: str) -> dict[str, Any]:
+        """Atomic initial acquire or take-over of an expired lease. Raises LeaseBusyError."""
+        from .leases import LeaseBusyError, LeaseError
+
+        key = lease["resource_key"]
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._lease_row(self._conn.execute(
+                "SELECT * FROM leases WHERE resource_key = ?", (key,)
+            ).fetchone())
+            if row is None:
+                self._conn.execute(
+                    """
+                    INSERT INTO leases(lease_id, resource_key, holder_task_id, holder_worker,
+                      expires_at, fencing_token, payload)
+                    VALUES(?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (lease["lease_id"], key, lease["holder_task_id"], lease["holder_worker"],
+                     lease["expires_at"], 1, json.dumps(lease.get("payload") or {})),
+                )
+                self._conn.commit()
+                out = dict(lease)
+                out["fencing_token"] = 1
+                return out
+            if str(row["expires_at"]) > now_iso:
+                self._conn.rollback()
+                raise LeaseBusyError(
+                    f"{key} held by task={row['holder_task_id']} "
+                    f"worker={row['holder_worker']} until {row['expires_at']}"
+                )
+            # Expired: conditional replace by exact identity + fencing + expiry
+            new_fencing = int(row["fencing_token"]) + 1
+            cur = self._conn.execute(
+                """
+                UPDATE leases SET
+                  lease_id=?, holder_task_id=?, holder_worker=?,
+                  expires_at=?, fencing_token=?, payload=?
+                WHERE resource_key=? AND lease_id=? AND fencing_token=? AND expires_at<=?
+                """,
+                (lease["lease_id"], lease["holder_task_id"], lease["holder_worker"],
+                 lease["expires_at"], new_fencing, json.dumps(lease.get("payload") or {}),
+                 key, row["lease_id"], row["fencing_token"], now_iso),
+            )
+            if cur.rowcount != 1:
+                self._conn.rollback()
+                raise LeaseBusyError(f"{key} reacquire lost race")
+            self._conn.commit()
+            out = dict(lease)
+            out["fencing_token"] = new_fencing
+            return out
+        except LeaseBusyError:
+            raise
+        except Exception:
+            self._conn.rollback()
+            raise LeaseError("cas_acquire_lease failed")
+
+    def cas_renew_lease(
+        self,
+        resource_key: str,
+        *,
+        lease_id: str,
+        fencing_token: int,
+        task_id: str,
+        worker: str,
+        expires_at: str,
+        now_iso: str,
+    ) -> dict[str, Any]:
+        from .leases import LeaseError
+
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            new_fencing = int(fencing_token) + 1
+            payload = json.dumps({"renewed_at": now_iso})
+            cur = self._conn.execute(
+                """
+                UPDATE leases SET
+                  holder_worker=?, expires_at=?, fencing_token=?, payload=?
+                WHERE resource_key=? AND lease_id=? AND fencing_token=?
+                  AND holder_task_id=? AND expires_at>?
+                """,
+                (worker, expires_at, new_fencing, payload,
+                 resource_key, lease_id, fencing_token, task_id, now_iso),
+            )
+            if cur.rowcount != 1:
+                self._conn.rollback()
+                raise LeaseError("stale lease identity/fencing on renew")
+            self._conn.commit()
+            row = self.get_lease(resource_key)
+            if not row:
+                raise LeaseError("lease missing after renew")
+            return row
+        except LeaseError:
+            raise
+        except Exception:
+            self._conn.rollback()
+            raise LeaseError("cas_renew_lease failed")
+
+    def cas_release_lease(
+        self,
+        resource_key: str,
+        *,
+        lease_id: str,
+        fencing_token: int,
+        task_id: str,
+    ) -> None:
+        from .leases import LeaseError
+
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            cur = self._conn.execute(
+                """
+                DELETE FROM leases
+                WHERE resource_key=? AND lease_id=? AND fencing_token=? AND holder_task_id=?
+                """,
+                (resource_key, lease_id, fencing_token, task_id),
+            )
+            if cur.rowcount != 1:
+                self._conn.rollback()
+                raise LeaseError("stale lease identity/fencing on release")
+            self._conn.commit()
+        except LeaseError:
+            raise
+        except Exception:
+            self._conn.rollback()
+            raise LeaseError("cas_release_lease failed")
+
+    def cas_reclaim_stale_leases(self, *, now_iso: str) -> list[str]:
+        """Delete only leases that remain expired under the same lease_id+fencing."""
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            rows = list(self._conn.execute(
+                "SELECT resource_key, lease_id, fencing_token, expires_at FROM leases"
+            ))
+            reclaimed: list[str] = []
+            for r in rows:
+                if str(r["expires_at"]) > now_iso:
+                    continue
+                cur = self._conn.execute(
+                    """
+                    DELETE FROM leases
+                    WHERE resource_key=? AND lease_id=? AND fencing_token=? AND expires_at<=?
+                    """,
+                    (r["resource_key"], r["lease_id"], r["fencing_token"], now_iso),
+                )
+                if cur.rowcount == 1:
+                    reclaimed.append(r["resource_key"])
+            self._conn.commit()
+            return reclaimed
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def put_goal(self, goal: GoalContract) -> None:
         self._conn.execute(
