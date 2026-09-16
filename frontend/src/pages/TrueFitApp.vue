@@ -43,8 +43,16 @@ import { computed, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import TrueFitWorkspacePage from './TrueFitWorkspacePage.vue';
 import TrueFitPrepPlaceholderPage from './TrueFitPrepPlaceholderPage.vue';
-import { parseTrueFitRoute, buildTrueFitPrepUrl, buildTrueFitWorkspaceUrl, buildAdminReturnUrl } from '../lib/truefitRoute.js';
+import {
+  parseTrueFitRoute,
+  buildTrueFitPrepUrl,
+  buildTrueFitWorkspaceUrl,
+  buildAdminReturnUrl,
+  seedSessionFromPrepRoute,
+  matchTodaySession,
+} from '../lib/truefitRoute.js';
 import { isTrueFitHost } from '../lib/truefitHost.js';
+import { fetchTrueFitTodaySessions } from '../lib/truefitApi.js';
 
 const { token, branchId } = defineProps({
   token: { type: String, required: true },
@@ -53,30 +61,64 @@ const { token, branchId } = defineProps({
 
 const route = ref(parseTrueFitRoute() || { view: 'workspace' });
 const selectedSession = ref(null);
+let hydrateRequestId = 0;
 
 const selectedSessionId = computed(() => route.value?.classSessionId || null);
 
+function prepRouteKey(r) {
+  if (!r || r.view !== 'prep') return '';
+  if (r.classSessionId) return `m:${r.classSessionId}`;
+  return `p:${r.studentClassId || 0}-${r.projectedStartHm || '0000'}-${r.sessionDate || ''}`;
+}
+
 function syncRouteFromHash() {
-  route.value = parseTrueFitRoute() || { view: 'workspace' };
+  const next = parseTrueFitRoute() || { view: 'workspace' };
+  const prevKey = prepRouteKey(route.value);
+  const nextKey = prepRouteKey(next);
+  route.value = next;
+  if (prevKey && nextKey && prevKey !== nextKey) {
+    selectedSession.value = null;
+  }
   hydrateSessionFromRoute();
 }
 
 function hydrateSessionFromRoute() {
   const r = route.value;
   if (!r || r.view !== 'prep') return;
-  if (selectedSession.value) return;
-  if (r.classSessionId) {
-    selectedSession.value = { class_session_id: r.classSessionId };
-    return;
-  }
-  if (r.studentClassId) {
-    const hm = String(r.projectedStartHm || '0000');
+
+  // Keep an in-memory session from CTA navigation; still allow label enrichment.
+  if (!selectedSession.value) {
+    selectedSession.value = seedSessionFromPrepRoute(r);
+  } else if (!selectedSession.value.session_date && r.sessionDate) {
     selectedSession.value = {
-      class_session_id: null,
-      student_class_id: r.studentClassId,
-      start_time: `${hm.slice(0, 2)}:${hm.slice(2, 4)}`,
-      session_date: new Date().toISOString().slice(0, 10),
+      ...selectedSession.value,
+      session_date: r.sessionDate,
     };
+  }
+
+  enrichSelectedSessionFromToday();
+}
+
+async function enrichSelectedSessionFromToday() {
+  const seed = selectedSession.value;
+  const r = route.value;
+  if (!seed || !r || r.view !== 'prep' || !token) return;
+
+  const requestId = ++hydrateRequestId;
+  try {
+    const payload = await fetchTrueFitTodaySessions({ token, branchId });
+    if (requestId !== hydrateRequestId) return;
+    const sessions = Array.isArray(payload?.data) ? payload.data : [];
+    const matched = matchTodaySession(seed, sessions);
+    if (!matched) return;
+    selectedSession.value = {
+      ...seed,
+      ...matched,
+      // Prefer route-encoded date when present (refresh fidelity).
+      session_date: r.sessionDate || matched.session_date || seed.session_date,
+    };
+  } catch {
+    // Seeded session remains usable for generate/lookup; labels stay minimal.
   }
 }
 

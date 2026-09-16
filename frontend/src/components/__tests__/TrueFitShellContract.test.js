@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseTrueFitRoute, buildTrueFitPrepUrl } from '../../lib/truefitRoute.js';
+import {
+  parseTrueFitRoute,
+  buildTrueFitPrepUrl,
+  seedSessionFromPrepRoute,
+  matchTodaySession,
+} from '../../lib/truefitRoute.js';
 import { isTrueFitHost } from '../../lib/truefitHost.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -10,6 +15,7 @@ const appSource = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
 const workspaceSource = readFileSync(resolve(__dirname, '../../pages/TrueFitWorkspacePage.vue'), 'utf8');
 const prepSource = readFileSync(resolve(__dirname, '../../pages/TrueFitPrepPlaceholderPage.vue'), 'utf8');
 const navSource = readFileSync(resolve(__dirname, '../../lib/navigationRegistry.js'), 'utf8');
+const trueFitAppSource = readFileSync(resolve(__dirname, '../../pages/TrueFitApp.vue'), 'utf8');
 
 describe('TrueFit Slice 0 shell contract', () => {
   it('detects truefit subdomain host without path changes', () => {
@@ -24,6 +30,62 @@ describe('TrueFit Slice 0 shell contract', () => {
       classSessionId: 42,
     });
     expect(parseTrueFitRoute({ hash: '', search: '?truefit=1', hostname: 'localhost' })).toEqual({ view: 'workspace' });
+  });
+
+  it('parses and builds prep deep links with session_date', () => {
+    expect(parseTrueFitRoute({
+      hash: '#/truefit/prep/c55-1630?d=2026-09-16',
+      search: '',
+      hostname: 'localhost',
+    })).toEqual({
+      view: 'prep',
+      studentClassId: 55,
+      projectedStartHm: '1630',
+      sessionDate: '2026-09-16',
+    });
+    expect(parseTrueFitRoute({
+      hash: '#/truefit/prep/42?d=2026-09-16',
+      search: '',
+      hostname: 'localhost',
+    })).toEqual({
+      view: 'prep',
+      classSessionId: 42,
+      sessionDate: '2026-09-16',
+    });
+    expect(buildTrueFitPrepUrl({
+      class_session_id: 901,
+      session_date: '2026-09-16',
+    })).toBe('#/truefit/prep/901?d=2026-09-16');
+    expect(buildTrueFitPrepUrl({
+      student_class_id: 55,
+      start_time: '16:30',
+      session_date: '2026-09-16',
+    })).toBe('#/truefit/prep/c55-1630?d=2026-09-16');
+  });
+
+  it('seeds and matches prep sessions without UTC today invention', () => {
+    const seeded = seedSessionFromPrepRoute({
+      view: 'prep',
+      studentClassId: 55,
+      projectedStartHm: '1630',
+      sessionDate: '2026-09-16',
+    });
+    expect(seeded).toEqual({
+      class_session_id: null,
+      student_class_id: 55,
+      start_time: '16:30',
+      session_date: '2026-09-16',
+    });
+    expect(matchTodaySession(seeded, [
+      {
+        class_session_id: null,
+        student_class_id: 55,
+        start_time: '16:30',
+        session_date: '2026-09-16',
+        student_name: 'Ada',
+        subject_name: 'Math',
+      },
+    ])).toMatchObject({ student_name: 'Ada', subject_name: 'Math' });
   });
 
   it('builds prep deep links for session cards', () => {
@@ -55,5 +117,12 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(prepSource).toContain('expected_misconceptions');
     expect(prepSource).toContain('hint_ladders');
     expect(prepSource).not.toContain('<textarea');
+  });
+
+  it('TrueFitApp hydrates prep deep links via today-sessions enrichment', () => {
+    expect(trueFitAppSource).toContain('seedSessionFromPrepRoute');
+    expect(trueFitAppSource).toContain('matchTodaySession');
+    expect(trueFitAppSource).toContain('fetchTrueFitTodaySessions');
+    expect(trueFitAppSource).not.toContain('toISOString().slice(0, 10)');
   });
 });
