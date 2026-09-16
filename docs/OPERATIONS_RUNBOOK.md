@@ -925,7 +925,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 
 | 項目 | 原因 |
 |---|---|
-| Staging 環境 | Pi 單機，維護成本 > 效益（使用者明確排除）|
+| Staging 自動 gate prod | 獨立 host 文件／腳本已備（#868），但 host／secrets 與 I1 carve-out 仍待 Founder；在那之前不把 prod deploy 綁 staging |
 | 分散式追蹤（OpenTelemetry）| 單一服務，Sentry 已夠 |
 | Log 聚合（ELK/Loki）| Pi 規模，`tail -f laravel.log` 夠用 |
 | WAF | Nginx 基本防護 + rate limiting 已涵蓋 80% |
@@ -1161,33 +1161,49 @@ sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
 
 ---
 
-## U. Staging Environment — Issue #475（v1 plan，未實作）
+## U. Staging Environment — Issue #868（權威：`docs/GUIDE_STAGING_ENVIRONMENT.md`）
+
+> 歷史 §U 曾寫 Issue #475 / 第二台 Pi + MySQL + nginx 草案。現行權威是 **#868** 與
+> `GUIDE_STAGING_ENVIRONMENT.md`：dedicated **Debian 12** host，stack 與 production
+> runtime 對齊（Apache 2.4 · PHP 8.2-FPM · MariaDB 10.11 · Node 22 · Composer 2）。
+> Repo 內文件／`scripts/infra/setup-staging-env.sh` **只是指令**，不證明 staging
+> host、secrets 或公開 URL 已存在。
 
 ### U1. 為什麼
 
 目前 WSL2 dev → production Pi 直接 cut over，缺少 production-like 驗證層。
 歷史事故：D（.htaccess）、E（cache permission）若有 staging 都能提前發現。
 
-### U2. v1 設計（low cost）
+### U2. 目標設計（parity with production runtime）
 
-- **基礎設施**：第 2 台 Raspberry Pi 4（或 4GB VM）+ 獨立 hostname `staging.daan.lifenet.com.tw`
-- **DB**：獨立 MySQL `AllTrue_staging`，每週日凌晨從 production sixhour 備份**脫敏**還原（移除 phone / LineID）
-- **部署觸發**：`deploy-staging.yml` manual `workflow_dispatch`（不自動跟 main）
-- **資料同步**：僅 staging 寫入測試資料，不回 production
+| 項目 | 目標 |
+|---|---|
+| Host | 獨立 Debian 12 機器（**不是** production Pi） |
+| Runtime | Apache 2.4 + PHP 8.2-FPM + MariaDB 10.11 + Node 22（build）+ Composer 2 |
+| DB | 獨立 `AllTrue_staging` + staging-only credentials（`atr_staging`） |
+| Checkout | `/home/staging/AllTrue_System` |
+| Secrets | GitHub Environment `staging` 的 `STAGING_*`（見 `docs/runbooks/GITHUB_ENVIRONMENTS_SETUP.md`） |
+| Deploy | **手動** SSH 部署；**不**新增第二條 production SSH path；**不**改 `deploy.yml` |
+| 資料 | 僅 staging 寫入測試／脫敏資料，不回 production |
 
-### U3. 流程定位
+生命週期必須分開：**Provisioning → Deployment → Smoke → Promotion**（細節與指令見 guide）。
 
-| 變更類型 | 必須走 staging？ |
+### U3. 流程定位（目標；Promotion 未啟用前僅建議）
+
+| 變更類型 | 建議走 staging？ |
 |---------|------------------|
-| migration（新增表/欄位 + backfill） | **必須** |
-| auth / session / RBAC 變更 | **必須** |
+| migration（新增表/欄位 + backfill） | **建議必須**（host 就緒後） |
+| auth / session / RBAC 變更 | **建議必須** |
 | public endpoint 新增 | 建議 |
 | UI-only / docs | 不需要 |
 
-### U4. 為什麼還沒做（gating decision）
+### U4. 目前卡點（Founder decisions）
 
-- 多一台 Pi 硬體 / 月度電費 / SSL cert 維護
-- 等 CEO 決定預算 → 開 `feat/staging-env-v1` PR
+1. **Provision** dedicated Debian 12 host + 跑 `setup-staging-env.sh` + 填 staging `.env`
+2. **Create** GitHub Environment `staging` 與 `STAGING_*` secrets（不碰 production secrets）
+3. **Do not** add `staging-deploy.yml` / gate `deploy.yml` on staging until a formal
+   `[contract-change]` carves out non-production deploy under I1–I5
+4. Optional later：脫敏 prod→staging 資料同步、authenticated smoke、prod promotion gate
 
 ---
 

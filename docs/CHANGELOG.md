@@ -1,3 +1,8 @@
+## 2026-09-16 — docs(ops): staging 文件對齊 production runtime
+<!-- release-notes: silent_ship=silent-2026-09-16-staging-runtime-align -->
+- 將 staging 指引與 `setup-staging-env.sh` 從 nginx/MySQL 假設改為 Debian 12 · Apache · PHP 8.2-FPM · MariaDB 10.11 · Node 22 · Composer 2。
+- 明確區分 provisioning / manual deploy / smoke / promotion；文件與腳本不證明 staging host 已存在；不改 `deploy.yml`。
+
 ## 2026-09-16 — fix(scheduling): 編輯課表不再把自己判成衝堂
 <!-- release-notes: staff_update=staff-2026-09-16-course-edit-self-conflict -->
 - 修正編輯既有課程固定時段時，系統把同一學生（含雙合約）自己的佔用誤判為一對一衝堂（in-app #311）。

@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-16-staging-runtime-align
+    changelog_date: "2026-09-16"
+    changelog_title: "docs(ops): staging 文件對齊 production runtime"
+    reason: 僅更新 staging 維運文件與一次性 provisioning 腳本以對齊 production runtime；不改教職員流程、產品語意或 production deploy。
+
   - id: security-2026-09-12-file-validation-bypass-mitigation
     changelog_date: "2026-09-12"
     changelog_title: "security: harden in-app attachment validation against wildcard-key bypass"

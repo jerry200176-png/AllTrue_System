@@ -9,10 +9,15 @@
 ## Why (from the issue)
 
 `deploy.yml` currently reads all deploy secrets from repo-level scope — no
-GitHub Environments boundary between production and the new staging host
-from #868. Environments give you: per-environment secrets, deployment
-history in the GitHub UI, and (later, if wanted) required reviewers before
-a specific environment can deploy.
+GitHub Environments boundary between production and a future dedicated
+staging host from #868. Environments give you: per-environment secrets,
+deployment history in the GitHub UI, and (later, if wanted) required
+reviewers before a specific environment can deploy.
+
+Staging host setup instructions live in `docs/GUIDE_STAGING_ENVIRONMENT.md`
+and `scripts/infra/setup-staging-env.sh` (Debian 12 · Apache · PHP 8.2-FPM ·
+MariaDB 10.11). Those files are **not** evidence that the host or `STAGING_*`
+secrets already exist.
 
 ## Current repo-level secrets (as of 2026-08-15)
 
@@ -67,16 +72,18 @@ gh secret set STAGING_DB_PASSWORD  --env staging --repo jerry200176-png/AllTrue_
 
 ## 4. Wire the workflows to their environment (separate PR, review carefully)
 
-`deploy.yml` and `staging-deploy.yml` need `environment: production` /
-`environment: staging` added to their deploy jobs before environment-scoped
-secrets actually take effect (until then, the repo-level copies above keep
-working as a fallback, so steps 1-3 are safe to do first without an outage).
+There is **no** tracked `staging-deploy.yml` today. Staging deploys are
+manual (see `docs/GUIDE_STAGING_ENVIRONMENT.md` §2) until a
+`[contract-change]` allows a non-production workflow under I1–I5.
 
-**Deliberately not done in this PR**: `deploy.yml` is the repo's single
-production-execution authority (`CONTROL_PLANE_CONTRACT.md` I1) — a change
-to it should be its own small, carefully reviewed PR, not bundled with
-docs/setup work. Once you've completed steps 1-3, open that PR separately
-and review the diff line by line before merging.
+When that carve-out exists, `deploy.yml` and any future staging workflow
+need `environment: production` / `environment: staging` on their deploy
+jobs before environment-scoped secrets take effect (until then, repo-level
+production copies keep working as a fallback, so steps 1–3 are safe first).
+
+**Deliberately not done here**: do **not** edit `deploy.yml` in the same
+change as staging docs/setup. `deploy.yml` remains the sole ordinary
+production-execution authority (`CONTROL_PLANE_CONTRACT.md` I1).
 
 ## 5. Once environment secrets are confirmed working, delete the repo-level copies
 
