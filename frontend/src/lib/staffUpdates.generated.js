@@ -4,6 +4,50 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-16-contract-amendment-remaining",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "合約堂數調整不再誤鎖剩餘排課",
+    "summary": "部分下修合約總堂數時，系統會保留仍可排的剩餘堂數；只有確認提前結束才會結案。",
+    "items": [
+      "修正「提前結束／調整合約總堂數」在部分下修時把剩餘堂數清零並結案，導致仍可排課的合約被鎖死。",
+      "預覽會顯示將放棄幾堂、是否會提前結束；超額未來預排只取消必要堂次。",
+      "若仍要完全結束合約，新總堂數需等於已完成堂數；操作前請先確認預覽。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正「提前結束／調整合約總堂數」在部分下修時把剩餘堂數清零並結案，導致仍可排課的合約被鎖死。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "預覽會顯示將放棄幾堂、是否會提前結束；超額未來預排只取消必要堂次。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若仍要完全結束合約，新總堂數需等於已完成堂數；操作前請先確認預覽。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-308"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-15-tuition-viewport-containment",
     "publishedAt": "2026-09-15",
     "effectiveAt": null,

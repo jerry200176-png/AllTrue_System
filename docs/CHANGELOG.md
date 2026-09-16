@@ -1,3 +1,9 @@
+## 2026-09-16 — fix(course-mgmt): 合約堂數調整保留可用剩餘堂數
+<!-- release-notes: staff_update=staff-2026-09-16-contract-amendment-remaining -->
+- 修正「提前結束／調整合約總堂數」在部分下修時一律把剩餘堂數歸零並結案，導致仍可排課的合約被鎖死（in-app #308）。
+- 新總堂數大於已完成堂數時，剩餘堂數改為「新總堂數 − 已完成」，合約維持可排課；僅在剩餘歸零時才標記提前結束並取消全部未來預排。
+- 預覽會顯示將放棄的堂數與是否提前結束；超額未來預排只取消必要堂次。
+
 ## 2026-09-15 — improved(course-management): 堂數待對帳提供處理入口
 <!-- release-notes: staff_update=staff-2026-09-15-session-reconcile-guidance -->
 - 課程管理看到「堂數待對帳」時，可直接開啟學生帳務對帳明細，先核對課堂狀態與扣堂紀錄，再依既有流程處理。
