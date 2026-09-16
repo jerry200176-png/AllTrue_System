@@ -122,6 +122,43 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-inbox-resolve-on-complete",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "處理完成後收件匣會同步更新",
+    "summary": "核准評量等完成動作後，對應營運通知會從收件匣解除；開啟收件匣也會先同步。",
+    "items": [
+      "修正案件處理完成後，主任收件匣仍顯示已完成的待審評量通知。",
+      "進入收件匣時自動同步；來源仍有效的提醒（如剩堂將盡）會保留。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正案件處理完成後，主任收件匣仍顯示已完成的待審評量通知。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "進入收件匣時自動同步；來源仍有效的提醒（如剩堂將盡）會保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-300"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-16-course-edit-self-conflict",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,
