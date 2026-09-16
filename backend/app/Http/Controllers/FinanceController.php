@@ -1488,9 +1488,6 @@ class FinanceController extends Controller
                 ];
             };
 
-            if ($effectiveTeacherId <= 0) {
-                $add('teacher_missing', '點名沒有有效的兼職老師');
-            }
             if (!$row->StartTime || !$row->EndTime) {
                 $add('missing_time', '堂次缺少開始或結束時間');
             }
