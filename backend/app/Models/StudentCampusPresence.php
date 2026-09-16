@@ -22,6 +22,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $VoidReason
  * @property Student|null $student
  * @property Campus|null $campus
+ * @method static StudentCampusPresence create(array $attributes = [])
+ * @method static \Illuminate\Database\Eloquent\Builder|StudentCampusPresence query()
  */
 class StudentCampusPresence extends Model
 {
