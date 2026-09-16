@@ -122,6 +122,38 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-tuition-remaining-sort",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務中心可依剩餘堂數排序",
+    "summary": "待處理列表可依剩餘堂數少到多或多到少排列，方便先對快上完的學生發繳費通知。",
+    "items": [
+      "帳務中心新增「剩餘堂數」欄與排序；行動版排序選單也可選剩餘堂數。",
+      "本次只調整畫面排序，不改帳務金額、收款、權限或既有資料。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務中心新增「剩餘堂數」欄與排序；行動版排序選單也可選剩餘堂數。",
+          "本次只調整畫面排序，不改帳務金額、收款、權限或既有資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-309"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-15-tuition-viewport-containment",
     "publishedAt": "2026-09-15",
     "effectiveAt": null,

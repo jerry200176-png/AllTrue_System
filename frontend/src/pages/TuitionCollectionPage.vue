@@ -301,6 +301,10 @@
                   到期／逾期
                   <span v-if="sortKey === 'due_date'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
+                <th class="tc-col-sessions tc-th-sort" role="button" tabindex="0" @click="toggleSort('remaining_sessions')" @keydown.enter.prevent="toggleSort('remaining_sessions')" @keydown.space.prevent="toggleSort('remaining_sessions')">
+                  剩餘堂數
+                  <span v-if="sortKey === 'remaining_sessions'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th class="tc-col-actions">操作</th>
               </tr>
             </thead>
@@ -372,7 +376,10 @@
                       {{ r.days_until_settlement }}天後
                     </span>
                   </template>
-                  <template v-else-if="r.schedule_mode === 'count'">
+                  <span v-else class="text-light">—</span>
+                </td>
+                <td class="tc-col-sessions">
+                  <template v-if="r.schedule_mode === 'count' && r.remaining_sessions != null">
                     <button
                       v-if="r.id"
                       class="tc-sessions-link"
@@ -1611,6 +1618,7 @@ const SORTABLE_COLS = [
   { key: 'charge', label: '應繳' },
   { key: 'outstanding', label: '未結清' },
   { key: 'due_date', label: '到期／逾期' },
+  { key: 'remaining_sessions', label: '剩餘堂數' },
 ];
 
 function toggleSort(key) {
@@ -1660,9 +1668,16 @@ const filteredRows = computed(() => {
   const dir = sortDir.value === 'desc' ? -1 : 1;
   list.sort((a, b) => {
     let va = a[k], vb = b[k];
-    if (va == null) va = k === 'charge' || k === 'outstanding' ? -Infinity : '';
-    if (vb == null) vb = k === 'charge' || k === 'outstanding' ? -Infinity : '';
+    const numericKeys = ['charge', 'outstanding', 'remaining_sessions'];
+    if (va == null) va = numericKeys.includes(k) ? -Infinity : '';
+    if (vb == null) vb = numericKeys.includes(k) ? -Infinity : '';
     if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    // remaining_sessions may arrive as numeric strings from JSON
+    if (k === 'remaining_sessions') {
+      const na = Number(va);
+      const nb = Number(vb);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return (na - nb) * dir;
+    }
     return String(va).localeCompare(String(vb), 'zh-TW') * dir;
   });
   return list;
@@ -2932,6 +2947,7 @@ loadAlerts();
 .tc-course-ref { display: block; margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
 .tc-col-currency { width: 90px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
 .tc-col-date { white-space: nowrap; }
+.tc-col-sessions { white-space: nowrap; min-width: 7rem; }
 .tc-col-actions { width: 1%; white-space: nowrap; }
 
 .row-paid { opacity: 0.55; }
