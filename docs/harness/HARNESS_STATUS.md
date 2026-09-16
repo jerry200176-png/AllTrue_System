@@ -4,10 +4,11 @@
 
 | Field | Value |
 |-------|--------|
-| Updated | 2026-09-16T11:40:00Z |
+| Updated | 2026-09-16T11:45:00Z |
 | Worktree | `/home/jerry/workspace/tasks/alltrue/harness-h0-capability-map` |
 | Branch | `chore/task-harness-h0-capability-map` |
-| Slice in flight | H0–H8 landed; H9 blocked on real staging |
+| PR | https://github.com/jerry200176-png/AllTrue_System/pull/2977 |
+| Slice in flight | H0–H8 landed; awaiting CI; H9 blocked on real staging |
 | Durable DB | `/home/jerry/workspace/state/alltrue/harness.sqlite` |
 | Dogfood Program | `alltrue-inapp` / `INAPP-DOCS-RECONCILE` (tick → EXECUTING + Goal file) |
 | Production mutation | disabled |
