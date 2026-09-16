@@ -37,15 +37,26 @@
           <p class="tf-session-card__subject">{{ session.subject_name || '科目待確認' }}</p>
           <p v-if="session.campus_name" class="tf-session-card__campus">{{ session.campus_name }}</p>
         </div>
-        <AtButton
-          variant="primary"
-          shape="rect"
-          icon="menu_book"
-          class="tf-session-card__cta"
-          @click="$emit('prepare', session)"
-        >
-          準備課程
-        </AtButton>
+        <div class="tf-session-card__actions">
+          <AtButton
+            variant="primary"
+            shape="rect"
+            icon="menu_book"
+            class="tf-session-card__cta"
+            @click="$emit('prepare', session)"
+          >
+            準備課程
+          </AtButton>
+          <AtButton
+            variant="ghost"
+            shape="rect"
+            icon="visibility"
+            class="tf-session-card__cta"
+            @click="$emit('observe', session)"
+          >
+            課堂觀察
+          </AtButton>
+        </div>
       </li>
     </ul>
   </div>
@@ -66,7 +77,7 @@ const props = defineProps({
   branchId: { type: [Number, String, null], default: null },
 });
 
-defineEmits(['prepare']);
+defineEmits(['prepare', 'observe']);
 
 const loading = ref(false);
 const error = ref('');
@@ -181,8 +192,15 @@ watch(() => [props.token, props.branchId], loadSessions);
   color: var(--ds-text-tertiary);
 }
 
-.tf-session-card__cta {
+.tf-session-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
   align-self: center;
+  flex-shrink: 0;
+}
+
+.tf-session-card__cta {
   flex-shrink: 0;
 }
 
@@ -190,6 +208,10 @@ watch(() => [props.token, props.branchId], loadSessions);
   .tf-session-card {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .tf-session-card__actions {
+    width: 100%;
   }
 
   .tf-session-card__cta {

@@ -7,14 +7,15 @@ reconcile them here after every cycle.
 | Field | Value |
 |-------|--------|
 | Reconciled at | 2026-09-16 (Asia/Taipei) |
-| `origin/main` SHA (at reconcile) | `4586ae1b9686a6843877bb70a6c2799dbc76f5cb` |
+| `origin/main` SHA (at reconcile) | `bef4fb0225adb5e2244c8cfb8dae48e46d5f21f3` |
 | Slice 0 code on main | **YES** |
 | Slice 0 operational acceptance | **NOT ACCEPTED** — staging smoke blocked (#868) |
 | Slice 1 Teacher Brief on main | **YES** — contract + fixture + API + UI + prep hydration |
 | Slice 1 operational acceptance | **NOT ACCEPTED** — flags OFF; no staging smoke |
-| Slice 2 Observation API on main | **IN FLIGHT** — TF-S2-01 persistence + validator (this PR) |
+| Slice 2 Observation API on main | **YES** — contract + table + GET/POST (#2985/#2986/#2987) |
+| Slice 2 Observation UI | **IN FLIGHT** — this PR |
 | Production flags | **OFF** (`TRUEFIT_V1` / `VITE_TRUEFIT_V1` default false) |
-| Active product priority | TF-S2-02 observation UI (after API merge) |
+| Active product priority | Land TF-S2-02 UI → TF-S2-03 optional fixture polish |
 
 ---
 
@@ -64,7 +65,7 @@ without Founder gate.
 |-------|---------|--------|
 | **0** | Context / workspace | **Code on main + CI GREEN**; runtime acceptance **PENDING** (staging missing) |
 | **1** | AI Prepare / Teacher Brief | **Coded+merged** (#2976/#2978/#2979/#2984); not operationally accepted |
-| **2** | Teacher Observation | **Contract on main**; API persistence **IN FLIGHT** (this PR) |
+| **2** | Teacher Observation | **API on main**; **UI in flight** (this PR) |
 | **3** | Error Diagnosis | Not started |
 | **4** | Remediation | Not started |
 | **5** | Delayed Retrieval / Mastery | Not started |
@@ -85,26 +86,20 @@ Teacher Observation: `TEACHER_OBSERVATION_CONTRACT.md`.
 | Material select + brief UI | [#2979](https://github.com/jerry200176-png/AllTrue_System/pull/2979) | `ed2457fc4` | N/A (dark launch) | Not accepted |
 | PROGRAM_STATUS Slice 1 reconcile | [#2982](https://github.com/jerry200176-png/AllTrue_System/pull/2982) | `51e81cdd2` | N/A (docs) | N/A |
 | Prep deep-link session_date hydration | [#2984](https://github.com/jerry200176-png/AllTrue_System/pull/2984) | `4586ae1b9` | N/A (dark launch) | Not accepted |
-| Teacher Observation contract + status | [#2985](https://github.com/jerry200176-png/AllTrue_System/pull/2985) | `ca91a3a14` | N/A (docs) | N/A |
-| Observation API + persistence | this PR | — | Flag still OFF | Not accepted |
+| Teacher Observation contract | [#2985](https://github.com/jerry200176-png/AllTrue_System/pull/2985) | `ca91a3a14` | N/A (docs) | N/A |
+| Observation table + validator | [#2986](https://github.com/jerry200176-png/AllTrue_System/pull/2986) | `405cb952f` | Flag still OFF | Not accepted |
+| Observation GET/POST API | [#2987](https://github.com/jerry200176-png/AllTrue_System/pull/2987) | `bef4fb022` | Flag still OFF | Not accepted |
+| Observation UI | this PR | — | N/A (dark launch) | Not accepted |
 
-### Slice 1 APIs (behind `TRUEFIT_V1`)
+### Slice 1–2 APIs (behind `TRUEFIT_V1`)
 
 | Method | Path |
 |--------|------|
 | GET | `/api/v1/truefit/material-units` |
 | GET | `/api/v1/truefit/lesson-preps` |
 | POST | `/api/v1/truefit/lesson-preps/generate` |
-
-Persistence: `truefit_lesson_preps` (additive Simple Add migration).
-
-Prep deep-links encode `?d=YYYY-MM-DD`; refresh seeds from route + today-sessions enrichment.
-
----
-
-## Slice 0 — summary
-
-Stacked PRs #2949 → #2955 → #2960 → #2963 → #2965 on main. Staging smoke **BLOCKED** (#868). Production flags **OFF**. Pilot path remains `/#/truefit`.
+| GET | `/api/v1/truefit/observations` |
+| POST | `/api/v1/truefit/observations` |
 
 ---
 
@@ -117,18 +112,17 @@ Stacked PRs #2949 → #2955 → #2960 → #2963 → #2965 on main. Staging smoke
 
 ### Non-blockers (continue)
 
-- TF-S2-00 observation contract (docs)
-- TF-S2-01 persistence + validator
+- TF-S2-02 observation UI
+- TF-S2-03 optional fixture sample / shell polish
 - Docs / PROGRAM_STATUS refresh
-- Local CI for TrueFit suites
 
 ---
 
 ## Next selected bounded task
 
-1. **Land TF-S2-01** (observation persistence + API + tests).
-2. **TF-S2-02:** Teacher UI structured observation form linked from prep/workspace (no textarea-only SSOT).
-3. **Do not** start external LLM wiring, flag activation, DNS, or staging ownership.
+1. **Land this PR** (TF-S2-02 observation UI + observe deep-links).
+2. **TF-S2-03 (optional):** fixture sample observation + shell contract polish.
+3. **Do not** start Slice 3 diagnosis, external LLM, flag activation, DNS, or staging ownership.
 
 Staging remains Platform-owned; TrueFit runtime acceptance stays PENDING until staging exists.
 

@@ -34,21 +34,21 @@ export function parseTrueFitRoute(locationLike = null) {
     return { view: 'workspace' };
   }
 
-  const prepMatch = hashPath.match(/^#\/truefit\/prep\/(\d+)$/);
+  const prepMatch = hashPath.match(/^#\/truefit\/(prep|observe)\/(\d+)$/);
   if (prepMatch) {
     return {
-      view: 'prep',
-      classSessionId: Number(prepMatch[1]),
+      view: prepMatch[1],
+      classSessionId: Number(prepMatch[2]),
       ...(sessionDate ? { sessionDate } : {}),
     };
   }
 
-  const projectedPrepMatch = hashPath.match(/^#\/truefit\/prep\/c(\d+)-(\d{4})$/);
+  const projectedPrepMatch = hashPath.match(/^#\/truefit\/(prep|observe)\/c(\d+)-(\d{4})$/);
   if (projectedPrepMatch) {
     return {
-      view: 'prep',
-      studentClassId: Number(projectedPrepMatch[1]),
-      projectedStartHm: projectedPrepMatch[2],
+      view: projectedPrepMatch[1],
+      studentClassId: Number(projectedPrepMatch[2]),
+      projectedStartHm: projectedPrepMatch[3],
       ...(sessionDate ? { sessionDate } : {}),
     };
   }
@@ -65,23 +65,32 @@ export function parseTrueFitRoute(locationLike = null) {
 }
 
 export function buildTrueFitPrepUrl(sessionOrId) {
+  return buildTrueFitSessionViewUrl('prep', sessionOrId);
+}
+
+export function buildTrueFitObserveUrl(sessionOrId) {
+  return buildTrueFitSessionViewUrl('observe', sessionOrId);
+}
+
+function buildTrueFitSessionViewUrl(view, sessionOrId) {
+  const prefix = view === 'observe' ? 'observe' : 'prep';
   if (sessionOrId && typeof sessionOrId === 'object') {
     const sessionDate = sessionOrId.session_date || sessionOrId.sessionDate || null;
     if (sessionOrId.class_session_id) {
       return withSessionDate(
-        `#/truefit/prep/${Number(sessionOrId.class_session_id)}`,
+        `#/truefit/${prefix}/${Number(sessionOrId.class_session_id)}`,
         sessionDate,
       );
     }
     const classId = Number(sessionOrId.student_class_id || 0);
     const start = String(sessionOrId.start_time || '').slice(0, 5).replace(':', '');
     return withSessionDate(
-      `#/truefit/prep/c${classId}-${start || '0000'}`,
+      `#/truefit/${prefix}/c${classId}-${start || '0000'}`,
       sessionDate,
     );
   }
 
-  return `#/truefit/prep/${Number(sessionOrId)}`;
+  return `#/truefit/${prefix}/${Number(sessionOrId)}`;
 }
 
 export function buildTrueFitWorkspaceUrl() {
@@ -93,11 +102,11 @@ export function buildAdminReturnUrl() {
 }
 
 /**
- * Seed a minimal session object from a parsed prep route.
+ * Seed a minimal session object from a parsed prep/observe route.
  * Prefer explicit route sessionDate; never invent UTC ISO "today".
  */
 export function seedSessionFromPrepRoute(route, { fallbackDate = null } = {}) {
-  if (!route || route.view !== 'prep') return null;
+  if (!route || (route.view !== 'prep' && route.view !== 'observe')) return null;
   const sessionDate = normalizeSessionDate(route.sessionDate)
     || normalizeSessionDate(fallbackDate)
     || localTodayYmd();

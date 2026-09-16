@@ -28,11 +28,18 @@
         :token="token"
         @back="goWorkspace"
       />
+      <TrueFitObservationPage
+        v-else-if="route.view === 'observe'"
+        :session="selectedSession"
+        :token="token"
+        @back="goWorkspace"
+      />
       <TrueFitWorkspacePage
         v-else
         :token="token"
         :branch-id="branchId"
         @prepare="goPrep"
+        @observe="goObserve"
       />
     </main>
   </div>
@@ -43,9 +50,11 @@ import { computed, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import TrueFitWorkspacePage from './TrueFitWorkspacePage.vue';
 import TrueFitPrepPlaceholderPage from './TrueFitPrepPlaceholderPage.vue';
+import TrueFitObservationPage from './TrueFitObservationPage.vue';
 import {
   parseTrueFitRoute,
   buildTrueFitPrepUrl,
+  buildTrueFitObserveUrl,
   buildTrueFitWorkspaceUrl,
   buildAdminReturnUrl,
   seedSessionFromPrepRoute,
@@ -65,16 +74,17 @@ let hydrateRequestId = 0;
 
 const selectedSessionId = computed(() => route.value?.classSessionId || null);
 
-function prepRouteKey(r) {
-  if (!r || r.view !== 'prep') return '';
-  if (r.classSessionId) return `m:${r.classSessionId}`;
-  return `p:${r.studentClassId || 0}-${r.projectedStartHm || '0000'}-${r.sessionDate || ''}`;
+function sessionRouteKey(r) {
+  if (!r || (r.view !== 'prep' && r.view !== 'observe')) return '';
+  const kind = r.view;
+  if (r.classSessionId) return `${kind}:m:${r.classSessionId}`;
+  return `${kind}:p:${r.studentClassId || 0}-${r.projectedStartHm || '0000'}-${r.sessionDate || ''}`;
 }
 
 function syncRouteFromHash() {
   const next = parseTrueFitRoute() || { view: 'workspace' };
-  const prevKey = prepRouteKey(route.value);
-  const nextKey = prepRouteKey(next);
+  const prevKey = sessionRouteKey(route.value);
+  const nextKey = sessionRouteKey(next);
   route.value = next;
   if (prevKey && nextKey && prevKey !== nextKey) {
     selectedSession.value = null;
@@ -84,9 +94,8 @@ function syncRouteFromHash() {
 
 function hydrateSessionFromRoute() {
   const r = route.value;
-  if (!r || r.view !== 'prep') return;
+  if (!r || (r.view !== 'prep' && r.view !== 'observe')) return;
 
-  // Keep an in-memory session from CTA navigation; still allow label enrichment.
   if (!selectedSession.value) {
     selectedSession.value = seedSessionFromPrepRoute(r);
   } else if (!selectedSession.value.session_date && r.sessionDate) {
@@ -102,7 +111,7 @@ function hydrateSessionFromRoute() {
 async function enrichSelectedSessionFromToday() {
   const seed = selectedSession.value;
   const r = route.value;
-  if (!seed || !r || r.view !== 'prep' || !token) return;
+  if (!seed || !r || (r.view !== 'prep' && r.view !== 'observe') || !token) return;
 
   const requestId = ++hydrateRequestId;
   try {
@@ -114,11 +123,10 @@ async function enrichSelectedSessionFromToday() {
     selectedSession.value = {
       ...seed,
       ...matched,
-      // Prefer route-encoded date when present (refresh fidelity).
       session_date: r.sessionDate || matched.session_date || seed.session_date,
     };
   } catch {
-    // Seeded session remains usable for generate/lookup; labels stay minimal.
+    // Seeded session remains usable.
   }
 }
 
@@ -131,6 +139,12 @@ function goWorkspace() {
 function goPrep(session) {
   selectedSession.value = session;
   window.location.hash = buildTrueFitPrepUrl(session);
+  syncRouteFromHash();
+}
+
+function goObserve(session) {
+  selectedSession.value = session;
+  window.location.hash = buildTrueFitObserveUrl(session);
   syncRouteFromHash();
 }
 
