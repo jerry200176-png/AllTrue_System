@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 463 api/* routes · generated 2026-09-12
+> Source: `php artisan route:list --json` · 464 api/* routes · generated 2026-09-16
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -846,3 +846,9 @@
 |--------|-----|--------|------|
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
+
+## /api/v1/truefit (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/truefit/today-sessions` | `TrueFitController@todaySessions` | role+campus |
