@@ -1,4 +1,4 @@
-"""CLI: sync / status / resume / founder-inbox (H0–H1)."""
+"""CLI: sync / status / resume / founder-inbox / graph (H0–H2)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .graph import build_graph
+from .leases import reclaim_stale
 from .programs_loader import sync_programs_to_store
+from .reconcile import resume_from_checkpoint
 from .states import ACTIVE_MUTATING
 from .store import HarnessStore, default_db_path
 
@@ -27,6 +30,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     store = _store(args)
     if args.sync:
         sync_programs_to_store(store)
+    reclaim_stale(store)
     rows: list[dict[str, Any]] = []
     for prog in store.list_programs():
         tasks = store.list_tasks(program_id=prog.program_id)
@@ -51,7 +55,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     print("  ".join("-" * widths[h] for h in headers))
     for row in rows:
         print("  ".join(str(row[h]).ljust(widths[h]) for h in headers))
-    print(f"\ndb={store.db_path} founder_open={len(store.list_open_escalations())}")
+    print(f"\ndb={store.db_path} founder_open={len(store.list_open_escalations())} "
+          f"leases={len(store.list_leases())} goals={len(store.list_goals())}")
     if args.json:
         print(json.dumps({"programs": rows}, indent=2))
     return 0
@@ -68,6 +73,10 @@ def cmd_resume(args: argparse.Namespace) -> int:
     store = _store(args)
     if args.sync:
         sync_programs_to_store(store)
+    reclaimed = reclaim_stale(store)
+    if args.checkpoint:
+        print(json.dumps(resume_from_checkpoint(store, args.checkpoint), indent=2))
+        return 0
     running, waiting, founder = [], [], []
     for prog in store.list_programs():
         for task in store.list_tasks(program_id=prog.program_id):
@@ -80,11 +89,14 @@ def cmd_resume(args: argparse.Namespace) -> int:
                 waiting.append(item)
     print(json.dumps({
         "programs": [p.program_id for p in store.list_programs()],
-        "running": running,
-        "waiting": waiting,
-        "founder_required": founder,
-        "db": str(store.db_path),
+        "running": running, "waiting": waiting, "founder_required": founder,
+        "reclaimed_stale_leases": reclaimed, "db": str(store.db_path),
     }, indent=2))
+    return 0
+
+
+def cmd_graph(args: argparse.Namespace) -> int:
+    print(json.dumps(build_graph(_store(args)).to_dict(), indent=2))
     return 0
 
 
@@ -103,7 +115,10 @@ def build_parser() -> argparse.ArgumentParser:
     inbox.set_defaults(func=cmd_founder_inbox)
     resume = sub.add_parser("resume")
     resume.add_argument("--sync", action="store_true")
+    resume.add_argument("--checkpoint", default=None)
     resume.set_defaults(func=cmd_resume)
+    graph = sub.add_parser("graph")
+    graph.set_defaults(func=cmd_graph)
     return p
 
 

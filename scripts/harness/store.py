@@ -1,4 +1,4 @@
-"""SQLite durable store for Programs, Tasks, leases, escalations, transition log."""
+"""SQLite durable store for Programs, Tasks, leases, goals, receipts, checkpoints."""
 
 from __future__ import annotations
 
@@ -8,11 +8,12 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
+from .contracts import Checkpoint, DecisionReceipt, GoalContract
 from .models import Escalation, Program, Task
 from .states import TaskState
 
 DEFAULT_DB = Path("/home/jerry/workspace/state/alltrue/harness.sqlite")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def default_db_path() -> Path:
@@ -73,10 +74,47 @@ class HarnessStore:
               evidence TEXT NOT NULL,
               created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS leases (
+              lease_id TEXT PRIMARY KEY,
+              resource_key TEXT NOT NULL UNIQUE,
+              holder_task_id TEXT NOT NULL,
+              holder_worker TEXT NOT NULL,
+              expires_at TEXT NOT NULL,
+              fencing_token INTEGER NOT NULL,
+              payload TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS goals (
+              goal_id TEXT PRIMARY KEY,
+              program_id TEXT NOT NULL,
+              task_id TEXT NOT NULL,
+              subject_sha TEXT NOT NULL,
+              payload TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_goals_task ON goals(task_id);
+            CREATE TABLE IF NOT EXISTS decision_receipts (
+              receipt_id TEXT PRIMARY KEY,
+              goal_id TEXT NOT NULL,
+              subject_sha TEXT NOT NULL,
+              status TEXT NOT NULL,
+              payload TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_receipts_goal ON decision_receipts(goal_id);
+            CREATE TABLE IF NOT EXISTS checkpoints (
+              checkpoint_id TEXT PRIMARY KEY,
+              task_id TEXT NOT NULL,
+              goal_id TEXT NOT NULL,
+              task_state TEXT NOT NULL,
+              payload TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_checkpoints_task ON checkpoints(task_id);
             """
         )
         cur.execute(
-            "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+            "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (str(SCHEMA_VERSION),),
         )
         self._conn.commit()
@@ -235,3 +273,114 @@ class HarnessStore:
             "SELECT payload FROM escalations WHERE status = 'open' ORDER BY updated_at"
         ).fetchall()
         return [Escalation.from_dict(json.loads(r["payload"])) for r in rows]
+
+    def _lease_row(self, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        out = dict(row)
+        if isinstance(out.get("payload"), str):
+            out["payload"] = json.loads(out["payload"] or "{}")
+        return out
+
+    def get_lease(self, resource_key: str) -> dict[str, Any] | None:
+        return self._lease_row(self._conn.execute(
+            "SELECT * FROM leases WHERE resource_key = ?", (resource_key,)
+        ).fetchone())
+
+    def put_lease(self, lease: dict[str, Any]) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO leases(lease_id, resource_key, holder_task_id, holder_worker,
+              expires_at, fencing_token, payload)
+            VALUES(?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(resource_key) DO UPDATE SET
+              lease_id=excluded.lease_id, holder_task_id=excluded.holder_task_id,
+              holder_worker=excluded.holder_worker, expires_at=excluded.expires_at,
+              fencing_token=excluded.fencing_token, payload=excluded.payload
+            """,
+            (lease["lease_id"], lease["resource_key"], lease["holder_task_id"],
+             lease["holder_worker"], lease["expires_at"], lease["fencing_token"],
+             json.dumps(lease.get("payload") or {})),
+        )
+        self._conn.commit()
+
+    def delete_lease(self, resource_key: str) -> None:
+        self._conn.execute("DELETE FROM leases WHERE resource_key = ?", (resource_key,))
+        self._conn.commit()
+
+    def list_leases(self) -> list[dict[str, Any]]:
+        return [
+            self._lease_row(r)  # type: ignore[misc]
+            for r in self._conn.execute("SELECT * FROM leases ORDER BY resource_key")
+        ]
+
+    def put_goal(self, goal: GoalContract) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO goals(goal_id, program_id, task_id, subject_sha, payload, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(goal_id) DO UPDATE SET
+              program_id=excluded.program_id, task_id=excluded.task_id,
+              subject_sha=excluded.subject_sha, payload=excluded.payload,
+              updated_at=excluded.updated_at
+            """,
+            (goal.goal_id, goal.program_id, goal.task_id, goal.subject_sha,
+             json.dumps(goal.to_dict()), goal.updated_at),
+        )
+        self._conn.commit()
+
+    def get_goal(self, goal_id: str) -> GoalContract | None:
+        row = self._conn.execute(
+            "SELECT payload FROM goals WHERE goal_id = ?", (goal_id,)
+        ).fetchone()
+        return GoalContract.from_dict(json.loads(row["payload"])) if row else None
+
+    def list_goals(self, task_id: str | None = None) -> list[GoalContract]:
+        if task_id:
+            rows = self._conn.execute(
+                "SELECT payload FROM goals WHERE task_id = ? ORDER BY goal_id", (task_id,)
+            ).fetchall()
+        else:
+            rows = self._conn.execute("SELECT payload FROM goals ORDER BY goal_id").fetchall()
+        return [GoalContract.from_dict(json.loads(r["payload"])) for r in rows]
+
+    def put_decision_receipt(self, receipt: DecisionReceipt) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO decision_receipts(receipt_id, goal_id, subject_sha, status, payload, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(receipt_id) DO UPDATE SET
+              goal_id=excluded.goal_id, subject_sha=excluded.subject_sha,
+              status=excluded.status, payload=excluded.payload, updated_at=excluded.updated_at
+            """,
+            (receipt.receipt_id, receipt.goal_id, receipt.subject_sha, receipt.status,
+             json.dumps(receipt.to_dict()), receipt.decided_at),
+        )
+        self._conn.commit()
+
+    def get_decision_receipt(self, receipt_id: str) -> DecisionReceipt | None:
+        row = self._conn.execute(
+            "SELECT payload FROM decision_receipts WHERE receipt_id = ?", (receipt_id,)
+        ).fetchone()
+        return DecisionReceipt.from_dict(json.loads(row["payload"])) if row else None
+
+    def put_checkpoint(self, checkpoint: Checkpoint) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO checkpoints(checkpoint_id, task_id, goal_id, task_state, payload, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(checkpoint_id) DO UPDATE SET
+              task_id=excluded.task_id, goal_id=excluded.goal_id,
+              task_state=excluded.task_state, payload=excluded.payload,
+              created_at=excluded.created_at
+            """,
+            (checkpoint.checkpoint_id, checkpoint.task_id, checkpoint.goal_id,
+             checkpoint.task_state, json.dumps(checkpoint.to_dict()), checkpoint.created_at),
+        )
+        self._conn.commit()
+
+    def get_checkpoint(self, checkpoint_id: str) -> Checkpoint | None:
+        row = self._conn.execute(
+            "SELECT payload FROM checkpoints WHERE checkpoint_id = ?", (checkpoint_id,)
+        ).fetchone()
+        return Checkpoint.from_dict(json.loads(row["payload"])) if row else None
