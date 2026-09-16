@@ -1,3 +1,8 @@
+## 2026-09-17 — feat(truefit): TF-S6-00a source_* auto-link on upsert
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00a-source-link -->
+- Diagnosis / Remediation / Mastery upsert 在未提供 `source_*` 時，自動連結同堂次最新的 observation / diagnosis / remediation。
+- 僅後端契約行為；`TRUEFIT_V1` 維持 OFF，不改教務／帳務／排課權威。
+
 ## 2026-09-16 — fix(learning): 列表檢視也清楚區分填寫與審核
 <!-- release-notes: staff_update=staff-2026-09-16-learning-table-status-clarity -->
 - 主任評量列表（桌面預設）的填寫／審核標籤改與卡片檢視一致，不再只顯示含糊的「未填」「待審核」（#2715）。

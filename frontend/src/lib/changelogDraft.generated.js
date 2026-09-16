@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.17",
+    "date": "2026-09-17",
+    "title": "2026.09.17 草稿（未發布）",
+    "summary": "S6-00a source_* auto-link on upsert",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "S6-00a source_* auto-link on upsert"
+        ]
+      }
+    ],
+    "items": [
+      "S6-00a source_* auto-link on upsert"
+    ]
+  },
+  {
     "version": "2026.09.16",
     "date": "2026-09-16",
     "title": "2026.09.16 草稿（未發布）",
@@ -680,39 +702,6 @@ export const changelogDraftNotes = [
       "月結開課日跨固定星期仍建立首堂",
       "調課預覽正確排除請假與取消課程",
       "課程查找明確顯示堂數待對帳"
-    ]
-  },
-  {
-    "version": "2026.08.30",
-    "date": "2026-08-30",
-    "title": "2026.08.30 草稿（未發布）",
-    "summary": "回報視窗不殘留上一筆提交提示；學生管理操作按鈕語意更穩定",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "回報視窗不殘留上一筆提交提示"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "學生管理操作按鈕語意更穩定",
-          "出缺勤操作按鈕語意更穩定",
-          "老師工作台聚焦今天與本週"
-        ]
-      }
-    ],
-    "items": [
-      "回報視窗不殘留上一筆提交提示",
-      "學生管理操作按鈕語意更穩定",
-      "出缺勤操作按鈕語意更穩定",
-      "老師工作台聚焦今天與本週"
     ]
   }
 ];
