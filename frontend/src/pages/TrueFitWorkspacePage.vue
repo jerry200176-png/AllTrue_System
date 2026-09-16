@@ -74,6 +74,15 @@
           >
             補救計畫
           </AtButton>
+          <AtButton
+            variant="ghost"
+            shape="rect"
+            icon="verified"
+            class="tf-session-card__cta"
+            @click="$emit('mastery', session)"
+          >
+            精熟檢核
+          </AtButton>
         </div>
       </li>
     </ul>
@@ -95,7 +104,7 @@ const props = defineProps({
   branchId: { type: [Number, String, null], default: null },
 });
 
-defineEmits(['prepare', 'observe', 'diagnose', 'remediate']);
+defineEmits(['prepare', 'observe', 'diagnose', 'remediate', 'mastery']);
 
 const loading = ref(false);
 const error = ref('');
