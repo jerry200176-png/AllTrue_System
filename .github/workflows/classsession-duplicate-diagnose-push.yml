@@ -153,15 +153,15 @@ jobs:
             ->get(['cs.id','cs.StudentClassID','cs.SessionDate','cs.StartTime','cs.EndTime','cs.Status','cs.Note','cs.updated_at']);
           $audits = $db::table('security_audit_events')
             ->where('event_type', 'student_class.contract_amendment')
-            ->whereIn('subject_id', $scIds ?: [-1])
-            ->orderByDesc('id')->limit(20)
-            ->get(['id','subject_id','campus_id','created_at','payload']);
+            ->where('campus_id', 9)
+            ->orderByDesc('id')->limit(30)
+            ->get(['id','campus_id','outcome','occurred_at','metadata']);
           echo json_encode([
             'ok' => true,
             'students' => $students,
             'contracts' => $scAll,
             'sessions' => $sessions,
-            'amendment_audits' => $audits,
+            'campus9_amendment_audits' => $audits,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           """)
           PY
