@@ -14,6 +14,32 @@
     <AdmissionInquiriesPage :standalone="true" :branch-id="publicAdmissionBranchId" />
   </div>
 
+  <div v-else-if="isTrueFitEntryRequested && !isTrueFitFeatureEnabled()" class="standalone-truefit-shell">
+    <div class="standalone-truefit-disabled">
+      <h1>TrueFit</h1>
+      <p>TrueFit 尚未在此環境啟用。請聯絡主任或工程團隊確認功能旗標。</p>
+      <button type="button" class="standalone-truefit-link" @click="returnFromTrueFitEntry">返回教務系統</button>
+    </div>
+  </div>
+
+  <div v-else-if="isStandaloneTrueFit" class="standalone-truefit-shell">
+    <div v-if="loading" class="loading-screen">
+      <div class="spinner"></div>
+      <span>載入 TrueFit…</span>
+    </div>
+    <Login v-else-if="!session" @login-success="handleLoginSuccess" />
+    <div v-else-if="role !== 'teacher'" class="standalone-truefit-disabled">
+      <h1>TrueFit</h1>
+      <p>TrueFit 是教師備課工作台，目前僅開放老師帳號使用。</p>
+      <button type="button" class="standalone-truefit-link" @click="returnFromTrueFitEntry">返回教務系統</button>
+    </div>
+    <TrueFitApp
+      v-else
+      :token="session.access_token"
+      :branch-id="currentBranch"
+    />
+  </div>
+
   <div v-else-if="isStandaloneParent" class="standalone-parent-shell">
     <ParentPortal :standalone="true" />
     <button
@@ -796,6 +822,7 @@ import Login from './pages/Login.vue';
 import ParentPortal from './pages/ParentPortal.vue';
 
 const AdmissionInquiriesPage = defineAsyncComponent(() => import('./pages/AdmissionInquiriesPage.vue'));
+const TrueFitApp = defineAsyncComponent(() => import('./pages/TrueFitApp.vue'));
 const StudentsList          = defineAsyncComponent(() => import('./pages/StudentsList.vue'));
 const LearningRecordsPage   = defineAsyncComponent(() => import('./pages/LearningRecordsPage.vue'));
 const AssessmentPage        = defineAsyncComponent(() => import('./pages/AssessmentPage.vue'));
@@ -856,6 +883,9 @@ import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay'
 import GlobalSearchResults from './components/GlobalSearchResults.vue';
 import { createLatestRequestGuard, fetchGlobalSearch, MIN_QUERY_LENGTH } from './lib/globalSearchApi';
 import { getSessionUserId, isCurrentAuthRevision, shouldClearLocalIdentity } from './lib/authSessionIdentity';
+import { parseTrueFitRoute, buildTrueFitWorkspaceUrl, buildAdminReturnUrl } from './lib/truefitRoute.js';
+import { isTrueFitHost } from './lib/truefitHost.js';
+import { isTrueFitFeatureEnabled, loadTrueFitBackendFlag } from './lib/truefitFlags.js';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -870,6 +900,34 @@ const isStandaloneAdmission = computed(() => {
   const hashPath = hash.split('?')[0];
   return hashPath === '#/admissions' || params.get('admissions') === '1';
 });
+
+const truefitRouteState = ref(typeof window !== 'undefined' ? parseTrueFitRoute() : null);
+
+function syncTrueFitRouteState() {
+  truefitRouteState.value = parseTrueFitRoute();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', syncTrueFitRouteState);
+}
+
+const isTrueFitEntryRequested = computed(() => {
+  if (isTrueFitHost()) return true;
+  return truefitRouteState.value !== null;
+});
+
+const isStandaloneTrueFit = computed(() => (
+  isTrueFitFeatureEnabled() && isTrueFitEntryRequested.value
+));
+
+function openTrueFitWorkspace() {
+  window.location.hash = buildTrueFitWorkspaceUrl();
+  syncTrueFitRouteState();
+}
+
+function returnFromTrueFitEntry() {
+  window.location.href = buildAdminReturnUrl();
+}
 const publicAdmissionBranchId = computed(() => {
   try {
     const hash = window.location.hash || '';
@@ -1811,6 +1869,10 @@ function clearBugNavigationContext() {
 }
 
 function setActivePage(page, { history = 'push', preserveInboxContext = false } = {}) {
+  if (page === 'truefit') {
+    openTrueFitWorkspace();
+    return;
+  }
   closeSidebarMore(false);
   closeMoreMenu(false);
   dashboardReturnContext.value = null;
@@ -2012,7 +2074,10 @@ const avatarLetter = computed(() => {
 const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
 const sidebarGroupOpen = ref({});
-const sidebarNavGroups = computed(() => getNavigationGroups(role.value, { admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1 }));
+const sidebarNavGroups = computed(() => getNavigationGroups(role.value, {
+  admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1,
+  truefitEnabled: isTrueFitFeatureEnabled(),
+}));
 const mobileMoreFilteredGroups = computed(() => {
   const q = mobileMoreSearchQuery.value.trim().toLowerCase();
   return sidebarNavGroups.value
@@ -3649,6 +3714,39 @@ function formatBuildTime(rawIso) {
 
 .standalone-parent-shell {
   position: relative;
+}
+
+.standalone-truefit-shell {
+  min-height: 100dvh;
+  background: var(--ds-canvas);
+}
+
+.standalone-truefit-disabled {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: var(--ds-space-8) var(--ds-space-4);
+  text-align: center;
+}
+
+.standalone-truefit-disabled h1 {
+  margin: 0 0 var(--ds-space-2);
+  font-size: 1.5rem;
+}
+
+.standalone-truefit-disabled p {
+  margin: 0 0 var(--ds-space-4);
+  color: var(--ds-text-secondary);
+  line-height: 1.5;
+}
+
+.standalone-truefit-link {
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-surface-0);
+  color: var(--ds-text-primary);
+  border-radius: var(--ds-radius-md);
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  font: inherit;
 }
 
 .global-guide-btn {
