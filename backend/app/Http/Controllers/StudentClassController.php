@@ -7838,7 +7838,8 @@ class StudentClassController extends Controller
         $today = Carbon::today()->toDateString();
         $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
 
-        $pinRows = Schedule::where('student_course_id', $courseId)
+        $pinRows = DB::table('schedules')
+            ->where('student_course_id', $courseId)
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id')
             ->whereDate('schedule_date', '<', $today)
@@ -7846,6 +7847,7 @@ class StudentClassController extends Controller
             ->get(['id', 'original_schedule_id', 'schedule_date', 'start_time']);
 
         $anchorIds = [];
+        $pinIds = [];
         foreach ($pinRows as $pin) {
             $sessionDate = $pin->schedule_date ? Carbon::parse((string) $pin->schedule_date)->toDateString() : '';
             $startTime = substr((string) ($pin->start_time ?? ''), 0, 5);
@@ -7879,12 +7881,17 @@ class StudentClassController extends Controller
             }
 
             $anchorIds[] = (int) $pin->original_schedule_id;
-            $pin->delete();
+            $pinIds[] = (int) $pin->id;
+        }
+
+        if (!empty($pinIds)) {
+            DB::table('schedules')->whereIn('id', $pinIds)->delete();
         }
 
         $anchorIds = array_values(array_unique(array_filter($anchorIds)));
         if (!empty($anchorIds)) {
-            Schedule::where('student_course_id', $courseId)
+            DB::table('schedules')
+                ->where('student_course_id', $courseId)
                 ->where('status', 'rescheduled')
                 ->whereIn('id', $anchorIds)
                 ->delete();
