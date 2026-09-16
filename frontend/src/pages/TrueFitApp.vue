@@ -45,7 +45,7 @@ import TrueFitPrepPlaceholderPage from './TrueFitPrepPlaceholderPage.vue';
 import { parseTrueFitRoute, buildTrueFitPrepUrl, buildTrueFitWorkspaceUrl, buildAdminReturnUrl } from '../lib/truefitRoute.js';
 import { isTrueFitHost } from '../lib/truefitHost.js';
 
-const props = defineProps({
+const { token, branchId } = defineProps({
   token: { type: String, required: true },
   branchId: { type: [Number, String, null], default: null },
 });
