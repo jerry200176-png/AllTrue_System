@@ -46,17 +46,18 @@ Remediation (accepted) → Delayed retrieval prompt → Mastery evidence
 - Parent portal mastery feed
 - Billing / attendance side effects
 
-## Planned APIs (not live yet)
+## APIs (behind `TRUEFIT_V1`)
 
-| Method | Path |
-|--------|------|
-| GET | `/api/v1/truefit/mastery-evidence` |
-| POST | `/api/v1/truefit/mastery-evidence` |
+| Method | Path | Status |
+|--------|------|--------|
+| GET | `/api/v1/truefit/mastery-evidence` | Persistence/validator landing; routes in TF-S5-01b |
+| POST | `/api/v1/truefit/mastery-evidence` | Persistence/validator landing; routes in TF-S5-01b |
 
 ## Implementation order
 
 | Ticket | Outcome |
 |--------|---------|
-| **TF-S5-00** | This contract + PROGRAM_STATUS (**this PR**) |
-| **TF-S5-01** | Additive persistence + validator + tests |
+| **TF-S5-00** | Contract + PROGRAM_STATUS |
+| **TF-S5-01a** | Additive table + model + validator + unit tests (**this PR**) |
+| **TF-S5-01b** | Service + routes + feature API tests |
 | **TF-S5-02** | Teacher UI mastery check form |
