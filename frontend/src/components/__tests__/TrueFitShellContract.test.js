@@ -6,6 +6,7 @@ import {
   parseTrueFitRoute,
   buildTrueFitPrepUrl,
   buildTrueFitObserveUrl,
+  buildTrueFitRemediateUrl,
   seedSessionFromPrepRoute,
   matchTodaySession,
 } from '../../lib/truefitRoute.js';
@@ -150,6 +151,24 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(obsSource).toContain('struggle_signals');
     expect(obsSource).toContain('misconception_hypotheses');
     expect(obsSource).toContain('upsertTrueFitObservation');
+  });
+
+  it('parses remediate deep links and wires remediation page', () => {
+    expect(parseTrueFitRoute({
+      hash: '#/truefit/remediate/42?d=2026-09-16',
+      search: '',
+      hostname: 'localhost',
+    })).toEqual({
+      view: 'remediate',
+      classSessionId: 42,
+      sessionDate: '2026-09-16',
+    });
+    expect(buildTrueFitRemediateUrl({
+      class_session_id: 42,
+      session_date: '2026-09-16',
+    })).toBe('#/truefit/remediate/42?d=2026-09-16');
+    expect(trueFitAppSource).toContain('TrueFitRemediationPage');
+    expect(workspaceSource).toContain('補救計畫');
   });
 
   it('parses diagnose deep links and wires diagnosis page', () => {

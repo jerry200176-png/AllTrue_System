@@ -34,7 +34,7 @@ export function parseTrueFitRoute(locationLike = null) {
     return { view: 'workspace' };
   }
 
-  const prepMatch = hashPath.match(/^#\/truefit\/(prep|observe|diagnose)\/(\d+)$/);
+  const prepMatch = hashPath.match(/^#\/truefit\/(prep|observe|diagnose|remediate)\/(\d+)$/);
   if (prepMatch) {
     return {
       view: prepMatch[1],
@@ -43,7 +43,7 @@ export function parseTrueFitRoute(locationLike = null) {
     };
   }
 
-  const projectedPrepMatch = hashPath.match(/^#\/truefit\/(prep|observe|diagnose)\/c(\d+)-(\d{4})$/);
+  const projectedPrepMatch = hashPath.match(/^#\/truefit\/(prep|observe|diagnose|remediate)\/c(\d+)-(\d{4})$/);
   if (projectedPrepMatch) {
     return {
       view: projectedPrepMatch[1],
@@ -76,8 +76,13 @@ export function buildTrueFitDiagnoseUrl(sessionOrId) {
   return buildTrueFitSessionViewUrl('diagnose', sessionOrId);
 }
 
+export function buildTrueFitRemediateUrl(sessionOrId) {
+  return buildTrueFitSessionViewUrl('remediate', sessionOrId);
+}
+
 function buildTrueFitSessionViewUrl(view, sessionOrId) {
-  const prefix = view === 'observe' ? 'observe' : (view === 'diagnose' ? 'diagnose' : 'prep');
+  const allowed = ['prep', 'observe', 'diagnose', 'remediate'];
+  const prefix = allowed.includes(view) ? view : 'prep';
   if (sessionOrId && typeof sessionOrId === 'object') {
     const sessionDate = sessionOrId.session_date || sessionOrId.sessionDate || null;
     if (sessionOrId.class_session_id) {
@@ -110,7 +115,7 @@ export function buildAdminReturnUrl() {
  * Prefer explicit route sessionDate; never invent UTC ISO "today".
  */
 export function seedSessionFromPrepRoute(route, { fallbackDate = null } = {}) {
-  if (!route || (route.view !== 'prep' && route.view !== 'observe' && route.view !== 'diagnose')) return null;
+  if (!route || !['prep','observe','diagnose','remediate'].includes(route.view)) return null;
   const sessionDate = normalizeSessionDate(route.sessionDate)
     || normalizeSessionDate(fallbackDate)
     || localTodayYmd();
