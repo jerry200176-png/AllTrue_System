@@ -378,6 +378,7 @@ class ScheduleController extends Controller
                 return response()->json([
                     'message' => $guardConflicts[0]['message'] ?? 'Teacher scheduling conflict detected',
                     'conflicts' => $guardConflicts,
+                    'suggested_actions' => $guardConflicts[0]['suggested_actions'] ?? [],
                 ], 409);
             }
         }
@@ -1165,6 +1166,7 @@ class ScheduleController extends Controller
                 return response()->json([
                     'message' => $guardConflicts[0]['message'] ?? 'Teacher scheduling conflict detected',
                     'conflicts' => $guardConflicts,
+                    'suggested_actions' => $guardConflicts[0]['suggested_actions'] ?? [],
                 ], 409);
             }
         }

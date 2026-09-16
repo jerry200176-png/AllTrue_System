@@ -4298,6 +4298,11 @@ class StudentClassController extends Controller
                         'error_code' => 'TEACHER_CAPACITY_CONFLICT',
                         'conflict_type' => 'teacher_capacity',
                         'conflicts' => $teacherConflicts,
+                        'suggested_actions' => $teacherConflicts[0]['suggested_actions'] ?? [
+                            '在行事曆切到對應週次，並確認授課老師／分校篩選是否與衝突來源一致',
+                            '到課程管理搜尋提示中的學生／科目，確認是否為舊合約未結束、代課或調課列',
+                            '依情況改期、請假、結束舊合約，或改選其他時段後再排',
+                        ],
                     ], 409);
                 }
             }
@@ -4518,6 +4523,11 @@ class StudentClassController extends Controller
                 $result['error_code'] = 'TEACHER_CAPACITY_CONFLICT';
                 $result['message'] = $teacherConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法加課。';
                 $result['teacher_conflicts'] = $teacherConflicts;
+                $result['suggested_actions'] = $teacherConflicts[0]['suggested_actions'] ?? [
+                    '在行事曆切到對應週次，並確認授課老師／分校篩選是否與衝突來源一致',
+                    '到課程管理搜尋提示中的學生／科目，確認是否為舊合約未結束、代課或調課列',
+                    '依情況改期、請假、結束舊合約，或改選其他時段後再排',
+                ];
             }
         }
 

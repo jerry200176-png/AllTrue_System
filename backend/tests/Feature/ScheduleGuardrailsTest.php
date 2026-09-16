@@ -393,6 +393,11 @@ class ScheduleGuardrailsTest extends TestCase
         $res->assertStatus(409)
             ->assertJsonPath('conflicts.0.overlap_details.0.student_name', '王品方')
             ->assertJsonPath('conflicts.0.overlap_details.0.subject_name', '理化');
+        $message = (string) $res->json('message');
+        $this->assertStringContainsString('王品方', $message);
+        $this->assertStringContainsString('理化', $message);
+        $this->assertNotEmpty($res->json('suggested_actions'));
+        $this->assertNotEmpty($res->json('conflicts.0.suggested_actions'));
     }
 
     public function test_schedule_update_excludes_same_student_from_capacity_guard(): void

@@ -2864,7 +2864,8 @@ class ClassSessionController extends Controller
             if (!empty($conflicts)) {
                 $conflictMessage = $conflicts[0]['message'] ?? '代課老師此時段與既有課程衝突';
                 $overlapSummary = $conflicts[0]['overlap_summary'] ?? '';
-                if ($overlapSummary !== '') {
+                // ScheduleGuard now bakes overlap_summary into message; only append if missing.
+                if ($overlapSummary !== '' && !str_contains($conflictMessage, $overlapSummary)) {
                     $conflictMessage .= '（' . $overlapSummary . '）';
                 }
 
