@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import ContractAdjustmentChoiceModal from '../ContractAdjustmentChoiceModal.vue';
 import ContractAmendmentModal from '../ContractAmendmentModal.vue';
 
@@ -74,6 +74,41 @@ describe('ContractAmendmentModal', () => {
     await wrapper.find('#amendment-new-count').setValue(3);
     await wrapper.find('button.secondary').trigger('click');
     expect(wrapper.emitted('preview')).toEqual([[3]]);
+  });
+
+  it('defaults new session count below the current total and above completed usage', async () => {
+    const wrapper = mount(ContractAmendmentModal, {
+      props: {
+        show: true,
+        course: { id: 88, student_name: '沈柏宇', subject_name: '英文', sessions_purchased: 4, remaining_sessions: 2 },
+      },
+    });
+    await flushPromises();
+
+    expect(Number(wrapper.find('#amendment-new-count').element.value)).toBe(3);
+  });
+
+  it('shows forfeiture warning when preview closes the contract', async () => {
+    const wrapper = mount(ContractAmendmentModal, {
+      props: {
+        show: true,
+        course,
+        preview: {
+          original_session_count: 4,
+          new_session_count: 2,
+          original_remaining_sessions: 2,
+          new_remaining_sessions: 0,
+          forfeited_sessions: 2,
+          closes_contract: true,
+          affected_future_scheduled: [],
+          financial: { invoice_count: 0, payment_count: 0, payment_report_count: 0 },
+          financial_note: '帳務不變',
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain('放棄 2 堂未使用額度');
+    expect(wrapper.text()).toContain('合約會提前結束');
   });
 
 });
