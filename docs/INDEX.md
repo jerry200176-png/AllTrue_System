@@ -27,7 +27,8 @@
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
 **Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3 classify risk). **Operator:** fleet [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — Agent squash-merges after required checks, including R3 with a Repair Manifest.  
-**CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`
+**CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`  
+**Autonomous Execution Harness:** [`harness/HARNESS_STATUS.md`](harness/HARNESS_STATUS.md) · `python3 -m scripts.harness status`
 
 ---
 
