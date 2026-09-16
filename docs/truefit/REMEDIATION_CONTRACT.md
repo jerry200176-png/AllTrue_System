@@ -46,7 +46,7 @@ Diagnosis (accepted) → Remediation plan → teacher confirm
 - Parent/student app push
 - Billing / session deduction changes
 
-## Planned APIs (not live yet)
+## APIs (behind `TRUEFIT_V1`)
 
 | Method | Path |
 |--------|------|
@@ -57,6 +57,6 @@ Diagnosis (accepted) → Remediation plan → teacher confirm
 
 | Ticket | Outcome |
 |--------|---------|
-| **TF-S4-00** | This contract + PROGRAM_STATUS (**this PR**) |
-| **TF-S4-01** | Additive persistence + validator + tests |
+| **TF-S4-00** | Contract + PROGRAM_STATUS |
+| **TF-S4-01** | Additive persistence + validator + tests (**in progress**) |
 | **TF-S4-02** | Teacher UI confirm flow |
