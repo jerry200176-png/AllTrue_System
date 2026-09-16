@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-16-rfid-presence-policy
+    changelog_date: "2026-09-16"
+    changelog_title: "docs(attendance): lock RFID campus-presence v1 contract (#2809)"
+    reason: 僅新增／更新政策與架構文件（RFC、程式狀態、交叉索引）；不改 runtime、教職員流程、帳務或扣堂語意。
+
   - id: security-2026-09-12-file-validation-bypass-mitigation
     changelog_date: "2026-09-12"
     changelog_title: "security: harden in-app attachment validation against wildcard-key bypass"

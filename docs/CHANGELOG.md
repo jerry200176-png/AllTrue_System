@@ -1,3 +1,8 @@
+## 2026-09-16 — docs(attendance): lock RFID campus-presence v1 contract (#2809)
+<!-- release-notes: silent_ship=silent-2026-09-16-rfid-presence-policy -->
+- 鎖定門禁 RFID v1 產品邊界：刷卡只證明在校，不直接點名、扣堂或 billing backfill；課程出席仍走既有教師／手動點名路徑。
+- 新增 RFC 與程式狀態文件；標註現行 runtime 仍含 auto-attend/deduct，直到 feature flag 重切 `SwipeRfidController`。不改線上行為。
+
 ## 2026-09-16 — fix(calendar): 改師後未上課的過去堂次不再卡舊老師
 <!-- release-notes: staff_update=staff-2026-09-16-calendar-teacher-after-change -->
 - 修正更換正班老師後，行事曆仍對「過去但從未上課」的堂次顯示舊老師（in-app #312）。
