@@ -649,6 +649,9 @@ Route::prefix('v1')->group(function () {
         Route::get('class-sessions/projection', [ClassSessionController::class, 'projection']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::get('truefit/today-sessions', [TrueFitController::class, 'todaySessions']);
+        Route::get('truefit/material-units', [TrueFitController::class, 'materialUnits']);
+        Route::get('truefit/lesson-preps', [TrueFitController::class, 'showLessonPrep']);
+        Route::post('truefit/lesson-preps/generate', [TrueFitController::class, 'generateLessonPrep']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         // #770 批次排課 CSV 匯入 — 衝突檢查 preview（純讀取）。
         Route::post('schedule-import/preview', [\App\Http\Controllers\ScheduleImportController::class, 'preview']);

@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\TrueFit\TrueFitLessonPrepService;
 use App\Services\TrueFitService;
 use App\Services\TrueFitTodaySessionsReadService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class TrueFitController extends Controller
 {
@@ -14,6 +16,85 @@ class TrueFitController extends Controller
      * schedule-exception slots without invoking index auto-materialization.
      */
     public function todaySessions(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+        if ($branchDenied = $this->denyUnlessBranchAllowed($request)) {
+            return $branchDenied;
+        }
+
+        $payload = app(TrueFitTodaySessionsReadService::class)->fetchTodaySessions($request, $teacherId);
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Synthetic material/unit catalog for Teacher Brief generation.
+     */
+    public function materialUnits(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $subjectHint = trim((string) $request->input('subject_hint', ''));
+        $units = app(TrueFitLessonPrepService::class)->listMaterialUnits(
+            $subjectHint !== '' ? $subjectHint : null
+        );
+
+        return response()->json([
+            'meta' => [
+                'catalog' => 'synthetic',
+                'count' => count($units),
+            ],
+            'data' => $units,
+        ]);
+    }
+
+    /**
+     * Read the teacher's LessonPrep + structured Teacher Brief for a session.
+     */
+    public function showLessonPrep(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+
+        try {
+            $payload = app(TrueFitLessonPrepService::class)->getPrepForTeacher($request, $teacherId);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
+        }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Generate (or regenerate) a fixture Teacher Brief for a session + material unit.
+     */
+    public function generateLessonPrep(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+
+        try {
+            $payload = app(TrueFitLessonPrepService::class)->generateForTeacher($request, $teacherId);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
+        }
+
+        return response()->json($payload, 201);
+    }
+
+    private function denyUnlessTeacherTrueFit(Request $request)
     {
         if (!TrueFitService::enabled()) {
             return response()->json(['message' => 'Not found'], 404);
@@ -29,6 +110,11 @@ class TrueFitController extends Controller
             return response()->json(['message' => 'Teacher not linked'], 403);
         }
 
+        return null;
+    }
+
+    private function denyUnlessBranchAllowed(Request $request)
+    {
         $requestedCampus = (int) ($request->input('branch_id') ?? $request->input('campus_id') ?? 0);
         if ($requestedCampus > 0) {
             $campusIds = $request->attributes->get('auth_campus_ids', []);
@@ -37,8 +123,6 @@ class TrueFitController extends Controller
             }
         }
 
-        $payload = app(TrueFitTodaySessionsReadService::class)->fetchTodaySessions($request, $teacherId);
-
-        return response()->json($payload);
+        return null;
     }
 }
