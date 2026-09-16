@@ -808,7 +808,8 @@ class ParttimePayrollTest extends TestCase
         $subRow = $teachers->firstWhere('teacher_id', $substituteTeacherId);
         $this->assertNotNull($subRow);
         $this->assertSame(1, $subRow['session_count']);
-        $this->assertSame(200, $subRow['total_salary']);
+        // tutoring 200/h × contracted 2h (SessionDuration=120) = 400
+        $this->assertSame(400, $subRow['total_salary']);
 
         $detail = $this->withHeaders($headers)
             ->getJson("/api/v1/finance/parttime-payroll/{$substituteTeacherId}/sessions?month=2026-09&branch_id=1");
