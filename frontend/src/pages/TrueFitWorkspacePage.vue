@@ -56,6 +56,15 @@
           >
             課堂觀察
           </AtButton>
+          <AtButton
+            variant="ghost"
+            shape="rect"
+            icon="psychology"
+            class="tf-session-card__cta"
+            @click="$emit('diagnose', session)"
+          >
+            錯誤診斷
+          </AtButton>
         </div>
       </li>
     </ul>
@@ -77,7 +86,7 @@ const props = defineProps({
   branchId: { type: [Number, String, null], default: null },
 });
 
-defineEmits(['prepare', 'observe']);
+defineEmits(['prepare', 'observe', 'diagnose']);
 
 const loading = ref(false);
 const error = ref('');

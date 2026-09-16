@@ -151,4 +151,24 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(obsSource).toContain('misconception_hypotheses');
     expect(obsSource).toContain('upsertTrueFitObservation');
   });
+
+  it('parses diagnose deep links and wires diagnosis page', () => {
+    expect(parseTrueFitRoute({
+      hash: '#/truefit/diagnose/42?d=2026-09-16',
+      search: '',
+      hostname: 'localhost',
+    })).toEqual({
+      view: 'diagnose',
+      classSessionId: 42,
+      sessionDate: '2026-09-16',
+    });
+    expect(trueFitAppSource).toContain('TrueFitDiagnosisPage');
+    expect(trueFitAppSource).toContain('goDiagnose');
+    expect(workspaceSource).toContain('錯誤診斷');
+    const diagSource = readFileSync(resolve(__dirname, '../../pages/TrueFitDiagnosisPage.vue'), 'utf8');
+    expect(diagSource).toContain('儲存診斷');
+    expect(diagSource).toContain('primary_misconception');
+    expect(diagSource).toContain('teacher_decision');
+    expect(diagSource).toContain('upsertTrueFitDiagnosis');
+  });
 });
