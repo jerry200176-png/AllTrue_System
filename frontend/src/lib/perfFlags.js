@@ -54,6 +54,9 @@ const flags = {
 
   /** Admissions inquiry -> trial -> enrollment funnel. Requires backend activation too. */
   ADMISSIONS_FUNNEL_V1: import.meta.env.VITE_ADMISSIONS_FUNNEL_V1 === 'true',
+
+  /** TrueFit teacher learning workspace (Slice 0). Requires backend TRUEFIT_V1 too. */
+  TRUEFIT_V1: import.meta.env.VITE_TRUEFIT_V1 === 'true',
 };
 
 export default flags;
