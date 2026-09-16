@@ -57,21 +57,22 @@ Teacher Brief → Observation → Diagnosis proposal → teacher confirm/edit
 - Billing / attendance side effects
 - Full misconception ontology platform
 
-## Planned APIs (not live yet)
+## APIs (behind `TRUEFIT_V1`)
 
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/v1/truefit/diagnoses` | Lookup by session_ref |
 | POST | `/api/v1/truefit/diagnoses` | Upsert proposal / teacher decision |
 
-All will require `TRUEFIT_V1=true` and teacher role when implemented.
+Validator: `App\Services\TrueFit\TrueFitErrorDiagnosisContract`.
+Persistence: `truefit_diagnoses`.
 
 ## Implementation order
 
 | Ticket | Outcome |
 |--------|---------|
-| **TF-S3-00** | This contract + PROGRAM_STATUS pointer (**this PR**) |
-| **TF-S3-01** | Additive persistence + PHP validator + feature tests |
+| **TF-S3-00** | Contract + PROGRAM_STATUS pointer |
+| **TF-S3-01** | Additive persistence + PHP validator + feature tests (**in progress**) |
 | **TF-S3-02** | Teacher UI: review/confirm diagnosis from observation |
 
 ## Acceptance (Slice 3 coded)
