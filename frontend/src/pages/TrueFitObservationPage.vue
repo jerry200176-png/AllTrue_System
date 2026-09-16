@@ -71,16 +71,29 @@
           <AtSelect v-model="confidence" :options="confidenceOptions" />
         </AtField>
 
-        <AtButton
-          variant="primary"
-          shape="rect"
-          icon="save"
-          type="submit"
-          :loading="saving"
-          :disabled="saving || !session"
-        >
-          儲存觀察
-        </AtButton>
+        <div class="tf-obs-actions">
+          <AtButton
+            variant="primary"
+            shape="rect"
+            icon="save"
+            type="submit"
+            :loading="saving"
+            :disabled="saving || !session"
+          >
+            儲存觀察
+          </AtButton>
+          <AtButton
+            v-if="savedRecordId"
+            variant="ghost"
+            shape="rect"
+            icon="psychology"
+            type="button"
+            data-testid="truefit-next-diagnose"
+            @click="$emit('continue', session)"
+          >
+            進入錯誤診斷
+          </AtButton>
+        </div>
       </form>
     </AtCard>
   </div>
@@ -102,12 +115,13 @@ const props = defineProps({
   token: { type: String, required: true },
 });
 
-defineEmits(['back']);
+defineEmits(['back', 'continue']);
 
 const error = ref('');
 const savedHint = ref('');
 const saving = ref(false);
 const loading = ref(false);
+const savedRecordId = ref(null);
 
 const objectivesTouchedText = ref('');
 const studentMovesText = ref('');
@@ -208,6 +222,7 @@ async function loadExisting() {
       token: props.token,
       ...sessionQuery(),
     });
+    savedRecordId.value = payload?.data?.id || null;
     applyObservation(payload?.data?.observation || null);
   } catch (e) {
     error.value = e?.message || '課堂觀察載入失敗';
@@ -227,6 +242,7 @@ async function saveObservation() {
       ...sessionQuery(),
       observation: buildObservationPayload(),
     });
+    savedRecordId.value = payload?.data?.id || null;
     applyObservation(payload?.data?.observation || null);
     savedHint.value = '觀察已儲存';
   } catch (e) {
@@ -239,6 +255,7 @@ async function saveObservation() {
 onMounted(loadExisting);
 watch(() => props.session, () => {
   savedHint.value = '';
+  savedRecordId.value = null;
   loadExisting();
 });
 </script>
@@ -272,6 +289,13 @@ watch(() => props.session, () => {
 .tf-obs-form {
   display: grid;
   gap: var(--ds-space-3);
+}
+
+.tf-obs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ds-space-2);
+  justify-content: flex-end;
 }
 
 .tf-obs-fieldset {

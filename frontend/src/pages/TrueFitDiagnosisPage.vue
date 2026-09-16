@@ -62,9 +62,22 @@
           <AtSelect v-model="teacherDecision" :options="decisionOptions" />
         </AtField>
 
-        <AtButton variant="primary" shape="rect" icon="save" type="submit" :loading="saving" :disabled="saving">
-          儲存診斷
-        </AtButton>
+        <div class="tf-diag-actions">
+          <AtButton variant="primary" shape="rect" icon="save" type="submit" :loading="saving" :disabled="saving">
+            儲存診斷
+          </AtButton>
+          <AtButton
+            v-if="savedRecordId"
+            variant="ghost"
+            shape="rect"
+            icon="healing"
+            type="button"
+            data-testid="truefit-next-remediate"
+            @click="$emit('continue', session)"
+          >
+            進入補救計畫
+          </AtButton>
+        </div>
       </form>
     </AtCard>
   </div>
@@ -79,17 +92,24 @@ import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtField from '../components/design-system/AtField.vue';
 import AtSelect from '../components/design-system/AtSelect.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import { fetchTrueFitDiagnosis, upsertTrueFitDiagnosis } from '../lib/truefitApi.js';
+import {
+  fetchTrueFitDiagnosis,
+  fetchTrueFitObservation,
+  upsertTrueFitDiagnosis,
+} from '../lib/truefitApi.js';
+import { seedDiagnosisFromObservation } from '../lib/truefitLoop.js';
 
 const props = defineProps({
   session: { type: Object, default: null },
   token: { type: String, required: true },
 });
-defineEmits(['back']);
+defineEmits(['back', 'continue']);
 
 const error = ref('');
 const savedHint = ref('');
 const saving = ref(false);
+const savedRecordId = ref(null);
+const sourceObservationId = ref(null);
 const supportingText = ref('');
 const ruledOutText = ref('');
 const checksText = ref('');
@@ -147,14 +167,45 @@ function applyDiagnosis(d) {
   teacherNotes.value = d.teacher_notes || '';
   confidence.value = d.confidence || 'medium';
   teacherDecision.value = d.teacher_decision || 'pending';
+  if (d.source_observation_id != null) {
+    sourceObservationId.value = Number(d.source_observation_id) || null;
+  }
+}
+
+function applySeedIfEmpty(seed) {
+  if (!seed) return;
+  if (!primary.label && seed.primary_misconception) {
+    primary.label = seed.primary_misconception.label || '';
+    primary.statement = seed.primary_misconception.statement || '';
+    primary.why_it_fits_observation = seed.primary_misconception.why_it_fits_observation || '';
+    primary.linked_brief_objective = seed.primary_misconception.linked_brief_objective || '';
+  }
+  if (!supportingText.value && seed.supporting_signals?.length) {
+    supportingText.value = seed.supporting_signals.join('\n');
+  }
+  if (!checksText.value && seed.recommended_checks?.length) {
+    checksText.value = seed.recommended_checks.join('\n');
+  }
 }
 
 async function loadExisting() {
   if (!props.session) return;
   error.value = '';
   try {
-    const payload = await fetchTrueFitDiagnosis({ token: props.token, ...sessionQuery() });
-    applyDiagnosis(payload?.data?.diagnosis || null);
+    const [diagPayload, obsPayload] = await Promise.all([
+      fetchTrueFitDiagnosis({ token: props.token, ...sessionQuery() }),
+      fetchTrueFitObservation({ token: props.token, ...sessionQuery() }).catch(() => null),
+    ]);
+    savedRecordId.value = diagPayload?.data?.id || null;
+    if (diagPayload?.data?.source_observation_id != null) {
+      sourceObservationId.value = Number(diagPayload.data.source_observation_id) || null;
+    } else if (obsPayload?.data?.id) {
+      sourceObservationId.value = Number(obsPayload.data.id) || null;
+    }
+    applyDiagnosis(diagPayload?.data?.diagnosis || null);
+    if (!savedRecordId.value) {
+      applySeedIfEmpty(seedDiagnosisFromObservation(obsPayload?.data?.observation || null));
+    }
   } catch (e) {
     error.value = e?.message || '錯誤診斷載入失敗';
   }
@@ -182,9 +233,13 @@ async function saveDiagnosis() {
         confidence: confidence.value,
         teacher_decision: teacherDecision.value,
         teacher_notes: teacherNotes.value || '',
-        source_observation_id: null,
+        source_observation_id: sourceObservationId.value,
       },
     });
+    savedRecordId.value = payload?.data?.id || null;
+    if (payload?.data?.source_observation_id != null) {
+      sourceObservationId.value = Number(payload.data.source_observation_id) || null;
+    }
     applyDiagnosis(payload?.data?.diagnosis || null);
     savedHint.value = '診斷已儲存';
   } catch (e) {
@@ -195,7 +250,12 @@ async function saveDiagnosis() {
 }
 
 onMounted(loadExisting);
-watch(() => props.session, () => { savedHint.value = ''; loadExisting(); });
+watch(() => props.session, () => {
+  savedHint.value = '';
+  savedRecordId.value = null;
+  sourceObservationId.value = null;
+  loadExisting();
+});
 </script>
 
 <style scoped>
@@ -204,6 +264,7 @@ watch(() => props.session, () => { savedHint.value = ''; loadExisting(); });
 .tf-diag-context { padding: var(--ds-space-3); border-radius: var(--ds-radius-md); background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); }
 .tf-diag-context__label { display: block; font-size: var(--ds-font-size-sm); color: var(--ds-text-tertiary); margin-bottom: var(--ds-space-1); }
 .tf-diag-form { display: grid; gap: var(--ds-space-3); }
+.tf-diag-actions { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); justify-content: flex-end; }
 .tf-diag-fieldset { margin: 0; padding: var(--ds-space-3); border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md); display: grid; gap: var(--ds-space-2); }
 .tf-diag-fieldset legend { padding-inline: var(--ds-space-1); font-size: var(--ds-font-size-sm); color: var(--ds-text-secondary); }
 .tf-diag-input { width: 100%; box-sizing: border-box; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-0); color: var(--ds-text-primary); padding: var(--ds-space-2) var(--ds-space-3); font: inherit; line-height: 1.45; }

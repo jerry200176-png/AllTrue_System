@@ -27,30 +27,35 @@
         :session="selectedSession"
         :token="token"
         @back="goWorkspace"
+        @continue="goObserve"
       />
       <TrueFitObservationPage
         v-else-if="route.view === 'observe'"
         :session="selectedSession"
         :token="token"
         @back="goWorkspace"
+        @continue="goDiagnose"
       />
       <TrueFitDiagnosisPage
         v-else-if="route.view === 'diagnose'"
         :session="selectedSession"
         :token="token"
         @back="goWorkspace"
+        @continue="goRemediate"
       />
       <TrueFitRemediationPage
         v-else-if="route.view === 'remediate'"
         :session="selectedSession"
         :token="token"
         @back="goWorkspace"
+        @continue="goMastery"
       />
       <TrueFitMasteryPage
         v-else-if="route.view === 'mastery'"
         :session="selectedSession"
         :token="token"
         @back="goWorkspace"
+        @continue="goWorkspace"
       />
       <TrueFitWorkspacePage
         v-else
