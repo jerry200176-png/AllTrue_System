@@ -148,6 +148,17 @@ if ($session->Status !== 'scheduled') {
 
 ## 4. RFID 刷卡流程（Swipe Flow）
 
+> **Product direction (2026-09-16, #2809):** Founder-locked v1 treats door RFID as
+> **campus presence only**. Raw swipe must not mark `ClassSession` attended/late,
+> deduct sessions, or billing-backfill. Canonical contract:
+> [`docs/architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md`](architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md).
+> Program status: [`docs/programs/RFID_2809_STATUS.md`](programs/RFID_2809_STATUS.md).
+>
+> **Runtime today (until `FEATURE_RFID_PRESENCE_ONLY` is on):** the subsections
+> below still describe shipped `SwipeRfidController` behavior, including course
+> binding, `applySessionStatus`, `deductOnAttendance`, and `backfillPresenceWindow`.
+> Do not assume the RFC target is live.
+
 ### 4.1 公開端點
 
 ```
