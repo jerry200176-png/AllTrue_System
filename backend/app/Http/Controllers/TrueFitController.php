@@ -6,6 +6,7 @@ use App\Services\TrueFit\TrueFitLessonPrepService;
 use App\Services\TrueFit\TrueFitObservationService;
 use App\Services\TrueFit\TrueFitDiagnosisService;
 use App\Services\TrueFit\TrueFitRemediationService;
+use App\Services\TrueFit\TrueFitMasteryService;
 use App\Services\TrueFitService;
 use App\Services\TrueFitTodaySessionsReadService;
 use Illuminate\Http\Request;
@@ -205,6 +206,40 @@ class TrueFitController extends Controller
 
         try {
             $payload = app(TrueFitRemediationService::class)->upsertForTeacher($request, $teacherId);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
+        }
+
+        return response()->json($payload, 201);
+    }
+
+    public function showMasteryEvidence(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+
+        try {
+            $payload = app(TrueFitMasteryService::class)->getForTeacher($request, $teacherId);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
+        }
+
+        return response()->json($payload);
+    }
+
+    public function upsertMasteryEvidence(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+
+        try {
+            $payload = app(TrueFitMasteryService::class)->upsertForTeacher($request, $teacherId);
         } catch (ValidationException $e) {
             return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
         }

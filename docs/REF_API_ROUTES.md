@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 474 api/* routes · generated 2026-09-16
+> Source: `php artisan route:list --json` · 476 api/* routes · generated 2026-09-16
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -848,7 +848,7 @@
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
 
-## /api/v1/truefit (10)
+## /api/v1/truefit (12)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -856,6 +856,8 @@
 | POST | `api/v1/truefit/diagnoses` | `TrueFitController@upsertDiagnosis` | role+campus |
 | GET | `api/v1/truefit/lesson-preps` | `TrueFitController@showLessonPrep` | role+campus |
 | POST | `api/v1/truefit/lesson-preps/generate` | `TrueFitController@generateLessonPrep` | role+campus |
+| GET | `api/v1/truefit/mastery-evidence` | `TrueFitController@showMasteryEvidence` | role+campus |
+| POST | `api/v1/truefit/mastery-evidence` | `TrueFitController@upsertMasteryEvidence` | role+campus |
 | GET | `api/v1/truefit/material-units` | `TrueFitController@materialUnits` | role+campus |
 | GET | `api/v1/truefit/observations` | `TrueFitController@showObservation` | role+campus |
 | POST | `api/v1/truefit/observations` | `TrueFitController@upsertObservation` | role+campus |
