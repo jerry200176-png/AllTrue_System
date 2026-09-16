@@ -415,7 +415,14 @@ class ScheduleGuardService
                 continue;
             }
 
-            if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
+            // Same-student dual-contract / other-course occupancy: exclude.
+            // Same-course rows keep the bounded time-match exclusion below so
+            // partially overlapping exceptions still conflict (adopt-exception).
+            if (
+                $excludeStudentId
+                && (int) ($row->StudentID ?? 0) === $excludeStudentId
+                && (!$excludeStudentClassId || $courseId !== $excludeStudentClassId)
+            ) {
                 continue;
             }
 
@@ -474,7 +481,13 @@ class ScheduleGuardService
                 continue;
             }
 
-            if ($excludeStudentId && (int) ($row->student_id ?? 0) === $excludeStudentId) {
+            // Same-student other-course (or unlinked) schedule rows: exclude.
+            // Same-course keeps bounded time-match exclusion below.
+            if (
+                $excludeStudentId
+                && (int) ($row->student_id ?? 0) === $excludeStudentId
+                && (!$excludeStudentClassId || $courseId !== $excludeStudentClassId)
+            ) {
                 continue;
             }
 
