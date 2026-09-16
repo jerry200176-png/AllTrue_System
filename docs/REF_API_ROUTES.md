@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 467 api/* routes · generated 2026-09-16
+> Source: `php artisan route:list --json` · 468 api/* routes · generated 2026-09-16
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -442,12 +442,13 @@
 | GET | `api/v1/invoices/{invoice}/slip-data` | `BillingController@slipData` | role+campus |
 | POST | `api/v1/invoices/{invoice}/void` | `BillingController@voidInvoice` | role+campus |
 
-## /api/v1/learning-record-feedbacks (5)
+## /api/v1/learning-record-feedbacks (6)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/learning-record-feedbacks` | `LearningRecordFeedbackController@index` | role+campus |
 | GET | `api/v1/learning-record-feedbacks/analytics` | `LearningRecordFeedbackController@analytics` | role+campus |
+| POST | `api/v1/learning-record-feedbacks/{feedback}/dismiss-awaiting` | `LearningRecordFeedbackController@dismissAwaiting` | role+campus |
 | POST | `api/v1/learning-record-feedbacks/{feedback}/read` | `LearningRecordFeedbackController@markRead` | role+campus |
 | GET | `api/v1/learning-record-feedbacks/{feedback}/replies` | `LearningRecordFeedbackController@replies` | role+campus |
 | POST | `api/v1/learning-record-feedbacks/{feedback}/reply` | `LearningRecordFeedbackController@staffReply` | role+campus |

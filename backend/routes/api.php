@@ -646,6 +646,7 @@ Route::prefix('v1')->group(function () {
         // 家長回饋雙向回覆（員工端，沿用本群組 role:teacher,director + require_campus）
         Route::get('learning-record-feedbacks/{feedback}/replies', [LearningRecordFeedbackController::class, 'replies']);
         Route::post('learning-record-feedbacks/{feedback}/reply', [LearningRecordFeedbackController::class, 'staffReply']);
+        Route::post('learning-record-feedbacks/{feedback}/dismiss-awaiting', [LearningRecordFeedbackController::class, 'dismissAwaiting']);
         Route::get('class-sessions/projection', [ClassSessionController::class, 'projection']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::get('truefit/today-sessions', [TrueFitController::class, 'todaySessions']);
