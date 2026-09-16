@@ -12,9 +12,9 @@ reconcile them here after every cycle.
 | Slice 0–1 operational acceptance | **NOT ACCEPTED** — staging smoke blocked (#868); flags OFF |
 | Slice 2 Observation on main | **YES** — contract + API + UI (#2985–#2989) |
 | Slice 2 operational acceptance | **NOT ACCEPTED** — flags OFF; no staging smoke |
-| Slice 3 Diagnosis contract | **IN FLIGHT** — `ERROR_DIAGNOSIS_CONTRACT.md` (this PR) |
+| Slice 3 Diagnosis API | **IN FLIGHT** — TF-S3-01 persistence + GET/POST (this PR) |
 | Production flags | **OFF** |
-| Active product priority | TF-S3-01 diagnosis persistence after this contract lands |
+| Active product priority | Land TF-S3-01 API → TF-S3-02 diagnosis UI |
 
 ---
 

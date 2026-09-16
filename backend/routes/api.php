@@ -655,6 +655,8 @@ Route::prefix('v1')->group(function () {
         Route::post('truefit/lesson-preps/generate', [TrueFitController::class, 'generateLessonPrep']);
         Route::get('truefit/observations', [TrueFitController::class, 'showObservation']);
         Route::post('truefit/observations', [TrueFitController::class, 'upsertObservation']);
+        Route::get('truefit/diagnoses', [TrueFitController::class, 'showDiagnosis']);
+        Route::post('truefit/diagnoses', [TrueFitController::class, 'upsertDiagnosis']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         // #770 批次排課 CSV 匯入 — 衝突檢查 preview（純讀取）。
         Route::post('schedule-import/preview', [\App\Http\Controllers\ScheduleImportController::class, 'preview']);
