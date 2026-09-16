@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-16-contract-amendment-remaining
+    published_at: "2026-09-16"
+    audiences:
+      - director
+    importance: action_required
+    title: 合約堂數調整不再誤鎖剩餘排課
+    summary: 部分下修合約總堂數時，系統會保留仍可排的剩餘堂數；只有確認提前結束才會結案。
+    items:
+      - category: fixed
+        text: 修正「提前結束／調整合約總堂數」在部分下修時把剩餘堂數清零並結案，導致仍可排課的合約被鎖死。
+      - category: improved
+        text: 預覽會顯示將放棄幾堂、是否會提前結束；超額未來預排只取消必要堂次。
+      - category: action_required
+        text: 若仍要完全結束合約，新總堂數需等於已完成堂數；操作前請先確認預覽。
+    source_refs:
+      - "github:in-app-308"
+
   - id: staff-2026-09-15-session-reconcile-guidance
     published_at: "2026-09-15"
     audiences:
