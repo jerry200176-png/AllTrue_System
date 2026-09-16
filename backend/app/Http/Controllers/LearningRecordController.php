@@ -18,6 +18,7 @@ use App\Services\ApprovalSessionSyncService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\LearningRecordResurrectionPolicy;
+use App\Services\NotificationSyncService;
 use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
 use App\Services\RescheduleSessionService;
@@ -73,6 +74,20 @@ class LearningRecordController extends Controller
         }
 
         return $contractTid;
+    }
+
+    private function campusIdForLearningRecord(LearningRecord $learningRecord): int
+    {
+        $studentClassId = (int) ($learningRecord->StudentClassID ?? 0);
+        if ($studentClassId <= 0) {
+            return 0;
+        }
+        $studentId = (int) (StudentClass::where('ID', $studentClassId)->value('StudentID') ?? 0);
+        if ($studentId <= 0) {
+            return 0;
+        }
+
+        return (int) (Student::where('id', $studentId)->value('CampusID') ?? 0);
     }
 
     /**
@@ -1339,7 +1354,9 @@ class LearningRecordController extends Controller
             'DirectorID' => 'nullable|integer',
         ]);
 
-        return DB::transaction(function () use ($learningRecord, $data) {
+        $campusId = $this->campusIdForLearningRecord($learningRecord);
+
+        $response = DB::transaction(function () use ($learningRecord, $data) {
             if ($learningRecord->Status === 'approved') {
                 return response()->json(['message' => 'Already approved'], 409);
             }
@@ -1366,6 +1383,13 @@ class LearningRecordController extends Controller
 
             return response()->json($learningRecord->fresh());
         });
+
+        // in-app #300: clear learning_review ops cards after approve (post-commit).
+        if ($response->getStatusCode() < 400 && $campusId > 0) {
+            NotificationSyncService::sync([$campusId], $campusId);
+        }
+
+        return $response;
     }
 
     public function rollbackApproval(Request $request, LearningRecord $learningRecord)
@@ -1484,8 +1508,9 @@ class LearningRecordController extends Controller
         }
         $directorId = (int) $data['DirectorID'];
         $approved = 0;
+        $syncCampusIds = !empty($campusIds) ? array_values(array_unique(array_map('intval', $campusIds))) : [];
 
-        return DB::transaction(function () use ($records, $directorId, &$approved) {
+        $response = DB::transaction(function () use ($records, $directorId, &$approved) {
             foreach ($records as $learningRecord) {
                 $learningRecord->Status = 'approved';
                 $learningRecord->ApprovedBy = $directorId;
@@ -1506,6 +1531,17 @@ class LearningRecordController extends Controller
             }
             return response()->json(['message' => "已核准 {$approved} 筆評量", 'approved' => $approved]);
         });
+
+        // in-app #300: reconcile ops inbox after batch approve.
+        if ($response->getStatusCode() < 400) {
+            if (!empty($syncCampusIds)) {
+                NotificationSyncService::sync($syncCampusIds);
+            } else {
+                NotificationSyncService::sync([]);
+            }
+        }
+
+        return $response;
     }
 
     public function batchReject(Request $request)

@@ -1016,7 +1016,17 @@ watch(urgentNotifications, async () => {
 let refreshTimer = null;
 
 onMounted(async () => {
-  await loadNotifications(1);
+  // in-app #300: reconcile ops cards before first paint so completed work
+  // (e.g. approved learning reviews) leaves the inbox without a manual sync.
+  if (props.branchId) {
+    try {
+      await syncNotifications(false);
+    } catch (_) {
+      await loadNotifications(1);
+    }
+  } else {
+    await loadNotifications(1);
+  }
   refreshTimer = window.setInterval(() => {
     loadNotifications(laneFilter.value === 'case' ? casesPage.value : currentPage.value);
   }, 60000);
