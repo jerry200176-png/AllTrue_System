@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "SES-20260915103003-9E96E449",
+  "session_id": "543302d920fb4b0c894bd84a82d725c9",
   "project": "alltrue",
-  "task_id": "INT-20260915-102951-S2GK",
+  "task_id": "dell-staging-apache-parity",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "5ebeb207d7dfded88170802a962d9bab9c4065b5",
-  "branch": "exo/INT-20260915-102951-S2GK",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INAPP-289-VERIFY-FIXTURE",
-  "started_at": "2026-09-15T02:29:30Z",
+  "base_sha": "23e89ac2caadd170270256402c35bc84d1fbf97f",
+  "branch": "chore/task-dell-staging-apache-parity",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/dell-staging-apache-parity",
+  "started_at": "2026-09-16T10:00:08Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }
