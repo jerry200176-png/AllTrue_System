@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "SES-20260915103003-9E96E449",
+  "session_id": "38acc617c1b44f7baf2d1f51ef33657a",
   "project": "alltrue",
-  "task_id": "INT-20260915-102951-S2GK",
+  "task_id": "harness-h0-capability-map",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "5ebeb207d7dfded88170802a962d9bab9c4065b5",
-  "branch": "exo/INT-20260915-102951-S2GK",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INAPP-289-VERIFY-FIXTURE",
-  "started_at": "2026-09-15T02:29:30Z",
+  "base_sha": "efe389f95d910d20ec059ea0576563efe3d10f20",
+  "branch": "chore/task-harness-h0-capability-map",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/harness-h0-capability-map",
+  "started_at": "2026-09-16T10:58:46Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.0"
 }

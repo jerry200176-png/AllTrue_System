@@ -1,0 +1,229 @@
+# AllTrue Autonomous Execution Harness — H0 capability map
+# Authority for product risk/activation remains scripts/governance/autonomy_gate.py.
+# This map is discovery evidence only; it does not invent new Founder gates.
+schema_version: 1
+reconciled_at: "2026-09-16T11:00:00Z"
+repository: AllTrue_System
+scope: alltrue-only-v1
+
+capabilities:
+  - id: gov-scripts
+    name: Governance scripts package
+    source_files:
+      - scripts/governance/autonomy_gate.py
+      - scripts/governance/validate-capability-registry.py
+      - scripts/governance/check-instruction-invariants.sh
+      - scripts/governance/check-overlay-pin.sh
+      - scripts/governance/check-production-workflow-inventory.mjs
+    contract: Deterministic governance checks; autonomy_gate is the risk/activation library.
+    invoke: "make validate-capabilities | overlay-pin | instruction-invariants; import autonomy_gate"
+    reusable_as_is: yes
+    gap: No single harness entry that chains classify → decide → evidence ledger.
+
+  - id: autonomy-gate
+    name: Autonomy / risk / activation classifier
+    source_files:
+      - scripts/governance/autonomy_gate.py
+      - scripts/tests/test_deploy_activation_state.py
+      - .github/workflows/auto-merge-safe.yml
+      - .github/workflows/deploy.yml
+    contract: >
+      classify_scope / decide_activation / decide_manual_activation / exact-SHA waiters.
+      Declaration may raise tier, never lower. T3/protected → Founder.
+    invoke: "PYTHONPATH=. python3 -c 'from scripts.governance.autonomy_gate import …'"
+    reusable_as_is: yes
+    gap: Library only; harness must wrap as governance_adapter (no second classifier).
+
+  - id: agent-session-manifest
+    name: Agent session + provenance manifest
+    source_files:
+      - /home/jerry/workspace/agent-control/schema/session-manifest.schema.json
+      - /home/jerry/workspace/agent-control/bin/agent-start
+      - scripts/check-agent-provenance.sh
+      - .github/workflows/agent-provenance.yml
+    contract: session_id, base_sha, worktree under tasks/alltrue/, production_mutation=false.
+    invoke: "agent-start alltrue <task-id> [--codex|--dry-run]"
+    reusable_as_is: yes
+    gap: Launch/provenance only — not program/task phase state or leases.
+
+  - id: risk-tier
+    name: Risk / autonomy tier T0–T3 ↔ R0–R3
+    source_files:
+      - docs/governance/RISK_BASED_MERGE_POLICY.md
+      - AGENTS.md
+      - .github/pull_request_template.md
+      - scripts/governance/autonomy_gate.py
+    contract: Machine min from paths+patch; PR Risk-Class/Autonomy-Tier must match numeric value.
+    invoke: classify_scope / effective_tier / parse_declaration
+    reusable_as_is: yes
+    gap: Ticket-intake auto-classify before diff exists is partial; harness declares then verifies.
+
+  - id: intent-scope
+    name: Intent / scope validation
+    source_files:
+      - scripts/governance/autonomy_gate.py
+      - scripts/agent-preflight.sh
+      - scripts/agent-preflight.config.json
+      - docs/sop/AGENT_PREFLIGHT.md
+    contract: Path/patch scope + worktree/branch/base preflight. Product intent is documentary DoR.
+    invoke: make agent-preflight; classify_scope
+    reusable_as_is: partial
+    gap: Structured Task intent object must live in harness store.
+
+  - id: protected-path-effect
+    name: Protected path / effect classification
+    source_files:
+      - scripts/governance/autonomy_gate.py
+      - docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json
+    contract: T3 prefixes + founder-effect regexes; guarded-sensitive for small inspectable diffs.
+    invoke: classify_activation_scope / is_production_activation_sensitive_path
+    reusable_as_is: yes
+    gap: Harness must fail-closed on contradictory evidence, not re-implement patterns.
+
+  - id: pr-ci-gates
+    name: PR / CI merge gates
+    source_files:
+      - .github/workflows/ci.yml
+      - .github/workflows/presubmit.yml
+      - .github/workflows/auto-merge-safe.yml
+      - .github/workflows/autonomous-convergence.yml
+      - docs/governance/CI_GOVERNANCE.md
+      - CONTRIBUTING.md
+    contract: Required checks; T0/T1 auto-merge enable; convergence re-dispatch after bot merge.
+    invoke: gh pr checks; GitHub Actions
+    reusable_as_is: yes
+    gap: Harness needs durable PR/CI reconcile loop (H6).
+
+  - id: exact-sha
+    name: Exact-SHA activation identity
+    source_files:
+      - scripts/governance/autonomy_gate.py
+      - .github/workflows/deploy.yml
+      - scripts/production-identity.sh
+      - docs/governance/EVIDENCE_CONTRACT.md
+    contract: Full 40-hex target must equal main; production identity matches deploy provenance.
+    invoke: make production-identity; wait_for_exact_successful_provenance
+    reusable_as_is: yes
+    gap: Program-level SHA ledger across slices.
+
+  - id: rollback-evidence
+    name: Rollback evidence / readiness
+    source_files:
+      - scripts/governance/autonomy_gate.py
+      - scripts/rollback-readiness.sh
+      - docs/RUNBOOK_ROLLBACK.md
+      - .github/workflows/rollback-readiness.yml
+    contract: PR Rollback field required for T2 auto-activation; deploy failure triggers rollback path.
+    invoke: has_rollback_evidence; bash scripts/rollback-readiness.sh
+    reusable_as_is: partial
+    gap: Regex presence ≠ verified prior-good SHA artifact; harness should attach known-good SHA.
+
+  - id: deploy-runtime-verify
+    name: Deployment / runtime verification
+    source_files:
+      - .github/workflows/deploy.yml
+      - .github/workflows/pi-health.yml
+      - scripts/production-identity.sh
+      - docs/CONTROL_PLANE_CONTRACT.md
+      - /home/jerry/workspace/agent-control/bin/wait-github-deploy
+    contract: Only deploy.yml (+ POP) mutates production (I1). Success = workflow + SHA match + health.
+    invoke: wait-github-deploy; make production-identity
+    reusable_as_is: yes
+    gap: Program chain merge→staging→prod verify (H9 deferred until staging real).
+
+  - id: production-activation-boundary
+    name: Production-activation Founder environment
+    source_files:
+      - scripts/governance/autonomy_gate.py
+      - .github/workflows/deploy.yml
+      - docs/CONTROL_PLANE_CONTRACT.md
+    contract: GitHub Environment production-activation; T3/protected never routine auto-activate.
+    invoke: decide_activation / decide_manual_activation
+    reusable_as_is: yes
+    gap: Founder inbox packaging (H1 escalation queue).
+
+  - id: worktree-conventions
+    name: Worktree conventions
+    source_files:
+      - docs/governance/WORKTREE_POLICY.md
+      - /home/jerry/workspace/agent-control/lib/common.sh
+      - scripts/agent-preflight.config.json
+    contract: Bare repos + tasks/alltrue/<id>; forbidden shared/legacy checkouts; agent-start only.
+    invoke: agent-start alltrue <task-id>
+    reusable_as_is: yes
+    gap: Program lease + worktree lifecycle bound to Task (H4).
+
+  - id: release-runbook
+    name: Release / runbook contracts
+    source_files:
+      - docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md
+      - docs/RUNBOOK_ROLLBACK.md
+      - docs/OPERATIONS_RUNBOOK.md
+      - docs/CONTROL_PLANE_CONTRACT.md
+    contract: REP for deployable/migration/repair; POP executes; CalVer via release.yml.
+    invoke: document packages; deploy.yml
+    reusable_as_is: partial
+    gap: Machine-checkable REP package generator later.
+
+  - id: github-issue-pr
+    name: GitHub issue / PR conventions
+    source_files:
+      - CONTRIBUTING.md
+      - .github/pull_request_template.md
+      - docs/CHAT_BUG_SYSTEM.md
+    contract: Branch prefixes; Risk-Class/Autonomy-Tier/Release-Impact; in-app Phase A/C writeback.
+    invoke: gh issue/pr; operations/closeout/*.request.md
+    reusable_as_is: yes
+    gap: Field completeness enforcement in worker Goal generation (H5/H10).
+
+  - id: codex-cli-launch
+    name: Local Codex/CLI launch
+    source_files:
+      - /home/jerry/.local/bin/agent-start
+      - /home/jerry/workspace/agent-control/bin/agent-start
+      - /home/jerry/.local/bin/codex-route
+    contract: >
+      agent-start creates WT + manifest; interactive --codex.
+      Non-interactive pattern elsewhere: codex-route → codex exec -C <wt> --ephemeral.
+    invoke: "agent-start alltrue <id> --dry-run | --codex"
+    reusable_as_is: yes
+    gap: Thin worker adapter dispatch/status/resume/cancel (H5).
+
+  - id: program-status
+    name: Program status sources
+    source_files:
+      - docs/truefit/* (partial on main; PROGRAM_STATUS in task WTs)
+      - docs/programs/RFID_2809_STATUS.md (task WT)
+      - docs/CHAT_BUG_SYSTEM.md
+      - docs/GUIDE_STAGING_ENVIRONMENT.md
+    contract: Fragmented SSOT files per program; not a unified registry on main.
+    invoke: read status docs; bug-* workflows
+    reusable_as_is: partial
+    gap: scripts/harness/programs/*.yaml registry + durable Task backlog.
+
+  - id: orchestration-inside
+    name: In-repo AEH / lease / scheduler
+    source_files: []
+    contract: MISSING inside AllTrue_System. Adjacent Actions auto-merge/convergence/deploy only.
+    invoke: null
+    reusable_as_is: no
+    gap: This harness (H1–H8). Do not revive archived release-orchestrator.sh.
+
+external_adjacent:
+  - id: portfolio-ops-agent-graph
+    name: Fleet graph control plane
+    source_files:
+      - portfolio-ops agent_graph/* (origin/main / graph-* worktrees)
+      - /home/jerry/workspace/state/portfolio-ops/graph-control*.sqlite
+    note: >
+      Fleet scheduler/leases/RealCodex exist, but effect allowlist is portfolio-ops-only
+      and live V1 RealCodex dogfood is not certified. AllTrue V1 must NOT depend on
+      widening that allowlist (control-plane expansion → Founder boundary).
+    reuse_decision: patterns_only_not_runtime_dependency
+
+placement:
+  governance_authority: scripts/governance/
+  harness_orchestration: scripts/harness/
+  durable_runtime_state: /home/jerry/workspace/state/alltrue/harness.sqlite
+  program_configs: scripts/harness/programs/
+  operator_docs: docs/harness/

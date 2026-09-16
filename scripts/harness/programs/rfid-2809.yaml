@@ -1,0 +1,67 @@
+program:
+  program_id: rfid-2809
+  name: RFID #2809
+  owner: rfid-workstream
+  repository: jerry200176-png/AllTrue_System
+  goal: "RFID = campus presence only; keep deduction authority on teacher/manual path"
+  canonical_status_source: docs/programs/RFID_2809_STATUS.md
+  allowed_scope:
+    - docs/architecture/RFC_RFID*
+    - docs/programs/RFID*
+    - backend/app/Models/StudentCampusPresence*
+    - backend/app/Http/Controllers/*Presence*
+  protected_scope:
+    - backend/app/Http/Controllers/SwipeRfid*
+    - backend/app/Services/SessionDeduction*
+    - backend/app/Services/SessionEntitlement*
+  current_milestone: RFID-0
+  blockers: []
+  dependencies: []
+  stop_conditions:
+    - swipe_reboundary_without_flag
+    - production_canary_without_campus_id
+    - deduction_semantics_change_without_founder
+  acceptance_contract:
+    - presence_domain_only_until_RFID-2
+    - docs_and_tests_before_runtime_reboundary
+
+candidate_tasks:
+  - task_id: RFID-0
+    outcome: "Land policy/contracts/docs for presence-only RFID"
+    scope:
+      - docs/architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md
+      - docs/programs/RFID_2809_STATUS.md
+      - docs/INDEX.md
+    non_scope:
+      - SwipeRfidController behavior change
+      - migrations that alter deduction
+    dependencies: []
+    risk_declaration: R0
+    affected_contracts: []
+    affected_paths:
+      - docs/programs/RFID_2809_STATUS.md
+    status: READY
+    business_value: 95
+    reversible: true
+    designed_slice: true
+    next_action: "reconcile_pr_ci"
+
+  - task_id: RFID-1
+    outcome: "Additive StudentCampusPresence schema + presence APIs (no swipe re-boundary)"
+    scope:
+      - backend/database/migrations/**
+      - backend/app/Models/**
+    non_scope:
+      - SwipeRfidController deduction path
+    dependencies:
+      - RFID-0
+    risk_declaration: R3
+    affected_contracts:
+      - schema
+    affected_paths:
+      - backend/database/migrations/
+    status: DISCOVERED
+    business_value: 85
+    reversible: false
+    designed_slice: true
+    next_action: "await_RFID-0_merge"
