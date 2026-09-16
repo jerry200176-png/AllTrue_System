@@ -12,9 +12,9 @@ reconcile them here after every cycle.
 | Slice 0 operational acceptance | **NOT ACCEPTED** — staging smoke blocked (#868) |
 | Slice 1 Teacher Brief on main | **YES** — contract + fixture + API + UI + prep hydration |
 | Slice 1 operational acceptance | **NOT ACCEPTED** — flags OFF; no staging smoke |
-| Slice 2 Observation contract | **IN FLIGHT** — `TEACHER_OBSERVATION_CONTRACT.md` (this PR) |
+| Slice 2 Observation API on main | **IN FLIGHT** — TF-S2-01 persistence + validator (this PR) |
 | Production flags | **OFF** (`TRUEFIT_V1` / `VITE_TRUEFIT_V1` default false) |
-| Active product priority | TF-S2-01 observation persistence + validator (after this contract lands) |
+| Active product priority | TF-S2-02 observation UI (after API merge) |
 
 ---
 
@@ -64,7 +64,7 @@ without Founder gate.
 |-------|---------|--------|
 | **0** | Context / workspace | **Code on main + CI GREEN**; runtime acceptance **PENDING** (staging missing) |
 | **1** | AI Prepare / Teacher Brief | **Coded+merged** (#2976/#2978/#2979/#2984); not operationally accepted |
-| **2** | Teacher Observation | **Contract drafting** (`TEACHER_OBSERVATION_CONTRACT.md`); code not started |
+| **2** | Teacher Observation | **Contract on main**; API persistence **IN FLIGHT** (this PR) |
 | **3** | Error Diagnosis | Not started |
 | **4** | Remediation | Not started |
 | **5** | Delayed Retrieval / Mastery | Not started |
@@ -85,7 +85,8 @@ Teacher Observation: `TEACHER_OBSERVATION_CONTRACT.md`.
 | Material select + brief UI | [#2979](https://github.com/jerry200176-png/AllTrue_System/pull/2979) | `ed2457fc4` | N/A (dark launch) | Not accepted |
 | PROGRAM_STATUS Slice 1 reconcile | [#2982](https://github.com/jerry200176-png/AllTrue_System/pull/2982) | `51e81cdd2` | N/A (docs) | N/A |
 | Prep deep-link session_date hydration | [#2984](https://github.com/jerry200176-png/AllTrue_System/pull/2984) | `4586ae1b9` | N/A (dark launch) | Not accepted |
-| Teacher Observation contract + status | this PR | — | N/A (docs) | N/A |
+| Teacher Observation contract + status | [#2985](https://github.com/jerry200176-png/AllTrue_System/pull/2985) | `ca91a3a14` | N/A (docs) | N/A |
+| Observation API + persistence | this PR | — | Flag still OFF | Not accepted |
 
 ### Slice 1 APIs (behind `TRUEFIT_V1`)
 
@@ -125,8 +126,8 @@ Stacked PRs #2949 → #2955 → #2960 → #2963 → #2965 on main. Staging smoke
 
 ## Next selected bounded task
 
-1. **Land this PR** (TF-S2-00 observation contract + PROGRAM_STATUS).
-2. **TF-S2-01:** Additive `truefit_observations` persistence + PHP contract validator + feature tests (fixture/sample only; no external LLM).
+1. **Land TF-S2-01** (observation persistence + API + tests).
+2. **TF-S2-02:** Teacher UI structured observation form linked from prep/workspace (no textarea-only SSOT).
 3. **Do not** start external LLM wiring, flag activation, DNS, or staging ownership.
 
 Staging remains Platform-owned; TrueFit runtime acceptance stays PENDING until staging exists.

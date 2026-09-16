@@ -854,5 +854,7 @@
 |--------|-----|--------|------|
 | GET | `api/v1/truefit/lesson-preps` | `TrueFitController@showLessonPrep` | role+campus |
 | POST | `api/v1/truefit/lesson-preps/generate` | `TrueFitController@generateLessonPrep` | role+campus |
+| GET | `api/v1/truefit/observations` | `TrueFitController@showObservation` | role+campus |
+| POST | `api/v1/truefit/observations` | `TrueFitController@upsertObservation` | role+campus |
 | GET | `api/v1/truefit/material-units` | `TrueFitController@materialUnits` | role+campus |
 | GET | `api/v1/truefit/today-sessions` | `TrueFitController@todaySessions` | role+campus |
