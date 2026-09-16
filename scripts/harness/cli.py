@@ -1,4 +1,4 @@
-"""CLI: sync / status / resume / founder-inbox / graph (H0–H2)."""
+"""CLI: sync / status / resume / founder-inbox / graph / plan (H0–H3)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,11 @@ from typing import Any
 
 from .graph import build_graph
 from .leases import reclaim_stale
+from .planner import select_across_programs, select_next_task
 from .programs_loader import sync_programs_to_store
 from .reconcile import resume_from_checkpoint
 from .states import ACTIVE_MUTATING
-from .store import HarnessStore, default_db_path
+from .store import HarnessStore
 
 
 def _store(args: argparse.Namespace) -> HarnessStore:
@@ -100,6 +101,35 @@ def cmd_graph(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plan(args: argparse.Namespace) -> int:
+    """H3 dry-run planner — read-only (no lease mutation)."""
+    store = _store(args)
+    if args.sync:
+        sync_programs_to_store(store)
+    # Intentionally no reclaim_stale / acquire — H4 owns lease mutation.
+    if args.program:
+        prog = store.get_program(args.program)
+        if not prog:
+            print(json.dumps({"ok": False, "error": "unknown_program", "program": args.program}))
+            return 2
+        result = select_next_task(
+            store,
+            prog,
+            observed_main_sha=args.main_sha or None,
+            reconcile_stale=bool(args.main_sha),
+        )
+        print(json.dumps(result.to_dict(), indent=2))
+        return 0 if result.would_execute else 1
+    results = select_across_programs(
+        store,
+        store.list_programs(),
+        observed_main_sha=args.main_sha or None,
+        reconcile_stale=bool(args.main_sha),
+    )
+    print(json.dumps({"plans": [r.to_dict() for r in results]}, indent=2))
+    return 0 if any(r.would_execute for r in results) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python3 -m scripts.harness")
     p.add_argument("--db", default=None)
@@ -119,6 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
     resume.set_defaults(func=cmd_resume)
     graph = sub.add_parser("graph")
     graph.set_defaults(func=cmd_graph)
+    plan = sub.add_parser("plan", help="H3 dry-run next-task selection (read-only)")
+    plan.add_argument("--program", default=None)
+    plan.add_argument("--sync", action="store_true")
+    plan.add_argument("--main-sha", default=None, help="Observed main tip for stale-goal skip")
+    plan.set_defaults(func=cmd_plan)
     return p
 
 

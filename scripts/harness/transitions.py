@@ -88,6 +88,10 @@ def transition(
 
     now = _now()
     updated = replace(task, status=to_state, updated_at=now)
+    if to_state == TaskState.READY:
+        updated.ready_since = str(evidence.get("ready_since") or now)
+    elif task.status == TaskState.READY and to_state != TaskState.READY:
+        updated.ready_since = ""
     if "blocker" in evidence:
         updated.blocker = str(evidence["blocker"])
     if "next_action" in evidence:
@@ -102,6 +106,10 @@ def transition(
         updated.merge_sha = str(evidence["merge_sha"])
     if evidence.get("deploy_sha"):
         updated.deploy_sha = str(evidence["deploy_sha"])
+    if "lease_id" in evidence:
+        updated.lease_id = str(evidence["lease_id"])
+    if "lease_fencing_token" in evidence:
+        updated.lease_fencing_token = int(evidence["lease_fencing_token"])
 
     store.upsert_task(updated)
     store.record_transition(

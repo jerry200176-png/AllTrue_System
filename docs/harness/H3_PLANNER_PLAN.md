@@ -1,11 +1,11 @@
 # H3 Planner Plan — AllTrue Harness
 
-**Status:** PLAN ONLY — awaiting Supervisor / Founder Plan Review  
-**Date:** 2026-09-16T18:20:00Z  
-**Branch (docs draft):** `chore/task-harness-h3-plan`  
-**Base:** main @ H2.1 landed (#3009 merged)  
-**Author lane:** Night Shift Worker A (`DISPATCH_H3_PLAN`)  
-**Prerequisite:** H0–H1 (#2977), H2 (#3007), H2.1 (#3009) — **landed**
+**Status:** APPROVED WITH AMENDMENTS — implementation in progress on this branch  
+**Date:** 2026-09-16T18:20:00Z (plan); amendments applied 2026-09-17  
+**Branch:** `chore/task-harness-h3-plan`  
+**Base:** main @ H2.1 landed (#3009) + H3 Plan (#3011)  
+**Author lane:** Night Shift Worker A (`DISPATCH_H3_IMPL`)  
+**Prerequisite:** H0–H1 (#2977), H2 (#3007), H2.1 (#3009), H3 Plan (#3011) — **landed**
 
 ---
 
@@ -93,10 +93,11 @@ Before marking `would_execute=True`:
 2. For each resource:
    - No lease → available
    - Lease expired (`expires_at <= now`) → available for planning (H4 will CAS-acquire; planner does not delete)
-   - Live lease held by **this** task_id → available (already owned)
-   - Live lease held by **other** → skip `lease_busy:{resource}`
+   - Live lease owned only with matching `lease_id` + `fencing_token` + `holder_task_id`
+     (`task_id` alone is **not** ownership)
+   - Otherwise live lease → skip `lease_busy:{resource}`
 
-Planner does **not** call `acquire`/`renew` in dry-run. Optional `probe_acquire=False` default.
+Planner does **not** call `acquire`/`renew`/`reclaim`/probe-CAS. All lease mutation is H4.
 
 ---
 
@@ -151,13 +152,15 @@ Identical inputs → identical `PlanResult` (golden JSON tests).
 
 Problem: perpetual high `business_value` READY tasks can shadow older READY tasks forever.
 
-**H3 minimal rule (no new scheduler framework):**
+**Approved amendment:** aging must change selection order.
 
-- `aging_boost = min(max_boost, floor(age_hours / aging_unit_hours))`  
-  - `age_hours` from `task.updated_at` (or `created` if added later)  
-  - defaults: `aging_unit_hours=24`, `max_boost=5`
+- `effective_priority = business_value + aging_boost`
+- `aging_boost = min(MAX_AGING_BOOST, floor(age_hours / AGING_UNIT_HOURS) * AGING_POINTS_PER_UNIT)`
+  - defaults: unit=24h, points=10, max_boost=200
+  - `age_hours` from `task.ready_since` only (not `updated_at`)
+- Bounded aging can raise an older READY task above a newer higher-BV task
+- Deterministic tie-breaks retained (`designed_slice`, `reversible`, contract count, `task_id`)
 - Does **not** override FOUNDER_REQUIRED / lease_busy / unmet deps
-- Document constants in planner module; override via function kwargs for tests
 
 ---
 
@@ -186,13 +189,18 @@ class PlanResult:
     skipped: list[dict]   # {task_id, reason}
     would_execute: bool
     governance: GovernanceDecision | None
-    required_leases: list[str]      # NEW vs draft
-    goal_id: str | None             # NEW
-    peer_candidates: list[str]      # NEW deny-and-continue hints
-    plan_id: str                    # deterministic hash of inputs+selection
+    required_leases: list[str]
+    goal_id: str | None
+    goal_contract_fingerprint: str | None
+    observed_main_sha: str | None
+    snapshot_fingerprint: str
+    peer_candidates: list[str]
+    plan_id: str
+    effective_priority: int | None
 ```
 
-`to_dict()` JSON is the H4 handoff artifact. Persist optional: `store` table deferred — H3 may only print/return; durable plan log is H4/H7.
+`would_execute=true` requires a valid GoalContract (else surface with `missing_goal_contract`).
+H4 must revalidate plan binding before dispatch.
 
 ---
 
@@ -321,7 +329,7 @@ Stop and re-ask if:
 4. Exact-head CI → PR ≤1300  
 5. Supervisor merge  
 
-**This document is not approval to implement.**
+**This document records the approved plan + amendments; implementation lands separately.**
 
 ---
 

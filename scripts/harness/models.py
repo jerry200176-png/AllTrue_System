@@ -50,6 +50,7 @@ class Task:
     branch: str = ""
     assignee: str = ""
     lease_id: str = ""
+    lease_fencing_token: int = 0  # required with lease_id to prove ownership (H2.1/H3)
     status: TaskState = TaskState.DISCOVERED
     evidence: EvidenceBundle = field(default_factory=EvidenceBundle)
     pr: dict[str, Any] = field(default_factory=dict)
@@ -63,6 +64,7 @@ class Task:
     business_value: int = 50
     reversible: bool = True
     designed_slice: bool = True
+    ready_since: str = ""  # ISO time entered READY; starvation age source (not updated_at)
     updated_at: str = field(default_factory=_now_iso)
 
     def to_dict(self) -> dict[str, Any]:

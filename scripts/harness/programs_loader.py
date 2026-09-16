@@ -29,7 +29,11 @@ def load_program_config(path: Path) -> tuple[Program, list[Task]]:
     for item in data.get("candidate_tasks") or []:
         item = dict(item)
         item.setdefault("program_id", program.program_id)
-        tasks.append(Task.from_dict(item))
+        task = Task.from_dict(item)
+        # READY waiting age uses ready_since (not updated_at).
+        if task.status.value == "READY" and not task.ready_since:
+            task.ready_since = task.updated_at
+        tasks.append(task)
     return program, tasks
 
 
