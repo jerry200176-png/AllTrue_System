@@ -159,6 +159,45 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-feedback-dismiss-awaiting",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "major",
+    "title": "家長回饋可標記不需回覆",
+    "summary": "看過家長留言後若不需公開回覆，可標記離開待辦；家長再留言會重新提醒。",
+    "items": [
+      "修正已結束的家長回饋對話仍卡在工作台待辦。",
+      "學習評量提供「標記不需回覆」；公開回覆仍會正常清除待辦。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正已結束的家長回饋對話仍卡在工作台待辦。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "學習評量提供「標記不需回覆」；公開回覆仍會正常清除待辦。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-295"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-16-course-edit-self-conflict",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,

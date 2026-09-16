@@ -367,6 +367,7 @@ const props = defineProps({
   userRole: { type: String, default: '' },
   teacherBranchIds: { type: Array, default: () => [] },
   unreadFeedbackCount: { type: Number, default: 0 },
+  feedbackQueueEpoch: { type: Number, default: 0 },
   initialEngagement: { type: Object, default: null },
 });
 
@@ -907,6 +908,7 @@ function startPolling() {
     if (document.visibilityState === 'visible') {
       fetchPendingAttendance();
       fetchOverdueLearning();
+      fetchAwaitingReplyCount();
     }
   }, POLL_INTERVAL);
 }
@@ -924,6 +926,15 @@ function onVisibilityChange() {
     fetchOverdueLearning();
   }
 }
+
+watch(
+  () => props.feedbackQueueEpoch,
+  (epoch, prev) => {
+    if (epoch !== prev) {
+      fetchAwaitingReplyCount();
+    }
+  },
+);
 
 // ── Report discrepancy helpers ──
 async function refreshActiveReport(sessionId) {
