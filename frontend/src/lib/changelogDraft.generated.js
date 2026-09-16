@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.16",
     "date": "2026-09-16",
     "title": "2026.09.16 草稿（未發布）",
-    "summary": "改師後未上課的過去堂次不再卡舊老師；處理完成後收件匣同步解除待辦",
+    "summary": "model + read APIs；改師後未上課的過去堂次不再卡舊老師",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "model + read APIs"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -34,6 +40,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "model + read APIs",
       "改師後未上課的過去堂次不再卡舊老師",
       "處理完成後收件匣同步解除待辦",
       "編輯課表不再把自己判成衝堂",

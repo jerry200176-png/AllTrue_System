@@ -5,6 +5,24 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $CampusID
+ * @property int $StudentID
+ * @property string $Source
+ * @property string|null $DeviceID
+ * @property string|null $RfidUidHash
+ * @property \Carbon\Carbon|string $ArrivedAt
+ * @property \Carbon\Carbon|string|null $DepartedAt
+ * @property string $Status
+ * @property string|null $CloseReason
+ * @property string $IdempotencyKey
+ * @property \Carbon\Carbon|string|null $VoidedAt
+ * @property int|null $VoidedByUserID
+ * @property string|null $VoidReason
+ * @property Student|null $student
+ * @property Campus|null $campus
+ */
 class StudentCampusPresence extends Model
 {
     protected $table = 'StudentCampusPresence';

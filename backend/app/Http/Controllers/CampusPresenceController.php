@@ -30,7 +30,7 @@ class CampusPresenceController extends Controller
     {
         $campusId = (int) ($request->query('campus_id') ?: $student->CampusID);
         $rows = StudentCampusPresence::query()
-            ->where('StudentID', $student->id)
+            ->where('StudentID', (int) $student->getKey())
             ->where('CampusID', $campusId)
             ->whereDate('ArrivedAt', now()->toDateString())
             ->whereNull('VoidedAt')
@@ -43,7 +43,7 @@ class CampusPresenceController extends Controller
 
         return response()->json([
             'ok' => true,
-            'student_id' => $student->id,
+            'student_id' => (int) $student->getKey(),
             'campus_id' => $campusId,
             'presence' => $rows->map(fn (StudentCampusPresence $p) => $this->serialize($p))->values(),
             'on_campus' => $open !== null,
@@ -60,7 +60,7 @@ class CampusPresenceController extends Controller
 
         return response()->json([
             'ok' => true,
-            'student_id' => $student->id,
+            'student_id' => (int) $student->getKey(),
             'at' => $at->toIso8601String(),
             ...$payload,
         ]);

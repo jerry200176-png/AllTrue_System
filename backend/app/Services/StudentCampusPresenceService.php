@@ -28,20 +28,20 @@ class StudentCampusPresenceService
         ?string $rfidUid = null,
         ?string $idempotencyKey = null,
     ): StudentCampusPresence {
-        $key = $idempotencyKey ?: $this->buildIdempotencyKey($campusId, (string) ($rfidUid ?: $student->id), $deviceId, $arrivedAt, 'in');
+        $key = $idempotencyKey ?: $this->buildIdempotencyKey($campusId, (string) ($rfidUid ?: (int) $student->getKey()), $deviceId, $arrivedAt, 'in');
 
         return DB::transaction(function () use ($student, $campusId, $arrivedAt, $source, $deviceId, $rfidUid, $key) {
             if ($hit = StudentCampusPresence::query()->where('IdempotencyKey', $key)->lockForUpdate()->first()) {
                 return $hit;
             }
-            $open = $this->lockOpen($student->id, $campusId);
+            $open = $this->lockOpen((int) $student->getKey(), $campusId);
             if ($open) {
                 return $open;
             }
 
             return StudentCampusPresence::create([
                 'CampusID' => $campusId,
-                'StudentID' => $student->id,
+                'StudentID' => (int) $student->getKey(),
                 'Source' => $source,
                 'DeviceID' => $deviceId,
                 'RfidUidHash' => $rfidUid ? hash('sha256', $rfidUid) : null,
@@ -61,13 +61,13 @@ class StudentCampusPresenceService
         ?string $rfidUid = null,
         ?string $idempotencyKey = null,
     ): ?StudentCampusPresence {
-        $key = $idempotencyKey ?: $this->buildIdempotencyKey($campusId, (string) ($rfidUid ?: $student->id), $deviceId, $departedAt, 'out');
+        $key = $idempotencyKey ?: $this->buildIdempotencyKey($campusId, (string) ($rfidUid ?: (int) $student->getKey()), $deviceId, $departedAt, 'out');
 
         return DB::transaction(function () use ($student, $campusId, $departedAt, $closeReason, $key) {
             if ($hit = StudentCampusPresence::query()->where('IdempotencyKey', $key)->lockForUpdate()->first()) {
                 return $hit;
             }
-            $open = $this->lockOpen($student->id, $campusId);
+            $open = $this->lockOpen((int) $student->getKey(), $campusId);
             if (!$open) {
                 return null;
             }
@@ -88,7 +88,7 @@ class StudentCampusPresenceService
     public function toggleSwipe(Student $student, int $campusId, Carbon $at, ?string $deviceId = null, ?string $rfidUid = null): array
     {
         $open = StudentCampusPresence::query()
-            ->where('StudentID', $student->id)
+            ->where('StudentID', (int) $student->getKey())
             ->where('CampusID', $campusId)
             ->where('Status', StudentCampusPresence::STATUS_OPEN)
             ->whereNull('DepartedAt')
@@ -134,14 +134,14 @@ class StudentCampusPresenceService
         $window = self::MATCH_WINDOW_MINUTES;
         $sessions = ClassSession::query()
             ->with(['studentClass.subjectRecord'])
-            ->whereHas('studentClass', fn ($q) => $q->where('StudentID', $student->id)->where('Stop', 0))
+            ->whereHas('studentClass', fn ($q) => $q->where('StudentID', (int) $student->getKey())->where('Stop', 0))
             ->whereDate('SessionDate', $today)
             ->whereNotIn(DB::raw('LOWER(Status)'), array_merge([SessionStatus::CANCELLED], SessionStatus::leaveFamily()))
             ->orderBy('StartTime')
             ->get();
 
         $leaveArrived = ClassSession::query()
-            ->whereHas('studentClass', fn ($q) => $q->where('StudentID', $student->id)->where('Stop', 0))
+            ->whereHas('studentClass', fn ($q) => $q->where('StudentID', (int) $student->getKey())->where('Stop', 0))
             ->whereDate('SessionDate', $today)
             ->whereIn(DB::raw('LOWER(Status)'), SessionStatus::leaveFamily())
             ->exists();
