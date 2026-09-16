@@ -68,7 +68,7 @@ jobs:
           DATE="${DATE:-2026-05-30}"
           CAMPUS_ID="${CAMPUS_ID:-9}"
           TEACHER_NAME="_none_"
-          STUDENT_NAME_LIKE="妍耣"
+          STUDENT_NAME_LIKE="沈柏宇"
           ENV_FILE=/home/admin/backend/.env
           DB_USER=$(grep '^DB_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
           DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
@@ -136,35 +136,32 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' > /tmp/student_probe.php
-          import os
-          date = os.environ["DATE"]
-          print(f"""<?php
+          print("""<?php
           $db = \\Illuminate\\Support\\Facades\\DB::class;
-          // Found her: student_id=29, name '張姸耣' (姸, not the retyped 妍 -- one
-          // codepoint off, confirming the earlier zero-row lookups were a transcription
-          // slip, not a charset bug). SC2711's 7/25 session went to leave_adjusted at
-          // 14:09:51 today; bug #220/#221 says an OLDER contract's 5/30 attended
-          // session vanished right after. Pull every contract + session for her.
+          // in-app #308: restore probe for 沈柏宇 wrongly closed contract_amended course
+          $students = $db::table('Student')->where('name', '沈柏宇')->orderBy('id')->get(['id','name','CampusID']);
+          $studentIds = $students->pluck('id')->map(fn ($v) => (int)$v)->all();
           $scAll = $db::table('StudentClass as sc')
-            ->where('sc.StudentID', 29)
+            ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
+            ->whereIn('sc.StudentID', $studentIds ?: [-1])
             ->orderBy('sc.ID')
-            ->get(['sc.ID','sc.TeacherID','sc.SubjectID','sc.Stop','sc.ScheduleMode','sc.SessionCount','sc.RemainingSessions','sc.UsedSessions','sc.StartDate']);
+            ->get(['sc.ID','sc.StudentID','sc.TeacherID','sc.SubjectID','sub.Subject_Name as subject_name','sc.Stop','sc.closed_reason','sc.ScheduleMode','sc.SessionCount','sc.RemainingSessions','sc.UsedSessions','sc.StartDate','sc.EndDate','sc.settlement_snapshot','sc.MDate']);
           $scIds = $scAll->pluck('ID')->map(fn ($v) => (int)$v)->all();
-          $csNear530 = $db::table('ClassSession as cs')
-            ->whereIn('cs.StudentClassID', $scIds)
-            ->whereBetween('cs.SessionDate', ['2026-05-16', '2026-06-13'])
-            ->orderBy('cs.StudentClassID')->orderBy('cs.SessionDate')
-            ->get(['cs.id','cs.StudentClassID','cs.SessionDate','cs.StartTime','cs.Status','cs.Note','cs.updated_at']);
-          $csAround725 = $db::table('ClassSession as cs')
-            ->whereIn('cs.StudentClassID', $scIds)
-            ->whereBetween('cs.SessionDate', ['2026-07-18', '2026-08-01'])
-            ->orderBy('cs.StudentClassID')->orderBy('cs.SessionDate')
-            ->get(['cs.id','cs.StudentClassID','cs.SessionDate','cs.StartTime','cs.Status','cs.Note','cs.updated_at']);
+          $sessions = $db::table('ClassSession as cs')
+            ->whereIn('cs.StudentClassID', $scIds ?: [-1])
+            ->orderBy('cs.StudentClassID')->orderBy('cs.SessionDate')->orderBy('cs.StartTime')
+            ->get(['cs.id','cs.StudentClassID','cs.SessionDate','cs.StartTime','cs.EndTime','cs.Status','cs.Note','cs.updated_at']);
+          $audits = $db::table('security_audit_events')
+            ->where('event_type', 'student_class.contract_amendment')
+            ->whereIn('subject_id', $scIds ?: [-1])
+            ->orderByDesc('id')->limit(20)
+            ->get(['id','subject_id','campus_id','created_at','payload']);
           echo json_encode([
             'ok' => true,
-            'her_contracts' => $scAll,
-            'sessions_near_530_all_contracts' => $csNear530,
-            'sessions_around_725_all_contracts' => $csAround725,
+            'students' => $students,
+            'contracts' => $scAll,
+            'sessions' => $sessions,
+            'amendment_audits' => $audits,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           """)
           PY
