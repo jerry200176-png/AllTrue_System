@@ -1,3 +1,8 @@
+## 2026-09-16 — fix(scheduling): 編輯課表不再把自己判成衝堂
+<!-- release-notes: staff_update=staff-2026-09-16-course-edit-self-conflict -->
+- 修正編輯既有課程固定時段時，系統把同一學生（含雙合約）自己的佔用誤判為一對一衝堂（in-app #311）。
+- 真正其他學生佔用仍會阻擋；衝突提示與排除指引行為不變。
+
 ## 2026-09-16 — improved(billing): 帳務中心可依剩餘堂數排序
 <!-- release-notes: staff_update=staff-2026-09-16-tuition-remaining-sort -->
 - 帳務中心待處理列表新增「剩餘堂數」欄，可點欄位或行動版排序選單依剩餘堂數少到多／多到少排列（in-app #309）。
