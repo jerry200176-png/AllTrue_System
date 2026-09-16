@@ -188,3 +188,39 @@ export async function upsertTrueFitDiagnosis({
   await throwTrueFitError(res, '錯誤診斷儲存失敗');
   return res.json();
 }
+
+export async function fetchTrueFitRemediation({ token, classSessionId, studentClassId, sessionDate, startTime } = {}) {
+  const params = new URLSearchParams();
+  if (classSessionId) {
+    params.set('class_session_id', String(classSessionId));
+  } else {
+    if (studentClassId) params.set('student_class_id', String(studentClassId));
+    if (sessionDate) params.set('session_date', String(sessionDate));
+    if (startTime) params.set('start_time', String(startTime).slice(0, 5));
+  }
+  const res = await fetch(`/api/v1/truefit/remediations?${params.toString()}`, {
+    headers: trueFitHeaders(token),
+  });
+  await throwTrueFitError(res, '補救計畫載入失敗');
+  return res.json();
+}
+
+export async function upsertTrueFitRemediation({
+  token, classSessionId, studentClassId, sessionDate, startTime, remediation,
+} = {}) {
+  const body = { remediation };
+  if (classSessionId) {
+    body.class_session_id = Number(classSessionId);
+  } else {
+    body.student_class_id = Number(studentClassId);
+    body.session_date = String(sessionDate || '').slice(0, 10);
+    body.start_time = String(startTime || '').slice(0, 5);
+  }
+  const res = await fetch('/api/v1/truefit/remediations', {
+    method: 'POST',
+    headers: { ...trueFitHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  await throwTrueFitError(res, '補救計畫儲存失敗');
+  return res.json();
+}

@@ -65,6 +65,15 @@
           >
             錯誤診斷
           </AtButton>
+          <AtButton
+            variant="ghost"
+            shape="rect"
+            icon="healing"
+            class="tf-session-card__cta"
+            @click="$emit('remediate', session)"
+          >
+            補救計畫
+          </AtButton>
         </div>
       </li>
     </ul>
@@ -86,7 +95,7 @@ const props = defineProps({
   branchId: { type: [Number, String, null], default: null },
 });
 
-defineEmits(['prepare', 'observe', 'diagnose']);
+defineEmits(['prepare', 'observe', 'diagnose', 'remediate']);
 
 const loading = ref(false);
 const error = ref('');
