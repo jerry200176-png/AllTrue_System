@@ -739,7 +739,24 @@ jobs:
               )
               provenance = classify_activation_provenance(attributed)
               if provenance.get("blocked"):
-                  emit("awaiting-activation", provenance.get("tier_name", "unknown"), "multiple", provenance["reason"])
+                  # Declaration understatement / attribution holds are protected
+                  # activations: keep fail-closed (no auto), but open the same-run
+                  # Founder Environment so exact-SHA activation can proceed.
+                  approval_eligible = is_founder_approval_eligible(
+                      {
+                          "decision": "awaiting-activation",
+                          "effective_tier": provenance.get("tier_name", "unknown"),
+                          "reason": provenance["reason"],
+                      },
+                      protected_activation=bool(provenance.get("protected_activation")),
+                  )
+                  emit(
+                      "awaiting-activation",
+                      provenance.get("tier_name", "unknown"),
+                      "multiple",
+                      provenance["reason"],
+                      approval_eligible,
+                  )
                   sys.exit(0)
               if provenance.get("activation_class") == "control-plane-only":
                   emit("control-plane-verified", "none", "multiple", provenance["reason"])
