@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-16-payroll-substitute-attribution
+    published_at: "2026-09-16"
+    audiences:
+      - director
+    importance: major
+    title: 兼職薪資代課歸屬與課表一致
+    summary: 代課堂次會計入課表顯示的代課兼職老師，不再誤計入合約老師。
+    items:
+      - category: fixed
+        text: 修正兼職薪資在代課時仍依點名紀錄計入合約老師，造成與課表授課老師不一致。
+      - category: improved
+        text: 薪資明細與鎖帳快照改依代課課表解析授課老師，與課程管理／課表顯示一致。
+    source_refs:
+      - "github:in-app-307"
+
   - id: staff-2026-09-16-contract-amendment-remaining
     published_at: "2026-09-16"
     audiences:

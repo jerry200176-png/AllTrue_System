@@ -1,3 +1,8 @@
+## 2026-09-16 — fix(payroll): 兼職薪資依課表代課老師歸屬
+<!-- release-notes: staff_update=staff-2026-09-16-payroll-substitute-attribution -->
+- 修正兼職薪資在代課情境下仍依點名 TeacherID 計入合約老師，導致課表與薪資歸屬不一致（in-app #307）。
+- 薪資歸屬改與課表一致：有代課排程時計入代課兼職老師；無代課時仍依點名／合約老師。
+
 ## 2026-09-16 — fix(course-mgmt): 合約堂數調整保留可用剩餘堂數
 <!-- release-notes: staff_update=staff-2026-09-16-contract-amendment-remaining -->
 - 修正「提前結束／調整合約總堂數」在部分下修時一律把剩餘堂數歸零並結案，導致仍可排課的合約被鎖死（in-app #308）。

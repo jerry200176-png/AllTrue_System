@@ -740,6 +740,85 @@ class ParttimePayrollTest extends TestCase
     }
 
     // ──────────────────────────────────────────
+    // Substitute teacher on schedule wins over sign-in TeacherID
+    // ──────────────────────────────────────────
+    public function test_payroll_attributes_substitute_teacher_when_schedule_differs_from_sign_in(): void
+    {
+        $dir = $this->createDirector('dir-payroll-sub@test.com', [1]);
+        $contractTeacherId = $this->createPartTimeTeacher(1, 'pt-contract@test.com', '合約老師');
+        $substituteTeacherId = $this->createPartTimeTeacher(1, 'pt-sub@test.com', '代課老師');
+        $stu = $this->createStudent(1, '輔導生');
+        $sc = $this->makeStudentClass($stu, $contractTeacherId, 7, 'tutoring');
+
+        $session = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-09-09',
+            'StartTime' => '18:00:00',
+            'EndTime' => '19:00:00',
+            'Status' => 'attended',
+            'Note' => '',
+        ]);
+
+        $anchorId = DB::table('schedules')->insertGetId([
+            'student_id' => $stu->id,
+            'teacher_id' => $contractTeacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '18:00:00',
+            'end_time' => '19:00:00',
+            'class_type' => 'tutoring',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-09-09',
+            'student_course_id' => $sc->ID,
+            'original_schedule_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('schedules')->insert([
+            'student_id' => $stu->id,
+            'teacher_id' => $substituteTeacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '18:00:00',
+            'end_time' => '19:00:00',
+            'class_type' => 'tutoring',
+            'status' => 'scheduled',
+            'type' => 'substitute',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-09-09',
+            'student_course_id' => $sc->ID,
+            'original_schedule_id' => $anchorId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Director marked attendance against contract teacher while schedule shows substitute.
+        $this->makeAttendanceForSession($sc, $contractTeacherId, $session, '2026-09-09', '18:00', 'present');
+
+        $headers = $this->authHeaders($dir['token']);
+        $summary = $this->withHeaders($headers)
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-09&branch_id=1');
+        $summary->assertOk();
+        $teachers = collect($summary->json('teachers'));
+        $this->assertNull($teachers->firstWhere('teacher_id', $contractTeacherId));
+        $subRow = $teachers->firstWhere('teacher_id', $substituteTeacherId);
+        $this->assertNotNull($subRow);
+        $this->assertSame(1, $subRow['session_count']);
+        // tutoring 200/h × contracted 2h (SessionDuration=120) = 400
+        $this->assertSame(400, $subRow['total_salary']);
+
+        $detail = $this->withHeaders($headers)
+            ->getJson("/api/v1/finance/parttime-payroll/{$substituteTeacherId}/sessions?month=2026-09&branch_id=1");
+        $detail->assertOk()
+            ->assertJsonPath('teacher.teacher_name', '代課老師')
+            ->assertJsonPath('sessions.0.student_name', '輔導生');
+    }
+
+    // ──────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────
 
