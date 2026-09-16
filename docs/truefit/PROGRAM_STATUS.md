@@ -7,7 +7,7 @@ reconcile them here after every cycle.
 | Field | Value |
 |-------|--------|
 | Reconciled at | 2026-09-16 (Asia/Taipei) |
-| `origin/main` SHA (at reconcile) | `f2ebf010dac02ef6ffa72843107187b668a912c9` |
+| `origin/main` SHA (at reconcile) | `22c227559ed7f5fcf806d992768de6f07093b994` |
 | Slice 0 code on main | **YES** |
 | Slice 0 operational acceptance | **NOT ACCEPTED** — staging smoke blocked (#868) |
 | Slice 1 Teacher Brief on main | **YES** — contract + fixture + API + UI (#2976, #2978, #2979) |
