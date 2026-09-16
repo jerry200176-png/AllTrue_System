@@ -7,13 +7,13 @@ reconcile them here after every cycle.
 | Field | Value |
 |-------|--------|
 | Reconciled at | 2026-09-16 (Asia/Taipei) |
-| `origin/main` SHA (at reconcile) | `9d16608ec0abb377e3806bf34176c212bdc573ef` |
+| `origin/main` SHA (at reconcile) | `f2ebf010dac02ef6ffa72843107187b668a912c9` |
 | Slice 0 code on main | **YES** |
 | Slice 0 operational acceptance | **NOT ACCEPTED** — staging smoke blocked (#868) |
-| Slice 1 backend on main | **YES** — contract + fixture + lesson-prep API (#2976, #2978) |
-| Slice 1 frontend on main | **IN FLIGHT** — [#2979](https://github.com/jerry200176-png/AllTrue_System/pull/2979) |
+| Slice 1 Teacher Brief on main | **YES** — contract + fixture + API + UI (#2976, #2978, #2979) |
+| Slice 1 operational acceptance | **NOT ACCEPTED** — flags OFF; no staging smoke |
 | Production flags | **OFF** (`TRUEFIT_V1` / `VITE_TRUEFIT_V1` default false) |
-| Active product priority | Finish Slice 1 UI merge → local/CI verification; staging still Platform-owned |
+| Active product priority | TF-S1-02 prep deep-link / session_date hydration |
 
 ---
 
@@ -61,7 +61,7 @@ without Founder gate.
 | Slice | Outcome | Status |
 |-------|---------|--------|
 | **0** | Context / workspace | **Code on main + CI GREEN**; runtime acceptance **PENDING** (staging missing) |
-| **1** | AI Prepare / Teacher Brief | **Backend merged**; **UI PR open** (#2979); not operationally accepted |
+| **1** | AI Prepare / Teacher Brief | **Coded+merged on main** (#2976/#2978/#2979); not operationally accepted |
 | **2** | Teacher Observation | Not started |
 | **3** | Error Diagnosis | Not started |
 | **4** | Remediation | Not started |
@@ -79,7 +79,8 @@ Teacher Brief structured contract: see `TEACHER_BRIEF_CONTRACT.md`.
 | Canonical PROGRAM_STATUS | [#2974](https://github.com/jerry200176-png/AllTrue_System/pull/2974) | `124f1180a` | N/A (docs) | N/A |
 | Teacher Brief contract + fixture | [#2976](https://github.com/jerry200176-png/AllTrue_System/pull/2976) | `937419f1d` | N/A (dark launch) | Pending flags/staging |
 | Lesson-prep API + persistence | [#2978](https://github.com/jerry200176-png/AllTrue_System/pull/2978) | `9d16608ec` | Migration ships with next prod deploy path; flag still OFF | Not accepted |
-| Material select + brief UI | [#2979](https://github.com/jerry200176-png/AllTrue_System/pull/2979) | — | — | — |
+| Material select + brief UI | [#2979](https://github.com/jerry200176-png/AllTrue_System/pull/2979) | `ed2457fc4` | N/A (dark launch) | Not accepted |
+| PROGRAM_STATUS Slice 1 reconcile | this PR | — | N/A (docs) | N/A |
 
 ### Slice 1 APIs (behind `TRUEFIT_V1`)
 
@@ -90,6 +91,8 @@ Teacher Brief structured contract: see `TEACHER_BRIEF_CONTRACT.md`.
 | POST | `/api/v1/truefit/lesson-preps/generate` |
 
 Persistence: `truefit_lesson_preps` (additive Simple Add migration).
+
+UI entry: prep hash route → material `AtSelect` → structured Teacher Brief blocks (no textarea notebook).
 
 ---
 
@@ -103,23 +106,22 @@ Stacked PRs #2949 → #2955 → #2960 → #2963 → #2965 on main. Staging smoke
 
 ### Blockers (runtime acceptance)
 
-1. Staging infrastructure (#868 / #875)
+1. Staging infrastructure (#868 / #875) — Platform-owned
 2. Founder gates: prod flags, DNS subdomain, real LLM credentials, real-student PII → LLM
 
 ### Non-blockers (continue)
 
-- Slice 1 UI merge + shell contract tests
+- TF-S1-02 prep deep-link / `session_date` hydration on refresh
 - Docs / PROGRAM_STATUS refresh
 - Local CI for TrueFit suites
-- Slice 2 design only after Slice 1 coded+merged on main
+- Slice 2 design only after Slice 1 hydration + acceptance criteria clear
 
 ---
 
 ## Next selected bounded task
 
-1. **Land #2979** (Teacher Brief UI) — CI → squash-merge.
-2. **TF-S1-02 (if needed):** deep-link prep hydration for projected sessions / session_date accuracy on refresh.
-3. **Do not** start external LLM wiring or staging ownership.
+1. **TF-S1-02:** Encode `session_date` in prep deep-links; hydrate projected + materialized prep sessions on refresh without inventing UTC "today"; enrich labels from today-sessions when available.
+2. **Do not** start external LLM wiring, flag activation, DNS, or staging ownership.
 
 Staging remains Platform-owned; TrueFit runtime acceptance stays PENDING until staging exists.
 
