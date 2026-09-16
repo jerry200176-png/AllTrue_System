@@ -24,3 +24,5 @@ python3 scripts/tests/test_harness_h2.py
 ```
 
 Lease CAS = ownership/fencing lifecycle only; stale-worker mutation bind is H4.
+
+H3 Plan (review): [`H3_PLANNER_PLAN.md`](H3_PLANNER_PLAN.md) — **no implementation until approved**.
