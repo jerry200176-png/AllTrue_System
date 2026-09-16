@@ -5,7 +5,7 @@
   "task_id": "truefit-s4-01-remediation-api",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "3703ebdc4ffa029506662ba822ca26b1d296e400",
-  "branch": "chore/task-truefit-s4-01-remediation-api",
+  "branch": "feat/truefit-s4-01-remediation-api-endpoints",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/truefit-s4-01-remediation-api",
   "started_at": "2026-09-16T13:24:37Z",
   "production_mutation": false,
