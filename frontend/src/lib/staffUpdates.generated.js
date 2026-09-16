@@ -48,6 +48,43 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-schedule-conflict-occupant",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "排課衝突會顯示卡住的學生",
+    "summary": "時段已滿或一對一佔用時，系統會直接寫出衝突學生／課程，並提示如何排查。",
+    "items": [
+      "修正排課衝突提示過於籠統，沒有寫出卡住的學生與課程來源。",
+      "衝突訊息附上簡短排除方向（對應週次、搜尋學生、改期／請假／結束舊合約），不放寬排課規則。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正排課衝突提示過於籠統，沒有寫出卡住的學生與課程來源。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "衝突訊息附上簡短排除方向（對應週次、搜尋學生、改期／請假／結束舊合約），不放寬排課規則。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-310"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-16-payroll-substitute-attribution",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,

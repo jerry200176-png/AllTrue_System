@@ -3037,7 +3037,9 @@ async function submitPurchaseSessions() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         const details = json?.conflicts?.map((c) => c.message).filter(Boolean).join(' ') || '';
-        alert(details || json?.message || '試聽轉正式失敗');
+        const actions = Array.isArray(json?.suggested_actions) ? json.suggested_actions : [];
+        const actionLine = actions.length ? `\n下一步：${actions.slice(0, 3).join('；')}` : '';
+        alert((details || json?.message || '試聽轉正式失敗') + actionLine);
         return;
       }
       showPurchaseModal.value = false;

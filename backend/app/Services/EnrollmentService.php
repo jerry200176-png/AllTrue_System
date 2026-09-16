@@ -672,6 +672,7 @@ class EnrollmentService
                 'message' => $capacityConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法排課。',
                 'code' => 'teacher_schedule_conflict',
                 'conflicts' => $capacityConflicts,
+                'suggested_actions' => $capacityConflicts[0]['suggested_actions'] ?? [],
             ], 409);
         }
 

@@ -1,3 +1,8 @@
+## 2026-09-16 — fix(scheduling): 排課衝突顯示卡住的學生與排除指引
+<!-- release-notes: staff_update=staff-2026-09-16-schedule-conflict-occupant -->
+- 老師時段／教室容量衝突時，提示會寫出卡住的學生、科目與來源，不再只說「有人卡住」（in-app #310）。
+- 衝突回應附上簡短下一步（對應週次、搜尋學生、改期／請假／結束舊合約）；排課規則與容量上限不變。
+
 ## 2026-09-16 — fix(payroll): 兼職薪資依課表代課老師歸屬
 <!-- release-notes: staff_update=staff-2026-09-16-payroll-substitute-attribution -->
 - 修正兼職薪資在代課情境下仍依點名 TeacherID 計入合約老師，導致課表與薪資歸屬不一致（in-app #307）。

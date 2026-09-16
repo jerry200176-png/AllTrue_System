@@ -2723,30 +2723,47 @@ const handleSchedulerDuplicate = (evt) => {
 
 const parseApiErrorMessage = (err, fallback = '操作失敗') => {
   const firstConflict = Array.isArray(err?.conflicts) ? err.conflicts[0] : null;
+  const serverMessage = String(err?.message || firstConflict?.message || '').trim();
+  const actions = Array.isArray(err?.suggested_actions)
+    ? err.suggested_actions
+    : (Array.isArray(firstConflict?.suggested_actions) ? firstConflict.suggested_actions : []);
+  const actionLine = actions.length
+    ? `\n下一步：${actions.slice(0, 3).join('；')}`
+    : '';
+
+  // Prefer the server message when it already names occupants (in-app #310).
+  if (serverMessage && (serverMessage.includes('此時段已有') || serverMessage.includes('overlap') || firstConflict?.overlap_summary)) {
+    return `${serverMessage}${actionLine}`;
+  }
+
   if (firstConflict?.type === 'teacher_capacity') {
+    const summary = String(firstConflict.overlap_summary || '').trim();
     const current = Number(firstConflict.current_students ?? 0);
     const allowed = Number(firstConflict.allowed_students ?? 0);
     const start = String(firstConflict.start_time || '');
     const end = String(firstConflict.end_time || '');
     const timeLabel = start && end ? `（${start}~${end}）` : '';
-    return `老師在此時段${timeLabel}已達可排學生上限（目前 ${current} 位／上限 ${allowed} 位），請改時段、老師或課型。`;
+    const who = summary ? ` 此時段已有：${summary}。` : '';
+    return `老師在此時段${timeLabel}已達可排學生上限（目前 ${current} 位／上限 ${allowed} 位），請改時段、老師或課型。${who}${actionLine}`;
   }
   if (firstConflict?.type === 'room_capacity') {
+    const summary = String(firstConflict.overlap_summary || '').trim();
     const roomName = firstConflict.room_name || `#${firstConflict.room_id || ''}`;
     const current = Number(firstConflict.current_students ?? 0);
     const allowed = Number(firstConflict.allowed_students ?? 0);
     const start = String(firstConflict.start_time || '');
     const end = String(firstConflict.end_time || '');
     const timeLabel = start && end ? `（${start}~${end}）` : '';
-    return `教室「${roomName}」在此時段${timeLabel}已滿（可容納學生 ${allowed} 位、目前 ${current} 位），請換教室或時段。`;
+    const who = summary ? ` 此時段已有：${summary}。` : '';
+    return `教室「${roomName}」在此時段${timeLabel}已滿（可容納學生 ${allowed} 位、目前 ${current} 位），請換教室或時段。${who}${actionLine}`;
   }
 
   const details = err?.errors ? Object.values(err.errors || {}).flat().join(' ') : '';
-  const generic = String(err?.message || '').trim();
+  const generic = serverMessage;
   if (details && (!generic || generic === 'The given data was invalid.' || generic === 'The given data was invalid')) {
     return details;
   }
-  return generic || details || fallback;
+  return (generic || details || fallback) + actionLine;
 };
 
 const submitCourse = async () => {

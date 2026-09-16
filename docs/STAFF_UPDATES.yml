@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-16-schedule-conflict-occupant
+    published_at: "2026-09-16"
+    audiences:
+      - director
+    importance: major
+    title: 排課衝突會顯示卡住的學生
+    summary: 時段已滿或一對一佔用時，系統會直接寫出衝突學生／課程，並提示如何排查。
+    items:
+      - category: fixed
+        text: 修正排課衝突提示過於籠統，沒有寫出卡住的學生與課程來源。
+      - category: improved
+        text: 衝突訊息附上簡短排除方向（對應週次、搜尋學生、改期／請假／結束舊合約），不放寬排課規則。
+    source_refs:
+      - "github:in-app-310"
+
   - id: staff-2026-09-16-payroll-substitute-attribution
     published_at: "2026-09-16"
     audiences:

@@ -538,7 +538,7 @@ class ScheduleGuardService
             }));
             $existingTrialCount = $this->countDistinctStudents($trialOverlaps);
             if ($existingTrialCount >= 1) {
-                return [
+                return $this->finalizeCapacityConflict([
                     'type' => 'teacher_capacity',
                     'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                     'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -551,7 +551,7 @@ class ScheduleGuardService
                     ),
                     'overlap_summary' => $overlapSummary,
                     'overlap_details' => $overlapDetails,
-                ];
+                ]);
             }
             return null;
         }
@@ -564,7 +564,7 @@ class ScheduleGuardService
             }
         }
         if ($hasOneOnOne) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -574,11 +574,11 @@ class ScheduleGuardService
                 'message' => '老師此時段本分校已有一對一課程，無法再加課。',
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -592,11 +592,11 @@ class ScheduleGuardService
                 ),
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         if ($existingCount >= $newCapacity) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -611,7 +611,7 @@ class ScheduleGuardService
                 ),
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         return null;
@@ -642,7 +642,7 @@ class ScheduleGuardService
         $overlapSummary = $this->buildOverlapSummary($overlapDetails);
 
         if ($currentStudents >= $studentCapacity) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'room_capacity',
                 'room_id' => $roomId,
                 'room_name' => (string) ($room->name ?? ('#' . $roomId)),
@@ -659,10 +659,36 @@ class ScheduleGuardService
                 ),
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         return null;
+    }
+
+    /**
+     * Make capacity conflicts actionable for directors (in-app #310):
+     * bake occupant names into message and attach short resolution steps.
+     *
+     * @param  array<string, mixed>  $conflict
+     * @return array<string, mixed>
+     */
+    private function finalizeCapacityConflict(array $conflict): array
+    {
+        $summary = trim((string) ($conflict['overlap_summary'] ?? ''));
+        $message = trim((string) ($conflict['message'] ?? ''));
+        if ($summary !== '' && $message !== '' && !str_contains($message, $summary)) {
+            $conflict['message'] = $message . ' 此時段已有：' . $summary . '。';
+        } elseif ($summary !== '' && $message === '') {
+            $conflict['message'] = '此時段已有：' . $summary . '。';
+        }
+
+        $conflict['suggested_actions'] = [
+            '在行事曆切到對應週次，並確認授課老師／分校篩選是否與衝突來源一致',
+            '到課程管理搜尋提示中的學生／科目，確認是否為舊合約未結束、代課或調課列',
+            '依情況改期、請假、結束舊合約，或改選其他時段後再排',
+        ];
+
+        return $conflict;
     }
 
     private function loadRoom(int $roomId): ?object
