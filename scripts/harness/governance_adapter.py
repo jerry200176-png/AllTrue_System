@@ -126,14 +126,33 @@ def bind_goal(
 
 
 def issue_decision_receipt(
-    *, goal: GoalContract, decision: str, actor: str = "founder",
+    *,
+    goal: GoalContract,
+    decision: str,
+    authorized_action: str,
+    actor: str = "founder",
     evidence_refs: list[str] | None = None,
 ) -> DecisionReceipt:
+    """Mint one receipt for exactly one authorized_action. Actor ≠ policy authority."""
+    from .contracts import ALLOWED_DECISIONS, FOUNDER_ONLY_DECISIONS
+
+    if decision not in ALLOWED_DECISIONS:
+        raise ValueError(f"unknown_decision:{decision}")
+    if not authorized_action:
+        raise ValueError("authorized_action_required")
+    if decision in FOUNDER_ONLY_DECISIONS and actor != "founder":
+        raise ValueError(f"founder_only_decision_requires_founder_actor:{decision}")
     return DecisionReceipt(
-        receipt_id=f"rcpt_{goal.goal_id.replace(':', '_')}",
-        decision=decision, subject_sha=goal.subject_sha,
-        scope_fingerprint=goal.scope_fp, goal_id=goal.goal_id,
-        actor=actor, evidence_refs=list(evidence_refs or []),
+        receipt_id=f"rcpt_{goal.goal_id.replace(':', '_')}_{authorized_action}",
+        decision=decision,
+        authorized_action=authorized_action,
+        subject_sha=goal.subject_sha,
+        scope_fingerprint=goal.scope_fp,
+        contract_fingerprint=goal.contract_fp,
+        goal_id=goal.goal_id,
+        authority=goal.authority,
+        actor=actor,
+        evidence_refs=list(evidence_refs or []),
     )
 
 
@@ -142,16 +161,23 @@ def validate_evidence(
     expected_sha: str | None = None,
 ) -> GovernanceDecision:
     expected = expected_sha or (goal.subject_sha if goal else "")
+    if goal is not None:
+        if not envelope.goal_id:
+            return _deny(
+                ["evidence_missing_goal_binding"],
+                drift=("stale_evidence", "missing_goal_binding"),
+                raw={"envelope": envelope.to_dict()},
+            )
+        if envelope.goal_id != goal.goal_id:
+            return _deny(
+                [f"evidence_goal_mismatch:{envelope.goal_id}!={goal.goal_id}"],
+                drift=("stale_evidence",), raw={"envelope": envelope.to_dict()},
+            )
     if expected and envelope.subject_sha != expected:
         return _deny(
             [f"stale_evidence: kind={envelope.kind} evidence_sha={envelope.subject_sha} expected={expected}"],
             drift=("stale_evidence", "sha_mismatch"),
             raw={"envelope": envelope.to_dict(), "expected_sha": expected},
-        )
-    if goal and envelope.goal_id and envelope.goal_id != goal.goal_id:
-        return _deny(
-            [f"evidence_goal_mismatch:{envelope.goal_id}!={goal.goal_id}"],
-            drift=("stale_evidence",), raw={"envelope": envelope.to_dict()},
         )
     return GovernanceDecision(
         autonomous=True, founder_required=False, machine_tier="T0",
@@ -161,16 +187,59 @@ def validate_evidence(
 
 
 def validate_decision_receipt(
-    receipt: DecisionReceipt, *, goal: GoalContract,
-    observed_main_sha: str | None = None, current_scope: list[str] | None = None,
+    receipt: DecisionReceipt,
+    *,
+    goal: GoalContract,
+    requested_action: str,
+    observed_main_sha: str | None = None,
+    current_scope: list[str] | None = None,
 ) -> GovernanceDecision:
+    """Authorize exactly requested_action — freshness alone never grants authority."""
+    from .contracts import ALLOWED_DECISIONS, FOUNDER_ONLY_DECISIONS
+
+    if not requested_action:
+        return _deny(
+            ["requested_action_required"],
+            drift=("stale_approval", "missing_requested_action"), founder=True,
+        )
     if receipt.status != "active":
         return _deny([f"receipt_not_active:{receipt.status}"], drift=("stale_approval",), founder=True)
+    if receipt.decision not in ALLOWED_DECISIONS:
+        return _deny(
+            [f"unknown_decision:{receipt.decision}"],
+            drift=("stale_approval", "invalid_decision"), founder=True,
+        )
+    if receipt.decision in FOUNDER_ONLY_DECISIONS and receipt.actor != "founder":
+        return _deny(
+            [f"founder_only_decision_unauthorized_actor:{receipt.actor}"],
+            drift=("stale_approval", "unauthorized_actor"), founder=True,
+            raw={"receipt": receipt.to_dict()},
+        )
+    if receipt.authority != goal.authority:
+        return _deny(
+            [f"authority_mismatch: receipt={receipt.authority} goal={goal.authority}"],
+            drift=("stale_approval", "authority_mismatch"), founder=True,
+        )
+    if receipt.authorized_action != requested_action:
+        return _deny(
+            [f"action_not_authorized: requested={requested_action} receipt={receipt.authorized_action}"],
+            drift=("stale_approval", "action_mismatch"), founder=True,
+            raw={"requested_action": requested_action, "receipt": receipt.to_dict()},
+        )
     if receipt.goal_id != goal.goal_id or receipt.subject_sha != goal.subject_sha:
         return _deny(
             [f"stale_approval: receipt_sha={receipt.subject_sha} goal_sha={goal.subject_sha}"],
             drift=("stale_approval", "sha_mismatch"), founder=True,
             raw={"receipt": receipt.to_dict()},
+        )
+    if receipt.contract_fingerprint != goal.contract_fp:
+        return _deny(
+            ["contract_drift_after_approval"],
+            drift=("stale_approval", "contract_drift"), founder=True,
+            raw={
+                "receipt_fp": receipt.contract_fingerprint,
+                "goal_fp": goal.contract_fp,
+            },
         )
     if observed_main_sha and receipt.subject_sha != observed_main_sha:
         return _deny(
@@ -188,11 +257,14 @@ def validate_decision_receipt(
     return GovernanceDecision(
         autonomous=True, founder_required=False,
         machine_tier=goal.declared_tier, effective_tier=goal.declared_tier,
-        reasons=["receipt_fresh"], raw={"receipt_id": receipt.receipt_id},
+        reasons=["receipt_authorizes_action"],
+        raw={"receipt_id": receipt.receipt_id, "authorized_action": receipt.authorized_action},
     )
 
 
 def check_scope_drift(goal: GoalContract, claimed_paths: Iterable[str]) -> GovernanceDecision:
+    from .contracts import path_in_scope
+
     paths = [str(p).replace("\\", "/") for p in claimed_paths if p]
     if not goal.scope:
         return GovernanceDecision(
@@ -201,12 +273,14 @@ def check_scope_drift(goal: GoalContract, claimed_paths: Iterable[str]) -> Gover
             reasons=["no_scope_constraint"],
         )
     for path in paths:
-        if not any(
-            path == a or (a.endswith("/**") and path.startswith(a[:-3]))
-            or (a.endswith("*") and path.startswith(a[:-1]))
-            or path.startswith(a.rstrip("/"))
-            for a in goal.scope
-        ):
+        try:
+            ok = any(path_in_scope(path, a) for a in goal.scope)
+        except ValueError as exc:
+            return _deny(
+                [str(exc)], drift=("scope_drift", "unsupported_pattern"), founder=True,
+                machine=goal.declared_tier, effective=goal.declared_tier,
+            )
+        if not ok:
             return _deny(
                 [f"scope_drift: path={path} outside goal.scope"],
                 drift=("scope_drift",), founder=True,

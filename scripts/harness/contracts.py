@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -15,6 +16,54 @@ def _now() -> str:
 def scope_fingerprint(scope: list[str]) -> str:
     norm = sorted({str(p).replace("\\", "/").strip() for p in scope if p})
     return hashlib.sha256("\n".join(norm).encode()).hexdigest()[:16]
+
+
+def path_in_scope(path: str, pattern: str) -> bool:
+    """Fail-closed path match: exact, directory boundary, or dir/** only."""
+    path = str(path).replace("\\", "/").strip()
+    pattern = str(pattern).replace("\\", "/").strip()
+    if not path or not pattern:
+        return False
+    # Reject unsupported globs (prefix* , ?, [...], mid-path *)
+    if "*" in pattern:
+        if not pattern.endswith("/**") or pattern.count("*") != 2:
+            raise ValueError(f"unsupported_scope_pattern:{pattern}")
+        root = pattern[:-3].rstrip("/")
+        if not root or "*" in root or "?" in root:
+            raise ValueError(f"unsupported_scope_pattern:{pattern}")
+        return path == root or path.startswith(root + "/")
+    if "?" in pattern or "[" in pattern:
+        raise ValueError(f"unsupported_scope_pattern:{pattern}")
+    if path == pattern:
+        return True
+    root = pattern.rstrip("/")
+    return path == root or path.startswith(root + "/")
+
+
+def contract_fingerprint(goal_fields: dict[str, Any]) -> str:
+    """Hash authorization-relevant Goal slice (not conversational extras)."""
+    blob = json.dumps(goal_fields, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode()).hexdigest()[:32]
+
+
+ALLOWED_DECISIONS = frozenset({
+    "approve_production",
+    "approve_merge",
+    "continue",
+    "reject",
+    "narrow_scope",
+    "pause",
+})
+
+# Decisions that may only be issued by the Founder actor (not workers).
+FOUNDER_ONLY_DECISIONS = frozenset({
+    "approve_production",
+    "approve_merge",
+    "reject",
+    "narrow_scope",
+})
+
+POLICY_AUTHORITY_GATE = "scripts/governance/autonomy_gate.py"
 
 
 @dataclass
@@ -40,12 +89,13 @@ class DelegationContract:
         if int(str(machine_tier).lstrip("T") or "0") > int(self.max_tier.lstrip("T") or "0"):
             return False, f"machine_tier_exceeds_delegation:{machine_tier}>{self.max_tier}"
         for path in paths:
-            if self.allowed_paths and not any(
-                path == p or (p.endswith("/**") and path.startswith(p[:-3]))
-                or (p.endswith("*") and path.startswith(p[:-1]))
-                or path.startswith(p.rstrip("/"))
-                for p in self.allowed_paths
-            ):
+            if not self.allowed_paths:
+                continue
+            try:
+                ok = any(path_in_scope(path, p) for p in self.allowed_paths)
+            except ValueError as exc:
+                return False, str(exc)
+            if not ok:
                 return False, f"path_outside_delegation:{path}"
         return True, "ok"
 
@@ -61,7 +111,7 @@ class GoalContract:
     non_scope: list[str] = field(default_factory=list)
     declared_risk: str = "R1"
     declared_tier: str = "T1"
-    authority: str = "scripts/governance/autonomy_gate.py"
+    authority: str = POLICY_AUTHORITY_GATE
     delegation: DelegationContract | None = None
     stop_conditions: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=_now)
@@ -71,9 +121,23 @@ class GoalContract:
     def scope_fp(self) -> str:
         return scope_fingerprint(self.scope)
 
+    @property
+    def contract_fp(self) -> str:
+        return contract_fingerprint({
+            "subject_sha": self.subject_sha,
+            "scope": sorted(self.scope),
+            "non_scope": sorted(self.non_scope),
+            "declared_risk": self.declared_risk,
+            "declared_tier": self.declared_tier,
+            "authority": self.authority,
+            "delegation": self.delegation.to_dict() if self.delegation else None,
+            "stop_conditions": sorted(self.stop_conditions),
+        })
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["scope_fingerprint"] = self.scope_fp
+        d["contract_fingerprint"] = self.contract_fp
         if self.delegation is None:
             d["delegation"] = None
         return d
@@ -82,6 +146,7 @@ class GoalContract:
     def from_dict(cls, data: dict[str, Any]) -> GoalContract:
         p = dict(data)
         p.pop("scope_fingerprint", None)
+        p.pop("contract_fingerprint", None)
         p["delegation"] = DelegationContract.from_dict(p.get("delegation"))
         return cls(**{k: p[k] for k in cls.__dataclass_fields__ if k in p})
 
@@ -122,12 +187,17 @@ class EvidenceEnvelope:
 
 @dataclass
 class DecisionReceipt:
+    """One receipt authorizes exactly one action (plus freshness/contract binding)."""
+
     receipt_id: str
     decision: str
+    authorized_action: str
     subject_sha: str
     scope_fingerprint: str
+    contract_fingerprint: str
     goal_id: str
-    actor: str = "founder"
+    authority: str = POLICY_AUTHORITY_GATE  # policy authority, not human identity
+    actor: str = "founder"  # issuing actor: founder | worker | system
     evidence_refs: list[str] = field(default_factory=list)
     decided_at: str = field(default_factory=_now)
     status: str = "active"

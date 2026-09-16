@@ -30,6 +30,7 @@ class WorldObservation:
     declared_risk: str = ""
     declared_tier: str = ""
     patch: str = ""
+    requested_action: str = ""
 
 
 @dataclass
@@ -89,6 +90,7 @@ def reconcile(
     if receipt and goal:
         decisions.append(validate_decision_receipt(
             receipt, goal=goal,
+            requested_action=world.requested_action,
             observed_main_sha=world.main_sha or None,
             current_scope=world.current_scope,
         ))

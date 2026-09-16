@@ -29,6 +29,11 @@ Default CONTINUE via existing gate. Founder inbox only for gate/Goal §22 stops.
 ## H2 drift contracts
 
 `GoalContract` / `EvidenceEnvelope` / `DecisionReceipt` / leases / checkpoint /
-`reconcile()` bind agents to durable SHA+scope authority via `autonomy_gate`
-adapter only. Deny-and-continue keeps unrelated READY work unblocked.
+`reconcile()` bind agents to durable SHA+scope+contract authority via
+`autonomy_gate` adapter only. Deny-and-continue keeps unrelated READY work unblocked.
 Schema v2 adds `leases`, `goals`, `decision_receipts`, `checkpoints`.
+
+Lease CAS guarantees atomic ownership and fencing-token lifecycle across processes.
+End-to-end enforcement against an already-running stale worker at every mutation
+boundary is deferred to H4 (session/worktree bind). DecisionReceipt authorizes
+exactly one requested action; Founder-only decisions require Founder actor.
