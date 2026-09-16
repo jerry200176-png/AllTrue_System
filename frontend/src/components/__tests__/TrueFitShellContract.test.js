@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   parseTrueFitRoute,
   buildTrueFitPrepUrl,
+  buildTrueFitObserveUrl,
   seedSessionFromPrepRoute,
   matchTodaySession,
 } from '../../lib/truefitRoute.js';
@@ -105,6 +106,7 @@ describe('TrueFit Slice 0 shell contract', () => {
 
   it('shows required session card fields and CTA copy', () => {
     expect(workspaceSource).toContain('準備課程');
+    expect(workspaceSource).toContain('課堂觀察');
     expect(workspaceSource).toContain('student_name');
     expect(workspaceSource).toContain('subject_name');
     expect(workspaceSource).toContain('campus_name');
@@ -124,5 +126,29 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(trueFitAppSource).toContain('matchTodaySession');
     expect(trueFitAppSource).toContain('fetchTrueFitTodaySessions');
     expect(trueFitAppSource).not.toContain('toISOString().slice(0, 10)');
+  });
+
+  it('parses observe deep links and wires observation page', () => {
+    expect(parseTrueFitRoute({
+      hash: '#/truefit/observe/42?d=2026-09-16',
+      search: '',
+      hostname: 'localhost',
+    })).toEqual({
+      view: 'observe',
+      classSessionId: 42,
+      sessionDate: '2026-09-16',
+    });
+    expect(buildTrueFitObserveUrl({
+      student_class_id: 55,
+      start_time: '16:30',
+      session_date: '2026-09-16',
+    })).toBe('#/truefit/observe/c55-1630?d=2026-09-16');
+    expect(trueFitAppSource).toContain('TrueFitObservationPage');
+    expect(trueFitAppSource).toContain('goObserve');
+    const obsSource = readFileSync(resolve(__dirname, '../../pages/TrueFitObservationPage.vue'), 'utf8');
+    expect(obsSource).toContain('儲存觀察');
+    expect(obsSource).toContain('struggle_signals');
+    expect(obsSource).toContain('misconception_hypotheses');
+    expect(obsSource).toContain('upsertTrueFitObservation');
   });
 });
