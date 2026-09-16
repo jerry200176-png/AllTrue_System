@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-16-tuition-remaining-sort
+    published_at: "2026-09-16"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務中心可依剩餘堂數排序
+    summary: 待處理列表可依剩餘堂數少到多或多到少排列，方便先對快上完的學生發繳費通知。
+    items:
+      - category: improved
+        text: 帳務中心新增「剩餘堂數」欄與排序；行動版排序選單也可選剩餘堂數。
+      - category: improved
+        text: 本次只調整畫面排序，不改帳務金額、收款、權限或既有資料。
+    source_refs:
+      - "github:in-app-309"
+
   - id: staff-2026-09-16-schedule-conflict-occupant
     published_at: "2026-09-16"
     audiences:

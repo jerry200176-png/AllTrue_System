@@ -1,3 +1,8 @@
+## 2026-09-16 — improved(billing): 帳務中心可依剩餘堂數排序
+<!-- release-notes: staff_update=staff-2026-09-16-tuition-remaining-sort -->
+- 帳務中心待處理列表新增「剩餘堂數」欄，可點欄位或行動版排序選單依剩餘堂數少到多／多到少排列（in-app #309）。
+- 僅調整畫面排序與欄位呈現，不改帳務計算、API、權限或收款流程。
+
 ## 2026-09-16 — fix(scheduling): 排課衝突顯示卡住的學生與排除指引
 <!-- release-notes: staff_update=staff-2026-09-16-schedule-conflict-occupant -->
 - 老師時段／教室容量衝突時，提示會寫出卡住的學生、科目與來源，不再只說「有人卡住」（in-app #310）。
