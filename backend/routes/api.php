@@ -40,6 +40,7 @@ use App\Http\Controllers\ActionInboxController;
 use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ClassSessionController;
+use App\Http\Controllers\TrueFitController;
 use App\Http\Controllers\SubstituteController;
 use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
@@ -647,6 +648,7 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-record-feedbacks/{feedback}/reply', [LearningRecordFeedbackController::class, 'staffReply']);
         Route::get('class-sessions/projection', [ClassSessionController::class, 'projection']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
+        Route::get('truefit/today-sessions', [TrueFitController::class, 'todaySessions']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         // #770 批次排課 CSV 匯入 — 衝突檢查 preview（純讀取）。
         Route::post('schedule-import/preview', [\App\Http\Controllers\ScheduleImportController::class, 'preview']);

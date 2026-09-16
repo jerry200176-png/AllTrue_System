@@ -68,4 +68,8 @@ return [
     // Admissions funnel V1: public inquiry + director trial handoff.
     // DARK LAUNCH: tables may exist while both public and staff routes stay off.
     'admissions_funnel_v1' => (bool) env('ADMISSIONS_FUNNEL_V1', false),
+
+    // TrueFit V1: teacher learning workspace shell (read-only Slice 0).
+    // DARK LAUNCH: default OFF. Requires VITE_TRUEFIT_V1 on frontend build too.
+    'truefit_v1' => (bool) env('TRUEFIT_V1', false),
 ];
