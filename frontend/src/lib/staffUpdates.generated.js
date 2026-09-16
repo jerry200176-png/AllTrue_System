@@ -48,6 +48,43 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-payroll-substitute-attribution",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "兼職薪資代課歸屬與課表一致",
+    "summary": "代課堂次會計入課表顯示的代課兼職老師，不再誤計入合約老師。",
+    "items": [
+      "修正兼職薪資在代課時仍依點名紀錄計入合約老師，造成與課表授課老師不一致。",
+      "薪資明細與鎖帳快照改依代課課表解析授課老師，與課程管理／課表顯示一致。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正兼職薪資在代課時仍依點名紀錄計入合約老師，造成與課表授課老師不一致。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "薪資明細與鎖帳快照改依代課課表解析授課老師，與課程管理／課表顯示一致。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-307"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-15-tuition-viewport-containment",
     "publishedAt": "2026-09-15",
     "effectiveAt": null,
