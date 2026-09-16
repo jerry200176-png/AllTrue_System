@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "SES-20260915103003-9E96E449",
+  "session_id": "5961329004264a2cb7003f0e81bd6940",
   "project": "alltrue",
-  "task_id": "INT-20260915-102951-S2GK",
+  "task_id": "truefit-program-status-20260916",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "5ebeb207d7dfded88170802a962d9bab9c4065b5",
-  "branch": "exo/INT-20260915-102951-S2GK",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INAPP-289-VERIFY-FIXTURE",
-  "started_at": "2026-09-15T02:29:30Z",
+  "base_sha": "554a585ad08033f8b931145657f3b707cb7a3349",
+  "branch": "chore/task-truefit-program-status-20260916",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/truefit-program-status-20260916",
+  "started_at": "2026-09-16T10:40:57Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": "cursor",
   "gateway_version": "0.5.0"
 }
