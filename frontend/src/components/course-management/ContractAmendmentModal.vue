@@ -107,7 +107,7 @@ function onSubmit() {
 .form-hint, .preview-list, .financial-note { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5; } .amendment-preview { margin: 14px 0; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); } .preview-line { display: flex; justify-content: center; gap: 12px; font-size: 18px; margin-bottom: 10px; } .preview-grid { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 8px; } .preview-grid strong { text-align: right; }
 .amendment-error, .amendment-warning { margin: 10px 0; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.5; }
 .amendment-error { background: var(--ds-danger-wash); color: var(--ds-danger); }
-.amendment-warning { background: var(--ds-warning-wash, #fff7e6); color: var(--ds-warning-ink, #8a5a00); border: 1px solid var(--ds-hairline); }
+.amendment-warning { background: var(--ds-warning-wash); color: var(--ds-warning-ink); border: 1px solid var(--ds-hairline); }
 .financial-note { margin: 8px 0 0; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 </style>
