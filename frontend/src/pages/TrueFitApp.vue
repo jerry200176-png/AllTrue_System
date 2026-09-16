@@ -25,6 +25,7 @@
       <TrueFitPrepPlaceholderPage
         v-if="route.view === 'prep'"
         :session="selectedSession"
+        :token="token"
         @back="goWorkspace"
       />
       <TrueFitWorkspacePage
@@ -57,6 +58,26 @@ const selectedSessionId = computed(() => route.value?.classSessionId || null);
 
 function syncRouteFromHash() {
   route.value = parseTrueFitRoute() || { view: 'workspace' };
+  hydrateSessionFromRoute();
+}
+
+function hydrateSessionFromRoute() {
+  const r = route.value;
+  if (!r || r.view !== 'prep') return;
+  if (selectedSession.value) return;
+  if (r.classSessionId) {
+    selectedSession.value = { class_session_id: r.classSessionId };
+    return;
+  }
+  if (r.studentClassId) {
+    const hm = String(r.projectedStartHm || '0000');
+    selectedSession.value = {
+      class_session_id: null,
+      student_class_id: r.studentClassId,
+      start_time: `${hm.slice(0, 2)}:${hm.slice(2, 4)}`,
+      session_date: new Date().toISOString().slice(0, 10),
+    };
+  }
 }
 
 function goWorkspace() {
@@ -79,8 +100,10 @@ if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', syncRouteFromHash);
 }
 
+hydrateSessionFromRoute();
+
 watch(selectedSessionId, (id) => {
-  if (!id) {
+  if (!id && !route.value?.studentClassId) {
     selectedSession.value = null;
   }
 });
