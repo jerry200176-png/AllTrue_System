@@ -2,8 +2,7 @@
 
 Canonical Teacher Observation state is **structured JSON**, not free-text-only notes.
 
-This document locks the **product contract** before persistence/API/UI land.
-No schema, routes, or flags are activated by this file alone.
+This document locks the **product contract**. Runtime APIs are dark-launch behind `TRUEFIT_V1`.
 
 ## Product intent
 
@@ -74,21 +73,21 @@ Do **not** write LearningRecord, attendance, or billing rows from Slice 2.
 - Cross-campus analytics warehouse
 - Real-time classroom audio capture
 
-## Planned APIs (implementation tickets; not live yet)
+## APIs (behind `TRUEFIT_V1`)
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/api/v1/truefit/observations` | Lookup by session_ref |
-| POST | `/api/v1/truefit/observations` | Upsert teacher observation |
-| GET | `/api/v1/truefit/observations/schema` | Optional contract echo for UI |
+| GET | `/api/v1/truefit/observations` | Lookup by `class_session_id` or projected session keys |
+| POST | `/api/v1/truefit/observations` | Upsert teacher observation (`observation` object) |
 
-All will require `TRUEFIT_V1=true` and teacher role when implemented.
+Validator: `App\Services\TrueFit\TrueFitTeacherObservationContract`.  
+Persistence: `truefit_observations` (additive Simple Add).
 
 ## Implementation order (bounded tickets)
 
 | Ticket | Outcome |
 |--------|---------|
-| **TF-S2-00** | This contract + PROGRAM_STATUS pointer (**this PR**) |
+| **TF-S2-00** | Contract + PROGRAM_STATUS pointer |
 | **TF-S2-01** | Additive persistence + PHP contract validator + feature tests |
 | **TF-S2-02** | Teacher UI: structured observation form linked from prep/workspace |
 | **TF-S2-03** | Optional fixture sample + shell contract tests |
