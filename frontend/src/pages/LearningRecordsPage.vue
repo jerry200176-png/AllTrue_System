@@ -168,8 +168,8 @@
 
       <div v-if="isDirectorRole" class="lr-status-explainer" role="note">
         <strong>{{ directorReviewHint }}</strong>
-        <span>填寫：未填／已填</span>
-        <span>審核：待核准／需修改／已核准／已退回</span>
+        <span>評量內容：未填／已填</span>
+        <span>審核：待主任核准／老師需修改／已核准／已退回</span>
       </div>
 
       <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
@@ -911,12 +911,12 @@
                       </td>
                       <td v-if="!isTeacher">{{ record.teacher_name }}</td>
                       <td>
-                        <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                        <span v-if="cardFillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ cardFillLabel(record) }}</span>
                         <span v-else class="fill-badge-na">—</span>
                       </td>
                       <td>
                         <span :class="statusTagClass(record.Status)" class="status-tag">
-                          {{ statusLabel(record.Status) }}
+                          {{ cardReviewStatusLabel(record.Status) }}
                         </span>
                       </td>
                       <td class="lr-actions" @click.stop>
@@ -6265,7 +6265,9 @@ select.lr-input {
 }
 
 .lr-page:not(.lr-page--teacher) .lr-record-card .status-tag,
-.lr-page:not(.lr-page--teacher) .lr-record-card .fill-badge {
+.lr-page:not(.lr-page--teacher) .lr-record-card .fill-badge,
+.lr-page:not(.lr-page--teacher) .lr-table-scroll .status-tag,
+.lr-page:not(.lr-page--teacher) .lr-table-scroll .fill-badge {
   font-size: 13px;
   font-weight: 700;
 }
