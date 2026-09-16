@@ -1,0 +1,62 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class StudentCampusPresence extends Model
+{
+    protected $table = 'StudentCampusPresence';
+
+    public const STATUS_OPEN = 'open';
+    public const STATUS_CLOSED = 'closed';
+    public const STATUS_ORPHAN_CLOSED = 'orphan_closed';
+    public const STATUS_VOIDED = 'voided';
+
+    public const SOURCE_RFID = 'rfid';
+    public const SOURCE_MANUAL = 'manual';
+    public const SOURCE_SYSTEM = 'system';
+
+    public const CLOSE_SWIPE_OUT = 'swipe_out';
+    public const CLOSE_ORPHAN_JOB = 'orphan_job';
+    public const CLOSE_MANUAL = 'manual';
+    public const CLOSE_VOID = 'void';
+
+    protected $fillable = [
+        'CampusID',
+        'StudentID',
+        'Source',
+        'DeviceID',
+        'RfidUidHash',
+        'ArrivedAt',
+        'DepartedAt',
+        'Status',
+        'CloseReason',
+        'IdempotencyKey',
+        'VoidedAt',
+        'VoidedByUserID',
+        'VoidReason',
+    ];
+
+    protected $casts = [
+        'ArrivedAt' => 'datetime',
+        'DepartedAt' => 'datetime',
+        'VoidedAt' => 'datetime',
+    ];
+
+    public function student(): BelongsTo
+    {
+        return $this->belongsTo(Student::class, 'StudentID');
+    }
+
+    public function campus(): BelongsTo
+    {
+        return $this->belongsTo(Campus::class, 'CampusID');
+    }
+
+    public function isOpen(): bool
+    {
+        return $this->Status === self::STATUS_OPEN && $this->DepartedAt === null && $this->VoidedAt === null;
+    }
+}

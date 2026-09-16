@@ -1,3 +1,8 @@
+## 2026-09-16 — feat(attendance): StudentCampusPresence model + read APIs (#2809 RFID-1)
+<!-- release-notes: silent_ship=silent-2026-09-16-rfid-presence-model -->
+- 新增學生在校證明資料表與讀取 API（open / today / candidates）；不改門禁刷卡、點名或扣堂行為。
+- 為後續 RFID-2 presence-only 重切做準備；feature flag 預設仍關閉。
+
 ## 2026-09-16 — docs(attendance): lock RFID campus-presence v1 contract (#2809)
 <!-- release-notes: silent_ship=silent-2026-09-16-rfid-presence-policy -->
 - 鎖定門禁 RFID v1 產品邊界：刷卡只證明在校，不直接點名、扣堂或 billing backfill；課程出席仍走既有教師／手動點名路徑。

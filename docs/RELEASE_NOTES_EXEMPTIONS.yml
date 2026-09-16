@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-16-rfid-presence-model
+    changelog_date: "2026-09-16"
+    changelog_title: "feat(attendance): StudentCampusPresence model + read APIs (#2809 RFID-1)"
+    reason: 新增在校證明儲存與唯讀 API，尚未接上刷卡路徑；教職員流程、點名與扣堂語意不變。
+
   - id: silent-2026-09-16-rfid-presence-policy
     changelog_date: "2026-09-16"
     changelog_title: "docs(attendance): lock RFID campus-presence v1 contract (#2809)"
