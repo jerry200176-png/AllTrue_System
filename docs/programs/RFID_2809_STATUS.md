@@ -19,32 +19,34 @@ RFID = campus presence only. Teacher/manual attendance remains course-attendance
 | When (UTC) | Slice | State | Evidence |
 |---|---|---|---|
 | 2026-09-16 | Planning | accepted | Issue comments + Founder locked v1 policy in session |
-| 2026-09-16 | **RFID-0** | merged | PR [#2975](https://github.com/jerry200176-png/AllTrue_System/pull/2975) merge `c9c219a895237c5783b449216b3ddec152b19c50` |
-| 2026-09-16 | **RFID-1** | coded (this branch) | `StudentCampusPresence` + service + read APIs |
+| 2026-09-16 | **RFID-0** | coded → PR (this branch) | RFC + cross-links + this status file |
 
 ---
 
 ## Current slice
 
-**RFID-1** — presence data model + read APIs. Does **not** re-boundary `SwipeRfidController` yet.
+**RFID-0** — policy/contracts/docs only. No runtime behavior change.
 
-### RFID-1 checklist
+### RFID-0 checklist
 
-- [x] Additive `StudentCampusPresence` migration
-- [x] Lifecycle service (arrive/depart/orphan/candidates) with no SDS/effects imports
-- [x] Read APIs: open / student today / candidates
-- [x] Feature tests for lifecycle + invariant
+- [x] RFC accepted architecture (presence domain B)
+- [x] Current vs target called out (runtime still auto-deducts until RFID-2)
+- [x] Feature flag names reserved in RFC
+- [x] INDEX / SYSTEM_TECH_GUIDE / api-swipe-rfid cross-links
 - [ ] PR opened
 - [ ] CI green
 - [ ] Merged
-- [ ] Deployed
-- [ ] Runtime verified (presence table exists; swipe behavior unchanged until RFID-2)
+- [ ] Deployed (docs-only; N/A beyond merge to main)
+- [ ] Runtime verified (N/A — no behavior change)
 
 ---
 
 ## Next selected task
 
-**RFID-2** — Re-boundary `SwipeRfidController` behind `FEATURE_RFID_PRESENCE_ONLY` to write presence only (no deduct/effects/backfill).
+**RFID-1** — `StudentCampusPresence` additive schema + presence/candidate APIs (no swipe re-boundary yet).
+
+Blocked on: nothing for design/schema PR after RFID-0 merge.  
+RFID-2 production canary still needs a canary `Campus.id` (defer until flag enable).
 
 ---
 
@@ -52,7 +54,7 @@ RFID = campus presence only. Teacher/manual attendance remains course-attendance
 
 | Blocker | Severity | Notes |
 |---|---|---|
-| Production still auto-deducts on swipe | High (known) | Fence in RFID-2 behind flag |
+| Production still auto-deducts on swipe | High (known) | Fence in RFID-2 behind flag; do not claim fixed until runtime SHA proves flag path |
 | Canary campus id unset | Medium | Needed only to turn flag on in production |
 | Dual pipeline `attendance/swipe` + PendingSwipe | Low | Quarantine; do not expand |
 
@@ -60,8 +62,8 @@ RFID = campus presence only. Teacher/manual attendance remains course-attendance
 
 ## Slice backlog
 
-1. RFID-0 docs/contracts — **merged**
-2. RFID-1 presence model + API — **in progress**
+1. RFID-0 docs/contracts — **in progress**
+2. RFID-1 presence model + API
 3. RFID-2 SwipeRfidController re-boundary (flag)
 4. RFID-3 card onboarding/audit
 5. RFID-4 teacher evidence UI

@@ -5,53 +5,37 @@ namespace App\Http\Controllers;
 use App\Models\Student;
 use App\Models\StudentCampusPresence;
 use App\Services\StudentCampusPresenceService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
-/**
- * Read APIs for campus presence evidence (#2809 RFID-1).
- * Does not mark attendance or deduct sessions.
- */
+/** Read APIs for campus presence (#2809 RFID-1). No attendance/deduction. */
 class CampusPresenceController extends Controller
 {
-    public function __construct(
-        private readonly StudentCampusPresenceService $presenceService,
-    ) {
+    public function __construct(private readonly StudentCampusPresenceService $presenceService)
+    {
     }
 
-    /**
-     * GET /api/v1/campus-presence/open?campus_id=
-     * Who is currently on campus (open presence).
-     */
     public function open(Request $request)
     {
-        $data = $request->validate([
-            'campus_id' => 'required|integer',
-        ]);
-
+        $data = $request->validate(['campus_id' => 'required|integer']);
         $rows = $this->presenceService->openForCampus((int) $data['campus_id']);
 
         return response()->json([
             'ok' => true,
-            'data' => $rows->map(fn (StudentCampusPresence $p) => $this->serializePresence($p))->values(),
+            'data' => $rows->map(fn (StudentCampusPresence $p) => $this->serialize($p))->values(),
         ]);
     }
 
-    /**
-     * GET /api/v1/students/{student}/campus-presence/today
-     */
     public function studentToday(Request $request, Student $student)
     {
         $campusId = (int) ($request->query('campus_id') ?: $student->CampusID);
-        $today = now()->toDateString();
-
         $rows = StudentCampusPresence::query()
             ->where('StudentID', $student->id)
             ->where('CampusID', $campusId)
-            ->whereDate('ArrivedAt', $today)
+            ->whereDate('ArrivedAt', now()->toDateString())
             ->whereNull('VoidedAt')
             ->orderBy('ArrivedAt')
             ->get();
-
         $open = $rows->first(fn (StudentCampusPresence $p) => $p->isOpen());
         $payload = $open
             ? $this->presenceService->candidatesForStudent($student, now())
@@ -61,7 +45,7 @@ class CampusPresenceController extends Controller
             'ok' => true,
             'student_id' => $student->id,
             'campus_id' => $campusId,
-            'presence' => $rows->map(fn (StudentCampusPresence $p) => $this->serializePresence($p))->values(),
+            'presence' => $rows->map(fn (StudentCampusPresence $p) => $this->serialize($p))->values(),
             'on_campus' => $open !== null,
             'candidates' => $payload['candidates'],
             'ambiguous' => $payload['ambiguous'],
@@ -69,25 +53,20 @@ class CampusPresenceController extends Controller
         ]);
     }
 
-    /**
-     * GET /api/v1/students/{student}/campus-presence/candidates
-     */
     public function candidates(Request $request, Student $student)
     {
-        $at = $request->query('at') ? \Carbon\Carbon::parse((string) $request->query('at')) : now();
+        $at = $request->query('at') ? Carbon::parse((string) $request->query('at')) : now();
         $payload = $this->presenceService->candidatesForStudent($student, $at);
 
         return response()->json([
             'ok' => true,
             'student_id' => $student->id,
             'at' => $at->toIso8601String(),
-            'candidates' => $payload['candidates'],
-            'ambiguous' => $payload['ambiguous'],
-            'exception' => $payload['exception'],
+            ...$payload,
         ]);
     }
 
-    private function serializePresence(StudentCampusPresence $p): array
+    private function serialize(StudentCampusPresence $p): array
     {
         return [
             'id' => $p->id,
