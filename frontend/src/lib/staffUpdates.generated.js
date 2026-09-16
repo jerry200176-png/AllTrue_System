@@ -122,6 +122,43 @@ export const staffUpdates = [
     "version": "2026.09.16"
   },
   {
+    "id": "staff-2026-09-16-course-edit-self-conflict",
+    "publishedAt": "2026-09-16",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "編輯課表不再把自己判成衝堂",
+    "summary": "調整學生既有固定時段時，系統不會再把同一位學生自己的佔用當成衝突。",
+    "items": [
+      "修正編輯課表時把同一學生（含雙合約）誤判為一對一衝堂、無法儲存。",
+      "其他學生真正佔用時仍會阻擋，並維持既有衝突提示。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正編輯課表時把同一學生（含雙合約）誤判為一對一衝堂、無法儲存。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "其他學生真正佔用時仍會阻擋，並維持既有衝突提示。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-311"
+    ],
+    "date": "2026-09-16",
+    "version": "2026.09.16"
+  },
+  {
     "id": "staff-2026-09-16-tuition-remaining-sort",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,

@@ -1574,15 +1574,18 @@ class StudentClassController extends Controller
                     $sessions,
                     (string) ($data['ClassType'] ?? 'one_on_one'),
                     !empty($data['room_id']) ? (int) $data['room_id'] : null,
-                    $studentCampusId
+                    $studentCampusId,
+                    (int) ($studentClass->ID ?? 0) ?: null,
+                    (int) ($studentClass->StudentID ?? $data['StudentID'] ?? 0) ?: null
                 );
                 if (!empty($conflicts)) {
                     // Abort the transaction - rollback is automatic
                     throw new \Illuminate\Validation\ValidationException(
                         validator([], []),
                         response()->json([
-                            'message' => 'Teacher scheduling conflict detected',
+                            'message' => $conflicts[0]['message'] ?? 'Teacher scheduling conflict detected',
                             'conflicts' => $conflicts,
+                            'suggested_actions' => $conflicts[0]['suggested_actions'] ?? [],
                         ], 409)
                     );
                 }
@@ -1793,6 +1796,7 @@ class StudentClassController extends Controller
                     'branch_id' => $studentCampusId,
                     'slots' => $recurringSlots,
                     'exclude_student_class_id' => (int) $studentClass->getAttribute('ID'),
+                    'exclude_student_id' => (int) ($studentClass->getAttribute('StudentID') ?? 0) ?: null,
                     'start_date' => $this->normalizeDateString($candidate->getAttribute('StartDate')),
                     'end_date' => $candidate->getAttribute('ScheduleMode') === 'date'
                         ? $this->normalizeDateString($candidate->getAttribute('EndDate'))
@@ -1803,6 +1807,7 @@ class StudentClassController extends Controller
                         'message' => $recurringConflicts[0]['message'] ?? '新排課時段與老師既有課程衝突或已達人數上限',
                         'code' => 'teacher_schedule_conflict',
                         'conflicts' => $recurringConflicts,
+                        'suggested_actions' => $recurringConflicts[0]['suggested_actions'] ?? [],
                     ], 409);
                 }
             } elseif ($newTeacherId !== $oldTeacherSnapshot) {
@@ -1822,13 +1827,15 @@ class StudentClassController extends Controller
                     $newClassType,
                     $newRoomId,
                     $studentCampusId,
-                    (int) $studentClass->getAttribute('ID')
+                    (int) $studentClass->getAttribute('ID'),
+                    (int) ($studentClass->getAttribute('StudentID') ?? 0) ?: null
                 );
                 if (!empty($teacherConflicts)) {
                     return response()->json([
                         'message' => $teacherConflicts[0]['message'] ?? '更換的新老師在該時段已有其他課程或已達人數上限',
                         'code' => 'teacher_schedule_conflict',
                         'conflicts' => $teacherConflicts,
+                        'suggested_actions' => $teacherConflicts[0]['suggested_actions'] ?? [],
                     ], 409);
                 }
             }
@@ -4118,13 +4125,16 @@ class StudentClassController extends Controller
                 $previewSessions,
                 $newClassType,
                 $source->getAttribute('room_id') ? (int) $source->getAttribute('room_id') : null,
-                $studentCampusId
+                $studentCampusId,
+                (int) ($source->getAttribute('ID') ?? 0) ?: null,
+                (int) ($source->getAttribute('StudentID') ?? 0) ?: null
             );
             if (!empty($conflicts)) {
                 return response()->json([
-                    'message' => '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
+                    'message' => $conflicts[0]['message'] ?? '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
                     'code' => 'trial_conversion_schedule_conflict',
                     'conflicts' => $conflicts,
+                    'suggested_actions' => $conflicts[0]['suggested_actions'] ?? [],
                 ], 409);
             }
 
@@ -4672,6 +4682,7 @@ class StudentClassController extends Controller
             'start_time' => substr($startTime, 0, 5),
             'end_time' => substr($endTime, 0, 5),
             'exclude_course_id' => (int) $studentClass->getAttribute('ID'),
+            'exclude_student_id' => (int) ($studentClass->getAttribute('StudentID') ?? 0) ?: null,
         ]);
     }
 
@@ -8139,7 +8150,8 @@ class StudentClassController extends Controller
         string $newClassType = 'one_on_one',
         ?int $roomId = null,
         int $branchId = 0,
-        ?int $excludeCourseId = null
+        ?int $excludeCourseId = null,
+        ?int $excludeStudentId = null
     ): array
     {
         if ($teacherId <= 0 || $branchId <= 0 || empty($proposedSessions)) {
@@ -8165,6 +8177,9 @@ class StudentClassController extends Controller
                 'start_time' => $start,
                 'end_time' => $end,
                 'exclude_course_id' => $excludeCourseId,
+                // Same-student dual-contract / self occupancy must not block edit
+                // (in-app #311; matches substitute + enrollment exclude pattern).
+                'exclude_student_id' => $excludeStudentId,
             ]);
             if (empty($slotConflicts)) {
                 continue;

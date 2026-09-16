@@ -451,6 +451,137 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * in-app #311: editing a course’s recurring slots must not treat the same
+     * student’s own ClassSession/schedule rows (or a dual contract) as an
+     * external one-on-one occupant. Other students still block.
+     */
+    public function test_validate_recurring_course_excludes_same_student_occupancy(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-recurring-self@example.com');
+        $selfStudent = $this->createStudent(1, '王品方');
+        $otherStudent = $this->createStudent(1, '其他學生');
+
+        $selfCourseId = (int) StudentClass::query()->insertGetId([
+            'StudentID' => $selfStudent->id,
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one',
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-09-01',
+            'TotalHours' => 16,
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Charge' => 1600,
+            'Pay' => 1600,
+            'Paid' => 0,
+            'Rate' => 800,
+            'Stop' => 0,
+            'MDate' => now(),
+            'week' => 4,
+            'time' => '18:00',
+            'ScheduleMode' => 'count',
+        ]);
+
+        // Dual contract for the same student on the same recurring slot.
+        $dualCourseId = (int) StudentClass::query()->insertGetId([
+            'StudentID' => $selfStudent->id,
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one',
+            'GradeID' => 1,
+            'SubjectID' => 2,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-09-01',
+            'TotalHours' => 16,
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Charge' => 1600,
+            'Pay' => 1600,
+            'Paid' => 0,
+            'Rate' => 800,
+            'Stop' => 0,
+            'MDate' => now(),
+            'week' => 4,
+            'time' => '18:00',
+            'ScheduleMode' => 'count',
+        ]);
+
+        $date = '2026-09-17'; // Thursday
+        foreach ([$selfCourseId, $dualCourseId] as $courseId) {
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $courseId,
+                'SessionDate' => $date,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'scheduled',
+            ]);
+        }
+
+        $guard = app(\App\Services\ScheduleGuardService::class);
+        $slot = [['day_of_week' => 4, 'start_time' => '18:00', 'end_time' => '20:00']];
+
+        $selfOnly = $guard->validateRecurringCourse([
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_one',
+            'branch_id' => 1,
+            'slots' => $slot,
+            'exclude_student_class_id' => $selfCourseId,
+            'exclude_student_id' => (int) $selfStudent->id,
+            'start_date' => '2026-09-01',
+        ]);
+        $this->assertSame([], $selfOnly, 'Same-student dual-contract occupancy must not block course edit');
+
+        $otherCourseId = (int) StudentClass::query()->insertGetId([
+            'StudentID' => $otherStudent->id,
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_one',
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-09-01',
+            'TotalHours' => 16,
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Charge' => 1600,
+            'Pay' => 1600,
+            'Paid' => 0,
+            'Rate' => 800,
+            'Stop' => 0,
+            'MDate' => now(),
+            'week' => 4,
+            'time' => '18:00',
+            'ScheduleMode' => 'count',
+        ]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $otherCourseId,
+            'SessionDate' => $date,
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+        $withOther = $guard->validateRecurringCourse([
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_one',
+            'branch_id' => 1,
+            'slots' => $slot,
+            'exclude_student_class_id' => $selfCourseId,
+            'exclude_student_id' => (int) $selfStudent->id,
+            'start_date' => '2026-09-01',
+        ]);
+        $this->assertNotEmpty($withOther);
+        $this->assertSame('teacher_capacity', $withOther[0]['type'] ?? null);
+    }
+
+    /**
      * 調課寫 schedules 時，若請求仍帶合約 TeacherID（正班）但鏈結上已有「代課 scheduled」，
      * 伺服器改用代課老師檢 capacity — 避免因正班同日已滿而誤擋『代課老師為空』的跨日調課。
      */

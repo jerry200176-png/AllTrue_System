@@ -45,15 +45,33 @@ class ScheduleGuardService
         $excludeStudentClassId = isset($payload['exclude_student_class_id']) && $payload['exclude_student_class_id']
             ? (int) $payload['exclude_student_class_id']
             : null;
+        // Same-student dual-contract / self occupancy must not block course edit
+        // (in-app #311; mirrors validateScheduleOccurrence exclude_student_id).
+        $excludeStudentId = isset($payload['exclude_student_id']) && $payload['exclude_student_id']
+            ? (int) $payload['exclude_student_id']
+            : null;
         $startDate = isset($payload['start_date']) && $payload['start_date'] ? (string) $payload['start_date'] : null;
         $endDate = isset($payload['end_date']) && $payload['end_date'] ? (string) $payload['end_date'] : null;
 
-        $teacherCourses = $this->loadTeacherRecurringCourses($teacherId, $branchId, $excludeStudentClassId);
+        $teacherCourses = $this->loadTeacherRecurringCourses(
+            $teacherId,
+            $branchId,
+            $excludeStudentClassId,
+            $excludeStudentId
+        );
         $conflicts = [];
 
         foreach ($slots as $slot) {
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
-            $concreteOverlaps = $this->collectConcreteRecurringOverlaps($teacherId, $branchId, $slot, $excludeStudentClassId, $startDate, $endDate);
+            $concreteOverlaps = $this->collectConcreteRecurringOverlaps(
+                $teacherId,
+                $branchId,
+                $slot,
+                $excludeStudentClassId,
+                $startDate,
+                $endDate,
+                $excludeStudentId
+            );
             $overlaps = array_merge($recurringOverlaps, $concreteOverlaps);
 
             $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
@@ -226,8 +244,12 @@ class ScheduleGuardService
     /**
      * @return array<int, object>
      */
-    private function loadTeacherRecurringCourses(int $teacherId, int $branchId, ?int $excludeStudentClassId = null): array
-    {
+    private function loadTeacherRecurringCourses(
+        int $teacherId,
+        int $branchId,
+        ?int $excludeStudentClassId = null,
+        ?int $excludeStudentId = null
+    ): array {
         $query = DB::table('StudentClass as sc')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.TeacherID', $teacherId)
@@ -259,6 +281,9 @@ class ScheduleGuardService
 
         if ($excludeStudentClassId) {
             $query->where('sc.ID', '!=', $excludeStudentClassId);
+        }
+        if ($excludeStudentId) {
+            $query->where('sc.StudentID', '!=', $excludeStudentId);
         }
 
         return $query->get()->all();
@@ -318,7 +343,8 @@ class ScheduleGuardService
         array $slot,
         ?int $excludeStudentClassId = null,
         ?string $startDate = null,
-        ?string $endDate = null
+        ?string $endDate = null,
+        ?int $excludeStudentId = null
     ): array {
         $dow = (int) ($slot['day_of_week'] ?? 0);
         $slotStart = (string) ($slot['start_time'] ?? '');
@@ -389,6 +415,10 @@ class ScheduleGuardService
                 continue;
             }
 
+            if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
+                continue;
+            }
+
             $start = $this->normalizeTime($row->StartTime ?? null);
             $end = $this->normalizeTime($row->EndTime ?? null);
             if (!$start || !$end) {
@@ -441,6 +471,10 @@ class ScheduleGuardService
             $start = $this->normalizeTime($row->start_time ?? null);
             $end = $this->normalizeTime($row->end_time ?? null);
             if (!$start || !$end) {
+                continue;
+            }
+
+            if ($excludeStudentId && (int) ($row->student_id ?? 0) === $excludeStudentId) {
                 continue;
             }
 
