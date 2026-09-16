@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\TrueFit\TrueFitLessonPrepService;
+use App\Services\TrueFit\TrueFitObservationService;
 use App\Services\TrueFitService;
 use App\Services\TrueFitTodaySessionsReadService;
 use Illuminate\Http\Request;
@@ -87,6 +88,46 @@ class TrueFitController extends Controller
 
         try {
             $payload = app(TrueFitLessonPrepService::class)->generateForTeacher($request, $teacherId);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
+        }
+
+        return response()->json($payload, 201);
+    }
+
+    /**
+     * Read the teacher's structured Teacher Observation for a session.
+     */
+    public function showObservation(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+
+        try {
+            $payload = app(TrueFitObservationService::class)->getForTeacher($request, $teacherId);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
+        }
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Upsert a teacher-entered structured Teacher Observation for a session.
+     */
+    public function upsertObservation(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+
+        try {
+            $payload = app(TrueFitObservationService::class)->upsertForTeacher($request, $teacherId);
         } catch (ValidationException $e) {
             return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
         }
