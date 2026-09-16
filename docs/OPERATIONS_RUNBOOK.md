@@ -1163,32 +1163,33 @@ sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
 
 ## U. Staging Environment — Issue #868（權威：`docs/GUIDE_STAGING_ENVIRONMENT.md`）
 
-> 歷史 §U 曾寫 Issue #475 / 第二台 Pi + MySQL + nginx 草案。現行權威是 **#868** 與
-> `GUIDE_STAGING_ENVIRONMENT.md`：dedicated **Debian 12** host，stack 與 production
-> runtime 對齊（Apache 2.4 · PHP 8.2-FPM · MariaDB 10.11 · Node 22 · Composer 2）。
-> Repo 內文件／`scripts/infra/setup-staging-env.sh` **只是指令**，不證明 staging
-> host、secrets 或公開 URL 已存在。
+> 歷史 §U 曾寫 Issue #475 / 第二台 Pi + MySQL + nginx 草案。現行權威是 **#868**、
+> **PR #2967** 與 `GUIDE_STAGING_ENVIRONMENT.md`：Dell **Debian 12 amd64 minimal**
+> native production-parity（Apache 2.4 · PHP 8.2-FPM/`proxy_fcgi` · MariaDB 10.11 ·
+> Node 22 · Composer 2）。文件／腳本**只是指令**，不證明 host 已存在。PR #2968
+> 僅作 superseded／reference。
 
 ### U1. 為什麼
 
 目前 WSL2 dev → production Pi 直接 cut over，缺少 production-like 驗證層。
 歷史事故：D（.htaccess）、E（cache permission）若有 staging 都能提前發現。
+Dell 可能成為未來 Production Candidate，故採 native parity，不做 Ubuntu/container-only staging。
 
 ### U2. 目標設計（parity with production runtime）
 
 | 項目 | 目標 |
 |---|---|
-| Host | 獨立 Debian 12 機器（**不是** production Pi） |
-| Runtime | Apache 2.4 + PHP 8.2-FPM + MariaDB 10.11 + Node 22（build）+ Composer 2 |
-| DB | 獨立 `AllTrue_staging` + staging-only credentials（`atr_staging`） |
+| Host | Dell：Debian 12 amd64 minimal（**不是** production Pi） |
+| Runtime | Apache 2.4 + PHP 8.2-FPM (`proxy_fcgi`) + MariaDB 10.11 + Node 22（build）+ Composer 2 |
+| DB | 獨立 `AllTrue_staging` + staging-only `atr_staging`（credential 必須驗證後才可信） |
 | Checkout | `/home/staging/AllTrue_System` |
-| Secrets | GitHub Environment `staging` 的 `STAGING_*`（見 `docs/runbooks/GITHUB_ENVIRONMENTS_SETUP.md`） |
-| Deploy | **手動** SSH 部署；**不**新增第二條 production SSH path；**不**改 `deploy.yml` |
+| Deploy | **Stage B** 手動 exact-SHA；**不**改 `deploy.yml` |
+| GitHub `STAGING_*` | **Stage D 可選** — 不阻擋 A–C |
 | 資料 | 僅 staging 寫入測試／脫敏資料，不回 production |
 
-生命週期必須分開：**Provisioning → Deployment → Smoke → Promotion**（細節與指令見 guide）。
+生命週期：**A 佈建 → B exact-SHA 部署 → C smoke／TrueFit → D 可選 GitHub staging → E 可選 prod gate**。
 
-### U3. 流程定位（目標；Promotion 未啟用前僅建議）
+### U3. 流程定位（目標；Stage E 未啟用前僅建議）
 
 | 變更類型 | 建議走 staging？ |
 |---------|------------------|
@@ -1199,11 +1200,10 @@ sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
 
 ### U4. 目前卡點（Founder decisions）
 
-1. **Provision** dedicated Debian 12 host + 跑 `setup-staging-env.sh` + 填 staging `.env`
-2. **Create** GitHub Environment `staging` 與 `STAGING_*` secrets（不碰 production secrets）
-3. **Do not** add `staging-deploy.yml` / gate `deploy.yml` on staging until a formal
-   `[contract-change]` carves out non-production deploy under I1–I5
-4. Optional later：脫敏 prod→staging 資料同步、authenticated smoke、prod promotion gate
+1. **Stage A–C**：Provision Dell + 手動 exact-SHA deploy + smoke（不需 GitHub staging secrets）
+2. **Stage D（可選）**：GitHub Environment `staging` + operator-side keypair（private 不上 Dell）
+3. **Stage E（可選）**：I1 `[contract-change]` 後才可自動 staging／gate prod — **不**在佈建 PR 做
+4. 不做：production secrets、production DB、DNS cutover、Dell production migration
 
 ---
 

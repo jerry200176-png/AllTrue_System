@@ -19,6 +19,10 @@ and `scripts/infra/setup-staging-env.sh` (Debian 12 · Apache · PHP 8.2-FPM ·
 MariaDB 10.11). Those files are **not** evidence that the host or `STAGING_*`
 secrets already exist.
 
+**Lifecycle note:** this runbook is **Stage D (optional)**. Stages A–C
+(manual Dell bring-up, exact-SHA deploy, smoke) do **not** require GitHub
+Environment secrets. Do not block host provisioning on completing this file.
+
 ## Current repo-level secrets (as of 2026-08-15)
 
 ```
@@ -29,7 +33,7 @@ SMOKE_*                                                                — produ
 UPTIMEROBOT_API_KEY                                                   — monitoring, not deploy
 ```
 
-The `STAGING_*` secrets (`STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_DB_USERNAME`, `STAGING_DB_PASSWORD`) from #868's `scripts/infra/setup-staging-env.sh` don't exist yet until that setup runs — create them directly in the `staging` environment below rather than at repo level, so this doesn't need to be redone.
+The `STAGING_*` secrets (`STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_DB_USERNAME`, `STAGING_DB_PASSWORD`) are Stage D only. Generate the deploy **keypair on a trusted operator/CI machine**; put the private key in `STAGING_SSH_KEY` and install **only the public key** on the Dell (`~/.ssh` mode `0700`, `authorized_keys` mode `0600`). Never generate the private key on the staging host and copy it out.
 
 ## 1. Create the two environments
 
@@ -58,11 +62,12 @@ gh secret set SMOKE_BASE_URL         --env production --repo jerry200176-png/All
 
 (`gh secret set` without `--body` prompts you to paste the value interactively — it does not print existing values, so have them ready from wherever you originally stored them, e.g. your password manager, not from this repo.)
 
-## 3. Set the staging secrets directly in the `staging` environment
+## 3. Set the staging secrets directly in the `staging` environment (Stage D)
 
-After running #868's `scripts/infra/setup-staging-env.sh` on the new host:
+Only after Stages A–C are working manually, and only if automation is desired:
 
 ```bash
+# STAGING_SSH_KEY = private key from operator/CI machine (base64), never minted on Dell
 gh secret set STAGING_SSH_HOST     --env staging --repo jerry200176-png/AllTrue_System
 gh secret set STAGING_SSH_USER     --env staging --repo jerry200176-png/AllTrue_System
 gh secret set STAGING_SSH_KEY      --env staging --repo jerry200176-png/AllTrue_System

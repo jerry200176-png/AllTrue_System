@@ -280,7 +280,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/TECH_DEBT.md` | TD-NNN 技術債清單 |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
-| `docs/GUIDE_STAGING_ENVIRONMENT.md` | staging 環境（獨立 Debian 12 主機；Apache/PHP 8.2-FPM/MariaDB 10.11/Node 22；文件≠主機已存在；issue #868） |
+| `docs/GUIDE_STAGING_ENVIRONMENT.md` | Dell staging（Debian 12 amd64 parity；Stages A–E；文件≠主機已存在；canonical #2967 / issue #868） |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
 | `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（淺色底 + navy 墨字 + 品牌橘黃主色、金額 tabular、不用 gradient mesh）；所有前端 UI 照此生成 |

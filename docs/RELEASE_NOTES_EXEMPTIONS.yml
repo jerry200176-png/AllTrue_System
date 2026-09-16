@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-16-staging-cred-ssh
+    changelog_date: "2026-09-16"
+    changelog_title: "docs(ops): harden staging credential and SSH semantics"
+    reason: 僅強化 staging 佈建腳本 credential／SSH 語意與 Stage A–E 文件；不改教職員流程、產品語意或 production deploy。
+
   - id: silent-2026-09-16-staging-runtime-align
     changelog_date: "2026-09-16"
     changelog_title: "docs(ops): staging 文件對齊 production runtime"

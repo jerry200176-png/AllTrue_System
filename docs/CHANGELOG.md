@@ -1,3 +1,8 @@
+## 2026-09-16 — docs(ops): harden staging credential and SSH semantics
+<!-- release-notes: silent_ship=silent-2026-09-16-staging-cred-ssh -->
+- Staging 佈建腳本改為 fail-closed DB credential（先驗證再宣告）；SSH 改為 operator/CI 端產鑰、主機只放公鑰。
+- 生命週期改為 Stage A–E；GitHub staging secrets（Stage D）不阻擋 A–C；不改 `deploy.yml`。
+
 ## 2026-09-16 — docs(ops): staging 文件對齊 production runtime
 <!-- release-notes: silent_ship=silent-2026-09-16-staging-runtime-align -->
 - 將 staging 指引與 `setup-staging-env.sh` 從 nginx/MySQL 假設改為 Debian 12 · Apache · PHP 8.2-FPM · MariaDB 10.11 · Node 22 · Composer 2。

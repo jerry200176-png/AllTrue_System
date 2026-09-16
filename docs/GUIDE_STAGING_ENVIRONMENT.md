@@ -5,54 +5,66 @@
 | Layer | Current state |
 |---|---|
 | Repo docs + `scripts/infra/setup-staging-env.sh` | Instructions only — **do not treat as proof that a staging host exists** |
-| Dedicated staging host / `AllTrue_staging` DB / `STAGING_*` secrets | Owner-provisioned; may not exist yet |
-| Automatic staging deploy workflow | **Not present** (blocked on control-plane carve-out; see below) |
-| Prod deploy gated on staging | **Not done** — Founder decision required |
+| Dedicated Dell staging host / `AllTrue_staging` DB | Owner-provisioned; may not exist yet |
+| GitHub Environment `staging` / `STAGING_*` secrets | **Optional (Stage D)** — not required for Stages A–C |
+| Automatic staging deploy workflow | **Not present** (blocked on control-plane carve-out) |
+| Prod deploy gated on staging | **Not done** — Founder decision (Stage E) |
 
 This guide is repo documentation. Running or merging it does not create
-infrastructure, secrets, or a live staging URL.
+infrastructure, secrets, DNS, or a live staging URL. Canonical PR for this
+provisioning path: **#2967** (PR #2968 is superseded / reference only).
 
 ## What this is
 
-A second copy of the app on a **dedicated staging host** — so `main` gets
-tested against something before real users see it.
+A second copy of the app on a **dedicated staging host** so `main` can be
+exercised before real users see it.
+
+**Dell staging path (Founder direction):** native **production-parity** stack,
+not Ubuntu-for-staging and not container-only staging. The Dell may later
+become a Production Candidate, so match the current Pi production runtime.
 
 Deliberately **not** the production Pi: `CONTROL_PLANE_CONTRACT.md` I1 says
 only `deploy.yml` (or POP Executor) may execute changes on the production
-box. An earlier attempt at a second SSH-based deploy path on the same Pi was
-archived (`docs/archive/control-plane-shadow-v1/`) precisely because two
-execution paths onto one box caused confusion. Reopening that would need a
-formal `[contract-change]` PR against I1–I5. A separate host sidesteps the
-boundary entirely instead of reopening it.
+box. An earlier second SSH deploy path on the same Pi was archived
+(`docs/archive/control-plane-shadow-v1/`). A separate host sidesteps that
+boundary instead of reopening it.
 
-| | Production | Staging (target) |
+| | Production (Pi) | Staging (Dell target) |
 |---|---|---|
-| Host | Pi (`/home/admin`) | dedicated staging host (`/home/staging/AllTrue_System`) |
-| OS / runtime | Debian 12 · Apache 2.4 · PHP 8.2-FPM · MariaDB 10.11 · Node 22 (build) · Composer 2 | **same stack** (parity) |
-| SSH key | `PI_SSH_KEY` | `STAGING_SSH_KEY` (separate key, separate host) |
-| DB | `AllTrue` | `AllTrue_staging` (staging-only credentials) |
-| Deploy | `deploy.yml` on CI-green `main` | **manual** until a `[contract-change]` allows a non-prod workflow |
-| Auto-rollback | Yes | No — leave a broken staging up for inspection |
+| Host | Pi (`/home/admin`) | dedicated Dell (`/home/staging/AllTrue_System`) |
+| OS | Debian 12 | **Debian 12 amd64 minimal** |
+| Runtime | Apache 2.4 · PHP 8.2-FPM (`proxy_fcgi`) · MariaDB 10.11 · Node 22 (build) · Composer 2 | **same** |
+| SSH | `PI_SSH_KEY` (production only) | operator key for A–C; optional CI deploy pubkey later (Stage D) |
+| DB | `AllTrue` | `AllTrue_staging` + staging-only `atr_staging` |
+| Deploy | `deploy.yml` | **manual exact-SHA** until Stage E carve-out |
+| Auto-rollback | Yes | No — leave broken staging up for inspection |
 
-## Lifecycle (keep these distinct)
+**Out of scope for this guide’s bring-up:** `deploy.yml` edits, production
+secrets, production DB, DNS cutover, Dell→production migration.
 
-| Stage | Meaning | Who / how |
+## Lifecycle stages (keep separate)
+
+| Stage | Meaning | Required for usable staging? |
 |---|---|---|
-| **1. Provisioning** | OS packages, Apache vhost, MariaDB schema/user, empty checkout, staging `.env` | Human on the staging host — once |
-| **2. Deployment** | Checkout a known `main` SHA, `composer install`, migrate, frontend build | Human SSH for now (no auto workflow) |
-| **3. Smoke** | Unauthenticated health / deployment identity checks | Human curl; no production `SMOKE_*` credentials |
-| **4. Promotion** | Gate production deploy on staging health | **Not implemented** — Founder `[contract-change]` required |
+| **A — Host provisioning** | OS packages, Apache vhost, MariaDB DB/user, checkout dir, staging `.env` | Yes |
+| **B — Manual exact-SHA deployment** | `git reset --hard <sha>`, composer, migrate, frontend build | Yes |
+| **C — Staging smoke / TrueFit acceptance** | Health + identity (+ TrueFit checks when enabled) | Yes (acceptance) |
+| **D — Optional GitHub staging automation** | Environment `staging`, `STAGING_*` secrets, deploy pubkey only on host | **No** — do not block A–C |
+| **E — Optional future production gate** | Gate `deploy.yml` / promotion on staging | **No** — Founder `[contract-change]` |
 
-## 1. Provisioning (one-time, manual)
+`setup-staging-env.sh` implements **Stage A helpers only**.
 
-Target host: **Debian 12 (bookworm)** dedicated VPS or second machine — never
-the production Pi.
+---
 
-### 1a. Install runtime packages (match production)
+## Stage A — Host provisioning
 
-Debian 12 default repos already provide PHP 8.2, Apache 2.4, and MariaDB 10.11.
-Node 22 is build-only (frontend); install via NodeSource or nvm. Composer 2
-via the official installer if the distro package is missing or too old.
+Target: **Debian 12 (bookworm) amd64 minimal** on the Dell (or equivalent
+dedicated machine). Never the production Pi.
+
+### A1. Install runtime packages (match production)
+
+Debian 12 default repos provide PHP 8.2, Apache 2.4, and MariaDB 10.11.
+Node 22 is build-only; Composer 2 via official installer if needed.
 
 ```bash
 sudo apt-get update
@@ -64,11 +76,9 @@ sudo apt-get install -y \
   mariadb-server \
   unzip git curl
 
-# Composer 2 (if needed)
 curl -sS https://getcomposer.org/installer | php
 sudo mv composer.phar /usr/local/bin/composer
 
-# Node 22 (example: NodeSource; nvm is also fine)
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
@@ -77,106 +87,152 @@ sudo a2enconf php8.2-fpm
 sudo systemctl enable --now apache2 php8.2-fpm mariadb
 ```
 
-Verify before continuing:
+Verify:
 
 ```bash
 php -v          # 8.2.x
 apache2 -v      # 2.4.x
-mysql --version # MariaDB 10.11.x (client still named mysql)
+mysql --version # MariaDB 10.11.x
 node -v         # v22.x
 composer -V     # 2.x
 ```
 
 No production Pi secrets, `PI_*` keys, or production DB credentials are
-required for this step.
+required.
 
-### 1b. Run the provisioning script
+### A2. Run the provisioning script
 
 ```bash
-# On the staging host, from a throwaway clone or after first clone:
+# Optional: supply a password you will keep (recommended for reruns)
+STAGING_DB_PASSWORD='…' bash scripts/infra/setup-staging-env.sh <git-remote-url>
+
+# Or omit STAGING_DB_PASSWORD on first run — script generates one, verifies
+# login, then prints the verified password once.
 bash scripts/infra/setup-staging-env.sh <git-remote-url>
 ```
 
-The script:
+**First-run semantics** (`atr_staging` absent):
 
-- clones (or reuses) `/home/staging/AllTrue_System`
-- creates MariaDB database `AllTrue_staging` + least-privilege user `atr_staging`
-- writes an Apache vhost with DocumentRoot → `backend/public` and PHP 8.2-FPM
-- prints next steps for **staging-only** SSH key + GitHub `staging` environment secrets
+1. Create `AllTrue_staging`.
+2. Create `atr_staging`@`localhost` and @`127.0.0.1` with the chosen password
+   (env, or generated).
+3. Grant DB privileges; flush.
+4. **Verify** `mysql --protocol=TCP -h 127.0.0.1 -u atr_staging … AllTrue_staging`.
+5. Only after verification succeeds may a generated password be printed.
 
-It does **not** deploy application code beyond the clone tip, does **not**
-prove a public staging URL exists, and does **not** touch production.
+**Rerun semantics** (`atr_staging` already present):
 
-### 1c. Staging `.env` (hand-written)
+1. Require `STAGING_DB_PASSWORD` in the environment.
+2. Prove that password authenticates before doing anything else with it.
+3. If it does not authenticate → **fail closed** (no `CREATE USER IF NOT EXISTS`
+   with a fresh random password; no silent `ALTER USER`).
+4. Ensure database + grants; verify login again.
+5. Do not reprint a known env password.
 
-Copy `backend/.env.example` → `/home/staging/AllTrue_System/backend/.env` and set
-at least:
+The script also writes the Apache vhost (`proxy_fcgi` →
+`unix:/run/php/php8.2-fpm.sock`) and clones `/home/staging/AllTrue_System` if
+needed. It does **not** deploy an exact SHA, does **not** require GitHub
+secrets, and does **not** touch production.
 
-```
+### A3. Staging `.env` (hand-written)
+
+```text
 APP_ENV=staging
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_DATABASE=AllTrue_staging
 DB_USERNAME=atr_staging
-DB_PASSWORD=<value printed / retained from the script>
+DB_PASSWORD=<the password that just verified>
 ```
 
-Use staging-only credentials only. Never copy production `.env` or `PI_*`
-secrets onto this host.
+Never copy production `.env` or `PI_*` secrets onto this host.
 
-Secrets storage when ready: GitHub Environment `staging` (see
-`docs/runbooks/GITHUB_ENVIRONMENTS_SETUP.md`) — not repo-level production
-secrets.
+### A4. Operator SSH for Stages A–C (manual)
 
-## 2. Deployment (manual until contract carve-out)
+Use your normal operator SSH account/key to administer the Dell. **Do not**
+generate a deploy private key on the staging host.
 
-**The auto-deploy workflow is not included.** `scripts/control-plane-lint.mjs`
-(I1 enforcement) flags any tracked `.github/workflows/*.yml` that combines an
-SSH deploy step with `git fetch origin main` / `git reset --hard origin/main`
-as a shadow production-deploy path — it cannot tell "this targets a separate
-staging host" from static analysis, and that is by design (see
-`docs/archive/control-plane-shadow-v1/`). Until a formal `[contract-change]` PR
-amends I1–I5 to carve out a non-production exception, deploy to staging by
-hand:
+GitHub `STAGING_*` secrets are **not** required to finish Stages A–C.
+
+---
+
+## Stage B — Manual exact-SHA deployment
+
+Until a formal `[contract-change]` carves out a non-production workflow under
+I1–I5, deploy by hand to a **CI-green SHA** (prefer that over floating
+`origin/main`):
 
 ```bash
-ssh <staging-user>@<staging-host>
+ssh <staging-user>@<dell-staging-host>
 cd /home/staging/AllTrue_System
 git fetch origin
-git reset --hard origin/main   # or a specific CI-green SHA
+git reset --hard <CI-green-SHA>
 cd backend && composer install --no-interaction --prefer-dist
 php artisan migrate --force
 cd ../frontend && npm ci && npm run build
 sudo systemctl reload php8.2-fpm
 ```
 
-Do **not** change `.github/workflows/deploy.yml` for staging.
+Do **not** change `.github/workflows/deploy.yml`.
 
-## 3. Smoke (staging-only)
+`scripts/control-plane-lint.mjs` deliberately treats any extra workflow that
+SSH-deploys + `git reset --hard origin/main` as a shadow production path
+(see `docs/archive/control-plane-shadow-v1/`).
 
-After a manual deploy, check unauthenticated endpoints on the staging host
-(adjust host/URL):
+---
+
+## Stage C — Staging smoke / TrueFit acceptance
+
+Unauthenticated checks (adjust host/URL; no production `SMOKE_*`):
 
 ```bash
 curl -fsS http://127.0.0.1/api/v1/health
 curl -fsS http://127.0.0.1/deployment.json
 ```
 
-Do **not** reuse production `SMOKE_*` credentials or point production
-UptimeRobot at staging. Authenticated smoke remains out of scope until
-staging-only fixtures exist.
+When TrueFit flags are enabled on staging, add the acceptance checks from
+`docs/truefit/` (hash route / shell) on this host only. Do not point
+production UptimeRobot or production smoke credentials at staging.
 
-## 4. Promotion (Founder decision — not in this doc’s authority)
+---
+
+## Stage D — Optional GitHub staging environment automation
+
+**Not required** for A–C. When Founder wants CI-ready secrets later:
+
+1. Generate the ed25519 **keypair on a trusted operator or CI machine**.
+2. Private key stays there / becomes GitHub Environment `staging` secret
+   `STAGING_SSH_KEY` — **never** created on the Dell and copied outward.
+3. Install **only the public key** on the staging account:
+
+```bash
+install -d -m 700 ~/.ssh
+# append the single .pub line to ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/authorized_keys
+```
+
+4. Set other `STAGING_*` values in Environment `staging` per
+   `docs/runbooks/GITHUB_ENVIRONMENTS_SETUP.md`.
+
+There is still **no** tracked `staging-deploy.yml` until Stage E’s contract
+work lands.
+
+---
+
+## Stage E — Optional future production gate
 
 Wiring `deploy.yml` to require staging health, or adding
-`staging-deploy.yml`, would touch I1’s execution-authority boundary and needs
-its own `[contract-change]` review. Do that only after staging has been
-provisioned and manually exercised — not in the same change that aligns
-docs/scripts with runtime parity.
+`staging-deploy.yml`, needs its own `[contract-change]` against I1–I5.
+Do that only after A–C have been exercised on the Dell — not in the same
+change that stands staging docs/scripts up.
 
-## Deliberately out of scope (first pass)
+---
 
-- Prod deploy gated on staging passing
-- Authenticated smoke / Playwright against staging
-- Separate Sentry DSN (shared DSN is acceptable until noise forces a split)
-- Automatic `staging-deploy.yml` without a control-plane carve-out
+## Deliberately out of scope (this provisioning path)
+
+- Editing `deploy.yml` / production runtime / production DB
+- Production secrets, DNS cutover, Dell production migration
+- Requiring Stage D before A–C
+- Authenticated production smoke credentials on staging
+- Automatic staging deploy without a control-plane carve-out
