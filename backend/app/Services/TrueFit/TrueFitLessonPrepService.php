@@ -6,9 +6,9 @@ use App\Models\ClassSession;
 use App\Models\StudentClass;
 use App\Models\TrueFitLessonPrep;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
-use InvalidArgumentException;
 
 /**
  * Create/read TrueFit lesson preps with fixture Teacher Briefs.
@@ -38,8 +38,9 @@ final class TrueFitLessonPrepService
         $query = TrueFitLessonPrep::query()->where('teacher_user_id', $teacherId);
         $this->applySessionFilters($query, $request);
 
+        /** @var TrueFitLessonPrep|null $prep */
         $prep = $query->orderByDesc('id')->first();
-        if (!$prep) {
+        if (!$prep instanceof TrueFitLessonPrep) {
             return ['data' => null];
         }
 
@@ -66,6 +67,7 @@ final class TrueFitLessonPrepService
 
         $brief = $this->briefProvider->generate($material, $session['subject_name']);
 
+        /** @var TrueFitLessonPrep $prep */
         $prep = TrueFitLessonPrep::query()->updateOrCreate(
             [
                 'teacher_user_id' => $teacherId,
@@ -89,9 +91,9 @@ final class TrueFitLessonPrepService
     }
 
     /**
-     * @param \Illuminate\Database\Eloquent\Builder<\App\Models\TrueFitLessonPrep> $query
+     * @param Builder $query
      */
-    private function applySessionFilters($query, Request $request): void
+    private function applySessionFilters(Builder $query, Request $request): void
     {
         $classSessionId = (int) $request->input('class_session_id', 0);
         if ($classSessionId > 0) {
@@ -129,31 +131,27 @@ final class TrueFitLessonPrepService
     {
         $classSessionId = (int) $request->input('class_session_id', 0);
         if ($classSessionId > 0) {
+            /** @var ClassSession|null $row */
             $row = ClassSession::query()->with(['studentClass.subjectRecord', 'studentClass.room', 'studentClass.student'])
                 ->where('id', $classSessionId)
                 ->first();
-            if (!$row) {
+            if (!$row instanceof ClassSession) {
                 throw ValidationException::withMessages(['class_session_id' => ['Session not found']]);
             }
 
-            $course = $row->studentClass;
-            if (!$course || (int) ($course->TeacherID ?? 0) !== $teacherId) {
+            /** @var StudentClass|null $course */
+            $course = $row->getRelationValue('studentClass');
+            if (!$course instanceof StudentClass || (int) ($course->TeacherID ?? 0) !== $teacherId) {
                 throw ValidationException::withMessages(['class_session_id' => ['Forbidden']]);
             }
 
-            $campusId = $this->resolveCampusIdFromCourse($course);
-            $subjectName = (string) ($course->subjectRecord?->Name
-                ?? $course->subjectRecord?->name
-                ?? $request->input('subject_name', '')
-                ?? '');
-
             return [
-                'campus_id' => $campusId,
+                'campus_id' => $this->resolveCampusIdFromCourse($course),
                 'class_session_id' => (int) $row->id,
                 'student_class_id' => (int) $row->StudentClassID,
                 'session_date' => substr((string) $row->SessionDate, 0, 10),
                 'start_time' => substr((string) $row->StartTime, 0, 5),
-                'subject_name' => $subjectName,
+                'subject_name' => $this->subjectNameFromCourse($course, $request),
             ];
         }
 
@@ -166,40 +164,52 @@ final class TrueFitLessonPrepService
             ]);
         }
 
+        /** @var StudentClass|null $course */
         $course = StudentClass::query()->with(['subjectRecord', 'room', 'student'])->find($studentClassId);
-        if (!$course || (int) ($course->TeacherID ?? 0) !== $teacherId) {
+        if (!$course instanceof StudentClass || (int) ($course->TeacherID ?? 0) !== $teacherId) {
             throw ValidationException::withMessages(['student_class_id' => ['Forbidden']]);
         }
 
-        $campusId = $this->resolveCampusIdFromCourse($course);
-        $subjectName = (string) ($course->subjectRecord?->Name
-            ?? $course->subjectRecord?->name
-            ?? $request->input('subject_name', '')
-            ?? '');
-
         return [
-            'campus_id' => $campusId,
+            'campus_id' => $this->resolveCampusIdFromCourse($course),
             'class_session_id' => 0,
             'student_class_id' => $studentClassId,
             'session_date' => $sessionDate,
             'start_time' => $startTime,
-            'subject_name' => $subjectName,
+            'subject_name' => $this->subjectNameFromCourse($course, $request),
         ];
     }
 
-    private function resolveCampusIdFromCourse(?StudentClass $course): int
+    private function subjectNameFromCourse(StudentClass $course, Request $request): string
     {
-        if (!$course) {
-            throw new InvalidArgumentException('Missing course');
+        /** @var \Illuminate\Database\Eloquent\Model|null $subject */
+        $subject = $course->getRelationValue('subjectRecord');
+        if ($subject) {
+            $name = (string) ($subject->getAttribute('Name') ?? $subject->getAttribute('name') ?? '');
+            if ($name !== '') {
+                return $name;
+            }
         }
-        $fromRoom = (int) ($course->room?->campus_id ?? 0);
+
+        return (string) ($request->input('subject_name', '') ?? '');
+    }
+
+    private function resolveCampusIdFromCourse(StudentClass $course): int
+    {
+        /** @var \Illuminate\Database\Eloquent\Model|null $room */
+        $room = $course->getRelationValue('room');
+        $fromRoom = (int) ($room ? ($room->getAttribute('campus_id') ?? 0) : 0);
         if ($fromRoom > 0) {
             return $fromRoom;
         }
-        $fromStudent = (int) ($course->student?->CampusID ?? 0);
+
+        /** @var \Illuminate\Database\Eloquent\Model|null $student */
+        $student = $course->getRelationValue('student');
+        $fromStudent = (int) ($student ? ($student->getAttribute('CampusID') ?? 0) : 0);
         if ($fromStudent > 0) {
             return $fromStudent;
         }
+
         // Legacy StudentClass.by1 often stores campus id when room is unset.
         $fromBy1 = (int) ($course->by1 ?? 0);
         if ($fromBy1 > 0) {
@@ -235,7 +245,7 @@ final class TrueFitLessonPrepService
             'brief_provider' => (string) $prep->brief_provider,
             'brief_schema_version' => (int) $prep->brief_schema_version,
             'brief' => $prep->brief_json,
-            'generated_at' => optional($prep->generated_at)?->toIso8601String(),
+            'generated_at' => optional($prep->generated_at)->toIso8601String(),
         ];
     }
 }
