@@ -46,6 +46,12 @@
         :token="token"
         @back="goWorkspace"
       />
+      <TrueFitMasteryPage
+        v-else-if="route.view === 'mastery'"
+        :session="selectedSession"
+        :token="token"
+        @back="goWorkspace"
+      />
       <TrueFitWorkspacePage
         v-else
         :token="token"
@@ -54,6 +60,7 @@
         @observe="goObserve"
         @diagnose="goDiagnose"
         @remediate="goRemediate"
+        @mastery="goMastery"
       />
     </main>
   </div>
@@ -67,12 +74,14 @@ import TrueFitPrepPlaceholderPage from './TrueFitPrepPlaceholderPage.vue';
 import TrueFitObservationPage from './TrueFitObservationPage.vue';
 import TrueFitDiagnosisPage from './TrueFitDiagnosisPage.vue';
 import TrueFitRemediationPage from './TrueFitRemediationPage.vue';
+import TrueFitMasteryPage from './TrueFitMasteryPage.vue';
 import {
   parseTrueFitRoute,
   buildTrueFitPrepUrl,
   buildTrueFitObserveUrl,
   buildTrueFitDiagnoseUrl,
   buildTrueFitRemediateUrl,
+  buildTrueFitMasteryUrl,
   buildTrueFitWorkspaceUrl,
   buildAdminReturnUrl,
   seedSessionFromPrepRoute,
@@ -93,7 +102,7 @@ let hydrateRequestId = 0;
 const selectedSessionId = computed(() => route.value?.classSessionId || null);
 
 function sessionRouteKey(r) {
-  if (!r || !['prep','observe','diagnose','remediate'].includes(r.view)) return '';
+  if (!r || !['prep','observe','diagnose','remediate','mastery'].includes(r.view)) return '';
   const kind = r.view;
   if (r.classSessionId) return `${kind}:m:${r.classSessionId}`;
   return `${kind}:p:${r.studentClassId || 0}-${r.projectedStartHm || '0000'}-${r.sessionDate || ''}`;
@@ -112,7 +121,7 @@ function syncRouteFromHash() {
 
 function hydrateSessionFromRoute() {
   const r = route.value;
-  if (!r || !['prep','observe','diagnose','remediate'].includes(r.view)) return;
+  if (!r || !['prep','observe','diagnose','remediate','mastery'].includes(r.view)) return;
 
   if (!selectedSession.value) {
     selectedSession.value = seedSessionFromPrepRoute(r);
@@ -129,7 +138,7 @@ function hydrateSessionFromRoute() {
 async function enrichSelectedSessionFromToday() {
   const seed = selectedSession.value;
   const r = route.value;
-  if (!seed || !r || !['prep','observe','diagnose','remediate'].includes(r.view) || !token) return;
+  if (!seed || !r || !['prep','observe','diagnose','remediate','mastery'].includes(r.view) || !token) return;
 
   const requestId = ++hydrateRequestId;
   try {
@@ -175,6 +184,12 @@ function goDiagnose(session) {
 function goRemediate(session) {
   selectedSession.value = session;
   window.location.hash = buildTrueFitRemediateUrl(session);
+  syncRouteFromHash();
+}
+
+function goMastery(session) {
+  selectedSession.value = session;
+  window.location.hash = buildTrueFitMasteryUrl(session);
   syncRouteFromHash();
 }
 

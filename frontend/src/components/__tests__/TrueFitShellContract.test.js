@@ -7,6 +7,7 @@ import {
   buildTrueFitPrepUrl,
   buildTrueFitObserveUrl,
   buildTrueFitRemediateUrl,
+  buildTrueFitMasteryUrl,
   seedSessionFromPrepRoute,
   matchTodaySession,
 } from '../../lib/truefitRoute.js';
@@ -169,6 +170,29 @@ describe('TrueFit Slice 0 shell contract', () => {
     })).toBe('#/truefit/remediate/42?d=2026-09-16');
     expect(trueFitAppSource).toContain('TrueFitRemediationPage');
     expect(workspaceSource).toContain('補救計畫');
+  });
+
+  it('parses mastery deep links and wires mastery page', () => {
+    expect(parseTrueFitRoute({
+      hash: '#/truefit/mastery/42?d=2026-09-16',
+      search: '',
+      hostname: 'localhost',
+    })).toEqual({
+      view: 'mastery',
+      classSessionId: 42,
+      sessionDate: '2026-09-16',
+    });
+    expect(buildTrueFitMasteryUrl({
+      class_session_id: 42,
+      session_date: '2026-09-16',
+    })).toBe('#/truefit/mastery/42?d=2026-09-16');
+    expect(trueFitAppSource).toContain('TrueFitMasteryPage');
+    expect(trueFitAppSource).toContain('goMastery');
+    expect(workspaceSource).toContain('精熟檢核');
+    const masSource = readFileSync(resolve(__dirname, '../../pages/TrueFitMasteryPage.vue'), 'utf8');
+    expect(masSource).toContain('儲存精熟證據');
+    expect(masSource).toContain('retrieval_prompt');
+    expect(masSource).toContain('upsertTrueFitMastery');
   });
 
   it('parses diagnose deep links and wires diagnosis page', () => {

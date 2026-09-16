@@ -59,5 +59,5 @@ Remediation (accepted) → Delayed retrieval prompt → Mastery evidence
 |--------|---------|
 | **TF-S5-00** | Contract + PROGRAM_STATUS |
 | **TF-S5-01a** | Additive table + model + validator + unit tests |
-| **TF-S5-01b** | Service + routes + feature API tests (**this PR**) |
-| **TF-S5-02** | Teacher UI mastery check form |
+| **TF-S5-01b** | Service + routes + feature API tests |
+| **TF-S5-02** | Teacher UI mastery check form (**this PR**) |
