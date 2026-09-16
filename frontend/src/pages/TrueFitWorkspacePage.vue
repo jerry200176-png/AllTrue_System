@@ -2,7 +2,7 @@
   <div class="tf-workspace-page">
     <AtPageHeader
       title="今日課程"
-      description="依時間排序的今日堂次；點選「準備課程」進入備課占位頁。"
+      description="同一堂次依序：備課 → 觀察 → 診斷 → 補救 → 精熟；也可從清單直接進入任一步。"
       icon="today"
     >
       <template #actions>

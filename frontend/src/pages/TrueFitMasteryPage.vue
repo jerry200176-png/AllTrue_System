@@ -39,9 +39,22 @@
         <AtField label="證據備註（短述）">
           <input v-model="evidenceNotes" type="text" class="tf-mas-input" maxlength="240" />
         </AtField>
-        <AtButton variant="primary" shape="rect" icon="save" type="submit" :loading="saving" :disabled="saving">
-          儲存精熟證據
-        </AtButton>
+        <div class="tf-mas-actions">
+          <AtButton variant="primary" shape="rect" icon="save" type="submit" :loading="saving" :disabled="saving">
+            儲存精熟證據
+          </AtButton>
+          <AtButton
+            v-if="savedRecordId"
+            variant="ghost"
+            shape="rect"
+            icon="home"
+            type="button"
+            data-testid="truefit-loop-back-workspace"
+            @click="$emit('continue', session)"
+          >
+            返回今日課程
+          </AtButton>
+        </div>
       </form>
     </AtCard>
   </div>
@@ -56,14 +69,21 @@ import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtField from '../components/design-system/AtField.vue';
 import AtSelect from '../components/design-system/AtSelect.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import { fetchTrueFitMastery, upsertTrueFitMastery } from '../lib/truefitApi.js';
+import {
+  fetchTrueFitMastery,
+  fetchTrueFitRemediation,
+  upsertTrueFitMastery,
+} from '../lib/truefitApi.js';
+import { seedMasteryFromRemediation } from '../lib/truefitLoop.js';
 
 const props = defineProps({ session: { type: Object, default: null }, token: { type: String, required: true } });
-defineEmits(['back']);
+defineEmits(['back', 'continue']);
 
 const error = ref('');
 const savedHint = ref('');
 const saving = ref(false);
+const savedRecordId = ref(null);
+const sourceRemediationId = ref(null);
 const targetLabel = ref('');
 const retrievalPrompt = ref('');
 const responseSummary = ref('');
@@ -114,14 +134,35 @@ function applyEvidence(p) {
   nextReviewWindow.value = p.next_review_window || 'none';
   teacherDecision.value = p.teacher_decision || 'pending';
   evidenceNotes.value = p.evidence_notes || '';
+  if (p.source_remediation_id != null) {
+    sourceRemediationId.value = Number(p.source_remediation_id) || null;
+  }
+}
+
+function applySeedIfEmpty(seed) {
+  if (!seed) return;
+  if (!targetLabel.value) targetLabel.value = seed.target_misconception_label || '';
+  if (!retrievalPrompt.value) retrievalPrompt.value = seed.retrieval_prompt || '';
 }
 
 async function loadExisting() {
   if (!props.session) return;
   error.value = '';
   try {
-    const payload = await fetchTrueFitMastery({ token: props.token, ...sessionQuery() });
-    applyEvidence(payload?.data?.mastery || null);
+    const [masPayload, remPayload] = await Promise.all([
+      fetchTrueFitMastery({ token: props.token, ...sessionQuery() }),
+      fetchTrueFitRemediation({ token: props.token, ...sessionQuery() }).catch(() => null),
+    ]);
+    savedRecordId.value = masPayload?.data?.id || null;
+    if (masPayload?.data?.source_remediation_id != null) {
+      sourceRemediationId.value = Number(masPayload.data.source_remediation_id) || null;
+    } else if (remPayload?.data?.id) {
+      sourceRemediationId.value = Number(remPayload.data.id) || null;
+    }
+    applyEvidence(masPayload?.data?.mastery || null);
+    if (!savedRecordId.value) {
+      applySeedIfEmpty(seedMasteryFromRemediation(remPayload?.data?.remediation || null));
+    }
   } catch (e) {
     error.value = e?.message || '精熟證據載入失敗';
   }
@@ -148,9 +189,13 @@ async function saveEvidence() {
         evidence_notes: evidenceNotes.value || '',
         next_review_window: nextReviewWindow.value,
         teacher_decision: teacherDecision.value,
-        source_remediation_id: null,
+        source_remediation_id: sourceRemediationId.value,
       },
     });
+    savedRecordId.value = payload?.data?.id || null;
+    if (payload?.data?.source_remediation_id != null) {
+      sourceRemediationId.value = Number(payload.data.source_remediation_id) || null;
+    }
     applyEvidence(payload?.data?.mastery || null);
     savedHint.value = '精熟證據已儲存';
   } catch (e) {
@@ -161,7 +206,12 @@ async function saveEvidence() {
 }
 
 onMounted(loadExisting);
-watch(() => props.session, () => { savedHint.value = ''; loadExisting(); });
+watch(() => props.session, () => {
+  savedHint.value = '';
+  savedRecordId.value = null;
+  sourceRemediationId.value = null;
+  loadExisting();
+});
 </script>
 
 <style scoped>
@@ -170,5 +220,6 @@ watch(() => props.session, () => { savedHint.value = ''; loadExisting(); });
 .tf-mas-context { padding: var(--ds-space-3); border-radius: var(--ds-radius-md); background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); }
 .tf-mas-context__label { display: block; font-size: var(--ds-font-size-sm); color: var(--ds-text-tertiary); margin-bottom: var(--ds-space-1); }
 .tf-mas-form { display: grid; gap: var(--ds-space-3); }
+.tf-mas-actions { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); justify-content: flex-end; }
 .tf-mas-input { width: 100%; box-sizing: border-box; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-0); color: var(--ds-text-primary); padding: var(--ds-space-2) var(--ds-space-3); font: inherit; line-height: 1.45; }
 </style>

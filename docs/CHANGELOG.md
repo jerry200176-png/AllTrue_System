@@ -1,3 +1,8 @@
+## 2026-09-17 — feat(truefit): same-session continuum handoff + source_* auto-link
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-loop-continuum -->
+- TrueFit 同一堂次流程加上「下一步」銜接（備課→觀察→診斷→補救→精熟），並由後端在缺省時自動連結 `source_observation_id` / `source_diagnosis_id` / `source_remediation_id`。
+- 診斷／補救／精熟表單可從上一階段種子預填；不啟用 production flags、不改教務／帳務／排課權威。
+
 ## 2026-09-16 — fix(learning): 列表檢視也清楚區分填寫與審核
 <!-- release-notes: staff_update=staff-2026-09-16-learning-table-status-clarity -->
 - 主任評量列表（桌面預設）的填寫／審核標籤改與卡片檢視一致，不再只顯示含糊的「未填」「待審核」（#2715）。

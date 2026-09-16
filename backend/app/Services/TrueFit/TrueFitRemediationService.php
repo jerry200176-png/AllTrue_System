@@ -4,6 +4,7 @@ namespace App\Services\TrueFit;
 
 use App\Models\ClassSession;
 use App\Models\StudentClass;
+use App\Models\TrueFitDiagnosis;
 use App\Models\TrueFitRemediation;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -58,8 +59,8 @@ final class TrueFitRemediationService
 
         $payload['schema_version'] = TrueFitRemediationContract::SCHEMA_VERSION;
         $payload['session_ref'] = $this->sessionRefFromContext($session);
-        if (!array_key_exists('source_diagnosis_id', $payload)) {
-            $payload['source_diagnosis_id'] = null;
+        if (!array_key_exists('source_diagnosis_id', $payload) || $payload['source_diagnosis_id'] === null || $payload['source_diagnosis_id'] === '') {
+            $payload['source_diagnosis_id'] = $this->resolveSourceDiagnosisId($teacherId, $session);
         }
         if (!isset($payload['planned_at']) || trim((string) $payload['planned_at']) === '') {
             $payload['planned_at'] = Carbon::now(config('app.timezone', 'Asia/Taipei'))->toIso8601String();
@@ -245,6 +246,26 @@ final class TrueFitRemediationService
         if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
             throw ValidationException::withMessages(['campus_id' => ['Forbidden: campus not accessible']]);
         }
+    }
+
+    /**
+     * @param array{class_session_id:int,student_class_id:int,session_date:string,start_time:string} $session
+     */
+    private function resolveSourceDiagnosisId(int $teacherId, array $session): ?int
+    {
+        $query = TrueFitDiagnosis::query()->where('teacher_user_id', $teacherId);
+        if ($session['class_session_id'] > 0) {
+            $query->where('class_session_id', $session['class_session_id']);
+        } else {
+            $query->where('class_session_id', 0)
+                ->where('student_class_id', $session['student_class_id'])
+                ->whereDate('session_date', $session['session_date'])
+                ->where('start_time', $session['start_time']);
+        }
+
+        $id = $query->orderByDesc('id')->value('id');
+
+        return $id !== null ? (int) $id : null;
     }
 
     /**

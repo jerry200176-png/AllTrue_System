@@ -214,4 +214,28 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(diagSource).toContain('teacher_decision');
     expect(diagSource).toContain('upsertTrueFitDiagnosis');
   });
+
+  it('wires same-session continuum next CTAs and source_* linking', () => {
+    expect(trueFitAppSource).toContain('@continue="goObserve"');
+    expect(trueFitAppSource).toContain('@continue="goDiagnose"');
+    expect(trueFitAppSource).toContain('@continue="goRemediate"');
+    expect(trueFitAppSource).toContain('@continue="goMastery"');
+    expect(prepSource).toContain('進入課堂觀察');
+    expect(prepSource).toContain("emit('continue'");
+    const obsSource = readFileSync(resolve(__dirname, '../../pages/TrueFitObservationPage.vue'), 'utf8');
+    const diagSource = readFileSync(resolve(__dirname, '../../pages/TrueFitDiagnosisPage.vue'), 'utf8');
+    const remSource = readFileSync(resolve(__dirname, '../../pages/TrueFitRemediationPage.vue'), 'utf8');
+    const masSource = readFileSync(resolve(__dirname, '../../pages/TrueFitMasteryPage.vue'), 'utf8');
+    expect(obsSource).toContain('進入錯誤診斷');
+    expect(diagSource).toContain('進入補救計畫');
+    expect(diagSource).toContain('source_observation_id: sourceObservationId.value');
+    expect(diagSource).toContain('seedDiagnosisFromObservation');
+    expect(remSource).toContain('進入精熟檢核');
+    expect(remSource).toContain('source_diagnosis_id: sourceDiagnosisId.value');
+    expect(remSource).toContain('seedRemediationFromDiagnosis');
+    expect(masSource).toContain('返回今日課程');
+    expect(masSource).toContain('source_remediation_id: sourceRemediationId.value');
+    expect(masSource).toContain('seedMasteryFromRemediation');
+    expect(workspaceSource).toContain('備課 → 觀察 → 診斷 → 補救 → 精熟');
+  });
 });

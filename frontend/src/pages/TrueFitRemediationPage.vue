@@ -39,9 +39,22 @@
         <AtField label="教師備註（短述）">
           <input v-model="teacherNotes" type="text" class="tf-rem-input" maxlength="240" />
         </AtField>
-        <AtButton variant="primary" shape="rect" icon="save" type="submit" :loading="saving" :disabled="saving">
-          儲存補救計畫
-        </AtButton>
+        <div class="tf-rem-actions">
+          <AtButton variant="primary" shape="rect" icon="save" type="submit" :loading="saving" :disabled="saving">
+            儲存補救計畫
+          </AtButton>
+          <AtButton
+            v-if="savedRecordId"
+            variant="ghost"
+            shape="rect"
+            icon="verified"
+            type="button"
+            data-testid="truefit-next-mastery"
+            @click="$emit('continue', session)"
+          >
+            進入精熟檢核
+          </AtButton>
+        </div>
       </form>
     </AtCard>
   </div>
@@ -56,14 +69,21 @@ import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtField from '../components/design-system/AtField.vue';
 import AtSelect from '../components/design-system/AtSelect.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
-import { fetchTrueFitRemediation, upsertTrueFitRemediation } from '../lib/truefitApi.js';
+import {
+  fetchTrueFitDiagnosis,
+  fetchTrueFitRemediation,
+  upsertTrueFitRemediation,
+} from '../lib/truefitApi.js';
+import { seedRemediationFromDiagnosis } from '../lib/truefitLoop.js';
 
 const props = defineProps({ session: { type: Object, default: null }, token: { type: String, required: true } });
-defineEmits(['back']);
+defineEmits(['back', 'continue']);
 
 const error = ref('');
 const savedHint = ref('');
 const saving = ref(false);
+const savedRecordId = ref(null);
+const sourceDiagnosisId = ref(null);
 const targetLabel = ref('');
 const practiceText = ref('');
 const anchorsText = ref('');
@@ -106,13 +126,35 @@ function applyPlan(p) {
   followUpWindow.value = p.follow_up_window || 'next_session';
   teacherDecision.value = p.teacher_decision || 'pending';
   teacherNotes.value = p.teacher_notes || '';
+  if (p.source_diagnosis_id != null) {
+    sourceDiagnosisId.value = Number(p.source_diagnosis_id) || null;
+  }
+}
+function applySeedIfEmpty(seed) {
+  if (!seed) return;
+  if (!targetLabel.value) targetLabel.value = seed.target_misconception_label || '';
+  if (!practiceText.value && seed.practice_moves?.length) practiceText.value = seed.practice_moves.join('\n');
+  if (!anchorsText.value && seed.material_anchors?.length) anchorsText.value = seed.material_anchors.join('\n');
+  if (!criteriaText.value && seed.success_criteria?.length) criteriaText.value = seed.success_criteria.join('\n');
 }
 async function loadExisting() {
   if (!props.session) return;
   error.value = '';
   try {
-    const payload = await fetchTrueFitRemediation({ token: props.token, ...sessionQuery() });
-    applyPlan(payload?.data?.remediation || null);
+    const [remPayload, diagPayload] = await Promise.all([
+      fetchTrueFitRemediation({ token: props.token, ...sessionQuery() }),
+      fetchTrueFitDiagnosis({ token: props.token, ...sessionQuery() }).catch(() => null),
+    ]);
+    savedRecordId.value = remPayload?.data?.id || null;
+    if (remPayload?.data?.source_diagnosis_id != null) {
+      sourceDiagnosisId.value = Number(remPayload.data.source_diagnosis_id) || null;
+    } else if (diagPayload?.data?.id) {
+      sourceDiagnosisId.value = Number(diagPayload.data.id) || null;
+    }
+    applyPlan(remPayload?.data?.remediation || null);
+    if (!savedRecordId.value) {
+      applySeedIfEmpty(seedRemediationFromDiagnosis(diagPayload?.data?.diagnosis || null));
+    }
   } catch (e) {
     error.value = e?.message || '補救計畫載入失敗';
   }
@@ -141,9 +183,13 @@ async function savePlan() {
         follow_up_window: followUpWindow.value,
         teacher_decision: teacherDecision.value,
         teacher_notes: teacherNotes.value || '',
-        source_diagnosis_id: null,
+        source_diagnosis_id: sourceDiagnosisId.value,
       },
     });
+    savedRecordId.value = payload?.data?.id || null;
+    if (payload?.data?.source_diagnosis_id != null) {
+      sourceDiagnosisId.value = Number(payload.data.source_diagnosis_id) || null;
+    }
     applyPlan(payload?.data?.remediation || null);
     savedHint.value = '補救計畫已儲存';
   } catch (e) {
@@ -153,7 +199,12 @@ async function savePlan() {
   }
 }
 onMounted(loadExisting);
-watch(() => props.session, () => { savedHint.value = ''; loadExisting(); });
+watch(() => props.session, () => {
+  savedHint.value = '';
+  savedRecordId.value = null;
+  sourceDiagnosisId.value = null;
+  loadExisting();
+});
 </script>
 
 <style scoped>
@@ -162,5 +213,6 @@ watch(() => props.session, () => { savedHint.value = ''; loadExisting(); });
 .tf-rem-context { padding: var(--ds-space-3); border-radius: var(--ds-radius-md); background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); }
 .tf-rem-context__label { display: block; font-size: var(--ds-font-size-sm); color: var(--ds-text-tertiary); margin-bottom: var(--ds-space-1); }
 .tf-rem-form { display: grid; gap: var(--ds-space-3); }
+.tf-rem-actions { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); justify-content: flex-end; }
 .tf-rem-input { width: 100%; box-sizing: border-box; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-md); background: var(--ds-surface-0); color: var(--ds-text-primary); padding: var(--ds-space-2) var(--ds-space-3); font: inherit; line-height: 1.45; }
 </style>
