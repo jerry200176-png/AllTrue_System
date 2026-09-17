@@ -24,6 +24,11 @@
 - TrueFit 暗啟動 UI：今日課程清單以既有 GET 扇出顯示同堂次備課／觀察／診斷／補救／精熟已存與否；continuum CTA／seed 在空表、半殘、已存邊緣失敗關閉。
 - 僅前端 Option A；`TRUEFIT_V1` / `VITE_TRUEFIT_V1` 維持 OFF，不做 aggregate API、不改教務／帳務／排課權威。
 
+## 2026-09-17 — docs(truefit): S6-00 acceptance evidence + TF-S6-01 Plan
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00-evidence-s601-plan -->
+- 新增 TF-S6-00 合併後驗證證據包與 TF-S6-01 workspace-progress Plan（僅文件）；更新 PROGRAM_STATUS。
+- 不啟用 flags、不改 runtime；S6-01 實作須等 Plan Review。
+
 ## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
 - TrueFit 暗啟動 UI：同堂次備課 → 觀察 → 診斷 → 補救 → 精熟的下一步 CTA，以及從前一階段 payload 種子空白表單。
