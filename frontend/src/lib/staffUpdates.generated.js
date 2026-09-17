@@ -43,6 +43,46 @@ export const staffUpdates = [
     "version": "2026.09.17"
   },
   {
+    "id": "staff-2026-09-17-course-session-calendar-v1",
+    "publishedAt": "2026-09-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程管理可開行事曆看堂次與新增未來堂",
+    "summary": "單課可開啟行事曆檢視已排／預排堂次，並在未來日期新增一堂；不含取消、改時間或改老師。",
+    "items": [
+      "課程管理單課可切換行事曆檢視（已建立＋預排堂次）。",
+      "可在未來日期新增一堂，沿用既有新增堂次流程。",
+      "本版不含取消堂次、改時間／改老師或週期改寫。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "課程管理單課可切換行事曆檢視（已建立＋預排堂次）。",
+          "可在未來日期新增一堂，沿用既有新增堂次流程。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "本版不含取消堂次、改時間／改老師或週期改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#2800",
+      "github:in-app-290"
+    ],
+    "date": "2026-09-17",
+    "version": "2026.09.17"
+  },
+  {
     "id": "staff-2026-09-17-school-typeahead",
     "publishedAt": "2026-09-17",
     "effectiveAt": null,
