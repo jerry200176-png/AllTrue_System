@@ -25,9 +25,9 @@
     "frontend/src/**/*CourseSessionCalendar*",
     "frontend/src/**/*courseSessionCalendar*",
     "frontend/src/**/*.test.js",
-    "backend/tests/Feature/**/*School*",
     "backend/tests/Feature/**/*Session*",
     "backend/tests/Feature/**/*ManualSession*",
+    "backend/tests/Feature/**/*AddSession*",
     "docs/CHANGELOG.md",
     "docs/proposals/PRODUCT_LOOP_DOGFOOD_001_*",
     "docs/INDEX.md",
@@ -87,7 +87,5 @@
   ],
   "rollback": "Feature flag off and/or remove Course Management entry point; no schema to revert for this unit",
   "implementation_status": "NOT_STARTED",
-  "created_at": "2026-09-17T10:45:00Z",
-  "scope_fingerprint": "4d38d973b6ad341f",
-  "contract_fingerprint": "ca10f358ee2376390765db702aeff40f"
+  "created_at": "2026-09-17T10:45:00Z"
 }
