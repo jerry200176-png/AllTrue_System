@@ -5,7 +5,7 @@
 > **Single runtime spec:** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (I1–I5) — supreme on conflict  
 > **Decision (I3):** INCIDENT stack via [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md)  
 > **Execution (I1):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only  
-> **Audit / conflicts:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md)
+> **Audit / conflicts:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md) · [`audits/alltrue-nine-domain-engineering-audit-2026-09-17.md`](audits/alltrue-nine-domain-engineering-audit-2026-09-17.md)
 
 > **Source of truth:** committed files on `origin/main` only.
 

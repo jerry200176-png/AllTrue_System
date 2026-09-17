@@ -1,3 +1,8 @@
+## 2026-09-17 — docs(audit): persist nine-domain engineering audit
+<!-- release-notes: silent_ship=silent-2026-09-17-nine-domain-engineering-audit -->
+- Add read-only nine-domain engineering audit artifact under `docs/audits/` for GitHub-side independent review.
+- Docs-only; no runtime, staff workflow, billing, or schedule changes.
+
 ## 2026-09-17 — feat(students): grade promotion Phase-B.1 scheduled preview (#297)
 <!-- release-notes: silent_ship=silent-2026-09-17-grade-promotion-phase-b1 -->
 - 行政日排程僅執行年級升級「預覽」並以站內通知提醒主任／管理員；預設關閉自動確認、分校 allowlist 空白即 fail-closed（初始 rollout 需設定 campus 9）。
