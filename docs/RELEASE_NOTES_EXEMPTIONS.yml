@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-17-nine-domain-engineering-audit
+    changelog_date: "2026-09-17"
+    changelog_title: "docs(audit): persist nine-domain engineering audit"
+    reason: 僅新增工程審計文件供 GitHub 獨立審查；不改 runtime、教職員流程、帳務或排課。
+
   - id: silent-2026-09-17-grade-promotion-phase-b1
     changelog_date: "2026-09-17"
     changelog_title: "feat(students): grade promotion Phase-B.1 scheduled preview (#297)"
