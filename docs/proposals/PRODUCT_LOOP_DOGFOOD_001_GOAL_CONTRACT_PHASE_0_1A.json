@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "goal_id": "PRODUCT_LOOP_DOGFOOD_001_PHASE_0_1A",
+  "program_id": "product-loop-dogfood-001",
+  "task_id": "inapp-290-phase-0-1a",
+  "outcome": "Course Management hosted calendar-shaped read model (Phase 0) plus future CREATE-only via existing add-session/manual-sessions writers (Phase 1a) for SourceRef alltrue:bug_report:290 / GH #2800; feature-flagged; no cancel; no second SoT.",
+  "subject_sha": "6b70ca51f2110f3a7020bbf852e742727d8f50cf",
+  "authority_refs": {
+    "proposal_sha": "6b70ca51f2110f3a7020bbf852e742727d8f50cf",
+    "cubelv_challenge_review_sha": "5d7d05c05114950a0eebe85e3c0098a33be12274",
+    "founder_plan_decision_path": "docs/proposals/PRODUCT_LOOP_DOGFOOD_001_FOUNDER_PLAN_DECISION.md",
+    "reconciled_proposal_path": "docs/proposals/PRODUCT_LOOP_DOGFOOD_001_INAPP_290_CALENDAR_COURSE_SESSION_EDITING.md",
+    "github_issue": 2800,
+    "source_ref": "alltrue:bug_report:290"
+  },
+  "declared_risk": "R2",
+  "declared_tier": "T2",
+  "authority": "scripts/governance/autonomy_gate.py",
+  "scope": [
+    "frontend/src/pages/CourseManagement.vue",
+    "frontend/src/components/course-management/**",
+    "frontend/src/composables/course-management/**",
+    "frontend/src/lib/classSessionsApi.js",
+    "frontend/src/lib/perfFlags.js",
+    "frontend/src/**/*CourseSessionCalendar*",
+    "frontend/src/**/*courseSessionCalendar*",
+    "frontend/src/**/*.test.js",
+    "backend/tests/Feature/**/*School*",
+    "backend/tests/Feature/**/*Session*",
+    "backend/tests/Feature/**/*ManualSession*",
+    "docs/CHANGELOG.md",
+    "docs/proposals/PRODUCT_LOOP_DOGFOOD_001_*",
+    "docs/INDEX.md",
+    "docs/programs/PRODUCT_LOOP_DOGFOOD_001_STATUS.md"
+  ],
+  "non_scope": [
+    "Phase 1b future CANCEL from calendar surface",
+    "PATCH ClassSession status=cancelled from new calendar client",
+    "tryExtendOnLeave / CourseLeaveCascadeService::appendTailAfterLeave behavior changes",
+    "Phase 2 time edit",
+    "Phase 2 teacher edit / substitute from this surface",
+    "Phase 3 this-and-future / recurrence rewrite",
+    "new write API parallel to add-session / manual-sessions",
+    "new schema / RRULE / occurrence identity model",
+    "SmartCalendar as permanent plan-editor host",
+    "StudentClass.Charge / Paid / Invoice mutation",
+    "syncSessionChargeForTimeChange invocation from this client",
+    "identity / auth / permission model changes",
+    "billing / settlement semantics changes",
+    "migrations",
+    "production activation / flag ON in production without separate GO",
+    "Restate / Control Plane / Founder Console / second scheduler",
+    "unrelated issue cleanup (#2808 #2905 #2906 #2908 #2179)"
+  ],
+  "existing_writers": [
+    "POST /api/v1/student-classes/{id}/add-session",
+    "POST /api/v1/student-classes/{id}/add-session/check",
+    "POST /api/v1/student-classes/{id}/manual-sessions",
+    "POST /api/v1/student-classes/{id}/manual-sessions/check",
+    "App\\Services\\ClassSessionMaterializationService (unchanged authority)"
+  ],
+  "required_tests": [
+    "Phase 0: read projection of materialized + projected occurrences for one StudentClass (Vitest and/or Feature)",
+    "Phase 1a: create success via existing add-session or manual-sessions path only",
+    "Phase 1a: create refusal/conflict cases (capacity, entitlement, duplicate slot) surface existing errors — no new writer",
+    "Regression: Phase 0 / Phase 1a flows do not mutate StudentClass.Charge, Paid, or Invoice",
+    "Regression: calendar client never sends start_time/end_time on create payloads beyond what existing add-session/manual-sessions contracts already require for slot identity",
+    "Feature flag off restores prior Course Management entry (no calendar plan surface)"
+  ],
+  "acceptance_criteria": [
+    "Course Management is the only host entry for the new calendar-shaped plan surface",
+    "No new backend write route for calendar create",
+    "No cancel control wired in this unit",
+    "No second source of truth (StudentClass / ClassSession / schedules unchanged in authority)",
+    "Feature flag defaults off; rollback = flag off or entry-point removal",
+    "CHANGELOG notes user-visible capability only when impl merges — not this decision docs PR"
+  ],
+  "stop_conditions": [
+    "any attempt to implement Phase 1b cancel without separate Plan GO",
+    "any new parallel write API",
+    "any Charge/Paid/Invoice mutation in Phase 0/1a path",
+    "any schema/RRULE/occurrence-authority change",
+    "SmartCalendar promoted to plan-editor host without Founder re-decision on #1922",
+    "production_mutation_requested without activation GO",
+    "founder_required_from_autonomy_gate",
+    "ambiguous_product_semantics on create entitlement"
+  ],
+  "rollback": "Feature flag off and/or remove Course Management entry point; no schema to revert for this unit",
+  "implementation_status": "NOT_STARTED",
+  "created_at": "2026-09-17T10:45:00Z",
+  "scope_fingerprint": "4d38d973b6ad341f",
+  "contract_fingerprint": "ca10f358ee2376390765db702aeff40f"
+}
