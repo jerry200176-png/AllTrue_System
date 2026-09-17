@@ -263,3 +263,27 @@ Stop and re-ask if:
 1. H4.0 minimal = CAS+revalidate+LEASED only, with agent-start launcher deferred? (Plan default: **yes**)  
 2. Persist dispatch-attempt table in H4.0 or rely on lease+task state? (Plan default: **explicit attempt if fits size**)  
 3. Default `reclaim_stale` before acquire on apply? (Plan default: **yes**)
+
+---
+
+# H4 Dispatch — Founder amendments binding on implementation
+
+**Status:** APPROVED WITH AMENDMENTS — implementation authorized on impl branch  
+**Docs PR:** #3018 MERGED (full plan above)  
+**Impl PR:** #3022
+
+## Amendments (vs plan review notes)
+
+| ID | Amendment | Impl |
+|----|-----------|------|
+| A1 | Execution-critical revalidation; **not** clock/snapshot equality | `execution_critical_fingerprint` / `revalidate_plan` |
+| A2 | Structured multi-resource `LeaseBinding` | `LeaseBinding` / `LeaseResourceBinding` |
+| A3 | Lease heartbeat / renew while mutation authority active | `heartbeat()` |
+| A4 | Durable `DispatchAttempt` **before** spawn | `insert_dispatch_attempt_open` then acquire then spawn hook |
+| A5 | Stale-worker fencing on handoff/result ingestion | `ingest_handoff` |
+| A6 | Fail-closed partial rollback | `_rollback_leases` |
+| A7 | Release execution leases at PR_READY / structured handoff | `release_on_pr_ready` |
+| A8 | Concurrent dispatch exactly-one-winner test | `test_concurrent_dispatch_exactly_one_winner` |
+
+H4.0 still defers product worktree launcher; spawn hook defaults to deferred record.
+

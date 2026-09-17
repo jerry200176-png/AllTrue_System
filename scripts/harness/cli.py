@@ -1,4 +1,4 @@
-"""CLI: sync / status / resume / founder-inbox / graph / plan (H0–H3)."""
+"""CLI: sync / status / resume / founder-inbox / graph / plan / dispatch (H0–H4)."""
 
 from __future__ import annotations
 
@@ -7,13 +7,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .dispatch import dispatch, heartbeat, ingest_handoff, release_on_pr_ready
 from .graph import build_graph
 from .leases import reclaim_stale
 from .planner import select_across_programs, select_next_task
 from .programs_loader import sync_programs_to_store
 from .reconcile import resume_from_checkpoint
 from .states import ACTIVE_MUTATING
-from .store import HarnessStore, default_db_path
+from .store import HarnessStore
 
 
 def _store(args: argparse.Namespace) -> HarnessStore:
@@ -102,7 +103,7 @@ def cmd_graph(args: argparse.Namespace) -> int:
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
-    """H3 read-only planner. --sync may reload YAML; never mutates leases (A4)."""
+    """H3 read-only planner. --sync may reload YAML; never mutates leases."""
     store = _store(args)
     if args.sync:
         sync_programs_to_store(store)
@@ -119,6 +120,43 @@ def cmd_plan(args: argparse.Namespace) -> int:
     payload["db"] = str(store.db_path)
     print(json.dumps(payload, indent=2))
     return 0
+
+
+def cmd_dispatch(args: argparse.Namespace) -> int:
+    """H4 dispatch — dry-run by default; --apply mutates leases + DispatchAttempt."""
+    store = _store(args)
+    if args.plan_json:
+        plan = json.loads(Path(args.plan_json).read_text(encoding="utf-8"))
+    elif args.program:
+        plan = select_next_task(
+            store, program_id=args.program, main_sha=args.main_sha or None,
+        ).to_dict()
+    else:
+        plan = select_across_programs(
+            store, main_sha=args.main_sha or None,
+        ).to_dict()
+    if args.heartbeat:
+        result = heartbeat(store, args.heartbeat, worker=args.worker)
+    elif args.release:
+        handoff = None
+        if args.handoff_json:
+            handoff = json.loads(Path(args.handoff_json).read_text(encoding="utf-8"))
+        result = release_on_pr_ready(store, args.release, handoff=handoff)
+    elif args.ingest:
+        claim = json.loads(Path(args.ingest).read_text(encoding="utf-8"))
+        result = ingest_handoff(
+            store, claim["attempt_id"],
+            claimed_bindings=claim.get("lease_binding") or claim.get("claimed_bindings") or {},
+            result=claim.get("result"),
+        )
+    else:
+        result = dispatch(
+            store, plan, worker=args.worker, apply=bool(args.apply),
+            main_sha=args.main_sha or None,
+            reclaim_expired=not args.skip_reclaim,
+        )
+    print(json.dumps(result.to_dict(), indent=2))
+    return 0 if result.ok else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -140,13 +178,25 @@ def build_parser() -> argparse.ArgumentParser:
     resume.set_defaults(func=cmd_resume)
     graph = sub.add_parser("graph")
     graph.set_defaults(func=cmd_graph)
-    plan = sub.add_parser("plan", help="H3 read-only PlanResult (no lease mutate, no H4)")
+    plan = sub.add_parser("plan", help="H3 read-only PlanResult (no lease mutate)")
     plan.add_argument("--program", default=None)
-    plan.add_argument("--sync", action="store_true", help="reload programs YAML; enables stale-goal skip")
+    plan.add_argument("--sync", action="store_true")
     plan.add_argument("--reconcile-stale", action="store_true")
     plan.add_argument("--main-sha", default=None)
     plan.add_argument("--skip-governance", action="store_true")
     plan.set_defaults(func=cmd_plan)
+    disp = sub.add_parser("dispatch", help="H4 revalidate+CAS dispatch (dry-run default)")
+    disp.add_argument("--program", default=None)
+    disp.add_argument("--plan-json", default=None, help="PlanResult JSON path")
+    disp.add_argument("--worker", default="harness-worker")
+    disp.add_argument("--apply", action="store_true")
+    disp.add_argument("--main-sha", default=None)
+    disp.add_argument("--skip-reclaim", action="store_true")
+    disp.add_argument("--heartbeat", default=None, help="attempt_id to renew leases")
+    disp.add_argument("--release", default=None, help="attempt_id for PR_READY lease release")
+    disp.add_argument("--handoff-json", default=None)
+    disp.add_argument("--ingest", default=None, help="handoff claim JSON path")
+    disp.set_defaults(func=cmd_dispatch)
     return p
 
 

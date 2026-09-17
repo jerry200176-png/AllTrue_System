@@ -13,7 +13,7 @@ from .models import Escalation, Program, Task
 from .states import TaskState
 
 DEFAULT_DB = Path("/home/jerry/workspace/state/alltrue/harness.sqlite")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def default_db_path() -> Path:
@@ -111,6 +111,28 @@ class HarnessStore:
               created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_checkpoints_task ON checkpoints(task_id);
+            CREATE TABLE IF NOT EXISTS dispatch_attempts (
+              attempt_id TEXT PRIMARY KEY,
+              plan_id TEXT NOT NULL,
+              task_id TEXT NOT NULL,
+              goal_id TEXT NOT NULL,
+              goal_contract_fingerprint TEXT NOT NULL,
+              status TEXT NOT NULL,
+              worker TEXT NOT NULL,
+              payload TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_dispatch_plan ON dispatch_attempts(plan_id);
+            CREATE INDEX IF NOT EXISTS idx_dispatch_task ON dispatch_attempts(task_id);
+            """
+        )
+        # At most one open mutation attempt per task (H4 duplicate-launch guard).
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_open_task
+              ON dispatch_attempts(task_id)
+              WHERE status IN ('pending','acquired','active')
             """
         )
         cur.execute(
@@ -539,3 +561,96 @@ class HarnessStore:
             "SELECT payload FROM checkpoints WHERE checkpoint_id = ?", (checkpoint_id,)
         ).fetchone()
         return Checkpoint.from_dict(json.loads(row["payload"])) if row else None
+
+    def put_dispatch_attempt(self, attempt: dict[str, Any]) -> None:
+        """Insert or update a dispatch attempt. Open-task uniqueness enforced by index."""
+        self._conn.execute(
+            """
+            INSERT INTO dispatch_attempts(
+              attempt_id, plan_id, task_id, goal_id, goal_contract_fingerprint,
+              status, worker, payload, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(attempt_id) DO UPDATE SET
+              status=excluded.status, worker=excluded.worker, payload=excluded.payload,
+              updated_at=excluded.updated_at
+            """,
+            (
+                attempt["attempt_id"], attempt["plan_id"], attempt["task_id"],
+                attempt["goal_id"], attempt["goal_contract_fingerprint"],
+                attempt["status"], attempt["worker"],
+                json.dumps(attempt.get("payload") or {}),
+                attempt["created_at"], attempt["updated_at"],
+            ),
+        )
+        self._conn.commit()
+
+    def insert_dispatch_attempt_open(self, attempt: dict[str, Any]) -> None:
+        """Insert pending attempt; raises on duplicate open task (exactly-one winner)."""
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO dispatch_attempts(
+                  attempt_id, plan_id, task_id, goal_id, goal_contract_fingerprint,
+                  status, worker, payload, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    attempt["attempt_id"], attempt["plan_id"], attempt["task_id"],
+                    attempt["goal_id"], attempt["goal_contract_fingerprint"],
+                    attempt["status"], attempt["worker"],
+                    json.dumps(attempt.get("payload") or {}),
+                    attempt["created_at"], attempt["updated_at"],
+                ),
+            )
+            self._conn.commit()
+        except sqlite3.IntegrityError as exc:
+            self._conn.rollback()
+            raise RuntimeError(f"dispatch_attempt_conflict:{attempt.get('task_id')}") from exc
+        except Exception:
+            self._conn.rollback()
+            raise
+
+    def get_dispatch_attempt(self, attempt_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM dispatch_attempts WHERE attempt_id = ?", (attempt_id,)
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "attempt_id": row["attempt_id"],
+            "plan_id": row["plan_id"],
+            "task_id": row["task_id"],
+            "goal_id": row["goal_id"],
+            "goal_contract_fingerprint": row["goal_contract_fingerprint"],
+            "status": row["status"],
+            "worker": row["worker"],
+            "payload": json.loads(row["payload"] or "{}"),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def list_open_dispatch_attempts(self, task_id: str | None = None) -> list[dict[str, Any]]:
+        q = (
+            "SELECT * FROM dispatch_attempts WHERE status IN ('pending','acquired','active')"
+        )
+        args: tuple[Any, ...] = ()
+        if task_id:
+            q += " AND task_id = ?"
+            args = (task_id,)
+        q += " ORDER BY created_at"
+        out = []
+        for row in self._conn.execute(q, args):
+            out.append({
+                "attempt_id": row["attempt_id"],
+                "plan_id": row["plan_id"],
+                "task_id": row["task_id"],
+                "goal_id": row["goal_id"],
+                "goal_contract_fingerprint": row["goal_contract_fingerprint"],
+                "status": row["status"],
+                "worker": row["worker"],
+                "payload": json.loads(row["payload"] or "{}"),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            })
+        return out
