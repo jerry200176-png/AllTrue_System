@@ -1,3 +1,8 @@
+## 2026-09-18 — polish(course-mgmt): Course Manager IA dedupe and layout
+<!-- release-notes: silent_ship=silent-2026-09-18-course-manager-polish -->
+- 管理課程去除重複 CTA（月結／補課／帳務）、移除僅重複堂次的「紀錄」分頁，排課改月曆／列表切換。
+- 總覽精簡為營運指標；設定改「返回總覽」與次要換師複製；危險刪除收合；不含 Phase 1b/2/3。
+
 ## 2026-09-18 — feat(course-mgmt): activate Course Manager V1 for staff
 <!-- release-notes: staff_update=staff-2026-09-18-course-manager-v1-on -->
 - 課程管理進行中列改以「管理課程」進入單一工作區（總覽／排課與堂次／課程設定／帳務與合約／紀錄）。

@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-course-manager-polish
+    changelog_date: "2026-09-18"
+    changelog_title: "polish(course-mgmt): Course Manager IA dedupe and layout"
+    reason: COURSE_MANAGER_V1 既有功能 UI/IA 精煉；無新產品語意，啟用狀態不變。
+
   - id: silent-2026-09-18-course-manager-v1
     changelog_date: "2026-09-18"
     changelog_title: "feat(course-mgmt): Course Manager V1 consolidates Edit/More/Details"

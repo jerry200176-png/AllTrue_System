@@ -30,7 +30,7 @@ describe('CourseSessionCalendar', () => {
     const wrapper = mountCalendar();
     expect(wrapper.find('[data-testid="csc-day-2026-09-10"]').text()).toContain('已排');
     expect(wrapper.find('[data-testid="csc-day-2026-09-24"]').text()).toContain('預排');
-    expect(wrapper.text()).toMatch(/取消.*尚未開放/);
+    expect(wrapper.text()).toMatch(/點空白的未來日期可新增堂次/);
     expect(wrapper.findAll('button').every((b) => !/取消堂次|取消排課/.test(b.text()))).toBe(true);
   });
 
@@ -50,10 +50,32 @@ describe('CourseSessionCalendar', () => {
     expect(wrapper.emitted('create-day')).toBeFalsy();
   });
 
-  it('offers quick-add for count-mode courses', async () => {
+  it('offers quick-add for count-mode courses by default', async () => {
     const wrapper = mountCalendar();
     await wrapper.find('[data-testid="csc-quick-add"]').trigger('click');
     expect(wrapper.emitted('quick-add')).toBeTruthy();
+  });
+
+  it('hides quick-add when showQuickAdd is false (Course Manager)', () => {
+    const wrapper = mount(CourseSessionCalendar, {
+      props: {
+        course: { id: 101, payment_type: 'session', status: 'active', scheduling_policy: 'auto_recurrence' },
+        sessions: [],
+        createEnabled: true,
+        showQuickAdd: false,
+        todayYmd: '2026-09-17',
+        initialYear: 2026,
+        initialMonth: 9,
+      },
+    });
+    expect(wrapper.find('[data-testid="csc-quick-add"]').exists()).toBe(false);
+  });
+
+  it('emits select-day for occupied dates without mutations', async () => {
+    const wrapper = mountCalendar();
+    await wrapper.find('[data-testid="csc-day-2026-09-10"]').trigger('click');
+    expect(wrapper.emitted('select-day')[0][0]).toEqual({ date: '2026-09-10' });
+    expect(wrapper.emitted('create-day')).toBeFalsy();
   });
 });
 

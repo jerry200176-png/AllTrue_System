@@ -1,12 +1,17 @@
 <template>
   <section class="course-session-calendar" data-testid="course-session-calendar" aria-label="課程排課行事曆">
     <div class="csc-header">
-      <button type="button" class="ghost small" data-testid="csc-prev-month" @click="shiftMonth(-1)">上個月</button>
-      <strong>{{ monthLabel }}</strong>
-      <button type="button" class="ghost small" data-testid="csc-next-month" @click="shiftMonth(1)">下個月</button>
+      <button type="button" class="ghost small csc-nav" data-testid="csc-prev-month" aria-label="上個月" @click="shiftMonth(-1)">
+        <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+      </button>
+      <strong class="csc-month">{{ monthLabel }}</strong>
+      <button type="button" class="ghost small csc-nav" data-testid="csc-next-month" aria-label="下個月" @click="shiftMonth(1)">
+        <span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+      </button>
+      <button type="button" class="ghost small" data-testid="csc-today" @click="goToday">今天</button>
     </div>
     <p class="csc-hint" data-testid="csc-scope-hint">
-      顯示此課程已建立與預排堂次。可在空白的未來日期新增一堂；取消、改時間、改老師尚未開放。
+      點空白的未來日期可新增堂次；已排與預排堂次會顯示在月曆中。
     </p>
     <div class="csc-weekdays" aria-hidden="true">
       <span v-for="wd in weekdayLabels" :key="wd">{{ wd }}</span>
@@ -43,7 +48,7 @@
       <span class="csc-chip csc-chip--proj">預排</span>
       <span v-if="createEnabled" class="csc-chip csc-chip--add">空白未來日可新增</span>
     </div>
-    <div v-if="createEnabled && canQuickAdd" class="csc-secondary">
+    <div v-if="showQuickAdd && createEnabled && canQuickAdd" class="csc-secondary">
       <button type="button" class="ghost small" data-testid="csc-quick-add" @click="$emit('quick-add')">補課／補登…</button>
     </div>
   </section>
@@ -63,11 +68,13 @@ const props = defineProps({
   course: { type: Object, required: true },
   sessions: { type: Array, default: () => [] },
   createEnabled: { type: Boolean, default: true },
+  /** When false (Course Manager sessions), toolbar owns quick-add — no calendar duplicate. */
+  showQuickAdd: { type: Boolean, default: true },
   todayYmd: { type: String, default: () => toYmd(new Date()) },
   initialYear: { type: Number, default: null },
   initialMonth: { type: Number, default: null },
 });
-const emit = defineEmits(['create-day', 'quick-add']);
+const emit = defineEmits(['create-day', 'quick-add', 'select-day']);
 
 const now = new Date();
 const viewYear = ref(props.initialYear || now.getFullYear());
@@ -89,6 +96,11 @@ function shiftMonth(delta) {
   viewYear.value = d.getFullYear();
   viewMonth.value = d.getMonth() + 1;
 }
+function goToday() {
+  const t = props.todayYmd ? new Date(`${props.todayYmd}T12:00:00`) : new Date();
+  viewYear.value = t.getFullYear();
+  viewMonth.value = t.getMonth() + 1;
+}
 function cellAriaLabel(cell) {
   if (!cell.inMonth) return '';
   if (cell.hasMaterialized) return `${cell.date} 已建立堂次`;
@@ -97,15 +109,23 @@ function cellAriaLabel(cell) {
   return cell.date;
 }
 function onCellClick(cell) {
-  // Occupied cells are display-only in Phase 0/1a (no cancel / edit).
-  if (cell?.inMonth && cell.canCreate && props.createEnabled) emit('create-day', { date: cell.date });
+  if (!cell?.inMonth) return;
+  // Occupied: read-only focus only (no cancel / edit / this-and-future).
+  if (cell.canCreate && props.createEnabled) {
+    emit('create-day', { date: cell.date });
+    return;
+  }
+  if (cell.hasMaterialized || cell.hasProjected) emit('select-day', { date: cell.date });
 }
 </script>
 
 <style scoped>
-.course-session-calendar { margin-top: 12px; padding: 12px; border: 1px solid var(--ds-border); border-radius: 12px; background: var(--ds-surface); }
-.csc-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.csc-hint { margin: 0 0 10px; font-size: .82rem; color: var(--ds-text-secondary); line-height: 1.45; }
+.course-session-calendar { margin-top: 4px; padding: 12px; border: 1px solid var(--ds-border, var(--ds-hairline)); border-radius: 12px; background: var(--ds-surface, var(--ds-canvas)); width: 100%; }
+.csc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.csc-month { flex: 1; text-align: center; font-size: .95rem; }
+.csc-nav { min-width: 36px; padding-inline: 4px; }
+.csc-nav .material-symbols-outlined { font-size: 20px; line-height: 1; }
+.csc-hint { margin: 0 0 10px; font-size: .82rem; color: var(--ds-text-secondary, var(--ds-ink-mute)); line-height: 1.45; }
 .csc-weekdays, .csc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .csc-weekdays { margin-bottom: 4px; font-size: .75rem; color: var(--ds-text-secondary); text-align: center; }
 .csc-cell { min-height: 52px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px; border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-surface); cursor: default; text-align: left; }

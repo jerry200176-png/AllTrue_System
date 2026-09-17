@@ -878,11 +878,20 @@
           </div>
         </section>
         <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" @open-billing="openEditabilityAction('void_payment')" />
-        <div class="form-actions" style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
-          <button type="button" class="ghost small" @click="duplicateCourseForTeacher(courseManagerCourse)">換師複製</button>
-          <button v-if="editForm.payment_type === 'session' && editingCourseFromLaravel" type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登</button>
-          <button type="button" class="ghost" @click="courseManagerTab = 'overview'">取消</button>
-          <button type="button" class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存課程設定</button>
+        <div class="cm-settings-footer">
+          <div class="cm-settings-footer__primary form-actions">
+            <button type="button" class="ghost" data-testid="course-manager-settings-back" @click="leaveCourseManagerSettings">返回總覽</button>
+            <button type="button" class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存課程設定</button>
+          </div>
+          <details class="cm-settings-more">
+            <summary>其他操作</summary>
+            <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">複製為新課程並更換老師</button>
+          </details>
+          <details class="cm-settings-danger" data-testid="course-manager-danger">
+            <summary>危險操作</summary>
+            <p class="cmw__hint" style="margin:0 0 8px;">僅限符合既有安全條件的課程。</p>
+            <button type="button" class="small danger" @click="onCourseManagerAction({ name: 'delete' })">刪除課程</button>
+          </details>
         </div>
       </template>
     </CourseManager>
@@ -2881,6 +2890,22 @@ function closeCourseManager() {
   courseManagerCourse.value = null;
   courseManagerTab.value = 'overview';
   showEditModal.value = false;
+}
+function leaveCourseManagerSettings() {
+  const dirty = editFormSnapshot.value && JSON.stringify(editForm.value) !== editFormSnapshot.value;
+  if (dirty && typeof window !== 'undefined' && window.confirm && !window.confirm('尚有未儲存變更，要放棄嗎？')) {
+    return;
+  }
+  if (dirty && editFormSnapshot.value) {
+    try {
+      editForm.value = JSON.parse(editFormSnapshot.value);
+      editSaveError.value = null;
+      if (courseManagerCourse.value) {
+        editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
+      }
+    } catch (_) { /* keep current form if snapshot corrupt */ }
+  }
+  courseManagerTab.value = 'overview';
 }
 function syncCourseManagerCourseFromList() {
   if (!courseManagerOpen.value || !courseManagerCourse.value) return;
@@ -8932,6 +8957,53 @@ button.danger:disabled {
 [data-theme="dark"] .invoice-skeleton {
   background: linear-gradient(90deg, #334155 25%, #475569 37%, #334155 63%);
   background-size: 400% 100%;
+}
+.cm-settings-footer {
+  position: sticky;
+  bottom: 0;
+  margin-top: 16px;
+  padding: 12px 0 4px;
+  background: linear-gradient(180deg, transparent, var(--ds-canvas-soft) 28%);
+  display: grid;
+  gap: 10px;
+}
+.cm-settings-footer__primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.cm-settings-more,
+.cm-settings-danger {
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--ds-canvas);
+}
+.cm-settings-danger {
+  border-color: color-mix(in srgb, var(--ds-danger) 35%, white);
+}
+.cm-settings-more summary,
+.cm-settings-danger summary {
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--ds-ink-mute);
+}
+.cm-settings-danger summary {
+  color: var(--ds-danger);
+}
+.cm-settings-more button,
+.cm-settings-danger button {
+  margin-top: 8px;
+}
+.cm-settings-danger .danger,
+button.danger {
+  border: 1px solid var(--ds-danger);
+  background: var(--ds-canvas);
+  color: var(--ds-danger);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
 }
 
 /* ── Disabled button UX: cursor + tooltip affordance ── */
