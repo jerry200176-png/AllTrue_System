@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-17-calendar-flag-activation-control
+    changelog_date: "2026-09-17"
+    changelog_title: "fix(deploy): explicit course session calendar flag activation"
+    reason: Deploy 控制面新增 course_session_calendar_v1 輸入與 rollback；在 Founder 另下 GO 前不改變 production flag 現值，不開 Phase 1b/2/3。
+
   - id: silent-2026-09-17-course-session-calendar-phase-0-1a
     changelog_date: "2026-09-17"
     changelog_title: "feat(course-mgmt): calendar plan surface Phase 0+1a (flag OFF)"
