@@ -1,7 +1,14 @@
+<<<<<<< HEAD
 ## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
 - TrueFit 暗啟動 UI：同堂次備課 → 觀察 → 診斷 → 補救 → 精熟的下一步 CTA，以及從前一階段 payload 種子空白表單。
 - 僅前端 continuum；`TRUEFIT_V1` / `VITE_TRUEFIT_V1` 維持 OFF，不改教務／帳務／排課權威。
+=======
+## 2026-09-17 — feat(auth): staff multi-role capability model behind flag (#299)
+<!-- release-notes: silent_ship=silent-2026-09-17-staff-multi-role-ab -->
+- 新增校園感知 capability grant 模型、`StaffCapabilityAuthorizer` 與 `X-Acting-As` 工作身分上下文（acting_as 僅為 context，不可自行提權）。
+- `STAFF_MULTI_ROLE_V1` 預設 OFF；不含生產帳號合併／ID rewrite。雙重能力帳號可在 UI 切換主任／老師模式（flag 開啟後）。
+>>>>>>> 0aa7f3b42 (feat(auth): staff multi-role capability model behind flag (#299))
 
 ## 2026-09-17 — feat(truefit): TF-S6-00a source_* auto-link on upsert
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00a-source-link -->

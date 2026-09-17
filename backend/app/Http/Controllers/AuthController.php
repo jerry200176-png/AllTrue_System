@@ -279,6 +279,17 @@ class AuthController extends Controller
             'security_summary' => $securitySummary,
             'teacher_config' => $teacherConfig,
         ];
+        // Multi-role Phase A/B (flagged): expose capability map for UI mode switch.
+        // acting_as is context only — never authority by itself.
+        $capabilities = $request->attributes->get('auth_capabilities');
+        if (is_array($capabilities) && $capabilities !== []) {
+            $payload['capabilities'] = array_values($capabilities);
+            $payload['acting_as'] = $request->attributes->get('auth_acting_as');
+            $capabilityCampuses = $request->attributes->get('auth_capability_campus_ids');
+            if (is_array($capabilityCampuses)) {
+                $payload['capability_campuses'] = $capabilityCampuses;
+            }
+        }
         $engagement = UserEngagementPresenter::forMe($user, (string) $role);
         if ($engagement !== null) {
             $payload['engagement'] = $engagement;

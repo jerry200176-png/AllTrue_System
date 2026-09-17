@@ -162,6 +162,27 @@
             <div class="user-name">{{ userProfile?.username || session?.user?.name || 'User' }}</div>
             <div class="user-role">{{ roleLabel }}</div>
             <div v-if="role === 'super_admin'" class="user-role-hint">可檢視所有分校</div>
+            <div
+              v-if="showStaffModeSwitch"
+              class="staff-mode-switch"
+              data-guide="app-staff-mode-switch"
+            >
+              <div class="branch-switcher-label">工作身分</div>
+              <div class="branch-buttons">
+                <button
+                  type="button"
+                  class="branch-btn"
+                  :class="{ active: role === 'director' }"
+                  @click="switchStaffMode('director')"
+                >主任</button>
+                <button
+                  type="button"
+                  class="branch-btn"
+                  :class="{ active: role === 'teacher' }"
+                  @click="switchStaffMode('teacher')"
+                >老師</button>
+              </div>
+            </div>
           </div>
         </div>
         <div v-if="isDirector" class="branch-switcher" data-guide="app-branch-switcher">
@@ -884,6 +905,12 @@ import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay'
 import GlobalSearchResults from './components/GlobalSearchResults.vue';
 import { createLatestRequestGuard, fetchGlobalSearch, MIN_QUERY_LENGTH } from './lib/globalSearchApi';
 import { getSessionUserId, isCurrentAuthRevision, shouldClearLocalIdentity } from './lib/authSessionIdentity';
+import {
+  actingAsHeaders,
+  canSwitchStaffMode,
+  readStoredActingAs,
+  writeStoredActingAs,
+} from './lib/staffActingContext';
 import { parseTrueFitRoute, buildTrueFitWorkspaceUrl, buildAdminReturnUrl } from './lib/truefitRoute.js';
 import { isTrueFitHost } from './lib/truefitHost.js';
 import { isTrueFitFeatureEnabled, loadTrueFitBackendFlag } from './lib/truefitFlags.js';
@@ -963,6 +990,7 @@ const publicAdmissionBranchId = computed(() => {
 
 const session = ref(null);
 const userProfile = ref(null);
+const staffCapabilities = ref([]);
 const loading = ref(true);
 let authRevision = 0;
 const beginAuthRevision = () => ++authRevision;
@@ -973,7 +1001,9 @@ async function clearLocalIdentity(revision, { clearAuthStorage = false } = {}) {
   const hadInMemorySession = session.value != null;
   session.value = null;
   userProfile.value = null;
+  staffCapabilities.value = [];
   localStorage.removeItem('alltrue_session');
+  writeStoredActingAs(null);
   if (!clearAuthStorage && !hadInMemorySession) return;
   try {
     await supabase.auth.signOut({ scope: 'local' });
@@ -1961,6 +1991,22 @@ function onUnreadChange(count) {
 const role = computed(() => session.value?.user?.role ?? userProfile.value?.role ?? 'student');
 const isDirector = computed(() => role.value === 'director' || role.value === 'admin' || role.value === 'super_admin');
 const isTeacher = computed(() => role.value === 'teacher');
+const showStaffModeSwitch = computed(() => canSwitchStaffMode(staffCapabilities.value));
+
+async function switchStaffMode(nextMode) {
+  if (!canSwitchStaffMode(staffCapabilities.value)) return;
+  const normalized = writeStoredActingAs(nextMode);
+  if (!normalized || normalized === role.value) return;
+  if (session.value?.user) {
+    session.value.user.role = normalized;
+    localStorage.setItem('alltrue_session', JSON.stringify(session.value));
+  }
+  if (userProfile.value) {
+    userProfile.value = { ...userProfile.value, role: normalized };
+  }
+  active.value = normalized === 'teacher' ? 'teacher-home' : 'director';
+  await fetchProfile(getSessionUserId(session.value));
+}
 
 const isPasswordChangeLocked = computed(() => {
   const fromSession = session.value?.user?.must_change_password;
@@ -2465,6 +2511,7 @@ const fetchProfile = async (_uid, revision = authRevision) => {
             headers: {
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/json',
+                ...actingAsHeaders(readStoredActingAs()),
             },
         });
 
@@ -2481,6 +2528,11 @@ const fetchProfile = async (_uid, revision = authRevision) => {
         const me = await res.json();
         if (!isCurrentAuth(revision) || getSessionUserId(session.value) !== _uid) return;
         const mustChangePassword = Boolean(me?.must_change_password);
+        const caps = Array.isArray(me?.capabilities) ? me.capabilities : [];
+        staffCapabilities.value = caps;
+        if (me?.acting_as) {
+          writeStoredActingAs(me.acting_as);
+        }
         userProfile.value = {
             id: me.id,
             username: me.name,
@@ -2491,10 +2543,15 @@ const fetchProfile = async (_uid, revision = authRevision) => {
             branch_ids: Array.isArray(me.campuses) ? me.campuses : [],
             must_change_password: mustChangePassword,
             engagement: me.engagement ?? null,
+            capabilities: caps,
+            acting_as: me.acting_as ?? null,
+            capability_campuses: me.capability_campuses ?? null,
         };
 
         if (session.value?.user) {
           session.value.user.must_change_password = mustChangePassword;
+          session.value.user.role = me.role;
+          if (Array.isArray(me.campuses)) session.value.user.campuses = me.campuses;
           localStorage.setItem('alltrue_session', JSON.stringify(session.value));
         }
 
