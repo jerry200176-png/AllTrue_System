@@ -387,6 +387,16 @@
                       <template v-else>已上 {{ getCompletedSessionCount(c) }} 堂</template>
                     </td>
                     <td class="cell-actions">
+                      <div v-if="courseManagerEnabled" class="action-btns-row">
+                        <button
+                          type="button"
+                          class="small primary course-primary-action"
+                          data-testid="course-manager-open"
+                          @click="openCourseManager(c)"
+                        >管理課程</button>
+                      </div>
+                      <template v-else>
+
                       <div class="action-btns-row">
                         <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
                         <button
@@ -464,9 +474,11 @@
                           </div>
                         </div>
                       </div>
+                    
+                      </template>
                     </td>
                   </tr>
-                  <tr v-if="expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
+                  <tr v-if="!courseManagerEnabled && expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
                     <td colspan="6">
                       <div class="detail-panel">
                         <div class="detail-meta">
@@ -820,8 +832,63 @@
       @duplicate-course="handleSchedulerDuplicateCM"
     />
 
+    <CourseManager
+      v-if="courseManagerOpen && courseManagerCourse"
+      :course="courseManagerCourse" :tab="courseManagerTab"
+      :student-name="courseManagerCourse.student_name || ''"
+      :subject-label="getSubjectLabel(courseManagerCourse.subject)"
+      :class-type-label="classTypeLabel(courseManagerCourse.class_type)"
+      :status-label="courseManagerStatusLabel(courseManagerCourse)"
+      :schedule-summary="courseManagerScheduleSummary(courseManagerCourse)"
+      :remaining-label="courseManagerRemainingLabel(courseManagerCourse)"
+      :next-session-label="courseManagerNextSessionLabel(courseManagerCourse)"
+      :payment-label="paymentStatusButtonLabel(courseManagerCourse)"
+      :overview-needs="courseManagerOverviewNeeds(courseManagerCourse)"
+      :session-units="primarySessionUnits(courseManagerCourse)"
+      :cancelled-units="movedOrCancelledUnits(courseManagerCourse)"
+      :pending-makeups="pendingMakeupsByCourse[courseManagerCourse.id] ?? []"
+      :calendar-enabled="courseSessionCalendarEnabled"
+      :create-enabled="resolveCourseSessionCreateWriter(courseManagerCourse) !== 'none'"
+      :show-cancelled="showCancelledSessions.has(courseManagerCourse.id)"
+      :show-session-notes="showSessionNotes" :session-load-failed="sessionDataLoadFailed"
+      :planning-status="planningStatusVisible(courseManagerCourse) ? planningStatusFor(courseManagerCourse) : null"
+      :can-quick-add="canQuickAddSession(courseManagerCourse)" :can-close="canCloseCourse(courseManagerCourse)"
+      :is-session-mode="isSessionMode(courseManagerCourse)" :is-monthly-mode="isMonthlyMode(courseManagerCourse)"
+      :is-manual-occurrence="isManualOccurrenceCourse(courseManagerCourse)"
+      :purchase-label="purchaseActionLabel(courseManagerCourse)"
+      :payment-notice-available="isPaymentNoticeAvailable(courseManagerCourse)"
+      :can-package-preview="isSessionMode(courseManagerCourse) && !courseManagerCourse.PackageID"
+      :format-session-chip-date="formatSessionChipDate" :get-session-state-class="getSessionStateClass"
+      :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber"
+      :session-row-key="sessionRowKey" :is-user-note="isUserNote" :format-makeup-date="formatMakeupDate"
+      @close="closeCourseManager" @update:tab="onCourseManagerTab" @action="onCourseManagerAction"
+      @open-session="onCourseManagerOpenSession"
+      @create-day="(payload) => openCourseSessionCalendarCreate(courseManagerCourse, payload)"
+      @toggle-cancelled="toggleCancelledSessions(courseManagerCourse.id)" @toggle-notes="toggleSessionNotes"
+    >
+      <template #settings>
+        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
+        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
+        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;"><p>{{ editSaveError.message }}</p></AtInlineAlert>
+        <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
+          <div class="editability-action-panel__intro"><strong>這門課有資料不能用一般編輯改寫</strong><span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span></div>
+          <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
+            <div class="editability-action-row__copy"><strong>{{ reason.message }}</strong><span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">受保護欄位：{{ editabilityAffectedFields.join('、') }}</span><span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">{{ editabilityActionDescription(reason.next_step) }}</span></div>
+            <button v-if="canOpenEditabilityAction(reason.next_step)" type="button" class="ghost small editability-action-row__button" @click="openEditabilityAction(reason.next_step)">{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
+          </div>
+        </section>
+        <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" @open-billing="openEditabilityAction('void_payment')" />
+        <div class="form-actions" style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
+          <button type="button" class="ghost small" @click="duplicateCourseForTeacher(courseManagerCourse)">換師複製</button>
+          <button v-if="editForm.payment_type === 'session' && editingCourseFromLaravel" type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登</button>
+          <button type="button" class="ghost" @click="courseManagerTab = 'overview'">取消</button>
+          <button type="button" class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存課程設定</button>
+        </div>
+      </template>
+    </CourseManager>
+
     <!-- Edit Course Modal -->
-    <div v-if="showEditModal" class="modal-overlay">
+    <div v-if="showEditModal && !courseManagerOpen" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
         <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
@@ -1468,6 +1535,7 @@ import ContractAmendmentModal from '../components/course-management/ContractAmen
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import CourseSessionCalendar from '../components/course-management/CourseSessionCalendar.vue';
+import CourseManager from '../components/course-management/CourseManager.vue';
 import {
   isCourseSessionCalendarEnabled,
   resolveCourseSessionCreateWriter,
@@ -2759,6 +2827,94 @@ const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
 
 const courseSessionCalendarEnabled = isCourseSessionCalendarEnabled(perfFlags);
 const courseSessionCalendarOpen = ref(new Set());
+const courseManagerEnabled = perfFlags.COURSE_MANAGER_V1 === true;
+const courseManagerOpen = ref(false);
+const courseManagerCourse = ref(null);
+const courseManagerTab = ref('overview');
+function courseManagerStatusLabel(c) {
+  if (!c) return '';
+  if (c.status === 'inactive' && !effectiveClosedReason(c)) return '暫停';
+  const closed = effectiveClosedReason(c);
+  if (['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(closed)) {
+    return closed === 'contract_amended' ? '合約已提前結束' : '已結案';
+  }
+  return '進行中';
+}
+function courseManagerScheduleSummary(c) {
+  const lines = formatDayTimeSlotLines(c);
+  if (lines.length) return lines.join('、');
+  if ((c.days_of_week || []).length) return `${(c.days_of_week || []).map((d) => dayLabel(d)).join('、')} ${c.start_time || ''}~${c.end_time || ''}`.trim();
+  if (c.day_of_week) return `${dayLabel(c.day_of_week)} ${c.start_time || ''}~${c.end_time || ''}`.trim();
+  return '';
+}
+function courseManagerRemainingLabel(c) {
+  if (!isSessionMode(c)) return `已上 ${getCompletedSessionCount(c)} 堂`;
+  const rem = displayRemainingSessions(c);
+  const purchased = c.sessions_purchased ?? c.SessionsPurchased;
+  return purchased != null ? `剩餘 ${rem ?? '—'} / ${purchased} 堂` : `剩餘 ${rem ?? '—'} 堂`;
+}
+function courseManagerNextSessionLabel(c) {
+  const today = new Date().toISOString().slice(0, 10);
+  const next = (primarySessionUnits(c) || []).find((u) => String(u.date || '').slice(0, 10) >= today);
+  return next ? formatSessionChipDate(next) : '';
+}
+function courseManagerOverviewNeeds(c) {
+  const needs = [];
+  if (isSessionMode(c) && Number(displayRemainingSessions(c) ?? 99) <= 2) {
+    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
+  }
+  const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
+  if (makeups.length) needs.push({ id: 'makeup', title: `${makeups.length} 堂待補課`, action: 'quick-add', actionLabel: '安排補課' });
+  if (c.usage_balance_status === 'review_required') needs.push({ id: 'ledger', title: '堂數待對帳', action: 'ledger', actionLabel: '查看對帳明細' });
+  return needs;
+}
+async function openCourseManager(c, tab = 'overview') {
+  closeActionMenu();
+  courseManagerCourse.value = c;
+  courseManagerTab.value = tab;
+  courseManagerOpen.value = true;
+  if (!expandedDates.value.has(c.id)) await toggleDatesAndMakeups(c);
+  if (tab === 'settings') editCourse(c, { openModal: false });
+}
+function closeCourseManager() {
+  courseManagerOpen.value = false;
+  courseManagerCourse.value = null;
+  courseManagerTab.value = 'overview';
+  showEditModal.value = false;
+}
+function syncCourseManagerCourseFromList() {
+  if (!courseManagerOpen.value || !courseManagerCourse.value) return;
+  const next = (courses.value || []).find((x) => Number(x.id) === Number(courseManagerCourse.value.id));
+  if (!next) { closeCourseManager(); return; }
+  courseManagerCourse.value = next;
+}
+function onCourseManagerTab(tab) {
+  courseManagerTab.value = tab;
+  const c = courseManagerCourse.value;
+  if (tab === 'settings' && c && Number(editingId.value) !== Number(c.id)) editCourse(c, { openModal: false });
+}
+function onCourseManagerOpenSession({ unit, date, id }) {
+  const c = courseManagerCourse.value;
+  if (c) openSessionEdit(c, date, id, unit);
+}
+function onCourseManagerAction({ name, payload } = {}) {
+  const c = courseManagerCourse.value;
+  if (!c || !name) return;
+  const map = {
+    pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),
+    close: () => goToStudentsCommercial(c, 'close'), delete: () => { confirmDeleteTarget.value = c; },
+    'manual-session': () => openManualSessionModal(c), 'monthly-session': () => openMonthlySessionModal(c),
+    'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
+    'retry-sessions': () => retryLoadCourseSessions(c),
+    'cancel-makeup': () => { if (payload) cancelMakeupSchedule(payload, c); },
+    invoice: () => openInvoiceModal(c), tuition: () => goToTuitionBilling(c), ledger: () => openLedgerForCourse(c),
+    purchase: () => openCommercialPurchaseEntry(c), 'contract-adjust': () => openContractAdjustmentModal(c),
+    'package-preview': () => openPackageConversionPreview(c), 'payment-slip': () => openPaymentSlip(c),
+    duplicate: () => duplicateCourseForTeacher(c),
+  };
+  map[name]?.();
+}
+
 function toggleCourseSessionCalendar(courseId) {
   const next = new Set(courseSessionCalendarOpen.value);
   if (next.has(courseId)) next.delete(courseId);
@@ -2896,6 +3052,7 @@ async function confirmCoursePause() {
     alert(json.message || `已${action}`);
     pauseConfirmTarget.value = null;
     await loadCourses();
+    syncCourseManagerCourseFromList();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
   } finally {
@@ -3423,7 +3580,14 @@ function openMonthlySessionModal(course) {
 function editManualSessionCourse() {
   const course = manualSessionCourse.value;
   showManualSessionModal.value = false;
-  if (course?.id) editCourse(course);
+  if (!course?.id) return;
+  if (courseManagerOpen.value) {
+    courseManagerCourse.value = course;
+    courseManagerTab.value = 'settings';
+    editCourse(course, { openModal: false });
+    return;
+  }
+  editCourse(course);
 }
 
 function openPackageConversion(course) {
@@ -4405,6 +4569,7 @@ const loadCourses = async (page = 1) => {
         };
         courses.value = result;
         resetExpandedStudentGroups(groupCoursesByStudent(result));
+        syncCourseManagerCourseFromList();
         sessionDataLoadFailed.value = false;
         const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
         const sessionsOk = await loadClassSessionsForCourses(result, token, isCurrent);
@@ -4837,7 +5002,7 @@ function scheduleFingerprintForEdit(form) {
   return `${days}|${slots}|${dur}|${start}|${first}|${end}|${mode}`;
 }
 
-const editCourse = (c) => {
+const editCourse = (c, options = {}) => {
   editingId.value = c.id;
   editSaveError.value = null;
   editability.value = null;
@@ -4895,7 +5060,8 @@ const editCourse = (c) => {
   originalFirstClassDate.value = c.first_class_date || '';
   editFormSnapshot.value = JSON.stringify(editForm.value);
   loadRoomsForBranch();
-  showEditModal.value = true;
+  const openModal = options.openModal !== false;
+  showEditModal.value = openModal && !courseManagerOpen.value;
   if (editingCourseFromLaravel.value) void loadCourseEditability(c.id);
   nextTick(() => {
     editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
@@ -5018,6 +5184,10 @@ const submitEdit = async () => {
           }
           showEditModal.value = false;
           await loadCourses();
+          syncCourseManagerCourseFromList();
+          if (courseManagerOpen.value && courseManagerCourse.value) {
+            editCourse(courseManagerCourse.value, { openModal: false });
+          }
           toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
           return;
         }
@@ -5058,6 +5228,10 @@ const submitEdit = async () => {
   editScheduleBaseline.value = null;
   showEditModal.value = false;
   await loadCourses();
+  syncCourseManagerCourseFromList();
+  if (courseManagerOpen.value && courseManagerCourse.value) {
+    editCourse(courseManagerCourse.value, { openModal: false });
+  }
   alert('課程已更新。');
 };
 
@@ -5255,6 +5429,9 @@ const executeDeleteCourse = async () => {
         if (res.ok) {
           confirmDeleteTarget.value = null;
           courses.value = courses.value.filter(x => x.id !== c.id);
+          if (courseManagerCourse.value && Number(courseManagerCourse.value.id) === Number(c.id)) {
+            closeCourseManager();
+          }
           toastRef.value?.show?.({ title: '已刪除', description: `${c.subject_name || c.subject || ''} 課程已刪除`, variant: 'success', durationMs: 3000 });
           return;
         }
@@ -5273,6 +5450,9 @@ const executeDeleteCourse = async () => {
     await supabase.from('student-classes').delete().eq('id', c.id);
     confirmDeleteTarget.value = null;
     courses.value = courses.value.filter(x => x.id !== c.id);
+    if (courseManagerCourse.value && Number(courseManagerCourse.value.id) === Number(c.id)) {
+      closeCourseManager();
+    }
   } finally {
     deleteCourseSubmitting.value = false;
   }

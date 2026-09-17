@@ -64,6 +64,14 @@ const flags = {
    * Rollback = leave this false (or unset VITE_COURSE_SESSION_CALENDAR_V1).
    */
   COURSE_SESSION_CALENDAR_V1: import.meta.env.VITE_COURSE_SESSION_CALENDAR_V1 === 'true',
+
+  /**
+   * Course Manager workspace — consolidates Edit / More / Details / Calendar into one
+   * course-scoped IA (COURSE_MANAGER_V1). Default OFF until production activation.
+   * Rollback = unset VITE_COURSE_MANAGER_V1 (row returns to fragmented entry points).
+   * Does not authorize Phase 1b/2/3 occurrence mutations.
+   */
+  COURSE_MANAGER_V1: import.meta.env.VITE_COURSE_MANAGER_V1 === 'true',
 };
 
 export default flags;
