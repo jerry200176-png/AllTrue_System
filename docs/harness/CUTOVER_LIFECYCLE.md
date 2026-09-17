@@ -8,7 +8,7 @@
 
 | Stage | Status | Evidence |
 |-------|--------|----------|
-| CODE_WRITTEN | **YES** | `schema_migrate.py`, `project_state.py`, `cutover_dogfood.py`, CLI `migrate-schema` / `project-state` |
+| CODE_WRITTEN | **YES** | `schema_migrate.py`, `project_state.py`, CLI `migrate-schema` / `project-state` (dogfood runner retained under `state/alltrue/cutover-evidence-20260917/`) |
 | TESTS_PASSED | **YES** | `test_harness_cutover.py` + existing harness suites green |
 | MIGRATION_COPY_VERIFIED | **YES** | `tmp-cutover/MIGRATE_COPY_REPORT.json`; additive; stable digest preserved |
 | LIVE_SCHEMA_MIGRATED | **YES** | live `schema_version=4`; `/home/jerry/workspace/state/alltrue/cutover-evidence-20260917/LIVE_MIGRATE_REPORT.json`; STABLE_PRESERVED |
