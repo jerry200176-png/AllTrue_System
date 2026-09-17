@@ -324,6 +324,9 @@ final class SchedulerEvidence
         if (isset($parsed['regressed'])) {
             return (int) $parsed['regressed'];
         }
+        if (isset($parsed['actionable'])) {
+            return (int) $parsed['actionable'];
+        }
         if ($job === 'ops-business-digest' && isset($parsed['revenue_at_risk_sessions'])) {
             return (int) $parsed['revenue_at_risk_sessions'];
         }
@@ -498,6 +501,27 @@ final class SchedulerEvidence
                     'count' => (int) ($condition['count'] ?? 0),
                     'state' => $condition['state'] ?? 'unknown',
                 ], $decoded['conditions']),
+            ];
+        }
+
+        if ($job === 'grade-promotion-scheduled-preview') {
+            $decoded = json_decode(trim($output), true);
+            if (!is_array($decoded) || !isset($decoded['status']) || !is_string($decoded['status'])) {
+                return null;
+            }
+            $actionable = 0;
+            if (isset($decoded['campuses']) && is_array($decoded['campuses'])) {
+                foreach ($decoded['campuses'] as $campus) {
+                    if (is_array($campus) && isset($campus['actionable'])) {
+                        $actionable += (int) $campus['actionable'];
+                    }
+                }
+            }
+
+            return [
+                'scheduler_status' => $decoded['status'],
+                'season_year' => isset($decoded['season_year']) ? (int) $decoded['season_year'] : null,
+                'actionable' => $actionable,
             ];
         }
 
