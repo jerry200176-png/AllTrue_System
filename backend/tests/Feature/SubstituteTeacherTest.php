@@ -225,11 +225,28 @@ class SubstituteTeacherTest extends TestCase
         );
     }
 
-    /** Precedence #2 / in-app #276：無代課、LR 單堂老師與課程正班不同 → 顯示 LR 老師，不改 StudentClass。 */
+    /** Precedence #2 / in-app #276：無代課、已有授課證據的 LR 單堂老師與課程正班不同 → 顯示 LR 老師，不改 StudentClass。 */
     public function test_director_learning_records_list_prefers_lr_teacher_when_no_substitute_schedule(): void
     {
-        [$dirToken, $regularTeacherId, $replacementTeacherId, , $lr] = $this->seedSubstituteScenario();
+        [$dirToken, $regularTeacherId, $replacementTeacherId, $session, $lr] = $this->seedSubstituteScenario();
 
+        // Historical single-occurrence truth (#276): attended evidence makes LR.TeacherID
+        // authoritative even when the contract teacher differs (#314 must not regress this).
+        $session->Status = 'attended';
+        $session->save();
+        DB::table('StudentSingIn')->insert([
+            'StudentClassID' => (int) $lr->StudentClassID,
+            'StudentID' => (int) DB::table('StudentClass')->where('ID', $lr->StudentClassID)->value('StudentID'),
+            'TeacherID' => $replacementTeacherId,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'CampusID' => 1,
+            'SignInDT' => '2026-04-19 13:05:00',
+            'MDT' => now(),
+            'ClassSessionID' => $session->id,
+            'Status' => 'present',
+            'SessionDeducted' => 1,
+        ]);
         DB::table('LearningRecord')->where('id', $lr->id)->update([
             'TeacherID' => $replacementTeacherId,
         ]);
