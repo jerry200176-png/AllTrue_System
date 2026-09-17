@@ -13,7 +13,7 @@ from .models import Escalation, Program, Task
 from .states import TaskState
 
 DEFAULT_DB = Path("/home/jerry/workspace/state/alltrue/harness.sqlite")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def default_db_path() -> Path:
@@ -125,6 +125,25 @@ class HarnessStore:
             );
             CREATE INDEX IF NOT EXISTS idx_dispatch_plan ON dispatch_attempts(plan_id);
             CREATE INDEX IF NOT EXISTS idx_dispatch_task ON dispatch_attempts(task_id);
+            CREATE TABLE IF NOT EXISTS worker_runs (
+              run_id TEXT PRIMARY KEY,
+              attempt_id TEXT NOT NULL,
+              task_id TEXT NOT NULL,
+              mode TEXT NOT NULL,
+              status TEXT NOT NULL,
+              session_id TEXT NOT NULL,
+              worktree_path TEXT NOT NULL,
+              branch TEXT NOT NULL,
+              worker TEXT NOT NULL,
+              fencing_token INTEGER,
+              lease_binding TEXT NOT NULL,
+              payload TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_worker_runs_attempt ON worker_runs(attempt_id);
+            CREATE INDEX IF NOT EXISTS idx_worker_runs_task ON worker_runs(task_id);
+            CREATE INDEX IF NOT EXISTS idx_worker_runs_session ON worker_runs(session_id);
             """
         )
         # At most one open mutation attempt per task (H4 duplicate-launch guard).
@@ -133,6 +152,14 @@ class HarnessStore:
             CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_open_task
               ON dispatch_attempts(task_id)
               WHERE status IN ('pending','acquired','active')
+            """
+        )
+        # At most one open WorkerRun per attempt (H4b single canonical child).
+        cur.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_run_open_attempt
+              ON worker_runs(attempt_id)
+              WHERE status IN ('starting','running')
             """
         )
         cur.execute(
@@ -654,3 +681,83 @@ class HarnessStore:
                 "updated_at": row["updated_at"],
             })
         return out
+
+    def _row_worker_run(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "run_id": row["run_id"],
+            "attempt_id": row["attempt_id"],
+            "task_id": row["task_id"],
+            "mode": row["mode"],
+            "status": row["status"],
+            "session_id": row["session_id"],
+            "worktree_path": row["worktree_path"],
+            "branch": row["branch"],
+            "worker": row["worker"],
+            "fencing_token": row["fencing_token"],
+            "lease_binding": json.loads(row["lease_binding"] or "{}"),
+            "payload": json.loads(row["payload"] or "{}"),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def put_worker_run(self, run: dict[str, Any]) -> None:
+        """Insert or update a WorkerRun row (H4b durable child/session identity)."""
+        self._conn.execute(
+            """
+            INSERT INTO worker_runs(
+              run_id, attempt_id, task_id, mode, status, session_id,
+              worktree_path, branch, worker, fencing_token, lease_binding,
+              payload, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+              status=excluded.status,
+              session_id=excluded.session_id,
+              worktree_path=excluded.worktree_path,
+              branch=excluded.branch,
+              worker=excluded.worker,
+              fencing_token=excluded.fencing_token,
+              lease_binding=excluded.lease_binding,
+              payload=excluded.payload,
+              updated_at=excluded.updated_at
+            """,
+            (
+                run["run_id"], run["attempt_id"], run["task_id"], run["mode"],
+                run["status"], run.get("session_id") or "",
+                run.get("worktree_path") or "", run.get("branch") or "",
+                run.get("worker") or "", run.get("fencing_token"),
+                json.dumps(run.get("lease_binding") or {}),
+                json.dumps(run.get("payload") or {}),
+                run["created_at"], run["updated_at"],
+            ),
+        )
+        self._conn.commit()
+
+    def get_worker_run(self, run_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM worker_runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        return self._row_worker_run(row) if row else None
+
+    def list_worker_runs(
+        self,
+        *,
+        attempt_id: str | None = None,
+        task_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        args: list[Any] = []
+        if attempt_id:
+            clauses.append("attempt_id = ?")
+            args.append(attempt_id)
+        if task_id:
+            clauses.append("task_id = ?")
+            args.append(task_id)
+        if session_id:
+            clauses.append("session_id = ?")
+            args.append(session_id)
+        q = "SELECT * FROM worker_runs"
+        if clauses:
+            q += " WHERE " + " AND ".join(clauses)
+        q += " ORDER BY created_at"
+        return [self._row_worker_run(r) for r in self._conn.execute(q, tuple(args))]

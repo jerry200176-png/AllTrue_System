@@ -79,7 +79,11 @@ class HarnessH4DispatchTest(unittest.TestCase):
         self.assertEqual(self.store.get_task("t1").status, TaskState.LEASED)
         att = self.store.get_dispatch_attempt(r.attempt_id)
         self.assertEqual(att["status"], "active")
-        self.assertTrue(att["payload"].get("spawn", {}).get("deferred"))
+        spawn = att["payload"].get("spawn") or {}
+        self.assertTrue(spawn.get("deferred") or spawn.get("spawned") is False)
+        self.assertTrue(spawn.get("run_id"))
+        runs = self.store.list_worker_runs(attempt_id=r.attempt_id)
+        self.assertEqual(len(runs), 1)
 
     def test_dry_run_no_mutate(self):
         plan = self._seed()

@@ -6,11 +6,11 @@ Full inventory lived in the first delivery draft; this is the landed H0 summary.
 | Capability | Source | Reuse | Gap |
 |---|---|---|---|
 | autonomy_gate | `scripts/governance/autonomy_gate.py` | yes | wrap as adapter (H2) |
-| agent-start / manifest | agent-control + `.agent-session/` | yes | bind to Task lease (H4) |
+| agent-start / manifest | agent-control + `.agent-session/` | yes | H4b WorkerRun (`--attach`) |
 | risk T0–T3 / R0–R3 | gate + `RISK_BASED_MERGE_POLICY` | yes | ticket→scope before diff |
 | PR/CI / exact-SHA / rollback | workflows + gate helpers | yes | reconcile loop (H6) |
 | production activation | `deploy.yml` + Environment | yes | Founder inbox packet |
-| worktrees | `WORKTREE_POLICY` + agent-start | yes | program WIP lease |
+| worktrees | `WORKTREE_POLICY` + agent-start | yes | program WIP lease + WorkerRun |
 | program status | `docs/truefit/`, `docs/programs/`, Chat bug SOP | partial | YAML registry (H1) |
 | in-repo AEH | **missing before this work** | no | `scripts/harness/` |
 
