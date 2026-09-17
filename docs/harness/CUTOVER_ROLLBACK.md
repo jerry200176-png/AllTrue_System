@@ -23,7 +23,7 @@ sqlite3 "$LIVE" "SELECT value FROM meta WHERE key='schema_version';"  # expect 1
 ```
 
 4. Restore `CURRENT_STATE.json` from the newest `*.pre-projection-*` backup if needed.
-5. Clear cutover meta only after restore (optional): leave evidence files under `docs/harness/cutover-evidence/`.
+5. Clear cutover meta only after restore (optional): leave evidence files under `/home/jerry/workspace/state/alltrue/cutover-evidence-20260917/`.
 
 ## When to rollback
 

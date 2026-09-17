@@ -1,9 +1,0 @@
-{
-  "ok": true,
-  "role": "projection",
-  "authority": "harness.sqlite",
-  "path": "/home/jerry/workspace/state/alltrue/CURRENT_STATE.json",
-  "projected_at": "2026-09-17T08:55:24Z",
-  "workers": 0,
-  "backup": "/home/jerry/workspace/state/alltrue/CURRENT_STATE.json.pre-projection-2026-09-17T085524Z"
-}

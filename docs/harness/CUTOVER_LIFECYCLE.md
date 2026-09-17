@@ -11,7 +11,7 @@
 | CODE_WRITTEN | **YES** | `schema_migrate.py`, `project_state.py`, `cutover_dogfood.py`, CLI `migrate-schema` / `project-state` |
 | TESTS_PASSED | **YES** | `test_harness_cutover.py` + existing harness suites green |
 | MIGRATION_COPY_VERIFIED | **YES** | `tmp-cutover/MIGRATE_COPY_REPORT.json`; additive; stable digest preserved |
-| LIVE_SCHEMA_MIGRATED | **YES** | live `schema_version=4`; `cutover-evidence/LIVE_MIGRATE_REPORT.json`; STABLE_PRESERVED |
+| LIVE_SCHEMA_MIGRATED | **YES** | live `schema_version=4`; `/home/jerry/workspace/state/alltrue/cutover-evidence-20260917/LIVE_MIGRATE_REPORT.json`; STABLE_PRESERVED |
 | DOGFOOD_RUNTIME_VERIFIED | **YES** | seed → Supervisor PID kill → fresh process recover; fencing deny; attach resume |
 | AUTHORITY_CUTOVER | **YES** | meta `authority_role=domain_authority` after dogfood gates |
 | JSON_WRITERS_DEMOTED | **YES** | `CURRENT_STATE.json` rewritten with `role=projection`; meta `json_writers_demoted=true` |
