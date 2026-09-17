@@ -6,10 +6,12 @@
 | Field | Value |
 |-------|--------|
 | Reconciled at | 2026-09-17 (Asia/Taipei) |
-| `origin/main` SHA (at reconcile base) | `f0907cbca33d` |
+| `origin/main` SHA (at reconcile base) | `f69b14ea9` |
 | Slice 0–5 API + UI on main | **YES** through Mastery UI (#3005) |
 | TF-S6-00a source_* auto-link | **MERGED** (#3010) |
-| TF-S6-00b same-session continuum UI | **THIS PR** (frontend) |
+| TF-S6-00b same-session continuum UI | **MERGED** (#3012) |
+| TF-S6-01a session-progress aggregate API | **THIS PR** (read-only presence) |
+| TF-S6-01b workspace progress strip UI | Pending after 01a |
 | Operational acceptance | **NOT ACCEPTED** — staging #868 blocked; flags OFF |
 | Production flags | **OFF** |
 
@@ -26,14 +28,14 @@ No real-student PII → external LLM. Fixture / teacher-entered only. No flag/DN
 | Slice | Status |
 |-------|--------|
 | 0–5 | Coded+merged; not ops-accepted |
-| 6 Continuum | 00a source-link merged (#3010); 00b continuum UI (this PR) |
+| 6 Continuum | 00a+00b merged (#3010/#3012); S6-01a aggregate progress API (this PR) |
 | Assessment Vendor Adapter | Not started |
 
 ### APIs behind `TRUEFIT_V1`
 
-`material-units` · `lesson-preps` · `observations` · `diagnoses` · `remediations` · `mastery-evidence`
+`material-units` · `lesson-preps` · `observations` · `diagnoses` · `remediations` · `mastery-evidence` · `session-progress` (POST aggregate presence)
 
-When upserting diagnosis / remediation / mastery without an explicit `source_*` id, the service now resolves the latest same-session prior artifact for that teacher (still nullable if none exists). Frontend continuum CTAs + prior-stage form seeding land in TF-S6-00b (flags remain OFF).
+`POST /api/v1/truefit/session-progress` returns saved/empty booleans only for teacher-accessible session refs. Contract: **`omit_inaccessible`** — unknown/inaccessible refs are omitted (no per-id 403 leak). No writes; no new tables; flags remain OFF.
 
 ## Blockers
 
@@ -42,7 +44,7 @@ When upserting diagnosis / remediation / mastery without an explicit `source_*` 
 
 ## Next selected bounded task
 
-1. After 00b lands: Supervisor ops acceptance for full S6-00 (MERGED≠ACCEPTED).  
-2. Do not activate flags/DNS/staging ownership.
+1. After S6-01a lands: S6-01b workspace progress strip UI.  
+2. Do not activate flags/DNS/staging ownership. Do not start S6-02 until Plan GO.
 
 Never call work “done” merely because code exists.

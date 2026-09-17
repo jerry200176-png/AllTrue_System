@@ -7,6 +7,7 @@ use App\Services\TrueFit\TrueFitObservationService;
 use App\Services\TrueFit\TrueFitDiagnosisService;
 use App\Services\TrueFit\TrueFitRemediationService;
 use App\Services\TrueFit\TrueFitMasteryService;
+use App\Services\TrueFit\TrueFitSessionProgressService;
 use App\Services\TrueFitService;
 use App\Services\TrueFitTodaySessionsReadService;
 use Illuminate\Http\Request;
@@ -31,6 +32,31 @@ class TrueFitController extends Controller
         }
 
         $payload = app(TrueFitTodaySessionsReadService::class)->fetchTodaySessions($request, $teacherId);
+
+        return response()->json($payload);
+    }
+
+    /**
+     * Read-only aggregate stage presence for multiple session refs (workspace progress).
+     * Body: { "sessions": [ { "class_session_id": N } | { "student_class_id", "session_date", "start_time" }, ... ] }
+     * Inaccessible/invalid refs are omitted (meta.contract=omit_inaccessible). Never writes.
+     */
+    public function sessionProgress(Request $request)
+    {
+        if ($denied = $this->denyUnlessTeacherTrueFit($request)) {
+            return $denied;
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+        if ($branchDenied = $this->denyUnlessBranchAllowed($request)) {
+            return $branchDenied;
+        }
+
+        try {
+            $payload = app(TrueFitSessionProgressService::class)->progressForTeacher($request, $teacherId);
+        } catch (ValidationException $e) {
+            return response()->json(['message' => 'Invalid request', 'errors' => $e->errors()], 422);
+        }
 
         return response()->json($payload);
     }

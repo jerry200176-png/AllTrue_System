@@ -650,6 +650,7 @@ Route::prefix('v1')->group(function () {
         Route::get('class-sessions/projection', [ClassSessionController::class, 'projection']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::get('truefit/today-sessions', [TrueFitController::class, 'todaySessions']);
+        Route::post('truefit/session-progress', [TrueFitController::class, 'sessionProgress']);
         Route::get('truefit/material-units', [TrueFitController::class, 'materialUnits']);
         Route::get('truefit/lesson-preps', [TrueFitController::class, 'showLessonPrep']);
         Route::post('truefit/lesson-preps/generate', [TrueFitController::class, 'generateLessonPrep']);

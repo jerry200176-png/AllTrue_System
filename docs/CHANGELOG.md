@@ -1,3 +1,7 @@
+## 2026-09-17 — feat(truefit): TF-S6-01a session-progress aggregate API
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-01a-session-progress -->
+- TrueFit 暗啟動：新增唯讀聚合 API `POST /api/v1/truefit/session-progress`（僅回傳各階段是否已存；omit_inaccessible；旗標維持關閉）。
+
 ## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
 - TrueFit 暗啟動 UI：同堂次備課 → 觀察 → 診斷 → 補救 → 精熟的下一步 CTA，以及從前一階段 payload 種子空白表單。

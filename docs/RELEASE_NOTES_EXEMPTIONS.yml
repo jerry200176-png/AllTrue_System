@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-17-truefit-s6-01a-session-progress
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(truefit): TF-S6-01a session-progress aggregate API"
+    reason: TrueFit 暗啟動（TRUEFIT_V1 OFF）聚合堂次進度唯讀 API；不改線上教職員可見流程、帳務或排課。
+
   - id: silent-2026-09-17-truefit-s6-00b-continuum-ui
     changelog_date: "2026-09-17"
     changelog_title: "feat(truefit): TF-S6-00b same-session continuum UI"
