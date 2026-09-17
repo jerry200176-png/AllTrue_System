@@ -1,12 +1,18 @@
 # AllTrue Daan staging — isolated from Pi production and from Dify/Hermes.
 # Fixed project name so this stack never collides with root docker-compose.yml.
+#
+# STAGING_HOST_CHECKOUT_MUTATION fix:
+# - Do NOT bind-mount the host Git checkout into /var/www
+# - App image bakes exact-SHA code under /opt/alltrue-src
+# - Runtime uses named volume stage-app-code for /var/www (nginx shares :ro)
+# - Writable Laravel paths use separate named volumes
 name: alltrue-stage
 
 services:
   app:
     build:
-      context: ../../backend
-      dockerfile: ../infra/daan-staging/Dockerfile
+      context: ../..
+      dockerfile: infra/daan-staging/Dockerfile
     image: alltrue-stage-app:local
     container_name: alltrue-stage-app
     restart: "no"
@@ -26,8 +32,10 @@ services:
       QUEUE_CONNECTION: sync
       LOG_CHANNEL: stderr
     volumes:
-      - ../../backend:/var/www
+      # Named volume only — never ../../backend host bind mount.
+      - stage-app-code:/var/www
       - stage-app-storage:/var/www/storage
+      - stage-bootstrap-cache:/var/www/bootstrap/cache
     depends_on:
       mysql:
         condition: service_healthy
@@ -45,7 +53,7 @@ services:
     ports:
       - "127.0.0.1:18080:80"
     volumes:
-      - ../../backend:/var/www:ro
+      - stage-app-code:/var/www:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - app
@@ -95,3 +103,7 @@ volumes:
     name: alltrue-stage-mysql-data
   stage-app-storage:
     name: alltrue-stage-app-storage
+  stage-bootstrap-cache:
+    name: alltrue-stage-bootstrap-cache
+  stage-app-code:
+    name: alltrue-stage-app-code

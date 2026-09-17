@@ -20,7 +20,9 @@ LIFECYCLE = ROOT / "infra" / "daan-staging" / "lifecycle"
 STAGING_PATHS = [
     "infra/daan-staging/docker-compose.yml",
     "infra/daan-staging/Dockerfile",
+    "infra/daan-staging/docker-entrypoint-staging.sh",
     "infra/daan-staging/nginx.conf",
+    "infra/daan-staging/lifecycle/assert-host-checkout-clean.sh",
     "infra/daan-staging/lifecycle/health.sh",
     "infra/daan-staging/lifecycle/health_contract.py",
     "infra/daan-staging/lifecycle/validate-cycle.sh",
@@ -28,6 +30,7 @@ STAGING_PATHS = [
     "infra/daan-staging/lifecycle/rollback.sh",
     "infra/daan-staging/README.md",
     "docs/ops/DAAN_STAGING_V1.md",
+    ".dockerignore",
 ]
 
 
@@ -49,10 +52,46 @@ class DaanStagingPathClassificationTest(unittest.TestCase):
         self.assertTrue(is_deployable_path("backend/Dockerfile"))
 
 
+class DaanStagingImmutableCheckoutTest(unittest.TestCase):
+    def test_compose_does_not_bind_mount_host_backend(self) -> None:
+        text = (ROOT / "infra" / "daan-staging" / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertNotIn("../../backend:/var/www", text)
+        self.assertNotIn("../backend:/var/www", text)
+        self.assertIn("stage-app-code:/var/www", text)
+        self.assertIn("stage-app-storage:/var/www/storage", text)
+        self.assertIn("stage-bootstrap-cache:/var/www/bootstrap/cache", text)
+        self.assertIn("context: ../..", text)
+        self.assertIn("dockerfile: infra/daan-staging/Dockerfile", text)
+
+    def test_staging_entrypoint_syncs_from_image_not_host(self) -> None:
+        text = (ROOT / "infra" / "daan-staging" / "docker-entrypoint-staging.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("/opt/alltrue-src", text)
+        self.assertIn("rsync", text)
+        self.assertIn("named volume", text.lower() + text)  # comment or path intent
+        # Must not invoke production backend entrypoint sync onto bind mounts.
+        self.assertNotIn("cp -rf /app-src/. /var/www/", text)
+
+    def test_dockerfile_uses_staging_entrypoint(self) -> None:
+        text = (ROOT / "infra" / "daan-staging" / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("docker-entrypoint-staging.sh", text)
+        self.assertIn("/opt/alltrue-src", text)
+        self.assertNotIn("backend/docker-entrypoint.sh", text)
+
+    def test_validate_cycle_asserts_host_checkout_clean(self) -> None:
+        text = (LIFECYCLE / "validate-cycle.sh").read_text(encoding="utf-8")
+        self.assertIn("assert-host-checkout-clean.sh", text)
+        clean = (LIFECYCLE / "assert-host-checkout-clean.sh").read_text(encoding="utf-8")
+        self.assertIn("git status --short", clean)
+        self.assertIn("STAGING_HOST_CHECKOUT_MUTATION", clean)
+        self.assertIn("HOST_CHECKOUT_CLEAN", clean)
+
+
 class DaanStagingLifecycleContractTest(unittest.TestCase):
     def test_lifecycle_scripts_are_executable_in_git_tree(self) -> None:
         scripts = sorted(LIFECYCLE.glob("*.sh"))
-        self.assertGreaterEqual(len(scripts), 10)
+        self.assertGreaterEqual(len(scripts), 11)
         for path in scripts:
             mode = path.stat().st_mode
             self.assertTrue(mode & stat.S_IXUSR, f"{path.name} must be user-executable")
@@ -66,7 +105,6 @@ class DaanStagingLifecycleContractTest(unittest.TestCase):
         self.assertIn("phase2-product-", text)
         self.assertIn("same-sha-redeploy-not-rollback", text)
         self.assertIn("^[0-9a-f]{40}$", text)
-        # Same-SHA redeploy must not be labeled as true rollback evidence.
         self.assertNotIn("phase=1-rollback", text)
 
     def test_rehearse_propagates_main_sha_env(self) -> None:

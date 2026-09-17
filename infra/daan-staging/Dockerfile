@@ -1,12 +1,17 @@
 # AllTrue Daan staging PHP-FPM image.
+# Build context = repository root (see docker-compose.yml).
 # Separate from backend/Dockerfile so staging MySQL PDO parity does not
 # classify as a Pi production application runtime change.
-# Keeps pgsql extensions (repository still references pgsql in config).
+#
+# Exact-SHA application code is baked under /opt/alltrue-src (immutable image
+# layer). At runtime the staging entrypoint syncs into a *named Docker volume*
+# mounted at /var/www. The host Git checkout is never bind-mounted writable.
 FROM php:8.1-fpm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    rsync \
     libpng-dev \
     libjpeg62-turbo-dev \
     libfreetype6-dev \
@@ -37,13 +42,13 @@ RUN echo "upload_max_filesize=64M\npost_max_size=64M\nmemory_limit=192M" \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-WORKDIR /app-src
+WORKDIR /opt/alltrue-src
 
-COPY composer.json ./
-COPY composer.loc[k] ./
+COPY backend/composer.json ./
+COPY backend/composer.loc[k] ./
 RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
-COPY . .
+COPY backend/ .
 
 RUN composer dump-autoload --optimize --no-interaction
 
@@ -55,7 +60,7 @@ RUN mkdir -p \
     storage/logs \
     bootstrap/cache
 
-COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY infra/daan-staging/docker-entrypoint-staging.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /var/www

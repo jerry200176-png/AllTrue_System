@@ -4,14 +4,24 @@ Lifecycle states for this environment (never call these "production verified"):
 
 `CODE_WRITTEN` → `TESTED` → `STAGING_DEPLOYED` → `STAGING_RUNTIME_VERIFIED`
 
+## Host checkout immutability (STAGING_HOST_CHECKOUT_MUTATION)
+
+The staging app image bakes exact-SHA code under `/opt/alltrue-src`.
+Runtime syncs into the **named Docker volume** `alltrue-stage-app-code` at `/var/www`.
+
+**Forbidden:** bind-mounting the host Git `backend/` tree into `/var/www` (writable or otherwise for app).
+That previously let `docker-entrypoint` `chmod`/`chown` mutate tracked files as `www-data`.
+
+After every lifecycle step, `assert-host-checkout-clean.sh` requires empty `git status --short`.
+
 ## Topology
 
 ```
 Daan host (alltrue.daan.lifenet.com.tw)
 ├── Dify / Hermes / host Apache / host MySQL :3306 — unchanged
 └── Docker project `alltrue-stage`
-    ├── alltrue-stage-app   (PHP-FPM, mem≤512m)
-    ├── alltrue-stage-nginx → 127.0.0.1:18080 only
+    ├── alltrue-stage-app   (PHP-FPM, image-baked code → named volume)
+    ├── alltrue-stage-nginx → 127.0.0.1:18080 only (named volume :ro)
     └── alltrue-stage-mysql → Docker network only (no host 3306)
 ```
 
@@ -45,11 +55,11 @@ Packet on Daan: `~/alltrue-stage/FOUNDER_INTERACTIVE_DOCKER.txt`
 
 ## Validation phases
 
-1. **DAAN_STAGING_V1 infra** at merge SHA `142cac7901c5b492a539dc057d47feae2d1d7534`
+1. **DAAN_STAGING_V1 infra** at the SHA that includes the immutable-checkout fix (current `main` / HEAD)
 2. **Product rehearsal** (#3015 / in-app #296) at current `main` after infra ACCEPTED
 
 ```bash
-# Phase 1 only
+# Phase 1 only (HEAD must include STAGING_HOST_CHECKOUT_MUTATION fix)
 infra/daan-staging/lifecycle/validate-cycle.sh
 
 # Phase 1 + #296 rehearsal
