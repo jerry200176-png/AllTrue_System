@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.17",
     "date": "2026-09-17",
     "title": "2026.09.17 草稿（未發布）",
-    "summary": "promotion Phase-B.1 scheduled preview；promotion staff UI",
+    "summary": "authority cutover (sqlite domain SoT)；promotion Phase-B.1 scheduled preview",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,12 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "authority cutover (sqlite domain SoT)",
           "promotion Phase-B.1 scheduled preview",
           "promotion staff UI",
           "4b WorkerRun start/attach + durable session bind",
           "S6-01 workspace progress + continuum edge helpers",
-          "S6-00b same-session continuum UI",
-          "canonical school suggestions"
+          "S6-00b same-session continuum UI"
         ]
       },
       {
@@ -34,12 +34,12 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "authority cutover (sqlite domain SoT)",
       "promotion Phase-B.1 scheduled preview",
       "promotion staff UI",
       "4b WorkerRun start/attach + durable session bind",
       "S6-01 workspace progress + continuum edge helpers",
       "S6-00b same-session continuum UI",
-      "canonical school suggestions",
       "assessment fill vs review label regression"
     ]
   },
