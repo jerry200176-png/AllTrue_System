@@ -2896,6 +2896,15 @@ function leaveCourseManagerSettings() {
   if (dirty && typeof window !== 'undefined' && window.confirm && !window.confirm('尚有未儲存變更，要放棄嗎？')) {
     return;
   }
+  if (dirty && editFormSnapshot.value) {
+    try {
+      editForm.value = JSON.parse(editFormSnapshot.value);
+      editSaveError.value = null;
+      if (courseManagerCourse.value) {
+        editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
+      }
+    } catch (_) { /* keep current form if snapshot corrupt */ }
+  }
   courseManagerTab.value = 'overview';
 }
 function syncCourseManagerCourseFromList() {

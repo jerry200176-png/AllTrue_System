@@ -51,11 +51,14 @@ export default {
   },
   emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes'],
   setup(props, { emit }) {
-    const sessionsView = ref('calendar');
+    const sessionsView = ref(props.calendarEnabled ? 'calendar' : 'list');
     const dangerOpen = ref(false);
     watch(() => props.course?.id, () => {
-      sessionsView.value = 'calendar';
+      sessionsView.value = props.calendarEnabled ? 'calendar' : 'list';
       dangerOpen.value = false;
+    });
+    watch(() => props.calendarEnabled, (on) => {
+      if (!on && sessionsView.value === 'calendar') sessionsView.value = 'list';
     });
     const activeTab = computed({
       get: () => props.tab,
@@ -235,13 +238,13 @@ export default {
               </button>
             </div>
             <p v-else class="cmw__hint">尚無可顯示堂次（請確認排課設定）。</p>
-            <div v-if="showCancelled && cancelledUnits.length" class="cmw__session-list cmw__session-list--cancelled">
-              <div v-for="u in cancelledUnits" :key="'cx-'+sessionRowKey(u)" class="cmw__session-row is-cancelled">
-                <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
-                <span class="cmw__session-state">已取消</span>
-              </div>
-            </div>
           </template>
+          <div v-if="showCancelled && cancelledUnits.length" class="cmw__session-list cmw__session-list--cancelled" data-testid="course-manager-cancelled-list">
+            <div v-for="u in cancelledUnits" :key="'cx-'+sessionRowKey(u)" class="cmw__session-row is-cancelled">
+              <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
+              <span class="cmw__session-state">已取消</span>
+            </div>
+          </div>
           <div v-if="pendingMakeups.length" class="cmw__card">
             <strong>待補課（{{ pendingMakeups.length }} 堂）</strong>
             <div v-for="ms in pendingMakeups" :key="ms.id" class="cmw__need">
