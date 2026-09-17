@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-17-grade-promotion-phase-b1
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(students): grade promotion Phase-B.1 scheduled preview (#297)"
+    reason: 排程預覽＋站內提醒；預設 allowlist 空白 fail-closed、不自動確認。待 staging／campus 9 啟用後再以 staff update 公告。
+
   - id: silent-2026-09-17-learning-status-label-lock
     changelog_date: "2026-09-17"
     changelog_title: "fix(learning): lock assessment fill vs review label regression"

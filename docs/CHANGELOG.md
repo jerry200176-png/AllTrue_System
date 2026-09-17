@@ -1,3 +1,8 @@
+## 2026-09-17 — feat(students): grade promotion Phase-B.1 scheduled preview (#297)
+<!-- release-notes: silent_ship=silent-2026-09-17-grade-promotion-phase-b1 -->
+- 行政日排程僅執行年級升級「預覽」並以站內通知提醒主任／管理員；預設關閉自動確認、分校 allowlist 空白即 fail-closed（初始 rollout 需設定 campus 9）。
+- 沿用 Phase-A `GradePromotionService` writer；排程失敗寫入站內 ops 證據（Notification + BugReport）。
+
 ## 2026-09-17 — feat(students): grade promotion staff UI (#297)
 <!-- release-notes: staff_update=staff-2026-09-17-grade-promotion -->
 - 學生管理「年級升級」改走伺服器預覽／確認：可排除學生、寫入批次紀錄、請求冪等；同生同季不可重複升級。
