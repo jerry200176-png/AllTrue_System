@@ -6,7 +6,6 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\LearningRecord;
-use App\Models\LearningRecordTeacherChange;
 use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Schedule;
@@ -7892,12 +7891,14 @@ class StudentClassController extends Controller
                 continue;
             }
             try {
-                LearningRecordTeacherChange::create([
+                DB::table('learning_record_teacher_changes')->insert([
                     'learning_record_id' => (int) $record->id,
                     'old_teacher_id' => $fromTeacherId > 0 ? $fromTeacherId : null,
                     'new_teacher_id' => $newTeacherId,
                     'changed_by' => $changedBy > 0 ? $changedBy : null,
                     'reason' => 'course_teacher_change_unperformed_occurrence',
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
             } catch (\Throwable $e) {
                 Log::warning('course_teacher_change: LR ownership audit skipped', [

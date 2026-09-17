@@ -4,7 +4,6 @@ namespace App\Support;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
-use App\Models\LearningRecordTeacherComment;
 use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -34,23 +33,23 @@ final class LearningRecordMutableOwnership
             return true;
         }
 
-        $studentClassId = (int) ($record->StudentClassID ?? 0);
+        $studentClassId = (int) ($record->getAttribute('StudentClassID') ?? 0);
         if ($studentClassId <= 0) {
             return false;
         }
 
         return SubstituteScheduleService::resolveSubstituteUserId(
             $studentClassId,
-            $record->SessionDate,
-            $record->StartTime
+            $record->getAttribute('SessionDate'),
+            $record->getAttribute('StartTime')
         ) !== null;
     }
 
     /** Evidence without substitute (shared by #207 pin / #312 clear). */
     public static function hasAuthorshipOrAttendanceEvidence(LearningRecord $record): bool
     {
-        $status = strtolower(trim((string) ($record->Status ?? '')));
-        if ($status !== 'pending' || $record->ApprovedAt !== null || (bool) ($record->SessionDeducted ?? false)) {
+        $status = strtolower(trim((string) ($record->getAttribute('Status') ?? '')));
+        if ($status !== 'pending' || $record->getAttribute('ApprovedAt') !== null || (bool) ($record->getAttribute('SessionDeducted') ?? false)) {
             return true;
         }
         if (self::hasSubstantiveTeacherContent($record)) {
@@ -59,14 +58,14 @@ final class LearningRecordMutableOwnership
 
         $session = self::resolveSession($record);
         if ($session !== null) {
-            $sessionStatus = strtolower(trim((string) ($session->Status ?? '')));
+            $sessionStatus = strtolower(trim((string) ($session->getAttribute('Status') ?? '')));
             if (in_array($sessionStatus, self::TAUGHT_SESSION_STATUSES, true)
                 || in_array($sessionStatus, SessionStatus::leaveFamily(), true)
-                || self::sessionHasAttendanceSignIn((int) $session->id)) {
+                || self::sessionHasAttendanceSignIn((int) $session->getAttribute('id'))) {
                 return true;
             }
-        } elseif ((int) ($record->StudentClassID ?? 0) > 0 && $record->SessionDate) {
-            if (self::slotHasAttendanceSignIn((int) $record->StudentClassID, (string) $record->SessionDate)) {
+        } elseif ((int) ($record->getAttribute('StudentClassID') ?? 0) > 0 && $record->getAttribute('SessionDate')) {
+            if (self::slotHasAttendanceSignIn((int) $record->getAttribute('StudentClassID'), (string) $record->getAttribute('SessionDate'))) {
                 return true;
             }
         }
@@ -76,20 +75,22 @@ final class LearningRecordMutableOwnership
 
     public static function hasSubstantiveTeacherContent(LearningRecord $record): bool
     {
-        $content = trim((string) ($record->Content ?? ''));
+        $content = trim((string) ($record->getAttribute('Content') ?? ''));
         if ($content !== '' && !in_array($content, self::PLACEHOLDER_CONTENT, true)) {
             return true;
         }
         foreach (['Progress', 'NextHomework', 'NextWeekTestScope', 'QuizScore', 'HomeworkStatus', 'Performance', 'Comment'] as $field) {
-            if (trim((string) ($record->{$field} ?? '')) !== '') {
+            if (trim((string) ($record->getAttribute($field) ?? '')) !== '') {
                 return true;
             }
         }
-        if (trim((string) ($record->AttachmentUrl ?? '')) !== '') {
+        if (trim((string) ($record->getAttribute('AttachmentUrl') ?? '')) !== '') {
             return true;
         }
         if (Schema::hasTable('learning_record_teacher_comments')
-            && LearningRecordTeacherComment::where('learning_record_id', (int) $record->id)->exists()) {
+            && DB::table('learning_record_teacher_comments')
+                ->where('learning_record_id', (int) $record->getAttribute('id'))
+                ->exists()) {
             return true;
         }
 
@@ -102,9 +103,13 @@ final class LearningRecordMutableOwnership
         if ($authTeacherId <= 0) {
             return false;
         }
-        $studentClassId = (int) ($record->StudentClassID ?? 0);
+        $studentClassId = (int) ($record->getAttribute('StudentClassID') ?? 0);
         $sub = $studentClassId > 0
-            ? SubstituteScheduleService::resolveSubstituteUserId($studentClassId, $record->SessionDate, $record->StartTime)
+            ? SubstituteScheduleService::resolveSubstituteUserId(
+                $studentClassId,
+                $record->getAttribute('SessionDate'),
+                $record->getAttribute('StartTime')
+            )
             : null;
         if ($sub !== null) {
             return $sub === $authTeacherId;
@@ -115,7 +120,7 @@ final class LearningRecordMutableOwnership
             return $contract > 0 && $contract === $authTeacherId;
         }
 
-        return (int) ($record->TeacherID ?? 0) === $authTeacherId;
+        return (int) ($record->getAttribute('TeacherID') ?? 0) === $authTeacherId;
     }
 
     /**
@@ -174,9 +179,19 @@ final class LearningRecordMutableOwnership
 
     private static function resolveSession(LearningRecord $record): ?ClassSession
     {
-        $sessionId = (int) ($record->ClassSessionID ?? 0);
+        $sessionId = (int) ($record->getAttribute('ClassSessionID') ?? 0);
+        if ($sessionId <= 0) {
+            return null;
+        }
+        $row = DB::table('ClassSession')->where('id', $sessionId)->first();
+        if (!$row) {
+            return null;
+        }
+        $session = new ClassSession();
+        $session->forceFill((array) $row);
+        $session->exists = true;
 
-        return $sessionId > 0 ? ClassSession::query()->find($sessionId) : null;
+        return $session;
     }
 
     private static function sessionHasAttendanceSignIn(int $classSessionId): bool
