@@ -3,6 +3,11 @@
 - 學生管理「年級升級」改走伺服器預覽／確認：可排除學生、寫入批次紀錄、請求冪等；同生同季不可重複升級。
 - H3 僅標記畢業、不在此步驟停課。移除瀏覽器直寫升級的舊路徑。
 
+## 2026-09-17 — fix(learning): lock assessment fill vs review label regression
+<!-- release-notes: silent_ship=silent-2026-09-17-learning-status-label-lock -->
+- 抽出主任／老師評量狀態文案 helper，並補 Vitest＋Playwright（390／1440，含桌面列表）防止再出現含糊「未填／待審核」(#2715)。
+- 顯示語意不變；不改審核流程、請假篩選或資料。
+
 ## 2026-09-17 — feat(truefit): TF-S6-01 workspace progress + continuum edge helpers
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-01-progress-cta -->
 - TrueFit 暗啟動 UI：今日課程清單以既有 GET 扇出顯示同堂次備課／觀察／診斷／補救／精熟已存與否；continuum CTA／seed 在空表、半殘、已存邊緣失敗關閉。

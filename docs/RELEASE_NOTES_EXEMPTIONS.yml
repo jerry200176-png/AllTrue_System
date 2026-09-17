@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-17-learning-status-label-lock
+    changelog_date: "2026-09-17"
+    changelog_title: "fix(learning): lock assessment fill vs review label regression"
+    reason: 僅抽出評量填寫／審核文案 helper 並補回歸測試；教職員可見標籤語意已於 staff-2026-09-16-learning-table-status-clarity 公告，本次不重複推播。
+
   - id: silent-2026-09-17-truefit-s6-01-progress-cta
     changelog_date: "2026-09-17"
     changelog_title: "feat(truefit): TF-S6-01 workspace progress + continuum edge helpers"

@@ -23,13 +23,20 @@ export const changelogDraftNotes = [
           "S6-00b same-session continuum UI",
           "S6-00a source_* auto-link on upsert"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "assessment fill vs review label regression"
+        ]
       }
     ],
     "items": [
       "promotion staff UI",
       "S6-01 workspace progress + continuum edge helpers",
       "S6-00b same-session continuum UI",
-      "S6-00a source_* auto-link on upsert"
+      "S6-00a source_* auto-link on upsert",
+      "assessment fill vs review label regression"
     ]
   },
   {
