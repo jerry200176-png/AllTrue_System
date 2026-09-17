@@ -102,6 +102,10 @@ def transition(
         updated.merge_sha = str(evidence["merge_sha"])
     if evidence.get("deploy_sha"):
         updated.deploy_sha = str(evidence["deploy_sha"])
+    if "lease_id" in evidence:
+        updated.lease_id = str(evidence["lease_id"])
+    if "assignee" in evidence:
+        updated.assignee = str(evidence["assignee"])
 
     store.upsert_task(updated)
     store.record_transition(

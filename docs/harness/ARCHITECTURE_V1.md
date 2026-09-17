@@ -54,3 +54,21 @@ exactly one requested action; Founder-only decisions require Founder actor.
 CLI: `python3 -m scripts.harness plan [--program ID] [--sync] [--main-sha SHA]`.
 H4 launcher/worktree/dispatch is out of scope for H3.
 
+## H4 dispatch
+
+`scripts/harness/dispatch.py` consumes H3 `PlanResult` with Founder amendments:
+
+- Execution-critical revalidation (goal_fp, leases, READY/WIP, governance, main SHA) —
+  **not** time-dependent `input_snapshot_fingerprint` equality
+- Structured multi-resource `LeaseBinding`
+- Durable `DispatchAttempt` (schema v3) written **before** spawn
+- Lease heartbeat/`renew` while attempt is active
+- Stale-worker fencing check on handoff ingestion
+- Fail-closed partial acquire rollback
+- Release execution leases at PR_READY / structured handoff
+- Concurrent apply: exactly one winner (`dispatch_attempts` open-task index + CAS)
+
+CLI: `python3 -m scripts.harness dispatch [--dry-run|--apply]`. Worktree launcher
+product remains deferred; default spawn records `deferred=true`.
+
+
