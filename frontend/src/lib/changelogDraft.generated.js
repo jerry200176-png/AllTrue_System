@@ -22,6 +22,7 @@ export const changelogDraftNotes = [
           "4b WorkerRun start/attach + durable session bind",
           "S6-01 workspace progress + continuum edge helpers",
           "S6-00b same-session continuum UI",
+          "canonical school suggestions",
           "S6-00a source_* auto-link on upsert"
         ]
       },
@@ -37,6 +38,7 @@ export const changelogDraftNotes = [
       "4b WorkerRun start/attach + durable session bind",
       "S6-01 workspace progress + continuum edge helpers",
       "S6-00b same-session continuum UI",
+      "canonical school suggestions",
       "S6-00a source_* auto-link on upsert",
       "assessment fill vs review label regression"
     ]
