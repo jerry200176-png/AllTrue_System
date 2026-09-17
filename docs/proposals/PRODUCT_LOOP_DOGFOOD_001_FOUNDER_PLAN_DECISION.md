@@ -14,7 +14,7 @@
 |----------|-----|
 | Proposal (merged PR #3040) | `6b70ca51f2110f3a7020bbf852e742727d8f50cf` |
 | CubeLV challenge review (authoritative review commit) | `5d7d05c05114950a0eebe85e3c0098a33be12274` |
-| This decision + reconciled Plan (this PR head) | *filled after commit; see PR / `git rev-parse HEAD`* |
+| Founder Plan decision commit (content) | `b945f47f0a2e6454dc05dd8e98bf4f3cb1cd5e6d` |
 
 Related paths:
 
