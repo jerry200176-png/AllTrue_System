@@ -6,10 +6,11 @@
 | Field | Value |
 |-------|--------|
 | Reconciled at | 2026-09-17 (Asia/Taipei) |
-| `origin/main` SHA (at reconcile base) | `f0907cbca33d` |
+| `origin/main` SHA (at reconcile base) | `2f49d651c54e` |
 | Slice 0–5 API + UI on main | **YES** through Mastery UI (#3005) |
 | TF-S6-00a source_* auto-link | **MERGED** (#3010) |
-| TF-S6-00b same-session continuum UI | **THIS PR** (frontend) |
+| TF-S6-00b same-session continuum UI | **MERGED** (#3012); Supervisor **ACCEPTED** |
+| TF-S6-01 continuum hardening | **THIS PR** (workspace progress strip + CTA edges; Option A) |
 | Operational acceptance | **NOT ACCEPTED** — staging #868 blocked; flags OFF |
 | Production flags | **OFF** |
 
@@ -26,14 +27,14 @@ No real-student PII → external LLM. Fixture / teacher-entered only. No flag/DN
 | Slice | Status |
 |-------|--------|
 | 0–5 | Coded+merged; not ops-accepted |
-| 6 Continuum | 00a source-link merged (#3010); 00b continuum UI (this PR) |
+| 6 Continuum | 00 ACCEPTED; 01 workspace progress + CTA edge polish (this PR, Option A client fan-out) |
 | Assessment Vendor Adapter | Not started |
 
 ### APIs behind `TRUEFIT_V1`
 
 `material-units` · `lesson-preps` · `observations` · `diagnoses` · `remediations` · `mastery-evidence`
 
-When upserting diagnosis / remediation / mastery without an explicit `source_*` id, the service now resolves the latest same-session prior artifact for that teacher (still nullable if none exists). Frontend continuum CTAs + prior-stage form seeding land in TF-S6-00b (flags remain OFF).
+S6-01 reads those existing GETs from the workspace (client fan-out; no aggregate API). Continuum CTA / seed helpers fail closed on empty, partial, and already-saved edges. Flags remain OFF.
 
 ## Blockers
 
@@ -42,7 +43,8 @@ When upserting diagnosis / remediation / mastery without an explicit `source_*` 
 
 ## Next selected bounded task
 
-1. After 00b lands: Supervisor ops acceptance for full S6-00 (MERGED≠ACCEPTED).  
-2. Do not activate flags/DNS/staging ownership.
+1. After this PR lands: Supervisor non-prod acceptance for S6-01 progress strip (flags stay OFF until Founder).  
+2. Do not begin TF-S6-02 next-lesson carry-forward.  
+3. Do not activate flags/DNS/staging ownership.
 
 Never call work “done” merely because code exists.

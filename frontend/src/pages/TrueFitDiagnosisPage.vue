@@ -67,7 +67,7 @@
             儲存診斷
           </AtButton>
           <AtButton
-            v-if="savedRecordId"
+            v-if="canContinueFromStage({ stage: 'diagnose', savedRecordId })"
             variant="ghost"
             shape="rect"
             icon="healing"
@@ -97,7 +97,11 @@ import {
   fetchTrueFitObservation,
   upsertTrueFitDiagnosis,
 } from '../lib/truefitApi.js';
-import { seedDiagnosisFromObservation } from '../lib/truefitLoop.js';
+import {
+  canContinueFromStage,
+  seedDiagnosisFromObservation,
+  shouldApplyContinuumSeed,
+} from '../lib/truefitLoop.js';
 
 const props = defineProps({
   session: { type: Object, default: null },
@@ -203,8 +207,9 @@ async function loadExisting() {
       sourceObservationId.value = Number(obsPayload.data.id) || null;
     }
     applyDiagnosis(diagPayload?.data?.diagnosis || null);
-    if (!savedRecordId.value) {
-      applySeedIfEmpty(seedDiagnosisFromObservation(obsPayload?.data?.observation || null));
+    const seed = seedDiagnosisFromObservation(obsPayload?.data?.observation || null);
+    if (shouldApplyContinuumSeed({ savedRecordId: savedRecordId.value, seed })) {
+      applySeedIfEmpty(seed);
     }
   } catch (e) {
     error.value = e?.message || '錯誤診斷載入失敗';
