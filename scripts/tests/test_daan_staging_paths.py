@@ -21,7 +21,8 @@ STAGING_PATHS = [
     "infra/daan-staging/docker-compose.yml",
     "infra/daan-staging/Dockerfile",
     "infra/daan-staging/nginx.conf",
-    "infra/daan-staging/lifecycle/up.sh",
+    "infra/daan-staging/lifecycle/health.sh",
+    "infra/daan-staging/lifecycle/health_contract.py",
     "infra/daan-staging/lifecycle/validate-cycle.sh",
     "infra/daan-staging/lifecycle/rehearse-inapp-296.sh",
     "infra/daan-staging/lifecycle/rollback.sh",
@@ -63,8 +64,10 @@ class DaanStagingLifecycleContractTest(unittest.TestCase):
         self.assertIn("PRODUCT_REHEARSAL_MAIN_SHA", text)
         self.assertIn("phase1-infra-", text)
         self.assertIn("phase2-product-", text)
-        self.assertIn('rollback.sh', text)
+        self.assertIn("same-sha-redeploy-not-rollback", text)
         self.assertIn("^[0-9a-f]{40}$", text)
+        # Same-SHA redeploy must not be labeled as true rollback evidence.
+        self.assertNotIn("phase=1-rollback", text)
 
     def test_rehearse_propagates_main_sha_env(self) -> None:
         text = (LIFECYCLE / "rehearse-inapp-296.sh").read_text(encoding="utf-8")

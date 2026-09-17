@@ -58,11 +58,10 @@ bash "${DIR}/health.sh"
 printf '%s\n' "phase=1-restart" "sha=${STAGING_INFRA_SHA}" "result=OK" "at=${TS}" \
   > "${EVID}/${PHASE1_TAG}-restart.ok"
 
-echo "=== rollback/redeploy proof (redeploy same SHA, then rollback.sh same SHA) ==="
+echo "=== redeploy proof (same SHA; not a true rollback) ==="
 bash "${DIR}/redeploy.sh" "${STAGING_INFRA_SHA}"
-bash "${DIR}/rollback.sh" "${STAGING_INFRA_SHA}"
-printf '%s\n' "phase=1-rollback" "sha=${STAGING_INFRA_SHA}" "result=OK" "at=${TS}" \
-  > "${EVID}/${PHASE1_TAG}-rollback.ok"
+printf '%s\n' "phase=1-redeploy" "sha=${STAGING_INFRA_SHA}" "result=OK" "note=same-sha-redeploy-not-rollback" "at=${TS}" \
+  > "${EVID}/${PHASE1_TAG}-redeploy.ok"
 
 if [[ "${PRODUCT_REHEARSAL}" == "1" ]]; then
   echo "=== Phase 2: product rehearsal #296 at ${MAIN_SHA} (${PHASE2_TAG}) ==="
