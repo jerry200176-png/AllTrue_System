@@ -289,6 +289,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/GUIDE_UI_COPY.md` | UI 文案、空狀態、loading 規範 |
 | `docs/GUIDE_DESIGN_QA_SMOKE.md` | 前端設計 QA / smoke 驗收清單 |
 | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md` | SmartCalendar 受控拆分與元件/ composable 對照 |
+| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_INAPP_290_CALENDAR_COURSE_SESSION_EDITING.md` | Product Loop dogfood：in-app #290 / GH #2800 課程堂次行事曆編輯 Proposal（實作未授權） |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
 | `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）；產品意圖見 RFC |
 | `docs/architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md` | #2809 RFID 在校證明 v1 政策／架構合約（presence ≠ attendance）|
