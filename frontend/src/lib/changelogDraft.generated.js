@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.17",
     "date": "2026-09-17",
     "title": "2026.09.17 草稿（未發布）",
-    "summary": "promotion staff UI；S6-01 workspace progress + continuum edge helpers",
+    "summary": "promotion staff UI；4b WorkerRun start/attach + durable session bind",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "promotion staff UI",
+          "4b WorkerRun start/attach + durable session bind",
           "S6-01 workspace progress + continuum edge helpers",
           "S6-00b same-session continuum UI",
           "S6-00a source_* auto-link on upsert"
@@ -33,6 +34,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "promotion staff UI",
+      "4b WorkerRun start/attach + durable session bind",
       "S6-01 workspace progress + continuum edge helpers",
       "S6-00b same-session continuum UI",
       "S6-00a source_* auto-link on upsert",
