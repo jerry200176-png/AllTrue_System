@@ -1,3 +1,13 @@
+## 2026-09-17 — fix(deploy): explicit course session calendar flag activation
+<!-- release-notes: silent_ship=silent-2026-09-17-calendar-flag-activation-control -->
+- Deployment control now accepts `course_session_calendar_v1=on|off|unchanged` (mirrors admissions), persists `COURSE_SESSION_CALENDAR_V1` for rebuild continuity, and allows Founder flag activation on an already-current tip.
+- Control-plane only until a Founder-gated run sets `course_session_calendar_v1=on`; does not authorize Phase 1b/2/3.
+
+## 2026-09-17 — feat(course-mgmt): staff calendar plan surface ON (Phase 0+1a)
+<!-- release-notes: staff_update=staff-2026-09-17-course-session-calendar-v1 -->
+- 課程管理單課可開啟行事曆檢視：顯示已建立＋預排堂次，並可在未來日期新增一堂（沿用既有新增堂次流程）。
+- **不含**取消堂次、改時間／改老師、週期改寫；不改帳務。Phase 1b／2／3 未授權。
+
 ## 2026-09-17 — feat(course-mgmt): calendar plan surface Phase 0+1a (flag OFF)
 <!-- release-notes: silent_ship=silent-2026-09-17-course-session-calendar-phase-0-1a -->
 - Course Management 新增行事曆形狀的單課堂次讀取（已建立＋預排）與未來新增一堂（沿用既有 add-session／manual-sessions）；`COURSE_SESSION_CALENDAR_V1` / `VITE_COURSE_SESSION_CALENDAR_V1` 預設 OFF。

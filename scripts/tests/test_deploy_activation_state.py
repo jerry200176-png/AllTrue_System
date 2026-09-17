@@ -1177,6 +1177,20 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("admissions flag restored during rollback", self.workflow)
         self.assertIn('[ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]', self.workflow)
 
+    def test_course_session_calendar_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("course_session_calendar_v1:", self.workflow)
+        self.assertIn('CALENDAR_FLAG_MODE="${{ inputs.course_session_calendar_v1 }}"', self.workflow)
+        self.assertIn('CALENDAR_FLAG_MODE" = "on"', self.workflow)
+        self.assertIn('CALENDAR_FLAG_MODE" = "off"', self.workflow)
+        self.assertIn("COURSE_SESSION_CALENDAR_V1=", self.workflow)
+        self.assertIn("VITE_COURSE_SESSION_CALENDAR_V1=%s", self.workflow)
+        self.assertIn("CALENDAR_FLAG_CHANGED=1", self.workflow)
+        self.assertIn("course session calendar flag restored during rollback", self.workflow)
+        self.assertIn('[ "$CALENDAR_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("explicit Founder feature-flag activation on current tip", self.workflow)
+        self.assertIn("COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}", self.workflow)
+        self.assertIn("Does not authorize Phase 1b/2/3", self.workflow)
+
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):
         self.assertIn("rollback_deploy()", self.workflow)
         self.assertIn("abort_deploy()", self.workflow)
