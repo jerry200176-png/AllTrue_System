@@ -59,7 +59,8 @@ function stripTechNoise(s) {
     .replace(/\b[a-zA-Z0-9_./-]+\.(vue|js|mjs|php|md|yml|json|cjs)\b/g, '')
     .replace(/\b[A-Za-z_][A-Za-z0-9_]*\(\)/g, '')
     .replace(/\bFR-\d+\b/g, '')
-    .replace(/\bPR\s*\)?/gi, '')
+    // Word-boundary both sides — bare \bPR matches the start of "progress"/"primary".
+    .replace(/\bPR\b\s*\)?/gi, '')
     .replace(/^-+/g, '')
     .replace(/-style/gi, ' 介面')
     .replace(/-inspired/gi, ' 風格')
