@@ -1,7 +1,7 @@
 # Implementation handoff — PRODUCT_LOOP_DOGFOOD_001 Phase 0 + 1a
 
-**Status:** Ready for implementation **after** Founder Plan decision commit is on the collaboration branch / `main`.  
-**Do not start implementation in the same change set as the decision docs.**
+**Status:** Implementation PR prepared for independent review (Phase 0 + 1a). Feature flag remains OFF; production activation not in this unit.  
+**Do not start Phase 1b/2/3 in the same change set.**
 
 ## Bindings
 

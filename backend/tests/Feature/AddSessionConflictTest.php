@@ -569,6 +569,39 @@ class AddSessionConflictTest extends TestCase
     }
 
     /**
+     * PRODUCT_LOOP_DOGFOOD_001 Phase 1a: calendar create reuses add-session and must
+     * not mutate StudentClass Charge / Paid (or invent Invoice rows).
+     */
+    public function test_add_session_create_does_not_mutate_charge_paid_or_invoices(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, [
+            'SessionCount' => 4,
+            'RemainingSessions' => 4,
+            'Charge' => 2000,
+            'Paid' => 500,
+        ]);
+        $date = Carbon::today()->addDays(5)->toDateString();
+        $invoiceCountBefore = \Illuminate\Support\Facades\DB::table('Invoice')->count();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+            'session_date' => $date,
+            'start_time' => '14:00',
+            'duration_minutes' => 120,
+            'auto_approve' => false,
+        ])->assertSuccessful();
+
+        $after = $sc->fresh();
+        $this->assertSame(2000, (int) $after->Charge);
+        $this->assertSame(500, (int) ($after->Paid ?? 0));
+        $this->assertSame($invoiceCountBefore, \Illuminate\Support\Facades\DB::table('Invoice')->count());
+    }
+
+    /**
      * Regression: a count contract with seven attended sessions and one
      * remaining session must still accept its eighth occurrence. Cancelled
      * leave dates are historical exceptions, not additional active sessions.

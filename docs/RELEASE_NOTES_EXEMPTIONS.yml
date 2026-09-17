@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-17-course-session-calendar-phase-0-1a
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(course-mgmt): calendar plan surface Phase 0+1a (flag OFF)"
+    reason: Course Management 行事曆形狀堂次讀取＋未來新增（PRODUCT_LOOP_DOGFOOD_001 Phase 0+1a）暗啟動；COURSE_SESSION_CALENDAR_V1 / VITE_COURSE_SESSION_CALENDAR_V1 預設 OFF，不做 production 啟用，不改線上可見流程／帳務。
+
   - id: silent-2026-09-17-nine-domain-engineering-audit
     changelog_date: "2026-09-17"
     changelog_title: "docs(audit): persist nine-domain engineering audit"

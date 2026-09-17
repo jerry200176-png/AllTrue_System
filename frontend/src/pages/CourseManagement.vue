@@ -519,7 +519,25 @@
                             <button class="notes-toggle-btn" @click.stop="toggleSessionNotes" :title="showSessionNotes ? '隱藏備註' : '顯示備註'">
                               {{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}
                             </button>
+                            <button
+                              v-if="courseSessionCalendarEnabled"
+                              type="button"
+                              class="notes-toggle-btn"
+                              data-testid="course-session-calendar-toggle"
+                              @click.stop="toggleCourseSessionCalendar(c.id)"
+                              :title="courseSessionCalendarOpen.has(c.id) ? '關閉排課行事曆' : '開啟排課行事曆'"
+                            >
+                              {{ courseSessionCalendarOpen.has(c.id) ? '行事曆 ▲' : '行事曆 ▼' }}
+                            </button>
                           </div>
+                          <CourseSessionCalendar
+                            v-if="courseSessionCalendarEnabled && courseSessionCalendarOpen.has(c.id)"
+                            :course="c"
+                            :sessions="primarySessionUnits(c)"
+                            :create-enabled="resolveCourseSessionCreateWriter(c) !== 'none'"
+                            @create-day="(payload) => openCourseSessionCalendarCreate(c, payload)"
+                            @quick-add="openQuickAddSessionModal(c)"
+                          />
                           <div v-if="primarySessionUnits(c).length > 0" class="dates-chip-grid">
                             <button
                               v-for="u in primarySessionUnits(c)"
@@ -1449,6 +1467,12 @@ import ContractAdjustmentChoiceModal from '../components/course-management/Contr
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
+import CourseSessionCalendar from '../components/course-management/CourseSessionCalendar.vue';
+import {
+  isCourseSessionCalendarEnabled,
+  resolveCourseSessionCreateWriter,
+} from '../composables/course-management/useCourseSessionCalendar.js';
+import perfFlags from '../lib/perfFlags.js';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
 import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
 import RescheduleModal from '../components/course-management/RescheduleModal.vue';
@@ -2733,6 +2757,20 @@ const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
       '可從歷史課程或暫停清單恢復',
     ]);
 
+const courseSessionCalendarEnabled = isCourseSessionCalendarEnabled(perfFlags);
+const courseSessionCalendarOpen = ref(new Set());
+function toggleCourseSessionCalendar(courseId) {
+  const next = new Set(courseSessionCalendarOpen.value);
+  if (next.has(courseId)) next.delete(courseId);
+  else next.add(courseId);
+  courseSessionCalendarOpen.value = next;
+}
+function openCourseSessionCalendarCreate(course, payload = {}) {
+  if (resolveCourseSessionCreateWriter(course) === 'none') return;
+  const date = String(payload?.date || '').slice(0, 10);
+  openManualSessionModal(course, date ? { date } : null);
+}
+
 const showCancelledSessions = ref(new Set());
 function toggleCancelledSessions(courseId) {
   const next = new Set(showCancelledSessions.value);
@@ -3355,14 +3393,16 @@ async function submitQuickAddSession() {
   }
 }
 // ----- Leave (請假) -----
-function openManualSessionModal(course) {
+function openManualSessionModal(course, prefill = null) {
   const courseId = courseIdForAction(course);
   if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
   manualSessionCourse.value = { ...course, id: courseId };
   manualSessionCheck.value = null;
+  const prefillDate = prefill?.date ? String(prefill.date).slice(0, 10) : '';
+  const prefillStart = prefill?.startTime ? String(prefill.startTime).slice(0, 5) : '';
   manualSessionForm.value = {
-    session_date: nextManualSessionDate(course),
-    start_time: String(course.start_time || '16:00').slice(0, 5),
+    session_date: prefillDate || nextManualSessionDate(course),
+    start_time: prefillStart || String(course.start_time || '16:00').slice(0, 5),
   };
   showManualSessionModal.value = true;
   runManualSessionCheck();

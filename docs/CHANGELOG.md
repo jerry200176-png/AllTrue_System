@@ -1,3 +1,8 @@
+## 2026-09-17 — feat(course-mgmt): calendar plan surface Phase 0+1a (flag OFF)
+<!-- release-notes: silent_ship=silent-2026-09-17-course-session-calendar-phase-0-1a -->
+- Course Management 新增行事曆形狀的單課堂次讀取（已建立＋預排）與未來新增一堂（沿用既有 add-session／manual-sessions）；`COURSE_SESSION_CALENDAR_V1` / `VITE_COURSE_SESSION_CALENDAR_V1` 預設 OFF。
+- 不含取消、改時間、改老師、週期改寫；不改帳務 Charge／Paid／Invoice；不做 production 啟用。
+
 ## 2026-09-17 — docs(audit): persist nine-domain engineering audit
 <!-- release-notes: silent_ship=silent-2026-09-17-nine-domain-engineering-audit -->
 - Add read-only nine-domain engineering audit artifact under `docs/audits/` for GitHub-side independent review.

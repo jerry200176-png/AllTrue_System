@@ -117,6 +117,29 @@ class ManualSessionBookingTest extends TestCase
         $this->assertDatabaseCount('ClassSession', 1);
     }
 
+    /**
+     * PRODUCT_LOOP_DOGFOOD_001 Phase 1a: calendar create reuses manual-sessions and must
+     * not mutate StudentClass Charge / Paid (or invent Invoice rows).
+     */
+    public function test_manual_session_create_does_not_mutate_charge_paid_or_invoices(): void
+    {
+        $date = Carbon::today()->addDays(10)->toDateString();
+        $payload = ['session_date' => $date, 'start_time' => '16:00'];
+        $before = $this->course->fresh();
+        $chargeBefore = (int) $before->Charge;
+        $paidBefore = (int) ($before->Paid ?? 0);
+        $invoiceCountBefore = \Illuminate\Support\Facades\DB::table('Invoice')->count();
+
+        $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions", $payload)
+            ->assertCreated();
+
+        $after = $this->course->fresh();
+        $this->assertSame($chargeBefore, (int) $after->Charge);
+        $this->assertSame($paidBefore, (int) ($after->Paid ?? 0));
+        $this->assertSame($invoiceCountBefore, \Illuminate\Support\Facades\DB::table('Invoice')->count());
+    }
+
     public function test_future_reservations_consume_booking_capacity_but_not_remaining_balance(): void
     {
         foreach ([7, 14, 21] as $days) {

@@ -292,7 +292,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_INAPP_290_CALENDAR_COURSE_SESSION_EDITING.md` | Product Loop dogfood：in-app #290 / GH #2800 Proposal（Phase 0+1a GO；1b/2/3 未授權） |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_CHALLENGE_REVIEW.md` | CubeLV independent challenge review (`5d7d05c0`) |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_FOUNDER_PLAN_DECISION.md` | Founder Plan Decision — Phase 0+1a GO; cancel deferred |
-| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_GOAL_CONTRACT_PHASE_0_1A.json` | Implementation GoalContract (create-only; impl not started) |
+| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_GOAL_CONTRACT_PHASE_0_1A.json` | Implementation GoalContract (create-only; Phase 0+1a impl in progress, flag OFF) |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_IMPL_HANDOFF_PHASE_0_1A.md` | Implementation handoff for Phase 0+1a |
 | `docs/programs/PRODUCT_LOOP_DOGFOOD_001_STATUS.md` | Program lifecycle status (do not collapse MERGED≠done) |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
