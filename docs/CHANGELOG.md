@@ -1,3 +1,7 @@
+## 2026-09-18 — chore(release): tip CI for Course Manager polish deploy
+<!-- release-notes: silent_ship=silent-2026-09-18-course-manager-polish-tip -->
+- No product change; re-tip main so polish SHA can pass Founder exact-SHA activation after a docs-only tip.
+
 ## 2026-09-18 — docs(product-ops): bounded app-shell debt + in-app execution policy
 <!-- release-notes: silent_ship=silent-2026-09-18-app-shell-inapp-policy -->
 - 新增 `APP_SHELL_DECOMPOSITION_001`（僅三切片、IMPLEMENTATION_DEFERRED）與 `INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`（訊號分類／auto-fix／Decision Packet）。

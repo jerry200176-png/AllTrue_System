@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-course-manager-polish-tip
+    changelog_date: "2026-09-18"
+    changelog_title: "chore(release): tip CI for Course Manager polish deploy"
+    reason: docs-only tip lacked CI; this silent entry enables exact-SHA activation of already-merged polish.
+
   - id: silent-2026-09-18-app-shell-inapp-policy
     changelog_date: "2026-09-18"
     changelog_title: "docs(product-ops): bounded app-shell debt + in-app execution policy"
