@@ -1,8 +1,3 @@
-## 2026-09-17 — feat(students): grade promotion preview + Director confirm (#297)
-<!-- release-notes: staff_update=staff-2026-09-17-grade-promotion -->
-- 年級升級改為伺服器預覽／確認批次：可排除學生、紀錄稽核、請求冪等與「同生同季不可重複升級」；行政預設日集中為 8/1。
-- H3 僅標記畢業狀態，不在此交易停課。不再用瀏覽器直寫 Supabase 升級。
-
 ## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
 - TrueFit 暗啟動 UI：同堂次備課 → 觀察 → 診斷 → 補救 → 精熟的下一步 CTA，以及從前一階段 payload 種子空白表單。

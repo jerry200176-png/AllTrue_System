@@ -18,22 +18,16 @@ class GradePromotionApiTest extends TestCase
     public function test_preview_marks_already_promoted_non_actionable(): void
     {
         $director = $this->director([1]);
-        $a = $this->student(1, 'Ada', 7); // J1
-        $b = $this->student(1, 'Ben', 12); // H3
+        $a = $this->student(1, 'Ada', 7);
+        $b = $this->student(1, 'Ben', 12);
         GradePromotionResult::create([
-            'batch_id' => 1,
-            'student_id' => $a->id,
-            'season_year' => 2026,
-            'from_grade' => 'P6',
-            'to_grade' => 'J1',
-            'graduated' => false,
-            'created_at' => now(),
+            'batch_id' => 1, 'student_id' => $a->id, 'season_year' => 2026,
+            'from_grade' => 'P6', 'to_grade' => 'J1', 'graduated' => false, 'created_at' => now(),
         ]);
 
         $res = $this->withHeaders($this->bearer($director['tok']))
             ->getJson('/api/v1/grade-promotions/preview?branch_id=1&season_year=2026')
             ->assertOk();
-
         $byId = collect($res->json('data'))->keyBy('student_id');
         $this->assertFalse($byId[$a->id]['actionable']);
         $this->assertTrue($byId[$a->id]['already_promoted']);
@@ -47,40 +41,29 @@ class GradePromotionApiTest extends TestCase
         $director = $this->director([1]);
         $j1 = $this->student(1, 'Jay', 7);
         $h3 = $this->student(1, 'Hal', 12);
-
-        $payload = [
-            'branch_id' => 1,
-            'season_year' => 2026,
-            'idempotency_key' => 'promo-test-key-0001',
-        ];
+        $payload = ['branch_id' => 1, 'season_year' => 2026, 'idempotency_key' => 'promo-test-key-0001'];
 
         $res = $this->withHeaders($this->bearer($director['tok']))
             ->postJson('/api/v1/grade-promotions/confirm', $payload)
             ->assertCreated();
-
         $this->assertFalse($res->json('replayed'));
         $this->assertSame(2, $res->json('summary.applied'));
 
         $j1->refresh();
         $h3->refresh();
-        $this->assertSame(8, (int) $j1->ClassID); // J2
+        $this->assertSame(8, (int) $j1->ClassID);
         $this->assertSame('graduated', $h3->status);
         $this->assertSame(12, (int) $h3->ClassID);
 
-        // Retry same key — replay, no double apply
         $replay = $this->withHeaders($this->bearer($director['tok']))
             ->postJson('/api/v1/grade-promotions/confirm', $payload)
             ->assertOk();
         $this->assertTrue($replay->json('replayed'));
 
-        // Second batch same season for a late student must be allowed;
-        // already-promoted students stay non-actionable.
-        $late = $this->student(1, 'Late', 1); // P1
+        $late = $this->student(1, 'Late', 1);
         $second = $this->withHeaders($this->bearer($director['tok']))
             ->postJson('/api/v1/grade-promotions/confirm', [
-                'branch_id' => 1,
-                'season_year' => 2026,
-                'idempotency_key' => 'promo-test-key-0002',
+                'branch_id' => 1, 'season_year' => 2026, 'idempotency_key' => 'promo-test-key-0002',
             ])
             ->assertCreated();
         $this->assertSame(1, $second->json('summary.applied'));
@@ -96,9 +79,7 @@ class GradePromotionApiTest extends TestCase
 
         $this->withHeaders($this->bearer($director['tok']))
             ->postJson('/api/v1/grade-promotions/confirm', [
-                'branch_id' => 1,
-                'season_year' => 2026,
-                'idempotency_key' => 'promo-exclude-1',
+                'branch_id' => 1, 'season_year' => 2026, 'idempotency_key' => 'promo-exclude-1',
                 'exclude_student_ids' => [$skip->id],
             ])
             ->assertCreated()
@@ -127,27 +108,15 @@ class GradePromotionApiTest extends TestCase
     private function director(array $campusIds, string $email = 'dir-promo@example.com'): array
     {
         $user = User::create([
-            'LoginName' => $email,
-            'Name' => 'Director',
+            'LoginName' => $email, 'Name' => 'Director',
             'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
-            'type' => 'A',
-            'phone' => '0911111111',
-            'MustChangePassword' => false,
+            'type' => 'A', 'phone' => '0911111111', 'MustChangePassword' => false,
         ]);
         foreach ($campusIds as $cid) {
-            UserCampus::create([
-                'UserID' => $user->id,
-                'CampusID' => $cid,
-                'Admin' => 1,
-                'Approved' => 1,
-            ]);
+            UserCampus::create(['UserID' => $user->id, 'CampusID' => $cid, 'Admin' => 1, 'Approved' => 1]);
         }
         $tok = bin2hex(random_bytes(16));
-        AuthToken::create([
-            'user_id' => $user->id,
-            'token' => $tok,
-            'expires_at' => now()->addDay(),
-        ]);
+        AuthToken::create(['user_id' => $user->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
 
         return ['id' => (int) $user->id, 'tok' => $tok];
     }
@@ -155,22 +124,14 @@ class GradePromotionApiTest extends TestCase
     private function student(int $campusId, string $name, int $classId): Student
     {
         return Student::create([
-            'name' => $name,
-            'CampusID' => $campusId,
-            'ClassID' => $classId,
-            'status' => 'active',
-            'enable' => 1,
-            'MDT' => now(),
-            'Notify_Token' => '',
+            'name' => $name, 'CampusID' => $campusId, 'ClassID' => $classId,
+            'status' => 'active', 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
     }
 
     /** @return array<string, string> */
     private function bearer(string $token): array
     {
-        return [
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ];
+        return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
     }
 }

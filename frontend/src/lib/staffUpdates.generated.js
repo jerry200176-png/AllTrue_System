@@ -4,45 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-09-17-grade-promotion",
-    "publishedAt": "2026-09-17",
-    "effectiveAt": null,
-    "audiences": [
-      "director"
-    ],
-    "audience": [
-      "director"
-    ],
-    "importance": "major",
-    "title": "年級升級改為預覽後確認",
-    "summary": "主任可先預覽再確認升級；可排除學生；同季不會重複升級；H3 只標記畢業、不自動停課。",
-    "items": [
-      "年級升級改走伺服器預覽／確認，並留下批次紀錄。",
-      "已升級學生會標為不可再執行；重試同一確認不會重複升級。",
-      "H3 畢業不再在此步驟自動停課（課務另走排程／帳務流程）。"
-    ],
-    "sections": [
-      {
-        "title": "操作更順手",
-        "items": [
-          "年級升級改走伺服器預覽／確認，並留下批次紀錄。",
-          "H3 畢業不再在此步驟自動停課（課務另走排程／帳務流程）。"
-        ]
-      },
-      {
-        "title": "我們修好了",
-        "items": [
-          "已升級學生會標為不可再執行；重試同一確認不會重複升級。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "github:in-app-297"
-    ],
-    "date": "2026-09-17",
-    "version": "2026.09.17"
-  },
-  {
     "id": "staff-2026-09-16-contract-amendment-remaining",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,

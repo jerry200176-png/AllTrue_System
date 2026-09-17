@@ -3,23 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-09-17-grade-promotion
-    published_at: "2026-09-17"
-    audiences:
-      - director
-    importance: major
-    title: 年級升級改為預覽後確認
-    summary: 主任可先預覽再確認升級；可排除學生；同季不會重複升級；H3 只標記畢業、不自動停課。
-    items:
-      - category: improved
-        text: 年級升級改走伺服器預覽／確認，並留下批次紀錄。
-      - category: fixed
-        text: 已升級學生會標為不可再執行；重試同一確認不會重複升級。
-      - category: improved
-        text: H3 畢業不再在此步驟自動停課（課務另走排程／帳務流程）。
-    source_refs:
-      - "github:in-app-297"
-
   - id: staff-2026-09-16-learning-table-status-clarity
     published_at: "2026-09-16"
     audiences:

@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 478 api/* routes · generated 2026-09-17
+> Source: `php artisan route:list --json` · 476 api/* routes · generated 2026-09-16
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -422,13 +422,6 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/global-search` | `GlobalSearchController@index` | role+campus |
-
-## /api/v1/grade-promotions (2)
-
-| Method | URI | Action | Auth |
-|--------|-----|--------|------|
-| POST | `api/v1/grade-promotions/confirm` | `GradePromotionController@confirm` | role+campus |
-| GET | `api/v1/grade-promotions/preview` | `GradePromotionController@preview` | role+campus |
 
 ## /api/v1/health (2)
 

@@ -4,6 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $batch_id
+ * @property int $student_id
+ * @property int $season_year
+ * @property string|null $from_grade
+ * @property string|null $to_grade
+ * @property bool $graduated
+ * @property \Carbon\Carbon|null $created_at
+ * @method static static create(array $attributes = [])
+ */
 class GradePromotionResult extends Model
 {
     protected $table = 'grade_promotion_results';

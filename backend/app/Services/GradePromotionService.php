@@ -21,18 +21,14 @@ class GradePromotionService
         $tz = (string) config('grade_promotion.timezone', 'Asia/Taipei');
         $month = (int) config('grade_promotion.admin_month', 8);
         $day = (int) config('grade_promotion.admin_day', 1);
-
         return Carbon::create($year, $month, $day, 0, 0, 0, $tz)->startOfDay();
     }
-
     public function defaultSeasonYear(?Carbon $now = null): int
     {
         $tz = (string) config('grade_promotion.timezone', 'Asia/Taipei');
         $now = ($now ?? Carbon::now($tz))->timezone($tz);
-
         return (int) $now->year;
     }
-
     /**
      * @return list<string>
      */
@@ -40,7 +36,6 @@ class GradePromotionService
     {
         return array_values(config('grade_promotion.grade_order', []));
     }
-
     public function nextGrade(?string $grade): ?string
     {
         $grade = $grade ? strtoupper(trim($grade)) : '';
@@ -49,25 +44,19 @@ class GradePromotionService
         if ($idx === false || $idx >= count($order) - 1) {
             return null;
         }
-
         return $order[$idx + 1];
     }
-
     public function classIdToGrade(?int $classId): string
     {
         $map = array_flip(config('grade_promotion.grade_to_class_id', []));
-
         return $map[$classId] ?? '';
     }
-
     public function gradeToClassId(string $grade): ?int
     {
         $map = config('grade_promotion.grade_to_class_id', []);
         $grade = strtoupper(trim($grade));
-
         return isset($map[$grade]) ? (int) $map[$grade] : null;
     }
-
     /**
      * @return list<array{
      *   student_id: int,
@@ -83,7 +72,6 @@ class GradePromotionService
     public function preview(int $campusId, int $seasonYear): array
     {
         $already = $this->alreadyPromotedStudentIds($campusId, $seasonYear);
-
         $rows = Student::query()
             ->where('CampusID', $campusId)
             ->where(function ($q) {
@@ -91,14 +79,12 @@ class GradePromotionService
             })
             ->orderBy('name')
             ->get(['id', 'name', 'ClassID', 'status']);
-
         $out = [];
         foreach ($rows as $student) {
             $from = $this->classIdToGrade($student->ClassID !== null ? (int) $student->ClassID : null);
             $to = $this->nextGrade($from !== '' ? $from : null);
             $graduated = $to === null && $from === 'H3';
             $promoted = in_array((int) $student->id, $already, true);
-
             $actionable = !$promoted && ($to !== null || $graduated);
             $reason = null;
             if ($promoted) {
@@ -107,7 +93,6 @@ class GradePromotionService
                 $reason = 'unknown_grade';
                 $actionable = false;
             }
-
             $out[] = [
                 'student_id' => (int) $student->id,
                 'name' => (string) $student->name,
@@ -119,10 +104,8 @@ class GradePromotionService
                 'reason' => $reason,
             ];
         }
-
         return $out;
     }
-
     /**
      * @param  list<int>  $excludeStudentIds
      * @param  array<int, array{to_grade?: string, graduate?: bool}>  $corrections  keyed by student_id
@@ -142,7 +125,6 @@ class GradePromotionService
                 'idempotency_key' => ['Idempotency key is required (max 64 chars).'],
             ]);
         }
-
         $existing = GradePromotionBatch::query()->where('idempotency_key', $idempotencyKey)->first();
         if ($existing) {
             if ((int) $existing->campus_id !== $campusId || (int) $existing->season_year !== $seasonYear) {
@@ -150,21 +132,18 @@ class GradePromotionService
                     'idempotency_key' => ['Idempotency key already used for a different campus/season.'],
                 ]);
             }
-
             return [
                 'batch' => $existing,
                 'results' => $this->serializeResultsForBatch((int) $existing->id),
                 'replayed' => true,
             ];
         }
-
         $exclude = array_values(array_unique(array_map('intval', $excludeStudentIds)));
         $preview = $this->preview($campusId, $seasonYear);
         $byId = [];
         foreach ($preview as $row) {
             $byId[$row['student_id']] = $row;
         }
-
         $planned = [];
         foreach ($preview as $row) {
             $sid = $row['student_id'];
@@ -174,10 +153,9 @@ class GradePromotionService
             if (!$row['actionable']) {
                 continue;
             }
-
             $toGrade = $row['to_grade'];
             $graduate = $row['graduated'];
-            if (isset($corrections[$sid]) && is_array($corrections[$sid])) {
+            if (isset($corrections[$sid])) {
                 $corr = $corrections[$sid];
                 if (!empty($corr['graduate'])) {
                     $graduate = true;
@@ -193,7 +171,6 @@ class GradePromotionService
                     $graduate = false;
                 }
             }
-
             $planned[] = [
                 'student_id' => $sid,
                 'from_grade' => $row['from_grade'],
@@ -201,13 +178,11 @@ class GradePromotionService
                 'graduated' => $graduate,
             ];
         }
-
         if ($planned === []) {
             throw ValidationException::withMessages([
                 'students' => ['No actionable students to promote.'],
             ]);
         }
-
         return DB::transaction(function () use ($campusId, $seasonYear, $idempotencyKey, $actorUserId, $planned) {
             // Re-check idempotency inside transaction.
             $again = GradePromotionBatch::query()->where('idempotency_key', $idempotencyKey)->lockForUpdate()->first();
@@ -218,7 +193,6 @@ class GradePromotionService
                     'replayed' => true,
                 ];
             }
-
             $batch = GradePromotionBatch::create([
                 'campus_id' => $campusId,
                 'season_year' => $seasonYear,
@@ -233,12 +207,10 @@ class GradePromotionService
                 ],
                 'created_at' => now(),
             ]);
-
             $applied = 0;
             $graduatedCount = 0;
             $promotedCount = 0;
             $resultRows = [];
-
             foreach ($planned as $item) {
                 $student = Student::query()
                     ->where('id', $item['student_id'])
@@ -248,7 +220,6 @@ class GradePromotionService
                 if (!$student) {
                     continue;
                 }
-
                 if (GradePromotionResult::query()
                     ->where('student_id', $student->id)
                     ->where('season_year', $seasonYear)
@@ -256,7 +227,6 @@ class GradePromotionService
                     // Race / already promoted — skip without failing the whole batch.
                     continue;
                 }
-
                 if ($item['graduated']) {
                     $student->status = 'graduated';
                     // Keep ClassID as H3; status carries graduation. No course Stop mutation.
@@ -280,7 +250,6 @@ class GradePromotionService
                     }
                     $promotedCount++;
                 }
-
                 GradePromotionResult::create([
                     'batch_id' => $batch->id,
                     'student_id' => $student->id,
@@ -293,7 +262,6 @@ class GradePromotionService
                 $applied++;
                 $resultRows[] = $item;
             }
-
             $batch->summary = [
                 'planned' => count($planned),
                 'applied' => $applied,
@@ -301,7 +269,6 @@ class GradePromotionService
                 'promoted' => $promotedCount,
             ];
             $batch->save();
-
             return [
                 'batch' => $batch->fresh(),
                 'results' => $this->serializeResultsForBatch((int) $batch->id),
@@ -309,7 +276,6 @@ class GradePromotionService
             ];
         });
     }
-
     /**
      * @return list<int>
      */
@@ -318,7 +284,6 @@ class GradePromotionService
         if (!Schema::hasTable('grade_promotion_results')) {
             return [];
         }
-
         return GradePromotionResult::query()
             ->where('season_year', $seasonYear)
             ->whereIn('student_id', function ($q) use ($campusId) {
@@ -328,7 +293,6 @@ class GradePromotionService
             ->map(fn ($id) => (int) $id)
             ->all();
     }
-
     /**
      * @return list<array<string, mixed>>
      */
