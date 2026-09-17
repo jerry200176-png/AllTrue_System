@@ -92,7 +92,7 @@
     "ambiguous_product_semantics on create entitlement"
   ],
   "rollback": "Feature flag off and/or remove Course Management entry point; no schema to revert for this unit",
-  "implementation_status": "NOT_STARTED",
+  "implementation_status": "IMPL_PR_READY",
   "created_at": "2026-09-17T10:45:00Z",
   "scope_fingerprint": "113dc2177c9138b7",
   "contract_fingerprint": "74f87869f9722836784a74ef4689b82f"

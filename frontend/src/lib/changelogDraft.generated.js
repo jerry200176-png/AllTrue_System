@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.17",
     "date": "2026-09-17",
     "title": "2026.09.17 草稿（未發布）",
-    "summary": "promotion Phase-B.1 scheduled preview；promotion staff UI",
+    "summary": "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。；promotion Phase-B.1 scheduled preview",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,12 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
           "promotion Phase-B.1 scheduled preview",
           "promotion staff UI",
           "4b WorkerRun start/attach + durable session bind",
           "S6-01 workspace progress + continuum edge helpers",
-          "S6-00b same-session continuum UI",
-          "canonical school suggestions"
+          "S6-00b same-session continuum UI"
         ]
       },
       {
@@ -34,12 +34,12 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
       "promotion Phase-B.1 scheduled preview",
       "promotion staff UI",
       "4b WorkerRun start/attach + durable session bind",
       "S6-01 workspace progress + continuum edge helpers",
       "S6-00b same-session continuum UI",
-      "canonical school suggestions",
       "assessment fill vs review label regression"
     ]
   },
