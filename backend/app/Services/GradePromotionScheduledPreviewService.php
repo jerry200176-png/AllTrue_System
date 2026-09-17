@@ -49,7 +49,7 @@ class GradePromotionScheduledPreviewService
         $campusResults = [];
         foreach ($allowlist as $campusId) {
             $preview = $this->promotion->preview($campusId, $seasonYear);
-            $actionable = count(array_filter($preview, static fn (array $row) => (bool) ($row['actionable'] ?? false)));
+            $actionable = count(array_filter($preview, static fn (array $row) => (bool) $row['actionable']));
             $this->notifyDirectors($campusId, $seasonYear, $actionable);
             $campusResults[] = [
                 'campus_id' => $campusId,
@@ -91,7 +91,7 @@ class GradePromotionScheduledPreviewService
         ]);
 
         if (Schema::hasTable('Notifications')) {
-            Notification::updateOrCreate(
+            Notification::query()->updateOrCreate(
                 ['SourceKey' => "grade-promotion:scheduler-failure:{$day}"],
                 [
                     'CampusID' => 0,
@@ -113,7 +113,7 @@ class GradePromotionScheduledPreviewService
         }
 
         if (Schema::hasTable('bug_reports')) {
-            BugReport::firstOrCreate(
+            BugReport::query()->firstOrCreate(
                 [
                     'title' => "[ops] grade-promotion scheduled preview failed {$day}",
                 ],
