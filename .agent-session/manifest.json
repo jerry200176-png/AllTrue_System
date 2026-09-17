@@ -5,7 +5,7 @@
   "task_id": "app-shell-inapp-policy-docs",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "3eaaafebd6b1d35ba5edb3029c7c1d7c9e3b4b26",
-  "branch": "docs/app-shell-inapp-product-loop-policy",
+  "branch": "docs/app-shell-inapp-policy-docs",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/app-shell-inapp-policy-docs",
   "started_at": "2026-09-17T23:10:54Z",
   "production_mutation": false,
