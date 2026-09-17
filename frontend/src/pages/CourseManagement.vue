@@ -477,6 +477,7 @@
                     
                       </template>
                     </td>
+                  </tr>
                   <tr v-if="!courseManagerEnabled && expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
                     <td colspan="6">
                       <div class="detail-panel">
