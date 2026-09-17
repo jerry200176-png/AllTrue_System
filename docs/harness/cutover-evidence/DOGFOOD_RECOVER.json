@@ -1,0 +1,121 @@
+{
+  "ok": true,
+  "recovered_at": "2026-09-17T08:55:24Z",
+  "pid": 456590,
+  "run": {
+    "run_id": "wr_cutover_9301d6a79b98",
+    "attempt_id": "da_cutover_127b2c3dc443",
+    "task_id": "CUTOVER-DOGFOOD-1",
+    "mode": "attach",
+    "status": "running",
+    "session_id": "81d3be4f3f3c4818b481c3adeb389169",
+    "worktree_path": "/home/jerry/workspace/tasks/alltrue/harness-store-authority-cutover",
+    "branch": "chore/task-harness-store-authority-cutover",
+    "worker": "dogfood-supervisor",
+    "fencing_token": 1,
+    "lease_binding": {
+      "bindings": [
+        {
+          "resource_key": "ownership:harness-cutover-dogfood/**",
+          "lease_id": "lease_a3ca0479d1cb",
+          "fencing_token": 1,
+          "task_id": "CUTOVER-DOGFOOD-1",
+          "worker": "dogfood-supervisor"
+        }
+      ]
+    },
+    "payload": {
+      "dogfood": true,
+      "seeded_at": "2026-09-17T08:55:22Z"
+    },
+    "created_at": "2026-09-17T08:55:22Z",
+    "updated_at": "2026-09-17T08:55:22Z"
+  },
+  "handoff": {
+    "ok": true,
+    "reason": "handoff_accepted",
+    "plan_id": "plan_cutover_dogfood",
+    "attempt_id": "da_cutover_127b2c3dc443",
+    "task_id": "CUTOVER-DOGFOOD-1",
+    "goal_id": "goal_cutover_dogfood",
+    "goal_contract_fingerprint": "cutover-dogfood-fp",
+    "observed_main_sha": null,
+    "execution_critical_fingerprint": "",
+    "required_leases": [],
+    "lease_binding": {
+      "bindings": [
+        {
+          "resource_key": "ownership:harness-cutover-dogfood/**",
+          "lease_id": "lease_a3ca0479d1cb",
+          "fencing_token": 1,
+          "task_id": "CUTOVER-DOGFOOD-1",
+          "worker": "dogfood-supervisor"
+        }
+      ]
+    },
+    "would_mutate": false,
+    "governance": null,
+    "spawn": {
+      "ok": true,
+      "reason": "worker_handoff_observed",
+      "run_id": "wr_cutover_9301d6a79b98",
+      "attempt_id": "da_cutover_127b2c3dc443",
+      "session_id": "81d3be4f3f3c4818b481c3adeb389169"
+    }
+  },
+  "stale_denied": {
+    "ok": false,
+    "reason": "stale_worker_fencing",
+    "plan_id": "plan_cutover_dogfood",
+    "attempt_id": "da_cutover_127b2c3dc443",
+    "task_id": "CUTOVER-DOGFOOD-1",
+    "goal_id": null,
+    "goal_contract_fingerprint": null,
+    "observed_main_sha": null,
+    "execution_critical_fingerprint": "",
+    "required_leases": [],
+    "lease_binding": {
+      "bindings": [
+        {
+          "resource_key": "ownership:harness-cutover-dogfood/**",
+          "lease_id": "lease_a3ca0479d1cb",
+          "fencing_token": 1,
+          "task_id": "CUTOVER-DOGFOOD-1",
+          "worker": "dogfood-supervisor"
+        }
+      ]
+    },
+    "would_mutate": false,
+    "governance": null,
+    "spawn": null
+  },
+  "attach": {
+    "ok": true,
+    "mode": "resume",
+    "reason": "resumed",
+    "session_id": "f3e3307d0a934d3e9bc31be44bf658cf",
+    "worktree_path": "/home/jerry/workspace/tasks/alltrue/harness-store-authority-cutover",
+    "branch": "chore/task-harness-store-authority-cutover",
+    "base_sha": "a454475a25b883d91a605cef873eddfd3381efe8",
+    "launcher_task_id": "harness-store-authority-cutover",
+    "project": "alltrue",
+    "manifest_path": "/home/jerry/workspace/agent-control/sessions/f3e3307d0a934d3e9bc31be44bf658cf.json",
+    "deferred": false,
+    "raw": {
+      "stdout": "-authority-cutover branch=chore/task-harness-store-authority-cutover @ a454475a25b8\nmanifest-ok\nagent-control: OK: session_id=f3e3307d0a934d3e9bc31be44bf658cf\nagent-control: OK: worktree=/home/jerry/workspace/tasks/alltrue/harness-store-authority-cutover\nagent-control: OK: manifest=/home/jerry/workspace/agent-control/sessions/f3e3307d0a934d3e9bc31be44bf658cf.json\nagent-control: OK: mode=resume\nagent-control: OK: production_mutation=disabled\nWORKER_RUN_JSON={\"mode\":\"resume\",\"session_id\":\"f3e3307d0a934d3e9bc31be44bf658cf\",\"worktree_path\":\"/home/jerry/workspace/tasks/alltrue/harness-store-authority-cutover\",\"branch\":\"chore/task-harness-store-authority-cutover\",\"base_sha\":\"a454475a25b883d91a605cef873eddfd3381efe8\",\"manifest_path\":\"/home/jerry/workspace/agent-control/sessions/f3e3307d0a934d3e9bc31be44bf658cf.json\",\"project\":\"alltrue\",\"task_id\":\"harness-store-authority-cutover\"}\nagent-control: OK: dry-run: not launching CLI\n/home/jerry/workspace/tasks/alltrue/harness-store-authority-cutover\n",
+      "rc": 0,
+      "machine": {
+        "mode": "resume",
+        "session_id": "f3e3307d0a934d3e9bc31be44bf658cf",
+        "worktree_path": "/home/jerry/workspace/tasks/alltrue/harness-store-authority-cutover",
+        "branch": "chore/task-harness-store-authority-cutover",
+        "base_sha": "a454475a25b883d91a605cef873eddfd3381efe8",
+        "manifest_path": "/home/jerry/workspace/agent-control/sessions/f3e3307d0a934d3e9bc31be44bf658cf.json",
+        "project": "alltrue",
+        "task_id": "harness-store-authority-cutover"
+      }
+    }
+  },
+  "chat_history_used": false,
+  "founder_relay_used": false
+}

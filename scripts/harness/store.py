@@ -10,10 +10,11 @@ from typing import Any, Iterable
 
 from .contracts import Checkpoint, DecisionReceipt, GoalContract
 from .models import Escalation, Program, Task
+from .schema_migrate import TARGET_SCHEMA_VERSION, apply_additive_v4
 from .states import TaskState
 
 DEFAULT_DB = Path("/home/jerry/workspace/state/alltrue/harness.sqlite")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = TARGET_SCHEMA_VERSION
 
 
 def default_db_path() -> Path:
@@ -22,7 +23,12 @@ def default_db_path() -> Path:
 
 
 class HarnessStore:
-    def __init__(self, db_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path | str | None = None,
+        *,
+        migrate: bool = True,
+    ) -> None:
         self.db_path = Path(db_path) if db_path else default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         # isolation_level=None enables explicit BEGIN IMMEDIATE for lease CAS.
@@ -30,145 +36,15 @@ class HarnessStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
-        self._migrate()
+        # For empty/test DBs. Live cutover must use schema_migrate.migrate_* first.
+        if migrate:
+            self._migrate()
 
     def close(self) -> None:
         self._conn.close()
 
     def _migrate(self) -> None:
-        cur = self._conn.cursor()
-        cur.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS meta (
-              key TEXT PRIMARY KEY,
-              value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS programs (
-              program_id TEXT PRIMARY KEY,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS tasks (
-              task_id TEXT PRIMARY KEY,
-              program_id TEXT NOT NULL,
-              status TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_tasks_program ON tasks(program_id);
-            CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-            CREATE TABLE IF NOT EXISTS escalations (
-              escalation_id TEXT PRIMARY KEY,
-              dedupe_key TEXT NOT NULL,
-              status TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_escalation_open_dedupe
-              ON escalations(dedupe_key) WHERE status = 'open';
-            CREATE TABLE IF NOT EXISTS transitions (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              task_id TEXT NOT NULL,
-              from_state TEXT NOT NULL,
-              to_state TEXT NOT NULL,
-              actor TEXT NOT NULL,
-              evidence TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS leases (
-              lease_id TEXT PRIMARY KEY,
-              resource_key TEXT NOT NULL UNIQUE,
-              holder_task_id TEXT NOT NULL,
-              holder_worker TEXT NOT NULL,
-              expires_at TEXT NOT NULL,
-              fencing_token INTEGER NOT NULL,
-              payload TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS goals (
-              goal_id TEXT PRIMARY KEY,
-              program_id TEXT NOT NULL,
-              task_id TEXT NOT NULL,
-              subject_sha TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_goals_task ON goals(task_id);
-            CREATE TABLE IF NOT EXISTS decision_receipts (
-              receipt_id TEXT PRIMARY KEY,
-              goal_id TEXT NOT NULL,
-              subject_sha TEXT NOT NULL,
-              status TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_receipts_goal ON decision_receipts(goal_id);
-            CREATE TABLE IF NOT EXISTS checkpoints (
-              checkpoint_id TEXT PRIMARY KEY,
-              task_id TEXT NOT NULL,
-              goal_id TEXT NOT NULL,
-              task_state TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_checkpoints_task ON checkpoints(task_id);
-            CREATE TABLE IF NOT EXISTS dispatch_attempts (
-              attempt_id TEXT PRIMARY KEY,
-              plan_id TEXT NOT NULL,
-              task_id TEXT NOT NULL,
-              goal_id TEXT NOT NULL,
-              goal_contract_fingerprint TEXT NOT NULL,
-              status TEXT NOT NULL,
-              worker TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_dispatch_plan ON dispatch_attempts(plan_id);
-            CREATE INDEX IF NOT EXISTS idx_dispatch_task ON dispatch_attempts(task_id);
-            CREATE TABLE IF NOT EXISTS worker_runs (
-              run_id TEXT PRIMARY KEY,
-              attempt_id TEXT NOT NULL,
-              task_id TEXT NOT NULL,
-              mode TEXT NOT NULL,
-              status TEXT NOT NULL,
-              session_id TEXT NOT NULL,
-              worktree_path TEXT NOT NULL,
-              branch TEXT NOT NULL,
-              worker TEXT NOT NULL,
-              fencing_token INTEGER,
-              lease_binding TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_worker_runs_attempt ON worker_runs(attempt_id);
-            CREATE INDEX IF NOT EXISTS idx_worker_runs_task ON worker_runs(task_id);
-            CREATE INDEX IF NOT EXISTS idx_worker_runs_session ON worker_runs(session_id);
-            """
-        )
-        # At most one open mutation attempt per task (H4 duplicate-launch guard).
-        cur.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_open_task
-              ON dispatch_attempts(task_id)
-              WHERE status IN ('pending','acquired','active')
-            """
-        )
-        # At most one open WorkerRun per attempt (H4b single canonical child).
-        cur.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_run_open_attempt
-              ON worker_runs(attempt_id)
-              WHERE status IN ('starting','running')
-            """
-        )
-        cur.execute(
-            "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (str(SCHEMA_VERSION),),
-        )
-        self._conn.commit()
-
+        apply_additive_v4(self._conn)
     def upsert_program(self, program: Program) -> None:
         self._conn.execute(
             """

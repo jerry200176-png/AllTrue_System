@@ -204,3 +204,4 @@ ops-review-key-map.json
 **/leave-hc-filled*.csv
 # ExoProtocol: audit logs excluded (privacy.commit_logs=false)
 .exo/logs/
+tmp-cutover/

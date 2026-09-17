@@ -1,0 +1,74 @@
+{
+  "ok": true,
+  "mode": "live",
+  "report": {
+    "ok": true,
+    "before_version": 1,
+    "after_version": 4,
+    "before_tables": [
+      "escalations",
+      "leases",
+      "meta",
+      "programs",
+      "tasks",
+      "transitions"
+    ],
+    "after_tables": [
+      "checkpoints",
+      "decision_receipts",
+      "dispatch_attempts",
+      "escalations",
+      "goals",
+      "leases",
+      "meta",
+      "programs",
+      "tasks",
+      "transitions",
+      "worker_runs"
+    ],
+    "v1_row_counts": {
+      "programs": {
+        "before": 4,
+        "after": 4
+      },
+      "tasks": {
+        "before": 6,
+        "after": 6
+      },
+      "leases": {
+        "before": 8,
+        "after": 8
+      },
+      "escalations": {
+        "before": 0,
+        "after": 0
+      },
+      "transitions": {
+        "before": 4,
+        "after": 4
+      }
+    },
+    "v1_logical_digest": "64d20ea5595906dde7f72f78cd479b406ff3879152e82ca07336fe8f6fac2db0",
+    "preserved_meta_keys": [
+      "current_state_path",
+      "graph_terminology",
+      "h2_base_merge_sha",
+      "h2_correctness_acceptance",
+      "h3_status",
+      "last_coordination_reconcile_at",
+      "last_graph_reconcile_at",
+      "last_integration_at",
+      "last_orchestrator_reconcile_at"
+    ],
+    "new_tables": [
+      "checkpoints",
+      "decision_receipts",
+      "dispatch_attempts",
+      "goals",
+      "worker_runs"
+    ],
+    "additive": true,
+    "path": "/home/jerry/workspace/state/alltrue/harness.sqlite",
+    "integrity_check": "ok"
+  }
+}
