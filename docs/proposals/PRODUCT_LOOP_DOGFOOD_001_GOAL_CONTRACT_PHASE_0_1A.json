@@ -25,9 +25,14 @@
     "frontend/src/lib/perfFlags.js",
     "frontend/src/**/*CourseSessionCalendar*",
     "frontend/src/**/*courseSessionCalendar*",
-    "frontend/src/**/*.test.js",
-    "backend/tests/Feature/**/*School*",
-    "backend/tests/Feature/**/*Session*",
+    "frontend/src/pages/CourseManagement*.test.js",
+    "frontend/src/components/course-management/**/*.test.js",
+    "frontend/src/composables/course-management/**/*.test.js",
+    "frontend/src/**/*CourseSessionCalendar*.test.js",
+    "frontend/src/**/*courseSessionCalendar*.test.js",
+    "frontend/src/lib/classSessionsApi*.test.js",
+    "backend/tests/Feature/**/*ClassSession*",
+    "backend/tests/Feature/**/*AddSession*",
     "backend/tests/Feature/**/*ManualSession*",
     "docs/CHANGELOG.md",
     "docs/proposals/PRODUCT_LOOP_DOGFOOD_001_*",
@@ -89,6 +94,6 @@
   "rollback": "Feature flag off and/or remove Course Management entry point; no schema to revert for this unit",
   "implementation_status": "NOT_STARTED",
   "created_at": "2026-09-17T10:45:00Z",
-  "scope_fingerprint": "4d38d973b6ad341f",
-  "contract_fingerprint": "ca10f358ee2376390765db702aeff40f"
+  "scope_fingerprint": "113dc2177c9138b7",
+  "contract_fingerprint": "74f87869f9722836784a74ef4689b82f"
 }
