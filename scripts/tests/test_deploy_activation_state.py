@@ -1029,7 +1029,33 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('"required_status_checks"', self.workflow)
         self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
 
-    def test_merged_pr_attribution_uses_actual_landed_commit_effects(self):
+    def test_classifier_gh_api_rejects_empty_or_invalid_json(self):
+        """GOV-ACTIVATE-CLASSIFIER-JSON-EOF: empty/truncated gh bodies must fail closed with path context."""
+        lookup = self.workflow[self.workflow.index("          def gh_api(path, *extra):"):]
+        lookup = lookup[:lookup.index("          def pages(value):")]
+        self.assertIn("capture_output=True", lookup)
+        self.assertIn("gh api empty JSON body", lookup)
+        self.assertIn("gh api invalid JSON", lookup)
+        self.assertIn("json.JSONDecodeError", lookup)
+        self.assertNotIn("subprocess.check_output", lookup)
+
+    def test_classifier_exception_emits_awaiting_activation_with_exception_class(self):
+        except_block = self.workflow[self.workflow.index("          except Exception as exc:"):]
+        except_block = except_block[:except_block.index("          PY")]
+        self.assertIn('emit(', except_block)
+        self.assertIn('"awaiting-activation"', except_block)
+        self.assertIn("activation policy evaluation failed; fail closed", except_block)
+        self.assertIn("type(exc).__name__", except_block)
+        # Must not flip approval_eligible true on generic parse failure
+        self.assertNotIn("approval_eligible=True", except_block)
+
+    def test_release_state_treats_empty_mode_as_fail_closed_blocked(self):
+        release = self.workflow[self.workflow.index("  release-state:"):]
+        release = release[:release.index("  production-activation:")]
+        self.assertIn('""|*', release)
+        self.assertIn("Classify produced empty or unknown release mode; fail closed", release)
+        self.assertIn("No production SSH, migration, frontend build, or data mutation was executed", release)
+
         attribution = self.workflow[self.workflow.index("              for commit in comparison.get(\"commits\") or []:"):]
         attribution = attribution[:attribution.index("              if not provenance_complete or not attributed:")]
         self.assertIn('commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")', attribution)
