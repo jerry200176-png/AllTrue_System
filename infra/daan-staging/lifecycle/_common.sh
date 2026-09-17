@@ -26,10 +26,15 @@ require_env_file() {
     echo "ERROR: replace CHANGE_ME_* placeholders in ${ENV_FILE} before use." >&2
     exit 2
   fi
-  if grep -Eiq 'daan\.lifenet|production|PI_SSH|alltrue\.com\.tw' "${ENV_FILE}"; then
+  if grep -Ei '^(APP_URL|DB_HOST|DB_DATABASE|DB_USERNAME|DB_PASSWORD|STAGING_DB_|STAGING_MYSQL)=.*(daan\.lifenet\.com\.tw|alltrue\.com\.tw|PI_SSH|mysql://.*lifenet)' "${ENV_FILE}"; then
     echo "ERROR: staging .env must not reference production hosts/secrets." >&2
     exit 2
   fi
+}
+
+staging_evidence_dir() {
+  mkdir -p "${STAGE_ROOT}/runtime/evidence"
+  echo "${STAGE_ROOT}/runtime/evidence"
 }
 
 mem_snapshot() {
