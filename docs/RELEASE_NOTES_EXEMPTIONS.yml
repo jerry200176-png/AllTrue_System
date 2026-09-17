@@ -2,17 +2,15 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
-<<<<<<< HEAD
   - id: silent-2026-09-17-truefit-s6-00b-continuum-ui
     changelog_date: "2026-09-17"
     changelog_title: "feat(truefit): TF-S6-00b same-session continuum UI"
     reason: TrueFit 暗啟動（TRUEFIT_V1 / VITE_TRUEFIT_V1 OFF）前端同堂次 continuum CTA 與前階段種子；不改線上教職員可見流程、帳務或排課。
-=======
+
   - id: silent-2026-09-17-staff-multi-role-ab
     changelog_date: "2026-09-17"
     changelog_title: "feat(auth): staff multi-role capability model behind flag (#299)"
     reason: Phase A/B 暗啟動（STAFF_MULTI_ROLE_V1 預設 OFF）；新增 capability／acting 上下文與測試，不含生產帳號合併或線上啟用。
->>>>>>> 0aa7f3b42 (feat(auth): staff multi-role capability model behind flag (#299))
 
   - id: silent-2026-09-17-truefit-s6-00a-source-link
     changelog_date: "2026-09-17"
