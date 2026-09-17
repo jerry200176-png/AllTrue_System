@@ -11,7 +11,18 @@ OUT="${EVID}/rehearse-inapp-296-${TS}.txt"
 exec > >(tee -a "${OUT}") 2>&1
 
 SHA="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
+EXPECTED="${PRODUCT_REHEARSAL_MAIN_SHA:-}"
 echo "=== in-app #296 staging rehearsal @ ${SHA} ==="
+if [[ -n "${EXPECTED}" ]]; then
+  if [[ ! "${EXPECTED}" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "ERROR: PRODUCT_REHEARSAL_MAIN_SHA must be 40-char hex; got '${EXPECTED}'" >&2
+    exit 2
+  fi
+  echo "PRODUCT_REHEARSAL_MAIN_SHA=${EXPECTED}"
+  if [[ "${SHA}" != "${EXPECTED}" ]]; then
+    echo "WARN: checkout HEAD ${SHA} != PRODUCT_REHEARSAL_MAIN_SHA ${EXPECTED} (container may still be at MAIN_SHA via redeploy)" >&2
+  fi
+fi
 
 bash "${DIR}/health.sh"
 
