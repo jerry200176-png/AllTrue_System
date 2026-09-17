@@ -52,7 +52,8 @@ describe('CourseManagement action hierarchy', () => {
     expect(source).toContain('const requestVersion = ++manualSessionCheckVersion;');
     expect(source).toContain('if (requestVersion !== manualSessionCheckVersion) return;');
     expect(source).toContain("import { nextManualSessionDate } from '../lib/manualSessionDate.js';");
-    expect(source).toContain('session_date: nextManualSessionDate(course)');
+    expect(source).toContain('session_date: prefillDate || nextManualSessionDate(course)');
+    expect(source).toContain('function openManualSessionModal(course, prefill = null)');
     expect(source).toContain('let quickAddCheckVersion = 0;');
     expect(source).toContain('const requestVersion = ++quickAddCheckVersion;');
     expect(source).toContain('Disable submit during the debounce window');
