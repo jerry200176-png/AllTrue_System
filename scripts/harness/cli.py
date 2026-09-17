@@ -1,4 +1,4 @@
-"""CLI: sync / status / resume / founder-inbox / graph (H0–H2)."""
+"""CLI: sync / status / resume / founder-inbox / graph / plan (H0–H3)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any
 
 from .graph import build_graph
 from .leases import reclaim_stale
+from .planner import select_across_programs, select_next_task
 from .programs_loader import sync_programs_to_store
 from .reconcile import resume_from_checkpoint
 from .states import ACTIVE_MUTATING
@@ -100,6 +101,26 @@ def cmd_graph(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plan(args: argparse.Namespace) -> int:
+    """H3 read-only planner. --sync may reload YAML; never mutates leases (A4)."""
+    store = _store(args)
+    if args.sync:
+        sync_programs_to_store(store)
+    kwargs = {
+        "main_sha": args.main_sha or None,
+        "reconcile_stale": bool(args.sync or args.reconcile_stale),
+        "apply_governance": not args.skip_governance,
+    }
+    if args.program:
+        result = select_next_task(store, program_id=args.program, **kwargs)
+    else:
+        result = select_across_programs(store, **kwargs)
+    payload = result.to_dict()
+    payload["db"] = str(store.db_path)
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python3 -m scripts.harness")
     p.add_argument("--db", default=None)
@@ -119,6 +140,13 @@ def build_parser() -> argparse.ArgumentParser:
     resume.set_defaults(func=cmd_resume)
     graph = sub.add_parser("graph")
     graph.set_defaults(func=cmd_graph)
+    plan = sub.add_parser("plan", help="H3 read-only PlanResult (no lease mutate, no H4)")
+    plan.add_argument("--program", default=None)
+    plan.add_argument("--sync", action="store_true", help="reload programs YAML; enables stale-goal skip")
+    plan.add_argument("--reconcile-stale", action="store_true")
+    plan.add_argument("--main-sha", default=None)
+    plan.add_argument("--skip-governance", action="store_true")
+    plan.set_defaults(func=cmd_plan)
     return p
 
 
