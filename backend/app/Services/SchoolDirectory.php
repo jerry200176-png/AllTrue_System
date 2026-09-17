@@ -51,10 +51,10 @@ class SchoolDirectory
             return strcmp($a['item']['canonical_name'], $b['item']['canonical_name']);
         });
 
-        return array_values(array_map(
+        return array_map(
             static fn (array $hit) => $hit['item'],
             array_slice($hits, 0, $limit)
-        ));
+        );
     }
 
     public function normalize(string $value): string

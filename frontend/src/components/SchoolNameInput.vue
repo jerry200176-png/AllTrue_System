@@ -164,12 +164,12 @@ onBeforeUnmount(() => clearTimeout(timer));
   margin: 0;
   padding: 4px 0;
   list-style: none;
-  background: var(--at-surface, #fff);
-  border: 1px solid var(--at-border, #d0d7de);
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
   border-radius: 8px;
   max-height: 240px;
   overflow: auto;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--ds-shadow-md, 0 8px 24px color-mix(in srgb, var(--ds-ink) 12%, transparent));
 }
 .school-name-suggestions li {
   display: flex;
@@ -180,18 +180,18 @@ onBeforeUnmount(() => clearTimeout(timer));
 }
 .school-name-suggestions li.active,
 .school-name-suggestions li:hover {
-  background: var(--at-surface-muted, #f6f8fa);
+  background: var(--ds-surface-subtle);
 }
 .school-name-suggestions strong {
   font-size: 0.92rem;
 }
 .school-name-suggestions small {
-  color: var(--at-fg-muted, #656d76);
+  color: var(--ds-text-tertiary);
   font-size: 0.78rem;
 }
 .school-name-custom-hint {
   cursor: default;
-  color: var(--at-fg-muted, #656d76);
+  color: var(--ds-text-tertiary);
   font-size: 0.78rem;
 }
 </style>

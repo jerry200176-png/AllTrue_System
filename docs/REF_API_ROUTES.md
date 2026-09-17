@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 478 api/* routes · generated 2026-09-17
+> Source: `php artisan route:list --json` · 479 api/* routes · generated 2026-09-17
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -697,6 +697,12 @@
 | DELETE | `api/v1/schedules/{schedule}` | `ScheduleController@destroy` | role+campus |
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
+
+## /api/v1/schools (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
 
 ## /api/v1/student-classes (34)
 
