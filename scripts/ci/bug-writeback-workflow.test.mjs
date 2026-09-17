@@ -25,8 +25,13 @@ for (const workflow of workflows) {
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
 assert.match(
   phaseCSource,
-  /280 => \[[\s\S]*?"rev" => "995023201e9452cbd067df5aa7cd0bdc7312bb5c",[\s\S]*?"deploy" => "34667267404",/,
+  /280 => \[[\s\S]*?"rev" => "16e38fb969cf73a227a86c4dfe9918078b00a459",[\s\S]*?"deploy" => "35183308316",/,
   'in-app #280 must resolve only against its exact verified production revision and deploy run',
+);
+assert.match(
+  phaseCSource,
+  /297 => \[[\s\S]*?"rev" => "16e38fb969cf73a227a86c4dfe9918078b00a459",[\s\S]*?"deploy" => "35183308316",/,
+  'in-app #297 must resolve only against its exact verified production revision and deploy run',
 );
 for (const bugId of [281, 283]) {
   assert.match(
