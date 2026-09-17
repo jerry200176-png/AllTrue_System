@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-18-course-manager-v1-on
+    published_at: "2026-09-18"
+    audiences:
+      - director
+    importance: major
+    title: 課程管理改為「管理課程」單一入口
+    summary: 進行中課程改按「管理課程」進入工作區；原編輯／更多整理進分區，不含單堂取消或改時間。
+    items:
+      - category: improved
+        text: 進行中列改按「管理課程」進入總覽、排課、設定、帳務與紀錄。
+      - category: improved
+        text: 原編輯、更多、詳情操作整理進對應分區，仍走既有流程。
+      - category: improved
+        text: 本版不含取消堂次、改時間／改老師或週期改寫。
+    source_refs:
+      - "github:#3045"
+
   - id: staff-2026-09-17-course-session-calendar-v1
     published_at: "2026-09-17"
     audiences:
