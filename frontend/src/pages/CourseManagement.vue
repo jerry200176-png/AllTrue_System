@@ -395,7 +395,9 @@
                           @click="openCourseManager(c)"
                         >管理課程</button>
                       </div>
-                      <div v-else class="action-btns-row">
+                      <template v-else>
+
+                      <div class="action-btns-row">
                         <button class="small primary course-primary-action" @click="editCourse(c)">編輯</button>
                         <button
                           v-if="canCloseCourse(c)"
@@ -472,8 +474,9 @@
                           </div>
                         </div>
                       </div>
+                    
+                      </template>
                     </td>
-                  </tr>
                   <tr v-if="!courseManagerEnabled && expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
                     <td colspan="6">
                       <div class="detail-panel">
@@ -828,11 +831,9 @@
       @duplicate-course="handleSchedulerDuplicateCM"
     />
 
-    <!-- COURSE_MANAGER_V1 workspace -->
     <CourseManager
       v-if="courseManagerOpen && courseManagerCourse"
-      :course="courseManagerCourse"
-      :tab="courseManagerTab"
+      :course="courseManagerCourse" :tab="courseManagerTab"
       :student-name="courseManagerCourse.student_name || ''"
       :subject-label="getSubjectLabel(courseManagerCourse.subject)"
       :class-type-label="classTypeLabel(courseManagerCourse.class_type)"
@@ -848,67 +849,30 @@
       :calendar-enabled="courseSessionCalendarEnabled"
       :create-enabled="resolveCourseSessionCreateWriter(courseManagerCourse) !== 'none'"
       :show-cancelled="showCancelledSessions.has(courseManagerCourse.id)"
-      :show-session-notes="showSessionNotes"
-      :session-load-failed="sessionDataLoadFailed"
+      :show-session-notes="showSessionNotes" :session-load-failed="sessionDataLoadFailed"
       :planning-status="planningStatusVisible(courseManagerCourse) ? planningStatusFor(courseManagerCourse) : null"
-      :can-quick-add="canQuickAddSession(courseManagerCourse)"
-      :can-close="canCloseCourse(courseManagerCourse)"
-      :is-session-mode="isSessionMode(courseManagerCourse)"
-      :is-monthly-mode="isMonthlyMode(courseManagerCourse)"
+      :can-quick-add="canQuickAddSession(courseManagerCourse)" :can-close="canCloseCourse(courseManagerCourse)"
+      :is-session-mode="isSessionMode(courseManagerCourse)" :is-monthly-mode="isMonthlyMode(courseManagerCourse)"
       :is-manual-occurrence="isManualOccurrenceCourse(courseManagerCourse)"
       :purchase-label="purchaseActionLabel(courseManagerCourse)"
       :payment-notice-available="isPaymentNoticeAvailable(courseManagerCourse)"
       :can-package-preview="isSessionMode(courseManagerCourse) && !courseManagerCourse.PackageID"
-      :format-session-chip-date="formatSessionChipDate"
-      :get-session-state-class="getSessionStateClass"
-      :get-session-state-label="getSessionStateLabel"
-      :get-session-number="getSessionNumber"
-      :session-row-key="sessionRowKey"
-      :is-user-note="isUserNote"
-      :format-makeup-date="formatMakeupDate"
-      @close="closeCourseManager"
-      @update:tab="onCourseManagerTab"
-      @action="onCourseManagerAction"
+      :format-session-chip-date="formatSessionChipDate" :get-session-state-class="getSessionStateClass"
+      :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber"
+      :session-row-key="sessionRowKey" :is-user-note="isUserNote" :format-makeup-date="formatMakeupDate"
+      @close="closeCourseManager" @update:tab="onCourseManagerTab" @action="onCourseManagerAction"
       @open-session="onCourseManagerOpenSession"
       @create-day="(payload) => openCourseSessionCalendarCreate(courseManagerCourse, payload)"
-      @toggle-cancelled="toggleCancelledSessions(courseManagerCourse.id)"
-      @toggle-notes="toggleSessionNotes"
+      @toggle-cancelled="toggleCancelledSessions(courseManagerCourse.id)" @toggle-notes="toggleSessionNotes"
     >
       <template #settings>
-        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;">
-          <p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p>
-        </AtInlineAlert>
-        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;">
-          <p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p>
-        </AtInlineAlert>
-        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;">
-          <p>{{ editSaveError.message }}</p>
-        </AtInlineAlert>
-        <CourseEditForm
-          ref="editFormRef"
-          v-model="editForm"
-          :branch-id="props.branchId"
-          :teachers="editTeacherOptions"
-          :rooms="rooms"
-          :subjects="subjectOptions"
-          :day-options="DAY_OPTIONS"
-          :time-options="TIME_OPTIONS_30"
-          :settlement-day-options="settlementDayOptions"
-          :show-remaining="true"
-          :package-info="editPackageInfo"
-          :context-title="editContextTitle"
-          :editability="editability"
-          :payment-state-unavailable="editabilityLoading || !!editabilityError"
-          @open-billing="openEditabilityAction('void_payment')"
-        />
+        <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
+        <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
+        <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;"><p>{{ editSaveError.message }}</p></AtInlineAlert>
+        <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" @open-billing="openEditabilityAction('void_payment')" />
         <div class="form-actions" style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
           <button type="button" class="ghost small" @click="duplicateCourseForTeacher(courseManagerCourse)">換師複製</button>
-          <button
-            v-if="editForm.payment_type === 'session' && editingCourseFromLaravel"
-            type="button"
-            class="ghost small"
-            @click="openQuickAddSessionFromEditModal"
-          >＋ 補課 / 補登</button>
+          <button v-if="editForm.payment_type === 'session' && editingCourseFromLaravel" type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登</button>
           <button type="button" class="ghost" @click="courseManagerTab = 'overview'">取消</button>
           <button type="button" class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存課程設定</button>
         </div>
@@ -2859,161 +2823,87 @@ const courseManagerEnabled = perfFlags.COURSE_MANAGER_V1 === true;
 const courseManagerOpen = ref(false);
 const courseManagerCourse = ref(null);
 const courseManagerTab = ref('overview');
-
 function courseManagerStatusLabel(c) {
   if (!c) return '';
   if (c.status === 'inactive' && !effectiveClosedReason(c)) return '暫停';
-  if (['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))) {
-    return effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案';
+  const closed = effectiveClosedReason(c);
+  if (['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(closed)) {
+    return closed === 'contract_amended' ? '合約已提前結束' : '已結案';
   }
   return '進行中';
 }
 function courseManagerScheduleSummary(c) {
   const lines = formatDayTimeSlotLines(c);
   if (lines.length) return lines.join('、');
-  if ((c.days_of_week || []).length) {
-    return `${(c.days_of_week || []).map((d) => dayLabel(d)).join('、')} ${c.start_time || ''}~${c.end_time || ''}`.trim();
-  }
+  if ((c.days_of_week || []).length) return `${(c.days_of_week || []).map((d) => dayLabel(d)).join('、')} ${c.start_time || ''}~${c.end_time || ''}`.trim();
   if (c.day_of_week) return `${dayLabel(c.day_of_week)} ${c.start_time || ''}~${c.end_time || ''}`.trim();
   return '';
 }
 function courseManagerRemainingLabel(c) {
-  if (isSessionMode(c)) {
-    const rem = displayRemainingSessions(c);
-    const purchased = c.sessions_purchased ?? c.SessionsPurchased;
-    if (purchased != null) return `剩餘 ${rem ?? '—'} / ${purchased} 堂`;
-    return `剩餘 ${rem ?? '—'} 堂`;
-  }
-  return `已上 ${getCompletedSessionCount(c)} 堂`;
+  if (!isSessionMode(c)) return `已上 ${getCompletedSessionCount(c)} 堂`;
+  const rem = displayRemainingSessions(c);
+  const purchased = c.sessions_purchased ?? c.SessionsPurchased;
+  return purchased != null ? `剩餘 ${rem ?? '—'} / ${purchased} 堂` : `剩餘 ${rem ?? '—'} 堂`;
 }
 function courseManagerNextSessionLabel(c) {
-  const units = primarySessionUnits(c) || [];
   const today = new Date().toISOString().slice(0, 10);
-  const next = units.find((u) => String(u.date || '').slice(0, 10) >= today);
-  if (!next) return '';
-  return formatSessionChipDate(next);
+  const next = (primarySessionUnits(c) || []).find((u) => String(u.date || '').slice(0, 10) >= today);
+  return next ? formatSessionChipDate(next) : '';
 }
 function courseManagerOverviewNeeds(c) {
   const needs = [];
   if (isSessionMode(c) && Number(displayRemainingSessions(c) ?? 99) <= 2) {
-    needs.push({
-      id: 'low-sessions',
-      title: `剩餘 ${displayRemainingSessions(c)} 堂`,
-      detail: '建議續報或加購',
-      action: 'purchase',
-      actionLabel: purchaseActionLabel(c),
-    });
+    needs.push({ id: 'low-sessions', title: `剩餘 ${displayRemainingSessions(c)} 堂`, detail: '建議續報或加購', action: 'purchase', actionLabel: purchaseActionLabel(c) });
   }
   const makeups = pendingMakeupsByCourse.value?.[c.id] ?? [];
-  if (makeups.length) {
-    needs.push({
-      id: 'makeup',
-      title: `${makeups.length} 堂待補課`,
-      action: 'quick-add',
-      actionLabel: '安排補課',
-    });
-  }
-  if (c.usage_balance_status === 'review_required') {
-    needs.push({
-      id: 'ledger',
-      title: '堂數待對帳',
-      action: 'ledger',
-      actionLabel: '查看對帳明細',
-    });
-  }
+  if (makeups.length) needs.push({ id: 'makeup', title: `${makeups.length} 堂待補課`, action: 'quick-add', actionLabel: '安排補課' });
+  if (c.usage_balance_status === 'review_required') needs.push({ id: 'ledger', title: '堂數待對帳', action: 'ledger', actionLabel: '查看對帳明細' });
   return needs;
 }
-
 async function openCourseManager(c, tab = 'overview') {
   closeActionMenu();
   courseManagerCourse.value = c;
   courseManagerTab.value = tab;
   courseManagerOpen.value = true;
-  // Load session/makeup data via existing expand path without showing row 詳情.
-  if (!expandedDates.value.has(c.id)) {
-    await toggleDatesAndMakeups(c);
-  }
-  if (tab === 'settings') {
-    editCourse(c, { openModal: false });
-  }
+  if (!expandedDates.value.has(c.id)) await toggleDatesAndMakeups(c);
+  if (tab === 'settings') editCourse(c, { openModal: false });
 }
-
 function closeCourseManager() {
   courseManagerOpen.value = false;
   courseManagerCourse.value = null;
   courseManagerTab.value = 'overview';
   showEditModal.value = false;
 }
-
+function syncCourseManagerCourseFromList() {
+  if (!courseManagerOpen.value || !courseManagerCourse.value) return;
+  const next = (courses.value || []).find((x) => Number(x.id) === Number(courseManagerCourse.value.id));
+  if (!next) { closeCourseManager(); return; }
+  courseManagerCourse.value = next;
+}
 function onCourseManagerTab(tab) {
   courseManagerTab.value = tab;
-  if (tab === 'settings' && courseManagerCourse.value) {
-    editCourse(courseManagerCourse.value, { openModal: false });
-  }
+  if (tab === 'settings' && courseManagerCourse.value) editCourse(courseManagerCourse.value, { openModal: false });
 }
-
 function onCourseManagerOpenSession({ unit, date, id }) {
   const c = courseManagerCourse.value;
-  if (!c) return;
-  openSessionEdit(c, date, id, unit);
+  if (c) openSessionEdit(c, date, id, unit);
 }
-
 function onCourseManagerAction({ name, payload } = {}) {
   const c = courseManagerCourse.value;
   if (!c || !name) return;
-  switch (name) {
-    case 'pause':
-    case 'resume':
-      requestCoursePause(c);
-      break;
-    case 'close':
-      goToStudentsCommercial(c, 'close');
-      break;
-    case 'delete':
-      confirmDeleteTarget.value = c;
-      break;
-    case 'manual-session':
-      openManualSessionModal(c);
-      break;
-    case 'monthly-session':
-      openMonthlySessionModal(c);
-      break;
-    case 'quick-add':
-      if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c);
-      break;
-    case 'retry-sessions':
-      retryLoadCourseSessions(c);
-      break;
-    case 'cancel-makeup':
-      if (payload) cancelMakeupSchedule(payload, c);
-      break;
-    case 'invoice':
-      openInvoiceModal(c);
-      break;
-    case 'tuition':
-      goToTuitionBilling(c);
-      break;
-    case 'ledger':
-      openLedgerForCourse(c);
-      break;
-    case 'purchase':
-      openCommercialPurchaseEntry(c);
-      break;
-    case 'contract-adjust':
-      openContractAdjustmentModal(c);
-      break;
-    case 'package-preview':
-      openPackageConversionPreview(c);
-      break;
-    case 'payment-slip':
-      openPaymentSlip(c);
-      break;
-    case 'duplicate':
-      duplicateCourseForTeacher(c);
-      break;
-    default:
-      break;
-  }
+  const map = {
+    pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),
+    close: () => goToStudentsCommercial(c, 'close'), delete: () => { confirmDeleteTarget.value = c; },
+    'manual-session': () => openManualSessionModal(c), 'monthly-session': () => openMonthlySessionModal(c),
+    'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
+    'retry-sessions': () => retryLoadCourseSessions(c),
+    'cancel-makeup': () => { if (payload) cancelMakeupSchedule(payload, c); },
+    invoice: () => openInvoiceModal(c), tuition: () => goToTuitionBilling(c), ledger: () => openLedgerForCourse(c),
+    purchase: () => openCommercialPurchaseEntry(c), 'contract-adjust': () => openContractAdjustmentModal(c),
+    'package-preview': () => openPackageConversionPreview(c), 'payment-slip': () => openPaymentSlip(c),
+    duplicate: () => duplicateCourseForTeacher(c),
+  };
+  map[name]?.();
 }
 
 function toggleCourseSessionCalendar(courseId) {
@@ -3153,6 +3043,7 @@ async function confirmCoursePause() {
     alert(json.message || `已${action}`);
     pauseConfirmTarget.value = null;
     await loadCourses();
+    syncCourseManagerCourseFromList();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
   } finally {
@@ -3680,7 +3571,14 @@ function openMonthlySessionModal(course) {
 function editManualSessionCourse() {
   const course = manualSessionCourse.value;
   showManualSessionModal.value = false;
-  if (course?.id) editCourse(course);
+  if (!course?.id) return;
+  if (courseManagerOpen.value) {
+    courseManagerCourse.value = course;
+    courseManagerTab.value = 'settings';
+    editCourse(course, { openModal: false });
+    return;
+  }
+  editCourse(course);
 }
 
 function openPackageConversion(course) {
@@ -5276,6 +5174,7 @@ const submitEdit = async () => {
           }
           showEditModal.value = false;
           await loadCourses();
+          syncCourseManagerCourseFromList();
           toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
           return;
         }
@@ -5513,6 +5412,9 @@ const executeDeleteCourse = async () => {
         if (res.ok) {
           confirmDeleteTarget.value = null;
           courses.value = courses.value.filter(x => x.id !== c.id);
+          if (courseManagerCourse.value && Number(courseManagerCourse.value.id) === Number(c.id)) {
+            closeCourseManager();
+          }
           toastRef.value?.show?.({ title: '已刪除', description: `${c.subject_name || c.subject || ''} 課程已刪除`, variant: 'success', durationMs: 3000 });
           return;
         }
@@ -5531,6 +5433,9 @@ const executeDeleteCourse = async () => {
     await supabase.from('student-classes').delete().eq('id', c.id);
     confirmDeleteTarget.value = null;
     courses.value = courses.value.filter(x => x.id !== c.id);
+    if (courseManagerCourse.value && Number(courseManagerCourse.value.id) === Number(c.id)) {
+      closeCourseManager();
+    }
   } finally {
     deleteCourseSubmitting.value = false;
   }

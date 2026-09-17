@@ -1,11 +1,7 @@
 ## 2026-09-18 — feat(course-mgmt): Course Manager V1 consolidates Edit/More/Details
-<!-- release-notes: staff_update=staff-2026-09-18-course-manager-v1 -->
-- 進行中課程列改以「管理課程」進入單一工作區：總覽、排課與堂次、課程設定、帳務與合約、紀錄。
-- 既有編輯／排課／帳單／暫停／結束等操作改掛在對應分區，仍走原 API；不含取消單堂、改時間／改老師或週期改寫。
-
-## 2026-09-18 — fix(deploy): explicit course_manager_v1 flag activation
-<!-- release-notes: silent_ship=silent-2026-09-18-course-manager-flag-control -->
-- Deploy 新增 `course_manager_v1=on|off|unchanged`，供 Founder 啟用 Course Manager IA；不授權 Phase 1b/2/3。
+<!-- release-notes: silent_ship=silent-2026-09-18-course-manager-v1 -->
+- 進行中課程支援「管理課程」工作區（總覽／排課與堂次／課程設定／帳務與合約／紀錄），`COURSE_MANAGER_V1` 預設 OFF。
+- 啟用後取代列上編輯／更多／詳情競爭入口；仍走既有 API；不含 Phase 1b/2/3。
 
 ## 2026-09-17 — fix(deploy): explicit course session calendar flag activation
 <!-- release-notes: silent_ship=silent-2026-09-17-calendar-flag-activation-control -->

@@ -290,7 +290,6 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/GUIDE_DESIGN_QA_SMOKE.md` | 前端設計 QA / smoke 驗收清單 |
 | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md` | SmartCalendar 受控拆分與元件/ composable 對照 |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_INAPP_290_CALENDAR_COURSE_SESSION_EDITING.md` | Product Loop dogfood：in-app #290 / GH #2800 Proposal（Phase 0+1a GO；1b/2/3 未授權） |
-| `docs/proposals/COURSE_MANAGER_V1_ACTION_MIGRATION.md` | COURSE_MANAGER_V1：Edit/More/Details → 管理課程 遷移矩陣 |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_CHALLENGE_REVIEW.md` | CubeLV independent challenge review (`5d7d05c0`) |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_FOUNDER_PLAN_DECISION.md` | Founder Plan Decision — Phase 0+1a GO; cancel deferred |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_GOAL_CONTRACT_PHASE_0_1A.json` | Implementation GoalContract (create-only; Phase 0+1a impl in progress, flag OFF) |

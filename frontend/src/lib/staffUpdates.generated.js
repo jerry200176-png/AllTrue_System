@@ -4,45 +4,6 @@
  */
 export const staffUpdates = [
   {
-    "id": "staff-2026-09-18-course-manager-v1",
-    "publishedAt": "2026-09-18",
-    "effectiveAt": null,
-    "audiences": [
-      "director"
-    ],
-    "audience": [
-      "director"
-    ],
-    "importance": "major",
-    "title": "課程管理改為「管理課程」一站處理",
-    "summary": "進行中課程改從「管理課程」進入；排課、設定、帳務集中同一工作區。",
-    "items": [
-      "課程列改以「管理課程」為主要入口。",
-      "工作區含總覽、排課與堂次、課程設定、帳務與合約、紀錄。",
-      "帳單、續報、暫停／結束等仍走原本流程，只是改放在對應分區。"
-    ],
-    "sections": [
-      {
-        "title": "操作更順手",
-        "items": [
-          "課程列改以「管理課程」為主要入口。",
-          "帳單、續報、暫停／結束等仍走原本流程，只是改放在對應分區。"
-        ]
-      },
-      {
-        "title": "你現在可以",
-        "items": [
-          "工作區含總覽、排課與堂次、課程設定、帳務與合約、紀錄。"
-        ]
-      }
-    ],
-    "sourceRefs": [
-      "github:#2800"
-    ],
-    "date": "2026-09-18",
-    "version": "2026.09.18"
-  },
-  {
     "id": "staff-2026-09-17-grade-promotion",
     "publishedAt": "2026-09-17",
     "effectiveAt": null,
