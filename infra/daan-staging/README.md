@@ -43,14 +43,14 @@ cp infra/daan-staging/.env.example infra/daan-staging/.env
 # generate staging-only secrets; never paste production credentials
 openssl rand -hex 24  # use for STAGING_DB_PASSWORD / ROOT / APP_KEY
 
-infra/daan-staging/bin/preflight.sh
-infra/daan-staging/bin/up.sh <exact-sha>
-infra/daan-staging/bin/migrate.sh
-infra/daan-staging/bin/identity.sh
-infra/daan-staging/bin/health.sh
-infra/daan-staging/bin/smoke.sh
-infra/daan-staging/bin/down.sh          # keeps MySQL volume
-infra/daan-staging/bin/rollback.sh <prior-sha>
+infra/daan-staging/lifecycle/preflight.sh
+infra/daan-staging/lifecycle/up.sh <exact-sha>
+infra/daan-staging/lifecycle/migrate.sh
+infra/daan-staging/lifecycle/identity.sh
+infra/daan-staging/lifecycle/health.sh
+infra/daan-staging/lifecycle/smoke.sh
+infra/daan-staging/lifecycle/down.sh          # keeps MySQL volume
+infra/daan-staging/lifecycle/rollback.sh <prior-sha>
 ```
 
 ## Explicit non-goals
