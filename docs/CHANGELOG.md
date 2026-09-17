@@ -1,9 +1,3 @@
-## 2026-09-17 — feat(harness): H4b WorkerRun start/attach + durable session bind
-<!-- release-notes: silent_ship=silent-2026-09-17-harness-h4b-worker-run -->
-- Dispatch spawn now records durable `worker_runs` (schema v4): session_id, worktree, fencing, handoff observe.
-- Prefer `agent-start --attach` when the task worktree already exists; create soft-defers unless `HARNESS_SPAWN_CREATE=1`.
-- H4 remains PARTIAL until Supervisor proves end-to-end wake; no product/TrueFit/In-App scope.
-
 ## 2026-09-17 — feat(truefit): TF-S6-01 workspace progress + continuum edge helpers
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-01-progress-cta -->
 - TrueFit 暗啟動 UI：今日課程清單以既有 GET 扇出顯示同堂次備課／觀察／診斷／補救／精熟已存與否；continuum CTA／seed 在空表、半殘、已存邊緣失敗關閉。

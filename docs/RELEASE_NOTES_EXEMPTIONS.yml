@@ -2,11 +2,6 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
-  - id: silent-2026-09-17-harness-h4b-worker-run
-    changelog_date: "2026-09-17"
-    changelog_title: "feat(harness): H4b WorkerRun start/attach + durable session bind"
-    reason: Autonomous Execution Harness 內部 WorkerRun start/attach 與 durable session bind；不改線上教職員可見流程、帳務或排課。
-
   - id: silent-2026-09-17-truefit-s6-01-progress-cta
     changelog_date: "2026-09-17"
     changelog_title: "feat(truefit): TF-S6-01 workspace progress + continuum edge helpers"
