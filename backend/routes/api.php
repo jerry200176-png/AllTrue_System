@@ -347,6 +347,8 @@ Route::prefix('v1')->group(function () {
         // Static paths must precede {student} or "export"/"import" are captured as IDs (#1812).
         Route::post('students/import', [ImportController::class, 'students']);
         Route::get('students/export', [ExportController::class, 'students']);
+        Route::get('grade-promotions/preview', [\App\Http\Controllers\GradePromotionController::class, 'preview']);
+        Route::post('grade-promotions/confirm', [\App\Http\Controllers\GradePromotionController::class, 'confirm']);
         Route::get('students/{student}', [StudentController::class, 'show'])->whereNumber('student');
         Route::put('students/{student}', [StudentController::class, 'update'])->whereNumber('student');
         Route::delete('students/{student}', [StudentController::class, 'destroy'])->whereNumber('student');
