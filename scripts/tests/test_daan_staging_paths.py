@@ -16,7 +16,7 @@ STAGING_PATHS = [
     "infra/daan-staging/docker-compose.yml",
     "infra/daan-staging/Dockerfile",
     "infra/daan-staging/nginx.conf",
-    "infra/daan-staging/bin/up.sh",
+    "infra/daan-staging/lifecycle/up.sh",
     "infra/daan-staging/README.md",
     "docs/ops/DAAN_STAGING_V1.md",
 ]
