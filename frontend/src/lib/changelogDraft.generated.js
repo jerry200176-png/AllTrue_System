@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.18",
+    "date": "2026-09-18",
+    "title": "2026.09.18 草稿（未發布）",
+    "summary": "Manager V1 consolidates Edit/More/Details",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "Manager V1 consolidates Edit/More/Details"
+        ]
+      }
+    ],
+    "items": [
+      "Manager V1 consolidates Edit/More/Details"
+    ]
+  },
+  {
     "version": "2026.09.17",
     "date": "2026-09-17",
     "title": "2026.09.17 草稿（未發布）",
@@ -683,44 +705,6 @@ export const changelogDraftNotes = [
       "新增排課可先找可行時段",
       "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
       "回報提交後保留追蹤入口"
-    ]
-  },
-  {
-    "version": "2026.08.31",
-    "date": "2026-08-31",
-    "title": "2026.08.31 草稿（未發布）",
-    "summary": "主任可查看每週16段課達標與課程構成；月結開課日跨固定星期仍建立首堂",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "主任可查看每週16段課達標與課程構成"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "月結開課日跨固定星期仍建立首堂",
-          "調課預覽正確排除請假與取消課程"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "課程查找明確顯示堂數待對帳"
-        ]
-      }
-    ],
-    "items": [
-      "主任可查看每週16段課達標與課程構成",
-      "月結開課日跨固定星期仍建立首堂",
-      "調課預覽正確排除請假與取消課程",
-      "課程查找明確顯示堂數待對帳"
     ]
   }
 ];
