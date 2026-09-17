@@ -3,6 +3,7 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+<<<<<<< HEAD
   - id: staff-2026-09-17-grade-promotion
     published_at: "2026-09-17"
     audiences:
@@ -19,6 +20,22 @@ updates:
         text: H3 畢業不再在此步驟自動停課（課務另走排程／帳務流程）。
     source_refs:
       - "github:in-app-297"
+=======
+  - id: staff-2026-09-17-school-typeahead
+    published_at: "2026-09-17"
+    audiences:
+      - director
+    importance: digest
+    title: 學生就讀學校可搜尋標準校名
+    summary: 新增／編輯學生時可從建議清單選校（含縣市辨識），也可繼續輸入自訂校名；不會改到舊資料。
+    items:
+      - category: added
+        text: 就讀學校欄位提供可搜尋的標準校名建議。
+      - category: improved
+        text: 同名學校會顯示縣市／行政區，降低選錯機率。
+    source_refs:
+      - "github:in-app-296"
+>>>>>>> 553f6af63 (feat(students): curated searchable school suggestions (#296))
 
   - id: staff-2026-09-16-learning-table-status-clarity
     published_at: "2026-09-16"

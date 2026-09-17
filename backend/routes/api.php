@@ -68,6 +68,7 @@ use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
 use App\Http\Controllers\AdmissionInquiryController;
 use App\Http\Controllers\GlobalSearchController;
+use App\Http\Controllers\SchoolDirectoryController;
 
 
 if (app()->environment('local')) {
@@ -341,6 +342,8 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
+        // Curated read-only school directory (in-app #296). No admin write API in V1.
+        Route::get('schools', [SchoolDirectoryController::class, 'index']);
         Route::get('students', [StudentController::class, 'index']);
         Route::post('students', [StudentController::class, 'store']);
         Route::post('students/bulk-delete', [StudentController::class, 'bulkDestroy']);
