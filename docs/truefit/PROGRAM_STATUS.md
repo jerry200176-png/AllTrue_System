@@ -2,19 +2,29 @@
 
 **Authority:** this file is the single program status document for TrueFit.
 **Code authority:** if this file disagrees with `origin/main`, trust code + merged PRs.
+**Status grammar:** never collapse CODE_WRITTEN / TESTS_PASSED / MERGED / DEPLOYED / RUNTIME_VERIFIED / OPERATIONALLY_ACCEPTED into “done”.
 
 | Field | Value |
 |-------|--------|
-| Reconciled at | 2026-09-17 (Asia/Taipei) |
-| `origin/main` SHA (at reconcile) | `0b786397ff138be72b961e3780b45ddd0a548279` |
-| Slice 0–5 API + UI on main | **YES** through Mastery UI (#3005) |
+| Reconciled at | 2026-09-17 (Asia/Taipei) — control-plane reconciliation |
+| `origin/main` SHA (at reconcile) | `e91b911f383325432ccbd58d931c2f7481e7c5a7` |
+| Slice 0–5 API + UI on main | **MERGED** through Mastery UI (#3005) |
 | TF-S6-00a source_* auto-link | **MERGED** (#3010) |
-| TF-S6-00b same-session continuum UI | **MERGED** (#3012); Supervisor **ACCEPTED** |
-| TF-S6-01 continuum hardening | **MERGED** (workspace progress strip + CTA edges; Option A) |
-| S6-00 Worker evidence | `docs/truefit/S6_00_ACCEPTANCE_EVIDENCE.md` |
-| Operational acceptance | **NOT ACCEPTED** — staging #868 blocked; flags OFF |
-| Production flags | **OFF** |
-| Next Plan | **TF-S6-01** workspace progress — Plan only (`TF_S6_01_WORKSPACE_PROGRESS_PLAN.md`) |
+| TF-S6-00b same-session continuum UI | **MERGED** (#3012) |
+| TF-S6-01 workspace progress + CTA edges | **MERGED** (#3024 @ `fbed5a4d8`) — Option A client fan-out |
+| S6-00 Worker evidence pack | `docs/truefit/S6_00_ACCEPTANCE_EVIDENCE.md` (**MERGED** docs #3017; ops acceptance **not** granted by that merge) |
+| Production flags | **OFF** (`TRUEFIT_V1` / `VITE_TRUEFIT_V1`) |
+| Pi production tip | **does not include** S6-01 — live prod SHA remains Founder-activated tip (see deployment.json); TrueFit dark on tip only if SHA contains it **and** flags stay OFF |
+| Next Plan | **TF-S6-02** next-lesson prep carry-forward — **not started** (Plan required before impl) |
+
+### Lifecycle snapshot (do not collapse)
+
+| Slice | CODE_WRITTEN | TESTS_PASSED | MERGED | DEPLOYED (Pi tip) | RUNTIME_VERIFIED | OPERATIONALLY_ACCEPTED |
+|-------|--------------|--------------|--------|-------------------|------------------|------------------------|
+| 0–5 | YES | CI at merge | YES | only if tip SHA includes | NO (flags OFF / staging gaps) | NO |
+| S6-00a/b | YES | CI at merge | YES (#3010/#3012) | only if tip SHA includes | NO | NO (evidence pack ≠ acceptance) |
+| S6-01 | YES | CI at merge | YES (#3024) | only if tip SHA includes | NO | NO |
+| S6-02 | NO | — | NO | NO | NO | NO |
 
 ---
 
@@ -28,7 +38,7 @@ No real-student PII → external LLM. Fixture / teacher-entered only. No flag/DN
 
 ---
 
-## Current coded journey (S6-00)
+## Current coded journey (on `main`, flags OFF)
 
 ```text
 Teacher workspace (#/truefit)
@@ -37,17 +47,17 @@ Teacher workspace (#/truefit)
   → Diagnosis          (seed if empty; source_observation_id)
   → Remediation        (seed if empty; source_diagnosis_id)
   → Mastery evidence   (seed if empty; source_remediation_id)
-  → back to workspace
+  → back to workspace (S6-01 progress strip via GET fan-out)
 ```
 
-Backend auto-links `source_*` when omitted (#3010). Frontend continuum CTAs + seeding (#3012).
+Backend auto-links `source_*` when omitted (#3010). Frontend continuum CTAs + seeding (#3012). Workspace progress strip + CTA edge helpers (#3024).
 
-### Still open after S6-00 code land
+### Still open after S6-01 code land
 
-1. Supervisor ops acceptance (MERGED ≠ ACCEPTED).  
-2. Workspace progress strip — **TF-S6-01 Plan**.  
-3. Next-lesson prep carry-forward — TF-S6-02 (not started).  
-4. Staging #868 / Founder flag gates.
+1. Supervisor / Founder **operational acceptance** for S6-00/S6-01 (MERGED ≠ ACCEPTED).  
+2. **TF-S6-02** next-lesson prep carry-forward — Plan only; no impl.  
+3. Staging / flag / DNS Founder gates.  
+4. Do **not** treat `TF_S6_01_*_PLAN.md` as “implementation not started” — those plans were fulfilled by #3024; keep plans as historical design records only.
 
 ---
 
@@ -55,9 +65,10 @@ Backend auto-links `source_*` when omitted (#3010). Frontend continuum CTAs + se
 
 | Slice | Status |
 |-------|--------|
-| 0–5 | Coded+merged; not ops-accepted |
-| 6 Continuum | **00 ACCEPTED**; **01 MERGED** (workspace progress + CTA edge polish, Option A) |
+| 0–5 | CODE+TESTS+MERGED; not ops-accepted |
+| 6 Continuum | **00a/00b MERGED**; **01 MERGED** (#3024); not ops-accepted; flags OFF |
 | Assessment Vendor Adapter | Not started |
+| S6-02 | Not started |
 
 ### APIs behind `TRUEFIT_V1`
 
@@ -74,13 +85,14 @@ S6-01 reads those existing GETs from the workspace (client fan-out; no aggregate
 
 ## Blockers
 
-1. Staging (#868) — Platform-owned  
-2. Founder gates: flags, DNS, real LLM, PII → LLM
+1. Staging / platform verification gaps  
+2. Founder gates: flags, DNS, real LLM, PII → LLM  
+3. Operational acceptance not granted
 
 ## Next selected bounded task
 
-1. Supervisor reconciles `S6_00_ACCEPTANCE_EVIDENCE.md` (flags stay OFF).
-2. Do not begin TF-S6-02 next-lesson carry-forward without Plan Review.
-3. Do not activate flags/DNS/staging ownership.
+1. Keep flags OFF. Do not start TF-S6-02 without Plan Review + GO.  
+2. Do not activate flags/DNS/staging ownership from this status file.  
+3. Prefer a separate ops-acceptance Goal with independent runtime evidence — not another S6-01 “plan” rewrite.
 
 Never call work “done” merely because code exists.

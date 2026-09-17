@@ -24,10 +24,15 @@
 - TrueFit 暗啟動 UI：今日課程清單以既有 GET 扇出顯示同堂次備課／觀察／診斷／補救／精熟已存與否；continuum CTA／seed 在空表、半殘、已存邊緣失敗關閉。
 - 僅前端 Option A；`TRUEFIT_V1` / `VITE_TRUEFIT_V1` 維持 OFF，不做 aggregate API、不改教務／帳務／排課權威。
 
+## 2026-09-17 — docs(truefit): reconcile PROGRAM_STATUS after S6-01 merge
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-program-status-reconcile -->
+- 修正 #3017 文件矛盾：TF-S6-01 已於 #3024 合併；狀態改為 MERGED（非 Plan-only），並分列 CODE/MERGED/DEPLOYED/RUNTIME/ACCEPTED。
+- 不啟用 flags、不改 runtime、不實作 S6-02。
+
 ## 2026-09-17 — docs(truefit): S6-00 acceptance evidence + TF-S6-01 Plan
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00-evidence-s601-plan -->
-- 新增 TF-S6-00 合併後驗證證據包與 TF-S6-01 workspace-progress Plan（僅文件）；更新 PROGRAM_STATUS。
-- 不啟用 flags、不改 runtime；S6-01 實作須等 Plan Review。
+- 新增 TF-S6-00 合併後驗證證據包與 TF-S6-01 歷史 Plan 文件（僅文件）；後續以 PROGRAM_STATUS 對齊 #3024 實作真相。
+- 不啟用 flags、不改 runtime。
 
 ## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
