@@ -10,8 +10,8 @@
 | Slice 0–5 API + UI on main | **YES** through Mastery UI (#3005) |
 | TF-S6-00a source_* auto-link | **MERGED** (#3010) |
 | TF-S6-00b same-session continuum UI | **MERGED** (#3012) |
-| TF-S6-01a session-progress aggregate API | **THIS PR** (read-only presence) |
-| TF-S6-01b workspace progress strip UI | Pending after 01a |
+| TF-S6-01a session-progress aggregate API | Landed on 01a branch / awaiting merge |
+| TF-S6-01b workspace progress strip UI | **THIS PR** |
 | Operational acceptance | **NOT ACCEPTED** — staging #868 blocked; flags OFF |
 | Production flags | **OFF** |
 
@@ -28,7 +28,7 @@ No real-student PII → external LLM. Fixture / teacher-entered only. No flag/DN
 | Slice | Status |
 |-------|--------|
 | 0–5 | Coded+merged; not ops-accepted |
-| 6 Continuum | 00a+00b merged (#3010/#3012); S6-01a aggregate progress API (this PR) |
+| 6 Continuum | 00a+00b merged; S6-01b workspace progress strip UI (this PR; depends on 01a) |
 | Assessment Vendor Adapter | Not started |
 
 ### APIs behind `TRUEFIT_V1`
@@ -44,7 +44,7 @@ No real-student PII → external LLM. Fixture / teacher-entered only. No flag/DN
 
 ## Next selected bounded task
 
-1. After S6-01a lands: S6-01b workspace progress strip UI.  
+1. After S6-01a+01b land: Supervisor ops acceptance (MERGED≠ACCEPTED).  
 2. Do not activate flags/DNS/staging ownership. Do not start S6-02 until Plan GO.
 
 Never call work “done” merely because code exists.

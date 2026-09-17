@@ -113,6 +113,8 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(workspaceSource).toContain('subject_name');
     expect(workspaceSource).toContain('campus_name');
     expect(workspaceSource).toContain('start_time');
+    expect(workspaceSource).toContain('fetchTrueFitSessionProgress');
+    expect(workspaceSource).toContain('data-testid="truefit-session-progress"');
   });
 
   it('prep page generates structured Teacher Brief instead of textarea notebook', () => {

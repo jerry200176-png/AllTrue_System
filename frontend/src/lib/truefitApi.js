@@ -36,6 +36,55 @@ export async function fetchTrueFitTodaySessions({ token, branchId } = {}) {
   return res.json();
 }
 
+/**
+ * Aggregate stage-presence for visible workspace sessions (read-only).
+ * Body: { sessions: [ { class_session_id } | { student_class_id, session_date, start_time } ] }
+ * Contract: inaccessible/invalid refs are omitted (meta.contract=omit_inaccessible).
+ */
+export async function fetchTrueFitSessionProgress({ token, sessions } = {}) {
+  const res = await fetch('/api/v1/truefit/session-progress', {
+    method: 'POST',
+    headers: {
+      ...trueFitHeaders(token),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sessions: Array.isArray(sessions) ? sessions : [] }),
+  });
+  await throwTrueFitError(res, '堂次進度載入失敗');
+  return res.json();
+}
+
+/** Build a session-progress request ref from a today-sessions row. */
+export function trueFitSessionProgressRef(session) {
+  if (!session || typeof session !== 'object') return null;
+  const classSessionId = Number(session.class_session_id || 0);
+  if (classSessionId > 0) {
+    return { class_session_id: classSessionId };
+  }
+  const studentClassId = Number(session.student_class_id || 0);
+  const sessionDate = String(session.session_date || '').slice(0, 10);
+  const startTime = String(session.start_time || '').slice(0, 5);
+  if (studentClassId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate) || !/^\d{2}:\d{2}$/.test(startTime)) {
+    return null;
+  }
+  return {
+    student_class_id: studentClassId,
+    session_date: sessionDate,
+    start_time: startTime,
+  };
+}
+
+/** Map API row session_ref → stable progress lookup key (mirrors workspace list keys). */
+export function trueFitProgressLookupKey(sessionOrRef) {
+  if (!sessionOrRef || typeof sessionOrRef !== 'object') return '';
+  const classSessionId = Number(sessionOrRef.class_session_id || 0);
+  if (classSessionId > 0) return `m:${classSessionId}`;
+  const studentClassId = Number(sessionOrRef.student_class_id || 0);
+  const sessionDate = String(sessionOrRef.session_date || '').slice(0, 10);
+  const startTime = String(sessionOrRef.start_time || '').slice(0, 5);
+  return `p:${studentClassId}|${sessionDate}|${startTime}`;
+}
+
 export async function fetchTrueFitMaterialUnits({ token, subjectHint } = {}) {
   const params = new URLSearchParams();
   if (subjectHint) params.set('subject_hint', String(subjectHint));

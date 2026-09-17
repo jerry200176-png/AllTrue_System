@@ -1,3 +1,7 @@
+## 2026-09-17 — feat(truefit): TF-S6-01b workspace progress strip UI
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-01b-progress-strip -->
+- TrueFit 暗啟動 UI：今日工作台以聚合進度 API 顯示各堂次備課／觀察／診斷／補救／精熟已存／未存（載入中與失敗不偽示未存；旗標維持關閉）。
+
 ## 2026-09-17 — feat(truefit): TF-S6-01a session-progress aggregate API
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-01a-session-progress -->
 - TrueFit 暗啟動：新增唯讀聚合 API `POST /api/v1/truefit/session-progress`（僅回傳各階段是否已存；omit_inaccessible；旗標維持關閉）。
