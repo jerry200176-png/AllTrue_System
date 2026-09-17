@@ -869,6 +869,13 @@
         <AtInlineAlert v-if="editabilityLoading" tone="info" title="正在檢查課程狀態" style="margin: 0 0 14px;"><p>正在確認付款、扣堂與對帳狀態；一般欄位仍可編輯。</p></AtInlineAlert>
         <AtInlineAlert v-if="editabilityError" tone="warning" title="無法完成預檢" style="margin: 0 0 14px;"><p>{{ editabilityError }} 儲存時仍會由後端再次檢查。</p></AtInlineAlert>
         <AtInlineAlert v-if="editSaveError" tone="danger" title="儲存失敗" style="margin: 0 0 14px;"><p>{{ editSaveError.message }}</p></AtInlineAlert>
+        <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
+          <div class="editability-action-panel__intro"><strong>這門課有資料不能用一般編輯改寫</strong><span>一般欄位可以繼續修改；要處理受保護資料，請從對應流程進入。</span></div>
+          <div v-for="reason in editability.reasons" :key="reason.code" class="editability-action-row">
+            <div class="editability-action-row__copy"><strong>{{ reason.message }}</strong><span v-if="editabilityAffectedFields.length" class="editability-action-row__fields">受保護欄位：{{ editabilityAffectedFields.join('、') }}</span><span v-if="editabilityActionDescription(reason.next_step)" class="editability-action-row__description">{{ editabilityActionDescription(reason.next_step) }}</span></div>
+            <button v-if="canOpenEditabilityAction(reason.next_step)" type="button" class="ghost small editability-action-row__button" @click="openEditabilityAction(reason.next_step)">{{ editabilityActionLabel(reason.next_step) }} <span aria-hidden="true">→</span></button>
+          </div>
+        </section>
         <CourseEditForm ref="editFormRef" v-model="editForm" :branch-id="props.branchId" :teachers="editTeacherOptions" :rooms="rooms" :subjects="subjectOptions" :day-options="DAY_OPTIONS" :time-options="TIME_OPTIONS_30" :settlement-day-options="settlementDayOptions" :show-remaining="true" :package-info="editPackageInfo" :context-title="editContextTitle" :editability="editability" :payment-state-unavailable="editabilityLoading || !!editabilityError" @open-billing="openEditabilityAction('void_payment')" />
         <div class="form-actions" style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
           <button type="button" class="ghost small" @click="duplicateCourseForTeacher(courseManagerCourse)">換師複製</button>
@@ -2882,7 +2889,8 @@ function syncCourseManagerCourseFromList() {
 }
 function onCourseManagerTab(tab) {
   courseManagerTab.value = tab;
-  if (tab === 'settings' && courseManagerCourse.value) editCourse(courseManagerCourse.value, { openModal: false });
+  const c = courseManagerCourse.value;
+  if (tab === 'settings' && c && Number(editingId.value) !== Number(c.id)) editCourse(c, { openModal: false });
 }
 function onCourseManagerOpenSession({ unit, date, id }) {
   const c = courseManagerCourse.value;
@@ -4560,6 +4568,7 @@ const loadCourses = async (page = 1) => {
         };
         courses.value = result;
         resetExpandedStudentGroups(groupCoursesByStudent(result));
+        syncCourseManagerCourseFromList();
         sessionDataLoadFailed.value = false;
         const isCurrent = () => isCurrentListRequest(requestId, courseLoadRequestId);
         const sessionsOk = await loadClassSessionsForCourses(result, token, isCurrent);
