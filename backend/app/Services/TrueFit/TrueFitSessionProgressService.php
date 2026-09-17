@@ -109,7 +109,10 @@ final class TrueFitSessionProgressService
 
         $allowedMaterialized = [];
         if ($materializedIds !== []) {
-            foreach (ClassSession::query()->whereIn('id', $materializedIds)->with(['studentClass.room', 'studentClass.student'])->get() as $row) {
+            $sessionRows = ClassSession::with(['studentClass.room', 'studentClass.student'])
+                ->whereIn('id', $materializedIds)
+                ->get();
+            foreach ($sessionRows as $row) {
                 $course = $row->getRelationValue('studentClass');
                 if (!$course instanceof StudentClass || (int) ($course->TeacherID ?? 0) !== $teacherId) {
                     continue;
@@ -124,7 +127,11 @@ final class TrueFitSessionProgressService
         $allowedProjected = [];
         if ($projected !== []) {
             $classIds = array_values(array_unique(array_map(static fn (array $r): int => (int) $r['student_class_id'], $projected)));
-            $courses = StudentClass::query()->with(['room', 'student'])->whereIn('ID', $classIds)->where('TeacherID', $teacherId)->get()->keyBy('ID');
+            $courses = StudentClass::with(['room', 'student'])
+                ->whereIn('ID', $classIds)
+                ->where('TeacherID', $teacherId)
+                ->get()
+                ->keyBy('ID');
             foreach ($projected as $ref) {
                 $course = $courses->get((int) $ref['student_class_id']);
                 if (!$course instanceof StudentClass) {
