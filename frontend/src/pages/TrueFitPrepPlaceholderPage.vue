@@ -81,6 +81,18 @@
               <p class="tf-brief__muted">未達標：{{ block.plan.follow_up_if_miss }}</p>
             </div>
           </div>
+
+          <div class="tf-brief__next">
+            <AtButton
+              variant="primary"
+              shape="rect"
+              icon="visibility"
+              data-testid="truefit-next-observe"
+              @click="$emit('continue', session)"
+            >
+              進入課堂觀察
+            </AtButton>
+          </div>
         </section>
       </template>
     </AtCard>
@@ -109,7 +121,7 @@ const props = defineProps({
   token: { type: String, required: true },
 });
 
-defineEmits(['back']);
+defineEmits(['back', 'continue']);
 
 const error = ref('');
 const loadingUnits = ref(false);
@@ -319,5 +331,12 @@ watch(() => props.session, async () => {
   margin-top: var(--ds-space-2) !important;
   color: var(--ds-text-tertiary) !important;
   font-size: var(--ds-font-size-sm);
+}
+
+.tf-brief__next {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--ds-space-2);
+  border-top: 1px solid var(--ds-hairline);
 }
 </style>

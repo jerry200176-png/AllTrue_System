@@ -1,3 +1,8 @@
+## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
+- TrueFit 暗啟動 UI：同堂次備課 → 觀察 → 診斷 → 補救 → 精熟的下一步 CTA，以及從前一階段 payload 種子空白表單。
+- 僅前端 continuum；`TRUEFIT_V1` / `VITE_TRUEFIT_V1` 維持 OFF，不改教務／帳務／排課權威。
+
 ## 2026-09-17 — feat(truefit): TF-S6-00a source_* auto-link on upsert
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00a-source-link -->
 - Diagnosis / Remediation / Mastery upsert 在未提供 `source_*` 時，自動連結同堂次最新的 observation / diagnosis / remediation。
