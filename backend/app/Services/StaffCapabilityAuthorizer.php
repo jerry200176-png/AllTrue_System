@@ -46,10 +46,13 @@ class StaffCapabilityAuthorizer
             $actingAs = null;
         }
 
+        $userType = (string) $user->getAttribute('type');
+        $userId = (int) $user->getKey();
+
         if ($actingAs === null) {
             if (count($capabilities) === 1) {
                 $actingAs = $capabilities[0];
-            } elseif ($user->type === 'T' && in_array(self::CAP_TEACHER, $capabilities, true)) {
+            } elseif ($userType === 'T' && in_array(self::CAP_TEACHER, $capabilities, true)) {
                 $actingAs = self::CAP_TEACHER;
             } elseif (in_array(self::CAP_DIRECTOR, $capabilities, true)) {
                 // Shared/non-role-sensitive calls may omit acting_as; prefer director when both
@@ -64,16 +67,16 @@ class StaffCapabilityAuthorizer
         $role = match ($actingAs) {
             self::CAP_TEACHER => 'teacher',
             self::CAP_DIRECTOR => 'director',
-            default => $this->legacyRole($user),
+            default => $this->legacyRoleFromType($userType),
         };
 
         $campusIds = $actingAs && isset($capabilityCampuses[$actingAs])
             ? $capabilityCampuses[$actingAs]
-            : $this->legacyCampusIds($user);
+            : $this->legacyCampusIds($userId);
 
         $teacherId = null;
         if ($role === 'teacher' && in_array(self::CAP_TEACHER, $capabilities, true) && $campusIds !== []) {
-            $teacherId = (int) $user->id;
+            $teacherId = $userId;
         }
 
         return [
@@ -103,26 +106,29 @@ class StaffCapabilityAuthorizer
             self::CAP_TEACHER => [],
         ];
 
+        $userId = (int) $user->getKey();
+        $userType = (string) $user->getAttribute('type');
+
         if (Schema::hasTable('user_capability_grants')) {
             $rows = UserCapabilityGrant::query()
-                ->where('user_id', $user->id)
+                ->where('user_id', $userId)
                 ->whereNull('revoked_at')
                 ->get(['capability', 'campus_id']);
             foreach ($rows as $row) {
-                $cap = (string) $row->capability;
+                $cap = (string) $row->getAttribute('capability');
                 if (!isset($map[$cap])) {
                     continue;
                 }
-                $map[$cap][] = (int) $row->campus_id;
+                $map[$cap][] = (int) $row->getAttribute('campus_id');
             }
         }
 
         // Legacy synthesis for single-role accounts (not dual-account merge).
         if ($map[self::CAP_DIRECTOR] === [] && $map[self::CAP_TEACHER] === []) {
-            $campusIds = $this->legacyCampusIds($user);
-            if ($user->type === 'T') {
+            $campusIds = $this->legacyCampusIds($userId);
+            if ($userType === 'T') {
                 $map[self::CAP_TEACHER] = $campusIds;
-            } elseif ($user->type !== 'S' && $user->type !== 'U') {
+            } elseif ($userType !== 'S' && $userType !== 'U') {
                 $map[self::CAP_DIRECTOR] = $campusIds;
             }
         }
@@ -144,15 +150,15 @@ class StaffCapabilityAuthorizer
         return in_array($value, [self::CAP_DIRECTOR, self::CAP_TEACHER], true) ? $value : null;
     }
 
-    private function legacyRole(User $user): string
+    private function legacyRoleFromType(string $type): string
     {
-        if ($user->type === 'S') {
+        if ($type === 'S') {
             return 'super_admin';
         }
-        if ($user->type === 'T') {
+        if ($type === 'T') {
             return 'teacher';
         }
-        if ($user->type === 'U') {
+        if ($type === 'U') {
             return 'pending';
         }
 
@@ -162,9 +168,10 @@ class StaffCapabilityAuthorizer
     /**
      * @return list<int>
      */
-    private function legacyCampusIds(User $user): array
+    private function legacyCampusIds(int $userId): array
     {
-        return UserCampus::where('UserID', $user->id)
+        return UserCampus::query()
+            ->where('UserID', $userId)
             ->where(function ($q) {
                 $q->where('Approved', true)->orWhereNull('Approved');
             })
