@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\AuthToken;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\StaffCapabilityAuthorizer;
 use Carbon\Carbon;
 use Closure;
 use Illuminate\Http\Request;
@@ -44,15 +45,27 @@ class AttachAuthUser
                     return response()->json(['message' => 'Invalid user'], 401);
                 }
 
-                $role = $this->resolveRole($user, $roleHeader);
-                $teacherId = $teacherHeader ?: ($role === 'teacher' ? $user->id : null);
-                $campusIds = UserCampus::where('UserID', $user->id)
-                    ->where(function ($q) {
-                        $q->where('Approved', true)->orWhereNull('Approved');
-                    })
-                    ->pluck('CampusID')
-                    ->map(fn ($id) => (int) $id)
-                    ->all();
+                $authorizer = app(StaffCapabilityAuthorizer::class);
+                if ($user->type !== 'S' && $authorizer->enabled()) {
+                    $actingHeader = $request->header((string) config('staff_capabilities.acting_as_header', 'X-Acting-As'));
+                    $resolved = $authorizer->resolve($user, is_string($actingHeader) ? $actingHeader : null);
+                    $role = $resolved['role'];
+                    $teacherId = $resolved['teacher_id'];
+                    $campusIds = $resolved['campus_ids'];
+                    $request->attributes->set('auth_acting_as', $resolved['acting_as']);
+                    $request->attributes->set('auth_capabilities', $resolved['capabilities']);
+                    $request->attributes->set('auth_capability_campus_ids', $resolved['capability_campus_ids']);
+                } else {
+                    $role = $this->resolveRole($user, $roleHeader);
+                    $teacherId = $teacherHeader ?: ($role === 'teacher' ? $user->id : null);
+                    $campusIds = UserCampus::where('UserID', $user->id)
+                        ->where(function ($q) {
+                            $q->where('Approved', true)->orWhereNull('Approved');
+                        })
+                        ->pluck('CampusID')
+                        ->map(fn ($id) => (int) $id)
+                        ->all();
+                }
 
                 $request->attributes->set('auth_user', $user);
                 $request->attributes->set('auth_role', $role);
@@ -86,4 +99,3 @@ class AttachAuthUser
         };
     }
 }
-
