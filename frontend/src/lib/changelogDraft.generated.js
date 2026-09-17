@@ -21,11 +21,18 @@ export const changelogDraftNotes = [
           "Course Manager V1 for staff",
           "Manager V1 consolidates Edit/More/Details"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "Manager IA dedupe and layout"
+        ]
       }
     ],
     "items": [
       "Course Manager V1 for staff",
-      "Manager V1 consolidates Edit/More/Details"
+      "Manager V1 consolidates Edit/More/Details",
+      "Manager IA dedupe and layout"
     ]
   },
   {
