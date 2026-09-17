@@ -4051,15 +4051,11 @@ const isUrgentTeacherRecord = (record) => (
     || ((String(record.Status || '').toLowerCase() === 'changes_requested') && !hasLearningRecordBody(record)))
 );
 
-const fillLabel = (record) => fillStatusLabel(hasLearningRecordBody(record));
-
 const cardFillLabel = (record) => fillStatusLabel(hasLearningRecordBody(record), {
   director: isDirectorRole.value,
 });
 
 const fillLabelClass = (record) => (hasLearningRecordBody(record) ? 'fill-done' : 'fill-missing');
-
-const statusLabel = (status) => reviewStatusLabel(status);
 
 const cardReviewStatusLabel = (status) => reviewStatusLabel(status, {
   director: isDirectorRole.value,
