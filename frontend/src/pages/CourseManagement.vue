@@ -5184,6 +5184,9 @@ const submitEdit = async () => {
           showEditModal.value = false;
           await loadCourses();
           syncCourseManagerCourseFromList();
+          if (courseManagerOpen.value && courseManagerCourse.value) {
+            editCourse(courseManagerCourse.value, { openModal: false });
+          }
           toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
           return;
         }
@@ -5224,6 +5227,10 @@ const submitEdit = async () => {
   editScheduleBaseline.value = null;
   showEditModal.value = false;
   await loadCourses();
+  syncCourseManagerCourseFromList();
+  if (courseManagerOpen.value && courseManagerCourse.value) {
+    editCourse(courseManagerCourse.value, { openModal: false });
+  }
   alert('課程已更新。');
 };
 

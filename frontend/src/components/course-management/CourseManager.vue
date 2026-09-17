@@ -225,31 +225,31 @@ export default {
 
 <style scoped>
 .cmw{position:fixed;inset:0;z-index:1200;display:flex;justify-content:flex-end}
-.cmw__scrim{position:absolute;inset:0;background:rgba(18,22,28,.45)}
-.cmw__panel{position:relative;display:flex;flex-direction:column;width:min(1120px,100vw);height:100%;background:#f7f5f1;color:#1c1917;box-shadow:-12px 0 40px rgba(28,25,23,.18)}
-.cmw__head{padding:12px 18px 8px;border-bottom:1px solid #e7e2da;background:#fffdf9}
-.cmw__back{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:#57534e;font-size:.875rem;cursor:pointer;padding:2px 0}
+.cmw__scrim{position:absolute;inset:0;background:color-mix(in srgb,var(--ds-ink) 45%,transparent)}
+.cmw__panel{position:relative;display:flex;flex-direction:column;width:min(1120px,100vw);height:100%;background:var(--ds-canvas-soft);color:var(--ds-ink);box-shadow:var(--ds-shadow-2,0 8px 28px color-mix(in srgb,var(--ds-ink) 18%,transparent))}
+.cmw__head{padding:12px 18px 8px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas)}
+.cmw__back{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--ds-ink-mute);font-size:.875rem;cursor:pointer;padding:2px 0}
 .cmw__title{margin:6px 0 4px;font-size:1.2rem;font-weight:650;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.cmw__badge{font-size:.75rem;font-weight:600;padding:2px 8px;border-radius:999px;background:#e7f0e8;color:#2f5d3a}
-.cmw__meta,.cmw__kpis,.cmw__hint{margin:0;color:#57534e;font-size:.875rem}
+.cmw__badge{font-size:.75rem;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--ds-success-wash,color-mix(in srgb,var(--ds-success) 16%,white));color:var(--ds-success)}
+.cmw__meta,.cmw__kpis,.cmw__hint{margin:0;color:var(--ds-ink-mute);font-size:.875rem}
 .cmw__kpis,.cmw__row{display:flex;flex-wrap:wrap;gap:8px 12px}
-.cmw__tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid #e7e2da;background:#fffdf9;overflow-x:auto}
-.cmw__tab{border:0;background:transparent;padding:11px 12px;color:#57534e;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
-.cmw__tab.on{color:#1c1917;border-bottom-color:#2f5d3a;font-weight:600}
+.cmw__tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas);overflow-x:auto}
+.cmw__tab{border:0;background:transparent;padding:11px 12px;color:var(--ds-ink-mute);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.cmw__tab.on{color:var(--ds-ink);border-bottom-color:var(--ds-success);font-weight:600}
 .cmw__body{flex:1;overflow:auto;padding:14px 18px 24px}
 .cmw__stack{display:grid;gap:12px;max-width:760px}
-.cmw__card{background:#fffdf9;border:1px solid #e7e2da;border-radius:10px;padding:12px 14px}
+.cmw__card{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:10px;padding:12px 14px}
 .cmw__card h3{margin:0 0 8px;font-size:.95rem}
 .cmw__facts{margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px 12px}
-.cmw__facts dt{font-size:.72rem;color:#78716c}
+.cmw__facts dt{font-size:.72rem;color:var(--ds-ink-mute)}
 .cmw__facts dd{margin:2px 0 0}
-.cmw__need{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #efeae3}
+.cmw__need{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--ds-hairline)}
 .cmw__need:first-of-type{border-top:0}
-.cmw__need p{margin:2px 0 0;color:#57534e;font-size:.85rem}
-.cmw__danger{border-color:#e8c5c0}
-.cmw__danger h3{color:#9f2d2d}
+.cmw__need p{margin:2px 0 0;color:var(--ds-ink-mute);font-size:.85rem}
+.cmw__danger{border-color:color-mix(in srgb,var(--ds-danger) 35%,white)}
+.cmw__danger h3{color:var(--ds-danger)}
 .cmw__list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.cmw__list li{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid #efeae3;font-size:.9rem}
-button.danger{border:1px solid #c45c5c;background:#fff;color:#9f2d2d;border-radius:6px;padding:4px 10px;cursor:pointer}
+.cmw__list li{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px solid var(--ds-hairline);font-size:.9rem}
+button.danger{border:1px solid var(--ds-danger);background:var(--ds-canvas);color:var(--ds-danger);border-radius:6px;padding:4px 10px;cursor:pointer}
 @media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}}
 </style>
