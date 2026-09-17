@@ -43,6 +43,43 @@ export const staffUpdates = [
     "version": "2026.09.17"
   },
   {
+    "id": "staff-2026-09-17-school-typeahead",
+    "publishedAt": "2026-09-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生就讀學校可搜尋標準校名",
+    "summary": "新增／編輯學生時可從建議清單選校（含縣市辨識），也可繼續輸入自訂校名；不會改到舊資料。",
+    "items": [
+      "就讀學校欄位提供可搜尋的標準校名建議。",
+      "同名學校會顯示縣市／行政區，降低選錯機率。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "就讀學校欄位提供可搜尋的標準校名建議。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "同名學校會顯示縣市／行政區，降低選錯機率。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-296"
+    ],
+    "date": "2026-09-17",
+    "version": "2026.09.17"
+  },
+  {
     "id": "staff-2026-09-16-contract-amendment-remaining",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,

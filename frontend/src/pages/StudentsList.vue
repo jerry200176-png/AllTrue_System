@@ -513,8 +513,13 @@
             </select>
           </div>
           <div class="form-group">
-            <label>就讀學校</label>
-            <input v-model="studentForm.school" placeholder="例：大安國中" />
+            <label for="student-school">就讀學校</label>
+            <SchoolNameInput
+              input-id="student-school"
+              v-model="studentForm.school"
+              :auth-token="schoolAuthToken"
+              placeholder="例：大安國中"
+            />
           </div>
         </div>
 
@@ -954,6 +959,7 @@ import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
+import SchoolNameInput from '../components/SchoolNameInput.vue';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1013,6 +1019,16 @@ const identityError = ref('');
 // Student modal
 const showStudentModal = ref(false);
 const editingStudentId = ref(null);
+const schoolAuthToken = ref('');
+
+const refreshSchoolAuthToken = async () => {
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    schoolAuthToken.value = sess?.access_token || '';
+  } catch {
+    schoolAuthToken.value = '';
+  }
+};
 const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '' });
 
 // LINE bindings (in edit modal)
@@ -2091,6 +2107,7 @@ const openAddStudent = () => {
   editingStudentId.value = null;
   studentForm.value = { name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '', rfid: '' };
   showStudentModal.value = true;
+  refreshSchoolAuthToken();
 };
 
 const editStudent = (student) => {
@@ -2108,6 +2125,7 @@ const editStudent = (student) => {
     rfid: student.rfid || ''
   };
   showStudentModal.value = true;
+  refreshSchoolAuthToken();
   const laravelId = student._laravelId ?? student.id;
   if (laravelId) {
     fetchLineBindings(laravelId);
