@@ -1,3 +1,7 @@
+## 2026-09-18 — docs(product-ops): bounded app-shell debt + in-app execution policy
+<!-- release-notes: silent_ship=silent-2026-09-18-app-shell-inapp-policy -->
+- 新增 `APP_SHELL_DECOMPOSITION_001`（僅三切片、IMPLEMENTATION_DEFERRED）與 `INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`（訊號分類／auto-fix／Decision Packet）。
+- Docs-only；不改 App.vue、runtime、帳務或排課。
 ## 2026-09-18 — polish(course-mgmt): Course Manager IA dedupe and layout
 <!-- release-notes: silent_ship=silent-2026-09-18-course-manager-polish -->
 - 管理課程去除重複 CTA（月結／補課／帳務）、移除僅重複堂次的「紀錄」分頁，排課改月曆／列表切換。

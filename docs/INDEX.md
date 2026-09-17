@@ -138,6 +138,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 20. **出勤／評量一致性與主任指標（2026-08-28，Implementation slice）**：[`architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md`](architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md) — ClassSession 單一事件來源、到課必有評量、請假／缺席／取消不產生，主任首屏分開顯示缺表與待完成。
 21. **新生問班招生閉環 V1（runtime activated；E2E／retention sign-off pending）**：[`architecture/RFC_ADMISSIONS_FUNNEL_V1.md`](architecture/RFC_ADMISSIONS_FUNNEL_V1.md) · REP [`runbooks/admissions-funnel-v1-activation-execution-package.md`](runbooks/admissions-funnel-v1-activation-execution-package.md) · brief [`runbooks/admissions-funnel-v1-founder-activation-brief.md`](runbooks/admissions-funnel-v1-founder-activation-brief.md) — code default `ADMISSIONS_FUNNEL_V1` 仍為 off；production 已由 Founder-gated deploy 啟用，完整 staff／public E2E 與 retention／PII sign-off 仍需指定安全測試身份。
 22. **TrueFit v0.1（學習工作台）**：[`truefit/PROGRAM_STATUS.md`](truefit/PROGRAM_STATUS.md) — Slice 0–4 程式已在 `main`（Brief→Remediation）；營運驗收卡在 staging（#868）；下一優先 Slice 5 = Mastery（見 [`truefit/MASTERY_CONTRACT.md`](truefit/MASTERY_CONTRACT.md)）。
+23. **App shell 有界拆分（PLAN_READY / DEFERRED）**：[`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — 僅 badge／More+Search／Help 三切片；產品訊號驅動才 pull；不自動實作。
+24. **In-app Product Loop 執行政策**：[`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) — 訊號分類、auto-fix envelope、PLAN_REQUIRED Decision Packet；非 FIFO。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -167,6 +169,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 教職員版本更新（Staff Updates） | `docs/STAFF_UPDATES.yml`（教職員唯一來源）、`docs/GUIDE_STAFF_UPDATES.md`、`docs/AI_REGRESSION_LESSONS.md` §R85；CHANGELOG 只產草稿不自動發布 |
 | **家長帳號／學生綁定（ADR Accepted；PB-04 partial via guardians）** | Benchmark [`research/PARENT_BINDING_BENCHMARK.md`](research/PARENT_BINDING_BENCHMARK.md) · Architecture [`architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md`](architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md) · ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) · UX [`product/PARENT_BINDING_UX_SPEC.md`](product/PARENT_BINDING_UX_SPEC.md) · Threat [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) — **PB-00 hard-block lifted**（Founder GO 2026-09-03）；**`guardians`≈ParentIdentity / `student_guardians`≈GSR**；portal dual-read under `PERF_MULTI_GUARDIAN`；PB-05–09 backlog；no `parent_phone` cutover |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
+| **App.vue shell 有界拆分（deferred）** | [`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — badge／More+Search／Help only；勿自動大拆 |
+| **In-app 訊號執行政策** | [`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) · `CHAT_BUG_SYSTEM.md` §3.6 |
 
 ### 部署 / 維運
 | 需要什麼 | Registry 入口 |
@@ -295,6 +299,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_GOAL_CONTRACT_PHASE_0_1A.json` | Implementation GoalContract (create-only; Phase 0+1a impl in progress, flag OFF) |
 | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_IMPL_HANDOFF_PHASE_0_1A.md` | Implementation handoff for Phase 0+1a |
 | `docs/programs/PRODUCT_LOOP_DOGFOOD_001_STATUS.md` | Program lifecycle status (do not collapse MERGED≠done) |
+| `docs/plans/APP_SHELL_DECOMPOSITION_001.md` | App.vue 有界拆分計畫（PLAN_READY / IMPLEMENTATION_DEFERRED） |
+| `docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md` | In-app 訊號分類與 auto-fix / Decision Packet 政策 |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
 | `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）；產品意圖見 RFC |
 | `docs/architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md` | #2809 RFID 在校證明 v1 政策／架構合約（presence ≠ attendance）|

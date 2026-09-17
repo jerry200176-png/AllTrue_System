@@ -2,6 +2,10 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-app-shell-inapp-policy
+    changelog_date: "2026-09-18"
+    changelog_title: "docs(product-ops): bounded app-shell debt + in-app execution policy"
+    reason: 僅新增 App shell 延期計畫與 in-app 執行政策文件；不改 runtime、教職員流程、帳務或排課。
   - id: silent-2026-09-18-course-manager-polish
     changelog_date: "2026-09-18"
     changelog_title: "polish(course-mgmt): Course Manager IA dedupe and layout"
