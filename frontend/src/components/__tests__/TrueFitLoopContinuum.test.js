@@ -6,6 +6,12 @@ import {
   seedRemediationFromDiagnosis,
   seedMasteryFromRemediation,
   TRUEFIT_LOOP_STAGES,
+  deriveSessionStagePresence,
+  emptySessionStagePresence,
+  stagePresenceFromPayload,
+  formatSessionProgressStrip,
+  canContinueFromStage,
+  shouldApplyContinuumSeed,
 } from '../../lib/truefitLoop.js';
 
 describe('truefitLoop continuum', () => {
@@ -60,5 +66,44 @@ describe('truefitLoop continuum', () => {
     });
     expect(mas.target_misconception_label).toBe('分母相加');
     expect(mas.retrieval_prompt).toBe('能正確通分');
+  });
+
+  it('returns null for null or partial prior payloads (fail closed)', () => {
+    expect(seedDiagnosisFromObservation(null)).toBeNull();
+    expect(seedDiagnosisFromObservation({})).toBeNull();
+    expect(seedDiagnosisFromObservation({
+      misconception_hypotheses: [{ label: '', what_student_seemed_to_believe: '' }],
+      struggle_signals: [],
+    })).toBeNull();
+    expect(seedRemediationFromDiagnosis(null)).toBeNull();
+    expect(seedRemediationFromDiagnosis({ primary_misconception: { label: '' } })).toBeNull();
+    expect(seedMasteryFromRemediation(null)).toBeNull();
+    expect(seedMasteryFromRemediation({ target_misconception_label: '  ' })).toBeNull();
+  });
+
+  it('derives session progress empty|saved from fan-out payloads', () => {
+    expect(stagePresenceFromPayload({ data: null })).toBe('empty');
+    expect(stagePresenceFromPayload({ data: { id: 12 } })).toBe('saved');
+    expect(deriveSessionStagePresence({})).toEqual(emptySessionStagePresence());
+    const presence = deriveSessionStagePresence({
+      observe: { data: { id: 7, observation: {} } },
+      diagnose: { data: null },
+    });
+    expect(presence.prep).toBe('empty');
+    expect(presence.observe).toBe('saved');
+    expect(presence.diagnose).toBe('empty');
+    expect(formatSessionProgressStrip(presence)).toContain('觀察·已存');
+    expect(formatSessionProgressStrip(presence)).toContain('診斷·尚未');
+  });
+
+  it('gates continuum CTAs and seed overwrite fail-closed', () => {
+    expect(canContinueFromStage({ stage: 'prep', hasBrief: false })).toBe(false);
+    expect(canContinueFromStage({ stage: 'prep', hasBrief: true })).toBe(true);
+    expect(canContinueFromStage({ stage: 'observe', savedRecordId: null })).toBe(false);
+    expect(canContinueFromStage({ stage: 'observe', savedRecordId: 9 })).toBe(true);
+    expect(canContinueFromStage({ stage: 'mastery', savedRecordId: 3 })).toBe(true);
+    expect(shouldApplyContinuumSeed({ savedRecordId: 1, seed: { a: 1 } })).toBe(false);
+    expect(shouldApplyContinuumSeed({ savedRecordId: null, seed: null })).toBe(false);
+    expect(shouldApplyContinuumSeed({ savedRecordId: null, seed: { a: 1 } })).toBe(true);
   });
 });

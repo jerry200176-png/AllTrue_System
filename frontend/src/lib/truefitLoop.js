@@ -11,6 +11,16 @@ export const TRUEFIT_LOOP_STAGES = Object.freeze([
   'mastery',
 ]);
 
+export const LOOP_STAGE_LABELS = Object.freeze({
+  prep: '備課',
+  observe: '觀察',
+  diagnose: '診斷',
+  remediate: '補救',
+  mastery: '精熟',
+});
+
+/** @typedef {'empty' | 'saved'} StagePresence */
+
 const NEXT_STAGE = Object.freeze({
   prep: 'observe',
   observe: 'diagnose',
@@ -33,6 +43,70 @@ export function nextTrueFitStage(view) {
 
 export function nextTrueFitStageCta(view) {
   return NEXT_CTA[view] || '下一步';
+}
+
+/**
+ * Derive empty|saved from a single stage GET payload (`{ data: row|null }`).
+ * @returns {StagePresence}
+ */
+export function stagePresenceFromPayload(payload) {
+  const data = payload?.data;
+  if (!data || typeof data !== 'object') return 'empty';
+  if (data.id == null || data.id === '') return 'empty';
+  return 'saved';
+}
+
+/** @returns {Record<string, StagePresence>} */
+export function emptySessionStagePresence() {
+  return Object.fromEntries(TRUEFIT_LOOP_STAGES.map((s) => [s, 'empty']));
+}
+
+/**
+ * Build session progress from per-stage GET payloads (Option A fan-out).
+ * @param {Record<string, object|null|undefined>} payloadsByStage
+ * @returns {Record<string, StagePresence>}
+ */
+export function deriveSessionStagePresence(payloadsByStage = {}) {
+  const out = emptySessionStagePresence();
+  for (const stage of TRUEFIT_LOOP_STAGES) {
+    out[stage] = stagePresenceFromPayload(payloadsByStage[stage]);
+  }
+  return out;
+}
+
+/**
+ * Compact non-card progress text for workspace list rows.
+ * @param {Record<string, StagePresence>|null|undefined} presence
+ */
+export function formatSessionProgressStrip(presence) {
+  return TRUEFIT_LOOP_STAGES.map((stage) => {
+    const label = LOOP_STAGE_LABELS[stage] || stage;
+    const state = presence?.[stage] === 'saved' ? '已存' : '尚未';
+    return `${label}·${state}`;
+  }).join(' · ');
+}
+
+/**
+ * Continuum next-CTA enablement — fail closed on empty / unsaved edges.
+ * Prep requires a Teacher Brief; later stages require a saved current record.
+ */
+export function canContinueFromStage({
+  stage = null,
+  savedRecordId = null,
+  hasBrief = false,
+} = {}) {
+  if (stage === 'prep') return Boolean(hasBrief);
+  if (!stage || !TRUEFIT_LOOP_STAGES.includes(stage)) return false;
+  return Boolean(savedRecordId);
+}
+
+/**
+ * Seed only when current stage is unsaved and seed helper returned a payload.
+ * Never overwrites an already-saved record.
+ */
+export function shouldApplyContinuumSeed({ savedRecordId = null, seed = null } = {}) {
+  if (savedRecordId) return false;
+  return seed != null && typeof seed === 'object';
 }
 
 /**

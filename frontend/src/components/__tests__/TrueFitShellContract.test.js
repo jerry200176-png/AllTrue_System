@@ -236,6 +236,12 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(masSource).toContain('返回今日課程');
     expect(masSource).toContain('source_remediation_id: sourceRemediationId.value');
     expect(masSource).toContain('seedMasteryFromRemediation');
+    expect(masSource).toContain('shouldApplyContinuumSeed');
+    expect(masSource).toContain('canContinueFromStage');
     expect(workspaceSource).toContain('備課 → 觀察 → 診斷 → 補救 → 精熟');
+    expect(workspaceSource).toContain('truefit-session-progress');
+    expect(workspaceSource).toContain('deriveSessionStagePresence');
+    expect(workspaceSource).toContain('loadProgressFanout');
+    expect(prepSource).toContain('canContinueFromStage');
   });
 });

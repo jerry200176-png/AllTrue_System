@@ -1,3 +1,8 @@
+## 2026-09-17 — feat(truefit): TF-S6-01 workspace progress + continuum edge helpers
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-01-progress-cta -->
+- TrueFit 暗啟動 UI：今日課程清單以既有 GET 扇出顯示同堂次備課／觀察／診斷／補救／精熟已存與否；continuum CTA／seed 在空表、半殘、已存邊緣失敗關閉。
+- 僅前端 Option A；`TRUEFIT_V1` / `VITE_TRUEFIT_V1` 維持 OFF，不做 aggregate API、不改教務／帳務／排課權威。
+
 ## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
 - TrueFit 暗啟動 UI：同堂次備課 → 觀察 → 診斷 → 補救 → 精熟的下一步 CTA，以及從前一階段 payload 種子空白表單。

@@ -44,7 +44,7 @@
             儲存補救計畫
           </AtButton>
           <AtButton
-            v-if="savedRecordId"
+            v-if="canContinueFromStage({ stage: 'remediate', savedRecordId })"
             variant="ghost"
             shape="rect"
             icon="verified"
@@ -74,7 +74,11 @@ import {
   fetchTrueFitRemediation,
   upsertTrueFitRemediation,
 } from '../lib/truefitApi.js';
-import { seedRemediationFromDiagnosis } from '../lib/truefitLoop.js';
+import {
+  canContinueFromStage,
+  seedRemediationFromDiagnosis,
+  shouldApplyContinuumSeed,
+} from '../lib/truefitLoop.js';
 
 const props = defineProps({ session: { type: Object, default: null }, token: { type: String, required: true } });
 defineEmits(['back', 'continue']);
@@ -152,8 +156,9 @@ async function loadExisting() {
       sourceDiagnosisId.value = Number(diagPayload.data.id) || null;
     }
     applyPlan(remPayload?.data?.remediation || null);
-    if (!savedRecordId.value) {
-      applySeedIfEmpty(seedRemediationFromDiagnosis(diagPayload?.data?.diagnosis || null));
+    const seed = seedRemediationFromDiagnosis(diagPayload?.data?.diagnosis || null);
+    if (shouldApplyContinuumSeed({ savedRecordId: savedRecordId.value, seed })) {
+      applySeedIfEmpty(seed);
     }
   } catch (e) {
     error.value = e?.message || '補救計畫載入失敗';
