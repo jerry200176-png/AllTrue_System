@@ -14,6 +14,7 @@
 | Reconciled proposal | `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_INAPP_290_CALENDAR_COURSE_SESSION_EDITING.md` |
 | CubeLV review SHA | `5d7d05c05114950a0eebe85e3c0098a33be12274` |
 | Proposal SHA | `6b70ca51f2110f3a7020bbf852e742727d8f50cf` |
+| Founder Plan decision SHA | `b945f47f0a2e6454dc05dd8e98bf4f3cb1cd5e6d` |
 
 ## Authorized work
 
