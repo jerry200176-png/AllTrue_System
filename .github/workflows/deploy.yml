@@ -1394,104 +1394,35 @@ jobs:
           if ! echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local; then
             abort_deploy "frontend temporary environment 寫入失敗"
           fi
-          if [ "$ADMISSIONS_FLAG_MODE" = "on" ]; then
-            ADMISSIONS_FLAG_VALUE=true
-            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
-              ADMISSIONS_FLAG_WAS_PRESENT=1
-              ADMISSIONS_FLAG_BACKUP=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^ADMISSIONS_FUNNEL_V1=.*/ADMISSIONS_FUNNEL_V1=true/' /home/admin/backend/.env
+          apply_bool_feature_flag() {
+            # $1 mode var, $2 backend key, $3 vite key, $4 changed-var name, $5 present-var, $6 backup-var
+            local mode="$1" key="$2" vite_key="$3"
+            local value=false changed=0 present=0 backup=""
+            if [ "$mode" = "on" ] || [ "$mode" = "off" ]; then
+              value=$([ "$mode" = "on" ] && echo true || echo false)
+              if grep -qE "^${key}=" /home/admin/backend/.env; then
+                present=1
+                backup=$(grep -E "^${key}=" /home/admin/backend/.env | tail -n 1)
+                sed -i -E "s/^${key}=.*/${key}=${value}/" /home/admin/backend/.env
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> /home/admin/backend/.env
+              fi
+              changed=1
             else
-              printf '\nADMISSIONS_FUNNEL_V1=true\n' >> /home/admin/backend/.env
+              if grep -qE "^${key}=" /home/admin/backend/.env; then
+                value=$(grep -E "^${key}=" /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+              fi
+              case "$value" in true|false) ;; *) value=false ;; esac
             fi
-            ADMISSIONS_FLAG_CHANGED=1
-          elif [ "$ADMISSIONS_FLAG_MODE" = "off" ]; then
-            ADMISSIONS_FLAG_VALUE=false
-            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
-              ADMISSIONS_FLAG_WAS_PRESENT=1
-              ADMISSIONS_FLAG_BACKUP=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^ADMISSIONS_FUNNEL_V1=.*/ADMISSIONS_FUNNEL_V1=false/' /home/admin/backend/.env
-            else
-              printf '\nADMISSIONS_FUNNEL_V1=false\n' >> /home/admin/backend/.env
-            fi
-            ADMISSIONS_FLAG_CHANGED=1
-          else
-            ADMISSIONS_FLAG_VALUE=false
-            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
-              ADMISSIONS_FLAG_VALUE=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-            fi
-            case "$ADMISSIONS_FLAG_VALUE" in
-              true|false) ;;
-              *) ADMISSIONS_FLAG_VALUE=false ;;
-            esac
-          fi
-          printf 'VITE_ADMISSIONS_FUNNEL_V1=%s\n' "$ADMISSIONS_FLAG_VALUE" >> /home/admin/frontend/.env.production.local
-          echo "✅ admissions funnel flag prepared for backend/frontend deployment (mode=${ADMISSIONS_FLAG_MODE:-unchanged}, value=$ADMISSIONS_FLAG_VALUE)"
-
-          if [ "$CALENDAR_FLAG_MODE" = "on" ]; then
-            CALENDAR_FLAG_VALUE=true
-            if grep -qE '^COURSE_SESSION_CALENDAR_V1=' /home/admin/backend/.env; then
-              CALENDAR_FLAG_WAS_PRESENT=1
-              CALENDAR_FLAG_BACKUP=$(grep -E '^COURSE_SESSION_CALENDAR_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^COURSE_SESSION_CALENDAR_V1=.*/COURSE_SESSION_CALENDAR_V1=true/' /home/admin/backend/.env
-            else
-              printf '\nCOURSE_SESSION_CALENDAR_V1=true\n' >> /home/admin/backend/.env
-            fi
-            CALENDAR_FLAG_CHANGED=1
-          elif [ "$CALENDAR_FLAG_MODE" = "off" ]; then
-            CALENDAR_FLAG_VALUE=false
-            if grep -qE '^COURSE_SESSION_CALENDAR_V1=' /home/admin/backend/.env; then
-              CALENDAR_FLAG_WAS_PRESENT=1
-              CALENDAR_FLAG_BACKUP=$(grep -E '^COURSE_SESSION_CALENDAR_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^COURSE_SESSION_CALENDAR_V1=.*/COURSE_SESSION_CALENDAR_V1=false/' /home/admin/backend/.env
-            else
-              printf '\nCOURSE_SESSION_CALENDAR_V1=false\n' >> /home/admin/backend/.env
-            fi
-            CALENDAR_FLAG_CHANGED=1
-          else
-            CALENDAR_FLAG_VALUE=false
-            if grep -qE '^COURSE_SESSION_CALENDAR_V1=' /home/admin/backend/.env; then
-              CALENDAR_FLAG_VALUE=$(grep -E '^COURSE_SESSION_CALENDAR_V1=' /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-            fi
-            case "$CALENDAR_FLAG_VALUE" in
-              true|false) ;;
-              *) CALENDAR_FLAG_VALUE=false ;;
-            esac
-          fi
-          printf 'VITE_COURSE_SESSION_CALENDAR_V1=%s\n' "$CALENDAR_FLAG_VALUE" >> /home/admin/frontend/.env.production.local
-          echo "✅ course session calendar flag prepared for frontend deployment (mode=${CALENDAR_FLAG_MODE:-unchanged}, value=$CALENDAR_FLAG_VALUE)"
-
-          if [ "$MANAGER_FLAG_MODE" = "on" ]; then
-            MANAGER_FLAG_VALUE=true
-            if grep -qE '^COURSE_MANAGER_V1=' /home/admin/backend/.env; then
-              MANAGER_FLAG_WAS_PRESENT=1
-              MANAGER_FLAG_BACKUP=$(grep -E '^COURSE_MANAGER_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^COURSE_MANAGER_V1=.*/COURSE_MANAGER_V1=true/' /home/admin/backend/.env
-            else
-              printf '\nCOURSE_MANAGER_V1=true\n' >> /home/admin/backend/.env
-            fi
-            MANAGER_FLAG_CHANGED=1
-          elif [ "$MANAGER_FLAG_MODE" = "off" ]; then
-            MANAGER_FLAG_VALUE=false
-            if grep -qE '^COURSE_MANAGER_V1=' /home/admin/backend/.env; then
-              MANAGER_FLAG_WAS_PRESENT=1
-              MANAGER_FLAG_BACKUP=$(grep -E '^COURSE_MANAGER_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^COURSE_MANAGER_V1=.*/COURSE_MANAGER_V1=false/' /home/admin/backend/.env
-            else
-              printf '\nCOURSE_MANAGER_V1=false\n' >> /home/admin/backend/.env
-            fi
-            MANAGER_FLAG_CHANGED=1
-          else
-            MANAGER_FLAG_VALUE=false
-            if grep -qE '^COURSE_MANAGER_V1=' /home/admin/backend/.env; then
-              MANAGER_FLAG_VALUE=$(grep -E '^COURSE_MANAGER_V1=' /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-            fi
-            case "$MANAGER_FLAG_VALUE" in
-              true|false) ;;
-              *) MANAGER_FLAG_VALUE=false ;;
-            esac
-          fi
-          printf 'VITE_COURSE_MANAGER_V1=%s\n' "$MANAGER_FLAG_VALUE" >> /home/admin/frontend/.env.production.local
-          echo "✅ course manager flag prepared for frontend deployment (mode=${MANAGER_FLAG_MODE:-unchanged}, value=$MANAGER_FLAG_VALUE)"
+            printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
+            echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)"
+            eval "$4=$changed"
+            eval "$5=$present"
+            eval "$6=\"\$backup\""
+          }
+          apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 ADMISSIONS_FLAG_CHANGED ADMISSIONS_FLAG_WAS_PRESENT ADMISSIONS_FLAG_BACKUP
+          apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1 CALENDAR_FLAG_CHANGED CALENDAR_FLAG_WAS_PRESENT CALENDAR_FLAG_BACKUP
+          apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1 VITE_COURSE_MANAGER_V1 MANAGER_FLAG_CHANGED MANAGER_FLAG_WAS_PRESENT MANAGER_FLAG_BACKUP
           echo "✅ frontend .env.production.local 已寫入"
 
           echo "=== [4/7] 前端變動偵測 ==="
