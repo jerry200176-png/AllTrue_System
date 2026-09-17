@@ -12,7 +12,9 @@ from .graph import build_graph
 from .leases import reclaim_stale
 from .planner import select_across_programs, select_next_task
 from .programs_loader import sync_programs_to_store
+from .project_state import write_projection
 from .reconcile import resume_from_checkpoint
+from .schema_migrate import migrate_copy, migrate_live_explicit
 from .states import ACTIVE_MUTATING
 from .store import HarnessStore
 
@@ -163,6 +165,55 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def cmd_migrate_schema(args: argparse.Namespace) -> int:
+    """Explicit additive v1→v4 migration. Prefer --copy before --live."""
+    src = Path(args.src) if args.src else Path(
+        args.db or "/home/jerry/workspace/state/alltrue/harness.sqlite"
+    )
+    if args.copy:
+        dst = Path(args.copy)
+        result = migrate_copy(src, dst)
+        print(json.dumps({
+            "ok": result.ok,
+            "mode": "copy",
+            "src": result.src,
+            "dst": result.dst,
+            "src_sha256": result.src_sha256,
+            "dst_sha256_pre": result.dst_sha256_pre,
+            "report": result.report,
+        }, indent=2))
+        return 0 if result.ok else 1
+    if args.live:
+        report = migrate_live_explicit(src, allow_live=bool(args.i_understand_live))
+        print(json.dumps({"ok": True, "mode": "live", "report": report}, indent=2))
+        return 0
+    print(json.dumps({
+        "ok": False,
+        "reason": "specify --copy PATH or --live --i-understand-live",
+    }, indent=2))
+    return 2
+
+
+def cmd_project_state(args: argparse.Namespace) -> int:
+    """Write CURRENT_STATE projection from harness.sqlite (not authoritative)."""
+    store = _store(args)
+    path = Path(args.out) if args.out else None
+    payload = write_projection(store, path, backup_existing=not args.no_backup)
+    out_path = str(path) if path else str(
+        Path("/home/jerry/workspace/state/alltrue/CURRENT_STATE.json")
+    )
+    print(json.dumps({
+        "ok": True,
+        "role": "projection",
+        "authority": "harness.sqlite",
+        "path": out_path,
+        "projected_at": payload.get("projected_at"),
+        "workers": len(payload.get("workers") or []),
+        "backup": payload.get("previous_projection_backup"),
+    }, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python3 -m scripts.harness")
     p.add_argument("--db", default=None)
@@ -205,6 +256,25 @@ def build_parser() -> argparse.ArgumentParser:
     disp.add_argument("--handoff-json", default=None)
     disp.add_argument("--ingest", default=None, help="handoff claim JSON path")
     disp.set_defaults(func=cmd_dispatch)
+    mig = sub.add_parser(
+        "migrate-schema",
+        help="Explicit additive schema migration (copy first; live only with flag)",
+    )
+    mig.add_argument("--src", default=None, help="Source DB (default live harness.sqlite)")
+    mig.add_argument("--copy", default=None, help="Migrate a new copy at this path")
+    mig.add_argument("--live", action="store_true", help="Migrate source in place")
+    mig.add_argument(
+        "--i-understand-live", action="store_true",
+        help="Required with --live after copy verification",
+    )
+    mig.set_defaults(func=cmd_migrate_schema)
+    proj = sub.add_parser(
+        "project-state",
+        help="Write CURRENT_STATE.json as projection from harness.sqlite",
+    )
+    proj.add_argument("--out", default=None)
+    proj.add_argument("--no-backup", action="store_true")
+    proj.set_defaults(func=cmd_project_state)
     return p
 
 
