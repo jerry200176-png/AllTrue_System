@@ -511,11 +511,35 @@ jobs:
           import sys
 
           def gh_api(path, *extra):
-              return json.loads(subprocess.check_output(
+              # Fail closed on empty/truncated bodies. The Go `gh` client can
+              # print "unexpected end of JSON input" on stderr while stdout is
+              # empty; json.loads("") then loses the path context.
+              proc = subprocess.run(
                   ["gh", "api", path, *extra],
                   text=True,
+                  capture_output=True,
                   env=os.environ.copy(),
-              ))
+                  check=False,
+              )
+              body = proc.stdout or ""
+              if proc.returncode != 0:
+                  err = (proc.stderr or body or "").strip().replace("\n", " ")[:180]
+                  raise RuntimeError(
+                      f"gh api failed path={path} code={proc.returncode} err={err!r}"
+                  )
+              stripped = body.strip()
+              if not stripped:
+                  err = (proc.stderr or "").strip().replace("\n", " ")[:180]
+                  raise RuntimeError(
+                      f"gh api empty JSON body path={path} err={err!r}"
+                  )
+              try:
+                  return json.loads(stripped)
+              except json.JSONDecodeError as exc:
+                  prefix = stripped[:80].replace("\n", " ")
+                  raise RuntimeError(
+                      f"gh api invalid JSON path={path}: {exc}; body_prefix={prefix!r}"
+                  ) from exc
 
           def pages(value):
               if isinstance(value, list):
@@ -794,8 +818,20 @@ jobs:
                   decision["decision"], decision["effective_tier"], pr_number,
                   decision["reason"], approval_eligible,
               )
-          except Exception:
-              emit("awaiting-activation", "unknown", "none", "activation policy evaluation failed; fail closed")
+          except Exception as exc:
+              # Keep fail-closed. Surface exception class so empty/truncated GitHub
+              # JSON bodies are diagnosable without weakening approval eligibility.
+              print(
+                  f"activation classifier failed closed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr,
+              )
+              detail = f"{type(exc).__name__}"
+              emit(
+                  "awaiting-activation",
+                  "unknown",
+                  "none",
+                  f"activation policy evaluation failed; fail closed ({detail})",
+              )
           PY
 
   release-state:
@@ -812,6 +848,11 @@ jobs:
           REASON: ${{ needs.classify-activation.outputs.reason }}
         run: |
           set -euo pipefail
+          # Strip CR so empty/corrupt classifier outputs cannot fall through to
+          # a misleading "Unknown release mode" when mode was actually set.
+          MODE="${MODE//$'\r'/}"
+          APPROVAL_ELIGIBLE="${APPROVAL_ELIGIBLE//$'\r'/}"
+          REASON="${REASON//$'\r'/}"
           case "$MODE" in
             control-plane-verified)
               {
@@ -850,8 +891,14 @@ jobs:
                 echo "This explicit exceptional operation remains Founder-controlled and is not deployed until its gate succeeds."
               } >> "$GITHUB_STEP_SUMMARY"
               ;;
-            *)
-              echo "::error::Unknown release mode; refusing to report success." >&2
+            ""|*)
+              {
+                echo "## state=blocked"
+                echo "Classify produced empty or unknown mode; fail closed. No production SSH, migration, frontend build, or data mutation was executed."
+                echo "mode=${MODE:-<empty>}"
+                echo "Reason: ${REASON:-<empty>}"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Classify produced empty or unknown release mode; fail closed." >&2
               exit 1
               ;;
           esac
