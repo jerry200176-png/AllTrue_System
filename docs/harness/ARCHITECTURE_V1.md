@@ -37,3 +37,20 @@ Lease CAS guarantees atomic ownership and fencing-token lifecycle across process
 End-to-end enforcement against an already-running stale worker at every mutation
 boundary is deferred to H4 (session/worktree bind). DecisionReceipt authorizes
 exactly one requested action; Founder-only decisions require Founder actor.
+
+## H3 planner
+
+`scripts/harness/planner.py` selects the next READY task into a world-bound
+`PlanResult` for H4. Founder amendments bind implementation:
+
+- **A1** `effective_priority = business_value + aging_boost`, then tie-breaks
+- **A2** live lease ownership only with `lease_id` + `fencing_token` + `task_id`
+- **A3** no `would_execute` without valid GoalContract (`missing_goal_contract`)
+- **A4** read-only planner (no lease probe/acquire/renew/reclaim)
+- **A5** PlanResult binds goal_id, contract fingerprint, observed_main_sha,
+  input snapshot fingerprint, required_leases, governance
+- **A6** aging from ready_since / transition-to-READY (not `updated_at`)
+
+CLI: `python3 -m scripts.harness plan [--program ID] [--sync] [--main-sha SHA]`.
+H4 launcher/worktree/dispatch is out of scope for H3.
+
