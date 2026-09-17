@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-18-course-manager-v1-on",
+    "publishedAt": "2026-09-18",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程管理改為「管理課程」單一入口",
+    "summary": "進行中課程改按「管理課程」進入工作區；原編輯／更多整理進分區，不含單堂取消或改時間。",
+    "items": [
+      "進行中列改按「管理課程」進入總覽、排課、設定、帳務與紀錄。",
+      "原編輯、更多、詳情操作整理進對應分區，仍走既有流程。",
+      "本版不含取消堂次、改時間／改老師或週期改寫。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "進行中列改按「管理課程」進入總覽、排課、設定、帳務與紀錄。",
+          "原編輯、更多、詳情操作整理進對應分區，仍走既有流程。",
+          "本版不含取消堂次、改時間／改老師或週期改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3045"
+    ],
+    "date": "2026-09-18",
+    "version": "2026.09.18"
+  },
+  {
     "id": "staff-2026-09-17-grade-promotion",
     "publishedAt": "2026-09-17",
     "effectiveAt": null,

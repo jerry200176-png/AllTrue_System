@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.18",
     "date": "2026-09-18",
     "title": "2026.09.18 草稿（未發布）",
-    "summary": "Manager V1 consolidates Edit/More/Details",
+    "summary": "Course Manager V1 for staff；Manager V1 consolidates Edit/More/Details",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "Course Manager V1 for staff",
           "Manager V1 consolidates Edit/More/Details"
         ]
       }
     ],
     "items": [
+      "Course Manager V1 for staff",
       "Manager V1 consolidates Edit/More/Details"
     ]
   },

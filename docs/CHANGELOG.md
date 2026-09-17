@@ -1,3 +1,8 @@
+## 2026-09-18 — feat(course-mgmt): activate Course Manager V1 for staff
+<!-- release-notes: staff_update=staff-2026-09-18-course-manager-v1-on -->
+- 課程管理進行中列改以「管理課程」進入單一工作區（總覽／排課與堂次／課程設定／帳務與合約／紀錄）。
+- 不改變既有排課／帳務／合約寫入；不含取消單堂、改時間／改老師或週期改寫。
+
 ## 2026-09-18 — feat(course-mgmt): Course Manager V1 consolidates Edit/More/Details
 <!-- release-notes: silent_ship=silent-2026-09-18-course-manager-v1 -->
 - 進行中課程支援「管理課程」工作區（總覽／排課與堂次／課程設定／帳務與合約／紀錄），`COURSE_MANAGER_V1` 預設 OFF。
