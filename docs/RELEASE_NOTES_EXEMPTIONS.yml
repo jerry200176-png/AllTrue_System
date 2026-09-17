@@ -22,10 +22,15 @@ exemptions:
     changelog_title: "feat(truefit): TF-S6-01 workspace progress + continuum edge helpers"
     reason: TrueFit 暗啟動（TRUEFIT_V1 / VITE_TRUEFIT_V1 OFF）前端同堂次進度條與 continuum CTA／seed 邊緣；不改線上教職員可見流程、帳務或排課。
 
-- id: silent-2026-09-17-truefit-s6-00-evidence-s601-plan
+  - id: silent-2026-09-17-truefit-program-status-reconcile
+    changelog_date: "2026-09-17"
+    changelog_title: "docs(truefit): reconcile PROGRAM_STATUS after S6-01 merge"
+    reason: 僅文件狀態對齊（S6-01 已 MERGED）；不改 runtime、教職員流程、帳務或排課。
+
+  - id: silent-2026-09-17-truefit-s6-00-evidence-s601-plan
     changelog_date: "2026-09-17"
     changelog_title: "docs(truefit): S6-00 acceptance evidence + TF-S6-01 Plan"
-    reason: 僅 TrueFit 驗證證據與下一階段 Plan 文件；不改 runtime、教職員流程、帳務或排課。
+    reason: 僅 TrueFit 驗證證據與歷史 Plan 文件；不改 runtime、教職員流程、帳務或排課。
 
   - id: silent-2026-09-17-truefit-s6-00b-continuum-ui
     changelog_date: "2026-09-17"
