@@ -26,6 +26,7 @@ from .planner import required_resources
 from .states import ACTIVE_MUTATING, TaskState
 from .store import HarnessStore
 from .transitions import TransitionError, transition
+from .worker_run import observe_worker_handoff, start_or_resume_worker
 
 SpawnHook = Callable[[Mapping[str, Any]], Mapping[str, Any] | None]
 
@@ -267,14 +268,19 @@ def _rollback_leases(
 
 
 def _default_spawn(ctx: Mapping[str, Any]) -> dict[str, Any]:
-    """H4.0: record spawn deferred (launcher product is follow-on). Attempt already durable."""
-    return {
-        "spawned": False,
-        "deferred": True,
-        "reason": "worktree_launcher_deferred",
-        "attempt_id": ctx.get("attempt_id"),
-        "task_id": ctx.get("task_id"),
-    }
+    """H4b: start or resume canonical worker; record WorkerRun identity."""
+    store = ctx.get("store")
+    if store is None:
+        return {
+            "spawned": False,
+            "deferred": True,
+            "reason": "worktree_launcher_deferred",
+            "attempt_id": ctx.get("attempt_id"),
+            "task_id": ctx.get("task_id"),
+        }
+    return start_or_resume_worker(
+        store, ctx, dry_run=bool(ctx.get("spawn_dry_run", True)),
+    )
 
 
 def dispatch(
@@ -288,6 +294,7 @@ def dispatch(
     apply_governance: bool = True,
     spawn_hook: SpawnHook | None = None,
     now: datetime | None = None,
+    spawn_dry_run: bool = True,
 ) -> DispatchResult:
     """Dispatch a PlanResult. Dry-run by default. Writes DispatchAttempt before spawn (A4)."""
     now = now or _now()
@@ -464,7 +471,39 @@ def dispatch(
         "worker": worker,
         "lease_binding": binding.to_dict(),
         "goal_id": goal.goal_id,
+        "store": store,
+        "task": task,
+        "spawn_dry_run": spawn_dry_run,
+        "project": "alltrue",
     }) or {})
+
+    # Spawn failure is durable on the attempt but does not roll back leases —
+    # Supervisor may retry attach/resume with same fencing (H4b).
+    if spawn_info.get("ok") is False:
+        attempt["status"] = "active"
+        attempt["updated_at"] = _iso()
+        attempt["payload"] = {
+            **attempt["payload"],
+            "spawn": spawn_info,
+            "spawn_failed": True,
+        }
+        store.put_dispatch_attempt(attempt)
+        return DispatchResult(
+            ok=False,
+            reason=str(spawn_info.get("reason") or "spawn_failed"),
+            plan_id=plan_id,
+            attempt_id=attempt_id,
+            task_id=task.task_id,
+            goal_id=goal.goal_id,
+            goal_contract_fingerprint=goal.contract_fp,
+            observed_main_sha=ctx.get("observed_main_sha"),
+            execution_critical_fingerprint=crit,
+            required_leases=leases,
+            lease_binding=binding,
+            would_mutate=True,
+            governance=gov,
+            spawn=spawn_info,
+        )
 
     attempt["status"] = "active"
     attempt["updated_at"] = _iso()
@@ -602,6 +641,18 @@ def ingest_handoff(
     }
     attempt["updated_at"] = _iso()
     store.put_dispatch_attempt(attempt)
+    worker_obs = observe_worker_handoff(
+        store,
+        attempt_id=attempt_id,
+        claimed_bindings=claimed.to_dict(),
+        result=result,
+    )
+    if worker_obs.get("reason") != "worker_run_missing":
+        attempt["payload"] = {
+            **attempt["payload"],
+            "worker_handoff": worker_obs,
+        }
+        store.put_dispatch_attempt(attempt)
     return DispatchResult(
         ok=True,
         reason="handoff_accepted",
@@ -612,6 +663,7 @@ def ingest_handoff(
         goal_contract_fingerprint=attempt["goal_contract_fingerprint"],
         lease_binding=durable,
         would_mutate=False,
+        spawn=worker_obs if worker_obs.get("reason") != "worker_run_missing" else None,
     )
 
 

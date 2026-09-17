@@ -1,4 +1,4 @@
-"""CLI: sync / status / resume / founder-inbox / graph / plan / dispatch (H0–H4)."""
+"""CLI: sync / status / resume / founder-inbox / graph / plan / dispatch (H0–H4b)."""
 
 from __future__ import annotations
 
@@ -57,10 +57,12 @@ def cmd_status(args: argparse.Namespace) -> int:
     print("  ".join("-" * widths[h] for h in headers))
     for row in rows:
         print("  ".join(str(row[h]).ljust(widths[h]) for h in headers))
+    open_runs = [r for r in store.list_worker_runs() if r["status"] in {"starting", "running"}]
     print(f"\ndb={store.db_path} founder_open={len(store.list_open_escalations())} "
-          f"leases={len(store.list_leases())} goals={len(store.list_goals())}")
+          f"leases={len(store.list_leases())} goals={len(store.list_goals())} "
+          f"worker_runs_open={len(open_runs)}")
     if args.json:
-        print(json.dumps({"programs": rows}, indent=2))
+        print(json.dumps({"programs": rows, "worker_runs_open": open_runs}, indent=2))
     return 0
 
 
@@ -93,6 +95,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
         "programs": [p.program_id for p in store.list_programs()],
         "running": running, "waiting": waiting, "founder_required": founder,
         "reclaimed_stale_leases": reclaimed, "db": str(store.db_path),
+        "worker_runs": store.list_worker_runs(),
     }, indent=2))
     return 0
 
@@ -123,7 +126,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 
 def cmd_dispatch(args: argparse.Namespace) -> int:
-    """H4 dispatch — dry-run by default; --apply mutates leases + DispatchAttempt."""
+    """H4/H4b dispatch — dry-run by default; --apply mutates leases + WorkerRun."""
     store = _store(args)
     if args.plan_json:
         plan = json.loads(Path(args.plan_json).read_text(encoding="utf-8"))
@@ -154,6 +157,7 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
             store, plan, worker=args.worker, apply=bool(args.apply),
             main_sha=args.main_sha or None,
             reclaim_expired=not args.skip_reclaim,
+            spawn_dry_run=not bool(args.spawn_exec),
         )
     print(json.dumps(result.to_dict(), indent=2))
     return 0 if result.ok else 1
@@ -185,13 +189,17 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--main-sha", default=None)
     plan.add_argument("--skip-governance", action="store_true")
     plan.set_defaults(func=cmd_plan)
-    disp = sub.add_parser("dispatch", help="H4 revalidate+CAS dispatch (dry-run default)")
+    disp = sub.add_parser("dispatch", help="H4 revalidate+CAS+WorkerRun (dry-run default)")
     disp.add_argument("--program", default=None)
     disp.add_argument("--plan-json", default=None, help="PlanResult JSON path")
     disp.add_argument("--worker", default="harness-worker")
     disp.add_argument("--apply", action="store_true")
     disp.add_argument("--main-sha", default=None)
     disp.add_argument("--skip-reclaim", action="store_true")
+    disp.add_argument(
+        "--spawn-exec", action="store_true",
+        help="Pass dry_run=False to launcher (still no CLI unless agent-start given one)",
+    )
     disp.add_argument("--heartbeat", default=None, help="attempt_id to renew leases")
     disp.add_argument("--release", default=None, help="attempt_id for PR_READY lease release")
     disp.add_argument("--handoff-json", default=None)
