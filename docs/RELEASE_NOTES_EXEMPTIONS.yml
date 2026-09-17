@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-course-manager-flag-control
+    changelog_date: "2026-09-18"
+    changelog_title: "fix(deploy): explicit course_manager_v1 flag activation"
+    reason: Deploy 控制面新增 course_manager_v1；啟用前不改變 production UI，不開 Phase 1b/2/3。
+
   - id: silent-2026-09-17-calendar-flag-activation-control
     changelog_date: "2026-09-17"
     changelog_title: "fix(deploy): explicit course session calendar flag activation"
