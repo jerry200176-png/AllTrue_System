@@ -1,67 +1,41 @@
-# ASSIGNMENT — Worker C — TF-S6-01 PLAN ONLY
+# ASSIGNMENT — Worker A — H4 PLAN ONLY
 
 **goal_id:** alltrue-supervisor-dispatch  
-**task:** TF-S6-01-PLAN  
-**status:** PLAN_REVIEW  
-**phase:** PLANNING — Supervisor Plan Review gate before any implementation  
-**activated_at:** 2026-09-17T00:13:30Z  
-**worker_id:** C  
-**base_sha:** `f69b14ea98c9800985732787a927a5058578dbbe` (main tip after #3012)  
-**branch:** `chore/task-truefit-s6-01-plan`  
-**worktree:** `/home/jerry/workspace/tasks/alltrue/truefit-s6-01-plan`  
-**line_gate (impl later):** **≤700** — DO NOT WEAKEN without Founder  
+**task:** H4-PLAN  
+**status:** DISPATCHED  
+**phase:** PLANNING — Supervisor Plan Review before any implementation  
+**dispatch:** `/home/jerry/workspace/state/alltrue/DISPATCH_H4_PLAN.json`  
+**unlock:** H3 ACCEPTED — `/home/jerry/workspace/state/alltrue/H3_ACCEPTANCE.json` (#3014 @ `51b4d30de`)
 
-## Prerequisite (satisfied)
-
-| Item | Evidence |
-|------|----------|
-| TF-S6-00 ACCEPTED | `/home/jerry/workspace/state/alltrue/TF_S6_00_ACCEPTANCE.json` |
-| 00a MERGED | #3010 → `f0907cbca33d0eda6a7dd95826edb979799f100a` |
-| 00b MERGED | #3012 → `f69b14ea98c9800985732787a927a5058578dbbe` |
-| Flags | `TRUEFIT_V1` / `VITE_TRUEFIT_V1` **OFF** |
-
-## Outcome (this dispatch)
-
-Produce a **Plan** for Supervisor review covering next TrueFit continuum hardening after S6-00. **NO implementation code PR.** Docs-only draft PR is OK.
-
-Plan path: `docs/truefit/TF_S6_01_PLAN.md`
+## Outcome
+Produce an H4 dispatch **Plan** for Supervisor review (CAS acquire/renew/reclaim,
+PlanResult revalidation, deny-and-continue, evidence, tests). **NO implementation.**
 
 ## Scope (allowed)
-
-- Planning docs under `docs/truefit/**`
-- `ASSIGNMENT.md` / `PLAN.md` companion in this worktree
-- Docs-only commits on `chore/task-truefit-s6-01-plan`
-- Draft PR titled: `docs(truefit): TF-S6-01 Plan (review only — no impl)`
+- Docs only under `docs/harness/**` on branch `chore/task-harness-h4-plan`
+- Draft docs-only PR for Plan Review evidence
+- Progress JSON: `/home/jerry/workspace/state/alltrue/_a_h4_plan_progress.json`
 
 ## Forbidden
+- H4 implementation (CAS acquire wiring in dispatch module, launcher, worktree-create agent runtime)
+- Production approve / deploy
+- Second autonomy classifier
+- Weakening H3 A1–A6
+- Combining H4 impl in same PR as this plan without separate Plan Review gate
 
-- TF-S6-01 **implementation** before Plan Review GO
-- TF-S6-02 any work
-- Turning `TRUEFIT_V1` / `VITE_TRUEFIT_V1` **ON**
-- RFID / billing / auth / scheduling scope creep
-- Prod approve run `35111700889`
-- Weakening ≤700 line gate without Founder
-- Claiming operational acceptance or flag-on pilot complete
-
-## Exclusive lease
-
-Worker C = `truefit/**` (frontend TrueFit continuum + docs/truefit plan) — **docs only** this phase.
-
-## Completion criteria — STOP at Plan Review
-
-Hand Supervisor:
-
+## Completion criteria — Plan must include
 1. Objectives  
-2. Module boundaries  
-3. Non-goals  
-4. Founder / Supervisor boundaries  
-5. Proposed file list + size estimate  
-6. Test plan  
-7. Progress JSON at `/home/jerry/workspace/state/alltrue/_c_s6_01_plan_progress.json`
+2. Module boundaries (leases CAS; PlanResult revalidation; deny-and-continue)  
+3. State transitions  
+4. Evidence schema  
+5. Failure modes  
+6. Founder boundaries  
+7. File list + size ≤1300 for later impl  
+8. Test plan  
+9. Handoff from H3 PlanResult world-bind fields  
 
-**STOP.** Do not implement.
+**STOP** for Supervisor Plan Review. Do not implement.
 
-## Dispatch / authority packets
-
-- `/home/jerry/workspace/state/alltrue/DISPATCH_C_TF_S6_01_PLAN.json`
-- `/home/jerry/workspace/state/alltrue/TF_S6_00_ACCEPTANCE.json`
+## Evidence required
+- Plan path: `docs/harness/H4_DISPATCH_PLAN.md`
+- Draft PR URL + number
