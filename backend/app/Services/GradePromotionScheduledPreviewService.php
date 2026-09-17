@@ -141,7 +141,7 @@ class GradePromotionScheduledPreviewService
         }
 
         $sourceKey = "grade-promotion:preview-reminder:{$campusId}:{$seasonYear}";
-        Notification::updateOrCreate(
+        Notification::query()->updateOrCreate(
             ['SourceKey' => $sourceKey],
             [
                 'CampusID' => $campusId,
