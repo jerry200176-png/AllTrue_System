@@ -27,14 +27,36 @@ This tree is a dedicated composition under `infra/daan-staging/` so it does **no
 `infra/daan-staging/Dockerfile` installs `pdo_mysql` (and keeps `pdo_pgsql`).
 Root `backend/Dockerfile` still lacks `pdo_mysql` — tracked separately as `INFRA-PDO-MYSQL-MISSING` and **not** fixed here, because editing `backend/Dockerfile` would mark production activation deployable.
 
-## Host bootstrap (Founder / interactive sudo)
+## Host bootstrap (Founder / interactive sudo — session scoped)
 
-`admin` can SSH passwordlessly but is **not** in the `docker` group and has no passwordless sudo.
-One-time host bootstrap (manual):
+`admin` can SSH passwordlessly but is **not** in the `docker` group and has **no** passwordless sudo.
 
-1. Add `admin` to `docker` (or document an approved operator group).
-2. Confirm `docker ps` works without interactive sudo.
-3. Do **not** stop Dify/Hermes, change firewall, or expose public staging ports.
+**Do not** add `admin` to the docker group or grant passwordless `sudo docker` in this phase.
+
+Session-scoped Docker (this shell only):
+
+```bash
+export PATH="$HOME/alltrue-stage/session-docker-bin:$PATH"
+hash -r
+# first `docker` call prompts for sudo password once per session
+```
+
+Packet on Daan: `~/alltrue-stage/FOUNDER_INTERACTIVE_DOCKER.txt`
+
+## Validation phases
+
+1. **DAAN_STAGING_V1 infra** at merge SHA `142cac7901c5b492a539dc057d47feae2d1d7534`
+2. **Product rehearsal** (#3015 / in-app #296) at current `main` after infra ACCEPTED
+
+```bash
+# Phase 1 only
+infra/daan-staging/lifecycle/validate-cycle.sh
+
+# Phase 1 + #296 rehearsal
+PRODUCT_REHEARSAL=1 MAIN_SHA="$(git rev-parse origin/main)" infra/daan-staging/lifecycle/validate-cycle.sh
+```
+
+Evidence lands in `infra/daan-staging/runtime/evidence/`. Bring staging **down** after validation unless actively testing.
 
 ## Commands (from repo root on Daan checkout)
 
