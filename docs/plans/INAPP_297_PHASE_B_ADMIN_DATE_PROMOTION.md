@@ -1,43 +1,31 @@
-# In-App #297 Phase-B Plan — Admin-date automatic grade promotion
+# In-App #297 Phase-B — Admin-date automatic grade promotion
 
-**Status:** PLAN ONLY — implementation not authorized by this document  
+**Status:** APPROVED — Phase-B.1 implementation authorized  
 **GitHub:** #2906 / in-app #297  
-**Depends on:** Phase-A already production tip (`grade_promotion_*` tables + staff preview/confirm UI)  
-**Risk class (proposed):** R2 product + scheduler — likely **Founder review** before impl (annual student-grade mutation)
+**Phase-A (production tip):** manual preview/confirm UI + writer  
+**Phase-B.1 (this slice):** scheduled preview + staff/director reminder — **no auto-confirm**
 
-## Outcomes
+## Founder decisions (binding)
 
-- On a configured administrative promotion date, eligible students are proposed (and optionally confirmed) for grade promotion without requiring a director to open the Students UI that day.
-- Preserve Phase-A semantics: preview → confirm, idempotent per student/season, H3 graduates without course Stop in the promotion step.
-- Reminder/notification path is optional Phase-B.1; do not couple to TrueFit.
+| Topic | Decision |
+|---|---|
+| Phase-B.1 behavior | Automatic scheduled **preview** + staff/director **reminder** only |
+| Auto-confirm | Architecture may keep `GRADE_PROMOTION_AUTO_CONFIRM` flag; **default false**; **not authorized** in Phase-B.1; Phase-B.2 requires separate Founder GO |
+| Campus scope | Explicit allowlist; **empty = fail closed**; initial rollout **campus 9 only** |
+| Date/time | `Asia/Taipei`; configured admin promotion date; preserve Phase-A preview/confirm + season idempotency |
+| Notification | Use existing staff/director in-app `Notifications` path; scheduler failures → durable ops evidence (Notification + BugReport) |
+| Email | **Not** in this phase |
+| Writer | Reuse `GradePromotionService` only — no second mutation path |
+| H3 | Graduate without course Stop in promotion step (unchanged) |
+| Non-scope | Historical backfill, TrueFit, auth (#299), billing |
 
-## Non-outcomes
+## Implementation surface
 
-- No production data backfill of historical grades
-- No TrueFit activation
-- No auth/identity model changes (#299 remains parked)
-- No billing/session deduction changes
-- No Daan staging prerequisite for this Plan (staging when available is optional evidence later)
+- `config/grade_promotion.php` — `auto_confirm`, `campus_allowlist`
+- `GradePromotionScheduledPreviewService` — admin-date gate, allowlist, preview, notify
+- `grade-promotion:scheduled-preview` — scheduler command (08:00 Asia/Taipei)
+- `SchedulerEvidence` job `grade-promotion-scheduled-preview`
 
-## Proposed design (for review)
+## Phase-B.2 (not authorized)
 
-1. **Trigger:** Laravel scheduler job keyed to `config/grade_promotion.php` admin date (Asia/Taipei), with dry-run default.
-2. **Authority:** Reuse existing GradePromotion preview/confirm services; do not invent a second writer.
-3. **Safety:** Job must fail closed if preview returns zero/ambiguous campus scope; require explicit `GRADE_PROMOTION_AUTO_CONFIRM=false` default (preview+notify only) until Founder GO for auto-confirm.
-4. **Evidence:** SchedulerEvidence ledger entry per run; no PII in logs.
-5. **Rollback:** Disable flag / remove schedule entry; Phase-A manual UI remains.
-
-## Success criterion
-
-- Plan merged as docs-only after review.
-- Separate Impl PR only after Plan approval (and Founder GO if auto-confirm is in scope).
-
-## Open questions for Founder / Product
-
-1. Is Phase-B **preview+staff reminder only**, or **auto-confirm**?
-2. Campus scope: all campuses vs director-selected allowlist?
-3. Failure notification channel (in-app bug comment vs staff update vs email)?
-
-## Implementation non-start
-
-Workers must not open an Impl PR from this Plan until the questions above are decided and this Plan is marked APPROVED.
+Auto-confirm on admin date requires separate Founder GO after staging/operational evidence.

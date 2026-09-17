@@ -41,6 +41,10 @@ final class SchedulerEvidence
         'bugs-verify-reproductions' => ['command' => 'bugs:verify-reproductions --json', 'time' => '04:00'],
         'ops-business-digest' => ['command' => 'ops:business-digest', 'time' => '04:10'],
         'bindings-cleanup-orphans' => ['command' => 'bindings:cleanup-orphans', 'time' => '04:30'],
+        'grade-promotion-scheduled-preview' => [
+            'command' => 'grade-promotion:scheduled-preview',
+            'time' => '08:00',
+        ],
     ];
 
     /** @return array<string,array{command:string,time:string}> */
