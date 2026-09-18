@@ -399,7 +399,7 @@ class BugReportService
             // Exception-only resolves keep the legacy status-log marker only.
             if (
                 $newStatus === 'resolved'
-                && is_array($resolutionPayload)
+                && $resolutionPayload !== null
                 && !empty($resolutionPayload['production_revision'])
             ) {
                 $evidence = new BugReportEvidence();
@@ -957,7 +957,7 @@ class BugReportService
 
         $resolution = null;
         foreach (array_reverse($statusLogs) as $log) {
-            if ((string) $log->to_status !== 'resolved') {
+            if ((string) $log->getAttribute('to_status') !== 'resolved') {
                 continue;
             }
             $parsed = self::parseMarkerPayload((string) ($log->note ?? ''), self::RESOLUTION_EVIDENCE_MARKER);
@@ -992,7 +992,7 @@ class BugReportService
         $deployRunId = $latestEvidence['deploy_run_id']
             ?? ($resolution['deploy_run_id'] ?? null);
 
-        $status = (string) $bug->status;
+        $status = (string) $bug->getAttribute('status');
         $semantic = 'SUBMITTED';
         if ($status === 'closed') {
             $semantic = 'CLOSED';
@@ -1009,15 +1009,16 @@ class BugReportService
         }
 
         $reporterFeedbackType = null;
-        if (is_string($bug->client_info) && $bug->client_info !== '') {
-            $decoded = json_decode($bug->client_info, true);
+        $clientInfo = $bug->getAttribute('client_info');
+        if (is_string($clientInfo) && $clientInfo !== '') {
+            $decoded = json_decode($clientInfo, true);
             if (is_array($decoded) && isset($decoded['feedbackType']) && is_string($decoded['feedbackType'])) {
                 $reporterFeedbackType = $decoded['feedbackType'];
             }
         }
 
         return [
-            'feedback_id' => (int) $bug->id,
+            'feedback_id' => (int) $bug->getKey(),
             'status' => $status,
             'semantic_phase' => $semantic,
             'reporter_feedback_type' => $reporterFeedbackType,
