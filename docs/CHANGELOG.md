@@ -1,3 +1,8 @@
+## 2026-09-18 — docs(agents): install in-app product-loop entry skill
+<!-- release-notes: silent_ship=silent-2026-09-18-inapp-product-loop-entry -->
+- 新增常設入口 `.agents/skills/alltrue-inapp-product-loop`（Cursor symlink），AGENTS 意圖路由改指向該 skill + 既有執行政策。
+- 修正 release／debugging skill 與政策：禁 Pi SSH；PLAN_REQUIRED 由 Agent 蒐證推薦、Founder 決策，ChatGPT 可選。
+
 ## 2026-09-18 — fix(bugs): persist link-only issue URL onto prior disposition
 <!-- release-notes: silent_ship=silent-2026-09-18-bug-link-only-issue -->
 - 已定性後僅附 GitHub Issue URL 時，合併寫入先前定性，不再以 HTTP 200 默默忽略連結。
