@@ -1473,6 +1473,75 @@ class BugReportApiTest extends TestCase
         $this->assertSame('分診完成', $detail->json('status_logs.0.note_display'));
     }
 
+    public function test_resolve_with_pr_url_does_not_clobber_prior_disposition(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'dispNoClobber@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1,
+            'reporter_user_id' => $admin->id,
+            'title' => 'Keep disposition',
+            'description' => 'D',
+            'severity' => 'low',
+            'status' => 'new',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'triaged',
+            'disposition' => 'bug',
+            'github_issue_url' => 'https://github.com/jerry200176-png/AllTrue_System/issues/8888',
+        ])->assertOk();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'in_progress',
+        ])->assertOk();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '已上線，請驗收',
+            'is_internal_note' => false,
+        ])->assertStatus(201);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved',
+            'production_revision' => '662960e5',
+            'github_pr_url' => 'https://github.com/jerry200176-png/AllTrue_System/pull/3057',
+        ])->assertOk();
+
+        $resolveNote = \App\Models\BugReportStatusLog::where('bug_report_id', $bug->id)
+            ->where('to_status', 'resolved')->value('note');
+        $this->assertStringNotContainsString('[product_disposition]', (string) $resolveNote);
+        $this->assertStringContainsString('[resolution_evidence]', (string) $resolveNote);
+
+        $detail = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/bugs/{$bug->id}?branch_id=1");
+        $detail->assertOk();
+        $this->assertSame('bug', $detail->json('product_loop.disposition'));
+        $this->assertSame(
+            'https://github.com/jerry200176-png/AllTrue_System/issues/8888',
+            $detail->json('product_loop.github_issue_url')
+        );
+        $this->assertSame(
+            'https://github.com/jerry200176-png/AllTrue_System/pull/3057',
+            $detail->json('product_loop.github_pr_url')
+        );
+        $this->assertSame('SHIPPED', $detail->json('product_loop.semantic_phase'));
+        $this->assertSame('', $detail->json('status_logs.2.note_display'));
+    }
+
     public function test_non_engineering_disposition_can_close_without_sha(): void
     {
         [$tokenAdmin, $admin] = $this->createUserToken([1], 'dispClose@test.com', 'S');

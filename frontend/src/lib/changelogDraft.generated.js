@@ -26,6 +26,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "disposition when resolving with -only link",
           "LR ownership follows course teacher"
         ]
       },
@@ -40,6 +41,7 @@ export const changelogDraftNotes = [
       "closed-loop product projection",
       "Course Manager V1 for staff",
       "Manager V1 consolidates Edit/More/Details",
+      "disposition when resolving with -only link",
       "LR ownership follows course teacher",
       "Manager IA dedupe and layout"
     ]

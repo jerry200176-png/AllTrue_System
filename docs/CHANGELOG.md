@@ -1,3 +1,8 @@
+## 2026-09-18 — fix(bugs): preserve disposition when resolving with PR-only link
+<!-- release-notes: silent_ship=silent-2026-09-18-bug-product-loop-clobber -->
+- 僅附 GitHub PR／Issue、未重填定性時，不再寫入空的 `[product_disposition]`，避免蓋掉先前定性。
+- 狀態歷程顯示改用已剝除機器標記的 `note_display`，不再回退成原始 JSON 標記。
+
 ## 2026-09-18 — feat(bugs): in-app feedback closed-loop product projection
 <!-- release-notes: silent_ship=silent-2026-09-18-bug-product-loop -->
 - 意見與建議詳情新增「產品閉環摘要」：定性、GitHub 連結、Production SHA、語意階段（含 shipped≠僅合併 PR）。

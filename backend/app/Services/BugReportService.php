@@ -316,17 +316,17 @@ class BugReportService
             if (!$dispositionPayload['ok']) {
                 return $dispositionPayload;
             }
-        } elseif (
-            (!empty($options['github_issue_url']) || !empty($options['github_pr_url']))
-            && empty($options['disposition'])
-        ) {
-            // Allow engineering link writeback without re-stating disposition (Phase-A / Phase-C).
-            $dispositionPayload = self::normalizeDispositionOptions(array_merge($options, [
+        } elseif (!empty($options['github_issue_url']) || !empty($options['github_pr_url'])) {
+            // Validate engineering URLs when present, but do NOT write a link-only
+            // [product_disposition] marker — that would clobber a prior kind with null.
+            // Resolve-time PR belongs on [resolution_evidence]; issue URLs remain in
+            // comments / prior disposition markers and are projected from there.
+            $linkCheck = self::normalizeDispositionOptions(array_merge($options, [
                 'disposition' => null,
                 'link_only' => true,
             ]));
-            if (!$dispositionPayload['ok']) {
-                return $dispositionPayload;
+            if (!$linkCheck['ok']) {
+                return $linkCheck;
             }
         }
 
@@ -948,7 +948,8 @@ class BugReportService
         $disposition = null;
         foreach (array_reverse($statusLogs) as $log) {
             $parsed = self::parseMarkerPayload((string) ($log->note ?? ''), self::DISPOSITION_MARKER);
-            if ($parsed !== null) {
+            // Skip link-only / null-kind markers so they cannot wipe a prior disposition.
+            if ($parsed !== null && !empty($parsed['kind'])) {
                 $disposition = $parsed;
                 break;
             }

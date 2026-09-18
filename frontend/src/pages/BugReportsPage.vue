@@ -504,7 +504,7 @@
             <div v-for="(log, i) in detail.status_logs" :key="i" class="status-log-item">
               <span class="status-tag sm" :class="log.to_status">{{ statusLabel(log.to_status) }}</span>
               <span class="log-meta">{{ log.changed_by_name }} · {{ formatDate(log.created_at) }}</span>
-              <span v-if="log.note_display || log.note" class="log-note">{{ log.note_display || log.note }}</span>
+              <span v-if="statusLogDisplayNote(log)" class="log-note">{{ statusLogDisplayNote(log) }}</span>
             </div>
           </div>
 
@@ -709,6 +709,15 @@ async function markRead(fb) {
 
 watch(pfCategoryFilter, () => loadFeedback(1));
 
+function statusLogDisplayNote(log) {
+  if (!log || typeof log !== 'object') return '';
+  // Prefer stripped display text; never fall back to raw machine markers.
+  if (Object.prototype.hasOwnProperty.call(log, 'note_display')) {
+    return String(log.note_display || '').trim();
+  }
+  return String(log.note || '').trim();
+}
+
 // The most recent status_log note when a bug reaches resolved/closed — shown in banner
 const resolutionNote = computed(() => {
   if (!detail.value?.status_logs?.length) return '';
@@ -716,7 +725,7 @@ const resolutionNote = computed(() => {
   const log = [...detail.value.status_logs]
     .reverse()
     .find(l => terminal.includes(l.to_status));
-  return (log?.note_display || log?.note || '').trim();
+  return statusLogDisplayNote(log);
 });
 
 const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
