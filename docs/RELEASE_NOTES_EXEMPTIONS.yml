@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-inapp-product-loop-entry
+    changelog_date: "2026-09-18"
+    changelog_title: "docs(agents): install in-app product-loop entry skill"
+    reason: Agent 入口／技能與政策措辭；不改教職員 App runtime 或回報 UI。
+
   - id: silent-2026-09-18-bug-link-only-issue
     changelog_date: "2026-09-18"
     changelog_title: "fix(bugs): persist link-only issue URL onto prior disposition"

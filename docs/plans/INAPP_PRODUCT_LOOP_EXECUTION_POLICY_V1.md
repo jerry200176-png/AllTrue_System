@@ -93,7 +93,7 @@ new canonical data model · new system authority · new orchestration layer · r
 
 activation of an entirely new product capability · material rollout policy · new role / audience exposure
 
-For these: **DO NOT IMPLEMENT.** Produce a Decision Packet for Founder → ChatGPT planning → Founder GO/AMEND → bounded Plan back to Cursor.
+For these: **DO NOT IMPLEMENT.** The implementing Agent collects evidence, prepares a Decision Packet with options and a recommendation, and stops for **Founder** GO/AMEND. ChatGPT (or any external advisor) is **optional** — not a required planning gate. After GO, return a bounded Plan to the implementing Agent (Cursor/Codex). This rule does **not** expand production or protected-operation authority.
 
 ---
 

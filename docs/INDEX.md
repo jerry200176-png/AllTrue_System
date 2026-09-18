@@ -139,7 +139,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 21. **新生問班招生閉環 V1（runtime activated；E2E／retention sign-off pending）**：[`architecture/RFC_ADMISSIONS_FUNNEL_V1.md`](architecture/RFC_ADMISSIONS_FUNNEL_V1.md) · REP [`runbooks/admissions-funnel-v1-activation-execution-package.md`](runbooks/admissions-funnel-v1-activation-execution-package.md) · brief [`runbooks/admissions-funnel-v1-founder-activation-brief.md`](runbooks/admissions-funnel-v1-founder-activation-brief.md) — code default `ADMISSIONS_FUNNEL_V1` 仍為 off；production 已由 Founder-gated deploy 啟用，完整 staff／public E2E 與 retention／PII sign-off 仍需指定安全測試身份。
 22. **TrueFit v0.1（學習工作台）**：[`truefit/PROGRAM_STATUS.md`](truefit/PROGRAM_STATUS.md) — Slice 0–4 程式已在 `main`（Brief→Remediation）；營運驗收卡在 staging（#868）；下一優先 Slice 5 = Mastery（見 [`truefit/MASTERY_CONTRACT.md`](truefit/MASTERY_CONTRACT.md)）。
 23. **App shell 有界拆分（PLAN_READY / DEFERRED）**：[`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — 僅 badge／More+Search／Help 三切片；產品訊號驅動才 pull；不自動實作。
-24. **In-app Product Loop 執行政策**：[`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) — 訊號分類、auto-fix envelope、PLAN_REQUIRED Decision Packet；非 FIFO。
+24. **In-app Product Loop 執行政策**：[`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) — 訊號分類、auto-fix envelope、PLAN_REQUIRED Decision Packet；非 FIFO。常設入口 skill：[`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](../.agents/skills/alltrue-inapp-product-loop/SKILL.md)。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |

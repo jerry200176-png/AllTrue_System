@@ -46,6 +46,7 @@ jobs:
           node scripts/ci-cost-guard.mjs
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
+          node scripts/ci/inapp-product-loop-entry.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
           python3 scripts/tests/test_required_php_checks.py
