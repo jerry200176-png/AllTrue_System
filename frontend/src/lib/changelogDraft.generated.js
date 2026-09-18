@@ -23,6 +23,12 @@ export const changelogDraftNotes = [
         ]
       },
       {
+        "title": "修正內容",
+        "items": [
+          "LR ownership follows course teacher"
+        ]
+      },
+      {
         "title": "其他改善",
         "items": [
           "Manager IA dedupe and layout"
@@ -32,6 +38,7 @@ export const changelogDraftNotes = [
     "items": [
       "Course Manager V1 for staff",
       "Manager V1 consolidates Edit/More/Details",
+      "LR ownership follows course teacher",
       "Manager IA dedupe and layout"
     ]
   },

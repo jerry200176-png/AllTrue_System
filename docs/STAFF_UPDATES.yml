@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-18-lr-mutable-teacher-follow
+    published_at: "2026-09-18"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 未上課評量跟著目前老師
+    summary: 尚未發生的待填評量會跟目前課表老師；已實際上過的仍保留當時老師。
+    items:
+      - category: fixed
+        text: 換正班老師後，尚未上課的待填評量改由目前老師負責。
+      - category: improved
+        text: 課表與評量顯示的負責老師對齊，避免舊老師仍看到待填項。
+      - category: improved
+        text: 已上課、已核准或正式代課的歷史堂次不會被之後換師改掉。
+    source_refs:
+      - "github:in-app-314"
+
   - id: staff-2026-09-18-course-manager-v1-on
     published_at: "2026-09-18"
     audiences:

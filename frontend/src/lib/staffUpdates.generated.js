@@ -38,6 +38,47 @@ export const staffUpdates = [
     "version": "2026.09.18"
   },
   {
+    "id": "staff-2026-09-18-lr-mutable-teacher-follow",
+    "publishedAt": "2026-09-18",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "未上課評量跟著目前老師",
+    "summary": "尚未發生的待填評量會跟目前課表老師；已實際上過的仍保留當時老師。",
+    "items": [
+      "換正班老師後，尚未上課的待填評量改由目前老師負責。",
+      "課表與評量顯示的負責老師對齊，避免舊老師仍看到待填項。",
+      "已上課、已核准或正式代課的歷史堂次不會被之後換師改掉。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "換正班老師後，尚未上課的待填評量改由目前老師負責。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課表與評量顯示的負責老師對齊，避免舊老師仍看到待填項。",
+          "已上課、已核准或正式代課的歷史堂次不會被之後換師改掉。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-314"
+    ],
+    "date": "2026-09-18",
+    "version": "2026.09.18"
+  },
+  {
     "id": "staff-2026-09-17-grade-promotion",
     "publishedAt": "2026-09-17",
     "effectiveAt": null,

@@ -17,6 +17,7 @@ use App\Models\StudentSignIn;
 use App\Models\SessionDeductionLedger;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
+use App\Support\LearningRecordMutableOwnership;
 use App\Support\SessionStatus;
 use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\BillingModeConversionArchiveService;
@@ -42,6 +43,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class StudentClassController extends Controller
@@ -1925,6 +1927,21 @@ class StudentClassController extends Controller
                 // in-app #312: drop false #207 pins on untaught past slots so
                 // calendar follows the live contract teacher (real substitutes kept).
                 $this->clearUntaughtPastFalseHistoryPins($courseIdForTeacherSync, $newTeacherId);
+            }
+            if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
+                // in-app #314 Option 2B: after false pins are cleared, align mutable
+                // LR ownership to the new contract teacher.
+                $actorUser = $request->attributes->get('auth_user');
+                $actorId = (int) ($actorUser->id ?? 0);
+                if ($actorId <= 0) {
+                    $actorId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+                }
+                $this->alignMutableLearningRecordTeachersAfterContractTeacherChange(
+                    $courseIdForTeacherSync,
+                    $oldTeacherSnapshot,
+                    $newTeacherId,
+                    $actorId
+                );
             }
         }
 
@@ -7691,12 +7708,31 @@ class StudentClassController extends Controller
                                     ->whereColumn('ssi.ClassSessionID', 'cs.id');
                             });
                     })
+                    // Historical LR authorship only — bare pending placeholders must
+                    // not become false #207 pins (#312 / #314 Option 2B).
                     ->orWhere(function ($q2) use ($today) {
                         $q2->whereDate('cs.SessionDate', '<', $today)
                             ->whereExists(function ($sub) {
                                 $sub->select(DB::raw(1))
                                     ->from('LearningRecord as lr')
-                                    ->whereColumn('lr.ClassSessionID', 'cs.id');
+                                    ->whereColumn('lr.ClassSessionID', 'cs.id')
+                                    ->whereNull('lr.VoidedAt')
+                                    ->where(function ($hist) {
+                                        $hist->whereRaw("LOWER(TRIM(COALESCE(lr.Status, ''))) != ?", ['pending'])
+                                            ->orWhereNotNull('lr.ApprovedAt')
+                                            ->orWhere('lr.SessionDeducted', 1)
+                                            ->orWhere(function ($c) {
+                                                $c->whereNotNull('lr.Content')
+                                                    ->whereRaw("TRIM(lr.Content) != ''")
+                                                    ->whereRaw("TRIM(lr.Content) != ?", ['（評量表）']);
+                                            })
+                                            ->orWhere(function ($p) {
+                                                $p->whereNotNull('lr.Progress')->whereRaw("TRIM(lr.Progress) != ''");
+                                            })
+                                            ->orWhere(function ($p) {
+                                                $p->whereNotNull('lr.NextHomework')->whereRaw("TRIM(lr.NextHomework) != ''");
+                                            });
+                                    });
                             });
                     });
             })
@@ -7825,6 +7861,54 @@ class StudentClassController extends Controller
         }
     }
 
+    /** in-app #314: restamp mutable LRs onto new contract teacher; leave history/subs. */
+    private function alignMutableLearningRecordTeachersAfterContractTeacherChange(
+        int $courseId,
+        int $oldTeacherId,
+        int $newTeacherId,
+        int $changedBy
+    ): void {
+        if ($courseId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
+            return;
+        }
+
+        $records = LearningRecord::query()
+            ->where('StudentClassID', $courseId)
+            ->whereNull('VoidedAt')
+            ->where('TeacherID', '!=', $newTeacherId)
+            ->get();
+
+        foreach ($records as $record) {
+            if (!LearningRecordMutableOwnership::canFollowCurrentCourseTeacher($record)) {
+                continue;
+            }
+
+            $fromTeacherId = (int) ($record->TeacherID ?? 0);
+            $record->TeacherID = $newTeacherId;
+            $record->save();
+
+            if (!Schema::hasTable('learning_record_teacher_changes')) {
+                continue;
+            }
+            try {
+                DB::table('learning_record_teacher_changes')->insert([
+                    'learning_record_id' => (int) $record->id,
+                    'old_teacher_id' => $fromTeacherId > 0 ? $fromTeacherId : null,
+                    'new_teacher_id' => $newTeacherId,
+                    'changed_by' => $changedBy > 0 ? $changedBy : null,
+                    'reason' => 'course_teacher_change_unperformed_occurrence',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('course_teacher_change: LR ownership audit skipped', [
+                    'learning_record_id' => (int) $record->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
     /**
      * Remove false history pins created for untaught past ClassSessions.
      * Real substitutes and taught-session #207 pins are retained.
@@ -7873,10 +7957,25 @@ class StudentClassController extends Controller
             $hasSignIn = $sessionId > 0 && DB::table('StudentSingIn')
                 ->where('ClassSessionID', $sessionId)
                 ->exists();
-            $hasLr = $sessionId > 0 && DB::table('LearningRecord')
-                ->where('ClassSessionID', $sessionId)
-                ->exists();
-            if ($hasSignIn || $hasLr) {
+            if ($hasSignIn) {
+                continue;
+            }
+            // Keep pin only when LR has authorship/attendance history — mutable
+            // pending placeholders must follow the live contract teacher (#314).
+            $keepForHistoricalLr = false;
+            if ($sessionId > 0) {
+                $sessionLrs = LearningRecord::query()
+                    ->where('ClassSessionID', $sessionId)
+                    ->whereNull('VoidedAt')
+                    ->get();
+                foreach ($sessionLrs as $sessionLr) {
+                    if (LearningRecordMutableOwnership::hasAuthorshipOrAttendanceEvidence($sessionLr)) {
+                        $keepForHistoricalLr = true;
+                        break;
+                    }
+                }
+            }
+            if ($keepForHistoricalLr) {
                 continue;
             }
 

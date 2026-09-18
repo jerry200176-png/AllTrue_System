@@ -1,6 +1,7 @@
-## 2026-09-18 — chore(release): tip CI for Course Manager polish deploy
-<!-- release-notes: silent_ship=silent-2026-09-18-course-manager-polish-tip -->
-- No product change; re-tip main so polish SHA can pass Founder exact-SHA activation after a docs-only tip.
+## 2026-09-18 — fix(learning): mutable LR ownership follows course teacher (#314)
+<!-- release-notes: staff_update=staff-2026-09-18-lr-mutable-teacher-follow -->
+- 尚未上課、尚無授課證據的待填評量，換正班老師後會跟著目前課表老師；顯示與可填寫歸屬一致。
+- 已出席／已核准／已有實質評量內容／正式代課的歷史堂次不改寫老師；保留 #276／#312 語意。
 
 ## 2026-09-18 — docs(product-ops): bounded app-shell debt + in-app execution policy
 <!-- release-notes: silent_ship=silent-2026-09-18-app-shell-inapp-policy -->
