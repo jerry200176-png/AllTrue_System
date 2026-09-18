@@ -183,15 +183,10 @@ final class LearningRecordMutableOwnership
         if ($sessionId <= 0) {
             return null;
         }
-        $row = DB::table('ClassSession')->where('id', $sessionId)->first();
-        if (!$row) {
-            return null;
-        }
-        $session = new ClassSession();
-        $session->forceFill((array) $row);
-        $session->exists = true;
+        /** @var ClassSession|null $session */
+        $session = ClassSession::query()->where('id', $sessionId)->first();
 
-        return $session;
+        return $session instanceof ClassSession ? $session : null;
     }
 
     private static function sessionHasAttendanceSignIn(int $classSessionId): bool

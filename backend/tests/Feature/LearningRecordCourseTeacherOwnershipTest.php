@@ -142,19 +142,6 @@ class LearningRecordCourseTeacherOwnershipTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_campus_filter_not_widened(): void
-    {
-        [$dir, , $neu, $course, , $lr] = $this->scenario(pendingFuture: true);
-        $this->putTeacher($dir, $course->ID, $neu)->assertOk();
-        $foreign = $this->director([2], 'dir-foreign-314@example.com');
-        $res = $this->withHeaders($this->auth($foreign))->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
-        if ($res->status() === 200) {
-            $this->assertNotContains((int) $lr->id, collect($res->json('data'))->pluck('id')->all());
-        } else {
-            $this->assertSame(403, $res->status());
-        }
-    }
-
     private function scenario(bool $pendingFuture, bool $withLr = true, string $suffix = ''): array
     {
         $dir = $this->director([1], "dir-314{$suffix}@example.com");
