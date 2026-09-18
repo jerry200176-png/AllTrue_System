@@ -1328,11 +1328,10 @@ jobs:
               $probe272["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
-          }}
 
-          // #315 read-only: classify 芝琳 2026-09-19 10:00–12:00 跨校忙碌 as
-          // real other-campus occupancy vs ghost/stale busy. IDs hashed; no
-          // student/subject/room names in the evidence envelope.
+          // #315 read-only: classify target teacher 2026-09-19 10:00-12:00
+          // cross-campus busy as real occupancy vs ghost/stale busy. IDs
+          // hashed; no student/subject/room names in the evidence envelope.
           $probe315 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "Allowlisted only for in-app bug 315",
@@ -1409,7 +1408,7 @@ jobs:
                 $probe315["availability_all"] = $summarizeBusy($busyAll);
                 $probe315["availability_excluding_reported_student"] = $busyExcl === null ? null : $summarizeBusy($busyExcl);
 
-                // Session/schedule occupancy for the exact window — statuses only.
+                // Session/schedule occupancy for the exact window - statuses only.
                 $csRows = $db::table("ClassSession as cs")
                   ->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
                   ->leftJoin("Student as st", "sc.StudentID", "=", "st.id")
@@ -1494,7 +1493,7 @@ jobs:
                 }} elseif ($otherFull > 0) {{
                   $probe315["classification"] = "GHOST_BUSY_SLOT";
                 }} elseif ($localCount > 0 || collect($sessionEvidence)->isNotEmpty() || collect($scheduleEvidence)->isNotEmpty()) {{
-                  // Local occupancy only — UI should not show 跨校忙碌 for same campus.
+                  // Local occupancy only - UI should not show cross-campus busy for same campus.
                   $probe315["classification"] = "GHOST_BUSY_SLOT";
                 }} else {{
                   $probe315["classification"] = "GHOST_BUSY_SLOT";
@@ -1578,19 +1577,16 @@ jobs:
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           """)
           PY
-          # shellcheck: pass PHP source via stdin to remote tinker is hard; use base64
-          B64=$(base64 -w0 /tmp/bug207_probe.php)
+          # Upload probe via SSH stdin (avoid embedding large B64 in remote argv).
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "B64='${B64}' bash -s" <<'REMOTE' | tee out/bug-detail.log
-          set -euo pipefail
-          cd /home/admin/backend
-          php -r 'file_put_contents("/tmp/bug_detail_probe.php", base64_decode(getenv("B64")));'
-          # Use artisan tinker with file include via execute
-          php artisan tinker --execute='require "/tmp/bug_detail_probe.php";'
-          rm -f /tmp/bug_detail_probe.php
-          REMOTE
+            'cat > /tmp/bug_detail_probe.php' < /tmp/bug207_probe.php
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            'set -euo pipefail; cd /home/admin/backend; php -l /tmp/bug_detail_probe.php; php artisan tinker --execute='"'"'require "/tmp/bug_detail_probe.php";'"'"'; rm -f /tmp/bug_detail_probe.php' \
+            | tee out/bug-detail.log
           python3 - <<'PY'
           from pathlib import Path
           import json
