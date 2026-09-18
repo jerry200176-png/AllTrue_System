@@ -1564,6 +1564,7 @@ jobs:
                 "probe_253_teacher_capacity_orphan_exception" => $probe253,
                 "probe_272_teacher_same_slot" => $probe272,
                 "probe_278_281_cancelled_makeup_candidates" => $probe278281,
+                "probe_315_cross_campus_busy" => $probe315,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
