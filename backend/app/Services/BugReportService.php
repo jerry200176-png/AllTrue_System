@@ -399,7 +399,6 @@ class BugReportService
             // Exception-only resolves keep the legacy status-log marker only.
             if (
                 $newStatus === 'resolved'
-                && $resolutionPayload !== null
                 && !empty($resolutionPayload['production_revision'])
             ) {
                 $evidence = new BugReportEvidence();
