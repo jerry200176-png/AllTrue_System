@@ -1328,6 +1328,186 @@ jobs:
               $probe272["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          }}
+
+          // #315 read-only: classify 芝琳 2026-09-19 10:00–12:00 跨校忙碌 as
+          // real other-campus occupancy vs ghost/stale busy. IDs hashed; no
+          // student/subject/room names in the evidence envelope.
+          $probe315 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 315",
+          ];
+          if ($bugId === 315) {{
+            $probe315["applicable"] = true;
+            $probe315["case"] = "cross_campus_busy_after_leave_reschedule_315";
+            $probe315["target_window"] = [
+              "date" => "2026-09-19",
+              "start" => "10:00",
+              "end" => "12:00",
+              "viewing_campus_id" => (int)$bug->CampusID,
+            ];
+            try {{
+              $viewCampus = (int)$bug->CampusID;
+              $teachers = $db::table("User")
+                ->where("Name", "like", "%芝琳%")
+                ->where("type", "T")
+                ->get(["id"]);
+              $teacherIds = $teachers->pluck("id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $students = $db::table("Student")
+                ->where("CampusID", $viewCampus)
+                ->where("name", "like", "%王俞方%")
+                ->get(["id"]);
+              $studentIds = $students->pluck("id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $probe315["matched_teacher_count"] = count($teacherIds);
+              $probe315["matched_student_count"] = count($studentIds);
+              if (count($teacherIds) !== 1) {{
+                $probe315["identity_resolution"] = count($teacherIds) === 0 ? "teacher_not_found" : "teacher_ambiguous";
+                $probe315["decision_grade"] = false;
+                $probe315["error"] = null;
+              }} else {{
+                $teacherId = (int)$teacherIds[0];
+                $studentId = count($studentIds) === 1 ? (int)$studentIds[0] : null;
+                $probe315["identity_resolution"] = $studentId ? "teacher_and_student_unique" : "teacher_unique_student_unresolved";
+                $probe315["teacher_ref"] = substr(hash("sha256", "t|".$teacherId), 0, 12);
+                $probe315["student_ref"] = $studentId ? substr(hash("sha256", "s|".$studentId), 0, 12) : null;
+
+                $svc = app(\App\Services\SubstituteService::class);
+                $busyAll = $svc->collectTeacherBusySlotsWithCapacity($teacherId, "2026-09-19", [], null);
+                $busyExcl = $studentId
+                  ? $svc->collectTeacherBusySlotsWithCapacity($teacherId, "2026-09-19", [], $studentId)
+                  : null;
+                $summarizeBusy = function (array $slots) use ($viewCampus) {{
+                  $window = collect($slots)->filter(function ($slot) {{
+                    $start = substr((string)($slot["start_time"] ?? ""), 0, 5);
+                    $end = substr((string)($slot["end_time"] ?? ""), 0, 5);
+                    return $start < "12:00" && $end > "10:00";
+                  }})->values();
+                  $otherFull = $window->filter(function ($slot) use ($viewCampus) {{
+                    $campus = (int)($slot["campus_id"] ?? 0);
+                    $remaining = (int)($slot["remaining_capacity"] ?? 0);
+                    return $campus > 0 && $campus !== $viewCampus && $remaining <= 0;
+                  }})->values();
+                  $local = $window->filter(fn ($slot) => (int)($slot["campus_id"] ?? 0) === $viewCampus)->values();
+                  return [
+                    "total_busy_slots" => count($slots),
+                    "window_overlap_count" => $window->count(),
+                    "local_window_count" => $local->count(),
+                    "other_campus_full_window_count" => $otherFull->count(),
+                    "window_slots" => $window->map(function ($slot) {{
+                      return [
+                        "start_time" => substr((string)($slot["start_time"] ?? ""), 0, 5),
+                        "end_time" => substr((string)($slot["end_time"] ?? ""), 0, 5),
+                        "campus_id" => (int)($slot["campus_id"] ?? 0),
+                        "class_type" => (string)($slot["class_type"] ?? ""),
+                        "student_count" => (int)($slot["student_count"] ?? 0),
+                        "remaining_capacity" => (int)($slot["remaining_capacity"] ?? 0),
+                        "source_types" => $slot["source_types"] ?? [],
+                      ];
+                    }})->all(),
+                  ];
+                }};
+                $probe315["availability_all"] = $summarizeBusy($busyAll);
+                $probe315["availability_excluding_reported_student"] = $busyExcl === null ? null : $summarizeBusy($busyExcl);
+
+                // Session/schedule occupancy for the exact window — statuses only.
+                $csRows = $db::table("ClassSession as cs")
+                  ->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
+                  ->leftJoin("Student as st", "sc.StudentID", "=", "st.id")
+                  ->where("sc.TeacherID", $teacherId)
+                  ->whereDate("cs.SessionDate", "2026-09-19")
+                  ->whereRaw("SUBSTRING(cs.StartTime, 1, 5) < ?", ["12:00"])
+                  ->whereRaw("SUBSTRING(cs.EndTime, 1, 5) > ?", ["10:00"])
+                  ->orderBy("cs.id")
+                  ->get([
+                    "cs.id as class_session_id", "cs.Status as session_status",
+                    "cs.StartTime", "cs.EndTime", "sc.Stop as course_stop",
+                    "sc.ID as course_id", "st.CampusID as campus_id",
+                    "sc.StudentID as student_id",
+                  ]);
+                $sessionEvidence = [];
+                foreach ($csRows as $row) {{
+                  $csid = (int)$row->class_session_id;
+                  $hasLeaveSignIn = $db::table("StudentSingIn")
+                    ->where("ClassSessionID", $csid)
+                    ->whereIn("Status", ["leave", "excused", "leave_requested"])
+                    ->exists();
+                  $hasPresentSignIn = $db::table("StudentSingIn")
+                    ->where("ClassSessionID", $csid)
+                    ->whereIn("Status", ["present", "late", "attended"])
+                    ->exists();
+                  $sessionEvidence[] = [
+                    "session_ref" => substr(hash("sha256", "cs|".$csid), 0, 12),
+                    "course_ref" => substr(hash("sha256", "sc|".(int)$row->course_id), 0, 12),
+                    "campus_id" => (int)($row->campus_id ?? 0),
+                    "is_reported_student" => $studentId !== null && (int)$row->student_id === $studentId,
+                    "start" => substr((string)$row->StartTime, 0, 5),
+                    "end" => substr((string)$row->EndTime, 0, 5),
+                    "session_status" => strtolower(trim((string)$row->session_status)),
+                    "course_stop" => (int)($row->course_stop ?? 0),
+                    "has_leave_signin" => $hasLeaveSignIn,
+                    "has_present_signin" => $hasPresentSignIn,
+                  ];
+                }}
+                $probe315["class_sessions_in_window"] = $sessionEvidence;
+
+                $schedRows = $db::table("schedules")
+                  ->where("teacher_id", $teacherId)
+                  ->whereDate("schedule_date", "2026-09-19")
+                  ->whereRaw("SUBSTRING(start_time, 1, 5) < ?", ["12:00"])
+                  ->whereRaw("SUBSTRING(end_time, 1, 5) > ?", ["10:00"])
+                  ->orderBy("id")
+                  ->get([
+                    "id", "status", "start_time", "end_time", "branch_id",
+                    "student_course_id", "student_id", "original_schedule_id", "type",
+                  ]);
+                $scheduleEvidence = [];
+                foreach ($schedRows as $row) {{
+                  $scheduleEvidence[] = [
+                    "schedule_ref" => substr(hash("sha256", "sch|".(int)$row->id), 0, 12),
+                    "status" => (string)$row->status,
+                    "start" => substr((string)$row->start_time, 0, 5),
+                    "end" => substr((string)$row->end_time, 0, 5),
+                    "campus_id" => (int)($row->branch_id ?? 0),
+                    "is_substitute_exception" => $row->original_schedule_id !== null,
+                    "type" => (string)($row->type ?? ""),
+                    "is_reported_student" => $studentId !== null && (int)($row->student_id ?? 0) === $studentId,
+                    "course_ref" => (int)($row->student_course_id ?? 0) > 0
+                      ? substr(hash("sha256", "sc|".(int)$row->student_course_id), 0, 12)
+                      : null,
+                  ];
+                }}
+                $probe315["schedules_in_window"] = $scheduleEvidence;
+
+                $otherFull = (int)($probe315["availability_all"]["other_campus_full_window_count"] ?? 0);
+                $localCount = (int)($probe315["availability_all"]["local_window_count"] ?? 0);
+                $liveOtherSessions = collect($sessionEvidence)->filter(function ($s) use ($viewCampus) {{
+                  $status = (string)($s["session_status"] ?? "");
+                  return (int)$s["campus_id"] !== $viewCampus
+                    && !in_array($status, ["cancelled", "leave", "leave_adjusted", "excused", "voided"], true);
+                }})->count();
+                $scheduledOther = collect($scheduleEvidence)->filter(function ($s) use ($viewCampus) {{
+                  return (int)$s["campus_id"] !== $viewCampus && (string)$s["status"] === "scheduled";
+                }})->count();
+
+                if ($otherFull > 0 && ($liveOtherSessions > 0 || $scheduledOther > 0)) {{
+                  $probe315["classification"] = "REAL_CROSS_CAMPUS_BUSY";
+                }} elseif ($otherFull > 0) {{
+                  $probe315["classification"] = "GHOST_BUSY_SLOT";
+                }} elseif ($localCount > 0 || collect($sessionEvidence)->isNotEmpty() || collect($scheduleEvidence)->isNotEmpty()) {{
+                  // Local occupancy only — UI should not show 跨校忙碌 for same campus.
+                  $probe315["classification"] = "GHOST_BUSY_SLOT";
+                }} else {{
+                  $probe315["classification"] = "GHOST_BUSY_SLOT";
+                }}
+                $probe315["decision_grade"] = true;
+                $probe315["error"] = null;
+              }}
+            }} catch (\Throwable $e) {{
+              $probe315["decision_grade"] = false;
+              $probe315["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
+
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1339,9 +1519,10 @@ jobs:
             253 => $probe253,
             272 => $probe272,
             278, 281 => $probe278281,
+            315 => $probe315,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
