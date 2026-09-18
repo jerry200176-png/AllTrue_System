@@ -1,3 +1,8 @@
+## 2026-09-18 — ops(in-app): Phase-C allowlist #311/#312 + backlog read nav
+<!-- release-notes: silent_ship=silent-2026-09-18-phase-c-311-312 -->
+- Phase-C allowlist 補 in-app #311／#312（修正已在 production HEAD）；回寫 resolved + 請回報者驗收。
+- product-loop skill 補 backlog 讀取導航（queue/detail dump；limit 50／resolved 覆蓋缺口）。
+
 ## 2026-09-18 — docs(agents): install in-app product-loop entry skill
 <!-- release-notes: silent_ship=silent-2026-09-18-inapp-product-loop-entry -->
 - 新增常設入口 `.agents/skills/alltrue-inapp-product-loop`（Cursor symlink），AGENTS 意圖路由改指向該 skill + 既有執行政策。

@@ -27,7 +27,11 @@ description: >-
 3. [`docs/CHAT_BUG_SYSTEM.md`](../../../docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**（含 `product_loop`）  
 4. 工作狀態：`agent-start` session／manifest；本機 delivery 若存在則讀  
    `/home/jerry/workspace/state/alltrue/delivery/` 下相關 `*_RELEASE_PACKET.json`、`*_EXECUTION_PLAN.md`、evidence  
-5. 依風險再開：`alltrue-debugging` · `alltrue-testing` · `alltrue-code-review` · `alltrue-release` · `alltrue-security`（非每筆全開）
+5. **In-app backlog 讀取**（缺 dogfood actor ≠ 無法讀 backlog）：依 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](../../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md)  
+   - 本機 `gh` 已授權：`gh workflow run bug-queue-dump.yml` / `bug-detail-dump.yml` → `gh run download` artifact（`meta.json` + `open-bugs.json` / detail JSON）。**禁止**本機 Pi SSH。  
+   - Cloud／無 `workflow_dispatch`：走 request-file push 路徑；從 job log 取 JSON（勿硬下 artifact zip）。  
+   - 新鮮度：queue dump ≤15 分鐘；detail 須對同一 ID。`meta.counts` 對照 `open-bugs` unique IDs；`limit(50)` 截斷 → **PARTIAL**。`resolved` 不在 open dump — 標覆蓋缺口，勿宣稱全量。  
+6. 依風險再開：`alltrue-debugging` · `alltrue-testing` · `alltrue-code-review` · `alltrue-release` · `alltrue-security`（非每筆全開）
 
 Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁編禁止 checkout）。
 
