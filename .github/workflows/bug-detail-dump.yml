@@ -1585,8 +1585,14 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            'set -euo pipefail; cd /home/admin/backend; php -l /tmp/bug_detail_probe.php; php artisan tinker --execute='"'"'require "/tmp/bug_detail_probe.php";'"'"'; rm -f /tmp/bug_detail_probe.php' \
-            | tee out/bug-detail.log
+            bash -s <<'REMOTE' | tee out/bug-detail.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php -l /tmp/bug_detail_probe.php
+          # Use artisan tinker with file include via execute
+          php artisan tinker --execute='require "/tmp/bug_detail_probe.php";'
+          rm -f /tmp/bug_detail_probe.php
+          REMOTE
           python3 - <<'PY'
           from pathlib import Path
           import json
