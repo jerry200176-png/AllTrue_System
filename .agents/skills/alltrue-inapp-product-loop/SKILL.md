@@ -90,3 +90,12 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
 - [ ] 若宣稱上線：deployed SHA + health + 使用者路徑證據  
 - [ ] in-app 回寫符合 §3.7；`product_loop` 語意正確（SHIPPED 需 production SHA）  
 - [ ] checkpoint／delivery 證據已更新；下一筆已授權工作已接或明確標 blocked 範圍
+
+## 9. Optional: Graphify code-nav (not authority)
+
+複雜 BugReport／`product_loop` 規劃前，**可選**用本機隔離的 Graphify code-only 圖當候選導航（符號鄰域、FE helper 連線）。  
+證據與限制見 [`docs/research/2026-09-18-graphify-alltrue-context-pilot-v1.md`](../../../docs/research/2026-09-18-graphify-alltrue-context-pilot-v1.md)。
+
+- **不是** Engineering OS、授權、runtime truth，也**不是** always-on／hooks／全域 install。  
+- 圖 miss（例如 `note_display`、marker 字串、Laravel 動態 route）→ 退回 `rg`／原始碼；空結果 ≠ 無影響。  
+- Planning Lead 仍依既有 Sol／Astra 路由；只把**已核實**來源摘要進 Plan，不把整圖塞給 worker。
