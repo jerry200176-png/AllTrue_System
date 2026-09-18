@@ -1002,7 +1002,7 @@ class BugReportService
             $semantic = 'RESOLVED_PENDING_VERIFY';
         } elseif ($status === 'in_progress') {
             $semantic = 'IN_PROGRESS';
-        } elseif (is_array($disposition) && !empty($disposition['kind'])) {
+        } elseif (is_array($disposition)) {
             $semantic = 'DISPOSITIONED';
         } elseif ($status === 'triaged') {
             $semantic = 'TRIAGED';
@@ -1022,7 +1022,7 @@ class BugReportService
             'status' => $status,
             'semantic_phase' => $semantic,
             'reporter_feedback_type' => $reporterFeedbackType,
-            'disposition' => is_array($disposition) ? ($disposition['kind'] ?? null) : null,
+            'disposition' => is_array($disposition) ? $disposition['kind'] : null,
             'disposition_recorded_at' => is_array($disposition) ? ($disposition['recorded_at'] ?? null) : null,
             'engineering_required' => is_array($disposition)
                 ? (bool) ($disposition['engineering_required'] ?? false)
