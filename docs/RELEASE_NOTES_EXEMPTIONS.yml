@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-phase-c-311-312
+    changelog_date: "2026-09-18"
+    changelog_title: "ops(in-app): Phase-C allowlist #311/#312 + backlog read nav"
+    reason: Phase-C 回寫已上線修正與 Agent 讀取導航；不改教職員功能語意。
+
   - id: silent-2026-09-18-inapp-product-loop-entry
     changelog_date: "2026-09-18"
     changelog_title: "docs(agents): install in-app product-loop entry skill"
