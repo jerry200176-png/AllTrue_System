@@ -118,6 +118,7 @@ last_reviewed: 2026-08-23
 
 - **回報者驗收**（2026-05-16 起）：`resolved` → `closed` 需回報者呼叫 `POST /api/v1/bugs/{id}/reporter-verify`。AI 標 `resolved` 後要請老師在 App 按「確認已修好／問題仍存在」。
 - **內部備註**（`is_internal_note=1`）：不驅動回報者未讀紅點；分診給工程師用，不要當成給老師的回覆。
+- **產品閉環投影**（2026-09-18 起，無 schema migration）：`GET /bugs/{id}` 回傳 `product_loop`（語意階段／定性／GitHub 連結／production SHA／shipped）。定性與工程連結寫入 status_log 標記 `[product_disposition]`；`resolved` 且具 SHA 時同步 append-only `bug_report_evidence`。合併 PR **不算** shipped；需 production SHA 證據。
 
 #### Phase A — 分診（收到「看 bug 回報／開 issue」；不改 production 程式碼）
 
@@ -126,8 +127,8 @@ last_reviewed: 2026-08-23
 | A1 | 讀 §3.6：附件、reporter 歷史、跨分校、comments／status_logs |
 | A2 | 必要時查業務表驗證假設（`StudentClass`、`ClassSession`…）；高風險帳務先對 `DIRECTOR_PAYMENT_ALERT_RULES.md` |
 | A3 | `gh issue create`：title 含現象；body 必含 **in-app #**、**附件 id**、分校、B1 發現、預期 vs 實際 |
-| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL |
-| A5 | 回報 CEO：in-app # ↔ GitHub # 對照表 |
+| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop` |
+| A5 | 回報 CEO：in-app # ↔ GitHub # 對照表（亦可直接讀 `product_loop`） |
 
 **分診留言範本（公開）**：已收到 #___、已看附件 #___（若有）、已建 GitHub #___ 追蹤；勿叫補截圖若附件已存在。
 
@@ -213,7 +214,7 @@ last_reviewed: 2026-08-23
 ## 4. 資料表
 
 - 聊天：`chat_threads`、`chat_thread_members`、`chat_messages`
-- Bug：`bug_reports`、`bug_report_comments`、`bug_report_status_logs`、`bug_report_attachments`、`bug_report_user_reads`
+- Bug：`bug_reports`、`bug_report_comments`、`bug_report_status_logs`、`bug_report_attachments`、`bug_report_user_reads`、`bug_report_evidence`（append-only；live resolve 寫入）
 
 ---
 
@@ -226,8 +227,8 @@ last_reviewed: 2026-08-23
 - [ ] 前端變更後走 PR → CI → merge → `deploy.yml` 自動部署
 - [ ] 測試：GitHub Actions 跑 `ChatApiTest` / `BugReportApiTest` / `ProfileCenterApiTest`
 - [ ] AI 處理 bug 前：先撈 `bug_report_attachments` + reporter 全部歷史 + reporter 跨分校紀錄（§3.6）
-- [ ] 分診：§3.7 Phase A（開 issue + in-app `triaged` + 公開回覆）
-- [ ] 修完上線：§3.7 Phase C（`resolved` + 公開回覆 + 等回報者驗收）（§R53）
+- [ ] 分診：§3.7 Phase A（開 issue + in-app `triaged` + 公開回覆；建議寫 disposition／github_issue_url）
+- [ ] 修完上線：§3.7 Phase C（`resolved` + production SHA + 公開回覆 + 等回報者驗收）（§R53）；確認 `product_loop.shipped`
 - [ ] 公開留言：§3.8 白話檢查（無欄位名 / SQL / class 名漏出）
 
-*最後更新：2026-05-24*
+*最後更新：2026-09-18*

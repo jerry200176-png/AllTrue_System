@@ -22,6 +22,13 @@ for (const workflow of workflows) {
   assert.ok(!source.includes('PUBLIC_REPLY=\\$(printf %q'), `${workflow} must not interpolate raw reply text`);
 }
 
+const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
+assert.ok(
+  phaseASource.includes('"disposition" => "bug"')
+    && phaseASource.includes('"github_issue_url" => $issueUrl'),
+  'Phase-A must write product_disposition + github_issue_url into changeStatus options',
+);
+
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
 assert.match(
   phaseCSource,

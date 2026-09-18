@@ -7,12 +7,14 @@ assert.deepEqual(parseBugReportClientInfo(JSON.stringify({
   relatedReference: '學生 271／課堂 32570',
   screenSize: '1280x720',
   timeZone: 'Asia/Taipei',
+  feedbackType: ' suggestion ',
   userAgent: 'not rendered by the triage summary',
 })), {
   occurrenceAt: '2026-08-29T14:30',
   relatedReference: '學生 271／課堂 32570',
   screenSize: '1280x720',
   timeZone: 'Asia/Taipei',
+  feedbackType: 'suggestion',
 });
 assert.equal(parseBugReportClientInfo('not-json'), null);
 assert.equal(parseBugReportClientInfo(JSON.stringify({ userAgent: 'legacy-only' })), null);

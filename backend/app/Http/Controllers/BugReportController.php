@@ -229,6 +229,10 @@ class BugReportController extends Controller
             'production_revision' => 'nullable|string|max:40',
             'deploy_run_id' => 'nullable|string|max:64',
             'evidence_exception_reason' => 'nullable|string|max:500',
+            'disposition' => 'nullable|string|in:bug,suggestion,ux_friction,duplicate,already_solved,not_planned,needs_info',
+            'github_issue_url' => 'nullable|string|max:500',
+            'github_pr_url' => 'nullable|string|max:500',
+            'engineering_required' => 'nullable|boolean',
         ]);
 
         $userId = $this->resolveUserId($request);
@@ -251,6 +255,12 @@ class BugReportController extends Controller
                 'deploy_run_id' => $request->input('deploy_run_id'),
                 'evidence_exception_reason' => $request->input('evidence_exception_reason'),
                 'allow_exception' => $isSuperAdmin,
+                'disposition' => $request->input('disposition'),
+                'github_issue_url' => $request->input('github_issue_url'),
+                'github_pr_url' => $request->input('github_pr_url'),
+                'engineering_required' => $request->has('engineering_required')
+                    ? $request->boolean('engineering_required')
+                    : null,
             ]
         );
         if (!$result['ok']) {

@@ -19,12 +19,42 @@ class BugReportService
 {
     public const MAX_ATTACHMENTS = 5;
 
+    /** Structured status-log marker for product disposition (no schema migration). */
+    public const DISPOSITION_MARKER = '[product_disposition]';
+
+    /** Structured status-log marker for production resolve evidence. */
+    public const RESOLUTION_EVIDENCE_MARKER = '[resolution_evidence]';
+
+    /**
+     * Product disposition kinds (semantic completeness for closed-loop V1).
+     * Maps to INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1 classes without requiring a new enum column.
+     *
+     * @var list<string>
+     */
+    public const DISPOSITION_KINDS = [
+        'bug',
+        'suggestion',
+        'ux_friction',
+        'duplicate',
+        'already_solved',
+        'not_planned',
+        'needs_info',
+    ];
+
     private const VALID_TRANSITIONS = [
         'new' => ['triaged', 'in_progress', 'closed'],
         'triaged' => ['in_progress', 'closed'],
         'in_progress' => ['resolved', 'closed'],
         'resolved' => ['in_progress', 'closed'],
         'closed' => ['in_progress'],
+    ];
+
+    /** Disposition kinds that normally do not require engineering work. */
+    private const NON_ENGINEERING_DISPOSITIONS = [
+        'duplicate',
+        'already_solved',
+        'not_planned',
+        'needs_info',
     ];
 
     public static function create(array $data): BugReport
@@ -132,11 +162,13 @@ class BugReportService
             'created_at' => $c->created_at?->toIso8601String(),
         ])->all();
 
-        $statusLogs = $bug->statusLogs()->orderBy('created_at')->get()->map(fn ($l) => [
+        $statusLogModels = $bug->statusLogs()->orderBy('created_at')->get();
+        $statusLogs = $statusLogModels->map(fn ($l) => [
             'from_status' => $l->from_status,
             'to_status' => $l->to_status,
             'changed_by_name' => $l->changedByUser?->Name ?? '',
             'note' => $l->note,
+            'note_display' => self::stripMachineMarkers((string) ($l->note ?? '')),
             'created_at' => $l->created_at?->toIso8601String(),
         ])->all();
 
@@ -148,6 +180,24 @@ class BugReportService
             'original_name' => $a->original_name,
             'mime_type' => $a->mime_type,
         ])->all();
+
+        $evidenceRows = $bug->evidence()->orderBy('id')->get()->map(fn ($e) => [
+            'id' => $e->id,
+            'evidence_type' => $e->evidence_type,
+            'production_revision' => $e->production_revision,
+            'deploy_run_id' => $e->deploy_run_id,
+            'source_ref' => $e->source_ref,
+            'verified_by' => $e->verified_by,
+            'verified_at' => $e->verified_at?->toIso8601String(),
+            'metadata' => $e->metadata,
+        ])->all();
+
+        $productLoop = self::buildProductLoopProjection(
+            $bug,
+            $comments,
+            $statusLogModels->all(),
+            $evidenceRows
+        );
 
         return [
             'id' => $bug->id,
@@ -166,6 +216,8 @@ class BugReportService
             'comments' => $comments,
             'status_logs' => $statusLogs,
             'attachments' => $attachments,
+            'evidence' => $evidenceRows,
+            'product_loop' => $productLoop,
         ];
     }
 
@@ -223,11 +275,20 @@ class BugReportService
      * Change bug status. When transitioning to `resolved`, requires Evidence Contract fields
      * via $options (see assertResolvedEvidence).
      *
+     * Optional product-loop fields (no schema migration — stored as structured status-log markers):
+     * - disposition: one of DISPOSITION_KINDS
+     * - github_issue_url / github_pr_url: engineering references
+     * - engineering_required: bool (defaults from disposition kind)
+     *
      * @param  array{
      *   production_revision?: ?string,
      *   deploy_run_id?: ?string,
      *   evidence_exception_reason?: ?string,
-     *   allow_exception?: bool
+     *   allow_exception?: bool,
+     *   disposition?: ?string,
+     *   github_issue_url?: ?string,
+     *   github_pr_url?: ?string,
+     *   engineering_required?: bool|null
      * }  $options
      * @return array{ok: bool, code?: string, message?: string}
      */
@@ -249,7 +310,28 @@ class BugReportService
             return ['ok' => false, 'code' => 'invalid_transition', 'message' => 'Invalid status transition'];
         }
 
+        $dispositionPayload = null;
+        if (array_key_exists('disposition', $options) && $options['disposition'] !== null && $options['disposition'] !== '') {
+            $dispositionPayload = self::normalizeDispositionOptions($options);
+            if (!$dispositionPayload['ok']) {
+                return $dispositionPayload;
+            }
+        } elseif (
+            (!empty($options['github_issue_url']) || !empty($options['github_pr_url']))
+            && empty($options['disposition'])
+        ) {
+            // Allow engineering link writeback without re-stating disposition (Phase-A / Phase-C).
+            $dispositionPayload = self::normalizeDispositionOptions(array_merge($options, [
+                'disposition' => null,
+                'link_only' => true,
+            ]));
+            if (!$dispositionPayload['ok']) {
+                return $dispositionPayload;
+            }
+        }
+
         $statusNote = $note;
+        $resolutionPayload = null;
         if ($newStatus === 'resolved') {
             $evidence = self::assertResolvedEvidence($bugId, $options);
             if (!$evidence['ok']) {
@@ -260,23 +342,50 @@ class BugReportService
                 ]);
                 return $evidence;
             }
-            $payload = [
+            $resolutionPayload = [
                 'production_revision' => $evidence['production_revision'] ?? null,
                 'deploy_run_id' => $evidence['deploy_run_id'] ?? null,
                 'evidence_exception_reason' => $evidence['evidence_exception_reason'] ?? null,
                 'resolver_user_id' => $changedBy,
                 'resolved_at' => Carbon::now()->toIso8601String(),
             ];
-            $encoded = '[resolution_evidence]' . json_encode($payload, JSON_UNESCAPED_UNICODE);
+            if (!empty($options['github_pr_url'])) {
+                $prUrl = self::normalizeGithubUrl((string) $options['github_pr_url'], 'pull');
+                if ($prUrl === null) {
+                    return [
+                        'ok' => false,
+                        'code' => 'invalid_github_pr_url',
+                        'message' => 'github_pr_url must be an https GitHub pull request URL',
+                    ];
+                }
+                $resolutionPayload['github_pr_url'] = $prUrl;
+            }
+            $encoded = self::RESOLUTION_EVIDENCE_MARKER . json_encode($resolutionPayload, JSON_UNESCAPED_UNICODE);
             $statusNote = $note ? ($encoded . "\n" . $note) : $encoded;
         }
 
-        DB::transaction(function () use ($bug, $changedBy, $newStatus, $statusNote) {
+        if ($dispositionPayload !== null && ($dispositionPayload['payload'] ?? null) !== null) {
+            $encodedDisposition = self::DISPOSITION_MARKER
+                . json_encode($dispositionPayload['payload'], JSON_UNESCAPED_UNICODE);
+            $statusNote = $statusNote
+                ? ($encodedDisposition . "\n" . $statusNote)
+                : $encodedDisposition;
+        }
+
+        $createdLogId = null;
+        DB::transaction(function () use (
+            $bug,
+            $changedBy,
+            $newStatus,
+            $statusNote,
+            $resolutionPayload,
+            &$createdLogId
+        ) {
             $fromStatus = $bug->status;
             $bug->status = $newStatus;
             $bug->save();
 
-            BugReportStatusLog::create([
+            $log = BugReportStatusLog::create([
                 'bug_report_id' => $bug->id,
                 'changed_by' => $changedBy,
                 'from_status' => $fromStatus,
@@ -284,6 +393,32 @@ class BugReportService
                 'note' => $statusNote,
                 'created_at' => Carbon::now(),
             ]);
+            $createdLogId = (int) $log->id;
+
+            // Append-only production evidence when resolve includes a verified SHA.
+            // Exception-only resolves keep the legacy status-log marker only.
+            if (
+                $newStatus === 'resolved'
+                && is_array($resolutionPayload)
+                && !empty($resolutionPayload['production_revision'])
+            ) {
+                $evidence = new BugReportEvidence();
+                $evidence->fill([
+                    'bug_report_id' => $bug->id,
+                    'evidence_type' => BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION,
+                    'production_revision' => $resolutionPayload['production_revision'],
+                    'deploy_run_id' => $resolutionPayload['deploy_run_id'] ?? null,
+                    'source_ref' => 'live_resolve:status_log:' . $createdLogId,
+                    'verified_by' => $changedBy,
+                    'verified_at' => Carbon::now(),
+                    'metadata' => [
+                        'status_log_id' => $createdLogId,
+                        'github_pr_url' => $resolutionPayload['github_pr_url'] ?? null,
+                    ],
+                    'created_at' => Carbon::now(),
+                ]);
+                $evidence->save();
+            }
         });
 
         return ['ok' => true];
@@ -636,7 +771,7 @@ class BugReportService
                 continue;
             }
             $note = (string) ($resolveLog->note ?? '');
-            $hasLegacyEvidence = str_contains($note, '[resolution_evidence]');
+            $hasLegacyEvidence = str_contains($note, self::RESOLUTION_EVIDENCE_MARKER);
             $hasAppendOnlyEvidence = self::hasValidAppendOnlyResolutionEvidence($bugId, $resolveLog->created_at);
             if (!$hasLegacyEvidence && !$hasAppendOnlyEvidence) {
                 // Exclusion: production-unverified resolve (legacy / pre-enforcement)
@@ -711,5 +846,268 @@ class BugReportService
         Log::info('bug_closed_by_timeout', ['bug_id' => $bugId, 'actor_user_id' => $actorUserId]);
 
         return ['ok' => true, 'action' => 'closed'];
+    }
+
+    /**
+     * @param  array<string,mixed>  $options
+     * @return array{ok:bool,code?:string,message?:string,payload?:?array<string,mixed>}
+     */
+    public static function normalizeDispositionOptions(array $options): array
+    {
+        $linkOnly = !empty($options['link_only']);
+        $kind = isset($options['disposition']) ? trim((string) $options['disposition']) : '';
+
+        if (!$linkOnly) {
+            if ($kind === '' || !in_array($kind, self::DISPOSITION_KINDS, true)) {
+                return [
+                    'ok' => false,
+                    'code' => 'invalid_disposition',
+                    'message' => 'disposition must be one of: ' . implode(', ', self::DISPOSITION_KINDS),
+                ];
+            }
+        } elseif ($kind !== '' && !in_array($kind, self::DISPOSITION_KINDS, true)) {
+            return [
+                'ok' => false,
+                'code' => 'invalid_disposition',
+                'message' => 'disposition must be one of: ' . implode(', ', self::DISPOSITION_KINDS),
+            ];
+        }
+
+        $issueUrl = null;
+        if (!empty($options['github_issue_url'])) {
+            $issueUrl = self::normalizeGithubUrl((string) $options['github_issue_url'], 'issues');
+            if ($issueUrl === null) {
+                return [
+                    'ok' => false,
+                    'code' => 'invalid_github_issue_url',
+                    'message' => 'github_issue_url must be an https GitHub issues URL',
+                ];
+            }
+        }
+
+        $prUrl = null;
+        if (!empty($options['github_pr_url'])) {
+            $prUrl = self::normalizeGithubUrl((string) $options['github_pr_url'], 'pull');
+            if ($prUrl === null) {
+                return [
+                    'ok' => false,
+                    'code' => 'invalid_github_pr_url',
+                    'message' => 'github_pr_url must be an https GitHub pull request URL',
+                ];
+            }
+        }
+
+        if ($linkOnly && $kind === '' && $issueUrl === null && $prUrl === null) {
+            return ['ok' => true, 'payload' => null];
+        }
+
+        $engineeringRequired = array_key_exists('engineering_required', $options)
+            && $options['engineering_required'] !== null
+            ? (bool) $options['engineering_required']
+            : ($kind !== '' ? !in_array($kind, self::NON_ENGINEERING_DISPOSITIONS, true) : ($issueUrl !== null || $prUrl !== null));
+
+        $payload = [
+            'kind' => $kind !== '' ? $kind : null,
+            'engineering_required' => $engineeringRequired,
+            'github_issue_url' => $issueUrl,
+            'github_pr_url' => $prUrl,
+            'recorded_at' => Carbon::now()->toIso8601String(),
+        ];
+
+        return ['ok' => true, 'payload' => $payload];
+    }
+
+    public static function stripMachineMarkers(string $note): string
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $note) ?: [];
+        $kept = [];
+        foreach ($lines as $line) {
+            $trim = ltrim($line);
+            if (str_starts_with($trim, self::DISPOSITION_MARKER)
+                || str_starts_with($trim, self::RESOLUTION_EVIDENCE_MARKER)
+            ) {
+                continue;
+            }
+            $kept[] = $line;
+        }
+
+        return trim(implode("\n", $kept));
+    }
+
+    /**
+     * @param  list<array{body?:string}>  $comments
+     * @param  list<BugReportStatusLog>  $statusLogs
+     * @param  list<array<string,mixed>>  $evidenceRows
+     * @return array<string,mixed>
+     */
+    public static function buildProductLoopProjection(
+        BugReport $bug,
+        array $comments,
+        array $statusLogs,
+        array $evidenceRows
+    ): array {
+        $disposition = null;
+        foreach (array_reverse($statusLogs) as $log) {
+            $parsed = self::parseMarkerPayload((string) ($log->note ?? ''), self::DISPOSITION_MARKER);
+            if ($parsed !== null) {
+                $disposition = $parsed;
+                break;
+            }
+        }
+
+        $resolution = null;
+        foreach (array_reverse($statusLogs) as $log) {
+            if ((string) $log->to_status !== 'resolved') {
+                continue;
+            }
+            $parsed = self::parseMarkerPayload((string) ($log->note ?? ''), self::RESOLUTION_EVIDENCE_MARKER);
+            if ($parsed !== null) {
+                $resolution = $parsed;
+                break;
+            }
+        }
+
+        $githubIssueUrl = is_array($disposition) ? ($disposition['github_issue_url'] ?? null) : null;
+        $githubPrUrl = is_array($disposition) ? ($disposition['github_pr_url'] ?? null) : null;
+        if (is_array($resolution) && !empty($resolution['github_pr_url'])) {
+            $githubPrUrl = $resolution['github_pr_url'];
+        }
+
+        if (!$githubIssueUrl || !$githubPrUrl) {
+            $fallback = self::extractGithubUrlsFromTextCorpus($comments, $statusLogs);
+            $githubIssueUrl = $githubIssueUrl ?: $fallback['issue'];
+            $githubPrUrl = $githubPrUrl ?: $fallback['pr'];
+        }
+
+        $latestEvidence = null;
+        foreach (array_reverse($evidenceRows) as $row) {
+            if (($row['evidence_type'] ?? null) === BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION) {
+                $latestEvidence = $row;
+                break;
+            }
+        }
+
+        $productionRevision = $latestEvidence['production_revision']
+            ?? ($resolution['production_revision'] ?? null);
+        $deployRunId = $latestEvidence['deploy_run_id']
+            ?? ($resolution['deploy_run_id'] ?? null);
+
+        $status = (string) $bug->status;
+        $semantic = 'SUBMITTED';
+        if ($status === 'closed') {
+            $semantic = 'CLOSED';
+        } elseif ($status === 'resolved' && $productionRevision) {
+            $semantic = 'SHIPPED';
+        } elseif ($status === 'resolved') {
+            $semantic = 'RESOLVED_PENDING_VERIFY';
+        } elseif ($status === 'in_progress') {
+            $semantic = 'IN_PROGRESS';
+        } elseif (is_array($disposition) && !empty($disposition['kind'])) {
+            $semantic = 'DISPOSITIONED';
+        } elseif ($status === 'triaged') {
+            $semantic = 'TRIAGED';
+        }
+
+        $reporterFeedbackType = null;
+        if (is_string($bug->client_info) && $bug->client_info !== '') {
+            $decoded = json_decode($bug->client_info, true);
+            if (is_array($decoded) && isset($decoded['feedbackType']) && is_string($decoded['feedbackType'])) {
+                $reporterFeedbackType = $decoded['feedbackType'];
+            }
+        }
+
+        return [
+            'feedback_id' => (int) $bug->id,
+            'status' => $status,
+            'semantic_phase' => $semantic,
+            'reporter_feedback_type' => $reporterFeedbackType,
+            'disposition' => is_array($disposition) ? ($disposition['kind'] ?? null) : null,
+            'disposition_recorded_at' => is_array($disposition) ? ($disposition['recorded_at'] ?? null) : null,
+            'engineering_required' => is_array($disposition)
+                ? (bool) ($disposition['engineering_required'] ?? false)
+                : null,
+            'github_issue_url' => $githubIssueUrl,
+            'github_pr_url' => $githubPrUrl,
+            'production_revision' => $productionRevision,
+            'deploy_run_id' => $deployRunId,
+            'shipped' => $status === 'resolved' && is_string($productionRevision) && $productionRevision !== '',
+            'closed' => $status === 'closed',
+            'evidence_count' => count($evidenceRows),
+        ];
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    public static function parseMarkerPayload(string $note, string $marker): ?array
+    {
+        foreach (preg_split('/\r\n|\r|\n/', $note) ?: [] as $line) {
+            $trim = ltrim($line);
+            if (!str_starts_with($trim, $marker)) {
+                continue;
+            }
+            $json = substr($trim, strlen($marker));
+            $decoded = json_decode($json, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array{body?:string}>  $comments
+     * @param  list<BugReportStatusLog>  $statusLogs
+     * @return array{issue:?string,pr:?string}
+     */
+    private static function extractGithubUrlsFromTextCorpus(array $comments, array $statusLogs): array
+    {
+        $issue = null;
+        $pr = null;
+        $blobs = [];
+        foreach ($comments as $c) {
+            if (!empty($c['body'])) {
+                $blobs[] = (string) $c['body'];
+            }
+        }
+        foreach ($statusLogs as $log) {
+            $blobs[] = (string) ($log->note ?? '');
+        }
+        foreach ($blobs as $text) {
+            if (preg_match_all('#https://github\.com/[\w.-]+/[\w.-]+/(issues|pull)/\d+#i', $text, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $m) {
+                    $url = $m[0];
+                    if (strtolower($m[1]) === 'issues' && $issue === null) {
+                        $issue = $url;
+                    }
+                    if (strtolower($m[1]) === 'pull' && $pr === null) {
+                        $pr = $url;
+                    }
+                }
+            }
+        }
+
+        return ['issue' => $issue, 'pr' => $pr];
+    }
+
+    private static function normalizeGithubUrl(string $raw, string $kind): ?string
+    {
+        $url = trim($raw);
+        if ($url === '') {
+            return null;
+        }
+        if ($kind === 'issues') {
+            if (preg_match('#^https://github\.com/[\w.-]+/[\w.-]+/issues/\d+$#i', $url)) {
+                return $url;
+            }
+        }
+        if ($kind === 'pull') {
+            if (preg_match('#^https://github\.com/[\w.-]+/[\w.-]+/pull/\d+$#i', $url)) {
+                return $url;
+            }
+        }
+
+        return null;
     }
 }
