@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-bug-link-only-issue
+    changelog_date: "2026-09-18"
+    changelog_title: "fix(bugs): persist link-only issue URL onto prior disposition"
+    reason: Super-admin 閉環連結保存修正；不改老師／主任回報入口。
+
   - id: silent-2026-09-18-bug-product-loop-clobber
     changelog_date: "2026-09-18"
     changelog_title: "fix(bugs): preserve disposition when resolving with PR-only link"

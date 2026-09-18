@@ -1,3 +1,8 @@
+## 2026-09-18 — fix(bugs): persist link-only issue URL onto prior disposition
+<!-- release-notes: silent_ship=silent-2026-09-18-bug-link-only-issue -->
+- 已定性後僅附 GitHub Issue URL 時，合併寫入先前定性，不再以 HTTP 200 默默忽略連結。
+- 狀態歷程顯示：缺 `note_display` 時剝除機器標記，保留歷史純文字；空 `note_display` 不回退成 JSON。
+
 ## 2026-09-18 — fix(bugs): preserve disposition when resolving with PR-only link
 <!-- release-notes: silent_ship=silent-2026-09-18-bug-product-loop-clobber -->
 - 僅附 GitHub PR／Issue、未重填定性時，不再寫入空的 `[product_disposition]`，避免蓋掉先前定性。
