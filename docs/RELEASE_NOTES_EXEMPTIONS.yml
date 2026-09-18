@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-bug-product-loop
+    changelog_date: "2026-09-18"
+    changelog_title: "feat(bugs): in-app feedback closed-loop product projection"
+    reason: Super-admin 意見閉環摘要／定性欄位與既有 evidence 寫入；不改變老師／主任回報入口或公開通知，無需教職員版本更新。
+
   - id: silent-2026-09-18-course-manager-polish-tip
     changelog_date: "2026-09-18"
     changelog_title: "chore(release): tip CI for Course Manager polish deploy"

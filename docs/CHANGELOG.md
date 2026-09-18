@@ -1,3 +1,8 @@
+## 2026-09-18 — feat(bugs): in-app feedback closed-loop product projection
+<!-- release-notes: silent_ship=silent-2026-09-18-bug-product-loop -->
+- 意見與建議詳情新增「產品閉環摘要」：定性、GitHub 連結、Production SHA、語意階段（含 shipped≠僅合併 PR）。
+- 狀態更新可寫入定性／工程連結；`resolved` 且具 SHA 時同步寫入既有 `bug_report_evidence`。無 schema migration。
+
 ## 2026-09-18 — fix(learning): mutable LR ownership follows course teacher (#314)
 <!-- release-notes: staff_update=staff-2026-09-18-lr-mutable-teacher-follow -->
 - 尚未上課、尚無授課證據的待填評量，換正班老師後會跟著目前課表老師；顯示與可填寫歸屬一致。

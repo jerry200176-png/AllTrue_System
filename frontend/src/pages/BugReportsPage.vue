@@ -380,6 +380,29 @@
             <div><strong>時間：</strong>{{ formatDate(detail.created_at) }}</div>
           </div>
 
+          <div v-if="isSuperAdmin && productLoop" class="product-loop-card" data-testid="product-loop-card">
+            <strong>產品閉環摘要</strong>
+            <div><b>語意階段：</b>{{ productLoopPhaseLabel(productLoop.semantic_phase) }}</div>
+            <div v-if="productLoop.disposition"><b>定性：</b>{{ dispositionLabel(productLoop.disposition) }}</div>
+            <div v-if="productLoop.reporter_feedback_type"><b>回報類型：</b>{{ productLoop.reporter_feedback_type }}</div>
+            <div v-if="productLoop.engineering_required !== null">
+              <b>需工程：</b>{{ productLoop.engineering_required ? '是' : '否' }}
+            </div>
+            <div v-if="productLoop.github_issue_url">
+              <b>GitHub Issue：</b>
+              <a :href="productLoop.github_issue_url" target="_blank" rel="noopener noreferrer">{{ productLoop.github_issue_url }}</a>
+            </div>
+            <div v-if="productLoop.github_pr_url">
+              <b>GitHub PR：</b>
+              <a :href="productLoop.github_pr_url" target="_blank" rel="noopener noreferrer">{{ productLoop.github_pr_url }}</a>
+            </div>
+            <div v-if="productLoop.production_revision">
+              <b>Production SHA：</b><code>{{ productLoop.production_revision }}</code>
+              <span v-if="productLoop.shipped"> · 已上線證據</span>
+            </div>
+            <div v-if="productLoop.deploy_run_id"><b>Deploy run：</b>{{ productLoop.deploy_run_id }}</div>
+          </div>
+
           <div class="detail-description">
             <strong>問題描述</strong>
             <p>{{ detail.description }}</p>
@@ -387,6 +410,7 @@
 
           <div v-if="isSuperAdmin && triageContext" class="triage-context-card">
             <strong>回報補充（僅處理人員可見）</strong>
+            <div v-if="triageContext.feedbackType"><b>回報類型：</b>{{ triageContext.feedbackType }}</div>
             <div v-if="triageContext.occurrenceAt"><b>發生時間：</b>{{ triageContext.occurrenceAt }}<span v-if="triageContext.timeZone">（{{ triageContext.timeZone }}）</span></div>
             <div v-if="triageContext.relatedReference"><b>相關資料：</b>{{ triageContext.relatedReference }}</div>
             <div v-if="triageContext.screenSize || triageContext.timeZone">
@@ -454,11 +478,23 @@
               <template v-if="newStatus === 'resolved'">
                 <input v-model="productionRevision" placeholder="Production SHA（必填）" class="action-input action-input-evidence" />
                 <input v-model="deployRunId" placeholder="Deploy run ID（選填）" class="action-input action-input-evidence" />
+                <input v-model="githubPrUrl" placeholder="GitHub PR URL（選填）" class="action-input action-input-evidence" />
               </template>
               <button class="btn-sm btn-primary" :disabled="!newStatus" @click="doUpdateStatus">更新</button>
             </div>
+            <div v-if="showDispositionFields" class="action-row action-row-disposition">
+              <label>產品定性</label>
+              <select v-model="disposition">
+                <option value="">-- 選填 --</option>
+                <option v-for="opt in dispositionOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
+              <input v-model="githubIssueUrl" placeholder="GitHub Issue URL（選填）" class="action-input action-input-evidence" />
+            </div>
             <div v-if="newStatus === 'resolved'" class="evidence-hint">
-              已解決必須附上正式站版本 SHA；這會寫入狀態歷程，供回報者驗收與稽核。
+              已解決必須附上正式站版本 SHA；這會寫入狀態歷程與證據列，供回報者驗收與稽核。僅合併 PR 不算上線。
+            </div>
+            <div v-else-if="showDispositionFields" class="evidence-hint">
+              建議填寫定性與工程連結，讓閉環摘要可追溯，不依賴聊天記憶。
             </div>
           </div>
 
@@ -468,7 +504,7 @@
             <div v-for="(log, i) in detail.status_logs" :key="i" class="status-log-item">
               <span class="status-tag sm" :class="log.to_status">{{ statusLabel(log.to_status) }}</span>
               <span class="log-meta">{{ log.changed_by_name }} · {{ formatDate(log.created_at) }}</span>
-              <span v-if="log.note" class="log-note">{{ log.note }}</span>
+              <span v-if="log.note_display || log.note" class="log-note">{{ log.note_display || log.note }}</span>
             </div>
           </div>
 
@@ -498,7 +534,7 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
-import { parseBugReportClientInfo } from '../lib/bugReportContext';
+import { parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel } from '../lib/bugReportContext';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
@@ -536,10 +572,14 @@ const newStatus = ref('');
 const statusNote = ref('');
 const productionRevision = ref('');
 const deployRunId = ref('');
+const disposition = ref('');
+const githubIssueUrl = ref('');
+const githubPrUrl = ref('');
 const newComment = ref('');
 const commentIsInternal = ref(false);
 const updatingCommentVisibilityIds = ref(new Set());
 const actionFeedback = ref(null);
+const dispositionOptions = PRODUCT_DISPOSITION_OPTIONS;
 
 // ── Unread tracking ──────────────────────────────────────────────────────
 // localStorage key → { [bugId]: ISO timestamp of last view }
@@ -676,10 +716,14 @@ const resolutionNote = computed(() => {
   const log = [...detail.value.status_logs]
     .reverse()
     .find(l => terminal.includes(l.to_status));
-  return log?.note || '';
+  return (log?.note_display || log?.note || '').trim();
 });
 
 const triageContext = computed(() => parseBugReportClientInfo(detail.value?.client_info));
+const productLoop = computed(() => detail.value?.product_loop || null);
+const showDispositionFields = computed(() => {
+  return ['triaged', 'in_progress', 'closed', 'resolved'].includes(newStatus.value);
+});
 
 const pageTitle = computed(() => {
   if (isSuperAdmin.value) return '意見與建議（處理中心）';
@@ -877,6 +921,9 @@ async function selectBug(bug, event = null) {
   statusNote.value = '';
   productionRevision.value = '';
   deployRunId.value = '';
+  disposition.value = '';
+  githubIssueUrl.value = '';
+  githubPrUrl.value = '';
   newComment.value = '';
   actionFeedback.value = null;
   // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app 166）。
@@ -909,6 +956,9 @@ async function doUpdateStatus() {
     await updateBugStatus(activeBug.value.id, newStatus.value, statusNote.value || null, {
       production_revision: productionRevision.value.trim() || null,
       deploy_run_id: deployRunId.value.trim() || null,
+      disposition: disposition.value || null,
+      github_issue_url: githubIssueUrl.value.trim() || null,
+      github_pr_url: githubPrUrl.value.trim() || null,
     });
     await selectBug(activeBug.value);
     actionFeedback.value = { tone: 'success', text: '狀態已更新。' };
@@ -1395,6 +1445,13 @@ function formatDate(iso) {
 }
 .triage-context-card > strong { display: block; margin-bottom: 4px; }
 .triage-context-card b { font-weight: 600; }
+.product-loop-card {
+  margin: 12px 0; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--ds-canvas); font-size: 13px; line-height: 1.6;
+}
+.product-loop-card > strong { display: block; margin-bottom: 4px; }
+.product-loop-card a { word-break: break-all; }
+.product-loop-card code { font-size: 12px; }
 
 .detail-attachments { margin: 16px 0; }
 .detail-attachments strong { display: block; margin-bottom: 8px; }

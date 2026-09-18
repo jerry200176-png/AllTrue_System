@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.18",
     "date": "2026-09-18",
     "title": "2026.09.18 草稿（未發布）",
-    "summary": "Course Manager V1 for staff；Manager V1 consolidates Edit/More/Details",
+    "summary": "closed-loop product projection；Course Manager V1 for staff",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "closed-loop product projection",
           "Course Manager V1 for staff",
           "Manager V1 consolidates Edit/More/Details"
         ]
@@ -36,6 +37,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "closed-loop product projection",
       "Course Manager V1 for staff",
       "Manager V1 consolidates Edit/More/Details",
       "LR ownership follows course teacher",
