@@ -1473,6 +1473,91 @@ class BugReportApiTest extends TestCase
         $this->assertSame('分診完成', $detail->json('status_logs.0.note_display'));
     }
 
+    public function test_link_only_issue_url_merges_prior_disposition_without_clobber(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'dispLinkOnly@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1,
+            'reporter_user_id' => $admin->id,
+            'title' => 'Disposition then link',
+            'description' => 'D',
+            'severity' => 'low',
+            'status' => 'new',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'triaged',
+            'disposition' => 'bug',
+            'note' => '先定性',
+        ])->assertOk();
+
+        $detailAfterTriage = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/bugs/{$bug->id}?branch_id=1");
+        $detailAfterTriage->assertOk();
+        $this->assertSame('bug', $detailAfterTriage->json('product_loop.disposition'));
+        $this->assertNull($detailAfterTriage->json('product_loop.github_issue_url'));
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'in_progress',
+            'github_issue_url' => 'https://github.com/jerry200176-png/AllTrue_System/issues/7777',
+        ])->assertOk();
+
+        $detail = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/bugs/{$bug->id}?branch_id=1");
+        $detail->assertOk();
+        $this->assertSame('bug', $detail->json('product_loop.disposition'));
+        $this->assertSame(
+            'https://github.com/jerry200176-png/AllTrue_System/issues/7777',
+            $detail->json('product_loop.github_issue_url')
+        );
+        $this->assertTrue($detail->json('product_loop.engineering_required'));
+
+        $progressNote = \App\Models\BugReportStatusLog::where('bug_report_id', $bug->id)
+            ->where('to_status', 'in_progress')->value('note');
+        $this->assertStringContainsString('[product_disposition]', (string) $progressNote);
+        $decoded = \App\Services\BugReportService::parseMarkerPayload(
+            (string) $progressNote,
+            \App\Services\BugReportService::DISPOSITION_MARKER
+        );
+        $this->assertIsArray($decoded);
+        $this->assertSame('bug', $decoded['kind']);
+        $this->assertNotNull($decoded['kind']);
+    }
+
+    public function test_link_only_issue_url_without_prior_disposition_rejected(): void
+    {
+        [$tokenAdmin] = $this->createUserToken([1], 'dispLinkNeedPrior@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => 1,
+            'title' => 'No prior disposition', 'description' => 'D',
+            'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'triaged',
+            'github_issue_url' => 'https://github.com/jerry200176-png/AllTrue_System/issues/6666',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJson(['code' => 'disposition_required_for_issue_link']);
+        $this->assertEquals('new', $bug->fresh()->status);
+    }
+
     public function test_resolve_with_pr_url_does_not_clobber_prior_disposition(): void
     {
         [$tokenAdmin, $admin] = $this->createUserToken([1], 'dispNoClobber@test.com', 'S');

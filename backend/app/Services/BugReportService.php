@@ -317,16 +317,46 @@ class BugReportService
                 return $dispositionPayload;
             }
         } elseif (!empty($options['github_issue_url']) || !empty($options['github_pr_url'])) {
-            // Validate engineering URLs when present, but do NOT write a link-only
-            // [product_disposition] marker — that would clobber a prior kind with null.
-            // Resolve-time PR belongs on [resolution_evidence]; issue URLs remain in
-            // comments / prior disposition markers and are projected from there.
+            // Validate URLs first. Resolve-time PR is persisted on [resolution_evidence]
+            // below — never write a null-kind disposition for PR-only updates.
             $linkCheck = self::normalizeDispositionOptions(array_merge($options, [
                 'disposition' => null,
                 'link_only' => true,
             ]));
             if (!$linkCheck['ok']) {
                 return $linkCheck;
+            }
+
+            // Accepted input: attach/update issue URL without re-stating disposition.
+            // Merge into the latest non-null disposition kind so the link is persisted
+            // without clobbering product_loop.disposition to null.
+            if (!empty($options['github_issue_url'])) {
+                $prior = self::latestDispositionWithKind($bugId);
+                if ($prior === null || empty($prior['kind'])) {
+                    return [
+                        'ok' => false,
+                        'code' => 'disposition_required_for_issue_link',
+                        'message' => 'github_issue_url without disposition requires a prior product disposition on this feedback',
+                    ];
+                }
+                $mergeOpts = [
+                    'disposition' => $prior['kind'],
+                    'github_issue_url' => $options['github_issue_url'],
+                    'engineering_required' => array_key_exists('engineering_required', $prior)
+                        ? $prior['engineering_required']
+                        : null,
+                ];
+                // Keep prior PR on the disposition record unless caller supplies a new one
+                // outside the resolve path (resolve PR goes to resolution evidence).
+                if (!empty($options['github_pr_url']) && $newStatus !== 'resolved') {
+                    $mergeOpts['github_pr_url'] = $options['github_pr_url'];
+                } elseif (!empty($prior['github_pr_url'])) {
+                    $mergeOpts['github_pr_url'] = $prior['github_pr_url'];
+                }
+                $dispositionPayload = self::normalizeDispositionOptions($mergeOpts);
+                if (!$dispositionPayload['ok']) {
+                    return $dispositionPayload;
+                }
             }
         }
 
@@ -845,6 +875,27 @@ class BugReportService
         Log::info('bug_closed_by_timeout', ['bug_id' => $bugId, 'actor_user_id' => $actorUserId]);
 
         return ['ok' => true, 'action' => 'closed'];
+    }
+
+    /**
+     * Latest product disposition marker with a non-null kind, newest status log first.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function latestDispositionWithKind(int $bugId): ?array
+    {
+        $logs = BugReportStatusLog::query()
+            ->where('bug_report_id', $bugId)
+            ->orderByDesc('id')
+            ->get();
+        foreach ($logs as $log) {
+            $parsed = self::parseMarkerPayload((string) ($log->note ?? ''), self::DISPOSITION_MARKER);
+            if ($parsed !== null && !empty($parsed['kind'])) {
+                return $parsed;
+            }
+        }
+
+        return null;
     }
 
     /**

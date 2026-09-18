@@ -534,7 +534,7 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
-import { parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel } from '../lib/bugReportContext';
+import { parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
@@ -708,15 +708,6 @@ async function markRead(fb) {
 }
 
 watch(pfCategoryFilter, () => loadFeedback(1));
-
-function statusLogDisplayNote(log) {
-  if (!log || typeof log !== 'object') return '';
-  // Prefer stripped display text; never fall back to raw machine markers.
-  if (Object.prototype.hasOwnProperty.call(log, 'note_display')) {
-    return String(log.note_display || '').trim();
-  }
-  return String(log.note || '').trim();
-}
 
 // The most recent status_log note when a bug reaches resolved/closed — shown in banner
 const resolutionNote = computed(() => {

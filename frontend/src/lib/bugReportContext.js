@@ -52,3 +52,28 @@ export function productLoopPhaseLabel(phase) {
     CLOSED: '已關閉',
   }[phase] || phase || '';
 }
+
+const MACHINE_NOTE_MARKERS = ['[product_disposition]', '[resolution_evidence]'];
+
+/** Strip machine status-log markers for human display (compat with raw notes). */
+export function stripBugStatusMachineMarkers(note) {
+  if (typeof note !== 'string' || !note) return '';
+  const kept = note.split(/\r\n|\r|\n/).filter((line) => {
+    const trim = line.trimStart();
+    return !MACHINE_NOTE_MARKERS.some((marker) => trim.startsWith(marker));
+  });
+  return kept.join('\n').trim();
+}
+
+/**
+ * Prefer API note_display when present (including empty string).
+ * If the field is missing (legacy payload), strip markers from raw note so
+ * historical plain text remains while machine JSON is not shown.
+ */
+export function statusLogDisplayNote(log) {
+  if (!log || typeof log !== 'object') return '';
+  if (Object.prototype.hasOwnProperty.call(log, 'note_display')) {
+    return String(log.note_display || '').trim();
+  }
+  return stripBugStatusMachineMarkers(String(log.note || ''));
+}
