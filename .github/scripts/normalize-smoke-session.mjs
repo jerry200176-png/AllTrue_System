@@ -64,8 +64,10 @@ export function selfTest() {
   expectReject('duplicate marker', () => normalizeSessionOutput(`${fixture()}\n${fixture()}`, 16));
   expectReject('invalid base64', () => normalizeSessionOutput(`prefix\n${MARKER}%%%\n`, 16));
   expectReject('invalid JSON', () => normalizeSessionOutput(`prefix\n${MARKER}${Buffer.from('not-json').toString('base64')}\n`, 16));
+  expectReject('missing token', () => normalizeSessionOutput(fixture({ access_token: '' }), 16));
   expectReject('unauthorized branch', () => normalizeSessionOutput(fixture(), 99));
   expectReject('expired session', () => normalizeSessionOutput(fixture({ expires_at: new Date(Date.now() - 1).toISOString() }), 16));
+  expectReject('ttl over 30 minutes', () => normalizeSessionOutput(fixture({ expires_at: new Date(Date.now() + 31 * 60 * 1000).toISOString() }), 16));
   expectReject('invalid role', () => normalizeSessionOutput(fixture({ user: { id: 7, role: 'teacher', campuses: [16], must_change_password: false } }), 16));
   expectReject('invalid user', () => normalizeSessionOutput(fixture({ user: { id: 0, role: 'director', campuses: [16], must_change_password: false } }), 16));
   expectReject('empty campus', () => normalizeSessionOutput(fixture({ user: { id: 7, role: 'director', campuses: [], must_change_password: false } }), 16));

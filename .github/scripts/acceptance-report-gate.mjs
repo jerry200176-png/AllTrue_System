@@ -63,6 +63,12 @@ export function validateReport(report, branchId) {
   }
 }
 
+function expectReject(label, callback) {
+  let rejected = false;
+  try { callback(); } catch { rejected = true; }
+  if (!rejected) throw new Error(`self-test accepted invalid ${label}`);
+}
+
 function selfTest() {
   const makeReport = (branchId) => ({
     suites: [{
@@ -78,11 +84,31 @@ function selfTest() {
   });
   validateReport(makeReport(16), 16);
   validateReport(makeReport(9), 9);
-  const skipped = makeReport(16);
-  skipped.suites[0].specs[0].tests[0].status = 'skipped';
-  let rejected = false;
-  try { validateReport(skipped, 16); } catch { rejected = true; }
-  if (!rejected) throw new Error('self-test failed: skipped report was accepted');
+  const wrongIdentity = makeReport(16);
+  wrongIdentity.suites[0].specs[0].title = 'wrong title';
+  expectReject('wrong identity', () => validateReport(wrongIdentity, 16));
+  const missingIdentity = makeReport(16);
+  missingIdentity.suites[0].specs.pop();
+  expectReject('missing identity', () => validateReport(missingIdentity, 16));
+  const duplicateIdentity = makeReport(16);
+  duplicateIdentity.suites[0].specs.push(duplicateIdentity.suites[0].specs[0]);
+  expectReject('duplicate identity', () => validateReport(duplicateIdentity, 16));
+  const unexpectedIdentity = makeReport(16);
+  unexpectedIdentity.suites[0].specs[0].file = 'unexpected.spec.js';
+  expectReject('unexpected identity', () => validateReport(unexpectedIdentity, 16));
+  expectReject('malformed reporter JSON', () => validateReport(JSON.parse('{'), 16));
+  expectReject('wrong reporter JSON', () => validateReport({ reporter: 'not-playwright' }, 16));
+  for (const status of ['skipped', 'unexpected', 'flaky']) {
+    const report = makeReport(16);
+    report.suites[0].specs[0].tests[0].status = status;
+    expectReject(`${status} status`, () => validateReport(report, 16));
+  }
+  const zeroResults = makeReport(16);
+  zeroResults.suites[0].specs[0].tests[0].results = [];
+  expectReject('zero results', () => validateReport(zeroResults, 16));
+  const nonPassedResult = makeReport(16);
+  nonPassedResult.suites[0].specs[0].tests[0].results[0].status = 'failed';
+  expectReject('non-passed result', () => validateReport(nonPassedResult, 16));
   console.log('acceptance-report-gate self-test: ok');
 }
 
