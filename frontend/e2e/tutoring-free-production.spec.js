@@ -92,7 +92,7 @@ async function getPagedRows(request, path, token) {
 
 test.describe('production acceptance — tutoring free/non-receivable', () => {
   test('director read-only API and real UI acceptance', async ({ page, request }) => {
-    test.skip(!BASE, 'missing controlled production base URL');
+    test.skip(!BASE || !SESSION?.access_token, 'missing controlled production director session');
     expect(SESSION_CONTRACT, 'session must satisfy the exact bounded read-only contract').toBe(true);
     const token = SESSION.access_token;
     const unsafe = [];
