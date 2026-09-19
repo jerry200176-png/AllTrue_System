@@ -64,7 +64,7 @@ class AttendanceSelfStudyStatusUpdateTest extends TestCase
 
         $signin->refresh();
         $this->assertSame(
-            60,
+            60.0,
             Carbon::parse((string) $signin->SignInDT)
                 ->diffInMinutes(Carbon::parse((string) $signin->SignOutDT)),
             'A self-study row changed to leave must become a closed placeholder.'
