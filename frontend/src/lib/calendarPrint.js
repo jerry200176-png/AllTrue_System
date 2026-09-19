@@ -1,4 +1,5 @@
 const DAY_NAMES = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
+const STATUS_FILTERS = ['請假', '補課', '代課', '調課', '已取消'];
 const FORBIDDEN = /phone|mobile|tel|address|email|line|amount|charge|fee|billing|note|memo|student.?id|class.?id|session.?id/i;
 
 function dateValue(value) {
@@ -88,7 +89,13 @@ export function projectPrintRows({ courses = [], sessions = [], schedules = [], 
   const courseMap = new Map(courses.map((course) => [courseKey(course), course]));
   const teacherMap = new Map(teachers.map((teacher) => [String(first(teacher?.id, teacher?.teacher_id)), first(teacher?.name, teacher?.username, teacher?.Name, '未指派')]));
   const roomMap = new Map(rooms.map((room) => [String(first(room?.id, room?.room_id)), first(room?.name, room?.label, room?.room_name, '')]));
-  const scheduleMap = new Map(schedules.map((schedule) => [scheduleKey(schedule), schedule]));
+  const scheduleMap = new Map();
+  schedules.forEach((schedule) => {
+    const key = scheduleKey(schedule);
+    const existing = scheduleMap.get(key) || [];
+    existing.push(schedule);
+    scheduleMap.set(key, existing);
+  });
   const materialized = new Set();
   const output = [];
   const normalizedSessions = Array.isArray(sessions) ? sessions : [];
@@ -99,11 +106,14 @@ export function projectPrintRows({ courses = [], sessions = [], schedules = [], 
     const key = sessionKey(session);
     if (!session?.isProjected && session?.id) materialized.add(key);
     const course = courseMap.get(String(first(session?.studentClassId, session?.student_class_id, session?.StudentClassID))) || {};
-    const schedule = scheduleMap.get(key) || {};
+    const scheduleEntries = scheduleMap.get(key) || [];
     const teacherId = first(session?.teacherId, session?.teacher_id, course?.teacher_id);
     const roomId = first(course?.room_id, course?.RoomID, session?.room_id, session?.roomId);
-    const markers = exceptionMarkers(schedule, session);
-    if (session?.isProjected && schedule?.original_schedule_id && !session?.id) return;
+    const markers = [...new Set([
+      ...exceptionMarkers({}, session),
+      ...scheduleEntries.flatMap((schedule) => exceptionMarkers(schedule, session)),
+    ])];
+    if (session?.isProjected && scheduleEntries.some((schedule) => schedule?.original_schedule_id) && !session?.id) return;
     output.push({
       occurrenceKey: key,
       date,
@@ -114,7 +124,15 @@ export function projectPrintRows({ courses = [], sessions = [], schedules = [], 
       subjectName: first(course?.subject_name, course?.subject, session?.subjectName, session?.subject, '—'),
       classTypeLabel: first(course?.class_type_label, course?.class_type, '—'),
       effectiveTeacherName: first(session?.teacherName, session?.teacher_name, teacherMap.get(String(teacherId)), '未指派'),
-      campusLabel: first(course?.campus_name, course?.branch_name, `分校 #${first(course?.branch_id, course?.CampusID, '')}`),
+      campusLabel: first(
+        course?.campus_name,
+        course?.branch_name,
+        session?.branchName,
+        session?.branch_name,
+        first(course?.branch_id, course?.CampusID, session?.branchId, session?.branch_id)
+          ? `分校 #${first(course?.branch_id, course?.CampusID, session?.branchId, session?.branch_id)}`
+          : '目前分校',
+      ),
       roomLabel: roomMap.get(String(roomId)) || first(course?.room_name, session?.room_name, '未設定教室'),
       statusCode: first(session?.status, session?.Status, 'scheduled'),
       statusLabel: labelStatus(first(session?.status, session?.Status)),
@@ -140,7 +158,7 @@ export function filterPrintRows(rows, filters = {}) {
     (!teacher || row.effectiveTeacherName.toLowerCase().includes(teacher))
     && (!room || row.roomLabel.toLowerCase().includes(room))
     && (!student || row.studentName.toLowerCase().includes(student))
-    && (!statuses.length || statuses.some((status) => row.markers.includes(status) || row.statusLabel === status))
+    && (!statuses.length || statuses.length === STATUS_FILTERS.length || statuses.some((status) => row.markers.includes(status) || row.statusLabel === status))
   ));
 }
 

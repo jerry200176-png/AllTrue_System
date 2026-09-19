@@ -13,7 +13,10 @@ const rows = projectPrintRows({
   courses: [{ id: 1, student_id: 2, student_name: '王小明', teacher_id: 9, teacher_name: '林老師', subject: '數學', class_type: '一對一', room_id: 3, branch_id: 11 }],
   rooms: [{ id: 3, name: 'A101' }],
   teachers: [{ id: 9, username: '林老師' }],
-  schedules: [{ student_class_id: 1, date: '2026-09-15', start_time: '16:00', type: 'leave' }],
+  schedules: [
+    { student_class_id: 1, date: '2026-09-15', start_time: '16:00', type: 'leave' },
+    { student_class_id: 1, date: '2026-09-15', start_time: '16:00', type: 'extra' },
+  ],
   sessions: [
     { id: 4, student_class_id: 1, session_date: '2026-09-15', start_time: '16:00', end_time: '18:00', status: 'scheduled', teacher_id: 9, student_name: '王小明' },
     { student_class_id: 1, session_date: '2026-09-15', start_time: '16:00', status: 'projected', isProjected: true },
@@ -21,8 +24,9 @@ const rows = projectPrintRows({
 });
 assert.equal(rows.length, 1);
 assert.equal(rows[0].studentName, '王小明');
-assert.deepEqual(rows[0].markers, ['請假']);
+assert.deepEqual(rows[0].markers, ['請假', '補課']);
 assert.equal(rows[0].roomLabel, 'A101');
+assert.equal(rows[0].campusLabel, '分校 #11');
 assert.equal(summarizeRows(rows, range, 'week').total, 1);
 assert.equal(chunkPrintRows(Array.from({ length: 25 }, (_, i) => ({ ...rows[0], occurrenceKey: String(i), date: '2026-09-15' }))).length, 3);
 assert.equal(serializePrintableRows(rows)[0].occurrenceKey, undefined);

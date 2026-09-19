@@ -556,6 +556,7 @@
     <CalendarPrintDialog
       :open="showCalendarPrint"
       :branch-id="props.branchId"
+      :branch-name="props.branchName"
       :rooms="roomList"
       :teachers="teachers"
       :initial-date="selectedDateStr"
@@ -637,6 +638,7 @@ import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigatio
 
 const props = defineProps({
   branchId: [String, Number],
+  branchName: { type: String, default: '' },
   userRole: String,
   userId: [String, Number],
   initialTeacherId: [String, Number],

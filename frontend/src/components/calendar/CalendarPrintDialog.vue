@@ -20,17 +20,20 @@ const currentDate = ref(props.initialDate || new Date().toISOString().slice(0, 1
 const loading = ref(false);
 const error = ref('');
 const allRows = ref([]);
-const filters = ref({ teacher: '', room: '', student: '', statuses: [] });
+const statusOptions = ['請假', '補課', '代課', '調課', '已取消'];
+const defaultFilters = () => ({ teacher: '', room: '', student: '', statuses: [...statusOptions] });
+const filters = ref(defaultFilters());
 const requestToken = ref(0);
 const opener = ref(null);
 let printStyle = null;
+let printFallbackTimer = null;
 
 const range = computed(() => getRange(period.value, currentDate.value));
 const rows = computed(() => filterPrintRows(allRows.value, filters.value));
 const summary = computed(() => summarizeRows(rows.value, range.value, period.value));
 const sheets = computed(() => chunkPrintRows(rows.value, orientation.value));
 const activeFilterText = computed(() => {
-  const values = [filters.value.teacher && `老師：${filters.value.teacher}`, filters.value.room && `教室：${filters.value.room}`, filters.value.student && `學生：${filters.value.student}`].filter(Boolean);
+  const values = [filters.value.teacher && `老師：${filters.value.teacher}`, filters.value.room && `教室：${filters.value.room}`, filters.value.student && `學生：${filters.value.student}`, filters.value.statuses.length < statusOptions.length && `狀態：${filters.value.statuses.join('、') || '無'}`].filter(Boolean);
   return values.length ? values.join('／') : '全部可見資料';
 });
 const canPrint = computed(() => !loading.value && !error.value && rows.value.length > 0 && allRows.value.length > 0);
@@ -64,11 +67,14 @@ async function load() {
   }
 }
 
-function clearFilters() { filters.value = { teacher: '', room: '', student: '', statuses: [] }; }
-function close() { requestToken.value += 1; cleanupPrint(); emit('close'); }
+function clearFilters() { filters.value = defaultFilters(); }
+function restoreFocus() { nextTick(() => opener.value?.focus?.()); }
+function close() { requestToken.value += 1; cleanupPrint(); emit('close'); restoreFocus(); }
 function cleanupPrint() {
+  if (printFallbackTimer) { window.clearTimeout(printFallbackTimer); printFallbackTimer = null; }
   document.body.classList.remove('calendar-print-active');
   if (printStyle) { printStyle.remove(); printStyle = null; }
+  window.removeEventListener('afterprint', onAfterPrint);
 }
 async function printReport() {
   if (!canPrint.value) return;
@@ -80,16 +86,22 @@ async function printReport() {
   document.head.appendChild(printStyle);
   document.body.classList.add('calendar-print-active');
   await nextTick();
-  window.print();
+  window.addEventListener('afterprint', onAfterPrint, { once: true });
+  try {
+    window.print();
+  } finally {
+    // Some browsers do not emit afterprint when the dialog is cancelled.
+    printFallbackTimer = window.setTimeout(cleanupPrint, 120000);
+  }
 }
 function onAfterPrint() { cleanupPrint(); }
 function onKeydown(event) { if (event.key === 'Escape') close(); }
 watch(() => props.open, (open) => {
-  if (open) { opener.value = document.activeElement; nextTick(() => document.querySelector('[data-calendar-print-dialog] button')?.focus()); load(); window.addEventListener('afterprint', onAfterPrint); window.addEventListener('keydown', onKeydown); }
-  else { cleanupPrint(); window.removeEventListener('afterprint', onAfterPrint); window.removeEventListener('keydown', onKeydown); }
+  if (open) { opener.value = document.activeElement; nextTick(() => document.querySelector('[data-calendar-print-dialog] button')?.focus()); load(); window.addEventListener('keydown', onKeydown); }
+  else { cleanupPrint(); window.removeEventListener('keydown', onKeydown); restoreFocus(); }
 });
 watch([period, currentDate], () => { if (props.open) load(); });
-onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('afterprint', onAfterPrint); window.removeEventListener('keydown', onKeydown); opener.value?.focus?.(); });
+onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('keydown', onKeydown); });
 </script>
 
 <template>
@@ -107,6 +119,7 @@ onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('afterprint',
           <label>老師 <input v-model="filters.teacher" type="search" placeholder="全部老師" /></label>
           <label>教室 <input v-model="filters.room" type="search" placeholder="全部教室" /></label>
           <label>學生 <input v-model="filters.student" type="search" placeholder="搜尋學生" /></label>
+          <fieldset class="calendar-print-statuses"><legend>狀態／異動（預設全選）</legend><label v-for="status in statusOptions" :key="status"><input v-model="filters.statuses" type="checkbox" :value="status" />{{ status }}</label></fieldset>
           <button type="button" @click="load">重新載入</button><button type="button" @click="clearFilters">清除篩選</button>
         </section>
         <p v-if="loading" class="calendar-print-state">正在準備{{ period === 'week' ? '本週' : '當月' }}課表…</p>
@@ -133,6 +146,8 @@ onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('afterprint',
 .calendar-print-toolbar { justify-content: flex-start; padding: 14px 0; border-bottom: 1px solid #d7dce5; }
 .calendar-print-toolbar label { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; }
 .calendar-print-toolbar input, .calendar-print-toolbar select, .calendar-print-toolbar button, .calendar-print-actions button { min-height: 32px; border: 1px solid #aeb7c5; border-radius: 5px; background: #fff; padding: 4px 9px; }
+.calendar-print-statuses { display: inline-flex; gap: 7px; align-items: center; border: 1px solid #aeb7c5; border-radius: 5px; padding: 4px 8px; margin: 0; }
+.calendar-print-statuses legend { font-size: 11px; }
 .calendar-print-actions button:last-child { background: #155eef; color: #fff; border-color: #155eef; }
 .calendar-print-state { margin: 28px 0; padding: 20px; background: #f5f7fa; }
 .calendar-print-preview { margin-top: 18px; }
