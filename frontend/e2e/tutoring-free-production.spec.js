@@ -99,6 +99,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     const telemetry = [];
     let schedulerCreateIntercepted = false;
     let schedulerCreatePayload = null;
+    let schedulerCreateProbeArmed = false;
 
     await page.addInitScript(({ session, branch, release }) => {
       localStorage.setItem('alltrue_session', JSON.stringify(session));
@@ -198,7 +199,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       const method = req.method();
       const path = new URL(req.url()).pathname;
       if (method === 'POST' && path === '/api/v1/adoption/events') return;
-      if (method === 'POST' && path === '/api/v1/class-sessions/batch' && schedulerCreateIntercepted) return;
+      if (method === 'POST' && path === '/api/v1/class-sessions/batch' && schedulerCreateProbeArmed) return;
       if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) unsafe.push({ method, path });
     });
     await page.route('**/api/v1/adoption/events', async (route) => {
@@ -362,10 +363,12 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await expect(readinessButton).toBeVisible();
     await expect(readinessButton).toBeEnabled();
     await expect(readinessButton).toHaveAttribute('type', 'button');
+    schedulerCreateProbeArmed = true;
     await page.evaluate(() => { window.__schedulerSubmitProbe = true; });
     await readinessButton.click();
     await expect.poll(() => schedulerCreateIntercepted).toBe(true);
     expect(schedulerCreatePayload).toEqual(expect.objectContaining({ class_type: 'tutoring', payment_type: 'session' }));
+    schedulerCreateProbeArmed = false;
     await page.evaluate(() => { window.__schedulerSubmitProbe = false; });
     await expect(scheduler).not.toContainText(/金額.*必填|付款.*必填|繳費.*必填/);
     await page.getByRole('button', { name: '取消', exact: true }).last().click();
