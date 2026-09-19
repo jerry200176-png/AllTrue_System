@@ -206,8 +206,20 @@
                   @click.stop="pkgForm.subjects.splice(idx, 1); if (pkgActiveSubjectIdx >= pkgForm.subjects.length) pkgActiveSubjectIdx = Math.max(0, pkgForm.subjects.length - 1)"
                 >✕</button>
               </div>
-              <div v-if="pkgForm.payment_type === 'monthly'" class="pkg-card-schedule" @click.stop>
-                <div class="pkg-weekday-row">
+              <div class="pkg-card-schedule" @click.stop>
+                <label v-if="pkgForm.payment_type === 'session'" class="pkg-fixed-toggle">
+                  <input
+                    type="checkbox"
+                    :checked="subj.fixed_schedule === true"
+                    @change="togglePkgSubjectFixed(idx, $event.target.checked)"
+                  />
+                  <span>固定星期／時間預排</span>
+                </label>
+                <span v-if="pkgForm.payment_type === 'session' && subj.fixed_schedule !== true" class="pkg-flexible-hint">
+                  不固定：建立方案時只補登已知日期，不自動預排未來堂次
+                </span>
+                <div v-if="pkgForm.payment_type === 'monthly' || subj.fixed_schedule === true" class="pkg-fixed-schedule-fields">
+                  <div class="pkg-weekday-row">
                   <label
                     v-for="day in weekdayOptions"
                     :key="'pkg-wd-' + idx + '-' + day.value"
@@ -221,10 +233,11 @@
                     />
                     <span>{{ day.label }}</span>
                   </label>
+                  </div>
+                  <select v-model="subj.start_time" class="pkg-inline-time" title="上課時間" @click.stop>
+                    <option v-for="t in halfHourTimeOptions" :key="'pkg-t-' + idx + '-' + t" :value="t">{{ t }}</option>
+                  </select>
                 </div>
-                <select v-model="subj.start_time" class="pkg-inline-time" title="上課時間" @click.stop>
-                  <option v-for="t in halfHourTimeOptions" :key="'pkg-t-' + idx + '-' + t" :value="t">{{ t }}</option>
-                </select>
               </div>
               <div v-if="subj.confirmed_dates.length > 0" class="pkg-card-dates">
                 <span class="pkg-card-count">{{ subj.confirmed_dates.length }} 堂已補登</span>
@@ -1101,7 +1114,7 @@ function resetPkgForm() {
   pkgForm.class_type = 'one_on_one';
   pkgForm.paid_at = '';
   pkgForm.subjects = [
-    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] },
+    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', fixed_schedule: false, days_of_week: [], start_time: '16:00', confirmed_dates: [] },
   ];
 }
 
@@ -1130,6 +1143,19 @@ function togglePkgSubjectDay(subjectIdx, dayValue) {
   } else {
     subj.days_of_week.push(dayValue);
     subj.days_of_week.sort((a, b) => a - b);
+  }
+}
+
+function togglePkgSubjectFixed(subjectIdx, enabled) {
+  const subj = pkgForm.subjects[subjectIdx];
+  if (!subj) return;
+  subj.fixed_schedule = Boolean(enabled);
+  if (subj.fixed_schedule && (!Array.isArray(subj.days_of_week) || subj.days_of_week.length === 0)) {
+    const anchor = subj.start_date ? new Date(`${subj.start_date}T12:00:00`) : new Date();
+    subj.days_of_week = [weekdayOneToSeven(anchor)];
+  }
+  if (!subj.fixed_schedule) {
+    subj.days_of_week = [];
   }
 }
 
@@ -1260,7 +1286,7 @@ function addPkgSubject() {
   if (pkgForm.subjects.length >= 10) return;
   const existing = pkgForm.subjects.map((s) => s.subject);
   const next = ['English', 'Science', 'Chinese', 'Physics', 'Chemistry', 'Biology', 'Social'].find((s) => !existing.includes(s)) || 'English';
-  pkgForm.subjects.push({ subject: next, teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [], days_of_week: [], start_time: '16:00' });
+  pkgForm.subjects.push({ subject: next, teacher_id: '', duration_hours: 2, start_date: '', fixed_schedule: false, confirmed_dates: [], days_of_week: [], start_time: '16:00' });
 }
 
 function pkgSubjectColor(idx) {
@@ -2239,7 +2265,7 @@ async function submitPackage() {
         duration_hours: Number(s.duration_hours) || 2,
         start_date: s.start_date || null,
         confirmed_dates: (s.confirmed_dates || []).filter(Boolean),
-        ...(isMonthly && (s.days_of_week || []).length > 0
+        ...((isMonthly || s.fixed_schedule === true) && (s.days_of_week || []).length > 0
           ? { days_of_week: s.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7), start_time: s.start_time || '16:00' }
           : {}
         ),
@@ -3863,6 +3889,24 @@ async function submit() {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
+  flex-wrap: wrap;
+}
+.pkg-fixed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ds-ink);
+  white-space: nowrap;
+}
+.pkg-flexible-hint {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+}
+.pkg-fixed-schedule-fields {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .pkg-weekday-row {

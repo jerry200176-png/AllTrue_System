@@ -1,3 +1,11 @@
+## 2026-09-19 — fix(course-mgmt): shared-plan slot edit preserves past/future boundaries (in-app #324 / GitHub #3074)
+<!-- release-notes: staff_update=staff-2026-09-19-shared-plan-slot-edit-324 -->
+- SourceRef `alltrue:bug_report:324`：多科共用方案改固定時段時，缺少首堂日的 legacy edit payload 只同步未來可變堂次，不回補今天以前，也不刪除既有未來例外；方案堂數與其他科目不變。
+
+## 2026-09-19 — feat(students): shared-plan fixed or flexible pre-schedule choice (in-app #320 / GitHub #3070)
+<!-- release-notes: staff_update=staff-2026-09-19-shared-plan-fixed-schedule-320 -->
+- SourceRef `alltrue:bug_report:320`：多科共用方案堂數制可逐科選擇固定星期／時間預排；不固定時保留補登日期流程，不送固定排課 payload。
+
 ## 2026-09-19 — fix(calendar): split-slot wrap spacing polish (in-app #317)
 <!-- release-notes: silent_ship=silent-2026-09-19-calendar-split-slot-317-polish -->
 - 窄欄 1:2/1:3 課卡：meta 改 wrap/間距保留 9px 字級，移除 7–8px 縮字；姓名允許換行；E2E 改查子元素 overflow。

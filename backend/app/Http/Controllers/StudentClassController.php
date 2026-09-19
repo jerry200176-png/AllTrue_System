@@ -6558,6 +6558,25 @@ class StudentClassController extends Controller
                 ];
             }
 
+            // A shared-package schedule edit must not turn a missing
+            // first_class_date into a destructive historical rebuild. Sync
+            // only mutable future rows, preserving past rows and contract
+            // exceptions even when immutable history is not present yet.
+            if ($studentClass->isPartOfPackage()) {
+                $updatedCount = $this->syncFutureScheduledSessionTimes(
+                    $classId,
+                    $slots,
+                    $durationMinutes,
+                    $previousScheduleSlots
+                );
+
+                return [
+                    'rebuilt' => false,
+                    'reason' => 'future_schedule_synced',
+                    'updated_future_sessions' => $updatedCount,
+                ];
+            }
+
             $startDate = $this->normalizeDateString($studentClass->StartDate ?? null) ?: Carbon::today()->toDateString();
             $scheduleMode = (string) ($studentClass->ScheduleMode ?? 'count');
             $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
