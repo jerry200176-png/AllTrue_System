@@ -1,3 +1,7 @@
+## 2026-09-19 — improved(course-management): show upcoming lesson dates in course list (in-app #321 / GitHub #3071)
+<!-- release-notes: staff_update=staff-2026-09-19-course-upcoming-dates-321 -->
+- SourceRef `alltrue:bug_report:321`：課程清單在既有時段欄直接顯示今日起最近三堂上課日期，並標示尚有幾堂；完整日期仍可從「管理課程」查看。
+
 ## 2026-09-19 — fix(course-mgmt): shared-plan slot edit preserves past/future boundaries (in-app #324 / GitHub #3074)
 <!-- release-notes: staff_update=staff-2026-09-19-shared-plan-slot-edit-324 -->
 - SourceRef `alltrue:bug_report:324`：多科共用方案改固定時段時，缺少首堂日的 legacy edit payload 只同步未來可變堂次，不回補今天以前，也不刪除既有未來例外；方案堂數與其他科目不變。
