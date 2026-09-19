@@ -76,6 +76,9 @@ export function selfTest() {
   const fixtureEncoded = fixture().split(`${BEGIN}\n`)[1].split(`\n${END}`)[0];
   if (normalizeSessionOutput(`shell-before\n${BEGIN}\r\n ${fixtureEncoded} \r\n${END}\nshell-after`, 16).effectiveBranch !== 16) fail('self-test shell-owned sentinel framing failed');
   expectReject('missing sentinels', () => normalizeSessionOutput('noise only', 16));
+  expectReject('missing begin sentinel', () => normalizeSessionOutput(`${fixtureEncoded}\n${END}`, 16));
+  expectReject('missing end sentinel', () => normalizeSessionOutput(`${BEGIN}\n${fixtureEncoded}`, 16));
+  expectReject('two payloads inside one sentinel pair', () => normalizeSessionOutput(`${BEGIN}\n${fixtureEncoded}\n${fixtureEncoded}\n${END}`, 16));
   expectReject('duplicate begin sentinel', () => normalizeSessionOutput(`${BEGIN}\n${BEGIN}\n${fixtureEncoded}\n${END}`, 16));
   expectReject('duplicate end sentinel', () => normalizeSessionOutput(`${BEGIN}\n${fixtureEncoded}\n${END}\n${END}`, 16));
   expectReject('misordered sentinels', () => normalizeSessionOutput(`${END}\n${fixtureEncoded}\n${BEGIN}`, 16));
