@@ -1,0 +1,77 @@
+name: Tutoring Free Production Acceptance (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch_id:
+        description: 'Campus ID to inspect'
+        required: false
+        default: '16'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tutoring-free-production-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: Authenticated tutoring free acceptance (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Fetch short-lived director session (read-only)
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BRANCH_ID: ${{ github.event.inputs.branch_id || '16' }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          session_json="$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "BRANCH_ID=$BRANCH_ID bash" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --no-ansi --execute='
+          $branch=(int)getenv("BRANCH_ID");
+          $row=\Illuminate\Support\Facades\DB::table("auth_tokens as t")->join("User as u","u.id","=","t.user_id")->join("UserCampus as uc","uc.UserID","=","u.id")->where("u.type","D")->where("uc.CampusID",$branch)->where(function($q){$q->where("uc.Approved",1)->orWhereNull("uc.Approved");})->where("t.expires_at",">",now())->orderByDesc("t.expires_at")->select("t.token","u.id","u.type","u.Name","u.LoginName")->first();
+          if(!$row) throw new \RuntimeException("no valid director smoke session");
+          echo json_encode(["access_token"=>$row->token,"token_type"=>"Bearer","user"=>["id"=>(int)$row->id,"name"=>(string)$row->Name,"account"=>(string)$row->LoginName,"role"=>"director"]]);
+          '
+          REM
+          )"
+          printf '%s' "$session_json" | base64 -w0 | sed 's/^/SMOKE_DIRECTOR_SESSION_B64=/' >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run authenticated production acceptance
+        working-directory: frontend
+        env:
+          CI: 'true'
+          SMOKE_BASE_URL: https://daan.lifenet.com.tw
+          SMOKE_BRANCH_ID: ${{ github.event.inputs.branch_id || '16' }}
+        run: npx playwright test e2e/tutoring-free-production.spec.js --project=chromium
+      - name: Upload acceptance report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutoring-free-production-acceptance-report
+          path: frontend/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
