@@ -115,6 +115,20 @@ describe('CalendarPrintDialog acceptance contract', () => {
     wrapper.unmount();
   });
 
+  it('keeps print preview and footer on a light, high-contrast palette in dark theme', async () => {
+    document.documentElement.dataset.theme = 'dark';
+    const wrapper = mount(CalendarPrintDialog, { attachTo: document.body, props: { open: false, branchId: 11, initialDate: '2026-09-15' } });
+    await wrapper.setProps({ open: true });
+    await flushPromises();
+    const panel = document.body.querySelector('.calendar-print-dialog__panel');
+    expect(panel).not.toBeNull();
+    expect(panel.style.getPropertyValue('--calendar-print-canvas')).toBe('white');
+    expect(panel.style.getPropertyValue('--calendar-print-muted')).toContain('black 65%');
+    expect(document.body.querySelector('.calendar-print-sheet footer')).not.toBeNull();
+    document.documentElement.removeAttribute('data-theme');
+    wrapper.unmount();
+  });
+
   it('fails closed on an error and distinguishes an empty successful range', async () => {
     const previousSessions = api.sessions;
     api.sessions = [];
