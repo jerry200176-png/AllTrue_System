@@ -3,6 +3,25 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-19-calendar-print-318
+    published_at: "2026-09-19"
+    audiences:
+      - director
+    importance: digest
+    title: 主任可列印週／月課表做人工核對
+    summary: 班級行事曆新增週／月列印預覽，提供總覽與完整每日明細。
+    items:
+      - category: added
+        text: 在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。
+      - category: improved
+        text: 明細包含學生、科目／班型、實際教師、日期時間、校區教室及請假／補課／代課／調課／取消狀態，適合紙本人工核對。
+      - category: action_required
+        text: 課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。
+    source_refs:
+      - "github:#3068"
+      - "github:in-app-318"
+      - "changelog:2026-09-19:calendar-print-318"
+
   - id: staff-2026-09-19-shared-plan-slot-edit-324
     published_at: "2026-09-19"
     audiences:
