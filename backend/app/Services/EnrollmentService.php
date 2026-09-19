@@ -702,7 +702,6 @@ class EnrollmentService
             $identitySourceStudentId,
             $role,
             $campusIds,
-            $classType,
             $isTutoring
         ) {
             $student = $studentId > 0
