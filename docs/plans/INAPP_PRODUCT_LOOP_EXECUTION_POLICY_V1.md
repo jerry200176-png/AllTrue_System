@@ -21,6 +21,17 @@ Cursor (or any implementing agent) must:
 
 Do **not** invent the missing Founder decision. Do **not** code merely because the reporter proposed a solution — prefer the smallest existing-authority-compatible fix for the user problem.
 
+### Difficulty vs authorization (model routing)
+
+Difficulty (needs Sol/Astra planning) is **not** the same axis as authorization (Founder gate).
+
+- Clear low-risk work inside the auto-fix envelope → approved light implementation profile.
+- Complex engineering that is already inside existing authority (expected behavior known, or a visible Founder GO) → strong model produces a bounded Plan revision → light worker implements that revision. A strong Plan does **not** grant new production, identity, billing, migration, or data-repair authority.
+- `PLAN_REQUIRED` remains the Founder Decision Packet class. Do not rename or reinterpret it to cancel the Founder gate.
+- If the required strong model is unavailable or actual-model evidence cannot exclude a disallowed fallback: mark that item `CAPACITY_BLOCKED`, do not silently downgrade, and continue other authorized work.
+
+Portable contract (do not fork here): portfolio-ops `docs/model-routed-product-delivery.md` and `docs/templates/strong-plan-handoff.md`.
+
 ---
 
 ## Signal classification
