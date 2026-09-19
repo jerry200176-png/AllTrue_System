@@ -115,7 +115,7 @@ export const staffUpdates = [
     "version": "2026.09.19"
   },
   {
-    "id": "staff-2026-09-19-course-upcoming-dates-321",
+    "id": "staff-2026-09-19-counseling-free-325",
     "publishedAt": "2026-09-19",
     "effectiveAt": null,
     "audiences": [
@@ -127,25 +127,30 @@ export const staffUpdates = [
       "teacher"
     ],
     "importance": "digest",
-    "title": "課程清單直接顯示近期上課日期",
-    "summary": "不用逐一開啟課程，時段欄會顯示今日起最近三堂與剩餘堂數。",
+    "title": "輔導課免填金額且不產生應收",
+    "summary": "建立輔導課時不需填寫金額或繳費日期，系統不會產生應收帳款或繳費提醒。",
     "items": [
-      "課程清單直接顯示今日起最近三堂有效上課日期與時間。",
-      "超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。"
+      "輔導課建立表單隱藏金額與繳費日期，並清楚標示免費課程。",
+      "新建輔導課固定不產生帳單、收款或催繳通知；既有歷史帳務與核薪規則不變。"
     ],
     "sections": [
       {
         "title": "操作更順手",
         "items": [
-          "課程清單直接顯示今日起最近三堂有效上課日期與時間。",
-          "超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。"
+          "輔導課建立表單隱藏金額與繳費日期，並清楚標示免費課程。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "新建輔導課固定不產生帳單、收款或催繳通知；既有歷史帳務與核薪規則不變。"
         ]
       }
     ],
     "sourceRefs": [
-      "github:#3071",
-      "github:in-app-321",
-      "changelog:2026-09-19:course-upcoming-dates-321"
+      "github:#3075",
+      "github:in-app-325",
+      "changelog:2026-09-19:counseling-free-325"
     ],
     "date": "2026-09-19",
     "version": "2026.09.19"

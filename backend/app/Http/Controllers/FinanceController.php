@@ -65,7 +65,10 @@ class FinanceController extends Controller
 
         $totalClasses = $classQuery->count();
         $paidClasses = (clone $classQuery)->where('Paid', 1)->count();
-        $unpaidClasses = $totalClasses - $paidClasses;
+        $unpaidClasses = (clone $classQuery)
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
+            ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))
+            ->count();
 
         $classIds = (clone $classQuery)->pluck('ID')->all();
 
@@ -132,7 +135,8 @@ class FinanceController extends Controller
         $query = StudentClass::where(function ($q) {
             $q->where('Paid', 0)
               ->orWhere('RemainingSessions', '<=', 2);
-        })->where('Stop', 0);
+        })->where('Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
 
         if (!empty($studentIds)) {
             $query->whereIn('StudentID', $studentIds);
@@ -2508,6 +2512,7 @@ class FinanceController extends Controller
 
         $query = StudentClass::with('student')
             ->where('Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
             ->whereRaw('CAST(Charge AS SIGNED) > CAST(COALESCE(Pay, 0) AS SIGNED)');
 
         if (!empty($campusIds)) {
