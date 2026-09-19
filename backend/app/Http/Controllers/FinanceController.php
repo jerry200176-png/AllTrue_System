@@ -2512,6 +2512,7 @@ class FinanceController extends Controller
 
         $query = StudentClass::with('student')
             ->where('Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
             ->whereRaw('CAST(Charge AS SIGNED) > CAST(COALESCE(Pay, 0) AS SIGNED)');
 
         if (!empty($campusIds)) {

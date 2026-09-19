@@ -777,8 +777,9 @@ class ParentPortalController extends Controller
             ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap, $packageMap, $studentCampusMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
+                $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
-                $monthlyFee     = $isMonthly ? $this->resolveMonthlyFee($c) : 0;
+                $monthlyFee     = $isMonthly && !$isTutoring ? $this->resolveMonthlyFee($c) : 0;
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
                 $paid           = $this->isClassPaid($c, $paidAtMap);
                 $stopped        = (bool) $c->Stop;
@@ -802,8 +803,9 @@ class ParentPortalController extends Controller
                     'used_sessions'        => $metrics['used'],
                     'is_stopped'           => $stopped,
                     'paid'                 => $paid,
-                    'payment_status'       => $paid ? 'paid' : 'unpaid',
-                    'payment_status_label' => $paid ? '已繳費' : '未繳費',
+                    'is_tutoring'          => $isTutoring,
+                    'payment_status'       => $isTutoring ? 'free' : ($paid ? 'paid' : 'unpaid'),
+                    'payment_status_label' => $isTutoring ? '免費（不適用）' : ($paid ? '已繳費' : '未繳費'),
                     'lifecycle_status'     => $stopped ? 'closed' : 'active',
                     'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
                     // 共用方案池（堂數制）：null 代表非共用方案，前端維持原本 per-course 顯示。

@@ -400,6 +400,11 @@ class ParentPortalLoginIsolationTest extends TestCase
         ]);
 
         $res->assertOk();
+        $courseCards = collect($res->json('classes'));
+        $tutoringCard = $courseCards->firstWhere('id', $tutoringCourse->ID);
+        $this->assertSame('free', $tutoringCard['payment_status']);
+        $this->assertSame('免費（不適用）', $tutoringCard['payment_status_label']);
+        $this->assertTrue($tutoringCard['is_tutoring']);
         $alertClassIds = collect($res->json('payment_alerts'))->pluck('class_id')->all();
         $this->assertNotContains($tutoringCourse->ID, $alertClassIds);
         $this->assertContains($unpaidCourse->ID, $alertClassIds);

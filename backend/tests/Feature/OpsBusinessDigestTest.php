@@ -132,6 +132,31 @@ class OpsBusinessDigestTest extends TestCase
         $this->assertSame(1, $metrics['revenue']['unpaid_active_courses']);
     }
 
+    public function test_stranded_projection_excludes_tutoring_but_keeps_regular_paid_control(): void
+    {
+        $studentId = 95012;
+        DB::table('Student')->insert([
+            'id' => $studentId, 'name' => 'Digest Stranded Control', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $base = [
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'StartDate' => now()->subDays(30)->toDateTimeString(),
+            'SessionCount' => 8, 'SessionDuration' => 60, 'RemainingSessions' => 3,
+            'UsedSessions' => 5, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ];
+        DB::table('StudentClass')->insert($base + [
+            'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 0, 'ClassType' => ' TuToRiNg ',
+        ]);
+        DB::table('StudentClass')->insert($base + [
+            'Charge' => 1500, 'Pay' => 1500, 'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_one',
+        ]);
+
+        $metrics = app(BusinessDigestService::class)->metrics(1);
+
+        $this->assertSame(3, $metrics['revenue']['stranded_sessions']);
+        $this->assertSame(1500.0, $metrics['revenue']['stranded_amount']);
+    }
+
     public function test_counter_divergence_separates_director_review_from_legacy_and_inactive_rows(): void
     {
         $studentId = 95020;

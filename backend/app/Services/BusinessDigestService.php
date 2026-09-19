@@ -374,6 +374,7 @@ class BusinessDigestService
         $q = DB::table('StudentClass as sc')
             ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
             ->where('sc.ScheduleMode', 'count')
+            ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> ?", ['tutoring'])
             ->where('sc.RemainingSessions', '>', 0)
             ->whereNotExists(function ($e) {
                 $e->select(DB::raw(1))->from('ClassSession as cs')
