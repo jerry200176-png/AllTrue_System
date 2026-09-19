@@ -19,13 +19,16 @@ RFID = campus presence only. Teacher/manual attendance remains course-attendance
 | When (UTC) | Slice | State | Evidence |
 |---|---|---|---|
 | 2026-09-16 | Planning | accepted | Issue comments + Founder locked v1 policy in session |
-| 2026-09-16 | **RFID-0** | coded → PR (this branch) | RFC + cross-links + this status file |
+| 2026-09-16 | **RFID-0** | merged (#2975) | RFC + cross-links + this status file; runtime unchanged |
+| 2026-09-19 | **RFID-1** | coded → PR (review pending) | Dedicated presence model/API, campus isolation, transaction/unique-open safeguards |
 
 ---
 
 ## Current slice
 
-**RFID-0** — policy/contracts/docs only. No runtime behavior change.
+**RFID-1** — dedicated presence model and read APIs. This does not activate the
+RFID-2 swipe re-boundary or production behavior. Merge and any activation remain
+Founder-only gates under the accepted RFC.
 
 ### RFID-0 checklist
 
@@ -33,9 +36,9 @@ RFID = campus presence only. Teacher/manual attendance remains course-attendance
 - [x] Current vs target called out (runtime still auto-deducts until RFID-2)
 - [x] Feature flag names reserved in RFC
 - [x] INDEX / SYSTEM_TECH_GUIDE / api-swipe-rfid cross-links
-- [ ] PR opened
-- [ ] CI green
-- [ ] Merged
+- [x] PR opened (RFID-0 / #2975)
+- [x] CI green (RFID-0 / #2975)
+- [x] Merged (#2975)
 - [ ] Deployed (docs-only; N/A beyond merge to main)
 - [ ] Runtime verified (N/A — no behavior change)
 
@@ -43,7 +46,7 @@ RFID = campus presence only. Teacher/manual attendance remains course-attendance
 
 ## Next selected task
 
-**RFID-1** — `StudentCampusPresence` additive schema + presence/candidate APIs (no swipe re-boundary yet).
+**RFID-2** — `SwipeRfidController` re-boundary (flag; no production activation in this slice).
 
 Blocked on: nothing for design/schema PR after RFID-0 merge.  
 RFID-2 production canary still needs a canary `Campus.id` (defer until flag enable).
@@ -62,8 +65,8 @@ RFID-2 production canary still needs a canary `Campus.id` (defer until flag enab
 
 ## Slice backlog
 
-1. RFID-0 docs/contracts — **in progress**
-2. RFID-1 presence model + API
+1. RFID-0 docs/contracts — **merged (#2975)**
+2. RFID-1 presence model + API — **review pending; no production activation**
 3. RFID-2 SwipeRfidController re-boundary (flag)
 4. RFID-3 card onboarding/audit
 5. RFID-4 teacher evidence UI

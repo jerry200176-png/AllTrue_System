@@ -1,3 +1,7 @@
+## 2026-09-19 — fix(rfid): campus presence isolation and collision handling (#2981)
+<!-- release-notes: silent_ship=silent-2026-09-19-rfid-presence-isolation-2981 -->
+- RFID-1 review repair keeps explicit idempotency keys bound to student/campus, distinguishes the two named duplicate constraints, validates campus/date inputs, and keeps RFID presence separate from attendance and billing. Merge and activation remain Founder-only; this is not a production verification claim.
+
 ## 2026-09-19 — fix(course-mgmt): shared-plan slot edit preserves past/future boundaries (in-app #324 / GitHub #3074)
 <!-- release-notes: staff_update=staff-2026-09-19-shared-plan-slot-edit-324 -->
 - SourceRef `alltrue:bug_report:324`：多科共用方案改固定時段時，缺少首堂日的 legacy edit payload 只同步未來可變堂次，不回補今天以前，也不刪除既有未來例外；方案堂數與其他科目不變。
