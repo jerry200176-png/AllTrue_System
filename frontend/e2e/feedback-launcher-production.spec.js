@@ -90,12 +90,15 @@ function installSyntheticProfile(page) {
     localStorage.setItem('alltrue_session', JSON.stringify(safe));
     localStorage.setItem('app_branch', String(branch));
     sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-    window.__feedbackAcceptance = { blockedSelfTests: [], runtimeViolations: [], telemetry: [] };
+    window.__feedbackAcceptance = { blockedSelfTests: [], runtimeViolations: [], telemetry: [], selfTestActive: false };
 
     const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
     const telemetryPath = '/api/v1/adoption/events';
     const write = (channel, method, url) => {
-      window.__feedbackAcceptance.blockedSelfTests.push({ channel, method: String(method).toUpperCase() });
+      const target = window.__feedbackAcceptance.selfTestActive
+        ? window.__feedbackAcceptance.blockedSelfTests
+        : window.__feedbackAcceptance.runtimeViolations;
+      target.push({ channel, method: String(method).toUpperCase() });
       throw new Error(`feedback acceptance blocked ${method} ${url}`);
     };
     const isTelemetry = (url, method) => method === 'POST'
@@ -189,6 +192,7 @@ function installReadOnlyRoutes(page) {
 
 async function assertSyntheticGuards(page) {
   await page.evaluate(async () => {
+    window.__feedbackAcceptance.selfTestActive = true;
     const attempts = [
       async () => { try { await fetch('/api/v1/__feedback_write__', { method: 'POST' }); } catch (_) {} },
       async () => {
@@ -206,11 +210,16 @@ async function assertSyntheticGuards(page) {
       async () => { try { navigator.sendBeacon('/api/v1/__feedback_write__', '{}'); } catch (_) {} },
       async () => { try { window.print(); } catch (_) {} },
     ];
+    try {
+      for (const attempt of attempts) await attempt();
+    } finally {
+      window.__feedbackAcceptance.selfTestActive = false;
+    }
     for (const attempt of attempts) await attempt();
   });
   const state = await page.evaluate(() => window.__feedbackAcceptance);
-  expect(state.runtimeViolations).toEqual([]);
   expect(new Set(state.blockedSelfTests.map((entry) => entry.channel))).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-submit', 'sendBeacon', 'print']));
+  expect(new Set(state.runtimeViolations.map((entry) => entry.channel))).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-submit', 'sendBeacon', 'print']));
 }
 
 async function assertFeedbackChoices(page, viewport) {
