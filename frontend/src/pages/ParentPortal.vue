@@ -826,7 +826,8 @@
                 <span v-if="c.campus_name" class="pp-campus-label">{{ c.campus_name }}</span>
                 <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
                 <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">共用方案</span>
-                <span v-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
+                <span v-if="c.is_tutoring || c.payment_status === 'free'" class="pp-badge pp-badge-info-soft">{{ c.payment_status_label || '免費（不適用）' }}</span>
+                <span v-else-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
                 <span v-else class="pp-badge pp-badge-warning">未繳費</span>
                 <span v-if="c.is_stopped" class="pp-badge pp-badge-neutral">{{ c.lifecycle_status_label || '課程已結束' }}</span>
               </div>
@@ -1525,6 +1526,7 @@ const hwIcon = (v) => ({ completed: 'task_alt', partial: 'pending', incomplete: 
 const hwLabel = (v) => ({ completed: '已完成', partial: '部分完成', incomplete: '未完成', missing: '未繳交' }[v] || v || '—');
 
 const courseCardClass = (c) => {
+  if (c.is_tutoring || c.payment_status === 'free') return '';
   if (c.is_stopped) return c.paid ? 'settled' : 'stopped';
   if (isMonthlyCourse(c)) {
     if (!c.paid) return 'warning';
