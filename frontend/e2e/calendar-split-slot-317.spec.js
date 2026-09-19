@@ -1,7 +1,8 @@
 // @ts-check
 /**
- * in-app #317 / GitHub #3067 — 1:2/1:3 並排窄欄文字溢出回歸。
+ * in-app #317 / GitHub #3067 — 1:2/1:3 並排窄欄文字可讀性。
  * 合成資料 + pilot mount；不連 production、不上傳 reporter 原圖。
+ * before baseline 為同頁 DOM 模擬舊版垂直堆疊，非舊版 build。
  */
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
@@ -23,7 +24,7 @@ async function openDirectorMondayDayView(page) {
   await page.waitForSelector('.teacher-grid .course-block');
 }
 
-async function installDirectorDayCalendarMocks(page, { tripleSlot = true } = {}) {
+async function installDirectorDayCalendarMocks(page, { tripleSlot = true, pairSlot = false } = {}) {
   const mondayStr = mondayYmd();
   const session = {
     access_token: 'e2e-director-token',
@@ -43,8 +44,14 @@ async function installDirectorDayCalendarMocks(page, { tripleSlot = true } = {})
     { id: 503, student_id: 13, student_name: '廖同學', teacher_id: 9001, teacher_name: '陳老師', subject: 'math', class_type: 'one_on_three', day_of_week: 1, start_time: '14:00', end_time: '16:00', duration_hours: 2, status: 'active', room_id: 'A101', weeks: [1, 2, 3, 4, 5] },
   ] : [];
 
+  const pairCourses = pairSlot ? [
+    { id: 511, student_id: 21, student_name: '張同學', teacher_id: 9003, teacher_name: '黃老師', subject: 'english', class_type: 'one_on_two', day_of_week: 1, start_time: '10:00', end_time: '12:00', duration_hours: 2, status: 'active', room_id: 'C303', weeks: [1, 2, 3, 4, 5] },
+    { id: 512, student_id: 22, student_name: '林同學', teacher_id: 9003, teacher_name: '黃老師', subject: 'english', class_type: 'one_on_two', day_of_week: 1, start_time: '10:00', end_time: '12:00', duration_hours: 2, status: 'active', room_id: 'C303', weeks: [1, 2, 3, 4, 5] },
+  ] : [];
+
   const courses = [
     ...tripleCourses,
+    ...pairCourses,
     { id: 504, student_id: 14, student_name: '李依珊', teacher_id: 9002, teacher_name: '林老師', subject: 'physics', class_type: 'one_on_three', day_of_week: 1, start_time: '14:00', end_time: '16:00', duration_hours: 2, status: 'active', room_id: 'B202', weeks: [1, 2, 3, 4, 5] },
     { id: 505, student_id: 15, student_name: '吳苡嫙', teacher_id: 9001, teacher_name: '陳老師', subject: 'math', class_type: 'one_on_one', day_of_week: 1, start_time: '16:00', end_time: '18:00', duration_hours: 2, status: 'active', room_id: 'A101', weeks: [1, 2, 3, 4, 5] },
   ];
@@ -59,7 +66,17 @@ async function installDirectorDayCalendarMocks(page, { tripleSlot = true } = {})
     }
     if (pathname.includes('/schedules')) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
     if (pathname.includes('/teachers')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: 9001, username: '陳老師', name: '陳老師' }, { id: 9002, username: '林老師', name: '林老師' }] }) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            { id: 9001, username: '陳老師', name: '陳老師' },
+            { id: 9002, username: '林老師', name: '林老師' },
+            { id: 9003, username: '黃老師', name: '黃老師' },
+          ],
+        }),
+      });
     }
     if (pathname.includes('/students')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: courses.map((c) => ({ id: c.student_id, name: c.student_name })) }) });
@@ -68,26 +85,65 @@ async function installDirectorDayCalendarMocks(page, { tripleSlot = true } = {})
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: 1, name: '台北總部' }] }) });
     }
     if (pathname.includes('/rooms')) {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [{ id: 'A101', name: 'A101', capacity: 3 }, { id: 'B202', name: 'B202', capacity: 3 }] }) });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [
+            { id: 'A101', name: 'A101', capacity: 3 },
+            { id: 'B202', name: 'B202', capacity: 3 },
+            { id: 'C303', name: 'C303', capacity: 2 },
+          ],
+        }),
+      });
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, session_date: mondayStr }) });
   });
 }
 
-async function assertNoHorizontalClip(page, selector) {
-  const overflow = await page.locator(selector).evaluateAll((nodes) => nodes.map((el) => ({
-    clip: el.scrollWidth > el.clientWidth + 1,
-    scrollWidth: el.scrollWidth,
-    clientWidth: el.clientWidth,
-    text: el.textContent?.trim() || '',
-  })));
-  for (const row of overflow) {
-    expect(row.clip, `overflow on "${row.text}" (${row.scrollWidth}/${row.clientWidth})`).toBe(false);
-  }
+async function readTextMetrics(locator) {
+  return locator.evaluate((el) => {
+    const style = window.getComputedStyle(el);
+    const text = (el.textContent || '').trim();
+    const nowrap = style.whiteSpace === 'nowrap' || style.whiteSpace === 'pre';
+    return {
+      text,
+      horizontalClip: nowrap && el.scrollWidth > el.clientWidth + 1,
+      fontSize: parseFloat(style.fontSize || '0'),
+      visible: el.offsetParent !== null || style.display !== 'none',
+    };
+  });
+}
+
+/** 原回報核心：班型/科目等 meta 子元素在 overflow:hidden 下仍須可辨識。 */
+async function assertMetaChildReadable(locator, { expectText } = {}) {
+  const row = await readTextMetrics(locator);
+  expect(row.visible, `hidden meta "${row.text}"`).toBe(true);
+  expect(row.text.length).toBeGreaterThan(0);
+  expect(row.horizontalClip, `meta horizontal clip on "${row.text}"`).toBe(false);
+  if (expectText) expect(row.text).toBe(expectText);
+  expect(row.fontSize, `meta font too small on "${row.text}"`).toBeGreaterThanOrEqual(9);
+}
+
+/** 姓名：可 ellipsis，但短名在窄欄仍應完整可見（對齊附件 #264 情境）。 */
+async function assertShortStudentNameReadable(locator, expectedName) {
+  const row = await readTextMetrics(locator);
+  expect(row.visible).toBe(true);
+  expect(row.text).toBe(expectedName);
+  expect(row.horizontalClip, `student name clip on "${row.text}"`).toBe(false);
+  expect(row.fontSize).toBeGreaterThanOrEqual(9);
+}
+
+async function pinNarrowSplitColumn(page, blockLocator, widthPx = 46) {
+  await blockLocator.evaluate((block, w) => {
+    block.style.width = `${w}px`;
+    block.style.minWidth = `${w}px`;
+    block.style.maxWidth = `${w}px`;
+  }, widthPx);
 }
 
 test.describe('Calendar 1:2/1:3 split-slot layout (#317)', () => {
-  test('day view: triple 1:3 blocks are side-by-side with non-clipping meta', async ({ page }) => {
+  test('day view: triple 1:3 blocks side-by-side; child text readable', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await installDirectorDayCalendarMocks(page, { tripleSlot: true });
     await openDirectorMondayDayView(page);
@@ -99,18 +155,33 @@ test.describe('Calendar 1:2/1:3 split-slot layout (#317)', () => {
     expect(boxes[1].left).toBeGreaterThan(boxes[0].left);
     expect(boxes[2].left).toBeGreaterThan(boxes[1].left);
 
-    await expect(splitBlocks.first().locator('.cb-meta-row')).toBeVisible();
-    await expect(splitBlocks.first().locator('.cb-type')).toHaveText('1:3');
-    await expect(splitBlocks.first().locator('.cb-detail')).not.toBeEmpty();
-
-    await assertNoHorizontalClip(page, '.teacher-col:first-child .course-block--split .cb-student');
-    await assertNoHorizontalClip(page, '.teacher-col:first-child .course-block--split .cb-meta-row');
+    const first = splitBlocks.first();
+    await pinNarrowSplitColumn(page, first, 46);
+    await assertShortStudentNameReadable(first.locator('.cb-student'), '巫同學');
+    await assertMetaChildReadable(first.locator('.cb-detail.cb-meta-item'));
+    await assertMetaChildReadable(first.locator('.cb-type.cb-meta-item'), { expectText: '1:3' });
 
     const evidenceDir = path.resolve(process.cwd(), '../.agent-session/evidence/inapp-317');
     fs.mkdirSync(evidenceDir, { recursive: true });
     await page.locator('.teacher-col').first().locator('.slot').filter({ has: page.locator('.course-block--split') }).first().screenshot({
       path: path.join(evidenceDir, 'split-slot-317-after.png'),
     });
+  });
+
+  test('day view: pair 1:2 split blocks keep short label readable at narrow width', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await installDirectorDayCalendarMocks(page, { tripleSlot: false, pairSlot: true });
+    await openDirectorMondayDayView(page);
+
+    const pairCol = page.locator('.teacher-col').filter({ has: page.locator('.course-block', { hasText: '張同學' }) }).first();
+    const splitBlocks = pairCol.locator('.course-block--split');
+    await expect(splitBlocks).toHaveCount(2);
+
+    const firstPair = splitBlocks.first();
+    await pinNarrowSplitColumn(page, firstPair, 46);
+    await assertShortStudentNameReadable(firstPair.locator('.cb-student'), '張同學');
+    await assertMetaChildReadable(firstPair.locator('.cb-type.cb-meta-item'), { expectText: '1:2' });
+    await assertMetaChildReadable(firstPair.locator('.cb-detail.cb-meta-item'));
   });
 
   test('regression: single one_on_one block keeps full class type label', async ({ page }) => {
@@ -121,26 +192,27 @@ test.describe('Calendar 1:2/1:3 split-slot layout (#317)', () => {
     const solo = page.locator('.course-block').filter({ hasText: '吳苡嫙' });
     await expect(solo).toBeVisible();
     await expect(solo).not.toHaveClass(/course-block--split/);
-    await expect(solo.locator('.cb-type')).toHaveText('一對一');
+    const soloBlock = page.locator('.course-block').filter({ hasText: '吳苡嫙' });
+    await assertShortStudentNameReadable(soloBlock.locator('.cb-student'), '吳苡嫙');
+    await assertMetaChildReadable(soloBlock.locator('.cb-type'), { expectText: '一對一' });
     await solo.click();
     await expect(page.locator('.session-edit-modal')).toBeVisible();
     await page.locator('.session-edit-modal button.ghost', { hasText: '關閉' }).click();
   });
 
-  test('before baseline: stacked meta lines clip in narrow split columns', async ({ page }) => {
+  test('synthetic before baseline: stacked meta clips; fix keeps type label readable', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await installDirectorDayCalendarMocks(page, { tripleSlot: true });
     await openDirectorMondayDayView(page);
 
-    const baseline = await page.locator('.teacher-col').first().locator('.course-block--split').first().evaluate((block) => {
-      // 模擬 reporter 原圖中 ~46px 寬的三等分窄欄（日檢視多學生同時段）
-      block.style.width = '46px';
-      block.style.minWidth = '46px';
-      block.style.maxWidth = '46px';
-      block.querySelectorAll('.cb-meta-row').forEach((n) => n.remove());
-      block.querySelectorAll('.cb-type').forEach((n) => n.remove());
-      block.querySelectorAll('.cb-detail').forEach((n) => n.remove());
-      block.querySelectorAll('.cb-student').forEach((n) => {
+    const block = page.locator('.teacher-col').first().locator('.course-block--split').first();
+    await pinNarrowSplitColumn(page, block, 46);
+
+    const syntheticBefore = await block.evaluate((el) => {
+      el.querySelectorAll('.cb-meta-row').forEach((n) => n.remove());
+      el.querySelectorAll('.cb-type').forEach((n) => n.remove());
+      el.querySelectorAll('.cb-detail').forEach((n) => n.remove());
+      el.querySelectorAll('.cb-student').forEach((n) => {
         n.classList.remove('cbc-split-slot', 'cbc-split-triple');
         n.style.fontSize = '14px';
       });
@@ -150,33 +222,26 @@ test.describe('Calendar 1:2/1:3 split-slot layout (#317)', () => {
       const type = document.createElement('div');
       type.className = 'cb-type';
       type.textContent = '一對三';
-      block.appendChild(detail);
-      block.appendChild(type);
-      const student = block.querySelector('.cb-student');
-      const typeEl = block.querySelector('.cb-type');
+      el.appendChild(detail);
+      el.appendChild(type);
+      const student = el.querySelector('.cb-student');
+      const typeEl = el.querySelector('.cb-type');
       return {
+        synthetic: true,
         studentClip: student ? student.scrollWidth > student.clientWidth + 1 : false,
         typeClip: typeEl ? typeEl.scrollWidth > typeEl.clientWidth + 1 : false,
-        lineCount: block.querySelectorAll('.cb-student, .cb-detail, .cb-type').length,
+        lineCount: el.querySelectorAll('.cb-student, .cb-detail, .cb-type').length,
       };
     });
-    expect(baseline.lineCount).toBeGreaterThanOrEqual(3);
-    expect(baseline.studentClip || baseline.typeClip).toBe(true);
+    expect(syntheticBefore.synthetic).toBe(true);
+    expect(syntheticBefore.lineCount).toBeGreaterThanOrEqual(3);
+    expect(syntheticBefore.studentClip || syntheticBefore.typeClip).toBe(true);
 
-    const afterFix = await page.locator('.teacher-col').first().locator('.course-block--split').nth(1).evaluate((block) => {
-      block.style.width = '46px';
-      block.style.minWidth = '46px';
-      block.style.maxWidth = '46px';
-      const student = block.querySelector('.cb-student');
-      const meta = block.querySelector('.cb-meta-row');
-      return {
-        studentClip: student ? student.scrollWidth > student.clientWidth + 1 : false,
-        metaClip: meta ? meta.scrollWidth > meta.clientWidth + 1 : false,
-        hasMetaRow: !!meta,
-      };
-    });
-    expect(afterFix.hasMetaRow).toBe(true);
-    expect(afterFix.studentClip).toBe(false);
-    expect(afterFix.metaClip).toBe(false);
+    await page.reload();
+    await openDirectorMondayDayView(page);
+    const fixed = page.locator('.teacher-col').first().locator('.course-block--split').nth(1);
+    await pinNarrowSplitColumn(page, fixed, 46);
+    await assertShortStudentNameReadable(fixed.locator('.cb-student'), '陳同學');
+    await assertMetaChildReadable(fixed.locator('.cb-type.cb-meta-item'), { expectText: '1:3' });
   });
 });

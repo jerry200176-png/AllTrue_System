@@ -138,25 +138,48 @@ const metaRowClass = computed(() => ({
   font-weight: 700;
 }
 
-/* in-app #317：並排窄欄（1:2/1:3）內文改橫排 + 縮字，避免直向三行截斷 */
+/* in-app #317：並排窄欄改橫排 meta + 短標；靠 wrap/間距，不靠極小字 */
 .cb-student.cbc-split-slot {
   font-size: 11px;
-  line-height: 1.1;
-  letter-spacing: -0.35px;
+  line-height: 1.15;
+  letter-spacing: -0.2px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: keep-all;
 }
 .cb-student.cbc-split-triple {
-  font-size: 10px;
-  letter-spacing: -0.45px;
+  font-size: 11px;
+  letter-spacing: -0.25px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: keep-all;
 }
 .cb-meta-row.cbc-split-slot {
-  gap: 3px;
+  gap: 2px 3px;
+  flex-wrap: wrap;
+  align-items: baseline;
+  line-height: 1.15;
 }
 .cb-meta-row.cbc-split-slot .cb-meta-item {
-  font-size: 8px;
-  line-height: 1.1;
+  font-size: 9px;
+  line-height: 1.15;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  word-break: keep-all;
 }
-.cb-meta-row.cbc-split-triple .cb-meta-item {
-  font-size: 7px;
+.cb-meta-row.cbc-split-slot .cb-detail.cb-meta-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cb-meta-row.cbc-split-slot .cb-type.cb-meta-item {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
 }
 
 /* rc-tag 系列（自帶一份，父層 legend 仍保留自己那份） */

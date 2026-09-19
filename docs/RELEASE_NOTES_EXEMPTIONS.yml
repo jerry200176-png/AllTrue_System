@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-19-calendar-split-slot-317-polish
+    changelog_date: "2026-09-19"
+    changelog_title: "fix(calendar): split-slot wrap spacing polish (in-app #317)"
+    reason: 同 #317 窄欄可讀性補修（wrap/字級）；staff 更新已在同日 digest 涵蓋。
+
   - id: silent-2026-09-18-inapp-intake-github-first
     changelog_date: "2026-09-18"
     changelog_title: "docs(agents): in-app product-loop intake→GitHub mapping first"

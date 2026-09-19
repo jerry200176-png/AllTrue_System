@@ -3243,8 +3243,9 @@ onMounted(() => {
   border-radius: 6px;
 }
 .course-block--split {
-  padding: 3px 2px;
+  padding: 3px 3px;
   border-radius: 6px;
+  min-width: 0;
 }
 /* var(--ds-warning) Step 5：compact cb-* 已改 prop 驅動（.cbc-compact），移至 CourseBlockContent.vue */
 .time-col {

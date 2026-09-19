@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.19",
     "date": "2026-09-19",
     "title": "2026.09.19 草稿（未發布）",
-    "summary": "1：2/1：3 split-slot text readability",
+    "summary": "slot wrap spacing polish；1：2/1：3 split-slot text readability",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "slot wrap spacing polish",
           "1：2/1：3 split-slot text readability"
         ]
       }
     ],
     "items": [
+      "slot wrap spacing polish",
       "1：2/1：3 split-slot text readability"
     ]
   },
