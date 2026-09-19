@@ -196,6 +196,52 @@ export const staffUpdates = [
     "version": "2026.09.19"
   },
   {
+    "id": "staff-2026-09-19-calendar-print-318",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任可列印週／月課表做人工核對",
+    "summary": "班級行事曆新增週／月列印預覽，提供總覽與完整每日明細。",
+    "items": [
+      "在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。",
+      "明細含學生、科目／班型、教師、日期時間、校區教室及異動狀態；暗色主題列印維持白底深字與清晰邊界。",
+      "課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "明細含學生、科目／班型、教師、日期時間、校區教室及異動狀態；暗色主題列印維持白底深字與清晰邊界。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3068",
+      "github:in-app-318",
+      "changelog:2026-09-19:calendar-print-318"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
     "id": "staff-2026-09-18-course-manager-v1-on",
     "publishedAt": "2026-09-18",
     "effectiveAt": null,

@@ -3465,3 +3465,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-09-19 — fix(billing): counseling courses are free and non-collectible (in-app #325 / GitHub #3075)
 <!-- release-notes: staff_update=staff-2026-09-19-counseling-free-325 -->
 - 新建輔導課不再要求填寫金額或繳費日期；後端固定為零金額、未繳且不建立應收帳款，也不進繳費／續課提醒與催繳通知。既有歷史帳務與核薪規則不變。
+
+## 2026-09-19 — feat(calendar): director week/month print preview (in-app #318 / GitHub #3068)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
+- 主任可從班級行事曆列印目前有權限查看的週／月課表，包含總覽、每日明細、學生、課程、教師、日期時間、校區教室與異動狀態；僅透過瀏覽器列印，不建立額外檔案或資料來源。

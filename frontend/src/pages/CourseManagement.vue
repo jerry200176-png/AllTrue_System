@@ -365,6 +365,23 @@
                           <span class="row-badge" :class="'row-badge--' + w.tone" :title="w.title">{{ w.label }}</span>
                         </div>
                       </template>
+                      <div class="upcoming-session-preview" aria-label="近期上課">
+                        <span class="upcoming-session-preview__label">近期上課</span>
+                        <span v-if="coursesLoading" class="hint">上課日期載入中…</span>
+                        <template v-else-if="sessionDataLoadFailed">
+                          <span class="session-load-error-hint">上課日期暫時無法載入。</span>
+                          <button type="button" class="small ghost upcoming-session-preview__retry" :aria-label="`重新載入${getSubjectLabel(c.subject)}上課日期`" @click.stop="retryLoadCourseSessions(c)">重新載入</button>
+                        </template>
+                        <template v-else>
+                          <template v-if="upcomingSessionPreview(c, { todayYmd, limit: 3 }).total > 0">
+                            <span v-for="unit in upcomingSessionPreview(c, { todayYmd, limit: 3 }).visible" :key="sessionRowKey(unit)" class="upcoming-session-preview__item">
+                              {{ formatSessionChipDate(unit) }}<span v-if="unit.isProjected" class="upcoming-session-preview__projected"> 預排</span>
+                            </span>
+                            <span v-if="upcomingSessionPreview(c, { todayYmd, limit: 3 }).overflow > 0" class="upcoming-session-preview__overflow">另有 {{ upcomingSessionPreview(c, { todayYmd, limit: 3 }).overflow }} 堂</span>
+                          </template>
+                          <span v-else class="hint">目前沒有即將上課日期。</span>
+                        </template>
+                      </div>
                     </td>
                     <td>
                       <div class="payment-status-and-action">
@@ -1747,7 +1764,7 @@ const visibleGroups = computed(() =>
 );
 
 const {
-  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
+  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, upcomingSessionPreview, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
   getSessionPlanningStatus, canMaterializeProjectedSession,
   getCourseSessionRows, getSessionRowsForDate, getSessionRowById, getSessionDisplayRow,
   getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
@@ -1799,8 +1816,8 @@ async function retryLoadCourseSessions(course) {
       if (!token) return;
       const ok = await loadClassSessionsForCourses(courses.value, token);
       if (ok !== false) {
-        sessionDataLoadFailed.value = false;
-        await loadEffectiveSessionDates(courses.value, token);
+        const effectiveSessionsOk = await loadEffectiveSessionDates(courses.value, token);
+        if (effectiveSessionsOk !== false) sessionDataLoadFailed.value = false;
       }
     } catch (_) { /* keep failed flag */ }
     return;
@@ -4600,8 +4617,9 @@ const loadCourses = async (page = 1) => {
         const sessionsOk = await loadClassSessionsForCourses(result, token, isCurrent);
         if (!isCurrent()) return;
         if (sessionsOk === false) sessionDataLoadFailed.value = true;
-        await loadEffectiveSessionDates(result, token, isCurrent);
+        const effectiveSessionsOk = await loadEffectiveSessionDates(result, token, isCurrent);
         if (!isCurrent()) return;
+        if (effectiveSessionsOk === false) sessionDataLoadFailed.value = true;
         if (isCurrentListRequest(requestId, courseLoadRequestId)) coursesLoading.value = false;
         return;
       }
@@ -4654,8 +4672,9 @@ const loadCourses = async (page = 1) => {
     const sessionsOk = await loadClassSessionsForCourses(result, token || '', isCurrent);
     if (!isCurrent()) return;
     if (sessionsOk === false) sessionDataLoadFailed.value = true;
-    await loadEffectiveSessionDates(result, token || '', isCurrent);
+    const effectiveSessionsOk = await loadEffectiveSessionDates(result, token || '', isCurrent);
     if (!isCurrent()) return;
+    if (effectiveSessionsOk === false) sessionDataLoadFailed.value = true;
   } catch (_) {
     if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
     sessionsByCourse.value = {};
@@ -6911,6 +6930,41 @@ onUnmounted(() => {
 
 .schedule-slot-line {
   line-height: 1.35;
+}
+.upcoming-session-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 6px;
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+.upcoming-session-preview__label {
+  flex-basis: 100%;
+  color: var(--ds-ink-mute);
+  font-weight: 700;
+}
+.upcoming-session-preview__item,
+.upcoming-session-preview__overflow {
+  color: var(--ds-ink);
+}
+.upcoming-session-preview__item + .upcoming-session-preview__item::before {
+  content: '／';
+  color: var(--ds-hairline);
+  margin-right: 6px;
+}
+.upcoming-session-preview__projected {
+  color: var(--ds-ink-mute);
+}
+.upcoming-session-preview__overflow {
+  color: var(--ds-primary);
+  font-weight: 700;
+}
+.upcoming-session-preview__retry {
+  padding: 1px 5px;
+  font-size: 11px;
 }
 /* #2007 phase 2: one badge line, one tone-coded chip — replaces the old
    schedule-drift-badge/contract-exception-badge/usage-balance-warning trio
