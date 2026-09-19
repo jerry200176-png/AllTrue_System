@@ -28,6 +28,12 @@ const requestToken = ref(0);
 const opener = ref(null);
 let printStyle = null;
 let printFallbackTimer = null;
+const printPalette = {
+  '--calendar-print-canvas': 'white',
+  '--calendar-print-ink': 'color-mix(in srgb, black 88%, white)',
+  '--calendar-print-muted': 'color-mix(in srgb, black 65%, white)',
+  '--calendar-print-border': 'color-mix(in srgb, black 28%, white)',
+};
 
 const range = computed(() => getRange(period.value, currentDate.value));
 const rows = computed(() => filterPrintRows(allRows.value, filters.value));
@@ -130,7 +136,7 @@ onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('keydown', on
 <template>
   <Teleport to="body">
     <div v-if="open" data-calendar-print-dialog class="calendar-print-dialog" role="dialog" aria-modal="true" aria-labelledby="calendar-print-title" aria-describedby="calendar-print-description">
-      <div class="calendar-print-dialog__panel">
+      <div class="calendar-print-dialog__panel" :style="printPalette">
         <header class="calendar-print-controls">
           <div><h2 id="calendar-print-title">列印課表</h2><p id="calendar-print-description">主任人工核對用；僅顯示目前帳號可見的資料。</p></div>
           <div class="calendar-print-actions"><button type="button" @click="close">取消</button><button type="button" :disabled="!canPrint" @click="printReport">列印／另存 PDF</button></div>
@@ -164,25 +170,25 @@ onBeforeUnmount(() => { cleanupPrint(); window.removeEventListener('keydown', on
 
 <style>
 .calendar-print-dialog { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 23, 42, .58); overflow: auto; padding: 24px; }
-.calendar-print-dialog__panel { max-width: 1280px; margin: auto; background: var(--ds-canvas); border-radius: 10px; padding: 20px; color: var(--ds-ink); }
+.calendar-print-dialog__panel { --calendar-print-canvas: white; --calendar-print-ink: color-mix(in srgb, black 88%, white); --calendar-print-muted: color-mix(in srgb, black 65%, white); --calendar-print-border: color-mix(in srgb, black 28%, white); max-width: 1280px; margin: auto; background: var(--calendar-print-canvas); border-radius: 10px; padding: 20px; color: var(--calendar-print-ink); }
 .calendar-print-controls, .calendar-print-toolbar, .calendar-print-actions { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.calendar-print-toolbar { justify-content: flex-start; padding: 14px 0; border-bottom: 1px solid var(--ds-hairline); }
+.calendar-print-toolbar { justify-content: flex-start; padding: 14px 0; border-bottom: 1px solid var(--calendar-print-border); }
 .calendar-print-toolbar label { display: inline-flex; gap: 5px; align-items: center; font-size: 13px; }
-.calendar-print-toolbar input, .calendar-print-toolbar select, .calendar-print-toolbar button, .calendar-print-actions button { min-height: 32px; border: 1px solid var(--ds-hairline-input); border-radius: 5px; background: var(--ds-canvas); padding: 4px 9px; }
-.calendar-print-statuses { display: inline-flex; gap: 7px; align-items: center; border: 1px solid var(--ds-hairline-input); border-radius: 5px; padding: 4px 8px; margin: 0; }
+.calendar-print-toolbar input, .calendar-print-toolbar select, .calendar-print-toolbar button, .calendar-print-actions button { min-height: 32px; border: 1px solid var(--calendar-print-border); border-radius: 5px; background: var(--calendar-print-canvas); padding: 4px 9px; }
+.calendar-print-statuses { display: inline-flex; gap: 7px; align-items: center; border: 1px solid var(--calendar-print-border); border-radius: 5px; padding: 4px 8px; margin: 0; }
 .calendar-print-statuses legend { font-size: 11px; }
 .calendar-print-actions button:last-child { background: var(--ds-cta); color: var(--ds-on-cta); border-color: var(--ds-cta); }
-.calendar-print-state { margin: 28px 0; padding: 20px; background: var(--ds-canvas-soft); }
+.calendar-print-state { margin: 28px 0; padding: 20px; background: var(--calendar-print-canvas); }
 .calendar-print-preview { margin-top: 18px; }
-.calendar-print-sheet { background: white; padding: 18px 0; break-after: page; page-break-after: always; }
+.calendar-print-sheet { background: var(--calendar-print-canvas); padding: 18px 0; break-after: page; page-break-after: always; }
 .calendar-print-sheet:last-child { break-after: auto; page-break-after: auto; }
 .calendar-print-sheet__header { display: grid; gap: 3px; font-size: 12px; margin-bottom: 10px; }
 .calendar-print-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
-.calendar-print-days article { border: 1px solid var(--ds-hairline-input); padding: 7px; min-height: 65px; display: grid; gap: 3px; }
-.calendar-print-days span { font-weight: 700; } .calendar-print-days small { color: var(--ds-ink-mute); }
+.calendar-print-days article { border: 1px solid var(--calendar-print-border); padding: 7px; min-height: 65px; display: grid; gap: 3px; }
+.calendar-print-days span { font-weight: 700; } .calendar-print-days small { color: var(--calendar-print-muted); }
 .calendar-print-sheet table { width: 100%; border-collapse: collapse; font-size: 11px; }
-.calendar-print-sheet th, .calendar-print-sheet td { border: 1px solid var(--ds-hairline-input); padding: 5px; text-align: left; vertical-align: top; }
+.calendar-print-sheet th, .calendar-print-sheet td { border: 1px solid var(--calendar-print-border); padding: 5px; text-align: left; vertical-align: top; }
 .calendar-print-sheet thead { display: table-header-group; } .calendar-print-sheet tr { break-inside: avoid; page-break-inside: avoid; }
-.calendar-print-sheet footer { margin-top: 12px; font-size: 11px; color: var(--ds-ink-mute); }
-@media print { body.calendar-print-active > *:not(.calendar-print-dialog) { display: none !important; } body.calendar-print-active .calendar-print-dialog { position: static; padding: 0; background: var(--ds-canvas); overflow: visible; } body.calendar-print-active .calendar-print-dialog__panel { padding: 0; max-width: none; } body.calendar-print-active .calendar-print-controls, body.calendar-print-active .calendar-print-toolbar, body.calendar-print-active .calendar-print-state { display: none !important; } }
+.calendar-print-sheet footer { margin-top: 12px; font-size: 11px; color: var(--calendar-print-muted); }
+@media print { body.calendar-print-active > *:not(.calendar-print-dialog) { display: none !important; } body.calendar-print-active .calendar-print-dialog { position: static; padding: 0; background: white; overflow: visible; } body.calendar-print-active .calendar-print-dialog__panel { padding: 0; max-width: none; } body.calendar-print-active .calendar-print-controls, body.calendar-print-active .calendar-print-toolbar, body.calendar-print-active .calendar-print-state { display: none !important; } }
 </style>
