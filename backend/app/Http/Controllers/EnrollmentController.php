@@ -39,7 +39,9 @@ class EnrollmentController extends Controller
             'day_time_slots.*.duration_minutes' => 'nullable|integer|min:30|max:480',
             'duration_minutes' => 'required|integer|min:30|max:480',
             'rate_unit' => 'nullable|in:session,hour',
-            'price_per_session' => 'required|numeric|min:0',
+            // Tutoring is free and has no receivable; paid class types retain the
+            // required amount contract. EnrollmentService is the final authority.
+            'price_per_session' => 'nullable|required_unless:class_type,tutoring|numeric|min:0',
             'payment_type' => 'required|in:session,monthly',
             'settlement_day' => 'nullable|integer|min:1|max:31',
             'monthly_sessions' => 'nullable|integer|min:1|max:500',

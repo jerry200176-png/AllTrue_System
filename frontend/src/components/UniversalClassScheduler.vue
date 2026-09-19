@@ -404,13 +404,17 @@
                 </select>
               </div>
 
-              <div class="form-group">
+              <div v-if="!isTutoring" class="form-group">
                 <label>{{ hasPerDayDuration ? '每小時費用 *' : '單堂費用 *' }}</label>
                 <input v-model.number="form.price_per_session" type="number" min="0" step="50" />
               </div>
 
+              <p v-else class="field-note free-course-note">
+                輔導課免費，不需填金額，也不會產生應收帳款。
+              </p>
+
               <div class="form-group">
-                <label>繳費方式 *</label>
+                <label>{{ isTutoring ? '課程期間計算方式' : '繳費方式 *' }}</label>
                 <select v-model="form.payment_type">
                   <option value="session">按堂數</option>
                   <option value="monthly">月結制</option>
@@ -500,7 +504,7 @@
                 </select>
               </div>
 
-              <CoursePaymentDateField v-model="form.paid_at" />
+              <CoursePaymentDateField v-if="!isTutoring" v-model="form.paid_at" />
 
               <div class="form-group">
                 <label>開課日 *</label>
@@ -753,7 +757,7 @@
               </div>
             </div>
 
-            <div v-if="previewPricePerSession > 0" class="fee-estimate">
+            <div v-if="!isTutoring && previewPricePerSession > 0" class="fee-estimate">
               <div class="fee-estimate-head">
                 <span class="fee-estimate-label">計價方式</span>
                 <strong :class="['fee-estimate-unit', previewRateUnit === 'hour' ? 'is-hour' : 'is-session']">
@@ -1510,6 +1514,7 @@ const hasPerDayDuration = computed(() => {
 const plannedCountLabel = computed(() => (
   form.payment_type === 'monthly' ? '本月預排堂數' : '購買總堂數'
 ));
+const isTutoring = computed(() => form.class_type === 'tutoring');
 /** 排課次數的說法。actual_duration 時「次數」與「購買堂數」是兩個不同的數字。 */
 const occurrenceCountLabel = computed(() => (
   isActualDuration.value ? '預計排課次數' : plannedCountLabel.value
@@ -2371,13 +2376,13 @@ async function submit() {
         start_time: normalizeHalfHourTime(form.start_time || '16:00'),
         duration_minutes: durationMinutes,
         rate_unit: 'session',
-        price_per_session: Math.max(0, Number(form.price_per_session) || 0),
+        ...(!isTutoring.value ? { price_per_session: Math.max(0, Number(form.price_per_session) || 0) } : {}),
         payment_type: 'session',
         scheduling_policy: 'manual_occurrence',
         total_classes: manualTotal,
         room_id: form.room_id ? Number(form.room_id) : null,
         memo: form.memo || null,
-        paid_at: form.paid_at || null,
+        ...(!isTutoring.value ? { paid_at: form.paid_at || null } : {}),
         course_start_date: form.course_start_date || null,
         ...(form.end_date ? { end_date: form.end_date } : {}),
         mode: props.mode,
@@ -2562,7 +2567,7 @@ async function submit() {
       start_time: normalizedStartTime,
       duration_minutes: durationMinutes,
       rate_unit: hasPerDayDuration.value ? 'hour' : 'session',
-      price_per_session: Math.max(0, Number(form.price_per_session) || 0),
+      ...(!isTutoring.value ? { price_per_session: Math.max(0, Number(form.price_per_session) || 0) } : {}),
       payment_type: form.payment_type || 'session',
       scheduling_policy: form.scheduling_policy || 'auto_recurrence',
       settlement_day: form.payment_type === 'monthly' ? Number(form.settlement_day) || null : null,
@@ -2571,7 +2576,7 @@ async function submit() {
         : null,
       room_id: form.room_id ? Number(form.room_id) : null,
       memo: form.memo || null,
-      paid_at: form.paid_at || null,
+      ...(!isTutoring.value ? { paid_at: form.paid_at || null } : {}),
       course_start_date: form.course_start_date || null,
       mode: props.mode,
       ...(hasMultiTeacher ? { allow_multi_teacher: true } : {}),
