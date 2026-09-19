@@ -100,6 +100,9 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     let schedulerCreateIntercepted = false;
     let schedulerCreatePayload = null;
     let schedulerCreateProbeArmed = false;
+    let teacherRows = [];
+    let selectedStudentId = 0;
+    let selectedTeacherId = 0;
 
     await page.addInitScript(({ session, branch, release }) => {
       localStorage.setItem('alltrue_session', JSON.stringify(session));
@@ -201,6 +204,10 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       if (method === 'POST' && path === '/api/v1/adoption/events') return;
       if (method === 'POST' && path === '/api/v1/class-sessions/batch' && schedulerCreateProbeArmed) return;
       if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) unsafe.push({ method, path });
+    });
+    page.on('response', async (response) => {
+      if (!new URL(response.url()).pathname.endsWith('/teachers')) return;
+      try { teacherRows = rows(await response.json()); } catch { /* bounded evidence only */ }
     });
     await page.route('**/api/v1/adoption/events', async (route) => {
       const req = route.request();
@@ -330,20 +337,30 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await dismissOverlays(page);
     await page.getByRole('button', { name: '學生管理', exact: true }).click();
     await expect(page.getByRole('heading', { name: /學生管理/ }).first()).toBeVisible({ timeout: 20_000 });
-    const studentId = field(courses.find((course) => field(course, 'StudentID', 'student_id')), 'StudentID', 'student_id');
-    expect(studentId, 'production course data must provide a non-PII student key').toBeTruthy();
-    const row = page.locator(`tr.student-row[data-student-id="${String(studentId)}"]`);
+    selectedStudentId = Number(field(courses.find((course) => field(course, 'StudentID', 'student_id')), 'StudentID', 'student_id'));
+    expect(Number.isInteger(selectedStudentId) && selectedStudentId > 0, 'production course data must provide a numeric student key').toBe(true);
+    const row = page.locator(`tr.student-row[data-student-id="${selectedStudentId}"]`);
     await expect(row).toBeVisible({ timeout: 20_000 });
     await row.locator('.btn-course-disclosure').click();
     await page.getByRole('button', { name: '新增課程', exact: true }).first().click();
+    await page.getByRole('button', { name: /^一般課程/ }).click();
     const scheduler = page.locator('.scheduler-layout');
     await expect(scheduler).toBeVisible({ timeout: 15_000 });
+    const teacherField = scheduler.locator('.form-group').filter({ hasText: '老師 *' }).first();
+    await teacherField.locator('.ss-input').click();
+    const teacherOption = page.locator('.ss-option:visible').first();
+    await expect(teacherOption).toBeVisible();
+    const selectedTeacherLabel = (await teacherOption.innerText()).split(' · ')[0].trim();
+    const teacherRow = teacherRows.find((item) => String(item?.name || item?.Name || item?.T_Name || item?.username || item?.LoginName || '').trim() === selectedTeacherLabel);
+    selectedTeacherId = Number(field(teacherRow, 'id', 'ID', 'TeacherID', 'teacher_id'));
+    expect(Number.isInteger(selectedTeacherId) && selectedTeacherId > 0, 'selected teacher option must map to a numeric teacher').toBe(true);
+    await teacherOption.click();
     const type = scheduler.locator('select').filter({ has: scheduler.locator('option[value="tutoring"]') }).first();
     await type.selectOption('tutoring');
     await scheduler.locator('select').filter({ has: scheduler.locator('option[value="session"]') }).first().selectOption('session');
     await scheduler.locator('select').filter({ has: scheduler.locator('option[value="auto_recurrence"]') }).first().selectOption('auto_recurrence');
-    await scheduler.locator('input[type="number"]').first().fill('1');
-    await scheduler.locator('input[type="date"]').first().fill(new Date().toISOString().slice(0, 10));
+    await scheduler.locator('.form-group').filter({ hasText: '購買總堂數' }).locator('input[type="number"]').fill('1');
+    await scheduler.locator('.form-group').filter({ hasText: '開課日 *' }).locator('input[type="date"]').fill(new Date().toISOString().slice(0, 10));
     await expect(scheduler).toContainText('輔導課免費，不需填金額，也不會產生應收帳款。');
     await expect(scheduler.locator('label').filter({ hasText: /單堂費用|每小時費用/ })).toHaveCount(0);
     await expect(scheduler.locator('label').filter({ hasText: '繳費日期' })).toHaveCount(0);
@@ -365,11 +382,23 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await expect(readinessButton).toHaveAttribute('type', 'button');
     schedulerCreateProbeArmed = true;
     await page.evaluate(() => { window.__schedulerSubmitProbe = true; });
-    await readinessButton.click();
-    await expect.poll(() => schedulerCreateIntercepted).toBe(true);
-    expect(schedulerCreatePayload).toEqual(expect.objectContaining({ class_type: 'tutoring', payment_type: 'session' }));
-    schedulerCreateProbeArmed = false;
-    await page.evaluate(() => { window.__schedulerSubmitProbe = false; });
+    try {
+      await readinessButton.click();
+      await expect.poll(() => schedulerCreateIntercepted).toBe(true);
+      expect(schedulerCreatePayload).toEqual(expect.objectContaining({
+        branch_id: BRANCH_ID,
+        student_id: selectedStudentId,
+        teacher_id: selectedTeacherId,
+        class_type: 'tutoring',
+        payment_type: 'session',
+        total_classes: 1,
+      }));
+      expect(schedulerCreatePayload).not.toHaveProperty('price_per_session');
+      expect(schedulerCreatePayload).not.toHaveProperty('paid_at');
+    } finally {
+      schedulerCreateProbeArmed = false;
+      await page.evaluate(() => { window.__schedulerSubmitProbe = false; });
+    }
     await expect(scheduler).not.toContainText(/金額.*必填|付款.*必填|繳費.*必填/);
     await page.getByRole('button', { name: '取消', exact: true }).last().click();
     expect(await page.evaluate(() => window.__printGuardSelfTest)).toBe(true);
