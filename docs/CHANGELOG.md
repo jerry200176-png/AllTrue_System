@@ -1,3 +1,7 @@
+## 2026-09-19 — fix(calendar): split-slot wrap spacing polish (in-app #317)
+<!-- release-notes: silent_ship=silent-2026-09-19-calendar-split-slot-317-polish -->
+- 窄欄 1:2/1:3 課卡：meta 改 wrap/間距保留 9px 字級，移除 7–8px 縮字；姓名允許換行；E2E 改查子元素 overflow。
+
 ## 2026-09-19 — fix(calendar): 1:2/1:3 split-slot text readability (in-app #317)
 <!-- release-notes: staff_update=staff-2026-09-19-calendar-split-slot-317 -->
 - 日檢視同時段 1:2／1:3 並排窄欄：科目+班型改橫向 meta 列與 1:2/1:3 短標，避免姓名／標籤被截到只剩一字。
