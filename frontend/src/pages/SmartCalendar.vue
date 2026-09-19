@@ -249,7 +249,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, selectedDateStr), evalMissing: evalBadge(course, selectedDateStr), teacherTag: null }"
-                    :layout="{ compact: isTeacherGridCompact, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
+                    :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
                   />
                 </div>
               </div>
@@ -320,7 +320,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, getDisplayDateFull(idx + 1)), evalMissing: evalBadge(course, getDisplayDateFull(idx + 1)), teacherTag: weekViewTeacherIds.length !== 1 ? { name: course.teacher_name, color: getTeacherColor(course.teacher_id) } : null }"
-                    :layout="{ compact: false, firstBadge: null }"
+                    :layout="{ compact: false, splitSlot: getCoursesForWeekCell(idx + 1, h).length > 1, firstBadge: null }"
                   />
                 </div>
               </div>

@@ -11,8 +11,14 @@
 <template>
   <div v-if="badges.teacherTag" class="cb-teacher-tag" :style="{ background: badges.teacherTag.color }">{{ badges.teacherTag.name }}</div>
   <div class="cb-student" :class="studentClass">{{ course.student_name }}</div>
-  <div class="cb-detail" :class="{ 'cbc-compact': layout.compact }">{{ subjectLabel }}</div>
-  <div class="cb-type" :class="{ 'cbc-compact': layout.compact }">{{ typeLabel }}</div>
+  <div v-if="horizontalMeta" class="cb-meta-row" :class="{ 'cbc-compact': layout.compact }">
+    <span class="cb-detail cb-meta-item">{{ subjectLabel }}</span>
+    <span class="cb-type cb-meta-item">{{ typeLabel }}</span>
+  </div>
+  <template v-else>
+    <div class="cb-detail" :class="{ 'cbc-compact': layout.compact }">{{ subjectLabel }}</div>
+    <div class="cb-type" :class="{ 'cbc-compact': layout.compact }">{{ typeLabel }}</div>
+  </template>
   <span
     v-if="badges.rollCall"
     class="rc-tag"
@@ -28,18 +34,29 @@
 <script setup>
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
-import { classTypeLabel } from '../../lib/calendarFormat.js';
+import { classTypeLabel, classTypeShortLabel } from '../../lib/calendarFormat.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
   // { rollCall: {kind,label}|null, evalMissing: {label}|null, teacherTag: {name,color}|null }
   badges: { type: Object, default: () => ({}) },
-  // { compact: boolean, firstBadge: 'full' | 'compact' | null }
+  // { compact: boolean, firstBadge: 'full' | 'compact' | null, splitSlot: boolean }
   layout: { type: Object, default: () => ({}) },
 });
 
+const MULTI_STUDENT_TYPES = new Set(['one_on_two', 'one_on_three']);
+
 const subjectLabel = computed(() => getSubjectLabel(props.course.subject));
-const typeLabel = computed(() => classTypeLabel(props.course.class_type));
+const horizontalMeta = computed(() => (
+  !!props.layout.splitSlot && MULTI_STUDENT_TYPES.has(String(props.course.class_type || ''))
+));
+const typeLabel = computed(() => {
+  const type = String(props.course.class_type || '');
+  if (horizontalMeta.value || (props.layout.compact && MULTI_STUDENT_TYPES.has(type))) {
+    return classTypeShortLabel(type);
+  }
+  return classTypeLabel(type);
+});
 const hasRc = computed(() => !!(props.badges.rollCall || props.badges.evalMissing));
 
 const studentClass = computed(() => ({
@@ -93,6 +110,24 @@ const studentClass = computed(() => ({
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+}
+.cb-meta-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  min-width: 0;
+}
+.cb-meta-row .cb-meta-item {
+  margin-top: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.cb-meta-row .cb-type.cb-meta-item {
+  flex: 0 0 auto;
+  opacity: 0.85;
+  font-weight: 700;
 }
 
 /* rc-tag 系列（自帶一份，父層 legend 仍保留自己那份） */
