@@ -4,6 +4,46 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-19-calendar-split-slot-317",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "行事曆一對二／一對三並排課卡較易閱讀",
+    "summary": "日檢視同時段多位學生的課卡，科目與班型改橫向顯示，避免窄欄文字被截斷。",
+    "items": [
+      "修正一對二、一對三並排時課卡內姓名或班型標籤被截到難以辨識。",
+      "並排窄欄的班型標示改短，保留科目與姓名可讀性。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正一對二、一對三並排時課卡內姓名或班型標籤被截到難以辨識。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "並排窄欄的班型標示改短，保留科目與姓名可讀性。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-317",
+      "changelog:2026-09-19:calendar-split-slot-317"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
     "id": "staff-2026-09-18-course-manager-v1-on",
     "publishedAt": "2026-09-18",
     "effectiveAt": null,
