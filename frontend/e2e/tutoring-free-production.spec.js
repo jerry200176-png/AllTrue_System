@@ -97,6 +97,8 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     const token = SESSION.access_token;
     const unsafe = [];
     const telemetry = [];
+    let schedulerCreateIntercepted = false;
+    let schedulerCreatePayload = null;
 
     await page.addInitScript(({ session, branch, release }) => {
       localStorage.setItem('alltrue_session', JSON.stringify(session));
@@ -126,7 +128,9 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       window.fetch = (input, init = {}) => {
         const method = String(init.method || input?.method || 'GET').toUpperCase();
         const url = typeof input === 'string' ? input : input?.url || '';
-        if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !isTelemetry(method, url)) return rejectWrite(method, url);
+        const schedulerProbe = window.__schedulerSubmitProbe === true
+          && method === 'POST' && new URL(url, window.location.href).pathname === '/api/v1/class-sessions/batch';
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !isTelemetry(method, url) && !schedulerProbe) return rejectWrite(method, url);
         return originalFetch(input, init);
       };
       const xhrOpen = XMLHttpRequest.prototype.open;
@@ -166,9 +170,13 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       };
       window.__writeGuardSelfTests = { form: false, submit: false, requestSubmit: false, beacon: false };
       try {
+        const probe = document.createElement('form');
+        probe.action = '/write-probe';
+        document.documentElement.appendChild(probe);
         window.__selfTestingForm = true;
-        document.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        probe.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         window.__writeGuardSelfTests.form = window.__selfTestingFormBlocked === true;
+        probe.remove();
       } catch (error) { window.__writeGuardSelfTests.form = error instanceof Error; }
       window.__selfTestingForm = false;
       try {
@@ -182,6 +190,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       try { navigator.sendBeacon('https://outside.invalid/api/v1/adoption/events', 'probe'); }
       catch (error) { window.__writeGuardSelfTests.beacon = error instanceof Error; }
       window.__readOnlyViolations = [];
+      window.__schedulerSubmitProbe = false;
       void originalSubmit; void originalRequestSubmit;
     }, { session: SESSION, branch: BRANCH_ID, release: RELEASE });
 
@@ -189,6 +198,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       const method = req.method();
       const path = new URL(req.url()).pathname;
       if (method === 'POST' && path === '/api/v1/adoption/events') return;
+      if (method === 'POST' && path === '/api/v1/class-sessions/batch' && schedulerCreateIntercepted) return;
       if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) unsafe.push({ method, path });
     });
     await page.route('**/api/v1/adoption/events', async (route) => {
@@ -253,6 +263,16 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       expect(containsForbiddenData(body)).toBe(false);
       telemetry.push(body);
       await route.fulfill({ status: 204, body: '' });
+    });
+    await page.route('**/api/v1/class-sessions/batch', async (route) => {
+      if (!schedulerCreateIntercepted && await page.evaluate(() => window.__schedulerSubmitProbe === true)) {
+        expect(route.request().method()).toBe('POST');
+        schedulerCreatePayload = route.request().postDataJSON() || {};
+        schedulerCreateIntercepted = true;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+        return;
+      }
+      await route.abort();
     });
 
     const courses = await getPagedRows(request, `/api/v1/student-classes?campus_id=${BRANCH_ID}`, token);
@@ -319,6 +339,10 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await expect(scheduler).toBeVisible({ timeout: 15_000 });
     const type = scheduler.locator('select').filter({ has: scheduler.locator('option[value="tutoring"]') }).first();
     await type.selectOption('tutoring');
+    await scheduler.locator('select').filter({ has: scheduler.locator('option[value="session"]') }).first().selectOption('session');
+    await scheduler.locator('select').filter({ has: scheduler.locator('option[value="auto_recurrence"]') }).first().selectOption('auto_recurrence');
+    await scheduler.locator('input[type="number"]').first().fill('1');
+    await scheduler.locator('input[type="date"]').first().fill(new Date().toISOString().slice(0, 10));
     await expect(scheduler).toContainText('輔導課免費，不需填金額，也不會產生應收帳款。');
     await expect(scheduler.locator('label').filter({ hasText: /單堂費用|每小時費用/ })).toHaveCount(0);
     await expect(scheduler.locator('label').filter({ hasText: '繳費日期' })).toHaveCount(0);
@@ -336,7 +360,13 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     expect(invalidRequired, 'visible required scheduler controls must be valid').toEqual([]);
     const readinessButton = scheduler.getByRole('button', { name: '建立課程並寫入堂次', exact: true });
     await expect(readinessButton).toBeVisible();
+    await expect(readinessButton).toBeEnabled();
     await expect(readinessButton).toHaveAttribute('type', 'button');
+    await page.evaluate(() => { window.__schedulerSubmitProbe = true; });
+    await readinessButton.click();
+    await expect.poll(() => schedulerCreateIntercepted).toBe(true);
+    expect(schedulerCreatePayload).toEqual(expect.objectContaining({ class_type: 'tutoring', payment_type: 'session' }));
+    await page.evaluate(() => { window.__schedulerSubmitProbe = false; });
     await expect(scheduler).not.toContainText(/金額.*必填|付款.*必填|繳費.*必填/);
     await page.getByRole('button', { name: '取消', exact: true }).last().click();
     expect(await page.evaluate(() => window.__printGuardSelfTest)).toBe(true);

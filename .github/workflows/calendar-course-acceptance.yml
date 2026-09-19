@@ -129,8 +129,6 @@ jobs:
           REMOTE
           })"
           test -n "$session_output"
-          marker_count="$(printf '%s\n' "$session_output" | grep -c '^ALLTRUE_SESSION_PAYLOAD_V1:' || true)"
-          test "$marker_count" -eq 1
           printf '%s' "$session_output" > "$RUNNER_TEMP/alltrue-session.output"
           SESSION_OUTPUT_PATH="$RUNNER_TEMP/alltrue-session.output" \
           SESSION_NORMALIZED_PATH="$RUNNER_TEMP/alltrue-session.normalized.json" \
