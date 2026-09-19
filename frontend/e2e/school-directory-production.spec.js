@@ -91,35 +91,17 @@ function assertDirectoryResponse(json, expectedLimit = 12) {
   }
 }
 
-function containsForbiddenTelemetry(value) {
-  const forbiddenKey = /(phone|email|password|token|name|body|note|address|line[_-]?id|student[_-]?id|class[_-]?id|invoice|receipt|amount|charge|pay)/i;
-  if (Array.isArray(value)) {
-    return value.length > 40 || value.some(containsForbiddenTelemetry);
-  }
-  if (typeof value === 'string') {
-    return value.length > 160 || /@|\b\d{7,}\b|^Bearer\s|^eyJ/i.test(value);
-  }
-  if (!value || typeof value !== 'object') return false;
-  return Object.entries(value).some(([key, item]) => forbiddenKey.test(key) || containsForbiddenTelemetry(item));
-}
-
 function assertTelemetryPayload(payload) {
   expect(payload && typeof payload === 'object' && !Array.isArray(payload)).toBe(true);
   expect(Object.keys(payload).sort()).toEqual(['branch_id', 'event', 'meta']);
   expect(payload.branch_id).toBe(BRANCH_ID);
-  expect(typeof payload.event).toBe('string');
-  expect(payload.event).toMatch(/^[a-z0-9_]+$/);
+  expect(payload.event).toBe('dashboard_opened');
   expect(payload.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta)).toBe(true);
-  expect(Object.keys(payload.meta).length).toBeLessThanOrEqual(20);
-  for (const [key, value] of Object.entries(payload.meta)) {
-    expect(key).toMatch(/^[a-z0-9_]+$/);
-    const scalar = value === null || ['string', 'number', 'boolean'].includes(typeof value);
-    const boundedArray = Array.isArray(value)
-      && value.length <= 40
-      && value.every((item) => ['string', 'number', 'boolean'].includes(typeof item));
-    expect(scalar || boundedArray).toBe(true);
-  }
-  expect(containsForbiddenTelemetry(payload)).toBe(false);
+  expect(Object.keys(payload.meta).sort()).toEqual(['page', 'role', 'telem_day', 'telem_session']);
+  expect(payload.meta.role).toBe('director');
+  expect(payload.meta.page).toBe('director-dashboard');
+  expect(payload.meta.telem_day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(payload.meta.telem_session).toMatch(/^t_[a-z0-9_]+$/);
 }
 
 function installWriteGuard(page) {
@@ -127,8 +109,12 @@ function installWriteGuard(page) {
     const state = { unknownWrites: [], blocked: [] };
     window.__schoolDirectoryAcceptance = state;
     const allowed = new Set(['GET', 'HEAD', 'OPTIONS']);
-    const isTelemetry = (url, method) => method === 'POST'
-      && new URL(String(url), window.location.href).pathname === '/api/v1/adoption/events';
+    const isTelemetry = (url, method) => {
+      const target = new URL(String(url), window.location.href);
+      return method === 'POST'
+        && target.origin === window.location.origin
+        && target.pathname === '/api/v1/adoption/events';
+    };
     const block = (channel, method, url) => {
       state.blocked.push(channel);
       throw new Error(`school-directory acceptance blocked ${method} ${url}`);
@@ -162,6 +148,12 @@ function installWriteGuard(page) {
     HTMLFormElement.prototype.requestSubmit = function guardedRequestSubmit() {
       return block('form-request-submit', 'POST', this.action || window.location.href);
     };
+    document.addEventListener('submit', (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const action = event.target instanceof HTMLFormElement ? event.target.action : window.location.href;
+      block('form-event', 'SUBMIT', action);
+    }, true);
     const originalBeacon = navigator.sendBeacon?.bind(navigator);
     navigator.sendBeacon = (url, data) => {
       block('sendBeacon', 'POST', url);
@@ -191,6 +183,15 @@ async function assertNoUnknownWrites(page) {
         xhr.send('{}');
       },
       () => { const form = document.createElement('form'); form.action = '/api/v1/__school_directory_acceptance_write__'; document.body.append(form); form.requestSubmit(); },
+      () => {
+        const form = document.createElement('form');
+        const button = document.createElement('button');
+        button.type = 'submit';
+        form.action = '/api/v1/__school_directory_acceptance_write__';
+        form.append(button);
+        document.body.append(form);
+        button.click();
+      },
       () => navigator.sendBeacon('/api/v1/__school_directory_acceptance_write__', '{}'),
       () => window.print(),
     ];
@@ -200,7 +201,7 @@ async function assertNoUnknownWrites(page) {
   });
   const state = await page.evaluate(() => window.__schoolDirectoryAcceptance);
   expect(state.unknownWrites).toEqual([]);
-  expect(new Set(state.blocked)).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'sendBeacon', 'print']));
+  expect(new Set(state.blocked)).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-event', 'sendBeacon', 'print']));
 }
 
 test.describe('production acceptance — school directory (#296)', () => {
@@ -229,6 +230,10 @@ test.describe('production acceptance — school directory (#296)', () => {
       }
       if (/^\/api\/v1\/(students|teachers|student-classes|courses|subjects)(?:\/|$)/.test(url.pathname)) {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
+        return;
+      }
+      if (/^\/api\/v1\/(?:director\/operations-trust|adoption\/(?:task-tracker|activity-log|weekly-metrics))$/.test(url.pathname)) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: null }) });
         return;
       }
       await route.continue();
@@ -267,11 +272,11 @@ test.describe('production acceptance — school directory (#296)', () => {
 
     await installWriteGuard(page);
     await installSession(page);
-    await page.goto(`${BASE}/`);
+    await page.goto(`${BASE}/?app_page=students`);
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
     await dismissOverlays(page);
 
-    await page.getByRole('button', { name: '學生管理', exact: true }).click();
+    await expect(page.getByRole('button', { name: '學生管理', exact: true })).toHaveClass(/active/);
     await expect(page.getByRole('heading', { name: '學生管理', exact: true })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: '新增學生', exact: true }).first().click();
     await expect(page.getByRole('heading', { name: '新增學生', exact: true })).toBeVisible();
