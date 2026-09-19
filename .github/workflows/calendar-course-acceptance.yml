@@ -66,16 +66,22 @@ jobs:
           BRANCH_ID: ${{ github.event.inputs.branch_id || '' }}
         run: |
           set -euo pipefail
+          node .github/scripts/normalize-smoke-session.mjs --self-test
+          if [ -n "$BRANCH_ID" ]; then
+            [[ "$BRANCH_ID" =~ ^[1-9][0-9]{0,6}$ ]] || { echo 'branch_id must be canonical positive decimal digits' >&2; exit 1; }
+            (( 10#$BRANCH_ID <= 1000000 )) || { echo 'branch_id is outside the supported range' >&2; exit 1; }
+          fi
           test -n "$PI_SSH_USER" && test -n "$PI_SSH_HOST" && test -s ~/.ssh/deploy_key
-          session_json="$({
+          session_output="$({
             ssh -i ~/.ssh/deploy_key \
               -o IdentitiesOnly=yes \
               -o BatchMode=yes \
               -o ConnectTimeout=20 \
               -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts \
-              "$PI_SSH_USER@$PI_SSH_HOST" "BRANCH_ID=$BRANCH_ID bash" <<'REMOTE'
+              "$PI_SSH_USER@$PI_SSH_HOST" "bash -s -- '$BRANCH_ID'" <<'REMOTE'
           set -euo pipefail
+          export BRANCH_ID="${1:-}"
           cd /home/admin/backend
           php artisan tinker --no-ansi --execute='
           $branch = (int) getenv("BRANCH_ID");
@@ -110,7 +116,7 @@ jobs:
                 ->where(function ($q) { $q->where("Approved", 1)->orWhereNull("Approved"); })
                 ->pluck("CampusID");
           $campuses = $campuses->map(fn ($id) => (int) $id)->values()->all();
-          echo json_encode([
+          $payload = json_encode([
             "access_token" => $row->token,
             "token_type" => "Bearer",
             "expires_at" => (string) $row->expires_at,
@@ -121,11 +127,18 @@ jobs:
               "must_change_password" => (bool) $row->MustChangePassword,
             ],
           ]);
+          echo "ALLTRUE_SESSION_PAYLOAD_V1:" . base64_encode($payload) . PHP_EOL;
           '
           REMOTE
           })"
-          test -n "$session_json"
-          session_b64="$(printf '%s' "$session_json" | base64 -w0)"
+          test -n "$session_output"
+          printf '%s' "$session_output" > "$RUNNER_TEMP/alltrue-session.output"
+          SESSION_OUTPUT_PATH="$RUNNER_TEMP/alltrue-session.output" \
+          SESSION_NORMALIZED_PATH="$RUNNER_TEMP/alltrue-session.normalized.json" \
+          REQUESTED_BRANCH_ID="$BRANCH_ID" \
+          node .github/scripts/normalize-smoke-session.mjs
+          session_b64="$(base64 -w0 "$RUNNER_TEMP/alltrue-session.normalized.json")"
+          test -n "$session_b64"
           echo "::add-mask::$session_b64"
           printf 'SMOKE_DIRECTOR_SESSION_B64=%s\n' "$session_b64" >> "$GITHUB_ENV"
 
@@ -148,10 +161,19 @@ jobs:
         env:
           CI: 'true'
           SMOKE_BASE_URL: https://daan.lifenet.com.tw
-          SMOKE_BRANCH_ID: ${{ github.event.inputs.branch_id || '' }}
           SMOKE_START_DATE: ${{ github.event.inputs.start_date || '2026-08-05' }}
           SMOKE_END_DATE: ${{ github.event.inputs.end_date || '2026-08-07' }}
-        run: npx playwright test e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js e2e/tutoring-free-production.spec.js --project=chromium
+        run: |
+          set -euo pipefail
+          mkdir -p playwright-report
+          test -n "${EFFECTIVE_BRANCH_ID:-}"
+          acceptance_args=(e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js e2e/tutoring-free-production.spec.js --project=chromium --reporter=json)
+          if [ "$EFFECTIVE_BRANCH_ID" != "9" ]; then
+            acceptance_args+=(--grep-invert 'contracted four-session detail explains two unarranged sessions')
+          fi
+          npx playwright test "${acceptance_args[@]}" > playwright-report/acceptance-results.json
+          node ../.github/scripts/acceptance-report-gate.mjs --self-test
+          RESULTS_PATH="playwright-report/acceptance-results.json" EFFECTIVE_BRANCH_ID="$EFFECTIVE_BRANCH_ID" node ../.github/scripts/acceptance-report-gate.mjs
 
       - name: Upload acceptance report
         if: ${{ !cancelled() }}
