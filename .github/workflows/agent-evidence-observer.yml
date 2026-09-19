@@ -1,0 +1,85 @@
+name: Agent evidence observer
+on:
+  workflow_run:
+    workflows: ["UI Smoke (Playwright)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Completed UI Smoke (Playwright) run id"
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  observe:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout current main only
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Collect exact triggering run and one evidence artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          run_id="$TRIGGER_RUN_ID"
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then run_id="$INPUT_RUN_ID"; fi
+          run_json="$(gh api "/repos/$REPO/actions/runs/$run_id")"
+          test "$(jq -r .name <<<"$run_json")" = 'UI Smoke (Playwright)'
+          test "$(jq -r .status <<<"$run_json")" = completed
+          test "$(jq -r .event <<<"$run_json")" = pull_request
+          mapfile -t artifacts < <(gh api "/repos/$REPO/actions/runs/$run_id/artifacts" --paginate --jq '.artifacts[] | select(.name=="ui-smoke-evidence" and .expired==false) | .id')
+          test "${#artifacts[@]}" -eq 1
+          gh api "/repos/$REPO/actions/artifacts/${artifacts[0]}/zip" > /tmp/ui-smoke-evidence.zip
+          unzip -q /tmp/ui-smoke-evidence.zip -d /tmp/ui-smoke-evidence
+          test "$(find /tmp/ui-smoke-evidence -type f | wc -l)" -eq 1
+          test -f /tmp/ui-smoke-evidence/ui-smoke-evidence.json
+          run_head="$(jq -r .head_sha <<<"$run_json")"
+          jq -e '.schema=="ui-smoke-evidence-v1" and (.tested_sha != .pr_head_sha)' /tmp/ui-smoke-evidence/ui-smoke-evidence.json
+          jq -e '.tested_sha == .github_sha' /tmp/ui-smoke-evidence/ui-smoke-evidence.json
+          head_sha="$run_head"
+          prs="$(gh api "/repos/$REPO/commits/$head_sha/pulls" -H 'Accept: application/vnd.github+json')"
+          test "$(jq '[.[] | select(.base.ref=="main" and .state=="open")] | length' <<<"$prs")" -eq 1
+          jq -e --arg sha "$head_sha" '[.[] | select(.base.ref=="main" and .state=="open")] | .[0].head.sha==$sha' <<<"$prs"
+          jq -e --arg sha "$(jq -r '[.[] | select(.base.ref=="main" and .state=="open")][0].head.sha' <<<"$prs")" '.pr_head_sha==$sha' /tmp/ui-smoke-evidence/ui-smoke-evidence.json
+          jq -e --arg sha "$head_sha" '.pr_head_sha==$sha' /tmp/ui-smoke-evidence/ui-smoke-evidence.json
+          pr_json="$(jq '[.[] | select(.base.ref=="main" and .state=="open")][0]' <<<"$prs")"
+          printf '%s\n' "$pr_json" > /tmp/pr.json
+          test "$(jq -r .draft <<<"$pr_json")" != true
+          jq -r .body <<<"$pr_json" > /tmp/acceptance.md
+          jq -e --arg base "$(jq -r .base.sha <<<"$pr_json")" '.base_sha==$base' /tmp/ui-smoke-evidence/ui-smoke-evidence.json
+          tested_sha="$(jq -r .tested_sha /tmp/ui-smoke-evidence/ui-smoke-evidence.json)"
+          gh api "/repos/$REPO/commits/$tested_sha" > /tmp/merge-commit.json
+          test "$(jq '.parents | length' /tmp/merge-commit.json)" -eq 2
+          jq -e --arg base "$(jq -r .base.sha <<<"$pr_json")" --arg head "$(jq -r .head.sha <<<"$pr_json")" '.parents | map(.sha) | index($base) != null and index($head) != null' /tmp/merge-commit.json
+          printf '%s\n' "$run_json" > /tmp/trigger-run.json
+      - name: Observe current main without canonical claim
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_json="$(cat /tmp/trigger-run.json)"
+          run_head="$(jq -r .head_sha /tmp/trigger-run.json)"
+          pr_json="$(cat /tmp/pr.json 2>/dev/null || true)"
+          python3 scripts/harness/evidence_observer.py --repo "$REPO" --sha "$run_head" --criteria-file /tmp/acceptance.md --ui-file /tmp/ui-smoke-evidence/ui-smoke-evidence.json --run-id "$(jq -r .id <<<"$run_json")" --run-attempt "$(jq -r .run_attempt <<<"$run_json")" --event "$(jq -r .event <<<"$run_json")" --collector-sha "$(git rev-parse HEAD)" --base-sha "$(jq -r .base.sha <<<"$pr_json")" --output evidence-observer.json
+      - name: Upload observer evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-evidence-observer
+          path: evidence-observer.json
+          retention-days: 7
+          if-no-files-found: error
