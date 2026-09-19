@@ -4,8 +4,11 @@ import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
 /** Authenticated, read-only production acceptance for In-App #325. */
+test.use({ serviceWorkers: 'block', trace: 'off', screenshot: 'off', video: 'off' });
 const BASE = process.env.SMOKE_BASE_URL;
-const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
+const REQUESTED_BRANCH_RAW = process.env.SMOKE_BRANCH_ID || '';
+const HAS_REQUESTED_BRANCH = REQUESTED_BRANCH_RAW !== '';
+const REQUESTED_BRANCH_ID = /^\d+$/.test(REQUESTED_BRANCH_RAW) ? Number(REQUESTED_BRANCH_RAW) : 0;
 const RELEASE = latestReleaseVersionForRole('director');
 
 function readSession() {
@@ -16,9 +19,32 @@ function readSession() {
 
 const SESSION = readSession();
 const AUTHORIZED_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
-  ? SESSION.user.campuses.map(Number).filter(Number.isInteger)
+  && SESSION.user.campuses.every((campus) => Number.isInteger(campus) && campus > 0)
+  ? SESSION.user.campuses
   : [];
-const BRANCH_ID = REQUESTED_BRANCH_ID || AUTHORIZED_CAMPUSES[0] || 0;
+const BRANCH_ID = HAS_REQUESTED_BRANCH ? REQUESTED_BRANCH_ID : (AUTHORIZED_CAMPUSES[0] || 0);
+
+function sessionExpiryMs(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value > 1e12 ? value : value * 1000;
+  if (typeof value === 'string' && /^\d{10}(?:\.\d+)?$/.test(value)) return Number(value) * 1000;
+  if (typeof value === 'string' && /^\d{13}$/.test(value)) return Number(value);
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return Date.parse(value);
+  return 0;
+}
+
+const SESSION_EXPIRY_MS = sessionExpiryMs(SESSION?.expires_at);
+const SESSION_CONTRACT = Boolean(
+  typeof SESSION?.access_token === 'string' && SESSION.access_token.trim() === SESSION.access_token
+  && SESSION.access_token.length > 0 && !/[\r\n]/.test(SESSION.access_token)
+  && SESSION?.token_type === 'Bearer'
+  && Number.isInteger(SESSION?.user?.id) && SESSION.user.id > 0
+  && SESSION?.user?.role === 'director'
+  && SESSION?.user?.must_change_password === false
+  && Array.isArray(SESSION?.user?.campuses) && SESSION.user.campuses.length > 0
+  && SESSION.user.campuses.every((campus) => Number.isInteger(campus) && campus > 0)
+  && Number.isInteger(BRANCH_ID) && BRANCH_ID > 0 && AUTHORIZED_CAMPUSES.includes(BRANCH_ID)
+  && SESSION_EXPIRY_MS > Date.now() && SESSION_EXPIRY_MS - Date.now() <= 30 * 60 * 1000,
+);
 
 function rows(payload) {
   return Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
@@ -66,11 +92,8 @@ async function getPagedRows(request, path, token) {
 
 test.describe('production acceptance — tutoring free/non-receivable', () => {
   test('director read-only API and real UI acceptance', async ({ page, request }) => {
-    test.skip(!BASE || !SESSION?.access_token, 'missing controlled production director session');
-    expect(AUTHORIZED_CAMPUSES, 'session must carry authorized campuses').toContain(BRANCH_ID);
-    expect(Number.isInteger(BRANCH_ID) && BRANCH_ID > 0).toBe(true);
-    expect(Date.parse(SESSION.expires_at)).toBeGreaterThan(Date.now());
-    expect(Date.parse(SESSION.expires_at) - Date.now()).toBeLessThanOrEqual(30 * 60 * 1000);
+    test.skip(!BASE, 'missing controlled production base URL');
+    expect(SESSION_CONTRACT, 'session must satisfy the exact bounded read-only contract').toBe(true);
     const token = SESSION.access_token;
     const unsafe = [];
     const telemetry = [];
@@ -143,11 +166,8 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       };
       window.__writeGuardSelfTests = { form: false, submit: false, requestSubmit: false, beacon: false };
       try {
-        const probe = document.createElement('form');
-        probe.action = '/write-probe';
-        document.body.appendChild(probe);
         window.__selfTestingForm = true;
-        probe.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        document.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
         window.__writeGuardSelfTests.form = window.__selfTestingFormBlocked === true;
       } catch (error) { window.__writeGuardSelfTests.form = error instanceof Error; }
       window.__selfTestingForm = false;
@@ -235,7 +255,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       await route.fulfill({ status: 204, body: '' });
     });
 
-    const courses = await getPagedRows(request, `/api/v1/student-classes?branch_id=${BRANCH_ID}`, token);
+    const courses = await getPagedRows(request, `/api/v1/student-classes?campus_id=${BRANCH_ID}`, token);
     const studentCampus = (row) => field(row, 'CampusID', 'campus_id') ?? field(row?.student, 'CampusID', 'campus_id');
     const arScope = (row) => Number(studentCampus(row) || 0) === BRANCH_ID;
     const scopedCourses = courses.filter(arScope);
@@ -308,8 +328,15 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       .filter((control) => /金額|單堂費用|每小時費用|繳費日期|付款日期/.test(control.closest('.form-group')?.textContent || ''))
       .map((control) => ({ required: control.required, ariaRequired: control.getAttribute('aria-required'), valid: control.checkValidity() })));
     expect(relevantControls, 'tutoring must not render receivable controls').toEqual([]);
-    const formsValidity = await scheduler.locator('form').evaluateAll((forms) => forms.map((form) => form.checkValidity()));
-    expect(formsValidity.every(Boolean)).toBe(true);
+    const controls = scheduler.locator('input, select, textarea');
+    await expect(controls).not.toHaveCount(0);
+    const invalidRequired = await controls.evaluateAll((elements) => elements
+      .filter((element) => element.required && !element.checkValidity())
+      .map((element) => element.tagName));
+    expect(invalidRequired, 'visible required scheduler controls must be valid').toEqual([]);
+    const readinessButton = scheduler.getByRole('button', { name: '建立課程並寫入堂次', exact: true });
+    await expect(readinessButton).toBeVisible();
+    await expect(readinessButton).toHaveAttribute('type', 'button');
     await expect(scheduler).not.toContainText(/金額.*必填|付款.*必填|繳費.*必填/);
     await page.getByRole('button', { name: '取消', exact: true }).last().click();
     expect(await page.evaluate(() => window.__printGuardSelfTest)).toBe(true);
