@@ -1,3 +1,11 @@
+## 2026-09-19 — fix(calendar): keep director print preview readable in dark theme (in-app #318 / GitHub #3068)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
+- SourceRef `alltrue:bug_report:318`：主任列印課表在暗色主題下維持深色文字／白色紙張底，預覽與頁尾對比度一致；本項僅記錄已完成的前端驗證，不宣稱 production verified。
+
+## 2026-09-19 — improved(course-management): show upcoming lesson dates in course list (in-app #321 / GitHub #3071)
+<!-- release-notes: staff_update=staff-2026-09-19-course-upcoming-dates-321 -->
+- SourceRef `alltrue:bug_report:321`：課程清單在既有時段欄直接顯示今日起最近三堂上課日期，並標示尚有幾堂；完整日期仍可從「管理課程」查看。
+
 ## 2026-09-19 — fix(course-mgmt): shared-plan slot edit preserves past/future boundaries (in-app #324 / GitHub #3074)
 <!-- release-notes: staff_update=staff-2026-09-19-shared-plan-slot-edit-324 -->
 - SourceRef `alltrue:bug_report:324`：多科共用方案改固定時段時，缺少首堂日的 legacy edit payload 只同步未來可變堂次，不回補今天以前，也不刪除既有未來例外；方案堂數與其他科目不變。
@@ -3459,3 +3467,9 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 <!-- release-notes: staff_update=staff-2026-09-15-tuition-viewport-containment -->
 
 - 帳務中心在手機與平板寬度會自動收合篩選欄位，操作按鈕會換行完整顯示；既有金額、收款、權限與資料流程不變。
+## 2026-09-19 — improved(students): 搜尋姓名或就讀學校
+<!-- release-notes: staff_update=staff-2026-09-19-student-school-search -->
+- 學生搜尋現在可用姓名或就讀學校查找；既有分校權限與篩選行為不變。
+## 2026-09-19 — feat(calendar): director week/month print preview (in-app #318 / GitHub #3068)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
+- 主任可從班級行事曆列印目前有權限查看的週／月課表，包含總覽、每日明細、學生、課程、教師、日期時間、校區教室與異動狀態；僅透過瀏覽器列印，不建立額外檔案或資料來源。

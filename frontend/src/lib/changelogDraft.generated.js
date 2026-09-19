@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.19",
     "date": "2026-09-19",
     "title": "2026.09.19 草稿（未發布）",
-    "summary": "plan fixed or flexible pre-schedule choice；plan slot edit preserves past/future boundaries",
+    "summary": "plan fixed or flexible pre-schedule choice；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
     "audience": [
       "teacher",
       "director"
@@ -18,23 +18,36 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "plan fixed or flexible pre-schedule choice"
+          "plan fixed or flexible pre-schedule choice",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
         ]
       },
       {
         "title": "修正內容",
         "items": [
+          "director print preview readable in dark theme",
           "plan slot edit preserves past/future boundaries",
           "slot wrap spacing polish",
           "1：2/1：3 split-slot text readability"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "upcoming lesson dates in course list",
+          "搜尋姓名或就讀學校"
         ]
       }
     ],
     "items": [
       "plan fixed or flexible pre-schedule choice",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+      "director print preview readable in dark theme",
       "plan slot edit preserves past/future boundaries",
       "slot wrap spacing polish",
-      "1：2/1：3 split-slot text readability"
+      "1：2/1：3 split-slot text readability",
+      "upcoming lesson dates in course list",
+      "搜尋姓名或就讀學校"
     ]
   },
   {
