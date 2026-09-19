@@ -400,8 +400,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       schedulerCreateProbeArmed = false;
       await page.evaluate(() => { window.__schedulerSubmitProbe = false; });
     }
-    await expect(scheduler).not.toContainText(/金額.*必填|付款.*必填|繳費.*必填/);
-    await page.getByRole('button', { name: '取消', exact: true }).last().click();
+    await expect(page.locator('.universal-scheduler-modal')).toHaveCount(0);
     expect(await page.evaluate(() => window.__printGuardSelfTest)).toBe(true);
     expect(await page.evaluate(() => window.__printAttempts)).toBe(0);
     expect(await page.evaluate(() => window.__originalPrintCalls)).toBe(0);
