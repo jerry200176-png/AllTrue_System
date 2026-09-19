@@ -30,6 +30,9 @@ async function installSession(page) {
     window.fetch = (input, init = {}) => {
       const method = String(init.method || input?.method || 'GET').toUpperCase();
       const url = typeof input === 'string' ? input : input?.url || '';
+      const isLocalTelemetry = method === 'POST'
+        && new URL(url, window.location.href).pathname === '/api/v1/adoption/events';
+      if (isLocalTelemetry) return originalFetch(input, init);
       if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
         window.__calendarPrintAcceptance.writes.push({ method, url, channel: 'fetch' });
         throw new Error(`production acceptance blocked ${method} fetch`);
@@ -45,6 +48,9 @@ async function installSession(page) {
     };
     XMLHttpRequest.prototype.send = function guardedSend(...args) {
       const method = this.__calendarPrintMethod || 'GET';
+      const isLocalTelemetry = method === 'POST'
+        && new URL(this.__calendarPrintUrl, window.location.href).pathname === '/api/v1/adoption/events';
+      if (isLocalTelemetry) return xhrSend.apply(this, args);
       if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
         window.__calendarPrintAcceptance.writes.push({ method, url: this.__calendarPrintUrl, channel: 'xhr' });
         throw new Error(`production acceptance blocked ${method} XHR`);
@@ -115,6 +121,17 @@ test.describe('production acceptance — calendar print preview', () => {
     'missing controlled production director session');
 
   test('director opens week/month print preview without printing or writes', async ({ page }) => {
+    const suppressedTelemetry = [];
+    await page.route('**/api/v1/adoption/events', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (request.method() !== 'POST' || url.pathname !== '/api/v1/adoption/events') {
+        await route.continue();
+        return;
+      }
+      suppressedTelemetry.push(request.postDataJSON());
+      await route.fulfill({ status: 204, body: '' });
+    });
     await installSession(page);
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
@@ -130,5 +147,13 @@ test.describe('production acceptance — calendar print preview', () => {
     const controls = await page.evaluate(() => window.__calendarPrintAcceptance);
     expect(controls.printCalls).toBe(0);
     expect(controls.writes).toEqual([]);
+    expect(suppressedTelemetry.length, 'calendar preview should emit bounded telemetry').toBeGreaterThan(0);
+    const allowedMeta = new Set(['mode', 'range_start', 'range_end', 'orientation', 'row_count_bucket', 'result', 'telem_session', 'telem_day']);
+    for (const payload of suppressedTelemetry) {
+      expect(payload.event).toMatch(/^calendar_print_/);
+      expect(Number.isInteger(payload.branch_id)).toBe(true);
+      expect(Object.keys(payload.meta || {}).every((key) => allowedMeta.has(key))).toBe(true);
+      expect(JSON.stringify(payload)).not.toMatch(/student|name|phone|address|email|invoice|amount|note/i);
+    }
   });
 });
