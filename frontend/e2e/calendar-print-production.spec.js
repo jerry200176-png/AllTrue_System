@@ -116,6 +116,42 @@ async function assertPrintPreviewContract(page, expectedPeriod) {
   expect(controls.writes, 'acceptance must not call a write API').toEqual([]);
 }
 
+function assertSuppressedTelemetry(payloads) {
+  const eventNames = new Set([
+    'calendar_print_preview_opened',
+    'calendar_print_failed',
+    'calendar_print_requested',
+  ]);
+  const metaKeys = new Set([
+    'mode', 'range_start', 'range_end', 'orientation', 'row_count_bucket', 'result',
+    'telem_session', 'telem_day',
+  ]);
+  const modes = new Set(['week', 'month']);
+  const orientations = new Set(['portrait', 'landscape']);
+  const results = new Set(['success', 'network', 'validation', 'http_4xx', 'http_5xx']);
+  const rowBuckets = new Set(['0', '1-25', '26-100', '101-500', '500+']);
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  expect(payloads.length, 'calendar preview should emit bounded telemetry').toBeGreaterThan(0);
+  for (const payload of payloads) {
+    expect(Object.keys(payload).sort()).toEqual(['branch_id', 'event', 'meta']);
+    expect(eventNames.has(payload.event)).toBe(true);
+    expect(Number.isInteger(payload.branch_id)).toBe(true);
+    expect(payload.branch_id).toBeGreaterThan(0);
+    expect(payload.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta)).toBe(true);
+    expect(Object.keys(payload.meta).sort()).toEqual([...metaKeys].sort());
+    expect(modes.has(payload.meta.mode)).toBe(true);
+    expect(datePattern.test(payload.meta.range_start)).toBe(true);
+    expect(datePattern.test(payload.meta.range_end)).toBe(true);
+    expect(payload.meta.range_start <= payload.meta.range_end).toBe(true);
+    expect(orientations.has(payload.meta.orientation)).toBe(true);
+    expect(rowBuckets.has(payload.meta.row_count_bucket)).toBe(true);
+    expect(results.has(payload.meta.result)).toBe(true);
+    expect(typeof payload.meta.telem_session).toBe('string');
+    expect(payload.meta.telem_session).toMatch(/^t_[a-z0-9_]+$/);
+    expect(datePattern.test(payload.meta.telem_day)).toBe(true);
+  }
+}
+
 test.describe('production acceptance — calendar print preview', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
     'missing controlled production director session');
@@ -147,13 +183,6 @@ test.describe('production acceptance — calendar print preview', () => {
     const controls = await page.evaluate(() => window.__calendarPrintAcceptance);
     expect(controls.printCalls).toBe(0);
     expect(controls.writes).toEqual([]);
-    expect(suppressedTelemetry.length, 'calendar preview should emit bounded telemetry').toBeGreaterThan(0);
-    const allowedMeta = new Set(['mode', 'range_start', 'range_end', 'orientation', 'row_count_bucket', 'result', 'telem_session', 'telem_day']);
-    for (const payload of suppressedTelemetry) {
-      expect(payload.event).toMatch(/^calendar_print_/);
-      expect(Number.isInteger(payload.branch_id)).toBe(true);
-      expect(Object.keys(payload.meta || {}).every((key) => allowedMeta.has(key))).toBe(true);
-      expect(JSON.stringify(payload)).not.toMatch(/student|name|phone|address|email|invoice|amount|note/i);
-    }
+    assertSuppressedTelemetry(suppressedTelemetry);
   });
 });
