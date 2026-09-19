@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
+test.use({ serviceWorkers: 'block', trace: 'off', screenshot: 'off', video: 'off' });
 const BASE = process.env.SMOKE_BASE_URL;
 const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
 const CURRENT_STAFF_RELEASE = latestReleaseVersionForRole('director');

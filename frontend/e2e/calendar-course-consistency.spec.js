@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
+test.use({ serviceWorkers: 'block', trace: 'off', screenshot: 'off', video: 'off' });
 /**
  * Authenticated, read-only acceptance for the calendar/course-management parity
  * contract behind in-app #225/#226/#227.
