@@ -11,7 +11,12 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
 const BASE = process.env.SMOKE_BASE_URL;
 const REQUIRE_HOSTED = process.env.SMOKE_REQUIRE_SCHOOL_DIRECTORY_ACCEPTANCE === 'true';
 const RAW_BRANCH_ID = process.env.SMOKE_BRANCH_ID || '';
-const REQUESTED_BRANCH_ID = /^\d+$/.test(RAW_BRANCH_ID) ? Number(RAW_BRANCH_ID) : 0;
+const HAS_REQUESTED_BRANCH = RAW_BRANCH_ID !== '';
+const REQUESTED_BRANCH_ID = /^\d+$/.test(RAW_BRANCH_ID)
+  && Number(RAW_BRANCH_ID) > 0
+  && String(Number(RAW_BRANCH_ID)) === RAW_BRANCH_ID
+  ? Number(RAW_BRANCH_ID)
+  : 0;
 const RELEASE = latestReleaseVersionForRole('director');
 
 test.use({ trace: 'off', screenshot: 'off', video: 'off', serviceWorkers: 'block' });
@@ -33,7 +38,7 @@ const CAMPUS_IDS = Array.isArray(SESSION?.user?.campuses)
   && SESSION.user.campuses.every((id) => Number.isInteger(id) && id > 0)
   ? SESSION.user.campuses
   : null;
-const BRANCH_ID = REQUESTED_BRANCH_ID || CAMPUS_IDS?.[0] || 0;
+const BRANCH_ID = HAS_REQUESTED_BRANCH ? REQUESTED_BRANCH_ID : (CAMPUS_IDS?.[0] || 0);
 
 function expiryMs(value) {
   if (typeof value !== 'number' && typeof value !== 'string') return 0;
@@ -56,6 +61,7 @@ function isControlledSession(session, branchId) {
   return Boolean(
     typeof session?.access_token === 'string'
     && session.access_token.trim() !== ''
+    && session.token_type === 'Bearer'
     && ['director', 'super_admin'].includes(role)
     && Number.isInteger(branchId)
     && branchId > 0
@@ -243,6 +249,7 @@ async function assertWriteGuardSelfTest(page) {
 test('session gate rejects malformed production credentials', () => {
   const valid = {
     access_token: 'synthetic-token',
+    token_type: 'Bearer',
     expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
     user: { role: 'director', campuses: [1], must_change_password: false },
   };
@@ -250,6 +257,8 @@ test('session gate rejects malformed production credentials', () => {
   expect(isControlledSession({ ...valid, user: { role: 'director', campuses: [1] } }, 1)).toBe(false);
   expect(isControlledSession({ ...valid, user: { ...valid.user, campuses: ['1'] } }, 1)).toBe(false);
   expect(isControlledSession({ ...valid, access_token: '' }, 1)).toBe(false);
+  expect(isControlledSession({ ...valid, token_type: 'Basic' }, 1)).toBe(false);
+  expect(isControlledSession(valid, 0)).toBe(false);
 });
 
 test.describe('production acceptance — school directory (#296)', () => {
