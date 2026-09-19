@@ -220,8 +220,9 @@ describe('useCourseSessionsDisplay', () => {
       { id: 3, student_class_id: 91, session_date: '2026-09-19', start_time: '14:00', end_time: '15:00', status: 'scheduled' },
       { id: 4, student_class_id: 91, session_date: '2026-09-20', start_time: '09:00', end_time: '10:00', status: 'scheduled' },
       { id: 5, student_class_id: 91, session_date: '2026-09-21', start_time: '09:00', end_time: '10:00', status: 'leave' },
-      { id: 6, student_class_id: 91, session_date: '2026-09-22', start_time: '09:00', end_time: '10:00', status: 'cancelled' },
-      { id: 7, student_class_id: 91, session_date: '2026-09-23', start_time: '09:00', end_time: '10:00', status: 'cancelled', note: 'cancelled-duplicate-reschedule-placeholder' },
+      { id: 6, student_class_id: 91, session_date: '2026-09-22', start_time: '09:00', end_time: '10:00', status: 'leave_adjusted' },
+      { id: 7, student_class_id: 91, session_date: '2026-09-23', start_time: '09:00', end_time: '10:00', status: 'excused' },
+      { id: 8, student_class_id: 91, session_date: '2026-09-24', start_time: '09:00', end_time: '10:00', status: 'cancelled', note: 'cancelled-duplicate-reschedule-placeholder' },
     ];
     const sessionsByCourse = ref({ 91: rows.map(sessionViewModelFromClassSessionsRow) });
     const before = JSON.stringify(sessionsByCourse.value);
@@ -234,8 +235,8 @@ describe('useCourseSessionsDisplay', () => {
     });
     const preview = display.upcomingSessionPreview(course, { todayYmd: '2026-09-19', limit: 3 });
     expect(preview.visible.map((unit) => unit.id)).toEqual([2, 3, 4]);
-    expect(preview.total).toBe(4);
-    expect(preview.overflow).toBe(1);
+    expect(preview.total).toBe(3);
+    expect(preview.overflow).toBe(0);
     expect(JSON.stringify(sessionsByCourse.value)).toBe(before);
     expect(display.upcomingSessionPreview(course, { todayYmd: 'bad', limit: 3 })).toEqual({ visible: [], total: 0, overflow: 0 });
   });

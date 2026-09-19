@@ -6943,23 +6943,23 @@ onUnmounted(() => {
 }
 .upcoming-session-preview__label {
   flex-basis: 100%;
-  color: var(--text-muted, #64748b);
+  color: var(--ds-ink-mute);
   font-weight: 700;
 }
 .upcoming-session-preview__item,
 .upcoming-session-preview__overflow {
-  color: var(--text, #334155);
+  color: var(--ds-ink);
 }
 .upcoming-session-preview__item + .upcoming-session-preview__item::before {
   content: '／';
-  color: var(--ds-hairline, #cbd5e1);
+  color: var(--ds-hairline);
   margin-right: 6px;
 }
 .upcoming-session-preview__projected {
-  color: var(--text-muted, #64748b);
+  color: var(--ds-ink-mute);
 }
 .upcoming-session-preview__overflow {
-  color: var(--primary, #c2410c);
+  color: var(--ds-primary);
   font-weight: 700;
 }
 .upcoming-session-preview__retry {

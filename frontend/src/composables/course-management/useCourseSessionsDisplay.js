@@ -27,6 +27,7 @@ import {
 import { FINAL_LEAVE_STATUSES, LEAVE_STATUSES } from '../../lib/sessionStatus';
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
+const UPCOMING_NON_LESSON_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 
 export function useCourseSessionsDisplay({
   sessionsByCourse,
@@ -223,7 +224,11 @@ export function useCourseSessionsDisplay({
     }
     const requestedLimit = Number(options?.limit ?? 3);
     const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.floor(requestedLimit)) : 3;
-    const upcoming = primarySessionUnits(course).filter((unit) => String(unit?.date || '').slice(0, 10) >= todayYmd);
+    const upcoming = primarySessionUnits(course).filter((unit) => {
+      const status = String(unit?.status || '').toLowerCase();
+      return !UPCOMING_NON_LESSON_STATUSES.has(status)
+        && String(unit?.date || '').slice(0, 10) >= todayYmd;
+    });
     return {
       visible: upcoming.slice(0, limit),
       total: upcoming.length,
