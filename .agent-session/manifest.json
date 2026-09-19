@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "59d17f9e17f74d49bd441434e3ebba78",
+  "session_id": "62f06c42eabf479b9afa804fd119e3e0",
   "project": "alltrue",
-  "task_id": "inapp-325-counseling-free-20260919",
+  "task_id": "pr2849-evidence-observer-20260919",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "e6e2fc3eb542cc7fe5024f6bf615f22c1c18c811",
-  "branch": "chore/task-inapp-325-counseling-free-20260919",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-325-counseling-free-20260919",
-  "started_at": "2026-09-19T11:13:48Z",
+  "base_sha": "5d5c259c543fcafa1572d0d98f9281a8839dbda2",
+  "branch": "chore/task-pr2849-evidence-observer-20260919",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/pr2849-evidence-observer-20260919",
+  "started_at": "2026-09-19T10:15:07Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.1"
 }

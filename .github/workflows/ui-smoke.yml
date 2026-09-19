@@ -115,7 +115,14 @@ jobs:
           SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
           SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
           SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
-        run: npm run test:e2e
+          SMOKE_PARENT_STUDENT_NAME: ${{ secrets.SMOKE_PARENT_STUDENT_NAME }}
+          SMOKE_PARENT_PHONE: ${{ secrets.SMOKE_PARENT_PHONE }}
+        run: |
+          set +e
+          PLAYWRIGHT_JSON_OUTPUT_NAME="$GITHUB_WORKSPACE/playwright-results.json" npx playwright test --reporter=list,html,json
+          rc=$?
+          echo "$rc" > "$GITHUB_WORKSPACE/playwright-exit-code"
+          exit "$rc"
 
       - name: Upload Playwright report
         if: ${{ steps.detect.outputs.run == 'true' && !cancelled() }}
@@ -125,3 +132,54 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 7
           if-no-files-found: ignore
+
+      - name: Emit explicit UI smoke evidence
+        if: ${{ always() }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_E2E: ${{ steps.detect.outputs.run }}
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+          SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
+          SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
+          SMOKE_PARENT_STUDENT_NAME: ${{ secrets.SMOKE_PARENT_STUDENT_NAME }}
+          SMOKE_PARENT_PHONE: ${{ secrets.SMOKE_PARENT_PHONE }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+          from scripts.harness.evidence_observer import emit_ui_evidence
+
+          job_status = os.environ["JOB_STATUS"]
+          event = os.environ["EVENT_NAME"]
+          run_e2e = os.environ.get("RUN_E2E") == "true"
+          required = ["SMOKE_BASE_URL", "SMOKE_DIRECTOR_USER", "SMOKE_DIRECTOR_PASS", "SMOKE_TEACHER_USER", "SMOKE_TEACHER_PASS", "SMOKE_PARENT_STUDENT_NAME", "SMOKE_PARENT_PHONE"]
+          report_path = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / "playwright-results.json"
+          tested_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          artifact = emit_ui_evidence(
+              str(report_path), event=event, job_status=job_status, run_e2e=run_e2e,
+              credentials={name: os.environ.get(name) for name in required},
+              pr_head_sha=os.environ.get("PR_HEAD_SHA") or None,
+              base_sha=os.environ.get("BASE_SHA") or None,
+              tested_sha=tested_sha, github_sha=os.environ["TESTED_SHA"])
+          Path("ui-smoke-evidence.json").write_text(
+              json.dumps(artifact, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+          )
+          print(json.dumps(artifact, sort_keys=True))
+          PY
+
+      - name: Upload explicit UI smoke evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-smoke-evidence
+          path: ui-smoke-evidence.json
+          retention-days: 7
+          if-no-files-found: error
