@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 479 api/* routes · generated 2026-09-17
+> Source: `php artisan route:list --json` · 482 api/* routes · generated 2026-09-19
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -226,6 +226,12 @@
 | PATCH | `api/v1/bugs/{id}/comments/{commentId}/visibility` | `BugReportController@updateCommentVisibility` | role+campus |
 | POST | `api/v1/bugs/{id}/reporter-verify` | `BugReportController@reporterVerify` | role+campus |
 | POST | `api/v1/bugs/{id}/status` | `BugReportController@updateStatus` | role+campus |
+
+## /api/v1/campus-presence (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/campus-presence/open` | `CampusPresenceController@open` | role+campus |
 
 ## /api/v1/campuses (1)
 
@@ -753,7 +759,7 @@
 | PUT | `api/v1/student-identities/{groupId}/access` | `StudentIdentityController@access` | role+campus |
 | GET | `api/v1/student-identities/{groupId}/audit` | `StudentIdentityController@audit` | role+campus |
 
-## /api/v1/students (16)
+## /api/v1/students (18)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -762,6 +768,8 @@
 | POST | `api/v1/students/bulk-delete` | `StudentController@bulkDestroy` | role+campus |
 | GET | `api/v1/students/export` | `ExportController@students` | role+campus |
 | POST | `api/v1/students/import` | `ImportController@students` | role+campus |
+| GET | `api/v1/students/{studentId}/campus-presence/candidates` | `CampusPresenceController@candidates` | role+campus |
+| GET | `api/v1/students/{studentId}/campus-presence/today` | `CampusPresenceController@studentToday` | role+campus |
 | GET | `api/v1/students/{student}` | `StudentController@show` | role+campus |
 | PUT | `api/v1/students/{student}` | `StudentController@update` | role+campus |
 | DELETE | `api/v1/students/{student}` | `StudentController@destroy` | role+campus |

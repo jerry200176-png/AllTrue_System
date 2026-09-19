@@ -31,6 +31,7 @@ use App\Http\Controllers\TeacherBranchController;
 use App\Http\Controllers\DirectorAccountController;
 use App\Http\Controllers\SwipeRfidController;
 use App\Http\Controllers\TempRfidController;
+use App\Http\Controllers\CampusPresenceController;
 use App\Http\Controllers\ResetDataController;
 use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
@@ -622,6 +623,11 @@ Route::prefix('v1')->group(function () {
         Route::patch('attendance/{id}', [AttendanceController::class, 'update'])->middleware('role:director,super_admin')->whereNumber('id');
         Route::delete('attendance/{id}', [AttendanceController::class, 'destroy'])->middleware('role:director,super_admin')->whereNumber('id');
         Route::post('attendance/{id}/convert-to-attended', [AttendanceController::class, 'convertToAttended'])->middleware('role:director,super_admin')->whereNumber('id');
+
+        // Campus presence evidence (#2809 RFID-1) — read only; no attendance/deduction
+        Route::get('campus-presence/open', [CampusPresenceController::class, 'open']);
+        Route::get('students/{studentId}/campus-presence/today', [CampusPresenceController::class, 'studentToday'])->whereNumber('studentId');
+        Route::get('students/{studentId}/campus-presence/candidates', [CampusPresenceController::class, 'candidates'])->whereNumber('studentId');
 
         // ── Teacher Attendance (teacher-attendance-v1) ────────────────────
         Route::get('teacher-attendance/today', [\App\Http\Controllers\TeacherAttendanceController::class, 'today']);

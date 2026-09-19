@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-19-rfid-presence-isolation-2981
+    changelog_date: "2026-09-19"
+    changelog_title: "fix(rfid): campus presence isolation and collision handling (#2981)"
+    reason: RFID-1 review repair is an internal safety/API boundary change; no production activation or runtime verification is claimed.
+
   - id: silent-2026-09-19-calendar-split-slot-317-polish
     changelog_date: "2026-09-19"
     changelog_title: "fix(calendar): split-slot wrap spacing polish (in-app #317)"
