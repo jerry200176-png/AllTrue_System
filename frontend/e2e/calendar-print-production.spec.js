@@ -19,6 +19,17 @@ const AUTHORIZED_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
   : [];
 const BRANCH_ID = REQUESTED_BRANCH_ID || AUTHORIZED_CAMPUSES[0] || 0;
 
+function datesBetween(start, end) {
+  const dates = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const final = new Date(`${end}T00:00:00Z`);
+  while (cursor <= final) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 async function installSession(page) {
   await page.addInitScript(({ session, branch, releaseVersion }) => {
     localStorage.setItem('alltrue_session', JSON.stringify(session));
@@ -64,6 +75,34 @@ async function installSession(page) {
   }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
 }
 
+async function assertSheetContrast(sheet, message) {
+  const contrast = await sheet.evaluate((element) => {
+    const panel = element.closest('.calendar-print-dialog__panel');
+    const background = getComputedStyle(element).backgroundColor;
+    const foreground = getComputedStyle(panel || element).color;
+    const parse = (value) => {
+      const srgb = value.match(/color\(srgb\s+([^/\s]+)\s+([^/\s]+)\s+([^/\s)]+)/i);
+      if (srgb) return srgb.slice(1, 4).map((part) => Number.parseFloat(part) * 255);
+      const rgb = value.match(/rgba?\(([^)]+)\)/);
+      if (rgb) return rgb[1].trim().split(/[,\s]+/).slice(0, 3).map((part) => Number.parseFloat(part));
+      return null;
+    };
+    const luminance = (rgb) => rgb.reduce((sum, channel, index) => {
+      const normalized = channel / 255;
+      const linear = normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      return sum + linear * [0.2126, 0.7152, 0.0722][index];
+    }, 0);
+    const bg = parse(background);
+    const fg = parse(foreground);
+    if (!bg || !fg) return { background, foreground, ratio: 0, parsed: false };
+    const [light, dark] = [luminance(bg), luminance(fg)].sort((a, b) => b - a);
+    return { background, foreground, ratio: (light + 0.05) / (dark + 0.05), parsed: true };
+  });
+  expect(contrast.background, `${message}: sheet must remain white or near-white`).toMatch(/rgb\(|color\(srgb/i);
+  expect(contrast.parsed, `${message}: Chromium computed color must be parseable`).toBe(true);
+  expect(contrast.ratio, `${message}: sheet text must remain readable`).toBeGreaterThanOrEqual(4.5);
+}
+
 async function assertPrintPreviewContract(page, expectedPeriod) {
   const dialog = page.locator('[data-calendar-print-dialog]');
   await expect(dialog).toBeVisible({ timeout: 20_000 });
@@ -83,34 +122,36 @@ async function assertPrintPreviewContract(page, expectedPeriod) {
 
   const hasPreview = await dialog.locator('.calendar-print-sheet').count() > 0;
   if (hasPreview) {
-    const sheet = dialog.locator('.calendar-print-sheet').first();
-    const contrast = await sheet.evaluate((element) => {
-      const panel = element.closest('.calendar-print-dialog__panel');
-      const background = getComputedStyle(element).backgroundColor;
-      const foreground = getComputedStyle(panel || element).color;
-      const parse = (value) => {
-        const srgb = value.match(/color\(srgb\s+([^/\s]+)\s+([^/\s]+)\s+([^/\s)]+)/i);
-        if (srgb) return srgb.slice(1, 4).map((part) => Number.parseFloat(part) * 255);
-        const rgb = value.match(/rgba?\(([^)]+)\)/);
-        if (rgb) return rgb[1].trim().split(/[,\s]+/).slice(0, 3).map((part) => Number.parseFloat(part));
-        return null;
-      };
-      const luminance = (rgb) => rgb.reduce((sum, channel, index) => {
-        const normalized = channel / 255;
-        const linear = normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
-        return sum + linear * [0.2126, 0.7152, 0.0722][index];
-      }, 0);
-      const bg = parse(background);
-      const fg = parse(foreground);
-      if (!bg || !fg) return { background, foreground, ratio: 0, parsed: false };
-      const [light, dark] = [luminance(bg), luminance(fg)].sort((a, b) => b - a);
-      return { background, foreground, ratio: (light + 0.05) / (dark + 0.05), parsed: true };
-    });
-    expect(contrast.background, 'dark-theme print sheet must remain white or near-white').toMatch(/rgb\(|color\(srgb/i);
-    expect(contrast.parsed, 'Chromium computed color must be parseable').toBe(true);
-    expect(contrast.ratio, 'print sheet text must remain readable in dark theme').toBeGreaterThanOrEqual(4.5);
-    await expect(sheet.locator('th')).toHaveCount(7);
-    await expect(sheet.locator('footer')).toContainText('校內核對');
+    const overview = dialog.locator('.calendar-print-sheet:has(.calendar-print-summary)').first();
+    await expect(overview).toBeVisible();
+    await expect(overview.locator('h3')).toHaveText(expectedPeriod === 'week' ? '週總覽' : '月總覽');
+    const dayCards = overview.locator('.calendar-print-days article');
+    await expect(dayCards).not.toHaveCount(0);
+    const rangeText = await overview.locator('.calendar-print-sheet__header span').first().innerText();
+    const [rangeStart, rangeEnd] = rangeText.match(/\d{4}-\d{2}-\d{2}/g) || [];
+    expect(rangeStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(rangeEnd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const expectedDates = datesBetween(rangeStart, rangeEnd);
+    const cardData = await dayCards.evaluateAll((cards) => cards.map((card) => ({
+      date: card.querySelector('b')?.textContent?.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '',
+      countText: card.querySelector('span')?.textContent || '',
+    })));
+    if (expectedPeriod === 'week') expect(expectedDates).toHaveLength(7);
+    expect(cardData.map((card) => card.date)).toEqual(expectedDates);
+    expect(cardData.every((card) => /^\d+\s*堂$/.test(card.countText.trim()))).toBe(true);
+    const cardCounts = cardData.map((card) => Number(card.countText.match(/^\d+/)[0]));
+    expect(cardCounts.every((count) => Number.isInteger(count) && count >= 0)).toBe(true);
+    const totalText = await overview.locator('p').innerText();
+    const totalMatch = totalText.match(/明細合計：\s*(\d+)\s*堂/);
+    expect(totalMatch).not.toBeNull();
+    expect(Number(totalMatch[1])).toBe(cardCounts.reduce((sum, count) => sum + count, 0));
+    await assertSheetContrast(overview, `${expectedPeriod} overview`);
+
+    const detail = dialog.locator('.calendar-print-sheet:has(table)').first();
+    await expect(detail).toBeVisible();
+    await expect(detail.locator('th')).toHaveCount(7);
+    await expect(detail.locator('footer')).toContainText('校內核對');
+    await assertSheetContrast(detail, `${expectedPeriod} detail`);
   } else {
     await expect(dialog.locator('.calendar-print-state')).toContainText('沒有可列印的課程');
   }
