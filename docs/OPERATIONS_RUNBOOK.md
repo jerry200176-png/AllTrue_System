@@ -925,7 +925,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 
 | 項目 | 原因 |
 |---|---|
-| Staging 環境 | Pi 單機，維護成本 > 效益（使用者明確排除）|
+| Staging 自動 gate prod | 獨立 host 文件／腳本已備（#868），但 host／secrets 與 I1 carve-out 仍待 Founder；在那之前不把 prod deploy 綁 staging |
 | 分散式追蹤（OpenTelemetry）| 單一服務，Sentry 已夠 |
 | Log 聚合（ELK/Loki）| Pi 規模，`tail -f laravel.log` 夠用 |
 | WAF | Nginx 基本防護 + rate limiting 已涵蓋 80% |
@@ -1161,33 +1161,50 @@ sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
 
 ---
 
-## U. Staging Environment — Issue #475（v1 plan，未實作）
+## U. Staging Environment — Issue #868（權威：`docs/GUIDE_STAGING_ENVIRONMENT.md`）
+
+> 歷史 §U 曾寫 Issue #475 / 第二台 Pi + MySQL + nginx 草案。現行權威是 **#868**、
+> **PR #2967** 與 `GUIDE_STAGING_ENVIRONMENT.md`：Dell **Debian 12 amd64 minimal**
+> native production-parity（Apache 2.4 · PHP 8.2-FPM/`proxy_fcgi` · MariaDB 10.11 ·
+> Node 22 · Composer 2）。文件／腳本**只是指令**，不證明 host 已存在。PR #2968
+> 僅作 superseded／reference。
 
 ### U1. 為什麼
 
 目前 WSL2 dev → production Pi 直接 cut over，缺少 production-like 驗證層。
 歷史事故：D（.htaccess）、E（cache permission）若有 staging 都能提前發現。
+Dell 可能成為未來 Production Candidate，故採 native parity，不做 Ubuntu/container-only staging。
 
-### U2. v1 設計（low cost）
+### U2. 目標設計（parity with production runtime）
 
-- **基礎設施**：第 2 台 Raspberry Pi 4（或 4GB VM）+ 獨立 hostname `staging.daan.lifenet.com.tw`
-- **DB**：獨立 MySQL `AllTrue_staging`，每週日凌晨從 production sixhour 備份**脫敏**還原（移除 phone / LineID）
-- **部署觸發**：`deploy-staging.yml` manual `workflow_dispatch`（不自動跟 main）
-- **資料同步**：僅 staging 寫入測試資料，不回 production
+| 項目 | 目標 |
+|---|---|
+| Host | Dell：Debian 12 amd64 minimal（**不是** production Pi） |
+| Runtime | Apache 2.4 + PHP 8.2-FPM (`proxy_fcgi`) + MariaDB 10.11 + Node 22（build）+ Composer 2 |
+| DB | 獨立 `AllTrue_staging` + staging-only `atr_staging`（credential 必須驗證後才可信） |
+| Checkout | `/home/staging/AllTrue_System` |
+| Deploy | **Stage B** 手動 exact-SHA；**不**改 `deploy.yml` |
+| Credential | `/home/staging/.config/alltrue/staging-db-password`，0600、只存 staging host |
+| GitHub staging | **未批准／未實作** — 需另行 Founder contract；不得上傳 staging DB 或 production secret |
+| 資料 | 僅 staging 寫入測試／脫敏資料，不回 production |
 
-### U3. 流程定位
+生命週期：**A 佈建 → B exact-SHA 部署 → C smoke／TrueFit → D 可選 GitHub staging → E 可選 prod gate**。
 
-| 變更類型 | 必須走 staging？ |
+### U3. 流程定位（目標；Stage E 未啟用前僅建議）
+
+| 變更類型 | 建議走 staging？ |
 |---------|------------------|
-| migration（新增表/欄位 + backfill） | **必須** |
-| auth / session / RBAC 變更 | **必須** |
+| migration（新增表/欄位 + backfill） | **建議必須**（host 就緒後） |
+| auth / session / RBAC 變更 | **建議必須** |
 | public endpoint 新增 | 建議 |
 | UI-only / docs | 不需要 |
 
-### U4. 為什麼還沒做（gating decision）
+### U4. 目前卡點（Founder decisions）
 
-- 多一台 Pi 硬體 / 月度電費 / SSL cert 維護
-- 等 CEO 決定預算 → 開 `feat/staging-env-v1` PR
+1. **Stage A–C**：Provision Dell + 手動 exact-SHA deploy + smoke
+2. **Stage D**：未批准／未實作；若未來另批 workflow，需獨立 Founder contract
+3. **Stage E（可選）**：I1 `[contract-change]` 後才可自動 staging／gate prod — **不**在佈建 PR 做
+4. 不做：production secrets、production DB、DNS cutover、Dell production migration
 
 ---
 
