@@ -149,7 +149,7 @@ class NotificationSyncService
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             ->where(function ($q) {
-                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             // Keep tuition notifications focused on unpaid classes only.
             ->where(fn ($q) => $q->effectivelyUnpaid());
@@ -216,7 +216,7 @@ class NotificationSyncService
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             ->where(function ($q) {
-                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             ->where(fn ($q) => $q->effectivelyPaid())
             ->where('RemainingSessions', '<=', 2)

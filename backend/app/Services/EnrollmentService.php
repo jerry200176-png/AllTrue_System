@@ -638,6 +638,7 @@ class EnrollmentService
         $scheduleGuard = app(ScheduleGuardService::class);
         $capacityConflicts = [];
         $classType = (string) ($data['class_type'] ?? 'one_on_one');
+        $isTutoring = strtolower(trim($classType)) === 'tutoring';
         $roomId = !empty($data['room_id']) ? (int) $data['room_id'] : null;
         foreach ($subjectGroups as $groupKey => $rowsForSubject) {
             $teacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
@@ -701,7 +702,8 @@ class EnrollmentService
             $identitySourceStudentId,
             $role,
             $campusIds,
-            $classType
+            $classType,
+            $isTutoring
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
@@ -728,7 +730,6 @@ class EnrollmentService
                 : 'session';
             // Server-canonical free tutoring contract: client amount/payment values
             // are ignored, including forged compatibility payloads.
-            $isTutoring = $classType === 'tutoring';
             $price = $isTutoring ? 0.0 : (float) ($data['price_per_session'] ?? 0);
 
             $hasSessionDeductedColumn = Schema::hasColumn('LearningRecord', 'SessionDeducted');

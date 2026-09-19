@@ -75,7 +75,7 @@ class AlertController extends Controller
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             ->where(function ($q) {
-                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             ->where(function ($q) use ($pendingReportClassIds) {
                 $q->where('Paid', 0)
@@ -93,7 +93,7 @@ class AlertController extends Controller
             ->where('Stop', 0)
             ->where('ScheduleMode', 'date')
             ->where(function ($q) {
-                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             ->whereNotNull('settlement_day')
             ->whereBetween('settlement_day', [1, 31]);
@@ -109,7 +109,7 @@ class AlertController extends Controller
         $pendingSettlementResults = StudentClass::query()
             ->where('Stop', 1)
             ->where(function ($q) {
-                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             ->where(function ($q) {
                 $q->where('closed_reason', 'settled_pending')

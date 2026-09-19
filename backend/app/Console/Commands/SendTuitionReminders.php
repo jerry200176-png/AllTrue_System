@@ -34,7 +34,7 @@ class SendTuitionReminders extends Command
                 ->with(['student', 'coursePackage'])
                 ->where('Stop', 0)
                 ->where(function ($q) {
-                    $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                    $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
                 })
                 ->where(fn ($q) => $q->effectivelyUnpaid())
                 ->whereDate($overdueColumn, '<=', $cutoff)

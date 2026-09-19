@@ -65,7 +65,7 @@ class DunningService
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             ->where(function ($q) {
-                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             });
 
         if ($campusId) {
@@ -112,7 +112,7 @@ class DunningService
             ->where('Stop', 0)
             ->where('ScheduleMode', 'date')
             ->where(function ($q) {
-                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
             })
             ->whereNotNull('settlement_day')
             ->where('settlement_day', '>', 0);

@@ -315,6 +315,7 @@ class EnrollmentApiTest extends TestCase
             'start_time' => '16:00',
             'duration_minutes' => 120,
             'rate_unit' => 'hour',
+            'price_per_session' => 600,
             'payment_type' => 'session',
             'total_classes' => 2,
             'mode' => 'enrollment',
@@ -402,7 +403,6 @@ class EnrollmentApiTest extends TestCase
             'days_of_week' => [2],
             'start_time' => '16:00',
             'duration_minutes' => 120,
-            'price_per_session' => 600,
             'payment_type' => 'session',
             'total_classes' => 1,
             'mode' => 'enrollment',
@@ -456,6 +456,29 @@ class EnrollmentApiTest extends TestCase
             'total_classes' => 1, 'mode' => 'enrollment',
         ]);
         $response->assertStatus(422)->assertJsonValidationErrors(['price_per_session']);
+    }
+
+    public function test_batch_tutoring_omits_payable_fields_and_canonicalizes_forged_values(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-batch-tutoring-free@example.com');
+        $student = Student::create(['name' => '批次免費輔導', 'CampusID' => 1, 'ClassID' => 0, 'SchoolName' => 'T']);
+        $teacherId = $this->createTeacher(1, 'teacher-batch-tutoring-free@example.com');
+        $date = now()->addDays(3)->toDateString();
+
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacherId,
+            'subject' => 'Math', 'class_type' => 'tutoring', 'confirmed_dates' => [],
+            'future_dates' => [$date], 'start_time' => '16:00', 'duration_minutes' => 60,
+            'price_per_session' => 7777, 'paid_at' => $date, 'payment_type' => 'session',
+            'total_classes' => 1,
+        ]);
+
+        $response->assertCreated();
+        $course = StudentClass::find((int) $response->json('student_class_id'));
+        $this->assertSame(0, (int) $course->Rate);
+        $this->assertSame(0, (int) $course->Charge);
+        $this->assertSame(0, (int) $course->Paid);
+        $this->assertNull($course->PayDate);
     }
 
     /**

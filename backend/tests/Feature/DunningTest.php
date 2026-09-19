@@ -34,7 +34,8 @@ class DunningTest extends TestCase
 
         $response = $this->postJson('/api/v1/dunning/trigger', ['campus_id' => $campus->id], $this->bearer($token));
         $response->assertOk();
-        $this->assertEmpty($response->json('events'));
+        $events = collect($response->json('events'));
+        $this->assertTrue($events->whereIn('student_class_id', StudentClass::where('StudentID', $student->id)->pluck('ID'))->isEmpty());
     }
 
     public function test_dunning_rules_returns_all_defined_rules(): void

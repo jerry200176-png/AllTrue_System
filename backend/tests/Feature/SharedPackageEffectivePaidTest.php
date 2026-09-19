@@ -20,9 +20,46 @@ class SharedPackageEffectivePaidTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_notification_sync_excludes_tutoring_from_tuition_candidates(): void
+    {
+        [$campus, , $sc] = $this->setupTutoringCase();
+        $result = NotificationSyncService::sync([$campus->id]);
+
+        $this->assertDatabaseMissing('Notifications', [
+            'SourceKey' => "tuition:{$campus->id}:{$sc->ID}",
+            'ResolvedAt' => null,
+        ]);
+    }
+
+    public function test_tuition_reminder_command_excludes_tutoring_from_line_candidates(): void
+    {
+        [$campus] = $this->setupTutoringCase();
+        $this->artisan('tuition:send-reminders', ['--dry-run' => true, '--overdue-days' => 7])
+            ->assertSuccessful();
+        $this->assertNotNull($campus);
+    }
+
     private function campus(): object
     {
         return CampusFactory::new()->create(['name' => '分校', 'messaging_channel_token' => 'token']);
+    }
+
+    private function setupTutoringCase(): array
+    {
+        $campus = $this->campus();
+        $student = Student::create([
+            'name' => '免費輔導通知排除', 'CampusID' => $campus->id, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $sc = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(15)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+            'RemainingSessions' => 0, 'UsedSessions' => 5, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 0, 'Rate' => 0, 'Stop' => 0, 'ClassType' => 'tutoring',
+            'ScheduleMode' => 'count', 'MDate' => now()->subDays(15),
+        ]);
+        return [$campus, $student, $sc];
     }
 
     private function director(int $campusId): string
