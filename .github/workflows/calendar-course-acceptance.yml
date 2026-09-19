@@ -67,6 +67,8 @@ jobs:
         run: |
           set -euo pipefail
           node .github/scripts/normalize-smoke-session.mjs --self-test
+          grep -Fq "printf '%s' 'ALLTRUE_SESSION_PAYLOAD_V1:'" .github/workflows/calendar-course-acceptance.yml
+          ! grep -Fq 'echo "ALLTRUE_SESSION_PAYLOAD_V1:' .github/workflows/calendar-course-acceptance.yml
           if [ -n "$BRANCH_ID" ]; then
             [[ "$BRANCH_ID" =~ ^[1-9][0-9]{0,6}$ ]] || { echo 'branch_id must be canonical positive decimal digits' >&2; exit 1; }
             (( 10#$BRANCH_ID <= 1000000 )) || { echo 'branch_id is outside the supported range' >&2; exit 1; }
@@ -83,7 +85,8 @@ jobs:
           set -euo pipefail
           export BRANCH_ID="${1:-}"
           cd /home/admin/backend
-          php artisan tinker --no-ansi --execute='
+          printf '%s' 'ALLTRUE_SESSION_PAYLOAD_V1:'
+          session_payload="$(php artisan tinker --no-ansi --execute='
           $branch = (int) getenv("BRANCH_ID");
           $query = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
             ->join("User as u", "u.id", "=", "t.user_id")
@@ -127,8 +130,10 @@ jobs:
               "must_change_password" => (bool) $row->MustChangePassword,
             ],
           ]);
-          echo "ALLTRUE_SESSION_PAYLOAD_V1:" . base64_encode($payload) . PHP_EOL;
-          '
+          echo base64_encode($payload);
+          ')"
+          test -n "$session_payload"
+          printf '%s\n' "$session_payload"
           REMOTE
           })"
           test -n "$session_output"
