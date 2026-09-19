@@ -141,7 +141,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
         if (!isTelemetry('POST', url)) return rejectWrite('BEACON', url);
         return nativeBeacon ? nativeBeacon(url, data) : false;
       };
-      window.__writeGuardSelfTests = { form: false, beacon: false };
+      window.__writeGuardSelfTests = { form: false, requestSubmit: false, beacon: false };
       try {
         const probe = document.createElement('form');
         probe.action = '/write-probe';
@@ -151,6 +151,10 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
         window.__writeGuardSelfTests.form = window.__selfTestingFormBlocked === true;
       } catch (error) { window.__writeGuardSelfTests.form = error instanceof Error; }
       window.__selfTestingForm = false;
+      try {
+        const probe = document.createElement('form');
+        probe.requestSubmit();
+      } catch (error) { window.__writeGuardSelfTests.requestSubmit = error instanceof Error; }
       try { navigator.sendBeacon('https://outside.invalid/api/v1/adoption/events', 'probe'); }
       catch (error) { window.__writeGuardSelfTests.beacon = error instanceof Error; }
       window.__readOnlyViolations = [];
@@ -175,9 +179,9 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       expect(Array.isArray(body.meta)).toBe(false);
       const schemas = {
         dashboard_opened: { keys: ['page', 'role', 'telem_day', 'telem_session'], role: 'director', page: 'director-dashboard' },
-        director_trust_decision_impression: { keys: ['has_drilldown', 'key', 'people_total', 'severity', 'target', 'telem_day', 'telem_session'] },
+        director_trust_decision_impression: { keys: ['has_drilldown', 'key', 'people_total', 'severity', 'target', 'telem_day', 'telem_session', 'viewport'] },
         director_trust_decision_click: { keys: ['from', 'has_drilldown', 'key', 'people_shown', 'severity', 'target', 'telem_day', 'telem_session'] },
-        director_trust_score_shown: { keys: ['critical_count', 'decision_count', 'decision_keys', 'score', 'status', 'telem_day', 'telem_session'] },
+        director_trust_score_shown: { keys: ['critical_count', 'decision_count', 'decision_keys', 'score', 'status', 'telem_day', 'telem_session', 'warning_count'] },
       };
       const schema = schemas[body.event];
       expect(schema, `unexpected telemetry event ${body.event}`).toBeDefined();
@@ -186,8 +190,31 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       if (schema.page) expect(body.meta.page).toBe(schema.page);
       if (body.event === 'director_trust_decision_impression' || body.event === 'director_trust_decision_click') {
         expect(body.meta.key).toMatch(/^[a-z0-9_-]{1,80}$/i);
-        expect(body.meta.severity).toMatch(/^[a-z0-9_-]{0,32}$/i);
-        expect(body.meta.target).toMatch(/^[a-z0-9_-]{0,80}$/i);
+        expect(['critical', 'warning', '']).toContain(body.meta.severity);
+        expect(['calendar', 'duplicate-review', 'course-mgmt', 'tuition', '']).toContain(body.meta.target);
+        expect(typeof body.meta.has_drilldown).toBe('boolean');
+        if (body.event.endsWith('impression')) {
+          expect(Number.isInteger(body.meta.people_total)).toBe(true);
+          expect(body.meta.people_total).toBeGreaterThanOrEqual(0);
+          expect(body.meta.people_total).toBeLessThanOrEqual(100000);
+          expect(body.meta.viewport).toBe(1);
+        } else {
+          expect(body.meta.from).toBe('decision_cta');
+          expect(Number.isInteger(body.meta.people_shown)).toBe(true);
+          expect(body.meta.people_shown).toBeGreaterThanOrEqual(0);
+          expect(body.meta.people_shown).toBeLessThanOrEqual(100000);
+        }
+      }
+      if (body.event === 'director_trust_score_shown') {
+        for (const key of ['critical_count', 'warning_count', 'decision_count']) {
+          expect(Number.isInteger(body.meta[key])).toBe(true);
+          expect(body.meta[key]).toBeGreaterThanOrEqual(0);
+          expect(body.meta[key]).toBeLessThanOrEqual(100000);
+        }
+        expect(body.meta.score).toBeGreaterThanOrEqual(0);
+        expect(body.meta.score).toBeLessThanOrEqual(100);
+        expect(['red', 'yellow', 'green']).toContain(body.meta.status);
+        expect(body.meta.decision_keys.length).toBe(body.meta.decision_count);
       }
       const allowedMeta = new Set(schema.keys);
       expect(Object.keys(body.meta).every((key) => allowedMeta.has(key))).toBe(true);
@@ -270,13 +297,18 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await expect(scheduler.locator('label').filter({ hasText: '繳費日期' })).toHaveCount(0);
     await expect(scheduler.locator('input[id^="course-payment-date-"]')).toHaveCount(0);
     await expect(scheduler.locator('label').filter({ hasText: /單堂費用|每小時費用/ }).locator('..').locator('input')).toHaveCount(0);
-    await expect(scheduler.locator('[aria-required="true"]').filter({ hasText: /金額|繳費|付款/ })).toHaveCount(0);
+    const relevantControls = await scheduler.locator('input, select, textarea').evaluateAll((controls) => controls
+      .filter((control) => /金額|單堂費用|每小時費用|繳費日期|付款日期/.test(control.closest('.form-group')?.textContent || ''))
+      .map((control) => ({ required: control.required, ariaRequired: control.getAttribute('aria-required'), valid: control.checkValidity() })));
+    expect(relevantControls, 'tutoring must not render receivable controls').toEqual([]);
+    const formsValidity = await scheduler.locator('form').evaluateAll((forms) => forms.map((form) => form.checkValidity()));
+    expect(formsValidity.every(Boolean)).toBe(true);
     await expect(scheduler).not.toContainText(/金額.*必填|付款.*必填|繳費.*必填/);
     await page.getByRole('button', { name: '取消', exact: true }).last().click();
     expect(await page.evaluate(() => window.__printGuardSelfTest)).toBe(true);
     expect(await page.evaluate(() => window.__printAttempts)).toBe(0);
     expect(await page.evaluate(() => window.__originalPrintCalls)).toBe(0);
-    expect(await page.evaluate(() => window.__writeGuardSelfTests)).toEqual({ form: true, beacon: true });
+    expect(await page.evaluate(() => window.__writeGuardSelfTests)).toEqual({ form: true, requestSubmit: true, beacon: true });
     expect(await page.evaluate(() => window.__readOnlyViolations)).toEqual([]);
 
     expect(unsafe, `non-read-only requests observed: ${JSON.stringify(unsafe)}`).toEqual([]);
