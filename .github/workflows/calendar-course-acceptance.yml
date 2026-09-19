@@ -49,10 +49,12 @@ jobs:
       - name: Setup SSH for read-only smoke token lookup
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
-          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
         run: |
           set -euo pipefail
+          test -n "$PI_SSH_KEY" && test -n "$PI_SSH_USER" && test -n "$PI_SSH_HOST" && test -n "$PI_HOST_KEY"
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
@@ -60,10 +62,11 @@ jobs:
       - name: Fetch short-lived director session (read-only)
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
-          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          BRANCH_ID: ${{ github.event.inputs.branch_id || '16' }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          BRANCH_ID: ${{ github.event.inputs.branch_id || '' }}
         run: |
           set -euo pipefail
+          test -n "$PI_SSH_USER" && test -n "$PI_SSH_HOST" && test -s ~/.ssh/deploy_key
           session_json="$({
             ssh -i ~/.ssh/deploy_key \
               -o IdentitiesOnly=yes \
@@ -76,17 +79,17 @@ jobs:
           cd /home/admin/backend
           php artisan tinker --no-ansi --execute='
           $branch = (int) getenv("BRANCH_ID");
-          $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
+          $query = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
             ->join("User as u", "u.id", "=", "t.user_id")
             ->join("UserCampus as uc", "uc.UserID", "=", "u.id")
             ->where("u.type", "D")
-            ->where("uc.CampusID", $branch)
             ->where(function ($q) { $q->where("uc.Approved", 1)->orWhereNull("uc.Approved"); })
             ->where("t.expires_at", ">", now())
             ->where("t.expires_at", "<=", now()->addMinutes(30))
+            ->when($branch > 0, fn ($q) => $q->where("uc.CampusID", $branch))
             ->orderByDesc("t.expires_at")
-            ->select("t.token", "t.expires_at", "u.id", "u.type", "u.MustChangePassword")
-            ->first();
+            ->select("t.token", "t.expires_at", "u.id", "u.type", "u.MustChangePassword");
+          $row = $query->first();
           if (!$row) {
             // A super admin may administer a branch without a UserCampus row.
             $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
@@ -99,6 +102,7 @@ jobs:
               ->first();
           }
           if (!$row) { throw new \RuntimeException("no valid director smoke session"); }
+          if ((bool) $row->MustChangePassword) { throw new \RuntimeException("director smoke session requires password change"); }
           $campuses = $row->type === "S"
             ? \Illuminate\Support\Facades\DB::table("Campus")->pluck("id")
             : \Illuminate\Support\Facades\DB::table("UserCampus")
