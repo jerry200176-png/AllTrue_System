@@ -1,4 +1,5 @@
 ## 2026-09-19 — fix(calendar): 1:2/1:3 split-slot text readability (in-app #317)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-split-slot-317 -->
 - 日檢視同時段 1:2／1:3 並排窄欄：科目+班型改橫向 meta 列與 1:2/1:3 短標，避免姓名／標籤被截到只剩一字。
 
 ## 2026-09-18 — docs(agents): in-app product-loop intake→GitHub mapping first
