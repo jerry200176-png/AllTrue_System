@@ -4,6 +4,7 @@ import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { fetchCalendarCoursesAndSchedulesParallel, fetchCalendarStudentClassesApi, fetchCalendarSchedulesApi } from '../../lib/calendarCourseLoad';
 import { fetchClassSessionsProjection } from '../../lib/classSessionsApi';
 import { getRange, projectPrintRows, filterPrintRows, summarizeRows, chunkPrintRows, serializePrintableRows, printPageStyle } from '../../lib/calendarPrint';
+import { adoptionErrorType, trackAdoptionEvent } from '../../lib/adoptionTelemetry.js';
 
 const props = defineProps({
   open: Boolean,
@@ -37,6 +38,23 @@ const activeFilterText = computed(() => {
   return values.length ? values.join('／') : '全部可見資料';
 });
 const canPrint = computed(() => !loading.value && !error.value && rows.value.length > 0 && allRows.value.length > 0);
+function rowCountBucket(count) {
+  if (count <= 0) return '0';
+  if (count <= 25) return '1-25';
+  if (count <= 100) return '26-100';
+  if (count <= 500) return '101-500';
+  return '500+';
+}
+function trackPrintEvent(event, result, rowCount = rows.value.length) {
+  void trackAdoptionEvent(event, props.branchId, {
+    mode: period.value,
+    range_start: range.value.start,
+    range_end: range.value.end,
+    orientation: orientation.value,
+    row_count_bucket: rowCountBucket(rowCount),
+    result,
+  });
+}
 
 function sessionToken() {
   try { return JSON.parse(localStorage.getItem('alltrue_session') || '{}')?.access_token || ''; } catch { return ''; }
@@ -60,8 +78,12 @@ async function load() {
     if (result.schedules.list.length >= 5000) throw new Error('資料量過大，請縮小範圍或聯絡管理員。');
     const sessions = Object.values(projection.byClass || {}).flat();
     allRows.value = projectPrintRows({ courses: result.courses.list, schedules: result.schedules.list, sessions, rooms: props.rooms, teachers: props.teachers, range: selectedRange });
+    trackPrintEvent('calendar_print_preview_opened', 'success', allRows.value.length);
   } catch (cause) {
-    if (token === requestToken.value) error.value = cause?.message || '課表資料暫時無法載入，請重試。';
+    if (token === requestToken.value) {
+      error.value = cause?.message || '課表資料暫時無法載入，請重試。';
+      trackPrintEvent('calendar_print_failed', adoptionErrorType(cause), 0);
+    }
   } finally {
     if (token === requestToken.value) loading.value = false;
   }
@@ -89,6 +111,7 @@ async function printReport() {
   window.addEventListener('afterprint', onAfterPrint, { once: true });
   try {
     window.print();
+    trackPrintEvent('calendar_print_requested', 'success');
   } finally {
     // Some browsers do not emit afterprint when the dialog is cancelled.
     printFallbackTimer = window.setTimeout(cleanupPrint, 120000);

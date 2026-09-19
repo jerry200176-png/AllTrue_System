@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  getWeekRange, getMonthRange, projectPrintRows, summarizeRows, chunkPrintRows, serializePrintableRows,
+  getWeekRange, getMonthRange, exceptionMarkers, projectPrintRows, summarizeRows, chunkPrintRows, serializePrintableRows,
 } from './calendarPrint.js';
 
 assert.deepEqual(getWeekRange('2026-09-20'), { start: '2026-09-14', end: '2026-09-20' });
@@ -27,6 +27,8 @@ assert.equal(rows[0].studentName, '王小明');
 assert.deepEqual(rows[0].markers, ['請假', '補課']);
 assert.equal(rows[0].roomLabel, 'A101');
 assert.equal(rows[0].campusLabel, '分校 #11');
+assert.deepEqual(exceptionMarkers({}, { teacher_id: 10 }, 9), ['代課']);
+assert.deepEqual(exceptionMarkers({}, { teacher_id: 9 }, 9), []);
 assert.equal(summarizeRows(rows, range, 'week').total, 1);
 assert.equal(chunkPrintRows(Array.from({ length: 25 }, (_, i) => ({ ...rows[0], occurrenceKey: String(i), date: '2026-09-15' }))).length, 3);
 assert.equal(serializePrintableRows(rows)[0].occurrenceKey, undefined);

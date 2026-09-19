@@ -60,13 +60,21 @@ function labelStatus(raw) {
   return status ? '已排課' : '—';
 }
 
-export function exceptionMarkers(schedule = {}, session = {}) {
+function explicitTeacherId(value) {
+  const raw = value?.teacherId ?? value?.teacher_id ?? value?.TeacherID ?? value?.TeacherId;
+  return raw === undefined || raw === null || raw === '' ? null : String(raw);
+}
+
+export function exceptionMarkers(schedule = {}, session = {}, contractTeacherId = null) {
   const rawType = String(first(schedule.type, schedule.Type, '')).toLowerCase();
   const rawStatus = String(first(schedule.status, schedule.Status, session.status, '')).toLowerCase();
   const markers = [];
   if (rawType === 'extra' || rawType === 'makeup' || rawStatus.includes('makeup')) markers.push('補課');
   if (rawType === 'leave' || rawStatus.includes('leave') || rawStatus.includes('absent')) markers.push('請假');
-  if (session.substituteTeacherId || session.substitute_teacher_id || schedule.substitute_teacher_id) markers.push('代課');
+  const effectiveTeacherId = explicitTeacherId(session);
+  const contractId = explicitTeacherId({ teacherId: contractTeacherId });
+  if (session.substituteTeacherId || session.substitute_teacher_id || schedule.substitute_teacher_id
+    || (effectiveTeacherId && contractId && effectiveTeacherId !== contractId)) markers.push('代課');
   if (schedule.original_schedule_id || rawType === 'reschedule' || rawStatus.includes('reschedul')) markers.push('調課');
   if (rawStatus.includes('cancel')) markers.push('已取消');
   if (rawStatus.includes('change')) markers.push('變更');
@@ -110,8 +118,8 @@ export function projectPrintRows({ courses = [], sessions = [], schedules = [], 
     const teacherId = first(session?.teacherId, session?.teacher_id, course?.teacher_id);
     const roomId = first(course?.room_id, course?.RoomID, session?.room_id, session?.roomId);
     const markers = [...new Set([
-      ...exceptionMarkers({}, session),
-      ...scheduleEntries.flatMap((schedule) => exceptionMarkers(schedule, session)),
+      ...exceptionMarkers({}, session, first(course?.teacher_id, course?.TeacherID)),
+      ...scheduleEntries.flatMap((schedule) => exceptionMarkers(schedule, session, first(course?.teacher_id, course?.TeacherID))),
     ])];
     if (session?.isProjected && scheduleEntries.some((schedule) => schedule?.original_schedule_id) && !session?.id) return;
     output.push({
