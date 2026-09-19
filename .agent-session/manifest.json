@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "b1a9e9c05bac4f8cb0dc85e73bdcf1b4",
+  "session_id": "af9d13554c474625afa27e33ec0d720d",
   "project": "alltrue",
-  "task_id": "inapp-321-phase-c-20260919",
+  "task_id": "pr3046-osv-ci-unblock-20260919",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "0349294668a7157541d4770f5cb20e8c6c18cb77",
-  "branch": "chore/task-inapp-321-phase-c-20260919",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-321-phase-c-20260919",
-  "started_at": "2026-09-19T11:41:52Z",
+  "base_sha": "e6e2fc3eb542cc7fe5024f6bf615f22c1c18c811",
+  "branch": "chore/task-pr3046-osv-ci-unblock-20260919",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/pr3046-osv-ci-unblock-20260919",
+  "started_at": "2026-09-19T11:17:58Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.1"
 }
