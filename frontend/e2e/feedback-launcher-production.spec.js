@@ -4,7 +4,8 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const HOSTED = process.env.SMOKE_FEEDBACK_HOSTED === '1';
-const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
+const BRANCH_ID_RAW = process.env.SMOKE_BRANCH_ID || '';
+const BRANCH_ID = /^\d+$/.test(BRANCH_ID_RAW) ? Number(BRANCH_ID_RAW) : 0;
 const HOST_ORIGIN = (() => {
   try { return new URL(BASE || '').origin; } catch { return ''; }
 })();
@@ -23,15 +24,16 @@ function readSession() {
 const SESSION = readSession();
 const ROLE = SESSION?.user?.role;
 const SESSION_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
-  ? SESSION.user.campuses.map(Number).filter(Number.isInteger)
+  && SESSION.user.campuses.every((campus) => Number.isInteger(campus) && campus > 0)
+  ? SESSION.user.campuses
   : [];
 function sessionExpirySeconds(value) {
-  if (typeof value === 'number' && Number.isFinite(value)) return value > 1e12 ? value / 1000 : value;
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value > 1e12 ? value / 1000 : value;
   if (typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim())) {
     const numeric = Number(value);
-    return numeric > 1e12 ? numeric / 1000 : numeric;
+    return numeric > 0 ? (numeric > 1e12 ? numeric / 1000 : numeric) : 0;
   }
-  if (typeof value === 'string' && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim())) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim())) {
     const millis = Date.parse(value);
     return Number.isFinite(millis) ? millis / 1000 : 0;
   }
@@ -40,11 +42,12 @@ function sessionExpirySeconds(value) {
 const SESSION_REMAINING_SECONDS = sessionExpirySeconds(SESSION?.expires_at) - Date.now() / 1000;
 const CONTROLLED_SESSION = Boolean(
   SESSION?.access_token
+  && typeof SESSION.access_token === 'string'
+  && SESSION.access_token.trim().length > 0
   && ['director', 'super_admin'].includes(ROLE)
   && BRANCH_ID > 0
-  && (ROLE === 'super_admin' || SESSION_CAMPUSES.includes(BRANCH_ID))
-  && !SESSION?.user?.must_change_password
-  && !SESSION?.must_change_password
+  && SESSION_CAMPUSES.includes(BRANCH_ID)
+  && SESSION?.user?.must_change_password === false
   && SESSION_REMAINING_SECONDS > 0
   && SESSION_REMAINING_SECONDS <= 30 * 60,
 );
@@ -90,7 +93,9 @@ function installSyntheticProfile(page) {
     localStorage.setItem('alltrue_session', JSON.stringify(safe));
     localStorage.setItem('app_branch', String(branch));
     sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-    window.__feedbackAcceptance = { blockedSelfTests: [], runtimeViolations: [], telemetry: [], selfTestActive: false };
+    window.__feedbackAcceptance = {
+      blockedSelfTests: [], runtimeViolations: [], telemetry: [], selfTestActive: false, selfTestSealed: false,
+    };
 
     const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
     const telemetryPath = '/api/v1/adoption/events';
@@ -136,15 +141,44 @@ function installSyntheticProfile(page) {
     };
     window.print = () => write('print', 'PRINT', window.location.href);
     document.addEventListener('submit', (event) => {
-      window.__feedbackAcceptance.runtimeViolations.push({ channel: 'submit-event' });
+      const target = window.__feedbackAcceptance.selfTestActive
+        ? window.__feedbackAcceptance.blockedSelfTests
+        : window.__feedbackAcceptance.runtimeViolations;
+      target.push({ channel: 'submit-event', method: 'POST' });
       event.preventDefault();
     }, true);
+    const selfTestAttempts = [
+      () => { try { fetch('/api/v1/__feedback_write__', { method: 'POST' }); } catch (_) {} },
+      () => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', '/api/v1/__feedback_write__');
+        try { xhr.send('{}'); } catch (_) {}
+      },
+      () => {
+        const form = document.createElement('form');
+        form.action = '/api/v1/__feedback_write__';
+        try { form.requestSubmit(); } catch (_) {}
+      },
+      () => { const form = document.createElement('form'); try { form.submit(); } catch (_) {} },
+      () => {
+        document.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      },
+      () => { try { navigator.sendBeacon('/api/v1/__feedback_write__', '{}'); } catch (_) {} },
+      () => { try { window.print(); } catch (_) {} },
+    ];
+    window.__feedbackAcceptance.selfTestActive = true;
+    try {
+      selfTestAttempts.forEach((attempt) => attempt());
+    } finally {
+      window.__feedbackAcceptance.selfTestActive = false;
+      window.__feedbackAcceptance.selfTestSealed = true;
+    }
   }, { session: SESSION, branch: BRANCH_ID });
 }
 
-function installReadOnlyRoutes(page) {
+async function installReadOnlyRoutes(page) {
   const networkWrites = [];
-  const routePromise = page.route('**/*', async (route) => {
+  await page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method().toUpperCase();
@@ -187,45 +221,21 @@ function installReadOnlyRoutes(page) {
     }
     await route.continue();
   });
-  return { networkWrites, routePromise };
+  return { networkWrites };
 }
 
 async function assertSyntheticGuards(page) {
-  await page.evaluate(async () => {
-    window.__feedbackAcceptance.selfTestActive = true;
-    const attempts = [
-      async () => { try { await fetch('/api/v1/__feedback_write__', { method: 'POST' }); } catch (_) {} },
-      async () => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', '/api/v1/__feedback_write__');
-        try { xhr.send('{}'); } catch (_) {}
-      },
-      async () => {
-        const form = document.createElement('form');
-        form.action = '/api/v1/__feedback_write__';
-        document.body.append(form);
-        try { form.requestSubmit(); } catch (_) {}
-      },
-      async () => { const form = document.createElement('form'); try { form.submit(); } catch (_) {} },
-      async () => { try { navigator.sendBeacon('/api/v1/__feedback_write__', '{}'); } catch (_) {} },
-      async () => { try { window.print(); } catch (_) {} },
-    ];
-    try {
-      for (const attempt of attempts) await attempt();
-    } finally {
-      window.__feedbackAcceptance.selfTestActive = false;
-    }
-    for (const attempt of attempts) await attempt();
-  });
   const state = await page.evaluate(() => window.__feedbackAcceptance);
-  expect(new Set(state.blockedSelfTests.map((entry) => entry.channel))).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-submit', 'sendBeacon', 'print']));
-  expect(new Set(state.runtimeViolations.map((entry) => entry.channel))).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-submit', 'sendBeacon', 'print']));
+  expect(state.selfTestActive).toBe(false);
+  expect(state.selfTestSealed).toBe(true);
+  expect(new Set(state.blockedSelfTests.map((entry) => entry.channel))).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-submit', 'submit-event', 'sendBeacon', 'print']));
+  expect(state.runtimeViolations).toEqual([]);
 }
 
 async function assertFeedbackChoices(page, viewport) {
   await page.setViewportSize(viewport);
   await installSyntheticProfile(page);
-  const { networkWrites } = installReadOnlyRoutes(page);
+  const { networkWrites } = await installReadOnlyRoutes(page);
   await page.goto(`${BASE}/`);
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
   await dismissOverlays(page);
