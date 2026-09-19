@@ -2,10 +2,6 @@
 <!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
 - SourceRef `alltrue:bug_report:318`：主任列印課表在暗色主題下維持深色文字／白色紙張底，預覽與頁尾對比度一致；本項僅記錄已完成的前端驗證，不宣稱 production verified。
 
-## 2026-09-19 — improved(course-management): show upcoming lesson dates in course list (in-app #321 / GitHub #3071)
-<!-- release-notes: staff_update=staff-2026-09-19-course-upcoming-dates-321 -->
-- SourceRef `alltrue:bug_report:321`：課程清單在既有時段欄直接顯示今日起最近三堂上課日期，並標示尚有幾堂；完整日期仍可從「管理課程」查看。
-
 ## 2026-09-19 — fix(rfid): campus presence isolation and collision handling (#2981)
 <!-- release-notes: silent_ship=silent-2026-09-19-rfid-presence-isolation-2981 -->
 - RFID-1 review repair keeps explicit idempotency keys bound to student/campus, distinguishes the two named duplicate constraints, validates campus/date inputs, and keeps RFID presence separate from attendance and billing. Merge and activation remain Founder-only; this is not a production verification claim.
@@ -3474,6 +3470,9 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-09-19 — improved(students): 搜尋姓名或就讀學校
 <!-- release-notes: staff_update=staff-2026-09-19-student-school-search -->
 - 學生搜尋現在可用姓名或就讀學校查找；既有分校權限與篩選行為不變。
+## 2026-09-19 — fix(billing): counseling courses are free and non-collectible (in-app #325 / GitHub #3075)
+<!-- release-notes: staff_update=staff-2026-09-19-counseling-free-325 -->
+- 新建輔導課不再要求填寫金額或繳費日期；後端固定為零金額、未繳且不建立應收帳款，也不進繳費／續課提醒與催繳通知。既有歷史帳務與核薪規則不變。
 ## 2026-09-19 — feat(calendar): director week/month print preview (in-app #318 / GitHub #3068)
 <!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
 - 主任可從班級行事曆列印目前有權限查看的週／月課表，包含總覽、每日明細、學生、課程、教師、日期時間、校區教室與異動狀態；僅透過瀏覽器列印，不建立額外檔案或資料來源。
