@@ -11,7 +11,7 @@
 <template>
   <div v-if="badges.teacherTag" class="cb-teacher-tag" :style="{ background: badges.teacherTag.color }">{{ badges.teacherTag.name }}</div>
   <div class="cb-student" :class="studentClass">{{ course.student_name }}</div>
-  <div v-if="horizontalMeta" class="cb-meta-row" :class="{ 'cbc-compact': layout.compact }">
+  <div v-if="horizontalMeta" class="cb-meta-row" :class="metaRowClass">
     <span class="cb-detail cb-meta-item">{{ subjectLabel }}</span>
     <span class="cb-type cb-meta-item">{{ typeLabel }}</span>
   </div>
@@ -40,7 +40,7 @@ const props = defineProps({
   course: { type: Object, required: true },
   // { rollCall: {kind,label}|null, evalMissing: {label}|null, teacherTag: {name,color}|null }
   badges: { type: Object, default: () => ({}) },
-  // { compact: boolean, firstBadge: 'full' | 'compact' | null, splitSlot: boolean }
+  // { compact, firstBadge, splitSlot, splitCount }
   layout: { type: Object, default: () => ({}) },
 });
 
@@ -59,11 +59,19 @@ const typeLabel = computed(() => {
 });
 const hasRc = computed(() => !!(props.badges.rollCall || props.badges.evalMissing));
 
+const splitCount = computed(() => Math.max(0, Number(props.layout.splitCount || 0)));
 const studentClass = computed(() => ({
   'cbc-compact': !!props.layout.compact,
+  'cbc-split-slot': !!props.layout.splitSlot,
+  'cbc-split-triple': !!props.layout.splitSlot && splitCount.value >= 3,
   'cbc-has-rc': hasRc.value,
   'cbc-badge-full': props.layout.firstBadge === 'full',
   'cbc-badge-compact-pad': props.layout.firstBadge === 'compact',
+}));
+const metaRowClass = computed(() => ({
+  'cbc-compact': !!props.layout.compact,
+  'cbc-split-slot': !!props.layout.splitSlot,
+  'cbc-split-triple': !!props.layout.splitSlot && splitCount.value >= 3,
 }));
 </script>
 
@@ -128,6 +136,27 @@ const studentClass = computed(() => ({
   flex: 0 0 auto;
   opacity: 0.85;
   font-weight: 700;
+}
+
+/* in-app #317：並排窄欄（1:2/1:3）內文改橫排 + 縮字，避免直向三行截斷 */
+.cb-student.cbc-split-slot {
+  font-size: 11px;
+  line-height: 1.1;
+  letter-spacing: -0.35px;
+}
+.cb-student.cbc-split-triple {
+  font-size: 10px;
+  letter-spacing: -0.45px;
+}
+.cb-meta-row.cbc-split-slot {
+  gap: 3px;
+}
+.cb-meta-row.cbc-split-slot .cb-meta-item {
+  font-size: 8px;
+  line-height: 1.1;
+}
+.cb-meta-row.cbc-split-triple .cb-meta-item {
+  font-size: 7px;
 }
 
 /* rc-tag 系列（自帶一份，父層 legend 仍保留自己那份） */

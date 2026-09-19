@@ -232,7 +232,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForTeacherAt(teacher.id, h)"
                   :key="course.id"
-                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id), 'course-block--split': getCoursesForTeacherAt(teacher.id, h).length > 1 }]"
                   :style="getTeacherCourseBlockStyle(course, teacher.id, h, cIdx)"
                   :draggable="!isTeacher"
                   role="button"
@@ -249,7 +249,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, selectedDateStr), evalMissing: evalBadge(course, selectedDateStr), teacherTag: null }"
-                    :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
+                    :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, splitCount: getCoursesForTeacherAt(teacher.id, h).length, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
                   />
                 </div>
               </div>
@@ -303,7 +303,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForWeekCell(idx + 1, h)"
                   :key="course.id"
-                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id), 'course-block--split': getCoursesForWeekCell(idx + 1, h).length > 1 }]"
                   :style="getWeekCourseBlockStyle(course, idx + 1, h, cIdx)"
                   :draggable="!isTeacher"
                   role="button"
@@ -320,7 +320,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, getDisplayDateFull(idx + 1)), evalMissing: evalBadge(course, getDisplayDateFull(idx + 1)), teacherTag: weekViewTeacherIds.length !== 1 ? { name: course.teacher_name, color: getTeacherColor(course.teacher_id) } : null }"
-                    :layout="{ compact: false, splitSlot: getCoursesForWeekCell(idx + 1, h).length > 1, firstBadge: null }"
+                    :layout="{ compact: false, splitSlot: getCoursesForWeekCell(idx + 1, h).length > 1, splitCount: getCoursesForWeekCell(idx + 1, h).length, firstBadge: null }"
                   />
                 </div>
               </div>
@@ -3240,6 +3240,10 @@ onMounted(() => {
 /* var(--ds-warning) Step 4a：teacher-col-header/-avatar/-name/-room 的 compact 變體已移至 TeacherColumnHeader.vue（改 prop 驅動） */
 .teacher-grid.teacher-grid-compact .course-block {
   padding: 4px 3px;
+  border-radius: 6px;
+}
+.course-block--split {
+  padding: 3px 2px;
   border-radius: 6px;
 }
 /* var(--ds-warning) Step 5：compact cb-* 已改 prop 驅動（.cbc-compact），移至 CourseBlockContent.vue */

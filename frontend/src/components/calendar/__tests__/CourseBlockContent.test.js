@@ -79,11 +79,22 @@ describe('CourseBlockContent', () => {
   it('uses horizontal meta row and short type label for split one_on_two slots', () => {
     const multi = { ...course, class_type: 'one_on_two' };
     const wrapper = mount(CourseBlockContent, {
-      props: { course: multi, layout: { splitSlot: true, compact: true } },
+      props: { course: multi, layout: { splitSlot: true, splitCount: 2, compact: true } },
     });
     expect(wrapper.find('.cb-meta-row').exists()).toBe(true);
+    expect(wrapper.find('.cb-meta-row').classes()).toContain('cbc-split-slot');
     expect(wrapper.find('.cb-type').text()).toBe(classTypeShortLabel('one_on_two'));
     expect(wrapper.findAll('.cb-detail')).toHaveLength(1);
+  });
+
+  it('applies triple-split density classes for three-way 1:3 slots', () => {
+    const multi = { ...course, class_type: 'one_on_three' };
+    const wrapper = mount(CourseBlockContent, {
+      props: { course: multi, layout: { splitSlot: true, splitCount: 3 } },
+    });
+    expect(wrapper.find('.cb-student').classes()).toContain('cbc-split-triple');
+    expect(wrapper.find('.cb-meta-row').classes()).toContain('cbc-split-triple');
+    expect(wrapper.find('.cb-type').text()).toBe('1:3');
   });
 
   // 空值：badges / layout 預設空物件不崩潰
