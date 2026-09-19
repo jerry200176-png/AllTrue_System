@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-19-course-upcoming-dates-321
+    published_at: "2026-09-19"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課程清單直接顯示近期上課日期
+    summary: 不用逐一開啟課程，時段欄會顯示今日起最近三堂與剩餘堂數。
+    items:
+      - category: improved
+        text: 課程清單直接顯示今日起最近三堂有效上課日期與時間。
+      - category: improved
+        text: 超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。
+    source_refs:
+      - "github:#3071"
+      - "github:in-app-321"
+      - "changelog:2026-09-19:course-upcoming-dates-321"
+
   - id: staff-2026-09-19-shared-plan-slot-edit-324
     published_at: "2026-09-19"
     audiences:
