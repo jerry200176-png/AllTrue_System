@@ -72,6 +72,8 @@ function expectReject(label, callback) {
 export function selfTest() {
   const valid = normalizeSessionOutput(fixture(), 16);
   if (valid.effectiveBranch !== 16 || valid.normalized.user.campuses[0] !== 9) fail('self-test valid marker normalization failed');
+  const fixtureEncoded = fixture().split(MARKER)[1].split('\n')[0];
+  if (normalizeSessionOutput(`shell-before ${MARKER}${fixtureEncoded}\nshell-after`, 16).effectiveBranch !== 16) fail('self-test shell-owned marker framing failed');
   const sameLineNoise = `tinker: warning ${fixture().replace(/\nremote footer$/, ' tinker: footer')}`;
   const multilineNoise = `noise before\n${fixture()}\nnoise after`;
   if (normalizeSessionOutput(sameLineNoise, 16).effectiveBranch !== 16) fail('self-test same-line noise normalization failed');
@@ -79,7 +81,6 @@ export function selfTest() {
   expectReject('missing marker', () => normalizeSessionOutput('noise only', 16));
   expectReject('duplicate embedded marker', () => normalizeSessionOutput(`${fixture().replace(/\nremote footer$/, '')}${MARKER}ignored`, 16));
   expectReject('invalid base64', () => normalizeSessionOutput(`prefix\n${MARKER}%%%\n`, 16));
-  const fixtureEncoded = fixture().split(MARKER)[1].split('\n')[0];
   expectReject('ambiguous trailing base64', () => normalizeSessionOutput(`${MARKER}${fixtureEncoded}A`, 16));
   expectReject('invalid JSON', () => normalizeSessionOutput(`prefix\n${MARKER}${Buffer.from('not-json').toString('base64')}\n`, 16));
   expectReject('missing token', () => normalizeSessionOutput(fixture({ access_token: '' }), 16));
