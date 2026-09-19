@@ -4,6 +4,10 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Invoice;
+use App\Models\InvoiceItem;
+use App\Models\Payment;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -311,7 +315,6 @@ class EnrollmentApiTest extends TestCase
             'start_time' => '16:00',
             'duration_minutes' => 120,
             'rate_unit' => 'hour',
-            'price_per_session' => 600,
             'payment_type' => 'session',
             'total_classes' => 2,
             'mode' => 'enrollment',
@@ -409,7 +412,50 @@ class EnrollmentApiTest extends TestCase
         $course = StudentClass::find((int) $response->json('student_class_id'));
         $this->assertNotNull($course);
         $this->assertSame('tutoring', $course->ClassType);
+        $this->assertSame(0, (int) $course->Rate);
         $this->assertSame(0, (int) $course->Charge);
+        $this->assertSame(0, (int) $course->Paid);
+        $this->assertNull($course->PayDate);
+        $this->assertSame(0, Invoice::where('StudentClassID', $course->ID)->count());
+        $this->assertSame(0, InvoiceItem::where('StudentClassID', $course->ID)->count());
+        $this->assertSame(0, Payment::whereIn('InvoiceID', Invoice::where('StudentClassID', $course->ID)->pluck('id'))->count());
+        $this->assertSame(0, PaymentReport::where('StudentClassID', $course->ID)->count());
+    }
+
+    public function test_tutoring_ignores_forged_amount_and_paid_date(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-enrollment-tutoring-forged@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-enrollment-tutoring-forged@example.com');
+        $date = now()->addDays(2)->toDateString();
+
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson('/api/v1/enrollments', [
+            'branch_id' => 1, 'student' => ['name' => '輔導偽造金額'], 'teacher_id' => $teacherId,
+            'subject' => 'Math', 'class_type' => 'tutoring', 'confirmed_dates' => [],
+            'future_dates' => [$date], 'days_of_week' => [(int) now()->addDays(2)->dayOfWeekIso],
+            'start_time' => '16:00', 'duration_minutes' => 120, 'price_per_session' => 99999,
+            'paid_at' => $date, 'payment_type' => 'session', 'total_classes' => 1, 'mode' => 'enrollment',
+        ]);
+
+        $response->assertCreated();
+        $course = StudentClass::find((int) $response->json('student_class_id'));
+        $this->assertSame(0, (int) $course->Rate);
+        $this->assertSame(0, (int) $course->Charge);
+        $this->assertSame(0, (int) $course->Paid);
+        $this->assertNull($course->PayDate);
+    }
+
+    public function test_paid_enrollment_still_requires_amount(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-enrollment-paid-required@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-enrollment-paid-required@example.com');
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson('/api/v1/enrollments', [
+            'branch_id' => 1, 'student' => ['name' => '付費課缺金額'], 'teacher_id' => $teacherId,
+            'subject' => 'Math', 'class_type' => 'one_on_one', 'confirmed_dates' => [],
+            'future_dates' => [now()->addDays(2)->toDateString()], 'days_of_week' => [3],
+            'start_time' => '16:00', 'duration_minutes' => 120, 'payment_type' => 'session',
+            'total_classes' => 1, 'mode' => 'enrollment',
+        ]);
+        $response->assertStatus(422)->assertJsonValidationErrors(['price_per_session']);
     }
 
     /**

@@ -3462,3 +3462,6 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-09-19 — improved(students): 搜尋姓名或就讀學校
 <!-- release-notes: staff_update=staff-2026-09-19-student-school-search -->
 - 學生搜尋現在可用姓名或就讀學校查找；既有分校權限與篩選行為不變。
+## 2026-09-19 — fix(billing): counseling courses are free and non-collectible (in-app #325 / GitHub #3075)
+<!-- release-notes: staff_update=staff-2026-09-19-counseling-free-325 -->
+- 新建輔導課不再要求填寫金額或繳費日期；後端固定為零金額、未繳且不建立應收帳款，也不進繳費／續課提醒與催繳通知。既有歷史帳務與核薪規則不變。

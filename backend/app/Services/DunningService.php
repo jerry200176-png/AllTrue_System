@@ -63,7 +63,10 @@ class DunningService
     {
         $query = StudentClass::with(['student', 'coursePackage'])
             ->where('Stop', 0)
-            ->where('ScheduleMode', 'count');
+            ->where('ScheduleMode', 'count')
+            ->where(function ($q) {
+                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+            });
 
         if ($campusId) {
             $query->whereHas('student', fn ($q) => $q->where('CampusID', $campusId));
@@ -108,6 +111,9 @@ class DunningService
         $query = StudentClass::with(['student', 'coursePackage'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'date')
+            ->where(function ($q) {
+                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+            })
             ->whereNotNull('settlement_day')
             ->where('settlement_day', '>', 0);
 

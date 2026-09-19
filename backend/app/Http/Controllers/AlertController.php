@@ -74,6 +74,9 @@ class AlertController extends Controller
         $countQuery = StudentClass::query()
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
+            ->where(function ($q) {
+                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+            })
             ->where(function ($q) use ($pendingReportClassIds) {
                 $q->where('Paid', 0)
                   ->orWhereNull('Paid')
@@ -89,6 +92,9 @@ class AlertController extends Controller
         $dateQuery = StudentClass::query()
             ->where('Stop', 0)
             ->where('ScheduleMode', 'date')
+            ->where(function ($q) {
+                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+            })
             ->whereNotNull('settlement_day')
             ->whereBetween('settlement_day', [1, 31]);
         if ($studentIds !== null) {
@@ -102,6 +108,9 @@ class AlertController extends Controller
         // (in-app #251 / GH #2461 — amended unpaid rows previously vanished from tuition).
         $pendingSettlementResults = StudentClass::query()
             ->where('Stop', 1)
+            ->where(function ($q) {
+                $q->whereNull('ClassType')->orWhereRaw('LOWER(ClassType) <> ?', ['tutoring']);
+            })
             ->where(function ($q) {
                 $q->where('closed_reason', 'settled_pending')
                     ->orWhere(function ($q2) {

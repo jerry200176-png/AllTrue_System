@@ -26,7 +26,8 @@ export const changelogDraftNotes = [
         "items": [
           "plan slot edit preserves past/future boundaries",
           "slot wrap spacing polish",
-          "1：2/1：3 split-slot text readability"
+          "1：2/1：3 split-slot text readability",
+          "courses are free and non-collectible"
         ]
       },
       {
@@ -41,6 +42,7 @@ export const changelogDraftNotes = [
       "plan slot edit preserves past/future boundaries",
       "slot wrap spacing polish",
       "1：2/1：3 split-slot text readability",
+      "courses are free and non-collectible",
       "搜尋姓名或就讀學校"
     ]
   },
