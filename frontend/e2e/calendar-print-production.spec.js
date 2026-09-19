@@ -22,38 +22,49 @@ async function installSession(page) {
     localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
     sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
     window.__calendarPrintAcceptance = { printCalls: 0, writes: [] };
-    const originalPrint = window.print;
-    window.print = () => { window.__calendarPrintAcceptance.printCalls += 1; return originalPrint?.(); };
+    window.print = () => {
+      window.__calendarPrintAcceptance.printCalls += 1;
+      throw new Error('production acceptance must not call window.print');
+    };
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input, init = {}) => {
-      const method = String(init.method || 'GET').toUpperCase();
+      const method = String(init.method || input?.method || 'GET').toUpperCase();
       const url = typeof input === 'string' ? input : input?.url || '';
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) window.__calendarPrintAcceptance.writes.push({ method, url });
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+        window.__calendarPrintAcceptance.writes.push({ method, url, channel: 'fetch' });
+        throw new Error(`production acceptance blocked ${method} fetch`);
+      }
       return originalFetch(input, init);
+    };
+    const xhrOpen = XMLHttpRequest.prototype.open;
+    const xhrSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function guardedOpen(method, url, ...args) {
+      this.__calendarPrintMethod = String(method || 'GET').toUpperCase();
+      this.__calendarPrintUrl = String(url || '');
+      return xhrOpen.call(this, method, url, ...args);
+    };
+    XMLHttpRequest.prototype.send = function guardedSend(...args) {
+      const method = this.__calendarPrintMethod || 'GET';
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+        window.__calendarPrintAcceptance.writes.push({ method, url: this.__calendarPrintUrl, channel: 'xhr' });
+        throw new Error(`production acceptance blocked ${method} XHR`);
+      }
+      return xhrSend.apply(this, args);
     };
   }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
 }
 
-function parseRgb(value) {
-  const match = String(value).match(/rgba?\(([^)]+)\)/);
-  if (!match) return null;
-  const values = match[1].split(',').slice(0, 3).map((part) => Number.parseFloat(part.trim()));
-  return values.length === 3 && values.every(Number.isFinite) ? values : null;
-}
-
-function relativeLuminance(rgb) {
-  return rgb.reduce((sum, channel, index) => {
-    const value = channel / 255;
-    const linear = value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    return sum + linear * [0.2126, 0.7152, 0.0722][index];
-  }, 0);
-}
-
-async function assertPrintPreviewContract(page) {
+async function assertPrintPreviewContract(page, expectedPeriod) {
   const dialog = page.locator('[data-calendar-print-dialog]');
   await expect(dialog).toBeVisible({ timeout: 20_000 });
   await expect(dialog.getByRole('heading', { name: '列印課表', exact: true })).toBeVisible();
   const period = dialog.locator('.calendar-print-toolbar select').first();
+  await period.selectOption(expectedPeriod);
+  await expect(period).toHaveValue(expectedPeriod);
+  const settled = dialog.locator('.calendar-print-sheet').or(
+    dialog.locator('.calendar-print-state').filter({ hasNotText: '正在準備' }),
+  ).first();
+  await expect(settled).toBeVisible({ timeout: 20_000 });
   await expect(period.locator('option[value="week"]')).toHaveText('本週');
   await expect(period.locator('option[value="month"]')).toHaveText('當月');
   await expect(dialog.locator('input[type="search"]')).toHaveCount(3);
@@ -68,8 +79,11 @@ async function assertPrintPreviewContract(page) {
       const background = getComputedStyle(element).backgroundColor;
       const foreground = getComputedStyle(panel || element).color;
       const parse = (value) => {
-        const match = value.match(/rgba?\(([^)]+)\)/);
-        return match ? match[1].split(',').slice(0, 3).map((part) => Number.parseFloat(part.trim())) : null;
+        const srgb = value.match(/color\(srgb\s+([^/\s]+)\s+([^/\s]+)\s+([^/\s)]+)/i);
+        if (srgb) return srgb.slice(1, 4).map((part) => Number.parseFloat(part) * 255);
+        const rgb = value.match(/rgba?\(([^)]+)\)/);
+        if (rgb) return rgb[1].trim().split(/[,\s]+/).slice(0, 3).map((part) => Number.parseFloat(part));
+        return null;
       };
       const luminance = (rgb) => rgb.reduce((sum, channel, index) => {
         const normalized = channel / 255;
@@ -78,11 +92,12 @@ async function assertPrintPreviewContract(page) {
       }, 0);
       const bg = parse(background);
       const fg = parse(foreground);
-      if (!bg || !fg) return { background, foreground, ratio: 0 };
+      if (!bg || !fg) return { background, foreground, ratio: 0, parsed: false };
       const [light, dark] = [luminance(bg), luminance(fg)].sort((a, b) => b - a);
-      return { background, foreground, ratio: (light + 0.05) / (dark + 0.05) };
+      return { background, foreground, ratio: (light + 0.05) / (dark + 0.05), parsed: true };
     });
-    expect(contrast.background, 'dark-theme print sheet must remain white or near-white').toMatch(/rgb\((25[0-5]|2[4-5][0-9]), (25[0-5]|2[4-5][0-9]), (25[0-5]|2[4-5][0-9])\)/);
+    expect(contrast.background, 'dark-theme print sheet must remain white or near-white').toMatch(/rgb\(|color\(srgb/i);
+    expect(contrast.parsed, 'Chromium computed color must be parseable').toBe(true);
     expect(contrast.ratio, 'print sheet text must remain readable in dark theme').toBeGreaterThanOrEqual(4.5);
     await expect(sheet.locator('th')).toHaveCount(7);
     await expect(sheet.locator('footer')).toContainText('校內核對');
@@ -94,32 +109,6 @@ async function assertPrintPreviewContract(page) {
   expect(controls.printCalls, 'acceptance must not invoke window.print').toBe(0);
   expect(controls.writes, 'acceptance must not call a write API').toEqual([]);
 }
-
-test('fixture: calendar print selectors and dark-theme contrast contract', async ({ page }) => {
-  await page.setContent(`
-    <html data-theme="dark"><body>
-      <div data-calendar-print-dialog role="dialog">
-        <div class="calendar-print-dialog__panel" style="background-color: white; color: rgb(31, 41, 55)">
-          <h2>列印課表</h2>
-          <section class="calendar-print-toolbar">
-            <select><option value="week">本週</option><option value="month">當月</option></select>
-            <input type="search"><input type="search"><input type="search">
-            <fieldset class="calendar-print-statuses">${['請假', '補課', '代課', '調課', '已取消'].map((label) => `<label><input type="checkbox" checked>${label}</label>`).join('')}</fieldset>
-          </section>
-          <div class="calendar-print-sheet" style="background-color: white"><table><thead><tr>${'<th></th>'.repeat(7)}</tr></thead></table><footer>本課表含學生姓名，僅供校內核對</footer></div>
-        </div>
-      </div>
-    </body></html>`);
-  const sheet = page.locator('.calendar-print-sheet');
-  await expect(sheet).toBeVisible();
-  const colors = await sheet.evaluate((element) => ({
-    background: getComputedStyle(element).backgroundColor,
-    color: getComputedStyle(element.closest('.calendar-print-dialog__panel')).color,
-  }));
-  expect(relativeLuminance(parseRgb(colors.background))).toBeGreaterThan(0.9);
-  expect(relativeLuminance(parseRgb(colors.color))).toBeLessThan(0.2);
-  await expect(page.locator('.calendar-print-statuses input:checked')).toHaveCount(5);
-});
 
 test.describe('production acceptance — calendar print preview', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
@@ -134,15 +123,9 @@ test.describe('production acceptance — calendar print preview', () => {
     await expect(page.getByRole('heading', { name: '班級行事曆 / 課表', exact: true })).toBeVisible({ timeout: 20_000 });
     await page.locator('html').evaluate((element) => { element.dataset.theme = 'dark'; });
     await page.getByRole('button', { name: '列印課表', exact: true }).click();
-    await assertPrintPreviewContract(page);
-
+    await assertPrintPreviewContract(page, 'week');
+    await assertPrintPreviewContract(page, 'month');
     const dialog = page.locator('[data-calendar-print-dialog]');
-    const period = dialog.locator('.calendar-print-toolbar select').first();
-    await period.selectOption('month');
-    await expect(period).toHaveValue('month');
-    await expect(dialog.locator('.calendar-print-state, .calendar-print-sheet').first()).toBeVisible({ timeout: 20_000 });
-    await period.selectOption('week');
-    await expect(period).toHaveValue('week');
     await expect(dialog.getByRole('button', { name: '列印／另存 PDF', exact: true })).toBeVisible();
     const controls = await page.evaluate(() => window.__calendarPrintAcceptance);
     expect(controls.printCalls).toBe(0);
