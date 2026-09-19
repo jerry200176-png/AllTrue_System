@@ -28,13 +28,20 @@ export const changelogDraftNotes = [
           "slot wrap spacing polish",
           "1：2/1：3 split-slot text readability"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "搜尋姓名或就讀學校"
+        ]
       }
     ],
     "items": [
       "plan fixed or flexible pre-schedule choice",
       "plan slot edit preserves past/future boundaries",
       "slot wrap spacing polish",
-      "1：2/1：3 split-slot text readability"
+      "1：2/1：3 split-slot text readability",
+      "搜尋姓名或就讀學校"
     ]
   },
   {

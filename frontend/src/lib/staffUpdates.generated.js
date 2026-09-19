@@ -4,6 +4,39 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-19-student-school-search",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": "2026-09-19",
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生可用姓名或就讀學校搜尋",
+    "summary": "學生清單搜尋支援姓名與就讀學校，既有分校權限與篩選行為維持不變。",
+    "items": [
+      "輸入姓名或學校即可找到授權分校內的學生。",
+      "分校權限、年級、狀態與既有篩選規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "輸入姓名或學校即可找到授權分校內的學生。",
+          "分校權限、年級、狀態與既有篩選規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3065",
+      "github:in-app-313"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
     "id": "staff-2026-09-19-shared-plan-slot-edit-324",
     "publishedAt": "2026-09-19",
     "effectiveAt": null,

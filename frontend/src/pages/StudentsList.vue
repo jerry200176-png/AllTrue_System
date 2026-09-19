@@ -42,10 +42,10 @@
 
       <AtFilterBar label="學生篩選" data-guide="students-filters">
         <div class="filter-search">
-          <label for="students-name-filter">搜尋姓名</label>
+          <label for="students-name-filter">搜尋姓名或就讀學校</label>
           <div class="search-input-wrap">
             <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
-            <input id="students-name-filter" v-model="filters.name" placeholder="輸入姓名…" @input="debouncedLoad" />
+            <input id="students-name-filter" v-model="filters.search" placeholder="輸入姓名或學校…" @input="debouncedLoad" />
           </div>
         </div>
         <div>
@@ -1000,7 +1000,8 @@ const branchStudentTotal = ref(0);
 const studentCourses = ref({}); // { studentId: [courses] }
 const teachers = ref([]);
 const expandedId = ref(null);
-const filters = ref({ name: '', grade: '', status: 'active' });
+const GRADE_TO_CLASS_ID = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
+const filters = ref({ search: '', grade: '', status: 'active' });
 const selectedStudentIds = ref([]);
 const showHistoricalCourses = ref(false);
 const importInput = ref(null);
@@ -1552,7 +1553,7 @@ const getLaravelStudentId = (student) => {
 const displayStudents = computed(() => students.value);
 const hasStudentBranch = computed(() => Number(props.branchId) > 0);
 const hasStudentFilters = computed(() => Boolean(
-  String(filters.value.name || '').trim()
+  String(filters.value.search || '').trim()
   || filters.value.grade
   || filters.value.status !== 'active'
 ));
@@ -1588,7 +1589,7 @@ const toggleHistoricalCourses = () => {
   showHistoricalCourses.value = !showHistoricalCourses.value;
 };
 const clearStudentFilters = () => {
-  filters.value = { name: '', grade: '', status: 'active' };
+  filters.value = { search: '', grade: '', status: 'active' };
   loadStudents();
 };
 const syncSelectedStudentIdsWithCurrentList = () => {
@@ -1763,10 +1764,9 @@ const loadStudents = async () => {
           branch_id: String(props.branchId),
           per_page: '500'
         });
-        if (filters.value.name) params.set('name', filters.value.name);
+        if (filters.value.search?.trim()) params.set('search', filters.value.search);
         if (filters.value.status) params.set('status', filters.value.status || '');
-        const gradeToClassId = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
-        if (filters.value.grade && gradeToClassId[filters.value.grade]) params.set('class_id', gradeToClassId[filters.value.grade]);
+        if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) params.set('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
         const res = await fetch(`/api/v1/students?${params}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1788,10 +1788,11 @@ const loadStudents = async () => {
     } catch (_) {}
 
     // Fallback: Supabase list + merge Laravel RFID / _laravelId
-    let query = supabase.from('students').select('*').eq('branch_id', props.branchId).order('name');
-    if (filters.value.name) query = query.ilike('name', `%${filters.value.name}%`);
-    if (filters.value.grade) query = query.eq('grade', filters.value.grade);
+    let query = supabase.from('students').select('*').eq('branch_id', props.branchId);
+    if (filters.value.search?.trim()) query = query.eq('search', filters.value.search);
+    if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) query = query.eq('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
     if (filters.value.status) query = query.eq('status', filters.value.status);
+    query = query.order('name');
     const { data, error } = await query;
     if (error) throw error;
     let list = data || [];
