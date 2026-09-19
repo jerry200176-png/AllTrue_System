@@ -100,7 +100,6 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     let schedulerCreateIntercepted = false;
     let schedulerCreatePayload = null;
     let schedulerCreateProbeArmed = false;
-    let teacherRows = [];
     let selectedStudentId = 0;
     let selectedTeacherId = 0;
 
@@ -205,10 +204,6 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       if (method === 'POST' && path === '/api/v1/class-sessions/batch' && schedulerCreateProbeArmed) return;
       if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) unsafe.push({ method, path });
     });
-    page.on('response', async (response) => {
-      if (!new URL(response.url()).pathname.endsWith('/teachers')) return;
-      try { teacherRows = rows(await response.json()); } catch { /* bounded evidence only */ }
-    });
     await page.route('**/api/v1/adoption/events', async (route) => {
       const req = route.request();
       expect(new URL(req.url()).origin).toBe(new URL(BASE).origin);
@@ -284,6 +279,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     });
 
     const courses = await getPagedRows(request, `/api/v1/student-classes?campus_id=${BRANCH_ID}`, token);
+    const teacherRows = await getPagedRows(request, `/api/v1/teachers?branch_id=${BRANCH_ID}`, token);
     const studentCampus = (row) => field(row, 'CampusID', 'campus_id') ?? field(row?.student, 'CampusID', 'campus_id');
     const arScope = (row) => Number(studentCampus(row) || 0) === BRANCH_ID;
     const scopedCourses = courses.filter(arScope);
@@ -358,7 +354,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     const type = scheduler.locator('select').filter({ has: scheduler.locator('option[value="tutoring"]') }).first();
     await type.selectOption('tutoring');
     await scheduler.locator('select').filter({ has: scheduler.locator('option[value="session"]') }).first().selectOption('session');
-    await scheduler.locator('select').filter({ has: scheduler.locator('option[value="auto_recurrence"]') }).first().selectOption('auto_recurrence');
+    await scheduler.locator('select').filter({ has: scheduler.locator('option[value="manual_occurrence"]') }).first().selectOption('manual_occurrence');
     await scheduler.locator('.form-group').filter({ hasText: '購買總堂數' }).locator('input[type="number"]').fill('1');
     await scheduler.locator('.form-group').filter({ hasText: '開課日 *' }).locator('input[type="date"]').fill(new Date().toISOString().slice(0, 10));
     await expect(scheduler).toContainText('輔導課免費，不需填金額，也不會產生應收帳款。');
@@ -391,7 +387,12 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
         teacher_id: selectedTeacherId,
         class_type: 'tutoring',
         payment_type: 'session',
+        scheduling_policy: 'manual_occurrence',
         total_classes: 1,
+        days_of_week: [],
+        day_time_slots: [],
+        confirmed_dates: [],
+        future_dates: [],
       }));
       expect(schedulerCreatePayload).not.toHaveProperty('price_per_session');
       expect(schedulerCreatePayload).not.toHaveProperty('paid_at');
