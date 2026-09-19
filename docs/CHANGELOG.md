@@ -1,3 +1,7 @@
+## 2026-09-18 — docs(agents): in-app product-loop intake→GitHub mapping first
+<!-- release-notes: silent_ship=silent-2026-09-18-inapp-intake-github-first -->
+- product-loop skill：讀取後先建立／更新去識別化 GitHub intake 對照（SourceRef），再進入深度分診與選工；收件建單 ≠ Phase A／實作批准。
+
 ## 2026-09-18 — ops(in-app): Phase-C allowlist #311/#312 + backlog read nav
 <!-- release-notes: silent_ship=silent-2026-09-18-phase-c-311-312 -->
 - Phase-C allowlist 補 in-app #311／#312（修正已在 production HEAD）；回寫 resolved + 請回報者驗收。
