@@ -69,6 +69,10 @@ jobs:
           node .github/scripts/normalize-smoke-session.mjs --self-test
           grep -Fq "printf '%s\\n' 'ALLTRUE_SESSION_PAYLOAD_BEGIN_V1'" .github/workflows/calendar-course-acceptance.yml
           grep -Fq "printf '%s\\n' 'ALLTRUE_SESSION_PAYLOAD_END_V1'" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "php <<'PHP'" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "require __DIR__ . '/vendor/autoload.php';" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq '$kernel->bootstrap();' .github/workflows/calendar-course-acceptance.yml
+          ! grep -Fq 'php artisan tinker' .github/workflows/calendar-course-acceptance.yml
           ! grep -Fq 'ALLTRUE_SESSION_PAYLOAD_V1:' .github/workflows/calendar-course-acceptance.yml
           if [ -n "$BRANCH_ID" ]; then
             [[ "$BRANCH_ID" =~ ^[1-9][0-9]{0,6}$ ]] || { echo 'branch_id must be canonical positive decimal digits' >&2; exit 1; }
@@ -87,7 +91,13 @@ jobs:
           export BRANCH_ID="${1:-}"
           cd /home/admin/backend
           printf '%s\n' 'ALLTRUE_SESSION_PAYLOAD_BEGIN_V1'
-          php artisan tinker --no-ansi --execute='
+          php <<'PHP'
+          <?php
+          define('LARAVEL_START', microtime(true));
+          require __DIR__ . '/vendor/autoload.php';
+          $app = require_once __DIR__ . '/bootstrap/app.php';
+          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+          $kernel->bootstrap();
           $branch = (int) getenv("BRANCH_ID");
           $query = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
             ->join("User as u", "u.id", "=", "t.user_id")
@@ -131,8 +141,9 @@ jobs:
               "must_change_password" => (bool) $row->MustChangePassword,
             ],
           ]);
+          if ($payload === false) { throw new \RuntimeException("session payload encoding failed"); }
           echo base64_encode($payload);
-          '
+          PHP
           printf '%s\n' 'ALLTRUE_SESSION_PAYLOAD_END_V1'
           REMOTE
           })"
