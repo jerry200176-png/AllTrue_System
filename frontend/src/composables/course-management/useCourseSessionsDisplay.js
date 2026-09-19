@@ -141,7 +141,7 @@ export function useCourseSessionsDisplay({
   async function loadEffectiveSessionDates(courseRows = [], token = '', isCurrent = () => true) {
     const rows = Array.isArray(courseRows) ? courseRows : [];
     const bid = branchId.value ?? branchId;
-    if (!bid || rows.length === 0 || !token) return;
+    if (!bid || rows.length === 0 || !token) return false;
 
     const payloadCourses = rows
       .map((c) => ({
@@ -154,7 +154,7 @@ export function useCourseSessionsDisplay({
       }))
       .filter((c) => c.id > 0);
 
-    if (payloadCourses.length === 0) return;
+    if (payloadCourses.length === 0) return false;
 
     try {
       const now = new Date();
@@ -183,7 +183,8 @@ export function useCourseSessionsDisplay({
         courses: payloadCourses,
       });
       if (isCurrent()) sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, byClass || {});
-    } catch (_) {}
+      return true;
+    } catch (_) { return false; }
   }
 
   const toggleDates = (c) => {
@@ -213,6 +214,22 @@ export function useCourseSessionsDisplay({
 
   /** Default chip grid: effective sessions only (no cancelled / internal placeholders). */
   const primarySessionUnits = (course) => sessionUnits(course);
+
+  /** Bounded upcoming projection for dense course-list rows. */
+  const upcomingSessionPreview = (course, options = {}) => {
+    const todayYmd = String(options?.todayYmd || '').slice(0, 10);
+    if (!course || !/^\d{4}-\d{2}-\d{2}$/.test(todayYmd)) {
+      return { visible: [], total: 0, overflow: 0 };
+    }
+    const requestedLimit = Number(options?.limit ?? 3);
+    const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.floor(requestedLimit)) : 3;
+    const upcoming = primarySessionUnits(course).filter((unit) => String(unit?.date || '').slice(0, 10) >= todayYmd);
+    return {
+      visible: upcoming.slice(0, limit),
+      total: upcoming.length,
+      overflow: Math.max(0, upcoming.length - limit),
+    };
+  };
 
   const allSessionUnits = (course) => sortSessionViewModels(
     filterDisplayableSessions(getCourseSessions(course))
@@ -559,6 +576,7 @@ export function useCourseSessionsDisplay({
     sessions,
     sessionUnits,
     primarySessionUnits,
+    upcomingSessionPreview,
     allSessionUnits,
     cancelledSessionCount,
     movedOrCancelledUnits,
