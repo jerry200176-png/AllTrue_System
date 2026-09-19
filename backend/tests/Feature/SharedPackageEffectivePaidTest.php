@@ -13,6 +13,7 @@ use App\Services\NotificationSyncService;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -33,10 +34,12 @@ class SharedPackageEffectivePaidTest extends TestCase
 
     public function test_tuition_reminder_command_excludes_tutoring_from_line_candidates(): void
     {
-        [$campus] = $this->setupTutoringCase();
+        [$campus, , $tutoring, $control] = $this->setupTutoringCase();
         $this->artisan('tuition:send-reminders', ['--dry-run' => true, '--overdue-days' => 7])
+            ->expectsOutput('Found 1 overdue unpaid course(s).')
             ->assertSuccessful();
         $this->assertNotNull($campus);
+        $this->assertNotSame((int) $tutoring->ID, (int) $control->ID);
     }
 
     private function campus(): object
@@ -59,7 +62,25 @@ class SharedPackageEffectivePaidTest extends TestCase
             'Paid' => 0, 'Rate' => 0, 'Stop' => 0, 'ClassType' => 'tutoring',
             'ScheduleMode' => 'count', 'MDate' => now()->subDays(15),
         ]);
-        return [$campus, $student, $sc];
+        $controlStudent = Student::create([
+            'name' => '付費課催繳控制', 'CampusID' => $campus->id, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $control = StudentClass::create([
+            'StudentID' => $controlStudent->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(15)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+            'RemainingSessions' => 5, 'UsedSessions' => 0, 'Charge' => 1000, 'Pay' => 0,
+            'Paid' => 0, 'Rate' => 200, 'Stop' => 0, 'ClassType' => 'one_on_one',
+            'ScheduleMode' => 'count', 'MDate' => now()->subDays(15),
+        ]);
+        $cutoff = now()->subDays(8);
+        $updates = ['MDate' => $cutoff];
+        if (Schema::hasColumn('StudentClass', 'created_at')) {
+            $updates['created_at'] = $cutoff;
+        }
+        DB::table('StudentClass')->whereIn('ID', [$sc->ID, $control->ID])->update($updates);
+        return [$campus, $student, $sc, $control];
     }
 
     private function director(int $campusId): string

@@ -458,12 +458,34 @@ class EnrollmentApiTest extends TestCase
         $response->assertStatus(422)->assertJsonValidationErrors(['price_per_session']);
     }
 
-    public function test_batch_tutoring_omits_payable_fields_and_canonicalizes_forged_values(): void
+    public function test_batch_tutoring_accepts_omitted_payable_fields(): void
     {
         $token = $this->createDirectorToken([1], 'director-batch-tutoring-free@example.com');
         $student = Student::create(['name' => '批次免費輔導', 'CampusID' => 1, 'ClassID' => 0, 'SchoolName' => 'T']);
         $teacherId = $this->createTeacher(1, 'teacher-batch-tutoring-free@example.com');
         $date = now()->addDays(3)->toDateString();
+
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacherId,
+            'subject' => 'Math', 'class_type' => 'tutoring', 'confirmed_dates' => [],
+            'future_dates' => [$date], 'start_time' => '16:00', 'duration_minutes' => 60,
+            'payment_type' => 'session', 'total_classes' => 1,
+        ]);
+
+        $response->assertCreated();
+        $course = StudentClass::find((int) $response->json('student_class_id'));
+        $this->assertSame(0, (int) $course->Rate);
+        $this->assertSame(0, (int) $course->Charge);
+        $this->assertSame(0, (int) $course->Paid);
+        $this->assertNull($course->PayDate);
+    }
+
+    public function test_batch_tutoring_ignores_forged_amount_and_paid_date(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-batch-tutoring-forged@example.com');
+        $student = Student::create(['name' => '批次輔導偽造', 'CampusID' => 1, 'ClassID' => 0, 'SchoolName' => 'T']);
+        $teacherId = $this->createTeacher(1, 'teacher-batch-tutoring-forged@example.com');
+        $date = now()->addDays(4)->toDateString();
 
         $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson('/api/v1/class-sessions/batch', [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacherId,
@@ -479,6 +501,20 @@ class EnrollmentApiTest extends TestCase
         $this->assertSame(0, (int) $course->Charge);
         $this->assertSame(0, (int) $course->Paid);
         $this->assertNull($course->PayDate);
+    }
+
+    public function test_batch_paid_course_still_requires_amount(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-batch-paid-required@example.com');
+        $student = Student::create(['name' => '批次付費缺金額', 'CampusID' => 1, 'ClassID' => 0, 'SchoolName' => 'T']);
+        $teacherId = $this->createTeacher(1, 'teacher-batch-paid-required@example.com');
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacherId,
+            'subject' => 'Math', 'class_type' => 'one_on_one', 'confirmed_dates' => [],
+            'future_dates' => [now()->addDays(4)->toDateString()], 'start_time' => '16:00',
+            'duration_minutes' => 60, 'payment_type' => 'session', 'total_classes' => 1,
+        ]);
+        $response->assertStatus(422)->assertJsonValidationErrors(['price_per_session']);
     }
 
     /**
