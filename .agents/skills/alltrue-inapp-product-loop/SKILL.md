@@ -10,7 +10,7 @@ description: >-
 
 ## 1. Purpose
 
-把真實 in-app 回報當產品學習主線：snapshot → 去重／根因 → 選工 → 實作／測試／review／CI → 既有授權發佈 → runtime 驗證 → 合法回寫與白話回覆 → 下一筆已授權工作。
+把真實 in-app 回報當產品學習主線：snapshot → **GitHub intake 對照（去識別化建單／去重）** → 分診／根因 → 選工 → 實作／測試／review／CI → 既有授權發佈 → runtime 驗證 → 合法回寫與白話回覆 → 下一筆已授權工作。
 
 **不是**新 scheduler、新 approval framework、新 backlog DB，也不是整包重寫回報系統。
 
@@ -38,18 +38,26 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
 ## 4. Required loop
 
 1. **Snapshot**：可核對範圍的工作清單（open in-app／issues／PRs／deploy runs／delivery packets）。缺全量就標明 coverage gap，不假裝看過全部。  
-2. **讀源**：原始回報、留言、附件（§3.6）、既有計畫、**可見有效批准**、PR、CI、deploy 證據。  
-3. **分類**（政策表）：`BUG_CLEAR` … `PLAN_REQUIRED` / `DEFER`。去重；不把 deferred 當完成。  
-4. **選工**：傷害 × 頻率 × 價值 × 風險 × 依賴 × 現有 WIP；碰撞則換下一筆非衝突項。  
-5. **執行信封**（難度軸 ≠ 授權軸；詳見跨產品契約，勿在此複製路由表）：  
+2. **讀源**：原始回報、留言、附件 meta（§3.6）、既有計畫、**可見有效批准**、PR、CI、deploy 證據。  
+3. **Intake → GitHub 對照（先於深度分診）**：本輪已讀到、足以安全摘要的每筆回報，必須有 `SourceRef`／In-App ID ↔ GitHub issue（含相關 closed）。  
+   - 優先沿用既有標記（`alltrue:bug_report:<id>`、`in-app #<id>`）；同一回報已有 issue → **更新**，不另開重複單。  
+   - 不可只靠標題相似判定同一問題；不同回報共用主 issue 時，body／comment 須保留**每個**來源 ID 對照。  
+   - 已可摘要就建／更新 intake issue；**不得**因 Sol／Astra／Codex 不可用、根因未定、Bug Fix Plan 未完成、或尚未取得實作／production 批准而延後建單。  
+   - Issue 至少含：In-App ID＋來源＋觀測時間；去識別化問題與情境；已讀內容／附件是否存在／是否已檢視；CONFIRMED／USER_REPORTED／待驗證假設；相關 issue／PR／plan／有效決策；下一步與真正阻塞；註記 **收件建單 ≠ 已完成分診或批准實作**。  
+   - GitHub 只放去識別化摘要與來源參照；不上傳個資、原始截圖、憑證、內部備註、未去識別化 dump。疑似安全／不可公開 → 既有受控途徑；否則明列例外。  
+   - 更新前重讀 issue；只動本任務負責區塊；API timeout 先查是否已成功再決定是否重送。同 snapshot 重跑不新增重複 issue／相同留言。  
+   - **Intake 完成 ≠ Phase A 完成**；正式分診、in-app 回寫、實作與部署仍依既有證據與授權。一筆發布／dogfood blocked 不擋其他回報同步。  
+4. **分類**（政策表）：`BUG_CLEAR` … `PLAN_REQUIRED` / `DEFER`。去重；不把 deferred 當完成。  
+5. **選工**：傷害 × 頻率 × 價值 × 風險 × 依賴 × 現有 WIP；碰撞則換下一筆非衝突項。需要強模型規劃的走既有模型路由；不得把非 Founder gate 的項全部標成等待 Founder。  
+6. **執行信封**（難度軸 ≠ 授權軸；詳見跨產品契約，勿在此複製路由表）：  
    - Auto-fix：政策 13 條全過 → **既有已批准輕量實作 profile** 端到端（含 release 驗證）；不強制九面向長報告。  
    - **複雜但已在既有授權內**（預期行為清楚或可見 Founder GO）：Sol／Astra（若可用）產出有來源的 Plan revision → 輕量 worker 實作；強模型計畫**不**新增權限。模型不可用 → 該項 `CAPACITY_BLOCKED`，**禁止靜默降模**；其他合法項繼續。  
    - `PLAN_REQUIRED`：Decision Packet（證據、選項、推薦、驗收、資料操作、恢復）；**Agent 自行蒐證與推薦**；Founder 決策；ChatGPT **可選顧問**，非必經關卡。不得把 `PLAN_REQUIRED` 改名來取消 Founder gate。  
    - 路由／Plan handoff 契約（portfolio-ops）：`docs/model-routed-product-delivery.md` + `docs/templates/strong-plan-handoff.md`；本機 `model-route-resolve`／`codex-route`。  
-6. **發佈**：只走 canonical `deploy.yml`／既有 environment gate；**不** Pi SSH；**不**把本 skill 當 production 授權。  
-7. **驗證**：公開 `version.json` / `deployment.json` / health；區分 **merged ≠ deployed ≠ runtime verified ≠ 已回覆**。  
-8. **回寫**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。  
-9. **續跑**：一張 PR 完成不是停點；繼續下一筆已授權、無衝突工作。第一項 blocked（等 Founder）時，推進其他合法項。
+7. **發佈**：只走 canonical `deploy.yml`／既有 environment gate；**不** Pi SSH；**不**把本 skill 當 production 授權。  
+8. **驗證**：公開 `version.json` / `deployment.json` / health；區分 **merged ≠ deployed ≠ runtime verified ≠ 已回覆**。  
+9. **回寫**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。  
+10. **續跑**：一張 PR 完成不是停點；繼續下一筆已授權、無衝突工作。第一項 blocked（等 Founder）時，推進其他合法項。
 
 ## 5. Authority & roles
 

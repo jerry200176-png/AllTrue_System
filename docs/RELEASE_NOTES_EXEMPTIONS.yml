@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-18-inapp-intake-github-first
+    changelog_date: "2026-09-18"
+    changelog_title: "docs(agents): in-app product-loop intake→GitHub mapping first"
+    reason: Agent skill 流程順序（intake 對照先於分診）；不改教職員 App runtime。
+
   - id: silent-2026-09-18-phase-c-311-312
     changelog_date: "2026-09-18"
     changelog_title: "ops(in-app): Phase-C allowlist #311/#312 + backlog read nav"
