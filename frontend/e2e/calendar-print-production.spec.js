@@ -4,7 +4,7 @@ import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
-const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 16);
+const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
 const CURRENT_STAFF_RELEASE = latestReleaseVersionForRole('director');
 
 function readSession() {
@@ -14,6 +14,10 @@ function readSession() {
 }
 
 const SESSION = readSession();
+const AUTHORIZED_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
+  ? SESSION.user.campuses.map(Number).filter(Number.isInteger)
+  : [];
+const BRANCH_ID = REQUESTED_BRANCH_ID || AUTHORIZED_CAMPUSES[0] || 0;
 
 async function installSession(page) {
   await page.addInitScript(({ session, branch, releaseVersion }) => {
@@ -155,6 +159,9 @@ function assertSuppressedTelemetry(payloads) {
 test.describe('production acceptance — calendar print preview', () => {
   test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
     'missing controlled production director session');
+  test('session branch is authorized', async () => {
+    expect(AUTHORIZED_CAMPUSES).toContain(BRANCH_ID);
+  });
 
   test('director opens week/month print preview without printing or writes', async ({ page }) => {
     const suppressedTelemetry = [];

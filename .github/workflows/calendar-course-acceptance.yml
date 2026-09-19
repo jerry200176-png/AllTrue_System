@@ -11,7 +11,7 @@ on:
       branch_id:
         description: 'Campus ID to inspect'
         required: false
-        default: '16'
+        default: ''
       start_date:
         description: 'Inclusive date window start (YYYY-MM-DD)'
         required: false
@@ -83,8 +83,9 @@ jobs:
             ->where("uc.CampusID", $branch)
             ->where(function ($q) { $q->where("uc.Approved", 1)->orWhereNull("uc.Approved"); })
             ->where("t.expires_at", ">", now())
+            ->where("t.expires_at", "<=", now()->addMinutes(30))
             ->orderByDesc("t.expires_at")
-            ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
+            ->select("t.token", "t.expires_at", "u.id", "u.type", "u.MustChangePassword")
             ->first();
           if (!$row) {
             // A super admin may administer a branch without a UserCampus row.
@@ -92,24 +93,25 @@ jobs:
               ->join("User as u", "u.id", "=", "t.user_id")
               ->where("u.type", "S")
               ->where("t.expires_at", ">", now())
+              ->where("t.expires_at", "<=", now()->addMinutes(30))
               ->orderByDesc("t.expires_at")
-              ->select("t.token", "u.id", "u.type", "u.Name", "u.LoginName", "u.MustChangePassword")
+              ->select("t.token", "t.expires_at", "u.id", "u.type", "u.MustChangePassword")
               ->first();
           }
           if (!$row) { throw new \RuntimeException("no valid director smoke session"); }
-          $campuses = \Illuminate\Support\Facades\DB::table("UserCampus")
-            ->where("UserID", $row->id)
-            ->where(function ($q) { $q->where("Approved", 1)->orWhereNull("Approved"); })
-            ->pluck("CampusID")
-            ->map(fn ($id) => (int) $id)->values()->all();
+          $campuses = $row->type === "S"
+            ? \Illuminate\Support\Facades\DB::table("Campus")->pluck("id")
+            : \Illuminate\Support\Facades\DB::table("UserCampus")
+                ->where("UserID", $row->id)
+                ->where(function ($q) { $q->where("Approved", 1)->orWhereNull("Approved"); })
+                ->pluck("CampusID");
+          $campuses = $campuses->map(fn ($id) => (int) $id)->values()->all();
           echo json_encode([
             "access_token" => $row->token,
             "token_type" => "Bearer",
+            "expires_at" => (string) $row->expires_at,
             "user" => [
               "id" => (int) $row->id,
-              "name" => (string) $row->Name,
-              "account" => (string) $row->LoginName,
-              "email" => (string) $row->LoginName,
               "role" => $row->type === "S" ? "super_admin" : "director",
               "campuses" => $campuses,
               "must_change_password" => (bool) $row->MustChangePassword,
@@ -142,10 +144,10 @@ jobs:
         env:
           CI: 'true'
           SMOKE_BASE_URL: https://daan.lifenet.com.tw
-          SMOKE_BRANCH_ID: ${{ github.event.inputs.branch_id || '16' }}
+          SMOKE_BRANCH_ID: ${{ github.event.inputs.branch_id || '' }}
           SMOKE_START_DATE: ${{ github.event.inputs.start_date || '2026-08-05' }}
           SMOKE_END_DATE: ${{ github.event.inputs.end_date || '2026-08-07' }}
-        run: npx playwright test e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js --project=chromium
+        run: npx playwright test e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js e2e/tutoring-free-production.spec.js --project=chromium
 
       - name: Upload acceptance report
         if: ${{ !cancelled() }}
