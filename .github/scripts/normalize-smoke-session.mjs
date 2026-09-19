@@ -1,29 +1,30 @@
 import fs from 'node:fs';
 
-const MARKER = 'ALLTRUE_SESSION_PAYLOAD_V1:';
+const BEGIN = 'ALLTRUE_SESSION_PAYLOAD_BEGIN_V1';
+const END = 'ALLTRUE_SESSION_PAYLOAD_END_V1';
 const MAX_TTL_MS = 30 * 60 * 1000;
 
 function fail(message) {
   throw new Error(message);
 }
 
-function extractEncodedMarker(output) {
+function extractEncodedPayload(output) {
   const text = String(output);
-  const occurrences = [...text.matchAll(new RegExp(MARKER, 'g'))];
-  if (occurrences.length !== 1) fail(`expected exactly one session marker, found ${occurrences.length}`);
-  const start = occurrences[0].index + MARKER.length;
-  const remainder = text.slice(start);
-  const match = remainder.match(/^[A-Za-z0-9+/]+={0,2}/);
-  if (!match || !match[0]) fail('session marker is not valid base64');
-  const encoded = match[0];
-  const boundary = remainder[encoded.length];
-  if (boundary === '=' || /[A-Za-z0-9+/]/.test(boundary || '')) fail('session marker has ambiguous trailing base64');
+  const begins = [...text.matchAll(new RegExp(BEGIN, 'g'))];
+  const ends = [...text.matchAll(new RegExp(END, 'g'))];
+  if (begins.length !== 1) fail(`expected exactly one session begin sentinel, found ${begins.length}`);
+  if (ends.length !== 1) fail(`expected exactly one session end sentinel, found ${ends.length}`);
+  const start = begins[0].index + BEGIN.length;
+  const end = ends[0].index;
+  if (start >= end) fail('session sentinels are misordered');
+  const encoded = text.slice(start, end).replace(/^[\x09-\x0D\x20]+|[\x09-\x0D\x20]+$/g, '');
+  if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) fail('session payload is not valid base64');
   if (encoded.length % 4 !== 0) fail('session marker is not valid base64');
   return encoded;
 }
 
 export function normalizeSessionOutput(output, requestedBranch = 0, now = Date.now()) {
-  const encoded = extractEncodedMarker(output);
+  const encoded = extractEncodedPayload(output);
   let input;
   try { input = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')); } catch { fail('session marker payload is not valid JSON'); }
   const token = typeof input?.access_token === 'string' ? input.access_token.trim() : '';
@@ -60,7 +61,7 @@ function fixture(overrides = {}) {
     user: { id: 7, role: 'director', campuses: [16, 9], must_change_password: false },
     ...overrides,
   };
-  return `${'ssh diagnostic banner\n'}${MARKER}${Buffer.from(JSON.stringify(input)).toString('base64')}\nremote footer`;
+  return `${'ssh diagnostic banner\n'}${BEGIN}\n${Buffer.from(JSON.stringify(input)).toString('base64')}\n${END}\nremote footer`;
 }
 
 function expectReject(label, callback) {
@@ -72,17 +73,16 @@ function expectReject(label, callback) {
 export function selfTest() {
   const valid = normalizeSessionOutput(fixture(), 16);
   if (valid.effectiveBranch !== 16 || valid.normalized.user.campuses[0] !== 9) fail('self-test valid marker normalization failed');
-  const fixtureEncoded = fixture().split(MARKER)[1].split('\n')[0];
-  if (normalizeSessionOutput(`shell-before ${MARKER}${fixtureEncoded}\nshell-after`, 16).effectiveBranch !== 16) fail('self-test shell-owned marker framing failed');
-  const sameLineNoise = `tinker: warning ${fixture().replace(/\nremote footer$/, ' tinker: footer')}`;
-  const multilineNoise = `noise before\n${fixture()}\nnoise after`;
-  if (normalizeSessionOutput(sameLineNoise, 16).effectiveBranch !== 16) fail('self-test same-line noise normalization failed');
-  if (normalizeSessionOutput(multilineNoise, 16).effectiveBranch !== 16) fail('self-test multiline noise normalization failed');
-  expectReject('missing marker', () => normalizeSessionOutput('noise only', 16));
-  expectReject('duplicate embedded marker', () => normalizeSessionOutput(`${fixture().replace(/\nremote footer$/, '')}${MARKER}ignored`, 16));
-  expectReject('invalid base64', () => normalizeSessionOutput(`prefix\n${MARKER}%%%\n`, 16));
-  expectReject('ambiguous trailing base64', () => normalizeSessionOutput(`${MARKER}${fixtureEncoded}A`, 16));
-  expectReject('invalid JSON', () => normalizeSessionOutput(`prefix\n${MARKER}${Buffer.from('not-json').toString('base64')}\n`, 16));
+  const fixtureEncoded = fixture().split(`${BEGIN}\n`)[1].split(`\n${END}`)[0];
+  if (normalizeSessionOutput(`shell-before\n${BEGIN}\r\n ${fixtureEncoded} \r\n${END}\nshell-after`, 16).effectiveBranch !== 16) fail('self-test shell-owned sentinel framing failed');
+  expectReject('missing sentinels', () => normalizeSessionOutput('noise only', 16));
+  expectReject('duplicate begin sentinel', () => normalizeSessionOutput(`${BEGIN}\n${BEGIN}\n${fixtureEncoded}\n${END}`, 16));
+  expectReject('duplicate end sentinel', () => normalizeSessionOutput(`${BEGIN}\n${fixtureEncoded}\n${END}\n${END}`, 16));
+  expectReject('misordered sentinels', () => normalizeSessionOutput(`${END}\n${fixtureEncoded}\n${BEGIN}`, 16));
+  expectReject('banner between sentinel and payload', () => normalizeSessionOutput(`${BEGIN}\ntinker banner\n${fixtureEncoded}\n${END}`, 16));
+  expectReject('payload with trailing junk', () => normalizeSessionOutput(`${BEGIN}\n${fixtureEncoded} junk\n${END}`, 16));
+  expectReject('invalid base64', () => normalizeSessionOutput(`${BEGIN}\n%%%\n${END}`, 16));
+  expectReject('invalid JSON', () => normalizeSessionOutput(`${BEGIN}\n${Buffer.from('not-json').toString('base64')}\n${END}`, 16));
   expectReject('missing token', () => normalizeSessionOutput(fixture({ access_token: '' }), 16));
   expectReject('unauthorized branch', () => normalizeSessionOutput(fixture(), 99));
   expectReject('expired session', () => normalizeSessionOutput(fixture({ expires_at: new Date(Date.now() - 1).toISOString() }), 16));
