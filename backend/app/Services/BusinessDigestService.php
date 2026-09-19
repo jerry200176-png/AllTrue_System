@@ -459,6 +459,7 @@ class BusinessDigestService
     {
         $q = DB::table('StudentClass as sc')
             ->where('sc.Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> ?", ['tutoring'])
             ->where(fn ($w) => $w->where('sc.Paid', 0)->orWhereNull('sc.Paid')->orWhere('sc.RemainingSessions', '<=', 2));
         if ($campusId !== null && $campusId > 0) {
             $q->join('Student as s', 's.id', '=', 'sc.StudentID')->where('s.CampusID', $campusId);

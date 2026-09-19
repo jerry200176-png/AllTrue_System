@@ -873,6 +873,13 @@ class ParentPortalController extends Controller
         // Payment alerts — only show courses that still require parent action
         $paymentAlerts = $classes
             ->filter(function ($c) use ($paidAtMap) {
+                // Tutoring is a free, non-receivable course. Keep the course
+                // visible in the portal, but never turn it into a parent
+                // payment action (including legacy casing/NULL rows).
+                if (strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring') {
+                    return false;
+                }
+
                 if ($c->ScheduleMode !== 'count' && ($c->SessionCount ?? 0) <= 0) {
                     return false;
                 }
