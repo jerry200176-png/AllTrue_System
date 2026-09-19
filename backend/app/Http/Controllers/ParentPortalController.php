@@ -1360,8 +1360,12 @@ class ParentPortalController extends Controller
 
         $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
         $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
-        $paidCount = max(0, $totalCourses - $unpaidCount);
-        $paymentStatus = $unpaidCount === 0 ? 'all_clear' : ($unpaidCount >= $totalCourses ? 'all_pending' : 'partial');
+        $freeCount = $perCourse->filter(fn ($course) => (bool) ($course['is_tutoring'] ?? false))->count();
+        $payableCourses = max(0, $totalCourses - $freeCount);
+        $paidCount = max(0, $payableCourses - $unpaidCount);
+        $paymentStatus = $unpaidCount === 0
+            ? 'all_clear'
+            : ($payableCourses > 0 && $unpaidCount >= $payableCourses ? 'all_pending' : 'partial');
         $feedbackProgram = $this->buildParentFeedbackProgramSummary($student);
 
         return [
@@ -1380,6 +1384,7 @@ class ParentPortalController extends Controller
                 'status' => $paymentStatus,
                 'paid_courses' => $paidCount,
                 'unpaid_courses' => $unpaidCount,
+                'free_courses' => $freeCount,
                 'total_courses' => $totalCourses,
             ],
             'feedback_program' => $feedbackProgram,
