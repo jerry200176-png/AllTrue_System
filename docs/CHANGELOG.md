@@ -3459,3 +3459,6 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 <!-- release-notes: staff_update=staff-2026-09-15-tuition-viewport-containment -->
 
 - 帳務中心在手機與平板寬度會自動收合篩選欄位，操作按鈕會換行完整顯示；既有金額、收款、權限與資料流程不變。
+## 2026-09-19 — improved(students): 搜尋姓名或就讀學校
+<!-- release-notes: staff_update=staff-2026-09-19-student-school-search -->
+- 學生搜尋現在可用姓名或就讀學校查找；既有分校權限與篩選行為不變。
