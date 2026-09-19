@@ -11,8 +11,14 @@
 <template>
   <div v-if="badges.teacherTag" class="cb-teacher-tag" :style="{ background: badges.teacherTag.color }">{{ badges.teacherTag.name }}</div>
   <div class="cb-student" :class="studentClass">{{ course.student_name }}</div>
-  <div class="cb-detail" :class="{ 'cbc-compact': layout.compact }">{{ subjectLabel }}</div>
-  <div class="cb-type" :class="{ 'cbc-compact': layout.compact }">{{ typeLabel }}</div>
+  <div v-if="horizontalMeta" class="cb-meta-row" :class="metaRowClass">
+    <span class="cb-detail cb-meta-item">{{ subjectLabel }}</span>
+    <span class="cb-type cb-meta-item">{{ typeLabel }}</span>
+  </div>
+  <template v-else>
+    <div class="cb-detail" :class="{ 'cbc-compact': layout.compact }">{{ subjectLabel }}</div>
+    <div class="cb-type" :class="{ 'cbc-compact': layout.compact }">{{ typeLabel }}</div>
+  </template>
   <span
     v-if="badges.rollCall"
     class="rc-tag"
@@ -28,25 +34,44 @@
 <script setup>
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
-import { classTypeLabel } from '../../lib/calendarFormat.js';
+import { classTypeLabel, classTypeShortLabel } from '../../lib/calendarFormat.js';
 
 const props = defineProps({
   course: { type: Object, required: true },
   // { rollCall: {kind,label}|null, evalMissing: {label}|null, teacherTag: {name,color}|null }
   badges: { type: Object, default: () => ({}) },
-  // { compact: boolean, firstBadge: 'full' | 'compact' | null }
+  // { compact, firstBadge, splitSlot, splitCount }
   layout: { type: Object, default: () => ({}) },
 });
 
+const MULTI_STUDENT_TYPES = new Set(['one_on_two', 'one_on_three']);
+
 const subjectLabel = computed(() => getSubjectLabel(props.course.subject));
-const typeLabel = computed(() => classTypeLabel(props.course.class_type));
+const horizontalMeta = computed(() => (
+  !!props.layout.splitSlot && MULTI_STUDENT_TYPES.has(String(props.course.class_type || ''))
+));
+const typeLabel = computed(() => {
+  const type = String(props.course.class_type || '');
+  if (horizontalMeta.value || (props.layout.compact && MULTI_STUDENT_TYPES.has(type))) {
+    return classTypeShortLabel(type);
+  }
+  return classTypeLabel(type);
+});
 const hasRc = computed(() => !!(props.badges.rollCall || props.badges.evalMissing));
 
+const splitCount = computed(() => Math.max(0, Number(props.layout.splitCount || 0)));
 const studentClass = computed(() => ({
   'cbc-compact': !!props.layout.compact,
+  'cbc-split-slot': !!props.layout.splitSlot,
+  'cbc-split-triple': !!props.layout.splitSlot && splitCount.value >= 3,
   'cbc-has-rc': hasRc.value,
   'cbc-badge-full': props.layout.firstBadge === 'full',
   'cbc-badge-compact-pad': props.layout.firstBadge === 'compact',
+}));
+const metaRowClass = computed(() => ({
+  'cbc-compact': !!props.layout.compact,
+  'cbc-split-slot': !!props.layout.splitSlot,
+  'cbc-split-triple': !!props.layout.splitSlot && splitCount.value >= 3,
 }));
 </script>
 
@@ -93,6 +118,45 @@ const studentClass = computed(() => ({
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+}
+.cb-meta-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+  min-width: 0;
+}
+.cb-meta-row .cb-meta-item {
+  margin-top: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.cb-meta-row .cb-type.cb-meta-item {
+  flex: 0 0 auto;
+  opacity: 0.85;
+  font-weight: 700;
+}
+
+/* in-app #317：並排窄欄（1:2/1:3）內文改橫排 + 縮字，避免直向三行截斷 */
+.cb-student.cbc-split-slot {
+  font-size: 11px;
+  line-height: 1.1;
+  letter-spacing: -0.35px;
+}
+.cb-student.cbc-split-triple {
+  font-size: 10px;
+  letter-spacing: -0.45px;
+}
+.cb-meta-row.cbc-split-slot {
+  gap: 3px;
+}
+.cb-meta-row.cbc-split-slot .cb-meta-item {
+  font-size: 8px;
+  line-height: 1.1;
+}
+.cb-meta-row.cbc-split-triple .cb-meta-item {
+  font-size: 7px;
 }
 
 /* rc-tag 系列（自帶一份，父層 legend 仍保留自己那份） */

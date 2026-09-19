@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-19-calendar-split-slot-317
+    published_at: "2026-09-19"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 行事曆一對二／一對三並排課卡較易閱讀
+    summary: 日檢視同時段多位學生的課卡，科目與班型改橫向顯示，避免窄欄文字被截斷。
+    items:
+      - category: fixed
+        text: 修正一對二、一對三並排時課卡內姓名或班型標籤被截到難以辨識。
+      - category: improved
+        text: 並排窄欄的班型標示改短，保留科目與姓名可讀性。
+    source_refs:
+      - "github:in-app-317"
+      - "changelog:2026-09-19:calendar-split-slot-317"
+
   - id: staff-2026-09-18-lr-mutable-teacher-follow
     published_at: "2026-09-18"
     audiences:

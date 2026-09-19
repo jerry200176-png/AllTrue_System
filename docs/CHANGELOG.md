@@ -1,3 +1,7 @@
+## 2026-09-19 — fix(calendar): 1:2/1:3 split-slot text readability (in-app #317)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-split-slot-317 -->
+- 日檢視同時段 1:2／1:3 並排窄欄：科目+班型改橫向 meta 列與 1:2/1:3 短標，避免姓名／標籤被截到只剩一字。
+
 ## 2026-09-18 — docs(agents): in-app product-loop intake→GitHub mapping first
 <!-- release-notes: silent_ship=silent-2026-09-18-inapp-intake-github-first -->
 - product-loop skill：讀取後先建立／更新去識別化 GitHub intake 對照（SourceRef），再進入深度分診與選工；收件建單 ≠ Phase A／實作批准。
