@@ -54,6 +54,10 @@ describe('CalendarPrintDialog acceptance contract', () => {
     expect(document.body.textContent).toContain('請假');
     expect(document.body.textContent).toContain('補課');
     expect(document.body.textContent).toContain('台北分校');
+    expect(document.body.querySelector('.calendar-print-summary h3')?.textContent).toContain('週總覽');
+    expect(document.body.querySelectorAll('.calendar-print-summary .calendar-print-days article').length).toBeGreaterThan(0);
+    expect(document.body.querySelector('.calendar-print-summary p')?.textContent).toMatch(/明細合計：\d+ 堂/);
+    expect(document.body.querySelectorAll('.calendar-print-sheet table thead th')).toHaveLength(7);
     expect(document.body.querySelectorAll('.calendar-print-statuses input:checked')).toHaveLength(5);
     expect(document.body.textContent).not.toMatch(/電話|地址|帳務|備註/);
     expect(api.courseOptions).toMatchObject({ schedStart: '2026-09-14', schedEnd: '2026-09-20' });
