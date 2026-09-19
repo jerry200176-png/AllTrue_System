@@ -120,7 +120,9 @@ jobs:
                   'expires_at' => Carbon\Carbon::parse((string) $row->expires_at, config('app.timezone', 'Asia/Taipei'))->toIso8601String(),
                   'user' => ['id' => (int) $row->id, 'role' => 'director', 'campuses' => $campuses, 'must_change_password' => false],
               ], JSON_THROW_ON_ERROR);
-              echo 'ALLTRUE_SESSION_PAYLOAD_V1:' . base64_encode($payload) . PHP_EOL;
+              echo "ALLTRUE_SESSION_PAYLOAD_BEGIN_V1\n";
+              echo base64_encode($payload) . PHP_EOL;
+              echo "ALLTRUE_SESSION_PAYLOAD_END_V1\n";
           } catch (Throwable $error) {
               fwrite(STDERR, "director session lookup failed\n");
               exit(1);
