@@ -10,7 +10,8 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
  */
 const BASE = process.env.SMOKE_BASE_URL;
 const REQUIRE_HOSTED = process.env.SMOKE_REQUIRE_SCHOOL_DIRECTORY_ACCEPTANCE === 'true';
-const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
+const RAW_BRANCH_ID = process.env.SMOKE_BRANCH_ID || '';
+const REQUESTED_BRANCH_ID = /^\d+$/.test(RAW_BRANCH_ID) ? Number(RAW_BRANCH_ID) : 0;
 const RELEASE = latestReleaseVersionForRole('director');
 
 test.use({ trace: 'off', screenshot: 'off', video: 'off', serviceWorkers: 'block' });
@@ -29,9 +30,10 @@ function readSession() {
 const SESSION = readSession();
 const ROLE = SESSION?.user?.role;
 const CAMPUS_IDS = Array.isArray(SESSION?.user?.campuses)
-  ? SESSION.user.campuses.map(Number).filter(Number.isInteger)
-  : [];
-const BRANCH_ID = REQUESTED_BRANCH_ID || CAMPUS_IDS[0] || 0;
+  && SESSION.user.campuses.every((id) => Number.isInteger(id) && id > 0)
+  ? SESSION.user.campuses
+  : null;
+const BRANCH_ID = REQUESTED_BRANCH_ID || CAMPUS_IDS?.[0] || 0;
 
 function expiryMs(value) {
   if (typeof value !== 'number' && typeof value !== 'string') return 0;
@@ -46,24 +48,32 @@ function expiryMs(value) {
 }
 
 const SESSION_REMAINING_SECONDS = Math.floor((expiryMs(SESSION?.expires_at) - Date.now()) / 1000);
-const CONTROLLED_SESSION = Boolean(
-  SESSION?.access_token
-  && ['director', 'super_admin'].includes(ROLE)
-  && BRANCH_ID > 0
-  && CAMPUS_IDS.includes(BRANCH_ID)
-  && SESSION_REMAINING_SECONDS > 0
-  && SESSION_REMAINING_SECONDS <= 30 * 60,
-);
-const BROWSER_SESSION = SESSION ? {
+function isControlledSession(session, branchId) {
+  const role = session?.user?.role;
+  const campuses = session?.user?.campuses;
+  const expires = expiryMs(session?.expires_at);
+  const remaining = Math.floor((expires - Date.now()) / 1000);
+  return Boolean(
+    typeof session?.access_token === 'string'
+    && session.access_token.trim() !== ''
+    && ['director', 'super_admin'].includes(role)
+    && Number.isInteger(branchId)
+    && branchId > 0
+    && Array.isArray(campuses)
+    && campuses.every((id) => Number.isInteger(id) && id > 0)
+    && (role === 'super_admin' || campuses.includes(branchId))
+    && session.user.must_change_password === false
+    && remaining > 0
+    && remaining <= 30 * 60,
+  );
+}
+
+const CONTROLLED_SESSION = isControlledSession(SESSION, BRANCH_ID);
+const BROWSER_SESSION = CONTROLLED_SESSION ? {
   access_token: SESSION.access_token,
-  token_type: SESSION.token_type || 'Bearer',
+  token_type: 'Bearer',
   expires_at: SESSION.expires_at,
-  user: {
-    id: -296,
-    role: ROLE,
-    campuses: CAMPUS_IDS,
-    must_change_password: false,
-  },
+  user: { id: -296, role: ROLE, campuses: CAMPUS_IDS, must_change_password: false },
 } : null;
 
 const ITEM_KEYS = [
@@ -230,6 +240,18 @@ async function assertWriteGuardSelfTest(page) {
   ]));
 }
 
+test('session gate rejects malformed production credentials', () => {
+  const valid = {
+    access_token: 'synthetic-token',
+    expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    user: { role: 'director', campuses: [1], must_change_password: false },
+  };
+  expect(isControlledSession({ ...valid, user: { ...valid.user } }, 1)).toBe(true);
+  expect(isControlledSession({ ...valid, user: { role: 'director', campuses: [1] } }, 1)).toBe(false);
+  expect(isControlledSession({ ...valid, user: { ...valid.user, campuses: ['1'] } }, 1)).toBe(false);
+  expect(isControlledSession({ ...valid, access_token: '' }, 1)).toBe(false);
+});
+
 test.describe('production acceptance — school directory (#296)', () => {
   test.skip(!REQUIRE_HOSTED && (!BASE || !CONTROLLED_SESSION), 'missing bounded SMOKE_BASE_URL/branch/director session (must expire within 30m)');
 
@@ -260,7 +282,7 @@ test.describe('production acceptance — school directory (#296)', () => {
         await route.abort('blockedbyclient');
         return;
       }
-      if (url.pathname === '/api/v1/me') {
+      if (url.origin === new URL(BASE).origin && url.pathname === '/api/v1/me') {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -275,6 +297,23 @@ test.describe('production acceptance — school directory (#296)', () => {
             must_change_password: false,
             engagement: null,
           }),
+        });
+        return;
+      }
+      if (url.origin === new URL(BASE).origin && url.pathname === '/api/v1/schools') {
+        const school = {
+          id: 'tpe-daan-jh',
+          canonical_name: '臺北市立大安國民中學',
+          municipality: '臺北市',
+          district: '大安區',
+          school_code: '313501',
+          label: '臺北市立大安國民中學（臺北市 大安區）',
+          matched_alias: '大安國中',
+        };
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: url.searchParams.get('q') === '大安國中' ? [school] : [] }),
         });
         return;
       }
