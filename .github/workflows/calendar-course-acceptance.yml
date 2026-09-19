@@ -209,8 +209,8 @@ jobs:
             acceptance_args+=(--grep-invert 'contracted four-session detail explains two unarranged sessions')
           fi
           npx playwright test "${acceptance_args[@]}" > playwright-report/acceptance-results.json
-          node .github/scripts/acceptance-report-gate.mjs --self-test
-          RESULTS_PATH="playwright-report/acceptance-results.json" EFFECTIVE_BRANCH_ID="$EFFECTIVE_BRANCH_ID" node .github/scripts/acceptance-report-gate.mjs
+          node ../.github/scripts/acceptance-report-gate.mjs --self-test
+          RESULTS_PATH="playwright-report/acceptance-results.json" EFFECTIVE_BRANCH_ID="$EFFECTIVE_BRANCH_ID" node ../.github/scripts/acceptance-report-gate.mjs
 
       - name: Upload acceptance report
         if: ${{ !cancelled() }}
