@@ -3,6 +3,43 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-19-calendar-print-318
+    published_at: "2026-09-19"
+    audiences:
+      - director
+    importance: digest
+    title: 主任可列印週／月課表做人工核對
+    summary: 班級行事曆新增週／月列印預覽，提供總覽與完整每日明細。
+    items:
+      - category: added
+        text: 在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。
+      - category: improved
+        text: 明細包含學生、科目／班型、實際教師、日期時間、校區教室及請假／補課／代課／調課／取消狀態，適合紙本人工核對。
+      - category: action_required
+        text: 課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。
+    source_refs:
+      - "github:#3068"
+      - "github:in-app-318"
+      - "changelog:2026-09-19:calendar-print-318"
+
+  - id: staff-2026-09-19-course-upcoming-dates-321
+    published_at: "2026-09-19"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課程清單直接顯示近期上課日期
+    summary: 不用逐一開啟課程，時段欄會顯示今日起最近三堂與剩餘堂數。
+    items:
+      - category: improved
+        text: 課程清單直接顯示今日起最近三堂有效上課日期與時間。
+      - category: improved
+        text: 超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。
+    source_refs:
+      - "github:#3071"
+      - "github:in-app-321"
+      - "changelog:2026-09-19:course-upcoming-dates-321"
+
   - id: staff-2026-09-19-shared-plan-slot-edit-324
     published_at: "2026-09-19"
     audiences:
@@ -4345,3 +4382,19 @@ updates:
         text: 金額、收款資料、權限與既有帳務處理流程維持不變。
     source_refs:
       - "github:in-app-306"
+  - id: staff-2026-09-19-student-school-search
+    published_at: "2026-09-19"
+    effective_at: "2026-09-19"
+    audiences:
+      - director
+    importance: digest
+    title: 學生可用姓名或就讀學校搜尋
+    summary: 學生清單搜尋支援姓名與就讀學校，既有分校權限與篩選行為維持不變。
+    items:
+      - category: improved
+        text: 輸入姓名或學校即可找到授權分校內的學生。
+      - category: improved
+        text: 分校權限、年級、狀態與既有篩選規則維持不變。
+    source_refs:
+      - "github:#3065"
+      - "github:in-app-313"

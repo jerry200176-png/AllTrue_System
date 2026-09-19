@@ -1,3 +1,7 @@
+## 2026-09-19 — improved(course-management): show upcoming lesson dates in course list (in-app #321 / GitHub #3071)
+<!-- release-notes: staff_update=staff-2026-09-19-course-upcoming-dates-321 -->
+- SourceRef `alltrue:bug_report:321`：課程清單在既有時段欄直接顯示今日起最近三堂上課日期，並標示尚有幾堂；完整日期仍可從「管理課程」查看。
+
 ## 2026-09-19 — fix(rfid): campus presence isolation and collision handling (#2981)
 <!-- release-notes: silent_ship=silent-2026-09-19-rfid-presence-isolation-2981 -->
 - RFID-1 review repair keeps explicit idempotency keys bound to student/campus, distinguishes the two named duplicate constraints, validates campus/date inputs, and keeps RFID presence separate from attendance and billing. Merge and activation remain Founder-only; this is not a production verification claim.

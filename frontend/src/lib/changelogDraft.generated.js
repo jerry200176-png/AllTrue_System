@@ -29,6 +29,12 @@ export const changelogDraftNotes = [
           "slot wrap spacing polish",
           "1：2/1：3 split-slot text readability"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "upcoming lesson dates in course list"
+        ]
       }
     ],
     "items": [
@@ -36,7 +42,8 @@ export const changelogDraftNotes = [
       "presence isolation and collision handling",
       "plan slot edit preserves past/future boundaries",
       "slot wrap spacing polish",
-      "1：2/1：3 split-slot text readability"
+      "1：2/1：3 split-slot text readability",
+      "upcoming lesson dates in course list"
     ]
   },
   {
