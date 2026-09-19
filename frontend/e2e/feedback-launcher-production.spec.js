@@ -5,7 +5,7 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
 const BASE = process.env.SMOKE_BASE_URL;
 const HOSTED = process.env.SMOKE_FEEDBACK_HOSTED === '1';
 const BRANCH_ID_RAW = process.env.SMOKE_BRANCH_ID || '';
-const BRANCH_ID = /^\d+$/.test(BRANCH_ID_RAW) ? Number(BRANCH_ID_RAW) : 0;
+const BRANCH_ID = /^[1-9]\d*$/.test(BRANCH_ID_RAW) ? Number(BRANCH_ID_RAW) : 0;
 const HOST_ORIGIN = (() => {
   try { return new URL(BASE || '').origin; } catch { return ''; }
 })();
@@ -22,35 +22,62 @@ function readSession() {
 }
 
 const SESSION = readSession();
-const ROLE = SESSION?.user?.role;
-const SESSION_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
-  && SESSION.user.campuses.every((campus) => Number.isInteger(campus) && campus > 0)
-  ? SESSION.user.campuses
-  : [];
 function sessionExpirySeconds(value) {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value > 1e12 ? value / 1000 : value;
-  if (typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim())) {
+  if (typeof value === 'string' && /^(?:\d{10}(?:\.\d+)?|\d{13})$/.test(value)) {
     const numeric = Number(value);
     return numeric > 0 ? (numeric > 1e12 ? numeric / 1000 : numeric) : 0;
   }
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim())) {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) {
     const millis = Date.parse(value);
     return Number.isFinite(millis) ? millis / 1000 : 0;
   }
   return 0;
 }
-const SESSION_REMAINING_SECONDS = sessionExpirySeconds(SESSION?.expires_at) - Date.now() / 1000;
-const CONTROLLED_SESSION = Boolean(
-  SESSION?.access_token
-  && typeof SESSION.access_token === 'string'
-  && SESSION.access_token.trim().length > 0
-  && ['director', 'super_admin'].includes(ROLE)
-  && BRANCH_ID > 0
-  && SESSION_CAMPUSES.includes(BRANCH_ID)
-  && SESSION?.user?.must_change_password === false
-  && SESSION_REMAINING_SECONDS > 0
-  && SESSION_REMAINING_SECONDS <= 30 * 60,
-);
+
+export function validateControlledSession(session, branchRaw, nowMs = Date.now()) {
+  if (typeof branchRaw !== 'string' || !/^[1-9]\d*$/.test(branchRaw)) return false;
+  const branchId = Number(branchRaw);
+  if (!Number.isSafeInteger(branchId) || branchId <= 0) return false;
+  if (!session || typeof session !== 'object' || Array.isArray(session)) return false;
+  if (typeof session.access_token !== 'string' || !session.access_token
+    || session.access_token.trim() !== session.access_token || /[\r\n]/.test(session.access_token)) return false;
+  if (session.token_type !== 'Bearer') return false;
+  if (!session.user || typeof session.user !== 'object' || Array.isArray(session.user)) return false;
+  if (!['director', 'super_admin'].includes(session.user.role) || session.user.must_change_password !== false) return false;
+  if (!Array.isArray(session.user.campuses) || !session.user.campuses.length
+    || session.user.campuses.some((campus) => !Number.isSafeInteger(campus) || campus <= 0)
+    || !session.user.campuses.includes(branchId)) return false;
+  const remaining = sessionExpirySeconds(session.expires_at) - nowMs / 1000;
+  return remaining > 0 && remaining <= 30 * 60;
+}
+
+export function runControlledSessionValidatorSelfTest() {
+  const now = Date.now();
+  const valid = {
+    access_token: 'synthetic-token', token_type: 'Bearer', expires_at: new Date(now + 600_000).toISOString(),
+    user: { role: 'director', must_change_password: false, campuses: [16] },
+  };
+  if (!validateControlledSession(valid, '16', now)) throw new Error('valid controlled session rejected');
+  if (!validateControlledSession({ ...valid, expires_at: String(Math.floor(now / 1000) + 600) }, '16', now)) throw new Error('valid epoch session rejected');
+  const rejected = [
+    ['branch leading zero', valid, '01'],
+    ['token padding', { ...valid, access_token: ' synthetic-token' }, '16'],
+    ['token type', { ...valid, token_type: 'bearer' }, '16'],
+    ['string campus', { ...valid, user: { ...valid.user, campuses: ['16'] } }, '16'],
+    ['wrong role', { ...valid, user: { ...valid.user, role: 'teacher' } }, '16'],
+    ['must change', { ...valid, user: { ...valid.user, must_change_password: true } }, '16'],
+    ['timezone-less expiry', { ...valid, expires_at: '2099-01-01 00:00:00' }, '16'],
+    ['expired', { ...valid, expires_at: new Date(now - 1).toISOString() }, '16'],
+  ];
+  for (const [label, session, branch] of rejected) {
+    if (validateControlledSession(session, branch, now)) throw new Error(`self-test accepted ${label}`);
+  }
+}
+
+runControlledSessionValidatorSelfTest();
+const CONTROLLED_SESSION = validateControlledSession(SESSION, BRANCH_ID_RAW);
+const ROLE = SESSION?.user?.role;
 
 const GUIDANCE = {
   bug: {
