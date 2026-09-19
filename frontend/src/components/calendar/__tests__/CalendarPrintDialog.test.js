@@ -129,6 +129,20 @@ describe('CalendarPrintDialog acceptance contract', () => {
     wrapper.unmount();
   });
 
+  it('locks the real print dialog selectors and complete filter contract', async () => {
+    const wrapper = mount(CalendarPrintDialog, { attachTo: document.body, props: { open: false, branchId: 11, initialDate: '2026-09-15' } });
+    await wrapper.setProps({ open: true });
+    await flushPromises();
+    const dialog = document.body.querySelector('[data-calendar-print-dialog]');
+    const panel = dialog?.querySelector('.calendar-print-dialog__panel');
+    expect(dialog).not.toBeNull();
+    expect(panel?.style.getPropertyValue('--calendar-print-canvas')).toBe('white');
+    expect(dialog?.querySelectorAll('.calendar-print-toolbar input[type="search"]').length).toBe(3);
+    expect(dialog?.querySelectorAll('.calendar-print-statuses input:checked').length).toBe(5);
+    expect(dialog?.querySelector('.calendar-print-sheet footer')).not.toBeNull();
+    wrapper.unmount();
+  });
+
   it('fails closed on an error and distinguishes an empty successful range', async () => {
     const previousSessions = api.sessions;
     api.sessions = [];

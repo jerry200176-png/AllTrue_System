@@ -145,7 +145,7 @@ jobs:
           SMOKE_BRANCH_ID: ${{ github.event.inputs.branch_id || '16' }}
           SMOKE_START_DATE: ${{ github.event.inputs.start_date || '2026-08-05' }}
           SMOKE_END_DATE: ${{ github.event.inputs.end_date || '2026-08-07' }}
-        run: npx playwright test e2e/calendar-course-consistency.spec.js --project=chromium
+        run: npx playwright test e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js --project=chromium
 
       - name: Upload acceptance report
         if: ${{ !cancelled() }}
