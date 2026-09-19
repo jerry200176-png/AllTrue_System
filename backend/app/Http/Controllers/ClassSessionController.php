@@ -81,7 +81,9 @@ class ClassSessionController extends Controller
             'standard_lesson_minutes' => 'nullable|integer|min:30|max:480|required_if:deduction_basis,actual_duration',
             'overage_confirmed' => 'nullable|boolean',
             'rate_unit' => 'nullable|in:session,hour',
-            'price_per_session' => 'required|numeric|min:0',
+            // Tutoring is free and has no receivable; paid class types retain the
+            // required amount contract. EnrollmentService is the final authority.
+            'price_per_session' => 'nullable|required_unless:class_type,tutoring|numeric|min:0',
             'payment_type' => 'required|in:session,monthly',
             'scheduling_policy' => 'nullable|in:auto_recurrence,manual_occurrence',
             'settlement_day' => 'nullable|integer|min:1|max:31',
