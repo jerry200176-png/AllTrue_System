@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "director print preview readable in dark theme",
           "presence isolation and collision handling",
           "plan slot edit preserves past/future boundaries",
           "slot wrap spacing polish",
@@ -42,12 +43,12 @@ export const changelogDraftNotes = [
     "items": [
       "plan fixed or flexible pre-schedule choice",
       "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+      "director print preview readable in dark theme",
       "presence isolation and collision handling",
       "plan slot edit preserves past/future boundaries",
       "slot wrap spacing polish",
       "1：2/1：3 split-slot text readability",
-      "upcoming lesson dates in course list",
-      "搜尋姓名或就讀學校"
+      "upcoming lesson dates in course list"
     ]
   },
   {
