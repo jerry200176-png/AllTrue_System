@@ -18,6 +18,7 @@
         </template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
+          <AtButton v-if="!isTeacher" shape="rect" variant="secondary" icon="print" @click="showCalendarPrint = true">列印課表</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
             <button id="calendar-tab-week" type="button" role="tab" aria-controls="calendar-panel-week" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
             <button v-if="!isTeacher" id="calendar-tab-teacher" type="button" role="tab" aria-controls="calendar-panel-teacher" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
@@ -551,6 +552,16 @@
       <button class="ctx-item" @click="onContextLeave">📋 請假</button>
       <button class="ctx-item ctx-cancel" @click="contextMenu.show = false">取消</button>
     </div>
+
+    <CalendarPrintDialog
+      :open="showCalendarPrint"
+      :branch-id="props.branchId"
+      :branch-name="props.branchName"
+      :rooms="roomList"
+      :teachers="teachers"
+      :initial-date="selectedDateStr"
+      @close="showCalendarPrint = false"
+    />
   </div>
 </template>
 
@@ -587,6 +598,7 @@ import CalendarLeaveModal from '../components/calendar/modals/CalendarLeaveModal
 import CalendarRescheduleModal from '../components/calendar/modals/CalendarRescheduleModal.vue';
 import CalendarSubstituteLegacyModal from '../components/calendar/modals/CalendarSubstituteLegacyModal.vue';
 import CalendarExtraLessonModal from '../components/calendar/modals/CalendarExtraLessonModal.vue';
+import CalendarPrintDialog from '../components/calendar/CalendarPrintDialog.vue';
 import {
   fetchTeacherAvailability,
   previewTeacherLeaves,
@@ -626,6 +638,7 @@ import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigatio
 
 const props = defineProps({
   branchId: [String, Number],
+  branchName: { type: String, default: '' },
   userRole: String,
   userId: [String, Number],
   initialTeacherId: [String, Number],
@@ -762,6 +775,7 @@ function selectCalendarFlowStep(stepId) {
   }
 }
 const showModal = ref(false);
+const showCalendarPrint = ref(false);
 const editingCourseId = ref(null);
 /** 點擊的那一堂的實際日期（僅編輯單堂時有值），用於限定只能做請假/調課/加課 */
 const editingActionDate = ref('');

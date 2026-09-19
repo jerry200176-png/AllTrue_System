@@ -4,6 +4,39 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-19-student-school-search",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": "2026-09-19",
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生可用姓名或就讀學校搜尋",
+    "summary": "學生清單搜尋支援姓名與就讀學校，既有分校權限與篩選行為維持不變。",
+    "items": [
+      "輸入姓名或學校即可找到授權分校內的學生。",
+      "分校權限、年級、狀態與既有篩選規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "輸入姓名或學校即可找到授權分校內的學生。",
+          "分校權限、年級、狀態與既有篩選規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3065",
+      "github:in-app-313"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
     "id": "staff-2026-09-19-shared-plan-slot-edit-324",
     "publishedAt": "2026-09-19",
     "effectiveAt": null,
@@ -82,6 +115,42 @@ export const staffUpdates = [
     "version": "2026.09.19"
   },
   {
+    "id": "staff-2026-09-19-course-upcoming-dates-321",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程清單直接顯示近期上課日期",
+    "summary": "不用逐一開啟課程，時段欄會顯示今日起最近三堂與剩餘堂數。",
+    "items": [
+      "課程清單直接顯示今日起最近三堂有效上課日期與時間。",
+      "超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程清單直接顯示今日起最近三堂有效上課日期與時間。",
+          "超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3071",
+      "github:in-app-321",
+      "changelog:2026-09-19:course-upcoming-dates-321"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
     "id": "staff-2026-09-19-calendar-split-slot-317",
     "publishedAt": "2026-09-19",
     "effectiveAt": null,
@@ -117,6 +186,52 @@ export const staffUpdates = [
     "sourceRefs": [
       "github:in-app-317",
       "changelog:2026-09-19:calendar-split-slot-317"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-19-calendar-print-318",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任可列印週／月課表做人工核對",
+    "summary": "班級行事曆新增週／月列印預覽，提供總覽與完整每日明細。",
+    "items": [
+      "在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。",
+      "明細包含學生、科目／班型、實際教師、日期時間、校區教室及請假／補課／代課／調課／取消狀態，適合紙本人工核對。",
+      "課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "明細包含學生、科目／班型、實際教師、日期時間、校區教室及請假／補課／代課／調課／取消狀態，適合紙本人工核對。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3068",
+      "github:in-app-318",
+      "changelog:2026-09-19:calendar-print-318"
     ],
     "date": "2026-09-19",
     "version": "2026.09.19"
