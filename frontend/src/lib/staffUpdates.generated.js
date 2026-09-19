@@ -4,6 +4,84 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-19-shared-plan-slot-edit-324",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "共用方案改時段不回補歷史堂次",
+    "summary": "多科共用方案修改固定時段時，只同步未來可變堂次，保留歷史與既有未來例外。",
+    "items": [
+      "共用方案改固定星期／時間時，不會因缺少首堂日而產生今天以前的預排堂次。",
+      "既有未來堂次與單堂例外保留，其他科目與方案堂數不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "共用方案改固定星期／時間時，不會因缺少首堂日而產生今天以前的預排堂次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "既有未來堂次與單堂例外保留，其他科目與方案堂數不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3074",
+      "github:in-app-324",
+      "changelog:2026-09-19:shared-plan-slot-edit-324"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-19-shared-plan-fixed-schedule-320",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "共用方案可選固定或不固定預排",
+    "summary": "多科共用方案堂數制可逐科選擇固定星期／時間預排，或只補登已知日期。",
+    "items": [
+      "建立堂數制共用方案時，每科可勾選固定星期／時間預排。",
+      "不固定的科目維持手動補登日期流程，不會送出固定排課設定。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "建立堂數制共用方案時，每科可勾選固定星期／時間預排。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "不固定的科目維持手動補登日期流程，不會送出固定排課設定。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3070",
+      "github:in-app-320",
+      "changelog:2026-09-19:shared-plan-fixed-schedule-320"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
     "id": "staff-2026-09-19-calendar-split-slot-317",
     "publishedAt": "2026-09-19",
     "effectiveAt": null,

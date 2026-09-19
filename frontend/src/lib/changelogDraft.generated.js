@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.19",
     "date": "2026-09-19",
     "title": "2026.09.19 草稿（未發布）",
-    "summary": "slot wrap spacing polish；1：2/1：3 split-slot text readability",
+    "summary": "plan fixed or flexible pre-schedule choice；plan slot edit preserves past/future boundaries",
     "audience": [
       "teacher",
       "director"
@@ -16,14 +16,23 @@ export const changelogDraftNotes = [
     "draft": true,
     "sections": [
       {
+        "title": "新增內容",
+        "items": [
+          "plan fixed or flexible pre-schedule choice"
+        ]
+      },
+      {
         "title": "修正內容",
         "items": [
+          "plan slot edit preserves past/future boundaries",
           "slot wrap spacing polish",
           "1：2/1：3 split-slot text readability"
         ]
       }
     ],
     "items": [
+      "plan fixed or flexible pre-schedule choice",
+      "plan slot edit preserves past/future boundaries",
       "slot wrap spacing polish",
       "1：2/1：3 split-slot text readability"
     ]
