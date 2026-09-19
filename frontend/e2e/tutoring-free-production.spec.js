@@ -141,7 +141,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
         if (!isTelemetry('POST', url)) return rejectWrite('BEACON', url);
         return nativeBeacon ? nativeBeacon(url, data) : false;
       };
-      window.__writeGuardSelfTests = { form: false, requestSubmit: false, beacon: false };
+      window.__writeGuardSelfTests = { form: false, submit: false, requestSubmit: false, beacon: false };
       try {
         const probe = document.createElement('form');
         probe.action = '/write-probe';
@@ -151,6 +151,10 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
         window.__writeGuardSelfTests.form = window.__selfTestingFormBlocked === true;
       } catch (error) { window.__writeGuardSelfTests.form = error instanceof Error; }
       window.__selfTestingForm = false;
+      try {
+        const probe = document.createElement('form');
+        probe.submit();
+      } catch (error) { window.__writeGuardSelfTests.submit = error instanceof Error; }
       try {
         const probe = document.createElement('form');
         probe.requestSubmit();
@@ -237,7 +241,10 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     const scopedCourses = courses.filter(arScope);
     expect(scopedCourses.length, 'student-class branch read must overlap AR student-campus scope').toBeGreaterThan(0);
     const tutoring = scopedCourses.filter(isTutoring);
-    const active = (row) => Number(field(row, 'Stop', 'stop') || 0) === 0;
+    const active = (row) => {
+      const stop = field(row, 'Stop', 'stop');
+      return stop !== null && stop !== undefined && (stop === 0 || stop === '0');
+    };
     const regularUnpaid = scopedCourses.filter((row) => active(row) && !isTutoring(row) && amount(row, 'Charge', 'charge') > amount(row, 'Pay', 'paid'));
     const regularOutstanding = regularUnpaid.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);
     const activeTutoring = tutoring.filter(active);
@@ -308,7 +315,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     expect(await page.evaluate(() => window.__printGuardSelfTest)).toBe(true);
     expect(await page.evaluate(() => window.__printAttempts)).toBe(0);
     expect(await page.evaluate(() => window.__originalPrintCalls)).toBe(0);
-    expect(await page.evaluate(() => window.__writeGuardSelfTests)).toEqual({ form: true, requestSubmit: true, beacon: true });
+    expect(await page.evaluate(() => window.__writeGuardSelfTests)).toEqual({ form: true, submit: true, requestSubmit: true, beacon: true });
     expect(await page.evaluate(() => window.__readOnlyViolations)).toEqual([]);
 
     expect(unsafe, `non-read-only requests observed: ${JSON.stringify(unsafe)}`).toEqual([]);
