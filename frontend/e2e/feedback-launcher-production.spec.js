@@ -5,6 +5,9 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
 const BASE = process.env.SMOKE_BASE_URL;
 const HOSTED = process.env.SMOKE_FEEDBACK_HOSTED === '1';
 const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
+const HOST_ORIGIN = (() => {
+  try { return new URL(BASE || '').origin; } catch { return ''; }
+})();
 
 function readSession() {
   const encoded = process.env.SMOKE_DIRECTOR_SESSION_B64 || '';
@@ -19,10 +22,31 @@ function readSession() {
 
 const SESSION = readSession();
 const ROLE = SESSION?.user?.role;
+const SESSION_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
+  ? SESSION.user.campuses.map(Number).filter(Number.isInteger)
+  : [];
+function sessionExpirySeconds(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value > 1e12 ? value / 1000 : value;
+  if (typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim())) {
+    const numeric = Number(value);
+    return numeric > 1e12 ? numeric / 1000 : numeric;
+  }
+  if (typeof value === 'string' && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value.trim())) {
+    const millis = Date.parse(value);
+    return Number.isFinite(millis) ? millis / 1000 : 0;
+  }
+  return 0;
+}
+const SESSION_REMAINING_SECONDS = sessionExpirySeconds(SESSION?.expires_at) - Date.now() / 1000;
 const CONTROLLED_SESSION = Boolean(
   SESSION?.access_token
   && ['director', 'super_admin'].includes(ROLE)
-  && BRANCH_ID > 0,
+  && BRANCH_ID > 0
+  && (ROLE === 'super_admin' || SESSION_CAMPUSES.includes(BRANCH_ID))
+  && !SESSION?.user?.must_change_password
+  && !SESSION?.must_change_password
+  && SESSION_REMAINING_SECONDS > 0
+  && SESSION_REMAINING_SECONDS <= 30 * 60,
 );
 
 const GUIDANCE = {
@@ -52,7 +76,9 @@ function installSyntheticProfile(page) {
     // Preserve only the bearer token and authorization shape; never expose the
     // workflow's real user name/account in the browser UI or artifacts.
     const safe = {
-      ...session,
+      access_token: session.access_token,
+      token_type: 'Bearer',
+      expires_at: session.expires_at,
       user: {
         id: 900329,
         role: session.user.role,
@@ -64,12 +90,12 @@ function installSyntheticProfile(page) {
     localStorage.setItem('alltrue_session', JSON.stringify(safe));
     localStorage.setItem('app_branch', String(branch));
     sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-    window.__feedbackAcceptance = { blocked: [], unexpectedWrites: [], telemetry: [] };
+    window.__feedbackAcceptance = { blockedSelfTests: [], runtimeViolations: [], telemetry: [] };
 
     const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
     const telemetryPath = '/api/v1/adoption/events';
     const write = (channel, method, url) => {
-      window.__feedbackAcceptance.blocked.push({ channel, method: String(method).toUpperCase() });
+      window.__feedbackAcceptance.blockedSelfTests.push({ channel, method: String(method).toUpperCase() });
       throw new Error(`feedback acceptance blocked ${method} ${url}`);
     };
     const isTelemetry = (url, method) => method === 'POST'
@@ -105,34 +131,60 @@ function installSyntheticProfile(page) {
       write('sendBeacon', 'POST', url);
       return false;
     };
+    window.print = () => write('print', 'PRINT', window.location.href);
+    document.addEventListener('submit', (event) => {
+      window.__feedbackAcceptance.runtimeViolations.push({ channel: 'submit-event' });
+      event.preventDefault();
+    }, true);
   }, { session: SESSION, branch: BRANCH_ID });
 }
 
 function installReadOnlyRoutes(page) {
-  return page.route('**/*', async (route) => {
+  const networkWrites = [];
+  const routePromise = page.route('**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method().toUpperCase();
     if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-      if (method === 'POST' && url.pathname === '/api/v1/adoption/events') {
+      if (method === 'POST' && url.origin === HOST_ORIGIN && url.pathname === '/api/v1/adoption/events') {
         const raw = request.postData() || '';
-        expect(raw).not.toMatch(/bearer|access_token|password|@/i);
         const payload = (() => { try { return JSON.parse(raw); } catch { return null; } })();
-        if (payload) {
-          expect(payload).toEqual(expect.objectContaining({ event: expect.any(String) }));
-        }
+        expect(payload && typeof payload === 'object' && !Array.isArray(payload)).toBe(true);
+        expect(Object.keys(payload).sort()).toEqual(['branch_id', 'event', 'meta']);
+        expect(Number.isInteger(payload.branch_id)).toBe(true);
+        expect(payload.branch_id).toBeGreaterThan(0);
+        expect(typeof payload.event).toBe('string');
+        expect(payload.event).toMatch(/^[a-z][a-z0-9_.-]{0,63}$/);
+        expect(payload.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta)).toBe(true);
+        expect(Object.keys(payload.meta).every((key) => /^[a-z][a-z0-9_]{0,31}$/.test(key))).toBe(true);
+        expect(raw).not.toMatch(/bearer|access_token|password|email|phone|name|student|parent|@/i);
         await route.fulfill({ status: 204, body: '' });
         return;
       }
-      await route.abort('blockedbyclient');
+      if (method === 'POST' && url.origin === HOST_ORIGIN) {
+        networkWrites.push({ method, path: url.pathname });
+        await route.abort('blockedbyclient');
+        return;
+      }
+      if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+        networkWrites.push({ method, path: url.pathname });
+        await route.abort('blockedbyclient');
+        return;
+      }
+    }
+    if (url.origin === HOST_ORIGIN && url.pathname === '/api/v1/me') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+        id: 900329, name: 'Acceptance Director', role: ROLE, campuses: [BRANCH_ID], must_change_password: false,
+      }) });
       return;
     }
-    if (/\/api\/v1\/(students|teachers|student-classes|courses|subjects|bugs|notifications)(?:\/|$)/.test(url.pathname)) {
+    if (url.origin === HOST_ORIGIN && url.pathname.startsWith('/api/v1/')) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
       return;
     }
     await route.continue();
   });
+  return { networkWrites, routePromise };
 }
 
 async function assertSyntheticGuards(page) {
@@ -150,19 +202,21 @@ async function assertSyntheticGuards(page) {
         document.body.append(form);
         try { form.requestSubmit(); } catch (_) {}
       },
+      async () => { const form = document.createElement('form'); try { form.submit(); } catch (_) {} },
       async () => { try { navigator.sendBeacon('/api/v1/__feedback_write__', '{}'); } catch (_) {} },
+      async () => { try { window.print(); } catch (_) {} },
     ];
     for (const attempt of attempts) await attempt();
   });
   const state = await page.evaluate(() => window.__feedbackAcceptance);
-  expect(state.unexpectedWrites).toEqual([]);
-  expect(new Set(state.blocked.map((entry) => entry.channel))).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'sendBeacon']));
+  expect(state.runtimeViolations).toEqual([]);
+  expect(new Set(state.blockedSelfTests.map((entry) => entry.channel))).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-submit', 'sendBeacon', 'print']));
 }
 
 async function assertFeedbackChoices(page, viewport) {
   await page.setViewportSize(viewport);
   await installSyntheticProfile(page);
-  await installReadOnlyRoutes(page);
+  const { networkWrites } = installReadOnlyRoutes(page);
   await page.goto(`${BASE}/`);
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
   await dismissOverlays(page);
@@ -185,21 +239,22 @@ async function assertFeedbackChoices(page, viewport) {
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await expect(dialog).toBeHidden();
   await assertSyntheticGuards(page);
-  const unexpectedWrites = await page.evaluate(() => window.__feedbackAcceptance.unexpectedWrites);
-  expect(unexpectedWrites).toEqual([]);
+  const runtimeViolations = await page.evaluate(() => window.__feedbackAcceptance.runtimeViolations);
+  expect(runtimeViolations).toEqual([]);
+  expect(networkWrites).toEqual([]);
 }
 
 test.describe('production acceptance — feedback launcher (#329)', () => {
   test.skip(!HOSTED, 'set SMOKE_FEEDBACK_HOSTED=1 only in the protected hosted acceptance phase');
 
   test('desktop exposes reporter-facing choices without writes', async ({ page }) => {
-    expect(BASE, 'SMOKE_BASE_URL is required when hosted acceptance is enabled').toBeTruthy();
+    expect(HOST_ORIGIN, 'SMOKE_BASE_URL must be an absolute hosted URL').toBeTruthy();
     expect(CONTROLLED_SESSION, 'hosted acceptance requires a valid director session; malformed session must fail').toBe(true);
     await assertFeedbackChoices(page, { width: 1440, height: 1000 });
   });
 
   test('mobile exposes reporter-facing choices without writes', async ({ page }) => {
-    expect(BASE, 'SMOKE_BASE_URL is required when hosted acceptance is enabled').toBeTruthy();
+    expect(HOST_ORIGIN, 'SMOKE_BASE_URL must be an absolute hosted URL').toBeTruthy();
     expect(CONTROLLED_SESSION, 'hosted acceptance requires a valid director session; malformed session must fail').toBe(true);
     await assertFeedbackChoices(page, { width: 390, height: 844 });
   });
