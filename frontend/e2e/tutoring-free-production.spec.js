@@ -170,6 +170,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     const tutoringIds = new Set(activeTutoring.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')));
     const regularIds = new Set(regularUnpaid.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')));
     expect(tutoringIds.size).toBe(activeTutoring.length);
+    expect([...tutoringIds].every(Boolean), 'tutoring paired control must expose stable class IDs').toBe(true);
     for (const row of activeTutoring) {
       const id = String(field(row, 'id', 'ID', 'class_id') || '');
       if (id) expect(alertIds.has(id), `tutoring course ${id} leaked into alerts`).toBe(false);
