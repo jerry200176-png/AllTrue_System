@@ -92,6 +92,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
 
       window.__readOnlyViolations = [];
       const isTelemetry = (method, url) => String(method).toUpperCase() === 'POST'
+        && new URL(url, window.location.href).origin === window.location.origin
         && new URL(url, window.location.href).pathname === '/api/v1/adoption/events';
       const rejectWrite = (method, url) => {
         const detail = { method: String(method).toUpperCase(), url: String(url || '') };
@@ -127,6 +128,32 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       HTMLFormElement.prototype.requestSubmit = function guardedRequestSubmit(...args) {
         return rejectWrite('FORM.REQUESTSUBMIT', this.action);
       };
+      document.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (window.__selfTestingForm) {
+          window.__selfTestingFormBlocked = event.defaultPrevented;
+          return;
+        }
+        rejectWrite('FORM.DEFAULT', event.target?.action || window.location.href);
+      }, true);
+      const nativeBeacon = navigator.sendBeacon?.bind(navigator);
+      navigator.sendBeacon = (url, data) => {
+        if (!isTelemetry('POST', url)) return rejectWrite('BEACON', url);
+        return nativeBeacon ? nativeBeacon(url, data) : false;
+      };
+      window.__writeGuardSelfTests = { form: false, beacon: false };
+      try {
+        const probe = document.createElement('form');
+        probe.action = '/write-probe';
+        document.body.appendChild(probe);
+        window.__selfTestingForm = true;
+        probe.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        window.__writeGuardSelfTests.form = window.__selfTestingFormBlocked === true;
+      } catch (error) { window.__writeGuardSelfTests.form = error instanceof Error; }
+      window.__selfTestingForm = false;
+      try { navigator.sendBeacon('https://outside.invalid/api/v1/adoption/events', 'probe'); }
+      catch (error) { window.__writeGuardSelfTests.beacon = error instanceof Error; }
+      window.__readOnlyViolations = [];
       void originalSubmit; void originalRequestSubmit;
     }, { session: SESSION, branch: BRANCH_ID, release: RELEASE });
 
@@ -138,6 +165,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     });
     await page.route('**/api/v1/adoption/events', async (route) => {
       const req = route.request();
+      expect(new URL(req.url()).origin).toBe(new URL(BASE).origin);
       expect(req.method()).toBe('POST');
       const body = req.postDataJSON() || {};
       expect(Object.keys(body).sort()).toEqual(['branch_id', 'event', 'meta']);
@@ -145,9 +173,27 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       expect(body.event.trim()).not.toBe('');
       expect(body.event).toMatch(/^[a-z0-9_]+$/);
       expect(Array.isArray(body.meta)).toBe(false);
-      const allowedMeta = new Set(['workflow', 'phase', 'step', 'target', 'duration_ms', 'flow', 'source', 'role', 'status', 'page', 'key', 'decision', 'telem_session', 'telem_day']);
+      const schemas = {
+        dashboard_opened: { keys: ['page', 'role', 'telem_day', 'telem_session'], role: 'director', page: 'director-dashboard' },
+        director_trust_decision_impression: { keys: ['has_drilldown', 'key', 'people_total', 'severity', 'target', 'telem_day', 'telem_session'] },
+        director_trust_decision_click: { keys: ['from', 'has_drilldown', 'key', 'people_shown', 'severity', 'target', 'telem_day', 'telem_session'] },
+        director_trust_score_shown: { keys: ['critical_count', 'decision_count', 'decision_keys', 'score', 'status', 'telem_day', 'telem_session'] },
+      };
+      const schema = schemas[body.event];
+      expect(schema, `unexpected telemetry event ${body.event}`).toBeDefined();
+      expect(Object.keys(body.meta).sort()).toEqual(schema.keys);
+      if (schema.role) expect(body.meta.role).toBe(schema.role);
+      if (schema.page) expect(body.meta.page).toBe(schema.page);
+      if (body.event === 'director_trust_decision_impression' || body.event === 'director_trust_decision_click') {
+        expect(body.meta.key).toMatch(/^[a-z0-9_-]{1,80}$/i);
+        expect(body.meta.severity).toMatch(/^[a-z0-9_-]{0,32}$/i);
+        expect(body.meta.target).toMatch(/^[a-z0-9_-]{0,80}$/i);
+      }
+      const allowedMeta = new Set(schema.keys);
       expect(Object.keys(body.meta).every((key) => allowedMeta.has(key))).toBe(true);
-      expect(Object.values(body.meta).every((value) => ['string', 'number', 'boolean'].includes(typeof value))).toBe(true);
+      expect(Object.entries(body.meta).every(([key, value]) => key === 'decision_keys'
+        ? Array.isArray(value) && value.every((item) => typeof item === 'string' && /^[a-z0-9_-]{1,80}$/i.test(item))
+        : ['string', 'number', 'boolean'].includes(typeof value))).toBe(true);
       if (body.meta.workflow !== undefined) expect(['billing', 'calendar']).toContain(body.meta.workflow);
       if (body.meta.phase !== undefined) expect(['started', 'completed', 'returned', 'error']).toContain(body.meta.phase);
       if (body.meta.duration_ms !== undefined) expect(body.meta.duration_ms).toBeGreaterThanOrEqual(0);
@@ -159,12 +205,18 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     });
 
     const courses = await getPagedRows(request, `/api/v1/student-classes?branch_id=${BRANCH_ID}`, token);
-    const tutoring = courses.filter(isTutoring);
+    const studentCampus = (row) => field(row, 'CampusID', 'campus_id') ?? field(row?.student, 'CampusID', 'campus_id');
+    const arScope = (row) => Number(studentCampus(row) || 0) === BRANCH_ID;
+    const scopedCourses = courses.filter(arScope);
+    expect(scopedCourses.length, 'student-class branch read must overlap AR student-campus scope').toBeGreaterThan(0);
+    const tutoring = scopedCourses.filter(isTutoring);
     const active = (row) => Number(field(row, 'Stop', 'stop') || 0) === 0;
-    const regularUnpaid = courses.filter((row) => active(row) && !isTutoring(row) && amount(row, 'Charge', 'charge') > amount(row, 'Pay', 'paid'));
+    const regularUnpaid = scopedCourses.filter((row) => active(row) && !isTutoring(row) && amount(row, 'Charge', 'charge') > amount(row, 'Pay', 'paid'));
     const regularOutstanding = regularUnpaid.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);
     const activeTutoring = tutoring.filter(active);
     const tutoringOutstanding = activeTutoring.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);
+    expect(activeTutoring.length, 'production branch must provide a non-empty tutoring control').toBeGreaterThan(0);
+    expect(regularUnpaid.length, 'production branch must provide a non-empty regular unpaid control').toBeGreaterThan(0);
     const alerts = rows(await getJson(request, `/api/v1/alerts/tuition?branch_id=${BRANCH_ID}`, token));
     const alertIds = new Set(alerts.map((row) => String(field(row, 'id', 'class_id', 'student_class_id', 'StudentClassID') || '')));
     const tutoringIds = new Set(activeTutoring.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')));
@@ -224,6 +276,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     expect(await page.evaluate(() => window.__printGuardSelfTest)).toBe(true);
     expect(await page.evaluate(() => window.__printAttempts)).toBe(0);
     expect(await page.evaluate(() => window.__originalPrintCalls)).toBe(0);
+    expect(await page.evaluate(() => window.__writeGuardSelfTests)).toEqual({ form: true, beacon: true });
     expect(await page.evaluate(() => window.__readOnlyViolations)).toEqual([]);
 
     expect(unsafe, `non-read-only requests observed: ${JSON.stringify(unsafe)}`).toEqual([]);
