@@ -15,6 +15,17 @@ function readSession() {
 
 const SESSION = readSession();
 
+function datesBetween(start, end) {
+  const dates = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const final = new Date(`${end}T00:00:00Z`);
+  while (cursor <= final) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
 async function installSession(page) {
   await page.addInitScript(({ session, branch, releaseVersion }) => {
     localStorage.setItem('alltrue_session', JSON.stringify(session));
@@ -112,9 +123,24 @@ async function assertPrintPreviewContract(page, expectedPeriod) {
     await expect(overview.locator('h3')).toHaveText(expectedPeriod === 'week' ? '週總覽' : '月總覽');
     const dayCards = overview.locator('.calendar-print-days article');
     await expect(dayCards).not.toHaveCount(0);
-    await expect(dayCards.first().locator('b')).not.toHaveText('');
-    await expect(dayCards.first().locator('span')).toHaveText(/\d+ 堂/);
-    await expect(overview.locator('p')).toHaveText(/明細合計：\d+ 堂/);
+    const rangeText = await overview.locator('.calendar-print-sheet__header span').first().innerText();
+    const [rangeStart, rangeEnd] = rangeText.match(/\d{4}-\d{2}-\d{2}/g) || [];
+    expect(rangeStart).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(rangeEnd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const expectedDates = datesBetween(rangeStart, rangeEnd);
+    const cardData = await dayCards.evaluateAll((cards) => cards.map((card) => ({
+      date: card.querySelector('b')?.textContent?.match(/\d{4}-\d{2}-\d{2}/)?.[0] || '',
+      countText: card.querySelector('span')?.textContent || '',
+    })));
+    if (expectedPeriod === 'week') expect(expectedDates).toHaveLength(7);
+    expect(cardData.map((card) => card.date)).toEqual(expectedDates);
+    expect(cardData.every((card) => /^\d+\s*堂$/.test(card.countText.trim()))).toBe(true);
+    const cardCounts = cardData.map((card) => Number(card.countText.match(/^\d+/)[0]));
+    expect(cardCounts.every((count) => Number.isInteger(count) && count >= 0)).toBe(true);
+    const totalText = await overview.locator('p').innerText();
+    const totalMatch = totalText.match(/明細合計：\s*(\d+)\s*堂/);
+    expect(totalMatch).not.toBeNull();
+    expect(Number(totalMatch[1])).toBe(cardCounts.reduce((sum, count) => sum + count, 0));
     await assertSheetContrast(overview, `${expectedPeriod} overview`);
 
     const detail = dialog.locator('.calendar-print-sheet:has(table)').first();
