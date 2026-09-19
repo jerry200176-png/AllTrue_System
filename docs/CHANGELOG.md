@@ -1,3 +1,7 @@
+## 2026-09-19 — fix(calendar): keep director print preview readable in dark theme (in-app #318 / GitHub #3068)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
+- SourceRef `alltrue:bug_report:318`：主任列印課表在暗色主題下維持深色文字／白色紙張底，預覽與頁尾對比度一致；本項僅記錄已完成的前端驗證，不宣稱 production verified。
+
 ## 2026-09-19 — improved(course-management): show upcoming lesson dates in course list (in-app #321 / GitHub #3071)
 <!-- release-notes: staff_update=staff-2026-09-19-course-upcoming-dates-321 -->
 - SourceRef `alltrue:bug_report:321`：課程清單在既有時段欄直接顯示今日起最近三堂上課日期，並標示尚有幾堂；完整日期仍可從「管理課程」查看。
