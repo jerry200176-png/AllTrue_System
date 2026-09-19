@@ -86,7 +86,7 @@ jobs:
           export BRANCH_ID="${1:-}"
           cd /home/admin/backend
           printf '%s' 'ALLTRUE_SESSION_PAYLOAD_V1:'
-          session_payload="$(php artisan tinker --no-ansi --execute='
+          php artisan tinker --no-ansi --execute='
           $branch = (int) getenv("BRANCH_ID");
           $query = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
             ->join("User as u", "u.id", "=", "t.user_id")
@@ -131,9 +131,8 @@ jobs:
             ],
           ]);
           echo base64_encode($payload);
-          ')"
-          test -n "$session_payload"
-          printf '%s\n' "$session_payload"
+          '
+          printf '\n'
           REMOTE
           })"
           test -n "$session_output"
