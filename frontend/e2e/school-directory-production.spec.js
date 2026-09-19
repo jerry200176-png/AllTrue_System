@@ -188,33 +188,33 @@ async function installSession(page) {
 }
 
 async function assertWriteGuardSelfTest(page) {
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = window.__schoolDirectoryAcceptance;
     state.mode = 'self-test';
     state.selfTestBlocks = [];
     const synthetic = [
-      () => fetch('/api/v1/__school_directory_acceptance_write__', { method: 'POST' }),
-      () => {
+      async () => { try { await fetch('/api/v1/__school_directory_acceptance_write__', { method: 'POST' }); } catch (_) {} },
+      async () => {
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', '/api/v1/__school_directory_acceptance_write__');
-        xhr.send('{}');
+        try { xhr.send('{}'); } catch (_) {}
       },
-      () => { const form = document.createElement('form'); form.action = '/api/v1/__school_directory_acceptance_write__'; document.body.append(form); form.requestSubmit(); },
-      () => { const form = document.createElement('form'); form.action = '/api/v1/__school_directory_acceptance_write__'; document.body.append(form); form.submit(); },
-      () => {
+      async () => { const form = document.createElement('form'); form.action = '/api/v1/__school_directory_acceptance_write__'; document.body.append(form); try { form.requestSubmit(); } catch (_) {} },
+      async () => { const form = document.createElement('form'); form.action = '/api/v1/__school_directory_acceptance_write__'; document.body.append(form); try { form.submit(); } catch (_) {} },
+      async () => {
         const form = document.createElement('form');
         const button = document.createElement('button');
         button.type = 'submit';
         form.action = '/api/v1/__school_directory_acceptance_write__';
         form.append(button);
         document.body.append(form);
-        button.click();
+        try { button.click(); } catch (_) {}
       },
-      () => navigator.sendBeacon('/api/v1/__school_directory_acceptance_write__', '{}'),
-      () => window.print(),
+      async () => { try { navigator.sendBeacon('/api/v1/__school_directory_acceptance_write__', '{}'); } catch (_) {} },
+      async () => { try { window.print(); } catch (_) {} },
     ];
     for (const attempt of synthetic) {
-      try { void attempt(); } catch (_) { /* expected guard */ }
+      await attempt();
     }
     state.mode = 'runtime';
   });
@@ -278,12 +278,12 @@ test.describe('production acceptance — school directory (#296)', () => {
         });
         return;
       }
-      if (/^\/api\/v1\/(students|teachers|student-classes|courses|subjects)(?:\/|$)/.test(url.pathname)) {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [] }) });
-        return;
-      }
-      if (/^\/api\/v1\/(?:director\/operations-trust|adoption\/(?:task-tracker|activity-log|weekly-metrics))$/.test(url.pathname)) {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: null }) });
+      if (url.origin === new URL(BASE).origin && url.pathname.startsWith('/api/v1/')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: [] }),
+        });
         return;
       }
       await route.continue();
