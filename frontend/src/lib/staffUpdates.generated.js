@@ -115,6 +115,42 @@ export const staffUpdates = [
     "version": "2026.09.19"
   },
   {
+    "id": "staff-2026-09-19-course-upcoming-dates-321",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程清單直接顯示近期上課日期",
+    "summary": "不用逐一開啟課程，時段欄會顯示今日起最近三堂與剩餘堂數。",
+    "items": [
+      "課程清單直接顯示今日起最近三堂有效上課日期與時間。",
+      "超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程清單直接顯示今日起最近三堂有效上課日期與時間。",
+          "超過三堂時顯示另有幾堂；完整日期與排課操作仍保留在管理課程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3071",
+      "github:in-app-321",
+      "changelog:2026-09-19:course-upcoming-dates-321"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
     "id": "staff-2026-09-19-calendar-split-slot-317",
     "publishedAt": "2026-09-19",
     "effectiveAt": null,
