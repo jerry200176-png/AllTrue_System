@@ -20,6 +20,8 @@ class SchoolDirectoryTest extends TestCase
 
         $this->assertNotEmpty($hits);
         $this->assertSame('臺北市立大安國民中學', $hits[0]['canonical_name']);
+        $this->assertSame('tpe-daan-jh', $hits[0]['id']);
+        $this->assertSame('臺北市立大安國民中學（臺北市 大安區）', $hits[0]['label']);
         $this->assertSame('臺北市', $hits[0]['municipality']);
         $this->assertStringContainsString('臺北市', $hits[0]['label']);
         $this->assertSame('大安國中', $hits[0]['matched_alias']);
@@ -75,6 +77,26 @@ class SchoolDirectoryTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_director_required_to_change_password_is_blocked(): void
+    {
+        $token = $this->createToken('A', [1], true);
+
+        $this->requestWithToken($token)->getJson('/api/v1/schools?q='.urlencode('大安國中'))
+            ->assertStatus(428)
+            ->assertJsonPath('code', 'PASSWORD_CHANGE_REQUIRED');
+    }
+
+    public function test_super_admin_bypasses_role_and_campus_gates(): void
+    {
+        $token = $this->createToken('S', []);
+
+        $response = $this->requestWithToken($token)
+            ->getJson('/api/v1/schools?q='.urlencode('大安國中'))
+            ->assertOk();
+
+        $this->assertNotEmpty($response->json('data'));
+    }
+
     public function test_company_global_directory_is_identical_for_directors_in_distinct_campuses(): void
     {
         $first = $this->requestWithToken($this->createToken('D', [1]))
@@ -89,6 +111,8 @@ class SchoolDirectoryTest extends TestCase
         $daan = collect($first)->firstWhere('canonical_name', '臺北市立大安國民中學');
         $this->assertNotNull($daan);
         $this->assertSame('臺北市立大安國民中學', $daan['canonical_name']);
+        $this->assertSame('tpe-daan-jh', $daan['id']);
+        $this->assertSame('臺北市立大安國民中學（臺北市 大安區）', $daan['label']);
         $this->assertSame('臺北市', $daan['municipality']);
         $this->assertSame('大安區', $daan['district']);
         $this->assertSame('313501', $daan['school_code']);
@@ -124,7 +148,7 @@ class SchoolDirectoryTest extends TestCase
         return $this->createToken('A', $campusIds);
     }
 
-    private function createToken(string $type, array $campusIds): string
+    private function createToken(string $type, array $campusIds, bool $mustChangePassword = false): string
     {
         $user = User::create([
             'LoginName' => 'director-schools-'.uniqid('', true).'@example.com',
@@ -132,7 +156,7 @@ class SchoolDirectoryTest extends TestCase
             'PSW' => 'secret',
             'type' => $type,
             'phone' => '09'.random_int(10000000, 99999999),
-            'MustChangePassword' => false,
+            'MustChangePassword' => $mustChangePassword,
         ]);
         foreach ($campusIds as $campusId) {
             UserCampus::create([

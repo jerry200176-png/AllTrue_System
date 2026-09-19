@@ -9,6 +9,7 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
  * deliberately does not create, edit, delete, or submit a student.
  */
 const BASE = process.env.SMOKE_BASE_URL;
+const REQUIRE_HOSTED = process.env.SMOKE_REQUIRE_SCHOOL_DIRECTORY_ACCEPTANCE === 'true';
 const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
 const RELEASE = latestReleaseVersionForRole('director');
 
@@ -33,6 +34,7 @@ const CAMPUS_IDS = Array.isArray(SESSION?.user?.campuses)
 const BRANCH_ID = REQUESTED_BRANCH_ID || CAMPUS_IDS[0] || 0;
 
 function expiryMs(value) {
+  if (typeof value !== 'number' && typeof value !== 'string') return 0;
   const numeric = Number(value);
   if (Number.isFinite(numeric) && numeric > 0) {
     return numeric > 1e12 ? numeric : numeric * 1000;
@@ -52,6 +54,17 @@ const CONTROLLED_SESSION = Boolean(
   && SESSION_REMAINING_SECONDS > 0
   && SESSION_REMAINING_SECONDS <= 30 * 60,
 );
+const BROWSER_SESSION = SESSION ? {
+  access_token: SESSION.access_token,
+  token_type: SESSION.token_type || 'Bearer',
+  expires_at: SESSION.expires_at,
+  user: {
+    id: -296,
+    role: ROLE,
+    campuses: CAMPUS_IDS,
+    must_change_password: false,
+  },
+} : null;
 
 const ITEM_KEYS = [
   'canonical_name',
@@ -106,7 +119,7 @@ function assertTelemetryPayload(payload) {
 
 function installWriteGuard(page) {
   return page.addInitScript(() => {
-    const state = { unknownWrites: [], blocked: [] };
+    const state = { mode: 'runtime', selfTestBlocks: [], runtimeBlocks: [] };
     window.__schoolDirectoryAcceptance = state;
     const allowed = new Set(['GET', 'HEAD', 'OPTIONS']);
     const isTelemetry = (url, method) => {
@@ -116,7 +129,8 @@ function installWriteGuard(page) {
         && target.pathname === '/api/v1/adoption/events';
     };
     const block = (channel, method, url) => {
-      state.blocked.push(channel);
+      const target = state.mode === 'self-test' ? state.selfTestBlocks : state.runtimeBlocks;
+      target.push(channel);
       throw new Error(`school-directory acceptance blocked ${method} ${url}`);
     };
 
@@ -170,11 +184,14 @@ async function installSession(page) {
     localStorage.setItem('app_branch', String(branch));
     localStorage.setItem('alltrue_release_notes_seen', release);
     sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
-  }, { session: SESSION, branch: BRANCH_ID, release: RELEASE });
+  }, { session: BROWSER_SESSION, branch: BRANCH_ID, release: RELEASE });
 }
 
-async function assertNoUnknownWrites(page) {
+async function assertWriteGuardSelfTest(page) {
   await page.evaluate(() => {
+    const state = window.__schoolDirectoryAcceptance;
+    state.mode = 'self-test';
+    state.selfTestBlocks = [];
     const synthetic = [
       () => fetch('/api/v1/__school_directory_acceptance_write__', { method: 'POST' }),
       () => {
@@ -183,6 +200,7 @@ async function assertNoUnknownWrites(page) {
         xhr.send('{}');
       },
       () => { const form = document.createElement('form'); form.action = '/api/v1/__school_directory_acceptance_write__'; document.body.append(form); form.requestSubmit(); },
+      () => { const form = document.createElement('form'); form.action = '/api/v1/__school_directory_acceptance_write__'; document.body.append(form); form.submit(); },
       () => {
         const form = document.createElement('form');
         const button = document.createElement('button');
@@ -198,14 +216,28 @@ async function assertNoUnknownWrites(page) {
     for (const attempt of synthetic) {
       try { void attempt(); } catch (_) { /* expected guard */ }
     }
+    state.mode = 'runtime';
   });
   const state = await page.evaluate(() => window.__schoolDirectoryAcceptance);
-  expect(state.unknownWrites).toEqual([]);
-  expect(new Set(state.blocked)).toEqual(new Set(['fetch', 'xhr', 'form-request-submit', 'form-event', 'sendBeacon', 'print']));
+  expect(new Set(state.selfTestBlocks)).toEqual(new Set([
+    'fetch',
+    'xhr',
+    'form-request-submit',
+    'form-submit',
+    'form-event',
+    'sendBeacon',
+    'print',
+  ]));
 }
 
 test.describe('production acceptance — school directory (#296)', () => {
-  test.skip(!BASE || !CONTROLLED_SESSION, 'missing bounded SMOKE_BASE_URL/branch/director session (must expire within 30m)');
+  test.skip(!REQUIRE_HOSTED && (!BASE || !CONTROLLED_SESSION), 'missing bounded SMOKE_BASE_URL/branch/director session (must expire within 30m)');
+
+  test.beforeAll(() => {
+    if (!REQUIRE_HOSTED) return;
+    expect(BASE, 'hosted acceptance requires SMOKE_BASE_URL').toBeTruthy();
+    expect(CONTROLLED_SESSION, 'hosted acceptance requires a valid director/super-admin session expiring within 30m').toBe(true);
+  });
 
   test('API contract and student school picker are read-only', async ({ page, request, context }) => {
     const blockedNetworkWrites = [];
@@ -226,6 +258,24 @@ test.describe('production acceptance — school directory (#296)', () => {
         }
         blockedNetworkWrites.push({ method, path: url.pathname });
         await route.abort('blockedbyclient');
+        return;
+      }
+      if (url.pathname === '/api/v1/me') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            id: -296,
+            name: '受控驗證帳號',
+            email: '',
+            phone: '',
+            avatar_url: '',
+            role: ROLE,
+            campuses: CAMPUS_IDS,
+            must_change_password: false,
+            engagement: null,
+          }),
+        });
         return;
       }
       if (/^\/api\/v1\/(students|teachers|student-classes|courses|subjects)(?:\/|$)/.test(url.pathname)) {
@@ -258,7 +308,14 @@ test.describe('production acceptance — school directory (#296)', () => {
     const daanJson = await daanResponse.json();
     assertDirectoryResponse(daanJson);
     const daan = daanJson.data.find((item) => item.canonical_name === '臺北市立大安國民中學');
-    expect(daan).toMatchObject({ municipality: '臺北市', district: '大安區', school_code: '313501', matched_alias: '大安國中' });
+    expect(daan).toMatchObject({
+      id: 'tpe-daan-jh',
+      label: '臺北市立大安國民中學（臺北市 大安區）',
+      municipality: '臺北市',
+      district: '大安區',
+      school_code: '313501',
+      matched_alias: '大安國中',
+    });
 
     const variantResponse = await request.get(`${BASE}/api/v1/schools?q=${encodeURIComponent('台北市立大安國中')}&limit=12`, { headers: authHeaders() });
     expect(variantResponse.ok()).toBe(true);
@@ -273,6 +330,7 @@ test.describe('production acceptance — school directory (#296)', () => {
     await installWriteGuard(page);
     await installSession(page);
     await page.goto(`${BASE}/?app_page=students`);
+    await assertWriteGuardSelfTest(page);
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
     await dismissOverlays(page);
 
@@ -297,7 +355,8 @@ test.describe('production acceptance — school directory (#296)', () => {
     await expect(listbox.locator('.school-name-custom-hint')).toContainText('也可直接輸入自訂校名');
     await page.getByRole('button', { name: '取消', exact: true }).last().click();
     await expect(page.getByRole('heading', { name: '新增學生', exact: true })).toHaveCount(0);
-    await assertNoUnknownWrites(page);
+    const writeGuardState = await page.evaluate(() => window.__schoolDirectoryAcceptance);
+    expect(writeGuardState.runtimeBlocks).toEqual([]);
     expect(blockedNetworkWrites).toEqual([]);
     expect(interceptedTelemetry.every((payload) => payload.branch_id === BRANCH_ID)).toBe(true);
   });
