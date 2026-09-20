@@ -30,6 +30,36 @@ acceptance_login_401_diagnosis_result_valid() {
   jq -e 'type == "object" and (keys | sort) == ["active_director_rows", "approved_branch_16_rows", "matching_rows", "must_change_password_required_rows"] and all(.[]; type == "number" and floor == . and . >= 0)' "$result_file" >/dev/null 2>/dev/null
 }
 
+acceptance_extract_b64_json_marker() {
+  local input_file="$1"
+  local output_file="$2"
+  local marker_prefix="$3"
+  local line payload='' matches=0 decoded
+
+  [ -s "$input_file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "$marker_prefix"*)
+        matches=$((matches + 1))
+        payload="${line#"$marker_prefix"}"
+        ;;
+    esac
+  done < "$input_file"
+  [ "$matches" -eq 1 ] || return 1
+  [[ "$payload" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] || return 1
+
+  decoded="${output_file}.decoded"
+  if ! printf '%s' "$payload" | base64 --decode --strict > "$decoded" 2>/dev/null; then
+    rm -f "$decoded" "$output_file"
+    return 1
+  fi
+  if ! jq -e . "$decoded" > "$output_file" 2>/dev/null; then
+    rm -f "$decoded" "$output_file"
+    return 1
+  fi
+  rm -f "$decoded"
+}
+
 acceptance_login_response_taxonomy() {
   local response_file="$1"
   if [ ! -s "$response_file" ] || ! grep -q '[^[:space:]]' "$response_file"; then
