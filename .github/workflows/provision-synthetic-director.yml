@@ -1,23 +1,22 @@
-name: Provision synthetic director acceptance identity
+name: Verify synthetic director acceptance identity
 
-# Founder-approved, narrowly bounded identity lifecycle for production
-# acceptance. This workflow never changes an existing non-synthetic account,
-# role, or campus binding. It uses the existing director registration and
-# super-admin approval APIs, then removes all short-lived sessions for the
-# canonical synthetic account.
+# The identity is created through the normal public registration route by
+# scripts/acceptance/register-synthetic-director.mjs. A Founder then approves
+# the pending row in AllTrue. This workflow is intentionally post-approval:
+# it only verifies the supplied dedicated credentials and never obtains or
+# borrows an administrator session.
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'preflight checks the canonical reference; provision creates/reuses it'
+        description: 'post-approval-verify checks the approved campus-16 identity'
         required: true
         type: choice
         options:
-          - preflight
-          - provision
+          - post-approval-verify
       confirm:
-        description: 'Type PROVISION_SYNTHETIC_DIRECTOR:<mode>:CAMPUS:16'
+        description: 'Type VERIFY_SYNTHETIC_DIRECTOR:POST_APPROVAL:CAMPUS:16'
         required: true
         type: string
 
@@ -25,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: alltrue-production-side-effects-v2
+  group: alltrue-production-identity-verification-v1
   cancel-in-progress: false
 
 env:
@@ -35,283 +34,73 @@ env:
 
 jobs:
   contract:
-    name: Validate bounded provisioning contract
+    name: Validate post-approval verification contract
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v7
-      - name: Validate fixed scope
+      - name: Validate fixed scope and secret consumers
         env:
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          case "$MODE" in preflight|provision) ;; *) echo 'invalid mode' >&2; exit 1 ;; esac
-          test "$CONFIRM" = "PROVISION_SYNTHETIC_DIRECTOR:${MODE}:CAMPUS:16"
+          test "$MODE" = post-approval-verify
+          test "$CONFIRM" = 'VERIFY_SYNTHETIC_DIRECTOR:POST_APPROVAL:CAMPUS:16'
           test "$CANONICAL_ACCOUNT" = "$CANONICAL_REF"
-          test "${#CANONICAL_ACCOUNT}" -le 64
+          test "$CAMPUS_ID" = 16
           grep -Fq "Route::post('directors/register'" backend/routes/api.php
           grep -Fq "Route::post('directors/{id}/approve'" backend/routes/api.php
-          grep -Fq "Route::delete('directors/{id}'" backend/routes/api.php
           grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/ui-smoke.yml
           grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/ui-smoke.yml
+          forbidden_token_table='auth_'"tokens"
+          forbidden_role='super_'"admin"
+          ! grep -Fq "$forbidden_token_table" .github/workflows/provision-synthetic-director.yml
+          ! grep -Fq "$forbidden_role" .github/workflows/provision-synthetic-director.yml
 
-  provision:
-    name: Create or reuse the campus 16 synthetic director
+  verify:
+    name: Verify approved campus 16 identity
     needs: contract
     if: ${{ needs.contract.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
 
-      - name: Configure pinned production SSH trust
-        uses: ./.github/actions/production-ssh-trust
-        with:
-          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
-          host-key: ${{ secrets.PI_HOST_KEY }}
-
-      - name: Provision or reuse identity through existing APIs
+      - name: Login without printing credentials
         env:
           BASE_URL: ${{ secrets.SMOKE_BASE_URL || 'https://daan.lifenet.com.tw' }}
+          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASS }}
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
-          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
-          SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
-          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
-          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
-          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
-          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
         run: |
           set -euo pipefail
-          test "$CONFIRM" = "PROVISION_SYNTHETIC_DIRECTOR:${MODE}:CAMPUS:16"
-          test -n "$PI_SSH_KEY" && test -n "$PI_SSH_USER" && test -n "$PI_SSH_HOST" && test -n "$PI_HOST_KEY"
-          if [ "$MODE" = provision ]; then
-            test "$SMOKE_DIRECTOR_USER" = "$CANONICAL_ACCOUNT"
-            test -n "$SMOKE_DIRECTOR_PASS"
-          fi
-
-          ssh_dir="$RUNNER_TEMP/synthetic-director-ssh"
-          install -d -m 700 "$ssh_dir"
-          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
-          chmod 600 "$ssh_dir/deploy_key"
-          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
-          ssh_opts=(-i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
-
-          account_b64="$(printf '%s' "$CANONICAL_ACCOUNT" | base64 -w0)"
-          collision_raw="$(ssh "${ssh_opts[@]}" "$PI_SSH_USER@$PI_SSH_HOST" bash -s -- "$account_b64" <<'REMOTE'
-          set -euo pipefail
-          export ALLTRUE_CANONICAL_ACCOUNT_B64="${1:-}"
-          cd /home/admin/backend
-          php -d display_errors=0 -d log_errors=1 /dev/fd/3 3<<'PHP'
-          <?php
-          define('LARAVEL_START', microtime(true));
-          $base = getcwd(); require $base . '/vendor/autoload.php';
-          $app = require_once $base . '/bootstrap/app.php';
-          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class); $kernel->bootstrap();
-          $account = base64_decode((string) getenv('ALLTRUE_CANONICAL_ACCOUNT_B64'), true);
-          if (!is_string($account) || $account === '') { throw new RuntimeException('invalid canonical account'); }
-          $users = Illuminate\Support\Facades\DB::table('User')->where('LoginName', $account)->get();
-          $rows = [];
-          foreach ($users as $user) {
-              $campuses = Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $user->id)->get()
-                  ->map(fn ($row) => ['campus_id' => (int) $row->CampusID, 'approved' => $row->Approved === null ? null : (bool) $row->Approved])->values()->all();
-              $rows[] = ['id' => (int) $user->id, 'type' => (string) $user->type, 'status' => property_exists($user, 'status') ? (string) ($user->status ?? '') : '', 'campuses' => $campuses];
-          }
-          echo base64_encode(json_encode(['count' => count($rows), 'rows' => $rows], JSON_THROW_ON_ERROR));
-          PHP
-          REMOTE
-          )"
-          test -n "$collision_raw"
-          printf '%s' "$collision_raw" | base64 --decode > "$RUNNER_TEMP/synthetic-director-collision.json"
-          node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!Number.isInteger(x.count)||!Array.isArray(x.rows)||x.count!==x.rows.length)process.exit(1)' "$RUNNER_TEMP/synthetic-director-collision.json"
-
-          collision_kind="$(node - "$RUNNER_TEMP/synthetic-director-collision.json" <<'NODE'
-          const fs = require('fs');
-          const x = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          if (x.count === 0) { console.log('none'); process.exit(0); }
-          if (x.count !== 1) { console.log('conflict'); process.exit(0); }
-          const row = x.rows[0];
-          const ids = row.campuses.map(c => c.campus_id).sort((a,b) => a-b);
-          const approved = row.campuses.every(c => c.approved === true || c.approved === null);
-          if (row.type === 'D' && !['inactive','suspended'].includes(row.status) && approved && ids.length === 1 && ids[0] === 16) console.log('owned');
-          else if (row.type === 'U' && ids.length === 1 && ids[0] === 16 && row.campuses[0].approved === false) console.log('pending');
-          else console.log('conflict');
-          NODE
-          )"
-          echo "canonical_ref=$CANONICAL_REF collision=$collision_kind campus=16"
-          test "$collision_kind" != conflict
-          director_id=''
-          if [ "$collision_kind" = owned ]; then
-            director_id="$(node - "$RUNNER_TEMP/synthetic-director-collision.json" <<'NODE'
-          const fs = require('fs');
-          const x = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          if (x.count !== 1 || !x.rows[0].id) process.exit(1);
-          console.log(x.rows[0].id);
-          NODE
-            )"
-          fi
-          if [ "$MODE" = preflight ]; then
-            echo 'provisioning_action=not_run'
-            exit 0
-          fi
-
-          admin_token="$(ssh "${ssh_opts[@]}" "$PI_SSH_USER@$PI_SSH_HOST" bash -s <<'REMOTE'
-          set -euo pipefail
-          cd /home/admin/backend
-          php -d display_errors=0 -d log_errors=1 /dev/fd/3 3<<'PHP'
-          <?php
-          define('LARAVEL_START', microtime(true));
-          $base = getcwd(); require $base . '/vendor/autoload.php';
-          $app = require_once $base . '/bootstrap/app.php';
-          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class); $kernel->bootstrap();
-          $row = Illuminate\Support\Facades\DB::table('auth_tokens as t')->join('User as u', 'u.id', '=', 't.user_id')
-              ->where('u.type', 'S')->where('t.expires_at', '>', now())->orderByDesc('t.expires_at')->select('t.token')->first();
-          if (!$row) { throw new RuntimeException('no_valid_super_admin_session'); }
-          echo $row->token;
-          PHP
-          REMOTE
-          )"
-          test -n "$admin_token"
-          echo "::add-mask::$admin_token"
-
-          response_file="$RUNNER_TEMP/synthetic-director-response.json"
-          request_file="$RUNNER_TEMP/synthetic-director-request.json"
+          test "$MODE" = post-approval-verify
+          test "$CONFIRM" = 'VERIFY_SYNTHETIC_DIRECTOR:POST_APPROVAL:CAMPUS:16'
+          test -n "$SMOKE_DIRECTOR_LOGIN" && test "$SMOKE_DIRECTOR_LOGIN" = "$CANONICAL_ACCOUNT"
+          test -n "$SMOKE_DIRECTOR_PASSWORD"
           umask 077
-          created_by_run=0
-          approved_by_run=0
-          director_id=''
-          keep_identity=0
-          cleanup_identity() {
-            set +e
-            if [ "$keep_identity" -eq 0 ] && [ "$created_by_run" -eq 1 ] && [ -n "$director_id" ]; then
-              if [ "$approved_by_run" -eq 1 ]; then
-                curl -sS --proto '=https' --tlsv1.2 -o /dev/null -w '%{http_code}' \
-                  -H "Authorization: Bearer $admin_token" -X DELETE "$BASE_URL/api/v1/directors/$director_id" >/dev/null
-              else
-                curl -sS --proto '=https' --tlsv1.2 -o /dev/null -w '%{http_code}' \
-                  -H "Authorization: Bearer $admin_token" -X POST "$BASE_URL/api/v1/directors/$director_id/reject" >/dev/null
-              fi
-            fi
-            rm -f "$response_file" "$request_file" "$RUNNER_TEMP/synthetic-director-collision.json" "$RUNNER_TEMP/synthetic-director-temp-password"
-            rm -f "$ssh_dir/deploy_key"
-          }
-          trap cleanup_identity EXIT
-
-          if [ "$collision_kind" = pending ]; then
-            pending_file="$RUNNER_TEMP/synthetic-director-pending.json"
-            pending_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$pending_file" -w '%{http_code}' \
-              -H "Authorization: Bearer $admin_token" -H 'Accept: application/json' "$BASE_URL/api/v1/directors/pending")"
-            test "$pending_status" = 200
-            director_id="$(jq -er --arg account "$CANONICAL_ACCOUNT" '[.[] | select(.account == $account)] | if length == 1 then .[0].id else error("pending_identity_not_unique") end' "$pending_file")"
-            created_by_run=0
-          elif [ "$collision_kind" = none ]; then
-            python3 - "$request_file" <<'PY'
-          import json, os, sys
-          with open(sys.argv[1], 'w', encoding='utf-8') as f:
-              json.dump({'name': 'AllTrue Smoke Director C16', 'account': os.environ['SMOKE_DIRECTOR_USER'], 'password': os.environ['SMOKE_DIRECTOR_PASS'], 'campus_id': 16}, f)
-          PY
-            register_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$response_file" -w '%{http_code}' \
-              -H 'Accept: application/json' -H 'Content-Type: application/json' --data-binary "@$request_file" \
-              "$BASE_URL/api/v1/directors/register")"
-            if [ "$register_status" != 201 ]; then
-              echo "registration_status=$register_status" >&2
-              exit 1
-            fi
-            created_by_run=1
-            pending_file="$RUNNER_TEMP/synthetic-director-pending.json"
-            pending_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$pending_file" -w '%{http_code}' \
-              -H "Authorization: Bearer $admin_token" -H 'Accept: application/json' "$BASE_URL/api/v1/directors/pending")"
-            test "$pending_status" = 200
-            director_id="$(jq -er --arg account "$CANONICAL_ACCOUNT" '[.[] | select(.account == $account)] | if length == 1 then .[0].id else error("new_identity_not_unique") end' "$pending_file")"
-          fi
-
-          if [ "$collision_kind" = pending ] || [ "$collision_kind" = none ]; then
-            approve_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$response_file" -w '%{http_code}' \
-              -H "Authorization: Bearer $admin_token" -H 'Accept: application/json' -X POST \
-              "$BASE_URL/api/v1/directors/$director_id/approve")"
-            test "$approve_status" = 200
-            approved_by_run=1
-          fi
-
-          login() {
-            local password_source="$1"
-            python3 - "$request_file" "$password_source" <<'PY'
-          import json, os, sys
-          with open(sys.argv[1], 'w', encoding='utf-8') as f:
-              json.dump({'account': os.environ['SMOKE_DIRECTOR_USER'], 'password': open(sys.argv[2], encoding='utf-8').read().rstrip('\r\n') if sys.argv[2] != '-' else os.environ['SMOKE_DIRECTOR_PASS']}, f)
-          PY
-            curl -sS --proto '=https' --tlsv1.2 -o "$response_file" -w '%{http_code}' \
-              -H 'Accept: application/json' -H 'Content-Type: application/json' --data-binary "@$request_file" \
-              "$BASE_URL/api/v1/auth/login"
-          }
-
-          force_reset=0
-          if [ "$collision_kind" = owned ] || [ "$collision_kind" = pending ]; then
-            force_reset=1
-          fi
-          login '-' > "$RUNNER_TEMP/login-status"
-          login_status="$(cat "$RUNNER_TEMP/login-status")"
-          if [ "$login_status" != 200 ] && [ "$force_reset" -eq 0 ]; then
-            echo "login_status=$login_status" >&2
-            exit 1
-          fi
-          must_change="false"
-          if [ "$force_reset" -eq 1 ]; then
-            must_change=true
-          else
-            must_change="$(jq -er '.data.user.must_change_password' "$response_file")"
-          fi
-          if [ "$must_change" = true ]; then
-            reset_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$response_file" -w '%{http_code}' \
-              -H "Authorization: Bearer $admin_token" -H 'Accept: application/json' -X POST \
-              "$BASE_URL/api/v1/directors/$director_id/reset-password")"
-            test "$reset_status" = 200
-            jq -er '.temporary_password | type == "string" and length > 0' "$response_file" >/dev/null
-            jq -er '.temporary_password' "$response_file" > "$RUNNER_TEMP/synthetic-director-temp-password"
-            chmod 600 "$RUNNER_TEMP/synthetic-director-temp-password"
-            login "$RUNNER_TEMP/synthetic-director-temp-password" > "$RUNNER_TEMP/login-status"
-            test "$(cat "$RUNNER_TEMP/login-status")" = 200
-            temp_token="$(jq -er '.data.session.access_token' "$response_file")"
-            echo "::add-mask::$temp_token"
-            python3 - "$request_file" "$RUNNER_TEMP/synthetic-director-temp-password" <<'PY'
-          import json, os, sys
-          desired = os.environ['SMOKE_DIRECTOR_PASS']
-          with open(sys.argv[1], 'w', encoding='utf-8') as f:
-              json.dump({'current_password': open(sys.argv[2], encoding='utf-8').read(), 'password': desired, 'password_confirmation': desired}, f)
-          PY
-            change_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$response_file" -w '%{http_code}' \
-              -H "Authorization: Bearer $temp_token" -H 'Accept: application/json' -H 'Content-Type: application/json' \
-              -X PUT --data-binary "@$request_file" "$BASE_URL/api/v1/me")"
-            test "$change_status" = 200
-          fi
-
-          login '-' > "$RUNNER_TEMP/login-status"
-          final_status="$(cat "$RUNNER_TEMP/login-status")"
-          test "$final_status" = 200
-          jq -e '.data.user.role == "director" and (.data.user.campuses | index(16) != null) and .data.user.must_change_password == false' "$response_file" >/dev/null
-
-          # Revoke only this synthetic identity's sessions; no other user is touched.
-          revoke_raw="$(ssh "${ssh_opts[@]}" "$PI_SSH_USER@$PI_SSH_HOST" bash -s -- "$account_b64" <<'REMOTE'
-          set -euo pipefail
-          export ALLTRUE_CANONICAL_ACCOUNT_B64="${1:-}"
-          cd /home/admin/backend
-          php -d display_errors=0 -d log_errors=1 /dev/fd/3 3<<'PHP'
-          <?php
-          define('LARAVEL_START', microtime(true));
-          $base = getcwd(); require $base . '/vendor/autoload.php';
-          $app = require_once $base . '/bootstrap/app.php';
-          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class); $kernel->bootstrap();
-          $account = base64_decode((string) getenv('ALLTRUE_CANONICAL_ACCOUNT_B64'), true);
-          $user = Illuminate\Support\Facades\DB::table('User')->where('LoginName', $account)->first();
-          if (!$user) { throw new RuntimeException('synthetic_identity_missing_after_provision'); }
-          $deleted = Illuminate\Support\Facades\DB::table('auth_tokens')->where('user_id', $user->id)->delete();
-          echo (string) $deleted;
-          PHP
-          REMOTE
-          )"
-          [[ "$revoke_raw" =~ ^[0-9]+$ ]]
-          keep_identity=1
-          echo "identity=ready canonical_ref=$CANONICAL_REF campus=16 sessions_revoked=$revoke_raw"
+          request_file="$RUNNER_TEMP/synthetic-director-login.json"
+          response_file="$RUNNER_TEMP/synthetic-director-login-response.json"
+          trap 'rm -f "$request_file" "$response_file"' EXIT
+          exec 9<<<"$SMOKE_DIRECTOR_LOGIN"
+          exec 10<<<"$SMOKE_DIRECTOR_PASSWORD"
+          unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
+          jq -n --rawfile account /dev/fd/9 --rawfile password /dev/fd/10 \
+            '{account:($account|rtrimstr("\n")|sub("^\\s+";"")|sub("\\s+$";"")),password:($password|rtrimstr("\n")),role:"director"}' \
+            > "$request_file"
+          exec 9<&- 10<&-
+          chmod 600 "$request_file"
+          login_status="$(curl -sS --proto '=https' --tlsv1.2 -o "$response_file" -w '%{http_code}' \
+            -H 'Accept: application/json' -H 'Content-Type: application/json' \
+            --data-binary "@$request_file" "$BASE_URL/api/v1/auth/login")"
+          test "$login_status" = 200
+          jq -e '
+            .data.user.role == "director" and
+            (.data.user.campuses | type == "array" and length == 1 and .[0] == 16) and
+            .data.user.must_change_password == false
+          ' "$response_file" >/dev/null
+          echo "identity=verified canonical_ref=$CANONICAL_REF campus=16"
