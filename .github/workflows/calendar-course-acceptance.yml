@@ -60,12 +60,15 @@ jobs:
 
       - name: Prepare bounded acceptance login request (secret boundary)
         env:
-          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_LOGIN }}
-          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASSWORD }}
+          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASS }}
         run: |
           set -euo pipefail
           umask 077
-          test -n "$SMOKE_DIRECTOR_LOGIN" && test -n "$SMOKE_DIRECTOR_PASSWORD"
+          # Keep each check before request-file creation and before any curl.
+          # shellcheck source=/dev/null
+          source scripts/acceptance/login-contract.sh
+          acceptance_require_login_secrets
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           trap 'rm -f "$login_request"' EXIT
           exec 9<<<"$SMOKE_DIRECTOR_LOGIN"
@@ -90,6 +93,9 @@ jobs:
           source scripts/acceptance/stage-contract.sh
           # shellcheck source=/dev/null
           source scripts/acceptance/login-contract.sh
+          grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "--rawfile account /dev/fd/9" .github/workflows/calendar-course-acceptance.yml

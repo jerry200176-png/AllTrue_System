@@ -5,6 +5,22 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$ROOT_DIR/scripts/acceptance/login-contract.sh"
 
+unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
+SMOKE_DIRECTOR_PASSWORD=placeholder
+export SMOKE_DIRECTOR_PASSWORD
+if acceptance_require_login_secrets; then
+  echo 'missing login secret unexpectedly passed' >&2
+  exit 1
+fi
+
+unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
+SMOKE_DIRECTOR_LOGIN=placeholder
+export SMOKE_DIRECTOR_LOGIN
+if acceptance_require_login_secrets; then
+  echo 'missing password secret unexpectedly passed' >&2
+  exit 1
+fi
+
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
