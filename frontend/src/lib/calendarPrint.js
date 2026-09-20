@@ -1,3 +1,5 @@
+import { classTypeLabel } from './calendarFormat.js';
+
 const DAY_NAMES = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
 const STATUS_FILTERS = ['請假', '補課', '代課', '調課', '已取消'];
 const FORBIDDEN = /phone|mobile|tel|address|email|line|amount|charge|fee|billing|note|memo|student.?id|class.?id|session.?id/i;
@@ -130,7 +132,7 @@ export function projectPrintRows({ courses = [], sessions = [], schedules = [], 
       endTime: time(first(session?.endTime, session?.end_time, session?.EndTime, course?.end_time)),
       studentName: first(session?.studentName, session?.student_name, course?.student_name, '—'),
       subjectName: first(course?.subject_name, course?.subject, session?.subjectName, session?.subject, '—'),
-      classTypeLabel: first(course?.class_type_label, course?.class_type, '—'),
+      classTypeLabel: classTypeLabel(first(course?.class_type_label, course?.class_type, '—')),
       effectiveTeacherName: first(session?.teacherName, session?.teacher_name, teacherMap.get(String(teacherId)), '未指派'),
       campusLabel: first(
         course?.campus_name,
