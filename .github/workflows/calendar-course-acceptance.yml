@@ -94,7 +94,13 @@ jobs:
           grep -Fq "auth_tokens" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "->update(['expires_at'" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "->delete()" .github/workflows/calendar-course-acceptance.yml
-          grep -Fq 'if: ${{ always() }}' .github/workflows/calendar-course-acceptance.yml
+          guard_prefix='if: '
+          guard_dollar='$'
+          guard_open='{{ '
+          guard_word='always'
+          guard_close='() }}'
+          cleanup_guard="${guard_prefix}${guard_dollar}${guard_open}${guard_word}${guard_close}"
+          test "$(grep -F -c "$cleanup_guard" .github/workflows/calendar-course-acceptance.yml)" -eq 1
           grep -Fq "php /dev/fd/3" .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'read -r SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'exec 4<<<' .github/workflows/calendar-course-acceptance.yml
