@@ -50,6 +50,28 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('"decision_grade_required" => $decisionGradeRequired', source)
         self.assertIn('target-correct probe is required; evidence is not decision-grade', source)
 
+    def test_bug_338_probe_is_targeted_and_redacted(self):
+        source = self.source
+        gate = source.index('if ($bugId === 338) {{')
+        target_end = source.index('$targetProbe = match ($bugId)', gate)
+        block = source[gate:target_end]
+        for marker in (
+            'current_bug_description_runtime_match',
+            'collectTeacherBusySlotsWithCapacity',
+            'with_reported_student_excluded',
+            'without_student_exclusion',
+            'target_slot_has_remaining_capacity_after_excluding_student',
+            'target_slot_full_after_excluding_student',
+            'target_one_on_three_slot_not_found',
+            '"probe_338_target_capacity" => $probe338',
+        ):
+            self.assertIn(marker, source)
+        self.assertNotIn('"teacher_name" =>', block)
+        self.assertNotIn('"student_name" =>', block)
+        self.assertNotIn('teacher_id" =>', block)
+        self.assertNotIn('student_id" =>', block)
+        self.assertIn('338], true)', source)
+
     def test_parser_rejects_ambiguous_or_mismatched_output(self):
         source = self.source
         self.assertIn('expected exactly one JSON evidence envelope', source)
