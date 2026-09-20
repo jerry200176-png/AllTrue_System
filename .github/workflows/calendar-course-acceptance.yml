@@ -79,6 +79,9 @@ jobs:
           grep -Fq "php /dev/fd/3" .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'read -r SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'exec 4<<<' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'trap revoke_step_token EXIT' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'bound=1' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'trap - EXIT ERR' .github/workflows/calendar-course-acceptance.yml
           ! grep -Fq 'export SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
           ! grep -Fq 'php artisan tinker' .github/workflows/calendar-course-acceptance.yml
           if [ -n "$BRANCH_ID" ]; then
@@ -91,7 +94,6 @@ jobs:
           cleanup_file="$RUNNER_TEMP/alltrue-acceptance-auth-cleanup.json"
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           login_response="$RUNNER_TEMP/alltrue-acceptance-login.response"
-          trap 'rm -f "$login_request" "$login_response"' EXIT
           jq -n --arg account "$SMOKE_DIRECTOR_LOGIN" --arg password "$SMOKE_DIRECTOR_PASSWORD" \
             '{account:$account,password:$password,role:"director"}' > "$login_request"
           chmod 600 "$login_request"
@@ -112,6 +114,53 @@ jobs:
           jq -n --arg token "$session_token" --argjson user_id "$session_user_id" \
             '{token:$token,user_id:$user_id}' > "$cleanup_file"
           chmod 600 "$cleanup_file"
+          bound=0
+          revoke_step_token() {
+            local original_status="$?"
+            local revoke_token revoke_user_id
+            if [ "$bound" -eq 1 ] || [ ! -s "$cleanup_file" ]; then
+              rm -f "$login_request" "$login_response"
+              return "$original_status"
+            fi
+            set +e
+            revoke_token="$(jq -er '.token | select(type=="string" and test("^[A-Za-z0-9]{64}$"))' "$cleanup_file")"
+            revoke_user_id="$(jq -er '.user_id | select(type=="number" and floor==. and .>0)' "$cleanup_file")"
+            if [ -n "$revoke_token" ] && [ -n "$revoke_user_id" ]; then
+              {
+                printf '%s\n' "$revoke_token"
+                cat <<'REMOTE'
+          set -euo pipefail
+          export EXPECTED_USER_ID="${1:-}"
+          cd /home/admin/backend
+          php /dev/fd/3 0<&4 3<<'PHP'
+          <?php
+          define('LARAVEL_START', microtime(true));
+          $base = getcwd();
+          require $base . '/vendor/autoload.php';
+          $app = require_once $base . '/bootstrap/app.php';
+          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+          $kernel->bootstrap();
+          $token = trim((string) fgets(STDIN));
+          $userId = (int) getenv('EXPECTED_USER_ID');
+          $rows = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('token', $token)
+            ->where('user_id', $userId)->select('id')->get();
+          if ($rows->count() !== 1) { exit(1); }
+          $deleted = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $rows->first()->id)
+            ->where('token', $token)->where('user_id', $userId)->delete();
+          if ($deleted !== 1) { exit(1); }
+          PHP
+          REMOTE
+              } | ssh -i ~/.ssh/deploy_key \
+                -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+                -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+                "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$revoke_user_id\"'" >/dev/null 2>/dev/null
+            fi
+            rm -f "$cleanup_file"
+            rm -f "$login_request" "$login_response"
+            return "$original_status"
+          }
+          trap revoke_step_token EXIT
+          trap 'exit 1' ERR
           jq -e '
             (.data.user | type == "object") and
             (.data.user.role | . == "director" or . == "super_admin") and
@@ -126,7 +175,6 @@ jobs:
             jq -e --argjson branch "$BRANCH_ID" '.data.user.campuses | index($branch) != null' "$login_response" >/dev/null
           fi
           rm -f "$login_request" "$login_response"
-          trap - EXIT
           session_output="$({
             {
               printf '%s\n' "$session_token"
@@ -200,6 +248,8 @@ jobs:
               "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$BRANCH_ID\" \"$session_user_id\"'"
           })"
           test -n "$session_output"
+          bound=1
+          trap - EXIT ERR
           printf '%s' "$session_output" > "$RUNNER_TEMP/alltrue-session.output"
           SESSION_OUTPUT_PATH="$RUNNER_TEMP/alltrue-session.output" \
           SESSION_NORMALIZED_PATH="$RUNNER_TEMP/alltrue-session.normalized.json" \
