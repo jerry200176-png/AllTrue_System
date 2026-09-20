@@ -8,6 +8,10 @@ const BANK = Object.freeze([
   { id: 8105, v: 1, prompt: '請寫出長方形面積公式。', answer: null, concept: '面積公式' },
 ]);
 
+function clonePack(pack) {
+  return { ...pack, items: pack.items.map((item) => ({ ...item })) };
+}
+
 export function createPaperFixture() {
   const pages = Array.from({ length: 12 }, (_, i) => {
     const q = BANK[i % BANK.length];
@@ -46,8 +50,11 @@ export function replacePage(s, pageId) {
 
 export function verifyPage(s, pageId, answer) {
   const page = s.pages.find((p) => p.pageId === pageId); if (!page) return;
-  page.verifiedAnswer = String(answer ?? '').trim(); s.inputRevision += 1; s.stage = 'TEACHER_REVIEW';
+  const normalized = String(answer ?? '').trim();
+  if (page.verifiedAnswer === normalized) return page;
+  page.verifiedAnswer = normalized; s.inputRevision += 1; s.stage = 'TEACHER_REVIEW';
   s.confirmed = null; s.draft = null; s.approved = null;
+  return page;
 }
 
 export function confirmEvidence(s) {
@@ -69,21 +76,37 @@ export function supplyFixtureAnswerKey(s) {
 export function draftPack(s, { fail = false, manual = false } = {}) {
   if (!s.confirmed) return null;
   if (fail) { s.stage = 'AI_UNAVAILABLE'; s.audit.push('Fixture AI 失敗；可改用人工建立草稿'); return null; }
+  if (s.draft?.sourceRevision === s.confirmed.revision) return s.draft;
   const wrong = s.pages.filter((p) => p.verifiedAnswer !== p.question.answer);
-  s.draft = { revision: s.confirmed.revision, title: '分數與運算補強', items: wrong.map((p) => ({ questionId: p.question.id,
-    concept: p.question.concept, answer: p.question.answer, explanation: `回到「${p.question.concept}」的判斷步驟，再完成一道同型題。` })) };
+  s.draft = { sourceRevision: s.confirmed.revision, contentRevision: 1, title: '分數與運算補強', items: wrong.map((p) => ({ pageId: p.pageId, questionId: p.question.id,
+    prompt: p.question.prompt, concept: p.question.concept, answer: p.question.answer,
+    practicePrompt: `${p.question.concept}練習：請寫出計算或判斷過程。`,
+    explanation: `回到「${p.question.concept}」的判斷步驟，再完成一道同型題。` })) };
   s.stage = 'PACK_DRAFTED'; s.audit.push(manual ? '人工診斷與講義草稿完成' : 'Fixture 診斷與講義草稿完成'); return s.draft;
+}
+
+export function updateDraftItem(s, pageId, explanation) {
+  const item = s.draft?.items.find((candidate) => candidate.pageId === pageId); if (!item) return null;
+  const normalized = String(explanation ?? '').trim(); if (item.explanation === normalized) return s.draft;
+  item.explanation = normalized; s.draft.contentRevision += 1; s.approved = null; s.stage = 'PACK_DRAFTED';
+  s.audit.push(`草稿頁面 ${pageId} 已修改；舊核准失效`); return s.draft;
+}
+
+export function returnDraft(s) {
+  if (!s.draft) return null;
+  s.draft = null; s.approved = null; s.stage = 'VERIFIED'; s.audit.push('草稿已退回；保留老師確認作答'); return s.confirmed;
 }
 
 export function approvePack(s) {
   if (!s.draft) return null;
-  if (!s.approved) s.approved = structuredClone({ ...s.draft, approvedRevision: `pack-r${s.draft.revision}` });
+  if (s.approved) return s.approved;
+  s.approved = clonePack({ ...s.draft, approvedRevision: `pack-r${s.draft.sourceRevision}.${s.draft.contentRevision}` });
   s.stage = 'PACK_APPROVED'; s.audit.push(`核准 ${s.approved.approvedRevision}`); return s.approved;
 }
 
-export function renderApprovedPack(s, layout = 'a4-standard') {
+export function renderApprovedPack(s, layout = 'a4-standard', variant = 'student') {
   if (!s.approved) return null;
-  return { layout, approvedRevision: s.approved.approvedRevision, content: structuredClone(s.approved) };
+  return { layout, variant, approvedRevision: s.approved.approvedRevision, content: clonePack(s.approved) };
 }
 
 export function expireRaw(s) {

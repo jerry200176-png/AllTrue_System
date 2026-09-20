@@ -56,6 +56,8 @@ export default defineConfig({
     /branch-management-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in the UI-foundation config.
     /binding-health-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server and local PDF artifacts.
+    /truefit-fixture-print\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
