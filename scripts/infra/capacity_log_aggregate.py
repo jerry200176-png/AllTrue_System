@@ -33,6 +33,65 @@ SAFE_ROUTE_PREFIXES = (
     "/api/v1/students",
     "/api/v1/student-classes",
 )
+# This is a deliberately finite copy of the route contract in
+# backend/routes/api.php.  Dynamic StudentClass IDs are accepted only as a
+# numeric path segment and are emitted as {id}; arbitrary paths never pass
+# through to the report.
+SAFE_EXACT_ROUTES = {
+    ("GET", "/api/v1/learning-records"): "/api/v1/learning-records",
+    ("POST", "/api/v1/learning-records"): "/api/v1/learning-records",
+    ("GET", "/api/v1/notifications/unread-count"): "/api/v1/notifications/unread-count",
+    ("GET", "/api/v1/class-sessions"): "/api/v1/class-sessions",
+    ("POST", "/api/v1/class-sessions"): "/api/v1/class-sessions",
+    ("GET", "/api/v1/students"): "/api/v1/students",
+    ("POST", "/api/v1/students"): "/api/v1/students",
+    ("PUT", "/api/v1/students"): "/api/v1/students",
+    ("DELETE", "/api/v1/students"): "/api/v1/students",
+    ("POST", "/api/v1/student-classes"): "/api/v1/student-classes",
+    ("POST", "/api/v1/student-classes/import"): "/api/v1/student-classes/import",
+    ("GET", "/api/v1/student-classes/export"): "/api/v1/student-classes/export",
+    ("GET", "/api/v1/student-classes/session-dates"): "/api/v1/student-classes/session-dates",
+    ("POST", "/api/v1/student-classes/session-dates"): "/api/v1/student-classes/session-dates",
+    ("POST", "/api/v1/student-classes/sync"): "/api/v1/student-classes/sync",
+}
+SAFE_STUDENT_CLASS_ACTIONS = {
+    ("GET", ""): "/api/v1/student-classes/{id}",
+    ("PUT", ""): "/api/v1/student-classes/{id}",
+    ("DELETE", ""): "/api/v1/student-classes/{id}",
+    ("GET", "editability"): "/api/v1/student-classes/{id}/editability",
+    ("GET", "package-conversion-preview"): "/api/v1/student-classes/{id}/package-conversion-preview",
+    ("POST", "convert-to-package"): "/api/v1/student-classes/{id}/convert-to-package",
+    ("POST", "confirm-payment"): "/api/v1/student-classes/{id}/confirm-payment",
+    ("POST", "renewal-preview"): "/api/v1/student-classes/{id}/renewal-preview",
+    ("POST", "renewal-confirm"): "/api/v1/student-classes/{id}/renewal-confirm",
+    ("POST", "purchase-batch"): "/api/v1/student-classes/{id}/purchase-batch",
+    ("POST", "convert-trial"): "/api/v1/student-classes/{id}/convert-trial",
+    ("POST", "renew-monthly"): "/api/v1/student-classes/{id}/renew-monthly",
+    ("GET", "invoices"): "/api/v1/student-classes/{id}/invoices",
+    ("POST", "add-session"): "/api/v1/student-classes/{id}/add-session",
+    ("POST", "add-session/check"): "/api/v1/student-classes/{id}/add-session/check",
+    ("POST", "pause"): "/api/v1/student-classes/{id}/pause",
+    ("POST", "transfer-sessions"): "/api/v1/student-classes/{id}/transfer-sessions",
+    ("POST", "billing-correction"): "/api/v1/student-classes/{id}/billing-correction",
+    ("POST", "contract-amendment/preview"): "/api/v1/student-classes/{id}/contract-amendment/preview",
+    ("POST", "contract-amendment"): "/api/v1/student-classes/{id}/contract-amendment",
+    ("POST", "charge-correction"): "/api/v1/student-classes/{id}/charge-correction",
+    ("POST", "split-contract/preview"): "/api/v1/student-classes/{id}/split-contract/preview",
+    ("POST", "split-contract"): "/api/v1/student-classes/{id}/split-contract",
+    ("POST", "recover-transfer-sessions"): "/api/v1/student-classes/{id}/recover-transfer-sessions",
+    ("POST", "continue-tutoring"): "/api/v1/student-classes/{id}/continue-tutoring",
+    ("POST", "manual-sessions/check"): "/api/v1/student-classes/{id}/manual-sessions/check",
+    ("POST", "manual-sessions"): "/api/v1/student-classes/{id}/manual-sessions",
+}
+SAFE_ID_ROUTES = {
+    ("GET", "students"): "/api/v1/students/{id}",
+    ("PUT", "students"): "/api/v1/students/{id}",
+    ("DELETE", "students"): "/api/v1/students/{id}",
+    ("GET", "learning-records"): "/api/v1/learning-records/{id}",
+    ("POST", "learning-records"): "/api/v1/learning-records/{id}",
+    ("PUT", "learning-records"): "/api/v1/learning-records/{id}",
+    ("DELETE", "learning-records"): "/api/v1/learning-records/{id}",
+}
 DEFAULT_MAX_BYTES = 128 * 1024 * 1024
 DEFAULT_MAX_LINE_BYTES = 64 * 1024
 DEFAULT_MAX_RECORDS = 200_000
@@ -137,17 +196,68 @@ def parse_log_timestamp(line: str) -> datetime | None:
         return None
 
 
-def safe_route_template(path: object) -> str:
-    """Return only an allow-listed route family; never return caller input."""
+def safe_route_template(path: object, method: object = None) -> str:
+    """Return a finite safe route template; never return caller input."""
 
-    if not isinstance(path, str):
+    if not isinstance(path, str) or method not in METHODS:
         return "OTHER"
     clean = path.split("?", 1)[0].split("#", 1)[0]
-    clean = "/" + clean.lstrip("/")
-    for prefix in SAFE_ROUTE_PREFIXES:
-        if clean == prefix or clean.startswith(prefix + "/"):
-            return prefix
+    clean = "/" + clean.strip("/")
+    exact = SAFE_EXACT_ROUTES.get((str(method), clean))
+    if exact:
+        return exact
+    prefix = "/api/v1/student-classes/"
+    if clean.startswith(prefix):
+        parts = clean[len(prefix):].split("/")
+        if parts and re.fullmatch(r"[0-9]+", parts[0]):
+            action = "/".join(parts[1:])
+            return SAFE_STUDENT_CLASS_ACTIONS.get((str(method), action), "OTHER")
+    for collection in ("students", "learning-records"):
+        collection_prefix = f"/api/v1/{collection}/"
+        if clean.startswith(collection_prefix):
+            parts = clean[len(collection_prefix):].split("/")
+            if len(parts) == 1 and re.fullmatch(r"[0-9]+", parts[0]):
+                return SAFE_ID_ROUTES.get((str(method), collection), "OTHER")
     return "OTHER"
+
+
+def is_route_family(path: object, prefix: str) -> bool:
+    if not isinstance(path, str):
+        return False
+    clean = path.split("?", 1)[0].split("#", 1)[0]
+    clean = "/" + clean.strip("/")
+    return clean == prefix or clean.startswith(prefix + "/")
+
+
+def duration_summary(values: list[float]) -> dict[str, object]:
+    count = len(values)
+    total = sum(values)
+    return {
+        "count": count,
+        "total_duration_ms": round(total, 3),
+        "mean_duration_ms": round(total / count, 3) if count else None,
+        "p50_ms": nearest_rank(values, 0.50),
+        "p95_ms": nearest_rank(values, 0.95),
+        "p99_ms": nearest_rank(values, 0.99),
+        "over_2s": {"count": sum(value > 2000 for value in values), "ratio": round(sum(value > 2000 for value in values) / count, 6) if count else None},
+        "over_5s": {"count": sum(value > 5000 for value in values), "ratio": round(sum(value > 5000 for value in values) / count, 6) if count else None},
+        "over_10s": {"count": sum(value > 10000 for value in values), "ratio": round(sum(value > 10000 for value in values) / count, 6) if count else None},
+        "over_20s": {"count": sum(value > 20000 for value in values), "ratio": round(sum(value > 20000 for value in values) / count, 6) if count else None},
+    }
+
+
+def compact_window_summary(values: list[float]) -> dict[str, object]:
+    summary = duration_summary(values)
+    return {
+        "count": summary["count"],
+        "success_count": None,
+        "failed_count": None,
+        "p95_ms": summary["p95_ms"],
+        "over_2s": summary["over_2s"]["count"],
+        "over_5s": summary["over_5s"]["count"],
+        "over_10s": summary["over_10s"]["count"],
+        "over_20s": summary["over_20s"]["count"],
+    }
 
 
 def nearest_rank(values: list[float], quantile: float) -> float | None:
@@ -315,9 +425,28 @@ def parse_perf(
     budget: ReadBudget,
 ) -> dict[str, object]:
     route_values: defaultdict[tuple[str, str], list[float]] = defaultdict(list)
+    route_outcomes: defaultdict[tuple[str, str], defaultdict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     route_status: defaultdict[tuple[str, str], Counter[str]] = defaultdict(Counter)
+    route_daily: defaultdict[tuple[str, str], defaultdict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    route_daily_outcomes: defaultdict[
+        tuple[str, str], defaultdict[str, defaultdict[str, list[float]]]
+    ] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    route_hourly: defaultdict[tuple[str, str], defaultdict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    route_hourly_outcomes: defaultdict[
+        tuple[str, str], defaultdict[str, defaultdict[str, list[float]]]
+    ] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     status_counts: Counter[str] = Counter()
     hourly: Counter[str] = Counter()
+    daily: defaultdict[str, list[float]] = defaultdict(list)
+    daily_outcomes: defaultdict[str, defaultdict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     seen_trace_ids: set[str] = set()
     duplicate_events = 0
     permission_denied: list[str] = []
@@ -325,6 +454,8 @@ def parse_perf(
     out_of_window = 0
     records_without_trace_id = 0
     observed_days: set[str] = set()
+    family_counts: Counter[str] = Counter()
+    family_template_counts: Counter[tuple[str, str]] = Counter()
 
     for path in paths:
         if budget.timeout or budget.truncated:
@@ -367,38 +498,122 @@ def parse_perf(
                     else:
                         records_without_trace_id += 1
                     budget.records_seen += 1
-                    route = safe_route_template(context.get("path"))
+                    method = str(method)
+                    route = safe_route_template(context.get("path"), method)
+                    if is_route_family(context.get("path"), "/api/v1/student-classes"):
+                        family_counts[f"{method} /api/v1/student-classes"] += 1
+                        family_template_counts[(method, route)] += 1
                     observed_days.add(timestamp.date().isoformat())
-                    key = (str(method), route)
+                    day = timestamp.date().isoformat()
+                    hour = timestamp.strftime("%Y-%m-%dT%H:00:00%z")
+                    outcome = "success" if status < 400 else "failed"
+                    key = (method, route)
                     route_values[key].append(duration)
+                    route_outcomes[key][outcome].append(duration)
                     route_status[key][str(status)] += 1
                     status_counts[str(status)] += 1
-                    hourly[timestamp.strftime("%Y-%m-%dT%H:00:00%z")] += 1
+                    route_daily[key][day].append(duration)
+                    route_daily_outcomes[key][day][outcome].append(duration)
+                    route_hourly[key][hour].append(duration)
+                    route_hourly_outcomes[key][hour][outcome].append(duration)
+                    daily[day].append(duration)
+                    daily_outcomes[day][outcome].append(duration)
+                    hourly[hour] += 1
         except PermissionError:
             permission_denied.append(path.name)
         except (FileNotFoundError, gzip.BadGzipFile, EOFError, ValueError, OSError) as exc:
             unreadable_files.append({"file": path.name, "reason": type(exc).__name__})
 
+    def bucket(values: list[float], outcomes: dict[str, list[float]]) -> dict[str, object]:
+        result = compact_window_summary(values)
+        result["success_count"] = len(outcomes.get("success", []))
+        result["failed_count"] = len(outcomes.get("failed", []))
+        return result
+
     routes = []
     for (method, route), values in route_values.items():
+        summary = duration_summary(values)
+        failed = route_outcomes[(method, route)].get("failed", [])
         routes.append(
             {
                 "method": method,
                 "route": route,
-                "request_count": len(values),
-                "p50_ms": nearest_rank(values, 0.50),
-                "p95_ms": nearest_rank(values, 0.95),
-                "p99_ms": nearest_rank(values, 0.99),
+                "request_count": summary["count"],
+                "total_duration_ms": summary["total_duration_ms"],
+                "mean_duration_ms": summary["mean_duration_ms"],
+                "p50_ms": summary["p50_ms"],
+                "p95_ms": summary["p95_ms"],
+                "p99_ms": summary["p99_ms"],
+                "thresholds": {
+                    name: summary[name]
+                    for name in ("over_2s", "over_5s", "over_10s", "over_20s")
+                },
                 "status": dict(route_status[(method, route)]),
+                "success": duration_summary(route_outcomes[(method, route)].get("success", [])),
+                "failed": duration_summary(failed),
+                "failure_ratio": round(len(failed) / len(values), 6) if values else None,
+                "daily": [
+                    {
+                        "date": day,
+                        **bucket(route_daily[(method, route)][day], route_daily_outcomes[(method, route)][day]),
+                    }
+                    for day in sorted(route_daily[(method, route)])
+                ],
+                "peak_hours": [
+                    {
+                        "hour": hour,
+                        **bucket(route_hourly[(method, route)][hour], route_hourly_outcomes[(method, route)][hour]),
+                    }
+                    for hour, _ in sorted(
+                        route_hourly[(method, route)].items(),
+                        key=lambda item: (len(item[1]), item[0]),
+                        reverse=True,
+                    )[:8]
+                ],
             }
         )
-    routes.sort(key=lambda row: (row["p95_ms"] or 0, row["request_count"]), reverse=True)
+    routes.sort(
+        key=lambda row: (
+            row["total_duration_ms"] or 0,
+            row["failed"]["count"] or 0,
+            row["request_count"],
+        ),
+        reverse=True,
+    )
+
+    daily_summary = []
+    for day in sorted(daily):
+        values = daily[day]
+        daily_summary.append(
+            {
+                "date": day,
+                **bucket(values, daily_outcomes[day]),
+            }
+        )
+
+    family_reconciliation = []
+    for family, family_count in sorted(family_counts.items()):
+        method = family.split(" ", 1)[0]
+        exact_count = sum(
+            count for (route_method, _route), count in family_template_counts.items() if route_method == method
+        )
+        family_reconciliation.append(
+            {
+                "family": family,
+                "family_count": family_count,
+                "exact_template_count": exact_count,
+                "difference": family_count - exact_count,
+            }
+        )
 
     return {
         "request_count": sum(len(values) for values in route_values.values()),
         "status": dict(status_counts),
         "routes": routes,
         "hourly_count": dict(hourly),
+        "daily": daily_summary,
+        "family_reconciliation": family_reconciliation,
+        "ranking_basis": "total duration burden, then failed count, then request count; not a business SLO",
         "duplicate_events_removed": duplicate_events,
         "records_without_trace_id": records_without_trace_id,
         "records_out_of_window": out_of_window,
@@ -451,7 +666,7 @@ def parse_access(
                     if status is None:
                         parse_errors += 1
                         continue
-                    route = safe_route_template(request_match.group(2))
+                    route = safe_route_template(request_match.group(2), method)
                     request_count += 1
                     observed_days.add(timestamp.date().isoformat())
                     status_counts[str(status)] += 1
