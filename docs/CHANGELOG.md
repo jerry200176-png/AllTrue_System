@@ -1,3 +1,7 @@
+## 2026-09-21 — fix(tuition): keep accounting actions reachable (in-app #326 / GitHub #3083)
+<!-- release-notes: staff_update=staff-2026-09-21-tuition-actions-reachable-326 -->
+- 帳務中心在平板／桌面窄視窗需要橫向查看欄位時，最右側常用操作會固定在可見區域；手機卡片版與既有帳務資料、權限及流程不變。
+
 ## 2026-09-21 — fix(parent): attention feedback shortcut opens the editor (in-app #323)
 <!-- release-notes: silent_ship=silent-2026-09-21-parent-attention-feedback-jump-323 -->
 - 家長首頁「需要留意 → 前往留言」現在會沿既有學習紀錄分頁尋找並展開第一筆可留言評量，再聚焦輸入框；已在學習分頁時也不再看起來像沒有反應。

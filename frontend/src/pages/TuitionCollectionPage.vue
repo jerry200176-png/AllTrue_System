@@ -2851,6 +2851,27 @@ loadAlerts();
   border-bottom: none;
 }
 
+/* Keep high-frequency accounting actions reachable when a dense table needs
+ * horizontal scrolling at tablet/desktop widths. Mobile widths use the card
+ * layout below, so the sticky treatment is intentionally limited to tables. */
+@media (min-width: 769px) {
+  .tc-table th:last-child,
+  .tc-table td:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--card-bg);
+    box-shadow: -8px 0 12px -12px rgba(15, 23, 42, 0.75);
+  }
+  .tc-table thead th:last-child {
+    z-index: 2;
+    background: var(--bg);
+  }
+  .tc-table tbody tr:hover td:last-child { background: var(--ds-canvas-soft); }
+  .tc-table tbody tr.tc-row--focused td:last-child,
+  .tc-table tbody tr.acct-row-selected td:last-child { background: var(--ds-primary-wash); }
+}
+
 .tc-th-sort {
   cursor: pointer;
   user-select: none;

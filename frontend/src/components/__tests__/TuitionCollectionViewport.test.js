@@ -24,4 +24,11 @@ describe('tuition collection viewport containment', () => {
     expect(source).toContain('.acct-bulkbar { flex-wrap: wrap; }');
     expect(source).toContain('flex: 1 1 9rem;');
   });
+
+  it('keeps dense-table actions visible while the table scrolls horizontally', () => {
+    expect(source).toContain('@media (min-width: 769px)');
+    expect(source).toContain('.tc-table td:last-child');
+    expect(source).toContain('position: sticky;');
+    expect(source).toContain('right: 0;');
+  });
 });
