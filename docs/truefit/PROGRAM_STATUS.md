@@ -32,6 +32,8 @@
 
 AllTrue manages operations. TrueFit manages how students learn.
 
+Product intent, same-server/separate-site boundary, and the proposed paper-evidence/AI track are documented in [`PRODUCT_ARCHITECTURE_BRIEF.md`](PRODUCT_ARCHITECTURE_BRIEF.md). That brief does not change delivery status or grant implementation/activation authority.
+
 ### Privacy (until Founder GO)
 
 No real-student PII → external LLM. Fixture / teacher-entered only. No flag/DNS activation.
@@ -68,6 +70,7 @@ Backend auto-links `source_*` when omitted (#3010). Frontend continuum CTAs + se
 | 0–5 | CODE+TESTS+MERGED; not ops-accepted |
 | 6 Continuum | **00a/00b MERGED**; **01 MERGED** (#3024); not ops-accepted; flags OFF |
 | Assessment Vendor Adapter | Not started |
+| Paper Evidence / OCR / AI Adapter | Proposed discovery only; not implemented; Plan + protected decisions required |
 | S6-02 | Not started |
 
 ### APIs behind `TRUEFIT_V1`
