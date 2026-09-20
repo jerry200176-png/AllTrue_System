@@ -9,11 +9,24 @@ ENV_FILE="${STAGE_ROOT}/.env"
 PROJECT_NAME="alltrue-stage"
 STAGING_HTTP="http://127.0.0.1:18080"
 IDENTITY_FILE="${STAGE_ROOT}/runtime/deployment.json"
+DOCKER_BIN="${DOCKER_BIN:-docker}"
 
 export COMPOSE_PROJECT_NAME="${PROJECT_NAME}"
 
 compose() {
-  docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@"
+  "${DOCKER_BIN}" compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" "$@"
+}
+
+compose_exec_noninteractive() {
+  "${DOCKER_BIN}" compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+    exec -T --interactive=false "$@" </dev/null
+}
+
+compose_exec_bounded() {
+  local timeout_seconds="${COMPOSE_EXEC_TIMEOUT_SECONDS:-20}"
+  timeout --kill-after=5s "${timeout_seconds}s" \
+    "${DOCKER_BIN}" compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+    exec -T --interactive=false "$@" </dev/null
 }
 
 require_env_file() {

@@ -24,7 +24,7 @@ echo "branches_http=${CODE}"
 head -c 400 /tmp/staging-branches.json; echo
 
 echo "=== pdo_mysql inside app ==="
-compose exec -T app php -m | grep -i pdo_mysql
-compose exec -T app php -r 'exit(extension_loaded("pdo_mysql")?0:1);'
+compose_exec_bounded app php -r \
+  '$ok=extension_loaded("pdo_mysql"); fwrite(STDOUT,$ok?"PDO_MYSQL_OK\n":"PDO_MYSQL_MISSING\n"); exit($ok?0:1);'
 
 echo "SMOKE_OK (STAGING_RUNTIME_VERIFIED candidate — not production verified)"
