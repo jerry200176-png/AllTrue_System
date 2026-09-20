@@ -1106,13 +1106,22 @@ function formatHubDate(value) {
   return m ? `${parseInt(m[2], 10)}/${parseInt(m[3], 10)}` : value;
 }
 
-function gotoParentTarget(target, source = 'hub_card') {
+async function gotoParentTarget(target, source = 'hub_card') {
   const resolved = ['learning', 'schedule', 'billing'].includes(String(target)) ? String(target) : 'learning';
   activeTab.value = resolved;
   trackParentPortalEvent(token.value, 'parent.progress_card_clicked', {
     card: source,
     target: resolved,
   });
+  // The attention card is itself on the learning tab. Selecting its feedback
+  // action must still produce a visible transition: open the first record that
+  // can receive feedback and focus its editor instead of merely reassigning the
+  // already-selected tab.
+  if (source === 'attention_feedback' && resolved === 'learning') {
+    await nextTick();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 220));
+    await jumpToFirstFeedbackSlot(source);
+  }
 }
 
 function onParentTabKeydown(event, currentTab) {

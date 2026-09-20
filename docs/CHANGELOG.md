@@ -1,3 +1,7 @@
+## 2026-09-21 — fix(parent): attention feedback shortcut opens the editor (in-app #323)
+<!-- release-notes: silent_ship=silent-2026-09-21-parent-attention-feedback-jump-323 -->
+- 家長首頁「需要留意 → 前往留言」現在會直接展開第一筆可留言評量並聚焦輸入框；已在學習分頁時也不再看起來像沒有反應。
+
 ## 2026-09-21 — fix(course-mgmt): makeup sessions keep assessments pending by default (in-app #330)
 <!-- release-notes: staff_update=staff-2026-09-21-makeup-assessment-pending-330 -->
 - 補排／補登已結束堂次時，若未明確選擇自動核准，評量會保留待填／待審，不再因日期已過而默默核准；既有明確勾選的核准流程不變。

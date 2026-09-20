@@ -4,6 +4,17 @@
  */
 export const parentUpdates = [
   {
+    "id": "parent-2026-09-21-attention-feedback-jump-323",
+    "kind": "improvement",
+    "title": "「前往留言」會直接帶您到可留言的評量",
+    "summary": "從首頁需要留意事項進入留言時，會自動展開第一筆可留言課程並定位輸入框。",
+    "details": "即使目前已在學習分頁，點擊「前往留言」也會有明確的畫面轉移；系統不會自動送出內容，仍由家長確認後自行輸入與送出。",
+    "publishedAt": "2026-09-21",
+    "expiresAt": "2026-10-21",
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
     "id": "parent-update-2026-09-10-parent-status-hierarchy",
     "kind": "improvement",
     "title": "需要留意事項更清楚",
