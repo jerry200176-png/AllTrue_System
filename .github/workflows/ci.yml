@@ -37,6 +37,9 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Validate GitHub Actions workflows with pinned actionlint
+        run: bash scripts/ci/actionlint.sh
+
       - name: Run control plane lint
         env:
           PR_TITLE: ${{ github.event.pull_request.title || '' }}
@@ -50,6 +53,7 @@ jobs:
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
           python3 scripts/tests/test_required_php_checks.py
+          bash scripts/tests/production-acceptance-stage-contract.test.sh
 
       - name: Test control plane lint catches violations
         run: |

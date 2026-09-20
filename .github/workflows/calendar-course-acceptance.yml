@@ -85,6 +85,9 @@ jobs:
         run: |
           set -euo pipefail
           node .github/scripts/normalize-smoke-session.mjs --self-test
+          # Diagnostic markers go to stderr; captured stdout remains session data.
+          # shellcheck source=/dev/null
+          source scripts/acceptance/stage-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "--rawfile account /dev/fd/9" .github/workflows/calendar-course-acceptance.yml
@@ -142,18 +145,31 @@ jobs:
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           login_response="$RUNNER_TEMP/alltrue-acceptance-login.response"
           test -s "$login_request" && test "$(stat -c '%a' "$login_request")" = 600
+          acceptance_stage login_request_ready
           trap 'rm -f "$login_request" "$login_response"' EXIT
-          login_status="$(curl --silent --output "$login_response" --write-out '%{http_code}' \
+          if ! acceptance_capture login_http curl --silent --output "$login_response" --write-out '%{http_code}' \
             --request POST --header 'Accept: application/json' \
             --header 'Content-Type: application/json' \
             --header 'User-Agent: AllTrue-Calendar-Course-Acceptance/20260920' \
             --data-binary "@$login_request" \
-            https://daan.lifenet.com.tw/api/v1/auth/login)"
+            https://daan.lifenet.com.tw/api/v1/auth/login; then
+            rm -f "$login_response"
+            exit 1
+          fi
+          login_status="$STAGE_OUTPUT"
+          acceptance_stage "login_http_status=${login_status}"
           test "$login_status" = 200 || { rm -f "$login_response"; exit 1; }
-          session_token="$(jq -er '.data.session.access_token | select(type == "string" and test("^[A-Za-z0-9]{64}$"))' "$login_response")"
-          session_user_id="$(jq -er '.data.user.id | select(type == "number" and floor == . and . > 0)' "$login_response" 2>/dev/null || true)"
+          if ! session_token="$(jq -er '.data.session.access_token | select(type == "string" and test("^[A-Za-z0-9]{64}$"))' "$login_response")"; then
+            acceptance_stage login_schema_token_invalid
+            exit 1
+          fi
+          session_user_id=''
+          user_id_valid=1
+          if ! session_user_id="$(jq -er '.data.user.id | select(type == "number" and floor == . and . > 0)' "$login_response")"; then
+            user_id_valid=0
+          fi
           echo "::add-mask::$session_token"
-          if [ -n "$session_user_id" ]; then
+          if [ "$user_id_valid" -eq 1 ]; then
             printf '%s\n' "$session_token" | jq -R --argjson user_id "$session_user_id" \
               'select(length > 0) | {token:.,user_id:$user_id}' > "$cleanup_file"
           else
@@ -161,6 +177,11 @@ jobs:
               'select(length > 0) | {token:.,user_id:null}' > "$cleanup_file"
           fi
           chmod 600 "$cleanup_file"
+          if [ "$user_id_valid" -ne 1 ]; then
+            acceptance_stage login_schema_user_id_invalid
+            exit 1
+          fi
+          acceptance_stage login_schema_valid
           bound=0
           revoke_step_token() {
             local original_status="$?"
@@ -229,7 +250,9 @@ jobs:
           if [ -n "$BRANCH_ID" ]; then
             jq -e --argjson branch "$BRANCH_ID" '.data.user.campuses | index($branch) != null' "$login_response" >/dev/null
           fi
+          acceptance_stage login_authorization_valid
           rm -f "$login_request" "$login_response"
+          acceptance_stage session_ssh_start
           session_output="$({
             {
               printf '%s\n' "$session_token"
@@ -302,7 +325,9 @@ jobs:
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
               "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$BRANCH_ID\" \"$session_user_id\"'"
           })"
+          acceptance_stage session_ssh_ok
           test -n "$session_output"
+          acceptance_stage session_payload_received
           bound=1
           trap - EXIT ERR
           printf '%s' "$session_output" > "$RUNNER_TEMP/alltrue-session.output"
@@ -310,6 +335,7 @@ jobs:
           SESSION_NORMALIZED_PATH="$RUNNER_TEMP/alltrue-session.normalized.json" \
           REQUESTED_BRANCH_ID="$BRANCH_ID" \
           node .github/scripts/normalize-smoke-session.mjs
+          acceptance_stage session_normalized
           session_b64="$(base64 -w0 "$RUNNER_TEMP/alltrue-session.normalized.json")"
           test -n "$session_b64"
           echo "::add-mask::$session_b64"
