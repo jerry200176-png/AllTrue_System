@@ -48,7 +48,7 @@ class CapacityLogAggregateTest(unittest.TestCase):
             root = Path(directory)
             lines = [
                 '[2026-09-12T16:00:00Z] production.INFO: perf_metric '
-                '{"trace_id":"day-13","method":"GET","path":"api/v1/class-sessions/10",'
+                '{"trace_id":"day-13","method":"GET","path":"api/v1/class-sessions",'
                 '"status":200,"duration_ms":100}',
                 '[2026-09-19T15:59:59Z] production.INFO: perf_metric '
                 '{"trace_id":"day-19","method":"GET","path":"api/v1/students/10",'
@@ -63,10 +63,10 @@ class CapacityLogAggregateTest(unittest.TestCase):
             (root / "perf-2026-09-13.log").write_bytes(plain)
             gzip_record = (
                 '[2026-09-14T00:00:00+08:00] production.INFO: perf_metric '
-                '{"trace_id":"day-14","method":"GET","path":"api/v1/class-sessions/10",'
+                '{"trace_id":"day-14","method":"GET","path":"api/v1/class-sessions",'
                 '"status":200,"duration_ms":200}\n'
                 '[2026-09-13T00:00:00+08:00] production.INFO: perf_metric '
-                '{"trace_id":"day-13","method":"GET","path":"api/v1/class-sessions/10",'
+                '{"trace_id":"day-13","method":"GET","path":"api/v1/class-sessions",'
                 '"status":200,"duration_ms":100}\n'
             ).encode()
             (root / "perf-2026-09-14.log.gz").write_bytes(gzip.compress(gzip_record))
@@ -77,10 +77,67 @@ class CapacityLogAggregateTest(unittest.TestCase):
             self.assertEqual(result["duplicate_events_removed"], 1)
             self.assertEqual(result["status"], {"200": 2, "500": 1})
             self.assertEqual(len(result["routes"]), 2)
+            routes = {(row["method"], row["route"]): row for row in result["routes"]}
+            self.assertEqual(routes[("GET", "/api/v1/class-sessions")]["success"]["count"], 2)
+            self.assertEqual(routes[("GET", "/api/v1/students/{id}")]["failed"]["count"], 1)
 
     def test_invalid_values_and_unknown_sensitive_routes_are_safe(self) -> None:
-        self.assertEqual(safe_route_template("/api/v1/students/123?email=secret@example.test"), "/api/v1/students")
-        self.assertEqual(safe_route_template("/unknown/secret/123"), "OTHER")
+        self.assertEqual(
+            safe_route_template("/api/v1/students/123?email=secret@example.test", "GET"),
+            "/api/v1/students/{id}",
+        )
+        self.assertEqual(
+            safe_route_template("/api/v1/student-classes/123/renew-monthly", "POST"),
+            "/api/v1/student-classes/{id}/renew-monthly",
+        )
+        self.assertEqual(
+            safe_route_template("/api/v1/student-classes/456/renew-monthly", "POST"),
+            "/api/v1/student-classes/{id}/renew-monthly",
+        )
+        self.assertEqual(
+            safe_route_template("/api/v1/student-classes/123/not-a-route", "POST"),
+            "OTHER",
+        )
+        self.assertEqual(safe_route_template("/unknown/secret/123", "GET"), "OTHER")
+
+    def test_student_class_operations_do_not_merge_and_reconcile_to_family(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lines = [
+                '[2026-09-13T01:00:00+08:00] production.INFO: perf_metric '
+                '{"trace_id":"store-1","method":"POST","path":"/api/v1/student-classes",'
+                '"status":201,"duration_ms":2100}',
+                '[2026-09-13T02:00:00+08:00] production.INFO: perf_metric '
+                '{"trace_id":"renew-1","method":"POST","path":"/api/v1/student-classes/10/renew-monthly",'
+                '"status":200,"duration_ms":6000}',
+                '[2026-09-13T03:00:00+08:00] production.INFO: perf_metric '
+                '{"trace_id":"check-1","method":"POST","path":"/api/v1/student-classes/11/add-session/check",'
+                '"status":422,"duration_ms":120}',
+                '[2026-09-13T04:00:00+08:00] production.INFO: perf_metric '
+                '{"trace_id":"unknown-1","method":"POST","path":"/api/v1/student-classes/12/secret/abc",'
+                '"status":500,"duration_ms":25000}',
+            ]
+            (root / "perf-2026-09-13.log").write_text("\n".join(lines) + "\n")
+            selected, _ = enumerate_sources(root, "perf", self.window)
+            result = parse_perf(selected, self.window, self.budget())
+            routes = {(row["method"], row["route"]): row for row in result["routes"]}
+            self.assertEqual(result["request_count"], 4)
+            self.assertEqual(
+                result["family_reconciliation"],
+                [{
+                    "family": "POST /api/v1/student-classes",
+                    "family_count": 4,
+                    "known_template_count": 3,
+                    "family_other_count": 1,
+                    "reconciled_count": 4,
+                    "difference": 0,
+                }],
+            )
+            self.assertEqual(routes[("POST", "/api/v1/student-classes")]["request_count"], 1)
+            self.assertEqual(routes[("POST", "/api/v1/student-classes/{id}/renew-monthly")]["request_count"], 1)
+            self.assertEqual(routes[("POST", "/api/v1/student-classes/{id}/add-session/check")]["failed"]["count"], 1)
+            self.assertEqual(routes[("POST", "OTHER")]["request_count"], 1)
+            self.assertEqual(routes[("POST", "OTHER")]["thresholds"]["over_20s"]["count"], 1)
 
     def test_apache_filters_record_time_and_gzip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
