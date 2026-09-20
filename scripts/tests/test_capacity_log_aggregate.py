@@ -127,7 +127,9 @@ class CapacityLogAggregateTest(unittest.TestCase):
                 [{
                     "family": "POST /api/v1/student-classes",
                     "family_count": 4,
-                    "exact_template_count": 4,
+                    "known_template_count": 3,
+                    "family_other_count": 1,
+                    "reconciled_count": 4,
                     "difference": 0,
                 }],
             )

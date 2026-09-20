@@ -601,7 +601,10 @@ def parse_perf(
             {
                 "family": family,
                 "family_count": family_count,
-                "exact_template_count": exact_count,
+                "known_template_count": exact_count
+                - family_template_counts.get((method, "OTHER"), 0),
+                "family_other_count": family_template_counts.get((method, "OTHER"), 0),
+                "reconciled_count": exact_count,
                 "difference": family_count - exact_count,
             }
         )
