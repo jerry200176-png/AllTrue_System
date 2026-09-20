@@ -38,7 +38,11 @@ jobs:
           node-version: "22"
 
       - name: Validate GitHub Actions workflows with pinned actionlint
-        run: bash scripts/ci/actionlint.sh
+        run: |
+          # Full-repository parser/expression lint is bounded and does not invoke
+          # shellcheck; the canonical production workflow gets the complete check below.
+          timeout 60s bash scripts/ci/actionlint.sh --parser-only
+          timeout 60s bash scripts/ci/actionlint.sh .github/workflows/calendar-course-acceptance.yml
 
       - name: Run control plane lint
         env:
