@@ -38,7 +38,9 @@ export function normalizeSessionOutput(output, requestedBranch = 0, now = Date.n
   if (!campuses.length) fail('director session has no authorized campus');
   if (requestedBranch > 0 && !campuses.includes(requestedBranch)) fail('requested campus is not authorized');
   if (input?.user?.must_change_password !== false) fail('director session requires password change');
-  if (!['director', 'super_admin'].includes(input?.user?.role)) fail('director session role is invalid');
+  // Hosted acceptance is director-only.  A super_admin session must never be
+  // accepted as a substitute for the bounded synthetic director identity.
+  if (input?.user?.role !== 'director') fail('director session role is invalid');
   const normalized = {
     access_token: token,
     token_type: 'Bearer',
@@ -91,6 +93,7 @@ export function selfTest() {
   expectReject('expired session', () => normalizeSessionOutput(fixture({ expires_at: new Date(Date.now() - 1).toISOString() }), 16));
   expectReject('ttl over 30 minutes', () => normalizeSessionOutput(fixture({ expires_at: new Date(Date.now() + 31 * 60 * 1000).toISOString() }), 16));
   expectReject('invalid role', () => normalizeSessionOutput(fixture({ user: { id: 7, role: 'teacher', campuses: [16], must_change_password: false } }), 16));
+  expectReject('super_admin substitution', () => normalizeSessionOutput(fixture({ user: { id: 7, role: 'super_admin', campuses: [16], must_change_password: false } }), 16));
   expectReject('invalid user', () => normalizeSessionOutput(fixture({ user: { id: 0, role: 'director', campuses: [16], must_change_password: false } }), 16));
   expectReject('empty campus', () => normalizeSessionOutput(fixture({ user: { id: 7, role: 'director', campuses: [], must_change_password: false } }), 16));
   expectReject('password change', () => normalizeSessionOutput(fixture({ user: { id: 7, role: 'director', campuses: [16], must_change_password: true } }), 16));

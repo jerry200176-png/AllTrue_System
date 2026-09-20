@@ -91,6 +91,12 @@ for must_change in false true null '"false"' missing; do
   fi
 done
 
+printf '%s\n' '{"data":{"user":{"role":"super_admin","campuses":[16],"must_change_password":false}}}' > "$tmp_dir/super-admin.json"
+if acceptance_login_response_authorized "$tmp_dir/super-admin.json" 16; then
+  echo 'super_admin session unexpectedly passed director acceptance contract' >&2
+  exit 1
+fi
+
 product_acceptance_started=0
 if acceptance_login_http_status_allows_acceptance 401; then
   echo '401 unexpectedly entered acceptance' >&2
