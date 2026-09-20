@@ -17,6 +17,31 @@ if acceptance_login_request_valid "$tmp_dir/invalid.json"; then
   exit 1
 fi
 
+printf '%s\n' '{"account":"   \t  ","password":"placeholder","role":"director"}' > "$tmp_dir/whitespace-account.json"
+if acceptance_login_request_valid "$tmp_dir/whitespace-account.json"; then
+  echo 'whitespace-only account unexpectedly passed' >&2
+  exit 1
+fi
+
+long_account="$(printf 'a%.0s' {1..129})"
+printf '{"account":"%s","password":"placeholder","role":"director"}\n' "$long_account" > "$tmp_dir/long-account.json"
+if acceptance_login_request_valid "$tmp_dir/long-account.json"; then
+  echo 'overlong account unexpectedly passed' >&2
+  exit 1
+fi
+
+printf '%s\n' '{"account":"director","password":"","role":"director"}' > "$tmp_dir/empty-password.json"
+if acceptance_login_request_valid "$tmp_dir/empty-password.json"; then
+  echo 'empty password unexpectedly passed' >&2
+  exit 1
+fi
+
+printf '%s\n' '{"account":"director","password":"placeholder","role":"teacher"}' > "$tmp_dir/invalid-role.json"
+if acceptance_login_request_valid "$tmp_dir/invalid-role.json"; then
+  echo 'invalid role unexpectedly passed' >&2
+  exit 1
+fi
+
 printf '%s\n' '{"errors":{"account":["redacted"],"password":["redacted"]},"code":"not-allowlisted","message":"must not be printed"}' > "$tmp_dir/rejected.json"
 test "$(acceptance_login_response_taxonomy "$tmp_dir/rejected.json")" = 'json=valid errors=account,password code=none'
 
@@ -25,5 +50,11 @@ test "$(acceptance_login_response_taxonomy "$tmp_dir/pending.json")" = 'json=val
 
 printf '%s\n' 'not-json' > "$tmp_dir/malformed.json"
 test "$(acceptance_login_response_taxonomy "$tmp_dir/malformed.json")" = 'json=unparseable errors=none code=none'
+
+: > "$tmp_dir/empty-response.json"
+test "$(acceptance_login_response_taxonomy "$tmp_dir/empty-response.json")" = 'json=unparseable errors=none code=none'
+
+printf ' \t\n' > "$tmp_dir/whitespace-response.json"
+test "$(acceptance_login_response_taxonomy "$tmp_dir/whitespace-response.json")" = 'json=unparseable errors=none code=none'
 
 echo 'acceptance login contract: PASS'

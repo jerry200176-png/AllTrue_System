@@ -4,7 +4,7 @@ acceptance_login_request_valid() {
   local request_file="$1"
   jq -e '
     type == "object" and
-    (.account | (type == "string" and length > 0 and length <= 128)) and
+    (.account | (type == "string" and ((gsub("^\\s+|\\s+$"; "")) | length > 0 and length <= 128))) and
     (.password | (type == "string" and length > 0)) and
     (.role == "director")
   ' "$request_file" >/dev/null 2>/dev/null
@@ -12,6 +12,10 @@ acceptance_login_request_valid() {
 
 acceptance_login_response_taxonomy() {
   local response_file="$1"
+  if [ ! -s "$response_file" ] || ! grep -q '[^[:space:]]' "$response_file"; then
+    printf '%s\n' 'json=unparseable errors=none code=none'
+    return 0
+  fi
   jq -r '
     def safe_error_keys:
       if (.errors? | type) == "object" then

@@ -72,7 +72,7 @@ jobs:
           exec 10<<<"$SMOKE_DIRECTOR_PASSWORD"
           unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
           jq -n --rawfile account /dev/fd/9 --rawfile password /dev/fd/10 \
-            '{account:($account|rtrimstr("\n")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
+            '{account:($account|rtrimstr("\n")|sub("^\\s+";"")|sub("\\s+$";"")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
           exec 9<&- 10<&-
           chmod 600 "$login_request"
           trap - EXIT
