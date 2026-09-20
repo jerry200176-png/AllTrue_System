@@ -10,6 +10,11 @@ on:
         required: false
         type: boolean
         default: false
+      capacity_window_end:
+        description: "Optional Asia/Taipei exclusive window end for reproducible comparison"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   health-check:
@@ -253,6 +258,7 @@ jobs:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           RUNTIME_SHA_OBSERVED: ${{ steps.runtime.outputs.sha }}
           RUNTIME_OBSERVED_AT: ${{ steps.runtime.outputs.observed_at }}
+          CAPACITY_WINDOW_END: ${{ inputs.capacity_window_end }}
         run: |
           set -euo pipefail
           mkdir -p out
@@ -261,7 +267,11 @@ jobs:
           script_b64="$(base64 -w0 scripts/infra/capacity_log_aggregate.py)"
           remote_sha="$(printf '%q' "$RUNTIME_SHA_OBSERVED")"
           remote_at="$(printf '%q' "$RUNTIME_OBSERVED_AT")"
-          remote_command="RUNTIME_SHA_OBSERVED=${remote_sha} RUNTIME_OBSERVED_AT=${remote_at} bash -c 'base64 -d | timeout 55s python3 - --perf-dir /home/admin/backend/storage/logs --access-dir /var/log/apache2 --window-end \"$(TZ=Asia/Taipei date -Iseconds)\" --days 7 --max-bytes 134217728 --max-line-bytes 65536 --max-records 200000 --max-output-bytes 65536'"
+          window_arg=""
+          if [ -n "$CAPACITY_WINDOW_END" ]; then
+            window_arg="--window-end $(printf '%q' "$CAPACITY_WINDOW_END")"
+          fi
+          remote_command="RUNTIME_SHA_OBSERVED=${remote_sha} RUNTIME_OBSERVED_AT=${remote_at} bash -c 'base64 -d | timeout 55s python3 - --perf-dir /home/admin/backend/storage/logs --access-dir /var/log/apache2 ${window_arg} --days 7 --max-bytes 134217728 --max-line-bytes 65536 --max-records 200000 --max-output-bytes 65536'"
           set +e
           printf '%s' "$script_b64" | ssh -i ~/.ssh/pi_key \
             -o ConnectTimeout=15 \
@@ -308,10 +318,41 @@ jobs:
               raise SystemExit("capacity baseline safety contract failed")
           allowed = {
               "/api/v1/learning-records",
+              "/api/v1/learning-records/{id}",
               "/api/v1/notifications/unread-count",
               "/api/v1/class-sessions",
               "/api/v1/students",
+              "/api/v1/students/{id}",
               "/api/v1/student-classes",
+              "/api/v1/student-classes/import",
+              "/api/v1/student-classes/export",
+              "/api/v1/student-classes/session-dates",
+              "/api/v1/student-classes/sync",
+              "/api/v1/student-classes/{id}",
+              "/api/v1/student-classes/{id}/editability",
+              "/api/v1/student-classes/{id}/package-conversion-preview",
+              "/api/v1/student-classes/{id}/convert-to-package",
+              "/api/v1/student-classes/{id}/confirm-payment",
+              "/api/v1/student-classes/{id}/renewal-preview",
+              "/api/v1/student-classes/{id}/renewal-confirm",
+              "/api/v1/student-classes/{id}/purchase-batch",
+              "/api/v1/student-classes/{id}/convert-trial",
+              "/api/v1/student-classes/{id}/renew-monthly",
+              "/api/v1/student-classes/{id}/invoices",
+              "/api/v1/student-classes/{id}/add-session",
+              "/api/v1/student-classes/{id}/add-session/check",
+              "/api/v1/student-classes/{id}/pause",
+              "/api/v1/student-classes/{id}/transfer-sessions",
+              "/api/v1/student-classes/{id}/billing-correction",
+              "/api/v1/student-classes/{id}/contract-amendment/preview",
+              "/api/v1/student-classes/{id}/contract-amendment",
+              "/api/v1/student-classes/{id}/charge-correction",
+              "/api/v1/student-classes/{id}/split-contract/preview",
+              "/api/v1/student-classes/{id}/split-contract",
+              "/api/v1/student-classes/{id}/recover-transfer-sessions",
+              "/api/v1/student-classes/{id}/continue-tutoring",
+              "/api/v1/student-classes/{id}/manual-sessions/check",
+              "/api/v1/student-classes/{id}/manual-sessions",
               "OTHER",
           }
           for section in (data["perf"], data["apache_access"]):
