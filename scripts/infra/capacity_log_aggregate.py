@@ -260,6 +260,18 @@ def compact_window_summary(values: list[float]) -> dict[str, object]:
     }
 
 
+def outcome_duration_summary(values: list[float]) -> dict[str, object]:
+    summary = duration_summary(values)
+    return {
+        "count": summary["count"],
+        "total_duration_ms": summary["total_duration_ms"],
+        "mean_duration_ms": summary["mean_duration_ms"],
+        "p50_ms": summary["p50_ms"],
+        "p95_ms": summary["p95_ms"],
+        "p99_ms": summary["p99_ms"],
+    }
+
+
 def nearest_rank(values: list[float], quantile: float) -> float | None:
     if not values:
         return None
@@ -435,12 +447,6 @@ def parse_perf(
     route_daily_outcomes: defaultdict[
         tuple[str, str], defaultdict[str, defaultdict[str, list[float]]]
     ] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    route_hourly: defaultdict[tuple[str, str], defaultdict[str, list[float]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
-    route_hourly_outcomes: defaultdict[
-        tuple[str, str], defaultdict[str, defaultdict[str, list[float]]]
-    ] = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     status_counts: Counter[str] = Counter()
     hourly: Counter[str] = Counter()
     daily: defaultdict[str, list[float]] = defaultdict(list)
@@ -514,8 +520,6 @@ def parse_perf(
                     status_counts[str(status)] += 1
                     route_daily[key][day].append(duration)
                     route_daily_outcomes[key][day][outcome].append(duration)
-                    route_hourly[key][hour].append(duration)
-                    route_hourly_outcomes[key][hour][outcome].append(duration)
                     daily[day].append(duration)
                     daily_outcomes[day][outcome].append(duration)
                     hourly[hour] += 1
@@ -549,26 +553,19 @@ def parse_perf(
                     for name in ("over_2s", "over_5s", "over_10s", "over_20s")
                 },
                 "status": dict(route_status[(method, route)]),
-                "success": duration_summary(route_outcomes[(method, route)].get("success", [])),
-                "failed": duration_summary(failed),
+                "success": outcome_duration_summary(route_outcomes[(method, route)].get("success", [])),
+                "failed": outcome_duration_summary(failed),
                 "failure_ratio": round(len(failed) / len(values), 6) if values else None,
+                "sample_note": "low_sample_n<20" if len(values) < 20 else "descriptive_only",
                 "daily": [
                     {
                         "date": day,
                         **bucket(route_daily[(method, route)][day], route_daily_outcomes[(method, route)][day]),
+                        "sample_note": "low_sample_n<20"
+                        if len(route_daily[(method, route)][day]) < 20
+                        else "descriptive_only",
                     }
                     for day in sorted(route_daily[(method, route)])
-                ],
-                "peak_hours": [
-                    {
-                        "hour": hour,
-                        **bucket(route_hourly[(method, route)][hour], route_hourly_outcomes[(method, route)][hour]),
-                    }
-                    for hour, _ in sorted(
-                        route_hourly[(method, route)].items(),
-                        key=lambda item: (len(item[1]), item[0]),
-                        reverse=True,
-                    )[:8]
                 ],
             }
         )
