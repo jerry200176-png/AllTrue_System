@@ -946,6 +946,12 @@ jobs:
     name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
     if: ${{ always() && needs.classify-activation.result == 'success' && (((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && needs.classify-activation.outputs.mode == 'manual')) }}
+    # A newer exact-main target supersedes an older approval request. The
+    # protected environment still requires the Founder reviewer; this only
+    # prevents stale waiting runs from accumulating behind the live target.
+    concurrency:
+      group: alltrue-production-activation-gate
+      cancel-in-progress: true
     environment:
       name: production-activation
     runs-on: ubuntu-latest
@@ -1085,6 +1091,10 @@ jobs:
     if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
+    # Bound the sole production executor so a lost SSH session cannot leave a
+    # run waiting indefinitely. The remote script retains its existing
+    # rollback-on-error behavior before this runner-level deadline.
+    timeout-minutes: 30
     # Serialize only the side-effecting executor. Read-only preflight and
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
@@ -1146,6 +1156,11 @@ jobs:
       - name: Deploy
         run: |
           ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            -o IdentitiesOnly=yes \
             "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH'
           set -uo pipefail
           cd /home/admin
