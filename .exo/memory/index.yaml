@@ -328,3 +328,18 @@ failure_modes:
       different sessions and cover mismatched-time payloads.
   severity: medium
   frequency: recurring
+- id: FM-20260920-110516-G3XF
+  name: TrueFit fixture helper tests passed while real Vue reactivity and print rendering
+    still failed
+  detection:
+    signal: TrueFit fixture helper tests passed while real Vue reactivity and print
+      rendering still failed
+    source: reflection:REF-20260920-110516-LMHV
+  mitigation:
+    practice: 'Mount the real SFC before trusting helper coverage: Vue reactive proxies
+      broke structuredClone, stale preview survived model invalidation, and screen-media
+      PDF output included the workbench. Browser button/DOM tests plus print-media
+      PDF page rendering exposed all three; key repeated assessment items by page
+      identity, not bank question ID.'
+  severity: medium
+  frequency: recurring

@@ -1,0 +1,19 @@
+id: REF-20260920-110516-LMHV
+pattern: TrueFit fixture helper tests passed while real Vue reactivity and print rendering
+  still failed
+insight: 'Mount the real SFC before trusting helper coverage: Vue reactive proxies
+  broke structuredClone, stale preview survived model invalidation, and screen-media
+  PDF output included the workbench. Browser button/DOM tests plus print-media PDF
+  page rendering exposed all three; key repeated assessment items by page identity,
+  not bank question ID.'
+severity: medium
+scope: INT-20260920-103943-J5U8
+actor: human
+session_id: SES-20260920103950-EB4A8752
+created_at: '2026-09-20T11:05:16+08:00'
+status: active
+tags:
+- truefit
+- vue
+- print
+hit_count: 0
