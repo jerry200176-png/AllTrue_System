@@ -71,6 +71,11 @@ jobs:
           grep -Fq "SMOKE_DIRECTOR_LOGIN" .github/workflows/calendar-course-acceptance.yml
           grep -Fq "SMOKE_DIRECTOR_PASSWORD" .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq -- "--rawfile account /dev/fd/9" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq -- "--rawfile password /dev/fd/10" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'exec 9<<<"$SMOKE_DIRECTOR_LOGIN"' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'exec 10<<<"$SMOKE_DIRECTOR_PASSWORD"' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'user_id:null' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "printf '%s\\n' \"\$session_token\"" .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth_tokens" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "->update(['expires_at'" .github/workflows/calendar-course-acceptance.yml
@@ -96,8 +101,11 @@ jobs:
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           login_response="$RUNNER_TEMP/alltrue-acceptance-login.response"
           trap 'rm -f "$login_request" "$login_response"' EXIT
-          jq -n --arg account "$SMOKE_DIRECTOR_LOGIN" --arg password "$SMOKE_DIRECTOR_PASSWORD" \
-            '{account:$account,password:$password,role:"director"}' > "$login_request"
+          exec 9<<<"$SMOKE_DIRECTOR_LOGIN"
+          exec 10<<<"$SMOKE_DIRECTOR_PASSWORD"
+          jq -n --rawfile account /dev/fd/9 --rawfile password /dev/fd/10 \
+            '{account:($account|rtrimstr("\n")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
+          exec 9<&- 10<&-
           chmod 600 "$login_request"
           login_status="$(curl --silent --output "$login_response" --write-out '%{http_code}' \
             --request POST --header 'Accept: application/json' \
@@ -106,15 +114,16 @@ jobs:
             --data-binary "@$login_request" \
             https://daan.lifenet.com.tw/api/v1/auth/login)"
           test "$login_status" = 200 || { rm -f "$login_response"; exit 1; }
-          jq -e '
-            (.data.session.access_token | type == "string" and test("^[A-Za-z0-9]{64}$")) and
-            (.data.user.id | type == "number" and floor == . and . > 0)
-          ' "$login_response" >/dev/null
-          session_token="$(jq -er '.data.session.access_token' "$login_response")"
-          session_user_id="$(jq -er '.data.user.id' "$login_response")"
+          session_token="$(jq -er '.data.session.access_token | select(type == "string" and test("^[A-Za-z0-9]{64}$"))' "$login_response")"
+          session_user_id="$(jq -er '.data.user.id | select(type == "number" and floor == . and . > 0)' "$login_response" 2>/dev/null || true)"
           echo "::add-mask::$session_token"
-          printf '%s\n' "$session_token" | jq -R --argjson user_id "$session_user_id" \
-            'select(length > 0) | {token:.,user_id:$user_id}' > "$cleanup_file"
+          if [ -n "$session_user_id" ]; then
+            printf '%s\n' "$session_token" | jq -R --argjson user_id "$session_user_id" \
+              'select(length > 0) | {token:.,user_id:$user_id}' > "$cleanup_file"
+          else
+            printf '%s\n' "$session_token" | jq -R \
+              'select(length > 0) | {token:.,user_id:null}' > "$cleanup_file"
+          fi
           chmod 600 "$cleanup_file"
           bound=0
           revoke_step_token() {
@@ -127,8 +136,8 @@ jobs:
             set +e
             revoke_status=0
             revoke_token="$(jq -er '.token | select(type=="string" and test("^[A-Za-z0-9]{64}$"))' "$cleanup_file")" || revoke_status=1
-            revoke_user_id="$(jq -er '.user_id | select(type=="number" and floor==. and .>0)' "$cleanup_file")" || revoke_status=1
-            if [ "$revoke_status" -eq 0 ] && [ -n "$revoke_token" ] && [ -n "$revoke_user_id" ]; then
+            revoke_user_id="$(jq -er '.user_id | if . == null then empty else select(type=="number" and floor==. and .>0) end' "$cleanup_file" 2>/dev/null || true)"
+            if [ "$revoke_status" -eq 0 ] && [ -n "$revoke_token" ]; then
               {
                 printf '%s\n' "$revoke_token"
                 cat <<'REMOTE'
@@ -145,11 +154,14 @@ jobs:
           $kernel->bootstrap();
           $token = trim((string) fgets(STDIN));
           $userId = (int) getenv('EXPECTED_USER_ID');
-          $rows = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('token', $token)
-            ->where('user_id', $userId)->select('id')->get();
+          $query = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('token', $token);
+          if ($userId > 0) { $query->where('user_id', $userId); }
+          $rows = $query->select('id')->get();
           if ($rows->count() !== 1) { exit(1); }
-          $deleted = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $rows->first()->id)
-            ->where('token', $token)->where('user_id', $userId)->delete();
+          $deleteQuery = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $rows->first()->id)
+            ->where('token', $token);
+          if ($userId > 0) { $deleteQuery->where('user_id', $userId); }
+          $deleted = $deleteQuery->delete();
           if ($deleted !== 1) { exit(1); }
           PHP
           REMOTE
@@ -319,7 +331,7 @@ jobs:
           cleanup_file="$RUNNER_TEMP/alltrue-acceptance-auth-cleanup.json"
           if [ ! -s "$cleanup_file" ]; then exit 0; fi
           cleanup_token="$(jq -er '.token | select(type=="string" and test("^[A-Za-z0-9]{64}$"))' "$cleanup_file")"
-          cleanup_user_id="$(jq -er '.user_id | select(type=="number" and floor==. and .>0)' "$cleanup_file")"
+          cleanup_user_id="$(jq -er '.user_id | if . == null then empty else select(type=="number" and floor==. and .>0) end' "$cleanup_file" 2>/dev/null || true)"
           echo "::add-mask::$cleanup_token"
           cleanup_output="$({
             {
@@ -338,11 +350,14 @@ jobs:
           $kernel->bootstrap();
           $token = trim((string) fgets(STDIN));
           $userId = (int) getenv('EXPECTED_USER_ID');
-          $rows = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('token', $token)
-            ->where('user_id', $userId)->select('id')->get();
+          $query = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('token', $token);
+          if ($userId > 0) { $query->where('user_id', $userId); }
+          $rows = $query->select('id')->get();
           if ($rows->count() !== 1) { throw new \RuntimeException('cleanup token row is not unique'); }
-          $deleted = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $rows->first()->id)
-            ->where('token', $token)->where('user_id', $userId)->delete();
+          $deleteQuery = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $rows->first()->id)
+            ->where('token', $token);
+          if ($userId > 0) { $deleteQuery->where('user_id', $userId); }
+          $deleted = $deleteQuery->delete();
           if ($deleted !== 1) { throw new \RuntimeException('cleanup auth token delete failed'); }
           echo 'cleanup=ok deleted=1';
           PHP
