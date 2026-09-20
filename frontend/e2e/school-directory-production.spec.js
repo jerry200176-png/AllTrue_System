@@ -62,12 +62,12 @@ function isControlledSession(session, branchId) {
     typeof session?.access_token === 'string'
     && session.access_token.trim() !== ''
     && session.token_type === 'Bearer'
-    && ['director', 'super_admin'].includes(role)
+    && role === 'director'
     && Number.isInteger(branchId)
     && branchId > 0
     && Array.isArray(campuses)
     && campuses.every((id) => Number.isInteger(id) && id > 0)
-    && (role === 'super_admin' || campuses.includes(branchId))
+    && campuses.includes(branchId)
     && session.user.must_change_password === false
     && remaining > 0
     && remaining <= 30 * 60,
@@ -255,6 +255,7 @@ test('session gate rejects malformed production credentials', () => {
   };
   expect(isControlledSession({ ...valid, user: { ...valid.user } }, 1)).toBe(true);
   expect(isControlledSession({ ...valid, user: { role: 'director', campuses: [1] } }, 1)).toBe(false);
+  expect(isControlledSession({ ...valid, user: { ...valid.user, role: 'super_admin' } }, 1)).toBe(false);
   expect(isControlledSession({ ...valid, user: { ...valid.user, campuses: ['1'] } }, 1)).toBe(false);
   expect(isControlledSession({ ...valid, access_token: '' }, 1)).toBe(false);
   expect(isControlledSession({ ...valid, token_type: 'Basic' }, 1)).toBe(false);
@@ -267,7 +268,7 @@ test.describe('production acceptance — school directory (#296)', () => {
   test.beforeAll(() => {
     if (!REQUIRE_HOSTED) return;
     expect(BASE, 'hosted acceptance requires SMOKE_BASE_URL').toBeTruthy();
-    expect(CONTROLLED_SESSION, 'hosted acceptance requires a valid director/super-admin session expiring within 30m').toBe(true);
+    expect(CONTROLLED_SESSION, 'hosted acceptance requires a valid director session expiring within 30m').toBe(true);
   });
 
   test('API contract and student school picker are read-only', async ({ page, request, context }) => {
