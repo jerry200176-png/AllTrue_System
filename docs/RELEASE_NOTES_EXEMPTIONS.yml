@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-20-session-dates-row-reuse
+    changelog_date: "2026-09-20"
+    changelog_title: "fix(performance): reuse session-dates rows by course"
+    reason: 僅改善既有 session-dates 讀取路徑的記憶體掃描工作量；不新增教職員流程、不改回傳契約，且尚未部署或 production verified。
+
   - id: silent-2026-09-19-calendar-split-slot-317-polish
     changelog_date: "2026-09-19"
     changelog_title: "fix(calendar): split-slot wrap spacing polish (in-app #317)"
