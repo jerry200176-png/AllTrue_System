@@ -117,6 +117,12 @@ printf '%s\n' 'ALLTRUE_401_DIAGNOSIS_V1=not-base64!' > "$tmp_dir/diagnosis-inval
 if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-invalid-base64.txt" "$tmp_dir/diagnosis-invalid-base64.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
 printf 'ALLTRUE_401_DIAGNOSIS_V1=%s\n' "$(printf 'not-json' | base64 -w0)" > "$tmp_dir/diagnosis-invalid-json.txt"
 if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-invalid-json.txt" "$tmp_dir/diagnosis-invalid-json.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf 'ALLTRUE_401_DIAGNOSIS_V1=%s\n' "$(printf '{}\n{}\n' | base64 -w0)" > "$tmp_dir/diagnosis-multiple-json.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-multiple-json.txt" "$tmp_dir/diagnosis-multiple-json.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf 'ALLTRUE_401_DIAGNOSIS_V1=%s\n' "$(printf '[]' | base64 -w0)" > "$tmp_dir/diagnosis-array-json.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-array-json.txt" "$tmp_dir/diagnosis-array-json.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf '%*s\n' 17000 '' > "$tmp_dir/diagnosis-oversized.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-oversized.txt" "$tmp_dir/diagnosis-oversized.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
 printf '%s\n' 'noise only' > "$tmp_dir/diagnosis-missing.txt"
 if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-missing.txt" "$tmp_dir/diagnosis-missing.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
 

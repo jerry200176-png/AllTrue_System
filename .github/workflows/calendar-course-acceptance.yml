@@ -204,7 +204,7 @@ jobs:
           echo 'ALLTRUE_401_DIAGNOSIS_V1=' . base64_encode($diagnosis) . PHP_EOL;
           PHP
           REMOTE
-              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode --strict); exec bash -s'" > "$diagnosis_raw" 2>/dev/null
+              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; (( \${#LOGIN_ACCOUNT_B64} % 4 == 0 )); exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode); exec bash -s'" > "$diagnosis_raw" 2>/dev/null
               if ! acceptance_extract_b64_json_marker "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then
                 diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
                 rm -f "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"

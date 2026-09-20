@@ -34,9 +34,12 @@ acceptance_extract_b64_json_marker() {
   local input_file="$1"
   local output_file="$2"
   local marker_prefix="$3"
-  local line payload='' matches=0 decoded
+  local line payload='' matches=0 decoded input_bytes input_lines
 
   [ -s "$input_file" ] || return 1
+  input_bytes="$(wc -c < "$input_file")" || return 1
+  input_lines="$(wc -l < "$input_file")" || return 1
+  [ "$input_bytes" -le 16384 ] && [ "$input_lines" -le 64 ] || return 1
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       "$marker_prefix"*)
@@ -47,13 +50,14 @@ acceptance_extract_b64_json_marker() {
   done < "$input_file"
   [ "$matches" -eq 1 ] || return 1
   [[ "$payload" =~ ^[A-Za-z0-9+/]+={0,2}$ ]] || return 1
+  [ $(( ${#payload} % 4 )) -eq 0 ] || return 1
 
   decoded="${output_file}.decoded"
-  if ! printf '%s' "$payload" | base64 --decode --strict > "$decoded" 2>/dev/null; then
+  if ! printf '%s' "$payload" | base64 --decode > "$decoded" 2>/dev/null; then
     rm -f "$decoded" "$output_file"
     return 1
   fi
-  if ! jq -e . "$decoded" > "$output_file" 2>/dev/null; then
+  if ! jq -e -s 'if length == 1 and (.[0] | type == "object") then .[0] else error("expected one JSON object") end' "$decoded" > "$output_file" 2>/dev/null; then
     rm -f "$decoded" "$output_file"
     return 1
   fi
