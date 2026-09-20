@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$ROOT_DIR/scripts/acceptance/login-contract.sh"
 
+workflow_file="$ROOT_DIR/.github/workflows/calendar-course-acceptance.yml"
+grep -Fq 'php -d display_errors=0 -d log_errors=1 /dev/fd/3' "$workflow_file"
+grep -Fq 'jq -e . "$diagnosis_raw"' "$workflow_file"
+
 unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
 SMOKE_DIRECTOR_PASSWORD=placeholder
 export SMOKE_DIRECTOR_PASSWORD

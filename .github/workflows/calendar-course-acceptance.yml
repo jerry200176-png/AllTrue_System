@@ -115,7 +115,7 @@ jobs:
           guard_close='() }}'
           cleanup_guard="${guard_prefix}${guard_dollar}${guard_open}${guard_word}${guard_close}"
           test "$(grep -F -c "$cleanup_guard" .github/workflows/calendar-course-acceptance.yml)" -eq 1
-          grep -Fq "php /dev/fd/3" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "php -d display_errors=0 -d log_errors=1 /dev/fd/3" .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'read -r SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'exec 4<<<' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'trap revoke_step_token EXIT' .github/workflows/calendar-course-acceptance.yml
@@ -186,7 +186,7 @@ jobs:
                 cat <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
-          php /dev/fd/3 0<&4 3<<'PHP'
+          php -d display_errors=0 -d log_errors=1 /dev/fd/3 0<&4 3<<'PHP'
           <?php
           define('LARAVEL_START', microtime(true));
           $base = getcwd(); require $base . '/vendor/autoload.php';
@@ -202,7 +202,12 @@ jobs:
           PHP
           REMOTE
               } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode --strict); exec bash -s'" > "$diagnosis_raw" 2>/dev/null
-              printf '%s' "$(cat "$diagnosis_raw")" | jq -e . > "$RUNNER_TEMP/alltrue-401-diagnosis.json"
+              if ! jq -e . "$diagnosis_raw" > "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then
+                diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
+                rm -f "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"
+                acceptance_stage "login_401_diagnosis_invalid shape=non_json ${diagnosis_shape}"
+                exit 1
+              fi
               rm -f "$diagnosis_raw"
               if ! acceptance_login_401_diagnosis_result_valid "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"; exit 1; fi
               diagnosis_summary="$(jq -r 'to_entries | map(\"\(.key)=\(.value)\") | join(\" \")' "$RUNNER_TEMP/alltrue-401-diagnosis.json")"
