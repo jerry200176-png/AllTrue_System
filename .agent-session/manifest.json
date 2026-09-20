@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "81e99643b4d3403cb57cca241e3cbf0c",
+  "session_id": "06f1f4f38d0c4e8d8751eb2ee115f39d",
   "project": "alltrue",
-  "task_id": "inapp-325-auth-env-contract-20260920",
+  "task_id": "inapp-325-must-change-password-guard-20260920",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "43760076171e584e0dc320ab68199e7590243d6f",
-  "branch": "chore/task-inapp-325-auth-env-contract-20260920",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-325-auth-env-contract-20260920",
-  "started_at": "2026-09-20T02:44:44Z",
+  "base_sha": "74ea1514de77c4cb1104c2f24be8bebe8d9b2925",
+  "branch": "chore/task-inapp-325-must-change-password-guard-20260920",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-325-must-change-password-guard-20260920",
+  "started_at": "2026-09-20T03:15:53Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.1"
 }

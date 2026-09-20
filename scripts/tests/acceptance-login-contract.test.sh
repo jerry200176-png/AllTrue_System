@@ -58,6 +58,39 @@ if acceptance_login_request_valid "$tmp_dir/invalid-role.json"; then
   exit 1
 fi
 
+login_response() {
+  local must_change="$1"
+  if [ "$must_change" = missing ]; then
+    printf '%s\n' '{"data":{"user":{"role":"director","campuses":[16]}}}'
+  else
+    printf '%s\n' "{\"data\":{\"user\":{\"role\":\"director\",\"campuses\":[16],\"must_change_password\":$must_change}}}"
+  fi
+}
+
+for must_change in false true null '"false"' missing; do
+  login_response "$must_change" > "$tmp_dir/must-change-$must_change.json"
+  if [ "$must_change" = false ]; then
+    acceptance_login_response_authorized "$tmp_dir/must-change-$must_change.json" 16
+  elif acceptance_login_response_authorized "$tmp_dir/must-change-$must_change.json" 16; then
+    echo "must_change_password=$must_change unexpectedly passed" >&2
+    exit 1
+  fi
+done
+
+product_acceptance_started=0
+run_after_login() {
+  local status="$1"
+  if [ "$status" != 200 ]; then
+    return 1
+  fi
+  product_acceptance_started=1
+}
+if run_after_login 401; then
+  echo '401 unexpectedly entered acceptance' >&2
+  exit 1
+fi
+test "$product_acceptance_started" -eq 0
+
 printf '%s\n' '{"errors":{"account":["redacted"],"password":["redacted"]},"code":"not-allowlisted","message":"must not be printed"}' > "$tmp_dir/rejected.json"
 test "$(acceptance_login_response_taxonomy "$tmp_dir/rejected.json")" = 'json=valid errors=account,password code=none'
 

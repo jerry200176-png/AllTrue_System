@@ -41,3 +41,23 @@ acceptance_login_response_taxonomy() {
     end
   ' "$response_file" 2>/dev/null || printf '%s\n' 'json=unparseable errors=none code=none'
 }
+
+acceptance_login_response_authorized() {
+  local response_file="$1"
+  local branch_id="${2:-}"
+  jq -e '
+    (.data.user | type == "object") and
+    (.data.user.role | . == "director" or . == "super_admin") and
+    (.data.user.campuses | type == "array" and length > 0 and all(.[]; type == "number" and floor == . and . > 0))
+  ' "$response_file" >/dev/null 2>/dev/null || return 1
+  jq -e '.data.user.must_change_password == false' "$response_file" >/dev/null 2>/dev/null || return 1
+
+  local session_role
+  session_role="$(jq -er '.data.user.role' "$response_file")" || return 1
+  if [ "$session_role" != director ] && [ "$session_role" != super_admin ]; then
+    return 1
+  fi
+  if [ -n "$branch_id" ]; then
+    jq -e --argjson branch "$branch_id" '.data.user.campuses | index($branch) != null' "$response_file" >/dev/null 2>/dev/null || return 1
+  fi
+}
