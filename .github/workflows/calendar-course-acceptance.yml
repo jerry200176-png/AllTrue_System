@@ -205,7 +205,7 @@ jobs:
               printf '%s' "$diagnosis_output" | jq -e . > "$RUNNER_TEMP/alltrue-401-diagnosis.json"
               if ! acceptance_login_401_diagnosis_result_valid "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"; exit 1; fi
               diagnosis_summary="$(jq -r 'to_entries | map(\"\(.key)=\(.value)\") | join(\" \")' "$RUNNER_TEMP/alltrue-401-diagnosis.json")"
-              acceptance_stage "login_401_diagnosis \${diagnosis_summary}"
+              acceptance_stage "login_401_diagnosis ${diagnosis_summary}"
               rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json"
             fi
             rm -f "$login_response"
