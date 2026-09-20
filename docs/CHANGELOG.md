@@ -1,3 +1,7 @@
+## 2026-09-21 — fix(course-mgmt): makeup sessions keep assessments pending by default (in-app #330)
+<!-- release-notes: staff_update=staff-2026-09-21-makeup-assessment-pending-330 -->
+- 補排／補登已結束堂次時，若未明確選擇自動核准，評量會保留待填／待審，不再因日期已過而默默核准；既有明確勾選的核准流程不變。
+
 ## 2026-09-20 — fix(calendar): print timetable uses Chinese class-type labels (in-app #336)
 <!-- release-notes: staff_update=staff-2026-09-20-calendar-print-localization-336 -->
 - 列印課表遇到內部班型代碼時，改沿用既有中文班型標籤（例如一對三），不再把 `one_on_three` 等系統代碼直接印給主任。

@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.21",
+    "date": "2026-09-21",
+    "title": "2026.09.21 草稿（未發布）",
+    "summary": "sessions keep assessments pending by default",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "sessions keep assessments pending by default"
+        ]
+      }
+    ],
+    "items": [
+      "sessions keep assessments pending by default"
+    ]
+  },
+  {
     "version": "2026.09.20",
     "date": "2026-09-20",
     "title": "2026.09.20 草稿（未發布）",
@@ -681,52 +703,6 @@ export const changelogDraftNotes = [
       "多科共用方案分離購買、已用與未來預排堂數",
       "月結請假維持合約日期邊界",
       "activate admissions flags"
-    ]
-  },
-  {
-    "version": "2026.09.03",
-    "date": "2026-09-03",
-    "title": "2026.09.03 草稿（未發布）",
-    "summary": "Guardian canonical Portal cutover；Portal multi-guardian dual-read authZ",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "Guardian canonical Portal cutover",
-          "Portal multi-guardian dual-read authZ",
-          "學生管理多家長 CRUD（flag 閘控）",
-          "多 Guardian 加法模型與雙寫雙讀（dark launch）"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "學生頁家長欄與監護人 SSOT（去重）",
-          "失敗 dry-run 支援受控重試並保留歷史 attempt",
-          "多家長 LINE 綁定通知與偏好一致性"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
-        ]
-      }
-    ],
-    "items": [
-      "Guardian canonical Portal cutover",
-      "Portal multi-guardian dual-read authZ",
-      "學生管理多家長 CRUD（flag 閘控）",
-      "多 Guardian 加法模型與雙寫雙讀（dark launch）",
-      "學生頁家長欄與監護人 SSOT（去重）",
-      "失敗 dry-run 支援受控重試並保留歷史 attempt",
-      "多家長 LINE 綁定通知與偏好一致性",
-      "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
     ]
   }
 ];
