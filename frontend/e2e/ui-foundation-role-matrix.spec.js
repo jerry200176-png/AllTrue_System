@@ -335,8 +335,13 @@ async function runPopulatedParentPortal(page, viewport) {
     expect(Number.parseFloat(focusStyle.outlineWidth), `attention item ${index} focus width at ${viewport.width}`).toBeGreaterThanOrEqual(3);
   }
   await page.screenshot({ path: `/tmp/parent-attention-after-${viewport.width}.png`, fullPage: true });
-  await attentionItems.first().click();
+  const feedbackAttentionItem = attentionItems.filter({ hasText: '有學習評量可以留言' });
+  await expect(feedbackAttentionItem).toHaveCount(1);
+  await feedbackAttentionItem.click();
   await expect(page.locator('#parent-tab-learning')).toHaveAttribute('aria-selected', 'true');
+  const pendingFeedbackRecord = page.locator('.pp-report').filter({ hasText: '英文' }).first();
+  await expect(pendingFeedbackRecord.locator('.pp-feedback-box')).toBeVisible();
+  await expect(pendingFeedbackRecord.locator('textarea[aria-label="給老師的回饋"]')).toBeFocused();
   await page.keyboard.press('Tab');
   await page.screenshot({ path: `/tmp/parent-header-after-${viewport.width}.png`, fullPage: false });
 
@@ -371,7 +376,7 @@ async function runPopulatedParentPortal(page, viewport) {
   expect(focusStyle.minHeight).toBeGreaterThanOrEqual(52);
   await learningTab.click();
 
-  const firstRecord = page.locator('.pp-report').first();
+  const firstRecord = page.locator('.pp-report').filter({ hasText: '數學' }).first();
   await expect(firstRecord).toBeVisible();
   await firstRecord.locator('.pp-expand-icon').click();
   await expect(firstRecord.getByText('完成分數應用題與錯題訂正。', { exact: true })).toBeVisible();
@@ -384,7 +389,8 @@ async function runPopulatedParentPortal(page, viewport) {
   await expect(firstRecord).toContainText('謝謝老師，我們會繼續複習。');
   await page.screenshot({ path: `/tmp/parent-portal-populated-${viewport.width}.png`, fullPage: true });
 
-  await page.getByRole('button', { name: /載入更多/ }).click();
+  const loadMoreButton = page.getByRole('button', { name: /載入更多/ });
+  if (await loadMoreButton.count()) await loadMoreButton.click();
   await expect(page.locator('.pp-report')).toHaveCount(2);
   await expect(page.locator('.pp-lr-subject-heading').filter({ hasText: '英文' })).toBeVisible();
   expect(dashboardCalls.some((call) => call.page === 2)).toBe(true);
