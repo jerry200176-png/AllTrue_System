@@ -96,6 +96,8 @@ jobs:
           grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
+          grep -Fq "acceptance_login_http_status_allows_acceptance \"\$login_status\"" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "jq -e '.data.user.must_change_password == false'" scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "--rawfile account /dev/fd/9" .github/workflows/calendar-course-acceptance.yml
@@ -171,7 +173,7 @@ jobs:
           fi
           login_status="$STAGE_OUTPUT"
           acceptance_stage "login_http_status=${login_status}"
-          if [ "$login_status" != 200 ]; then
+          if ! acceptance_login_http_status_allows_acceptance "$login_status"; then
             response_taxonomy="$(acceptance_login_response_taxonomy "$login_response")"
             acceptance_stage "login_http_rejected status=${login_status} ${response_taxonomy}"
             rm -f "$login_response"
@@ -255,19 +257,7 @@ jobs:
           }
           trap revoke_step_token EXIT
           trap 'rc=$?; trap - ERR; exit "$rc"' ERR
-          jq -e '
-            (.data.user | type == "object") and
-            (.data.user.role | . == "director" or . == "super_admin") and
-            (.data.user.must_change_password == false) and
-            (.data.user.campuses | type == "array" and length > 0 and all(.[]; type == "number" and floor == . and . > 0))
-          ' "$login_response" >/dev/null
-          session_role="$(jq -er '.data.user.role' "$login_response")"
-          test "$session_role" = director || test "$session_role" = super_admin
-          session_must_change="$(jq -er '.data.user.must_change_password' "$login_response")"
-          test "$session_must_change" = false
-          if [ -n "$BRANCH_ID" ]; then
-            jq -e --argjson branch "$BRANCH_ID" '.data.user.campuses | index($branch) != null' "$login_response" >/dev/null
-          fi
+          acceptance_login_response_authorized "$login_response" "$BRANCH_ID"
           acceptance_stage login_authorization_valid
           rm -f "$login_request" "$login_response"
           acceptance_stage session_ssh_start
