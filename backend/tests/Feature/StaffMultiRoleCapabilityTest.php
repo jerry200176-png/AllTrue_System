@@ -51,8 +51,8 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $user = $this->makeUser('T');
         $this->grant($user->id, 'teacher', 1);
         $resolved = app(StaffCapabilityAuthorizer::class)->resolve($user, 'director');
-        $this->assertSame('teacher', $resolved['role']);
-        $this->assertSame((int) $user->id, $resolved['teacher_id']);
+        $this->assertSame('forbidden', $resolved['role']);
+        $this->assertTrue($resolved['context_denied']);
     }
     public function test_flag_off_preserves_legacy_type_mapping(): void
     {
@@ -63,12 +63,12 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $this->grant($user->id, 'director', 1);
         $this->assertFalse(app(StaffCapabilityAuthorizer::class)->enabled());
         $token = $this->tokenFor($user);
-        $this->withHeaders($this->bearer($token, null))
+        $response = $this->withHeaders($this->bearer($token, null))
             ->getJson('/api/v1/me')
             ->assertOk()
             ->assertJsonPath('id', $user->id)
-            ->assertJsonPath('role', 'teacher')
-            ->assertJsonMissingPath('capabilities');
+            ->assertJsonPath('role', 'teacher');
+        $this->assertArrayNotHasKey('capabilities', $response->json());
     }
     public function test_me_exposes_capability_map_and_honors_acting_as_context(): void
     {
