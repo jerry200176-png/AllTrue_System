@@ -65,7 +65,7 @@ function fakeStudents(count, { longName = false } = {}) {
   }));
 }
 
-async function installApiMocks(page, mode, pageName = '') {
+async function installApiMocks(page, mode, pageName = '', authProfile = null, onAuthRequest = null) {
   const hang = mode === 'loading';
   let manualBookingCheckCount = 0;
   let releaseHang;
@@ -78,6 +78,26 @@ async function installApiMocks(page, mode, pageName = '') {
     const p = url.pathname;
     const method = route.request().method();
     const requestedPage = Number(url.searchParams.get('page') || 1);
+
+    if (authProfile && p.endsWith('/me')) {
+      const headers = route.request().headers();
+      const actingAs = headers['x-acting-as'] === 'teacher' ? 'teacher' : 'director';
+      onAuthRequest?.({ actingAs, userId: authProfile.userId });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: authProfile.userId,
+          name: 'E2E Dual Staff',
+          role: actingAs,
+          acting_as: actingAs,
+          campuses: actingAs === 'teacher' ? [1] : [1, 2],
+          capability_campuses: { director: [1, 2], teacher: [1] },
+          capabilities: authProfile.capabilities,
+          must_change_password: false,
+        }),
+      });
+    }
 
     if (pageName === 'course' && mode === 'booking-race' && method === 'POST' && p.includes('/manual-sessions/check')) {
       manualBookingCheckCount += 1;
@@ -461,9 +481,14 @@ async function installApiMocks(page, mode, pageName = '') {
   return { releaseHang: () => releaseHang?.() };
 }
 
-async function openPilot(page, { pageName, mode, viewport }) {
+async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  const mocks = await installApiMocks(page, mode, pageName);
+  const mocks = await installApiMocks(page, mode, pageName, authProfile, authProfile?.onAuthRequest);
+  if (authProfile?.initialActingAs) {
+    await page.addInitScript((actingAs) => {
+      localStorage.setItem('alltrue_acting_as', actingAs);
+    }, authProfile.initialActingAs);
+  }
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
@@ -1147,5 +1172,38 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.getByText('課表異常待處理', { exact: true })).toBeVisible();
     await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary')).toHaveCount(2);
     await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary').first()).not.toHaveAttribute('open', '');
+  });
+
+  test('dual-capability staff keeps one identity while switching scoped work context', async ({ page }) => {
+    const meRequests = [];
+    await openPilot(page, {
+      pageName: 'app',
+      mode: 'normal',
+      viewport: { width: 1440, height: 900 },
+      authProfile: {
+        userId: 9901,
+        capabilities: ['director', 'teacher'],
+        initialActingAs: 'director',
+        onAuthRequest: (request) => meRequests.push(request),
+      },
+    });
+
+    const modeSwitch = page.locator('[data-guide="app-staff-mode-switch"]');
+    await expect(modeSwitch).toBeVisible({ timeout: 15_000 });
+    await expect(modeSwitch.locator('button')).toHaveCount(2);
+    await expect(modeSwitch.locator('button').filter({ hasText: '主任' })).toHaveClass(/active/);
+    expect(meRequests[0]).toEqual({ actingAs: 'director', userId: 9901 });
+
+    await modeSwitch.locator('button').filter({ hasText: '老師' }).click();
+    await expect(page.locator('.user-role').first()).toContainText('老師');
+    await expect.poll(() => meRequests.at(-1)?.actingAs).toBe('teacher');
+    expect(meRequests.every((request) => request.userId === 9901)).toBe(true);
+    await expect(modeSwitch.locator('button').filter({ hasText: '老師' })).toHaveClass(/active/);
+
+    await modeSwitch.locator('button').filter({ hasText: '主任' }).click();
+    await expect(page.locator('.user-role').first()).toContainText('主任');
+    await expect.poll(() => meRequests.at(-1)?.actingAs).toBe('director');
+    expect(meRequests.every((request) => request.userId === 9901)).toBe(true);
+    await expect(modeSwitch.locator('button').filter({ hasText: '主任' })).toHaveClass(/active/);
   });
 });
