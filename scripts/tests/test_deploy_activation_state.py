@@ -1096,6 +1096,33 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("mode == 'awaiting-activation'", deploy)
         self.assertLess(deploy.index("needs.production-activation.result == 'success'"), deploy.index("- name: Setup SSH"))
 
+    def test_protected_activation_queue_cancels_stale_waiting_targets(self):
+        gate_start = self.workflow.index("  production-activation:\n")
+        deploy_start = self.workflow.index("  deploy:\n")
+        gate = self.workflow[gate_start:deploy_start]
+        self.assertIn("concurrency:\n      group: alltrue-production-activation-gate", gate)
+        self.assertIn("cancel-in-progress: true", gate)
+        self.assertIn("newer exact-main target supersedes an older approval request", gate)
+        # The gate remains an environment-protected reviewer boundary; queue
+        # coalescing must not turn it into an auto-approval path.
+        self.assertIn("environment:\n      name: production-activation", gate)
+        self.assertNotIn("approved", gate.split("concurrency:", 1)[1].split("environment:", 1)[0])
+
+    def test_production_executor_has_bounded_runner_and_ssh_keepalive(self):
+        deploy_start = self.workflow.index("  deploy:\n")
+        parent_smoke_start = self.workflow.index("  parent-portal-smoke:\n")
+        deploy = self.workflow[deploy_start:parent_smoke_start]
+        self.assertIn("timeout-minutes: 30", deploy)
+        for option in (
+            "-o BatchMode=yes",
+            "-o ConnectTimeout=20",
+            "-o ServerAliveInterval=15",
+            "-o ServerAliveCountMax=4",
+            "-o IdentitiesOnly=yes",
+        ):
+            with self.subTest(option=option):
+                self.assertIn(option, deploy)
+
     def test_pop_bootstrap_is_a_protected_host_local_executor(self):
         self.assertIn("  pop-bootstrap:", self.workflow)
         self.assertIn("name: Bootstrap POP machine on Pi", self.workflow)
