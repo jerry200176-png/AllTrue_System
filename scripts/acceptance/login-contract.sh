@@ -30,6 +30,12 @@ acceptance_login_401_diagnosis_result_valid() {
   jq -e 'type == "object" and (keys | sort) == ["active_director_rows", "approved_branch_16_rows", "matching_rows", "must_change_password_required_rows"] and all(.[]; type == "number" and floor == . and . >= 0)' "$result_file" >/dev/null 2>/dev/null
 }
 
+acceptance_login_401_diagnosis_summary() {
+  local result_file="$1"
+  acceptance_login_401_diagnosis_result_valid "$result_file" || return 1
+  jq -r 'to_entries | sort_by(.key) | map(.key + "=" + (.value | tostring)) | join(" ")' "$result_file"
+}
+
 acceptance_extract_b64_json_marker() {
   local input_file="$1"
   local output_file="$2"

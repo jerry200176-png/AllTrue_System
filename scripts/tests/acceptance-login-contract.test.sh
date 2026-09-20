@@ -106,6 +106,7 @@ test "$product_acceptance_started" -eq 1
 
 printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1}' > "$tmp_dir/diagnosis-valid.json"
 acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-valid.json"
+test "$(acceptance_login_401_diagnosis_summary "$tmp_dir/diagnosis-valid.json")" = 'active_director_rows=1 approved_branch_16_rows=1 matching_rows=1 must_change_password_required_rows=0'
 printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1,"account":"forbidden"}' > "$tmp_dir/diagnosis-account.json"
 if acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-account.json"; then exit 1; fi
 
