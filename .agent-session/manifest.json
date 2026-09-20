@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "session_id": "cc10b767c5a74be896a09d5ab89ac336",
   "project": "alltrue",
-  "task_id": "deploy-gate-fix-20260920",
+  "task_id": "TKT-20260830-172428-ZZYG",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "231f0db3282cc79142e3b4c1a3a43cb472e25150",
   "branch": "exo/TKT-20260830-172428-ZZYG",
