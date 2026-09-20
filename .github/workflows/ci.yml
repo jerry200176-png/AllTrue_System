@@ -58,6 +58,7 @@ jobs:
           python3 scripts/tests/test_governance_simplification.py
           python3 scripts/tests/test_required_php_checks.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
+          bash scripts/tests/acceptance-login-contract.test.sh
 
       - name: Test control plane lint catches violations
         run: |
