@@ -211,7 +211,7 @@ async function runPopulatedParentPortal(page, viewport) {
         status_label: index === 2 ? '遲到' : '出席',
       })),
     ],
-    upcoming_sessions: [{ id: 6201, SessionDate: '2026-09-20', StartTime: '16:00', EndTime: '17:00', Status: 'scheduled', Subject: '數學' }],
+    upcoming_sessions: [{ id: 6201, SessionDate: '2099-09-20', StartTime: '16:00', EndTime: '17:00', Status: 'scheduled', Subject: '數學' }],
     classes: [],
     remaining_sessions_total: 0,
     remaining_by_subject: {},

@@ -48,7 +48,9 @@ const collectTests = (report) => {
 export function validateReport(report, branchId) {
   const actual = collectTests(report);
   const expected = expectedTests(branchId);
-  const key = (test) => JSON.stringify({ file: test.file, line: test.line, column: test.column, title: test.title, project: test.project });
+  // Source line/column are report metadata: unrelated edits may move them without
+  // changing which acceptance case ran. Keep file/title/project as the stable key.
+  const key = (test) => JSON.stringify({ file: test.file, title: test.title, project: test.project });
   const expectedKeys = new Set(expected.map(key));
   const actualKeys = new Set(actual.map(key));
   if (actual.length !== expected.length || actualKeys.size !== actual.length) {
@@ -84,6 +86,12 @@ function selfTest() {
   });
   validateReport(makeReport(16), 16);
   validateReport(makeReport(9), 9);
+  const lineShifted = makeReport(16);
+  lineShifted.suites[0].specs.forEach((spec) => { spec.line += 100; });
+  validateReport(lineShifted, 16);
+  const columnShifted = makeReport(16);
+  columnShifted.suites[0].specs.forEach((spec) => { spec.column += 2; });
+  validateReport(columnShifted, 16);
   const wrongIdentity = makeReport(16);
   wrongIdentity.suites[0].specs[0].title = 'wrong title';
   expectReject('wrong identity', () => validateReport(wrongIdentity, 16));
@@ -96,6 +104,9 @@ function selfTest() {
   const unexpectedIdentity = makeReport(16);
   unexpectedIdentity.suites[0].specs[0].file = 'unexpected.spec.js';
   expectReject('unexpected identity', () => validateReport(unexpectedIdentity, 16));
+  const wrongProject = makeReport(16);
+  wrongProject.suites[0].specs[0].tests[0].projectName = 'firefox';
+  expectReject('wrong project', () => validateReport(wrongProject, 16));
   expectReject('malformed reporter JSON', () => validateReport(JSON.parse('{'), 16));
   expectReject('wrong reporter JSON', () => validateReport({ reporter: 'not-playwright' }, 16));
   for (const status of ['skipped', 'unexpected', 'flaky']) {

@@ -53,6 +53,8 @@ const pageModules = {
   'line-integration': () => import('../../../src/pages/LineIntegration.vue'),
   'subject-settings': () => import('../../../src/pages/SubjectSettingsPage.vue'),
   'branch-management': () => import('../../../src/pages/BranchManagementPage.vue'),
+  'truefit-fixture': () => import('../../../src/pages/TrueFitPaperFixturePage.vue'),
+  'truefit-app': () => import('../../../src/pages/TrueFitApp.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -64,6 +66,9 @@ createApp({
   setup() {
     if (page === 'app') {
       return () => h(PageComponent);
+    }
+    if (page === 'truefit-app') {
+      return () => h(PageComponent, { token: 'e2e-foundation-token', branchId: 1 });
     }
     if (page === 'course-edit') {
       return () => h(PageComponent, {

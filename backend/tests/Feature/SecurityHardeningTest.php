@@ -321,7 +321,7 @@ class SecurityHardeningTest extends TestCase
     {
         config(['app.director_registration_token' => 'secret-invite-abc']);
 
-        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+        $response = $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
             ->postJson('/api/v1/directors/register', [
                 'account'   => 'newdir@x.com',
                 'password'  => 'Password1!',
@@ -337,7 +337,7 @@ class SecurityHardeningTest extends TestCase
     {
         config(['app.director_registration_token' => 'secret-invite-abc']);
 
-        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+        $response = $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
             ->postJson('/api/v1/directors/register', [
                 'account'            => 'newdir2@x.com',
                 'password'           => 'Password1!',
@@ -353,7 +353,7 @@ class SecurityHardeningTest extends TestCase
     {
         config(['app.director_registration_token' => 'secret-invite-abc']);
 
-        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+        $response = $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
             ->postJson('/api/v1/directors/register', [
                 'account'            => 'newdir3@x.com',
                 'password'           => 'Password1!',
@@ -362,6 +362,8 @@ class SecurityHardeningTest extends TestCase
                 'registration_token' => 'secret-invite-abc',
             ])
             ->assertStatus(201);
+        $this->assertIsInt($response->json('pending_application_id'));
+        $this->assertGreaterThan(0, $response->json('pending_application_id'));
     }
 
     /** @test */
@@ -370,7 +372,7 @@ class SecurityHardeningTest extends TestCase
         // Without DIRECTOR_REGISTRATION_TOKEN, endpoint is open (backward compatible).
         config(['app.director_registration_token' => null]);
 
-        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+        $response = $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
             ->postJson('/api/v1/directors/register', [
                 'account'   => 'opendir@x.com',
                 'password'  => 'Password1!',
@@ -378,6 +380,8 @@ class SecurityHardeningTest extends TestCase
                 'campus_id' => $this->campus->id,
             ])
             ->assertStatus(201);
+        $this->assertIsInt($response->json('pending_application_id'));
+        $this->assertGreaterThan(0, $response->json('pending_application_id'));
     }
 
     // ─── SEC-F3: /health public endpoint strips sensitive info ───────────────

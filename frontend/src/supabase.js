@@ -246,7 +246,16 @@ class QueryBuilder {
         // Read session token from localStorage and include in all requests
         const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
         const token = session?.access_token;
-        const authHeaders = token ? { 'Authorization': `Bearer ${token}` } : {};
+        let actingHeaders = {};
+        try {
+            const acting = localStorage.getItem('alltrue_acting_as');
+            if (acting === 'director' || acting === 'teacher') {
+                actingHeaders = { 'X-Acting-As': acting };
+            }
+        } catch { /* ignore */ }
+        const authHeaders = token
+            ? { 'Authorization': `Bearer ${token}`, ...actingHeaders }
+            : { ...actingHeaders };
 
         if (this._method === 'GET') {
             const params = new URLSearchParams(this._filters);

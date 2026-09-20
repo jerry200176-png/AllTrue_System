@@ -47,7 +47,7 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
    - GitHub 只放去識別化摘要與來源參照；不上傳個資、原始截圖、憑證、內部備註、未去識別化 dump。疑似安全／不可公開 → 既有受控途徑；否則明列例外。  
    - 更新前重讀 issue；只動本任務負責區塊；API timeout 先查是否已成功再決定是否重送。同 snapshot 重跑不新增重複 issue／相同留言。  
    - **Intake 完成 ≠ Phase A 完成**；正式分診、in-app 回寫、實作與部署仍依既有證據與授權。一筆發布／dogfood blocked 不擋其他回報同步。  
-4. **分類**（政策表）：`BUG_CLEAR` … `PLAN_REQUIRED` / `DEFER`。去重；不把 deferred 當完成。  
+4. **分類與根因深度**（政策表）：`BUG_CLEAR` … `PLAN_REQUIRED` / `DEFER`。去重；記錄 observed failure → direct cause → recurrence family → prevention，證據只能支持到哪一層就寫到哪一層；不把 deferred、症狀遮蔽或 GitHub closed 當完成。
 5. **選工**：傷害 × 頻率 × 價值 × 風險 × 依賴 × 現有 WIP；碰撞則換下一筆非衝突項。需要強模型規劃的走既有模型路由；不得把非 Founder gate 的項全部標成等待 Founder。  
 6. **執行信封**（難度軸 ≠ 授權軸；詳見跨產品契約，勿在此複製路由表）：  
    - Auto-fix：政策 13 條全過 → **既有已批准輕量實作 profile** 端到端（含 release 驗證）；不強制九面向長報告。  
@@ -55,9 +55,9 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
    - `PLAN_REQUIRED`：Decision Packet（證據、選項、推薦、驗收、資料操作、恢復）；**Agent 自行蒐證與推薦**；Founder 決策；ChatGPT **可選顧問**，非必經關卡。不得把 `PLAN_REQUIRED` 改名來取消 Founder gate。  
    - 路由／Plan handoff 契約（portfolio-ops）：`docs/model-routed-product-delivery.md` + `docs/templates/strong-plan-handoff.md`；本機 `model-route-resolve`／`codex-route`。  
 7. **發佈**：只走 canonical `deploy.yml`／既有 environment gate；**不** Pi SSH；**不**把本 skill 當 production 授權。  
-8. **驗證**：公開 `version.json` / `deployment.json` / health；區分 **merged ≠ deployed ≠ runtime verified ≠ 已回覆**。  
-9. **回寫**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。  
-10. **續跑**：一張 PR 完成不是停點；繼續下一筆已授權、無衝突工作。第一項 blocked（等 Founder）時，推進其他合法項。
+8. **驗證**：公開 `version.json` / `deployment.json` / health + 受影響的真實使用者路徑；UI 可讀性不能只用「沒有 overflow」驗收。區分 **implemented ≠ merged ≠ deployed ≠ runtime verified ≠ operationally accepted ≠ 已回覆**。
+9. **回寫與學習**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。依 recurrence evidence 補 regression test／共用 authority／`AI_REGRESSION_LESSONS`／tech debt；未根治就明列剩餘風險。
+10. **續跑與重核**：一張 PR 完成不是停點；繼續下一筆已授權、無衝突工作。第一項 blocked（等 Founder）時，推進其他合法項。結束前重取同口徑 snapshot，分開本輪處理、新進、open/resolved/closed coverage，逐筆留下真實 next action。
 
 ## 5. Authority & roles
 
@@ -93,11 +93,12 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
 
 ## 8. Exit criteria（單筆訊號）
 
-- [ ] 分類與追蹤路徑可核對  
-- [ ] 測試／review／CI 依風險完成  
-- [ ] 若宣稱上線：deployed SHA + health + 使用者路徑證據  
-- [ ] in-app 回寫符合 §3.7；`product_loop` 語意正確（SHIPPED 需 production SHA）  
-- [ ] checkpoint／delivery 證據已更新；下一筆已授權工作已接或明確標 blocked 範圍
+- [ ] SourceRef → issue → Plan/not-required → PR/head → CI/review → merge → deploy → runtime → acceptance → writeback 可逐段核對；未知階段明標 `UNKNOWN`／`UNVERIFIED`
+- [ ] 根因深度與 recurrence search 有記錄；有相稱的防再犯 artifact，或明列 canonical debt/defer 與剩餘風險
+- [ ] 測試／review／CI 依風險完成；測試涵蓋實際失敗角色、分校或資料形狀
+- [ ] 若宣稱上線：deployed SHA + health + 使用者路徑證據；若宣稱 operationally accepted，另有產品驗收證據
+- [ ] in-app 回寫符合 §3.7；`product_loop` 語意正確（SHIPPED 需 production SHA）；reporter verification 不由 Agent 代填
+- [ ] checkpoint／delivery 證據已更新；結束 snapshot 已區分本輪處理與新進；下一筆已授權工作已接或明確標 blocked 範圍
 
 ## 9. Optional: Graphify code-nav (not authority)
 
