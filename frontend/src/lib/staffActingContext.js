@@ -2,18 +2,14 @@
  * Staff multi-role acting context (in-app #299 Phase B).
  * Client-stored acting_as is context only — server validates capability + campus scope.
  */
-
 export const ACTING_AS_STORAGE_KEY = 'alltrue_acting_as';
 export const ACTING_AS_HEADER = 'X-Acting-As';
-
 const VALID = new Set(['director', 'teacher']);
-
 export function normalizeActingAs(value) {
   if (value == null || value === '') return null;
   const v = String(value).trim().toLowerCase();
   return VALID.has(v) ? v : null;
 }
-
 export function readStoredActingAs(storage = globalThis.localStorage) {
   try {
     return normalizeActingAs(storage?.getItem?.(ACTING_AS_STORAGE_KEY));
@@ -21,7 +17,6 @@ export function readStoredActingAs(storage = globalThis.localStorage) {
     return null;
   }
 }
-
 export function writeStoredActingAs(value, storage = globalThis.localStorage) {
   const next = normalizeActingAs(value);
   try {
@@ -33,7 +28,6 @@ export function writeStoredActingAs(value, storage = globalThis.localStorage) {
   }
   return next;
 }
-
 /**
  * Prefer explicit dual-capability context; omit header when absent so shared APIs
  * can resolve without failing merely because acting_as is missing.
@@ -42,13 +36,11 @@ export function actingAsHeaders(actingAs = readStoredActingAs()) {
   const normalized = normalizeActingAs(actingAs);
   return normalized ? { [ACTING_AS_HEADER]: normalized } : {};
 }
-
 export function canSwitchStaffMode(capabilities) {
   if (!Array.isArray(capabilities)) return false;
   const caps = new Set(capabilities.map((c) => String(c).toLowerCase()));
   return caps.has('director') && caps.has('teacher');
 }
-
 /**
  * Add the selected acting context to direct same-origin API calls too.
  * The query-builder client already does this itself, but several legacy
@@ -59,7 +51,6 @@ export function installActingAsFetchBridge(target = globalThis) {
   if (!target?.fetch || target.__alltrueActingAsFetchBridge) return;
   const HeadersCtor = target.Headers || globalThis.Headers;
   if (typeof HeadersCtor !== 'function') return;
-
   const originalFetch = target.fetch.bind(target);
   target.fetch = (input, init = {}) => {
     let url;
@@ -69,7 +60,6 @@ export function installActingAsFetchBridge(target = globalThis) {
     } catch {
       return originalFetch(input, init);
     }
-
     const origin = target.location?.origin;
     const isApiRequest = origin && url.origin === origin
       && url.pathname.startsWith('/api/v1/')
@@ -77,7 +67,6 @@ export function installActingAsFetchBridge(target = globalThis) {
     const hasSession = Boolean(target.localStorage?.getItem?.('alltrue_session'));
     const actingAs = hasSession ? readStoredActingAs(target.localStorage) : null;
     if (!isApiRequest || !actingAs) return originalFetch(input, init);
-
     const headers = new HeadersCtor(input?.headers || undefined);
     new HeadersCtor(init?.headers || undefined).forEach((value, key) => headers.set(key, value));
     if (!headers.has(ACTING_AS_HEADER)) headers.set(ACTING_AS_HEADER, actingAs);
