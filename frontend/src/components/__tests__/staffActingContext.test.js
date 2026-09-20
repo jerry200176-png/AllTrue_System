@@ -59,6 +59,6 @@ describe('staffActingContext', () => {
     target.fetch('/api/v1/students', { headers: { Accept: 'application/json' } });
     expect(calls[0][1].headers.get(ACTING_AS_HEADER)).toBe('teacher');
     target.fetch('https://cdn.example.test/widget.js', { headers: {} });
-    expect(calls[1][1].headers.get(ACTING_AS_HEADER)).toBe(null);
+    expect(calls[1][1].headers[ACTING_AS_HEADER]).toBeUndefined();
   });
 });
