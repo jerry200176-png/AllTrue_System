@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "bbe3e09cbd154aa191abed3979722083",
+  "session_id": "9d7410a486334cccba304af820b17a12",
   "project": "alltrue",
-  "task_id": "truefit-paper-ai-proposal-20260920",
+  "task_id": "inapp-325-parse-hotfix-20260920",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "ea2a4dc4c3c591826fe002c1dbe6604f1385314b",
-  "branch": "chore/task-truefit-paper-ai-proposal-20260920",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/truefit-paper-ai-proposal-20260920",
-  "started_at": "2026-09-20T01:22:08Z",
+  "base_sha": "7f825030ba40453a86822df7d727522e5f95ae0d",
+  "branch": "chore/task-inapp-325-parse-hotfix-20260920",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-325-parse-hotfix-20260920",
+  "started_at": "2026-09-20T01:07:05Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.1"
 }
