@@ -7,7 +7,11 @@ source "$ROOT_DIR/scripts/acceptance/login-contract.sh"
 
 workflow_file="$ROOT_DIR/.github/workflows/calendar-course-acceptance.yml"
 grep -Fq 'php -d display_errors=0 -d log_errors=1 /dev/fd/3' "$workflow_file"
-grep -Fq 'jq -e . "$diagnosis_raw"' "$workflow_file"
+grep -Fq 'ALLTRUE_401_DIAGNOSIS_V1=' "$workflow_file"
+grep -Fq 'acceptance_extract_b64_json_marker "$diagnosis_raw"' "$workflow_file"
+grep -Fq 'timeout --signal=TERM --kill-after=5s 30s ssh' "$workflow_file"
+grep -Fq 'head -c 16385' "$workflow_file"
+grep -Fq 'shape=capture_or_limit' "$workflow_file"
 
 unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
 SMOKE_DIRECTOR_PASSWORD=placeholder
@@ -102,8 +106,29 @@ test "$product_acceptance_started" -eq 1
 
 printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1}' > "$tmp_dir/diagnosis-valid.json"
 acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-valid.json"
+test "$(acceptance_login_401_diagnosis_summary "$tmp_dir/diagnosis-valid.json")" = 'active_director_rows=1 approved_branch_16_rows=1 matching_rows=1 must_change_password_required_rows=0'
 printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1,"account":"forbidden"}' > "$tmp_dir/diagnosis-account.json"
 if acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-account.json"; then exit 1; fi
+
+diagnosis_payload="$(base64 -w0 "$tmp_dir/diagnosis-valid.json")"
+printf 'remote banner\nALLTRUE_401_DIAGNOSIS_V1=%s\nremote footer\n' "$diagnosis_payload" > "$tmp_dir/diagnosis-framed.txt"
+acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-framed.txt" "$tmp_dir/diagnosis-extracted.json" 'ALLTRUE_401_DIAGNOSIS_V1='
+acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-extracted.json"
+
+printf 'ALLTRUE_401_DIAGNOSIS_V1=%s\nALLTRUE_401_DIAGNOSIS_V1=%s\n' "$diagnosis_payload" "$diagnosis_payload" > "$tmp_dir/diagnosis-duplicate.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-duplicate.txt" "$tmp_dir/diagnosis-duplicate.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf '%s\n' 'ALLTRUE_401_DIAGNOSIS_V1=not-base64!' > "$tmp_dir/diagnosis-invalid-base64.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-invalid-base64.txt" "$tmp_dir/diagnosis-invalid-base64.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf 'ALLTRUE_401_DIAGNOSIS_V1=%s\n' "$(printf 'not-json' | base64 -w0)" > "$tmp_dir/diagnosis-invalid-json.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-invalid-json.txt" "$tmp_dir/diagnosis-invalid-json.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf 'ALLTRUE_401_DIAGNOSIS_V1=%s\n' "$(printf '{}\n{}\n' | base64 -w0)" > "$tmp_dir/diagnosis-multiple-json.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-multiple-json.txt" "$tmp_dir/diagnosis-multiple-json.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf 'ALLTRUE_401_DIAGNOSIS_V1=%s\n' "$(printf '[]' | base64 -w0)" > "$tmp_dir/diagnosis-array-json.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-array-json.txt" "$tmp_dir/diagnosis-array-json.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf '%*s\n' 17000 '' > "$tmp_dir/diagnosis-oversized.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-oversized.txt" "$tmp_dir/diagnosis-oversized.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
+printf '%s\n' 'noise only' > "$tmp_dir/diagnosis-missing.txt"
+if acceptance_extract_b64_json_marker "$tmp_dir/diagnosis-missing.txt" "$tmp_dir/diagnosis-missing.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then exit 1; fi
 
 printf '%s\n' '{"errors":{"account":["redacted"],"password":["redacted"]},"code":"not-allowlisted","message":"must not be printed"}' > "$tmp_dir/rejected.json"
 test "$(acceptance_login_response_taxonomy "$tmp_dir/rejected.json")" = 'json=valid errors=account,password code=none'

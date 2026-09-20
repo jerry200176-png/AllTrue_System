@@ -54,11 +54,13 @@ jobs:
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
           node scripts/ci/inapp-product-loop-entry.test.mjs
+          node --test scripts/tests/register-synthetic-director.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
           python3 scripts/tests/test_required_php_checks.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
+          bash scripts/tests/synthetic-director-workflow-contract.test.sh
 
       - name: Test control plane lint catches violations
         run: |
