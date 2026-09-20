@@ -25,6 +25,11 @@ acceptance_login_http_status_allows_acceptance() {
   [ "${1:-}" = 200 ]
 }
 
+acceptance_login_401_diagnosis_result_valid() {
+  local result_file="$1"
+  jq -e 'type == "object" and (keys | sort) == ["active_director_rows", "approved_branch_16_rows", "matching_rows", "must_change_password_required_rows"] and all(.[]; type == "number" and floor == . and . >= 0)' "$result_file" >/dev/null 2>/dev/null
+}
+
 acceptance_login_response_taxonomy() {
   local response_file="$1"
   if [ ! -s "$response_file" ] || ! grep -q '[^[:space:]]' "$response_file"; then

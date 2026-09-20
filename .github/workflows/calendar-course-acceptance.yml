@@ -97,6 +97,7 @@ jobs:
           grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
           grep -Fq "acceptance_login_http_status_allows_acceptance \"\$login_status\"" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_login_401_diagnosis_result_valid' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "jq -e '.data.user.must_change_password == false'" scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
@@ -176,6 +177,34 @@ jobs:
           if ! acceptance_login_http_status_allows_acceptance "$login_status"; then
             response_taxonomy="$(acceptance_login_response_taxonomy "$login_response")"
             acceptance_stage "login_http_rejected status=${login_status} ${response_taxonomy}"
+            if [ "$login_status" = 401 ]; then
+              acceptance_stage login_401_diagnosis_start
+              diagnosis_output="$({
+                jq -er '.account' "$login_request"
+                cat <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php /dev/fd/3 0<&4 3<<'PHP'
+          <?php
+          define('LARAVEL_START', microtime(true));
+          $base = getcwd(); require $base . '/vendor/autoload.php';
+          $app = require_once $base . '/bootstrap/app.php';
+          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class); $kernel->bootstrap();
+          $account = trim((string) fgets(STDIN));
+          if ($account === '' || strlen($account) > 128) { throw new \RuntimeException('invalid diagnosis input'); }
+          $matching = \Illuminate\Support\Facades\DB::table('User')->where(function ($q) use ($account) { $q->where('LoginName', $account)->orWhere('Name', $account); });
+          $active = (clone $matching)->where(function ($q) { $q->whereNull('status')->orWhereNotIn('status', ['inactive', 'suspended']); });
+          $approved = \Illuminate\Support\Facades\DB::table('User as u')->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')->where(function ($q) use ($account) { $q->where('u.LoginName', $account)->orWhere('u.Name', $account); })->where(function ($q) { $q->whereNull('u.status')->orWhereNotIn('u.status', ['inactive', 'suspended']); })->where('u.type', 'D')->where('uc.CampusID', 16)->where('uc.Approved', 1)->count();
+          echo json_encode(['matching_rows' => (int) $matching->count(), 'active_director_rows' => (int) (clone $active)->where('type', 'D')->count(), 'must_change_password_required_rows' => (int) (clone $active)->where('type', 'D')->where('MustChangePassword', true)->count(), 'approved_branch_16_rows' => (int) $approved], JSON_THROW_ON_ERROR) . PHP_EOL;
+          PHP
+          REMOTE
+              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT; test -n \"\$LOGIN_ACCOUNT\"; exec 4<<<\"\$LOGIN_ACCOUNT\"; exec bash -s'" 2>/dev/null
+              })"
+              printf '%s' "$diagnosis_output" | jq -e . > "$RUNNER_TEMP/alltrue-401-diagnosis.json"
+              if ! acceptance_login_401_diagnosis_result_valid "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"; exit 1; fi
+              acceptance_stage "login_401_diagnosis $(jq -r 'to_entries | map(\"\(.key)=\(.value)\") | join(" ")' "$RUNNER_TEMP/alltrue-401-diagnosis.json")"
+              rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json"
+            fi
             rm -f "$login_response"
             exit 1
           fi

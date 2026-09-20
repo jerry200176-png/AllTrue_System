@@ -90,6 +90,11 @@ fi
 product_acceptance_started=1
 test "$product_acceptance_started" -eq 1
 
+printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1}' > "$tmp_dir/diagnosis-valid.json"
+acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-valid.json"
+printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1,"account":"forbidden"}' > "$tmp_dir/diagnosis-account.json"
+if acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-account.json"; then exit 1; fi
+
 printf '%s\n' '{"errors":{"account":["redacted"],"password":["redacted"]},"code":"not-allowlisted","message":"must not be printed"}' > "$tmp_dir/rejected.json"
 test "$(acceptance_login_response_taxonomy "$tmp_dir/rejected.json")" = 'json=valid errors=account,password code=none'
 
