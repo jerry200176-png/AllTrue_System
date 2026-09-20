@@ -1561,19 +1561,16 @@ jobs:
                 }})
                 ->get(["id"]);
               $studentRows338 = $db::table("Student")
-                ->whereRaw("TRIM(name) = ?", [$studentName338])
+                ->whereRaw("TRIM(name) LIKE ?", ["%".$studentName338."%"])
                 ->get(["id", "CampusID"]);
               $probe338["matched_teacher_count"] = $teacherRows338->count();
               $probe338["matched_student_count"] = $studentRows338->count();
-              if ($teacherRows338->count() !== 1 || $studentRows338->count() !== 1) {{
-                throw new \\RuntimeException("target identity match is not unique");
+              if ($studentRows338->count() !== 1) {{
+                throw new \\RuntimeException("target student identity match is not unique");
               }}
 
-              $teacherId338 = (int)$teacherRows338->first()->id;
               $studentId338 = (int)$studentRows338->first()->id;
               $service338 = app(\\App\\Services\\SubstituteService::class);
-              $withStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], $studentId338);
-              $withoutStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], null);
               $summarize338 = function (array $slots) use ($targetStart338, $targetEnd338, $bug) {{
                 $matching = collect($slots)->filter(function ($slot) use ($targetStart338, $targetEnd338) {{
                   return (string)($slot["start_time"] ?? "") === $targetStart338
@@ -1588,8 +1585,25 @@ jobs:
                   "target_campus_slot_count" => $local->count(),
                   "target_campus_one_on_three_count" => $oneOnThree->count(),
                   "remaining_capacity_values" => $remaining,
-                ];
-              }};
+                  ];
+                }};
+              $teacherSlotMatches338 = [];
+              foreach ($teacherRows338 as $teacherCandidate338) {{
+                $candidateSlots338 = $service338->collectTeacherBusySlotsWithCapacity(
+                  (int)$teacherCandidate338->id, $targetDate338, [], null
+                );
+                $candidateSummary338 = $summarize338($candidateSlots338);
+                if ($candidateSummary338["target_campus_one_on_three_count"] > 0) {{
+                  $teacherSlotMatches338[] = $teacherCandidate338;
+                }}
+              }}
+              $probe338["matched_teacher_target_slot_count"] = count($teacherSlotMatches338);
+              if (count($teacherSlotMatches338) !== 1) {{
+                throw new \\RuntimeException("target teacher match is not unique for the reported slot");
+              }}
+              $teacherId338 = (int)$teacherSlotMatches338[0]->id;
+              $withStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], $studentId338);
+              $withoutStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], null);
               $probe338["with_reported_student_excluded"] = $summarize338($withStudent338);
               $probe338["without_student_exclusion"] = $summarize338($withoutStudent338);
               $remainingAfterExclude338 = $probe338["with_reported_student_excluded"]["remaining_capacity_values"];
