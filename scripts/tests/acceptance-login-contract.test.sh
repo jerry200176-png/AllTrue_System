@@ -39,7 +39,7 @@ if acceptance_login_request_valid "$tmp_dir/whitespace-account.json"; then
   exit 1
 fi
 
-printf '%s\n' '{"account":"director\\nforged","password":"placeholder","role":"director"}' > "$tmp_dir/newline-account.json"
+printf '%s\n' '{"account":"director\nforged","password":"placeholder","role":"director"}' > "$tmp_dir/newline-account.json"
 if acceptance_login_request_valid "$tmp_dir/newline-account.json"; then
   echo 'newline account unexpectedly passed' >&2
   exit 1
