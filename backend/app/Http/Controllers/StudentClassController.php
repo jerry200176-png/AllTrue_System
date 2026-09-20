@@ -746,6 +746,10 @@ class StudentClassController extends Controller
                         || Carbon::parse($row->SessionDate)->toDateString() <= Carbon::today()->toDateString()
                         || !in_array(strtolower((string) $row->Status), ['scheduled', 'rescheduled'], true);
                 })->values();
+                $classSessionsBodyByClass = [];
+                foreach ($classSessionsBody as $row) {
+                    $classSessionsBodyByClass[(string) $row->StudentClassID][] = $row;
+                }
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -831,7 +835,7 @@ class StudentClassController extends Controller
                             $projectionReader,
                             (int) $cid,
                             $list,
-                            $classSessionsBody,
+                            $classSessionsBodyByClass[(string) $cid] ?? [],
                             $bodyClasses->firstWhere('ID', (int) $cid),
                             $rangeStart,
                             $rangeEnd
@@ -881,7 +885,7 @@ class StudentClassController extends Controller
                             $projectionReader,
                             (int) $cid,
                             $list,
-                            $classSessionsBody,
+                            $classSessionsBodyByClass[(string) $cid] ?? [],
                             $bodyClasses->firstWhere('ID', (int) $cid),
                             $rangeStart,
                             $rangeEnd
@@ -896,7 +900,7 @@ class StudentClassController extends Controller
                             $projectionReader,
                             (int) $cid,
                             $list,
-                            $classSessionsBody,
+                            $classSessionsBodyByClass[(string) $cid] ?? [],
                             $bodyClasses->firstWhere('ID', (int) $cid),
                             $rangeStart,
                             $rangeEnd
@@ -986,6 +990,11 @@ class StudentClassController extends Controller
                 ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
                 ->get();
 
+            $sessionsByClass = [];
+            foreach ($sessions as $row) {
+                $sessionsByClass[(int) $row->StudentClassID][] = $row;
+            }
+
             $projectionReader = app(SessionProjectionReadService::class);
 
             $leaveByClass = [];
@@ -1006,6 +1015,35 @@ class StudentClassController extends Controller
                         $leaveByClass[$id] = [];
                     }
                     $leaveByClass[$id][$d] = true;
+                }
+            }
+
+            // Keep the same session-then-schedule precedence as the legacy
+            // per-class loops, but materialize each class's effective dates
+            // once instead of rescanning every row for every visible class.
+            $effectiveDatesByClass = [];
+            foreach ($sessionsByClass as $id => $classSessions) {
+                foreach ($classSessions as $row) {
+                    $status = strtolower((string) ($row->Status ?? ''));
+                    if ($status === 'cancelled' || $status === 'leave') {
+                        continue;
+                    }
+                    $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
+                    if ($d) {
+                        $effectiveDatesByClass[$id][$d] = true;
+                    }
+                }
+            }
+            foreach ($schedules as $row) {
+                $id = (int) $row->student_course_id;
+                $d = $row->schedule_date ? Carbon::parse($row->schedule_date)->toDateString() : null;
+                if (!$d) {
+                    continue;
+                }
+                if ($row->status === 'scheduled') {
+                    $effectiveDatesByClass[$id][$d] = true;
+                } else {
+                    unset($effectiveDatesByClass[$id][$d]);
                 }
             }
 
@@ -1047,10 +1085,7 @@ class StudentClassController extends Controller
 
                 if ($isSessionMode && $startDate && !empty($daysOfWeek)) {
                     $actualSessionSet = [];
-                    foreach ($sessions as $row) {
-                        if ((int) $row->StudentClassID !== $id) {
-                            continue;
-                        }
+                    foreach ($sessionsByClass[$id] ?? [] as $row) {
                         $status = strtolower((string) ($row->Status ?? ''));
                         if ($status === 'cancelled' || $status === 'leave') {
                             continue;
@@ -1108,7 +1143,7 @@ class StudentClassController extends Controller
                         $projectionReader,
                         $id,
                         $list,
-                        $sessions,
+                        $sessionsByClass[$id] ?? [],
                         $class,
                         $rangeStart,
                         $classRangeEnd
@@ -1116,34 +1151,7 @@ class StudentClassController extends Controller
                     continue;
                 }
 
-                $set = [];
-                foreach ($sessions as $row) {
-                    if ((int) $row->StudentClassID !== $id) {
-                        continue;
-                    }
-                    $status = strtolower((string) ($row->Status ?? ''));
-                    if ($status === 'cancelled' || $status === 'leave') {
-                        continue;
-                    }
-                    $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
-                    if ($d) {
-                        $set[$d] = true;
-                    }
-                }
-                foreach ($schedules as $row) {
-                    if ((int) $row->student_course_id !== $id) {
-                        continue;
-                    }
-                    $d = $row->schedule_date ? Carbon::parse($row->schedule_date)->toDateString() : null;
-                    if (!$d) {
-                        continue;
-                    }
-                    if ($row->status === 'scheduled') {
-                        $set[$d] = true;
-                    } else {
-                        unset($set[$d]);
-                    }
-                }
+                $set = $effectiveDatesByClass[$id] ?? [];
                 $list = array_keys($set);
                 if ($class && ($class->ScheduleMode ?? '') === 'date') {
                     $leaveSet = $leaveByClass[$id] ?? [];
@@ -1153,7 +1161,7 @@ class StudentClassController extends Controller
                         $projectionReader,
                         $id,
                         $list,
-                        $sessions,
+                        $sessionsByClass[$id] ?? [],
                         $class,
                         $rangeStart,
                         $classRangeEnd
@@ -1169,7 +1177,7 @@ class StudentClassController extends Controller
                     $projectionReader,
                     $id,
                     $list,
-                    $sessions,
+                    $sessionsByClass[$id] ?? [],
                     $class,
                     $rangeStart,
                     $classRangeEnd

@@ -51,7 +51,7 @@ class SessionDatesWorkloadTest extends TestCase
     }
 
     /**
-     * @return array{body_ids:list<int>, visible_count:int, session_count:int, schedule_count:int}
+     * @return array{bodyIds:list<int>, visibleCount:int, sessionCount:int, scheduleCount:int}
      */
     private function seedWorkload(int $visibleCount, int $historyPerCourse, int $bodyCount): array
     {
@@ -136,7 +136,60 @@ class SessionDatesWorkloadTest extends TestCase
     }
 
     /**
-     * @return array{status:int, elapsed_ms:float, query_count:int, query_ms:float, response_bytes:int, payload:array}
+     * @param  list<int>  $bodyIds
+     * @return list<array<string, mixed>>
+     */
+    private function makeBodyCourses(array $bodyIds): array
+    {
+        return array_map(static fn (int $id): array => [
+            'id' => $id,
+            'first_class_date' => '2026-01-01',
+            'sessions_purchased' => 24,
+            'days_of_week' => [5],
+        ], $bodyIds);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<array<string, mixed>>  $bodyCourses
+     * @return array<string, mixed>
+     */
+    private function summarizeContent(array $payload, array $bodyCourses): array
+    {
+        $courses = [];
+        foreach ($bodyCourses as $course) {
+            $id = (string) $course['id'];
+            $entry = $payload[$id] ?? [];
+            $normalize = static function ($rows): array {
+                return array_map(static fn (array $row): array => [
+                    'kind' => (string) ($row['kind'] ?? ''),
+                    'session_date' => (string) ($row['session_date'] ?? ''),
+                    'start_time' => (string) ($row['start_time'] ?? ''),
+                    'end_time' => (string) ($row['end_time'] ?? ''),
+                    'status' => (string) ($row['status'] ?? ''),
+                ], is_array($rows) ? $rows : []);
+            };
+            $materialized = $normalize($entry['materialized'] ?? []);
+            $projected = $normalize($entry['projected'] ?? []);
+            $courses[$id] = [
+                'materialized_count' => count($materialized),
+                'projected_count' => count($projected),
+                'semantic_hash' => hash('sha256', json_encode([
+                    'materialized' => $materialized,
+                    'projected' => $projected,
+                ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)),
+            ];
+        }
+
+        return [
+            'requested_course_count' => count($bodyCourses),
+            'response_course_count' => count($payload),
+            'requested_courses' => $courses,
+        ];
+    }
+
+    /**
+     * @return array{status:int, elapsed_ms:float, query_count:int, query_ms:float, response_bytes:int, memory_delta_bytes:int, peak_memory_delta_bytes:int, content:array<string, mixed>}
      */
     private function measure(string $token, array $bodyCourses): array
     {
@@ -147,6 +200,8 @@ class SessionDatesWorkloadTest extends TestCase
             $queryMs += (float) $query->time;
         });
 
+        $memoryBefore = memory_get_usage(true);
+        $peakBefore = memory_get_peak_usage(true);
         $started = hrtime(true);
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -159,6 +214,8 @@ class SessionDatesWorkloadTest extends TestCase
             'courses' => $bodyCourses,
         ]);
         $elapsedMs = (hrtime(true) - $started) / 1_000_000;
+        $memoryAfter = memory_get_usage(true);
+        $peakAfter = memory_get_peak_usage(true);
         $payload = $response->json();
 
         $this->assertSame(200, $response->status());
@@ -175,33 +232,84 @@ class SessionDatesWorkloadTest extends TestCase
             'query_count' => $queryCount,
             'query_ms' => round($queryMs, 3),
             'response_bytes' => strlen($response->getContent()),
-            'payload' => $payload,
+            'memory_delta_bytes' => max(0, $memoryAfter - $memoryBefore),
+            'peak_memory_delta_bytes' => max(0, $peakAfter - $peakBefore),
+            'content' => $this->summarizeContent($payload, $bodyCourses),
+        ];
+    }
+
+    /**
+     * @param  array{bodyIds:list<int>, visibleCount:int, sessionCount:int, scheduleCount:int}  $fixture
+     * @return array<string, mixed>
+     */
+    private function workModel(array $fixture, int $bodyCount): array
+    {
+        return [
+            'visible_class_scan_passes_before' => $fixture['visibleCount'],
+            'visible_session_row_inspections_before' => $fixture['visibleCount'] * $fixture['sessionCount'],
+            'visible_session_row_inspections_after' => $fixture['sessionCount'],
+            'visible_schedule_row_inspections_before' => $fixture['visibleCount'] * $fixture['scheduleCount'],
+            'visible_schedule_row_inspections_after' => $fixture['scheduleCount'],
+            'projection_rescan_rows_before_upper_bound' => $fixture['visibleCount'] * $fixture['sessionCount'],
+            'projection_rescan_rows_after_upper_bound' => $fixture['sessionCount'],
+            'body_course_count' => $bodyCount,
+            'historical_rows_are_synthetic' => true,
+            'model_is_work_not_cpu_time' => true,
         ];
     }
 
     public function test_fixed_fixture_reports_query_and_scan_workload(): void
     {
         $token = $this->makeToken();
-        $fixture = $this->seedWorkload(12, 18, 3);
-        $bodyCourses = array_map(static fn (int $id): array => [
-            'id' => $id,
-            'first_class_date' => '2026-01-01',
-            'sessions_purchased' => 24,
-            'days_of_week' => [5],
-        ], $fixture['bodyIds']);
-
-        $measurement = $this->measure($token, $bodyCourses);
+        $fixture = $this->seedWorkload(12, 18, 6);
+        $measurements = [];
+        foreach ([1, 3, 6] as $bodyCount) {
+            $bodyCourses = $this->makeBodyCourses(array_slice($fixture['bodyIds'], 0, $bodyCount));
+            $measurements[(string) $bodyCount] = [
+                'first' => $this->measure($token, $bodyCourses),
+                'repeat' => $this->measure($token, $bodyCourses),
+            ];
+        }
         $metrics = [
-            'case' => 'fixed-visible-12-history-18-body-3',
+            'case' => 'axis-a-visible-12-history-18-body-1-3-6',
             'fixture' => $fixture,
-            'measurement' => $measurement,
-            'work_model' => [
-                'visible_class_scan_passes' => $fixture['visibleCount'],
-                'session_rows_available_to_handler' => $fixture['sessionCount'],
-                'schedule_rows_available_to_handler' => $fixture['scheduleCount'],
-                'historical_rows_are_synthetic' => true,
+            'measurements' => $measurements,
+            'work_model' => $this->workModel($fixture, 6),
+            'contract_coverage' => [
+                'count' => true,
+                'date' => true,
+                'manual_occurrence' => true,
+                'package_fallback' => 'regression-covered separately; not included in timing fixture',
             ],
         ];
         fwrite(STDOUT, 'SESSION_DATES_WORKLOAD ' . json_encode($metrics, JSON_UNESCAPED_SLASHES) . PHP_EOL);
+    }
+
+    /**
+     * @dataProvider singleCourseScalingCases
+     */
+    public function test_single_course_scales_by_visible_and_history_rows(string $case, int $visibleCount, int $historyPerCourse): void
+    {
+        $token = $this->makeToken();
+        $fixture = $this->seedWorkload($visibleCount, $historyPerCourse, 1);
+        $bodyCourses = $this->makeBodyCourses($fixture['bodyIds']);
+        $metrics = [
+            'case' => $case,
+            'fixture' => $fixture,
+            'first' => $this->measure($token, $bodyCourses),
+            'repeat' => $this->measure($token, $bodyCourses),
+            'work_model' => $this->workModel($fixture, 1),
+        ];
+        fwrite(STDOUT, 'SESSION_DATES_WORKLOAD ' . json_encode($metrics, JSON_UNESCAPED_SLASHES) . PHP_EOL);
+    }
+
+    public static function singleCourseScalingCases(): array
+    {
+        return [
+            ['axis-b-visible-4-history-18-body-1', 4, 18],
+            ['axis-b-visible-12-history-18-body-1', 12, 18],
+            ['axis-b-history-6-visible-12-body-1', 12, 6],
+            ['axis-b-history-18-visible-12-body-1', 12, 18],
+        ];
     }
 }
