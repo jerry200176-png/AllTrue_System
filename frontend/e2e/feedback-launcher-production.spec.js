@@ -44,7 +44,7 @@ export function validateControlledSession(session, branchRaw, nowMs = Date.now()
     || session.access_token.trim() !== session.access_token || /[\r\n]/.test(session.access_token)) return false;
   if (session.token_type !== 'Bearer') return false;
   if (!session.user || typeof session.user !== 'object' || Array.isArray(session.user)) return false;
-  if (!['director', 'super_admin'].includes(session.user.role) || session.user.must_change_password !== false) return false;
+  if (session.user.role !== 'director' || session.user.must_change_password !== false) return false;
   if (!Array.isArray(session.user.campuses) || !session.user.campuses.length
     || session.user.campuses.some((campus) => !Number.isSafeInteger(campus) || campus <= 0)
     || !session.user.campuses.includes(branchId)) return false;
@@ -66,6 +66,7 @@ export function runControlledSessionValidatorSelfTest() {
     ['token type', { ...valid, token_type: 'bearer' }, '16'],
     ['string campus', { ...valid, user: { ...valid.user, campuses: ['16'] } }, '16'],
     ['wrong role', { ...valid, user: { ...valid.user, role: 'teacher' } }, '16'],
+    ['super admin substitution', { ...valid, user: { ...valid.user, role: 'super_admin' } }, '16'],
     ['must change', { ...valid, user: { ...valid.user, must_change_password: true } }, '16'],
     ['timezone-less expiry', { ...valid, expires_at: '2099-01-01 00:00:00' }, '16'],
     ['expired', { ...valid, expires_at: new Date(now - 1).toISOString() }, '16'],

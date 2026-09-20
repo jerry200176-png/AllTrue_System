@@ -421,13 +421,14 @@ jobs:
         env:
           CI: 'true'
           SMOKE_BASE_URL: https://daan.lifenet.com.tw
+          SMOKE_FEEDBACK_HOSTED: '1'
           SMOKE_START_DATE: ${{ github.event.inputs.start_date || '2026-08-05' }}
           SMOKE_END_DATE: ${{ github.event.inputs.end_date || '2026-08-07' }}
         run: |
           set -euo pipefail
           mkdir -p playwright-report
           test -n "${EFFECTIVE_BRANCH_ID:-}"
-          acceptance_args=(e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js e2e/tutoring-free-production.spec.js --project=chromium --reporter=json)
+          acceptance_args=(e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js e2e/tutoring-free-production.spec.js e2e/feedback-launcher-production.spec.js --project=chromium --reporter=json)
           if [ "$EFFECTIVE_BRANCH_ID" != "9" ]; then
             acceptance_args+=(--grep-invert 'contracted four-session detail explains two unarranged sessions')
           fi

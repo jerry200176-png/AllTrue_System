@@ -13,6 +13,8 @@ const expectedTests = (branchId) => {
     ['calendar-print-production.spec.js', 203, 3, 'session branch is authorized'],
     ['calendar-print-production.spec.js', 207, 3, 'director opens week/month print preview without printing or writes'],
     ['tutoring-free-production.spec.js', 68, 3, 'director read-only API and real UI acceptance'],
+    ['feedback-launcher-production.spec.js', 300, 3, 'desktop exposes reporter-facing choices without writes'],
+    ['feedback-launcher-production.spec.js', 306, 3, 'mobile exposes reporter-facing choices without writes'],
   ];
   if (Number(branchId) === 9) {
     tests.splice(5, 0,
