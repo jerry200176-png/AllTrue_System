@@ -82,6 +82,7 @@ jobs:
           grep -Fq 'trap revoke_step_token EXIT' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'bound=1' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'trap - EXIT ERR' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "trap 'rc=\$?; trap - ERR; exit \"\$rc\"' ERR" .github/workflows/calendar-course-acceptance.yml
           ! grep -Fq 'export SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
           ! grep -Fq 'php artisan tinker' .github/workflows/calendar-course-acceptance.yml
           if [ -n "$BRANCH_ID" ]; then
@@ -94,6 +95,7 @@ jobs:
           cleanup_file="$RUNNER_TEMP/alltrue-acceptance-auth-cleanup.json"
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           login_response="$RUNNER_TEMP/alltrue-acceptance-login.response"
+          trap 'rm -f "$login_request" "$login_response"' EXIT
           jq -n --arg account "$SMOKE_DIRECTOR_LOGIN" --arg password "$SMOKE_DIRECTOR_PASSWORD" \
             '{account:$account,password:$password,role:"director"}' > "$login_request"
           chmod 600 "$login_request"
@@ -111,8 +113,8 @@ jobs:
           session_token="$(jq -er '.data.session.access_token' "$login_response")"
           session_user_id="$(jq -er '.data.user.id' "$login_response")"
           echo "::add-mask::$session_token"
-          jq -n --arg token "$session_token" --argjson user_id "$session_user_id" \
-            '{token:$token,user_id:$user_id}' > "$cleanup_file"
+          printf '%s\n' "$session_token" | jq -R --argjson user_id "$session_user_id" \
+            'select(length > 0) | {token:.,user_id:$user_id}' > "$cleanup_file"
           chmod 600 "$cleanup_file"
           bound=0
           revoke_step_token() {
@@ -123,9 +125,10 @@ jobs:
               return "$original_status"
             fi
             set +e
-            revoke_token="$(jq -er '.token | select(type=="string" and test("^[A-Za-z0-9]{64}$"))' "$cleanup_file")"
-            revoke_user_id="$(jq -er '.user_id | select(type=="number" and floor==. and .>0)' "$cleanup_file")"
-            if [ -n "$revoke_token" ] && [ -n "$revoke_user_id" ]; then
+            revoke_status=0
+            revoke_token="$(jq -er '.token | select(type=="string" and test("^[A-Za-z0-9]{64}$"))' "$cleanup_file")" || revoke_status=1
+            revoke_user_id="$(jq -er '.user_id | select(type=="number" and floor==. and .>0)' "$cleanup_file")" || revoke_status=1
+            if [ "$revoke_status" -eq 0 ] && [ -n "$revoke_token" ] && [ -n "$revoke_user_id" ]; then
               {
                 printf '%s\n' "$revoke_token"
                 cat <<'REMOTE'
@@ -153,14 +156,18 @@ jobs:
               } | ssh -i ~/.ssh/deploy_key \
                 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
                 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-                "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$revoke_user_id\"'" >/dev/null 2>/dev/null
+                "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$revoke_user_id\"'" >/dev/null 2>/dev/null || revoke_status=$?
+            fi
+            if [ "$revoke_status" -ne 0 ]; then
+              rm -f "$login_request" "$login_response"
+              if [ "$original_status" -eq 0 ]; then return 1; else return "$original_status"; fi
             fi
             rm -f "$cleanup_file"
             rm -f "$login_request" "$login_response"
             return "$original_status"
           }
           trap revoke_step_token EXIT
-          trap 'exit 1' ERR
+          trap 'rc=$?; trap - ERR; exit "$rc"' ERR
           jq -e '
             (.data.user | type == "object") and
             (.data.user.role | . == "director" or . == "super_admin") and
