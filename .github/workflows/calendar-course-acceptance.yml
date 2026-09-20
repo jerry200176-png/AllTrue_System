@@ -179,8 +179,9 @@ jobs:
             acceptance_stage "login_http_rejected status=${login_status} ${response_taxonomy}"
             if [ "$login_status" = 401 ]; then
               acceptance_stage login_401_diagnosis_start
-              diagnosis_output="$({
-                diagnosis_account_b64="$(jq -er '.account' "$login_request" | base64 -w0)"
+              diagnosis_account_b64="$(jq -er '.account' "$login_request" | base64 -w0)"
+              diagnosis_raw="$RUNNER_TEMP/alltrue-401-diagnosis.raw"
+              {
                 printf '%s\n' "$diagnosis_account_b64"
                 cat <<'REMOTE'
           set -euo pipefail
@@ -200,9 +201,9 @@ jobs:
           echo json_encode(['matching_rows' => (int) $matching->count(), 'active_director_rows' => (int) (clone $active)->where('type', 'D')->count(), 'must_change_password_required_rows' => (int) $mustChangeRows, 'approved_branch_16_rows' => (int) $approved], JSON_THROW_ON_ERROR) . PHP_EOL;
           PHP
           REMOTE
-              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode --strict); exec bash -s'" 2>/dev/null
-              })"
-              printf '%s' "$diagnosis_output" | jq -e . > "$RUNNER_TEMP/alltrue-401-diagnosis.json"
+              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode --strict); exec bash -s'" > "$diagnosis_raw" 2>/dev/null
+              printf '%s' "$(cat "$diagnosis_raw")" | jq -e . > "$RUNNER_TEMP/alltrue-401-diagnosis.json"
+              rm -f "$diagnosis_raw"
               if ! acceptance_login_401_diagnosis_result_valid "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"; exit 1; fi
               diagnosis_summary="$(jq -r 'to_entries | map(\"\(.key)=\(.value)\") | join(\" \")' "$RUNNER_TEMP/alltrue-401-diagnosis.json")"
               acceptance_stage "login_401_diagnosis ${diagnosis_summary}"
