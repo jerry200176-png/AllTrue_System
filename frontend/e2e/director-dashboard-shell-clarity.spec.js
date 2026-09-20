@@ -110,6 +110,21 @@ async function openPilot(page, { mode = 'normal', viewport, pageName = 'director
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: null }) });
       return;
     }
+    if (p.endsWith('/me')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 9001,
+          name: 'E2E Director',
+          role: 'director',
+          campuses: [1],
+          must_change_password: false,
+          capabilities: [],
+        }),
+      });
+      return;
+    }
     if (p.endsWith('/branches')) {
       await route.fulfill({
         status: 200,
