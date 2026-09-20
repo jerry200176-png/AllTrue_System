@@ -82,7 +82,6 @@ class SessionDatesWorkloadTest extends TestCase
                 'week' => 5,
                 'time' => '15:00:00',
                 'TotalHours' => 0,
-                'RoomID' => null,
                 'Charge' => 0,
                 'Pay' => 0,
                 'Paid' => 0,
