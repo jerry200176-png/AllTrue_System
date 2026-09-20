@@ -1,6 +1,6 @@
 ## 2026-09-21 — fix(parent): attention feedback shortcut opens the editor (in-app #323)
 <!-- release-notes: silent_ship=silent-2026-09-21-parent-attention-feedback-jump-323 -->
-- 家長首頁「需要留意 → 前往留言」現在會直接展開第一筆可留言評量並聚焦輸入框；已在學習分頁時也不再看起來像沒有反應。
+- 家長首頁「需要留意 → 前往留言」現在會沿既有學習紀錄分頁尋找並展開第一筆可留言評量，再聚焦輸入框；已在學習分頁時也不再看起來像沒有反應。
 
 ## 2026-09-21 — fix(course-mgmt): makeup sessions keep assessments pending by default (in-app #330)
 <!-- release-notes: staff_update=staff-2026-09-21-makeup-assessment-pending-330 -->

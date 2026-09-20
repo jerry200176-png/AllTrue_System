@@ -1384,9 +1384,20 @@ const openFeedbackForRecord = async (record, source = 'card_quick') => {
 };
 
 const jumpToFirstFeedbackSlot = async (source = 'engage_strip') => {
-  const list = allLearningRecords.value || [];
-  if (!list.length) return;
-  const target = list.find((r) => !r.parent_feedback) || list[0];
+  let list = allLearningRecords.value || [];
+  let target = list.find((r) => !r.parent_feedback);
+  // The dashboard is paginated. A pending feedback count may refer to a
+  // record beyond the first page, so keep using the existing read-only
+  // pagination path until an actionable record is present.
+  while (!target && lrHasMore.value && !lrLoading.value) {
+    const previousLength = list.length;
+    await loadMoreRecords();
+    list = allLearningRecords.value || [];
+    target = list.find((r) => !r.parent_feedback);
+    if (list.length === previousLength) break;
+  }
+  if (!target) target = list[0];
+  if (!target) return;
   await openFeedbackForRecord(target, source);
 };
 
