@@ -748,7 +748,7 @@ class StudentClassController extends Controller
                 })->values();
                 $classSessionsBodyByClass = [];
                 foreach ($classSessionsBody as $row) {
-                    $classSessionsBodyByClass[(string) $row->StudentClassID][] = $row;
+                    $classSessionsBodyByClass[(int) $row->StudentClassID][] = $row;
                 }
                 $leaveByClass = [];
                 $scheduledByClass = [];
@@ -835,7 +835,7 @@ class StudentClassController extends Controller
                             $projectionReader,
                             (int) $cid,
                             $list,
-                            $classSessionsBodyByClass[(string) $cid] ?? [],
+                            $classSessionsBodyByClass[(int) $cid] ?? [],
                             $bodyClasses->firstWhere('ID', (int) $cid),
                             $rangeStart,
                             $rangeEnd
@@ -885,7 +885,7 @@ class StudentClassController extends Controller
                             $projectionReader,
                             (int) $cid,
                             $list,
-                            $classSessionsBodyByClass[(string) $cid] ?? [],
+                            $classSessionsBodyByClass[(int) $cid] ?? [],
                             $bodyClasses->firstWhere('ID', (int) $cid),
                             $rangeStart,
                             $rangeEnd
@@ -900,7 +900,7 @@ class StudentClassController extends Controller
                             $projectionReader,
                             (int) $cid,
                             $list,
-                            $classSessionsBodyByClass[(string) $cid] ?? [],
+                            $classSessionsBodyByClass[(int) $cid] ?? [],
                             $bodyClasses->firstWhere('ID', (int) $cid),
                             $rangeStart,
                             $rangeEnd
