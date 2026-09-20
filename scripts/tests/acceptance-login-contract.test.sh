@@ -39,6 +39,12 @@ if acceptance_login_request_valid "$tmp_dir/whitespace-account.json"; then
   exit 1
 fi
 
+printf '%s\n' '{"account":"director\\nforged","password":"placeholder","role":"director"}' > "$tmp_dir/newline-account.json"
+if acceptance_login_request_valid "$tmp_dir/newline-account.json"; then
+  echo 'newline account unexpectedly passed' >&2
+  exit 1
+fi
+
 long_account="$(printf 'a%.0s' {1..129})"
 printf '{"account":"%s","password":"placeholder","role":"director"}\n' "$long_account" > "$tmp_dir/long-account.json"
 if acceptance_login_request_valid "$tmp_dir/long-account.json"; then

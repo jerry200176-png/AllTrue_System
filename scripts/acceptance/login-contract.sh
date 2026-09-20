@@ -4,7 +4,7 @@ acceptance_login_request_valid() {
   local request_file="$1"
   jq -e '
     type == "object" and
-    (.account | (type == "string" and ((gsub("^\\s+|\\s+$"; "")) | length > 0 and length <= 128))) and
+    (.account | (type == "string" and (test("[\\r\\n]") | not) and ((gsub("^\\s+|\\s+$"; "")) | length > 0 and length <= 128))) and
     (.password | (type == "string" and length > 0)) and
     (.role == "director")
   ' "$request_file" >/dev/null 2>/dev/null

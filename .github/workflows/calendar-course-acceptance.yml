@@ -180,7 +180,8 @@ jobs:
             if [ "$login_status" = 401 ]; then
               acceptance_stage login_401_diagnosis_start
               diagnosis_output="$({
-                jq -er '.account' "$login_request"
+                diagnosis_account_b64="$(jq -er '.account' "$login_request" | base64 -w0)"
+                printf '%s\n' "$diagnosis_account_b64"
                 cat <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
@@ -191,18 +192,20 @@ jobs:
           $app = require_once $base . '/bootstrap/app.php';
           $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class); $kernel->bootstrap();
           $account = trim((string) fgets(STDIN));
-          if ($account === '' || strlen($account) > 128) { throw new \RuntimeException('invalid diagnosis input'); }
+          if ($account === '' || strlen($account) > 128 || preg_match('/[\\r\\n]/', $account)) { throw new \RuntimeException('invalid diagnosis input'); }
           $matching = \Illuminate\Support\Facades\DB::table('User')->where(function ($q) use ($account) { $q->where('LoginName', $account)->orWhere('Name', $account); });
           $active = (clone $matching)->where(function ($q) { $q->whereNull('status')->orWhereNotIn('status', ['inactive', 'suspended']); });
-          $approved = \Illuminate\Support\Facades\DB::table('User as u')->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')->where(function ($q) use ($account) { $q->where('u.LoginName', $account)->orWhere('u.Name', $account); })->where(function ($q) { $q->whereNull('u.status')->orWhereNotIn('u.status', ['inactive', 'suspended']); })->where('u.type', 'D')->where('uc.CampusID', 16)->where('uc.Approved', 1)->count();
-          echo json_encode(['matching_rows' => (int) $matching->count(), 'active_director_rows' => (int) (clone $active)->where('type', 'D')->count(), 'must_change_password_required_rows' => (int) (clone $active)->where('type', 'D')->where('MustChangePassword', true)->count(), 'approved_branch_16_rows' => (int) $approved], JSON_THROW_ON_ERROR) . PHP_EOL;
+          $approved = \Illuminate\Support\Facades\DB::table('User as u')->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')->where(function ($q) use ($account) { $q->where('u.LoginName', $account)->orWhere('u.Name', $account); })->where(function ($q) { $q->whereNull('u.status')->orWhereNotIn('u.status', ['inactive', 'suspended']); })->where('u.type', 'D')->where('uc.CampusID', 16)->where(function ($q) { $q->where('uc.Approved', 1)->orWhereNull('uc.Approved'); })->count();
+          $mustChangeRows = \Illuminate\Support\Facades\Schema::hasColumn('User', 'MustChangePassword') ? (clone $active)->where('type', 'D')->where('MustChangePassword', true)->count() : 0;
+          echo json_encode(['matching_rows' => (int) $matching->count(), 'active_director_rows' => (int) (clone $active)->where('type', 'D')->count(), 'must_change_password_required_rows' => (int) $mustChangeRows, 'approved_branch_16_rows' => (int) $approved], JSON_THROW_ON_ERROR) . PHP_EOL;
           PHP
           REMOTE
-              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT; test -n \"\$LOGIN_ACCOUNT\"; exec 4<<<\"\$LOGIN_ACCOUNT\"; exec bash -s'" 2>/dev/null
+              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode --strict); exec bash -s'" 2>/dev/null
               })"
               printf '%s' "$diagnosis_output" | jq -e . > "$RUNNER_TEMP/alltrue-401-diagnosis.json"
               if ! acceptance_login_401_diagnosis_result_valid "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"; exit 1; fi
-              acceptance_stage "login_401_diagnosis $(jq -r 'to_entries | map(\"\(.key)=\(.value)\") | join(" ")' "$RUNNER_TEMP/alltrue-401-diagnosis.json")"
+              diagnosis_summary="$(jq -r 'to_entries | map(\"\(.key)=\(.value)\") | join(\" \")' "$RUNNER_TEMP/alltrue-401-diagnosis.json")"
+              acceptance_stage "login_401_diagnosis \${diagnosis_summary}"
               rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json"
             fi
             rm -f "$login_response"
