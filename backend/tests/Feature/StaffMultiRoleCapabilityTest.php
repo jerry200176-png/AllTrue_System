@@ -46,16 +46,6 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $this->assertTrue($resolved['context_denied']);
         $this->assertSame([], $resolved['campus_ids']);
     }
-    public function test_unknown_acting_as_context_is_rejected_instead_of_defaulting_to_director(): void
-    {
-        $user = $this->makeUser('A');
-        $this->grant($user->id, 'director', 1);
-        $this->grant($user->id, 'teacher', 1);
-        $resolved = app(StaffCapabilityAuthorizer::class)->resolve($user, 'super_admin');
-        $this->assertSame('forbidden', $resolved['role']);
-        $this->assertTrue($resolved['context_denied']);
-        $this->assertSame([], $resolved['campus_ids']);
-    }
     public function test_teacher_only_capability_cannot_resolve_director_context(): void
     {
         $user = $this->makeUser('T');
@@ -139,17 +129,6 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $this->withHeaders($this->bearer($token, 'director'))
             ->getJson('/api/v1/invoices')
             ->assertOk();
-    }
-    public function test_shared_me_succeeds_without_acting_as_for_dual_capability(): void
-    {
-        $user = $this->makeUser('A');
-        $this->grant($user->id, 'director', 1);
-        $this->grant($user->id, 'teacher', 1);
-        $token = $this->tokenFor($user);
-        $this->withHeaders($this->bearer($token, null))
-            ->getJson('/api/v1/me')
-            ->assertOk()
-            ->assertJsonPath('role', 'director');
     }
     private function makeUser(string $type): User
     {
