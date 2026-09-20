@@ -60,19 +60,22 @@ jobs:
 
       - name: Prepare bounded acceptance login request (secret boundary)
         env:
-          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_LOGIN }}
-          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASSWORD }}
+          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASS }}
         run: |
           set -euo pipefail
           umask 077
-          test -n "$SMOKE_DIRECTOR_LOGIN" && test -n "$SMOKE_DIRECTOR_PASSWORD"
+          # Keep each check before request-file creation and before any curl.
+          # shellcheck source=/dev/null
+          source scripts/acceptance/login-contract.sh
+          acceptance_require_login_secrets
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           trap 'rm -f "$login_request"' EXIT
           exec 9<<<"$SMOKE_DIRECTOR_LOGIN"
           exec 10<<<"$SMOKE_DIRECTOR_PASSWORD"
           unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
           jq -n --rawfile account /dev/fd/9 --rawfile password /dev/fd/10 \
-            '{account:($account|rtrimstr("\n")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
+            '{account:($account|rtrimstr("\n")|sub("^\\s+";"")|sub("\\s+$";"")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
           exec 9<&- 10<&-
           chmod 600 "$login_request"
           trap - EXIT
@@ -88,6 +91,11 @@ jobs:
           # Diagnostic markers go to stderr; captured stdout remains session data.
           # shellcheck source=/dev/null
           source scripts/acceptance/stage-contract.sh
+          # shellcheck source=/dev/null
+          source scripts/acceptance/login-contract.sh
+          grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "--rawfile account /dev/fd/9" .github/workflows/calendar-course-acceptance.yml
@@ -145,6 +153,11 @@ jobs:
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           login_response="$RUNNER_TEMP/alltrue-acceptance-login.response"
           test -s "$login_request" && test "$(stat -c '%a' "$login_request")" = 600
+          if ! acceptance_login_request_valid "$login_request"; then
+            acceptance_stage login_request_invalid
+            exit 1
+          fi
+          acceptance_stage login_request_valid
           acceptance_stage login_request_ready
           trap 'rm -f "$login_request" "$login_response"' EXIT
           if ! acceptance_capture login_http curl --silent --output "$login_response" --write-out '%{http_code}' \
@@ -158,7 +171,12 @@ jobs:
           fi
           login_status="$STAGE_OUTPUT"
           acceptance_stage "login_http_status=${login_status}"
-          test "$login_status" = 200 || { rm -f "$login_response"; exit 1; }
+          if [ "$login_status" != 200 ]; then
+            response_taxonomy="$(acceptance_login_response_taxonomy "$login_response")"
+            acceptance_stage "login_http_rejected status=${login_status} ${response_taxonomy}"
+            rm -f "$login_response"
+            exit 1
+          fi
           if ! session_token="$(jq -er '.data.session.access_token | select(type == "string" and test("^[A-Za-z0-9]{64}$"))' "$login_response")"; then
             acceptance_stage login_schema_token_invalid
             exit 1

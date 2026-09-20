@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 1 * * *'   # 每日 09:00 台灣時間（關鍵告警由 Pi 本機 monitor-alert cron 補位）
   workflow_dispatch:         # 手動觸發
+    inputs:
+      collect_capacity_baseline:
+        description: "Read-only 7-day perf/access aggregate; no raw logs"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   health-check:
@@ -216,6 +222,114 @@ jobs:
             echo "✅ 無 critical 指標"
           fi
           REMOTE
+
+      - name: Read observed production runtime identity
+        id: runtime
+        if: inputs.collect_capacity_baseline == true
+        run: |
+          set -euo pipefail
+          observed_at="$(date --iso-8601=seconds)"
+          set +e
+          manifest="$(curl --fail --silent --show-error --max-time 10 https://daan.lifenet.com.tw/deployment.json 2>/dev/null)"
+          curl_rc=$?
+          set -e
+          if [ "$curl_rc" -ne 0 ]; then
+            echo "sha=UNKNOWN" >> "$GITHUB_OUTPUT"
+            echo "observed_at=${observed_at}" >> "$GITHUB_OUTPUT"
+            echo "runtime_sha_observed=UNKNOWN (deployment manifest unavailable)"
+            exit 0
+          fi
+          sha="$(printf '%s' "$manifest" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("backend_sha") or "UNKNOWN")')"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "observed_at=${observed_at}" >> "$GITHUB_OUTPUT"
+          echo "runtime_sha_observed=${sha}"
+
+      - name: Collect bounded read-only capacity baseline
+        id: capacity_baseline
+        if: steps.secrets.outputs.configured == 'true' && inputs.collect_capacity_baseline == true
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          RUNTIME_SHA_OBSERVED: ${{ steps.runtime.outputs.sha }}
+          RUNTIME_OBSERVED_AT: ${{ steps.runtime.outputs.observed_at }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          tmp="out/capacity-baseline.json.tmp"
+          rm -f "$tmp" out/capacity-baseline.json
+          script_b64="$(base64 -w0 scripts/infra/capacity_log_aggregate.py)"
+          remote_sha="$(printf '%q' "$RUNTIME_SHA_OBSERVED")"
+          remote_at="$(printf '%q' "$RUNTIME_OBSERVED_AT")"
+          remote_command="RUNTIME_SHA_OBSERVED=${remote_sha} RUNTIME_OBSERVED_AT=${remote_at} bash -c 'base64 -d | timeout 55s python3 - --perf-dir /home/admin/backend/storage/logs --access-dir /var/log/apache2 --window-end \"$(TZ=Asia/Taipei date -Iseconds)\" --days 7 --max-bytes 134217728 --max-line-bytes 65536 --max-records 200000 --max-output-bytes 65536'"
+          set +e
+          printf '%s' "$script_b64" | ssh -i ~/.ssh/pi_key \
+            -o ConnectTimeout=15 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o PasswordAuthentication=no \
+            -o PubkeyAuthentication=yes \
+            "${PI_USER}@${PI_HOST}" "$remote_command" > "$tmp"
+          ssh_rc=$?
+          set -e
+          if [ "$ssh_rc" -ne 0 ]; then
+            rm -f "$tmp"
+            echo "::error::capacity baseline executor failed with rc=${ssh_rc}"
+            exit "$ssh_rc"
+          fi
+          python3 - "$tmp" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          if not path.is_file() or path.stat().st_size == 0:
+              raise SystemExit("capacity baseline output is empty")
+          if path.stat().st_size > 65536:
+              raise SystemExit("capacity baseline output exceeds 64KiB")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          required = {
+              "schema", "collection_status", "generated_at", "window", "runtime",
+              "limits", "read", "perf", "apache_access", "safety",
+          }
+          missing = required - data.keys()
+          if missing:
+              raise SystemExit(f"capacity baseline schema missing: {sorted(missing)}")
+          if data["collection_status"] not in {"complete", "partial", "unavailable"}:
+              raise SystemExit("invalid collection_status")
+          if data["safety"] != {
+              "raw_logs_emitted": False,
+              "query_strings_emitted": False,
+              "identifiers_emitted": False,
+              "safe_route_templates_only": True,
+              "source_file_contents_emitted": False,
+          }:
+              raise SystemExit("capacity baseline safety contract failed")
+          allowed = {
+              "/api/v1/learning-records",
+              "/api/v1/notifications/unread-count",
+              "/api/v1/class-sessions",
+              "/api/v1/students",
+              "/api/v1/student-classes",
+              "OTHER",
+          }
+          for section in (data["perf"], data["apache_access"]):
+              for row in section.get("routes", []):
+                  if row.get("route") not in allowed:
+                      raise SystemExit("unknown route template in output")
+          path.replace(path.with_name("capacity-baseline.json"))
+          print(f"validated capacity baseline: status={data['collection_status']}")
+          PY
+
+      - name: Upload capacity baseline artifact
+        if: always() && steps.secrets.outputs.configured == 'true' && inputs.collect_capacity_baseline == true
+        uses: actions/upload-artifact@v7
+        with:
+          name: alltrue-capacity-baseline-${{ github.run_id }}
+          path: out/capacity-baseline.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: UptimeRobot status check
         env:
