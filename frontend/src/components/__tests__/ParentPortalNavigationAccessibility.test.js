@@ -66,4 +66,10 @@ describe('parent portal navigation accessibility contract', () => {
     expect(source).toContain('老師完成複核後，這裡會顯示每堂課的進度、作業與建議。');
     expect(source).toContain("@click=\"gotoParentTarget('schedule', 'learning_empty')\"");
   });
+
+  it('makes the attention-card feedback action visibly open a feedback editor', () => {
+    expect(source).toContain('async function gotoParentTarget(target, source = \'hub_card\')');
+    expect(source).toContain("source === 'attention_feedback' && resolved === 'learning'");
+    expect(source).toContain("await jumpToFirstFeedbackSlot(source)");
+  });
 });

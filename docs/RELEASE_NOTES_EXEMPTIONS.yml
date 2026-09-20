@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-21-parent-attention-feedback-jump-323
+    changelog_date: "2026-09-21"
+    changelog_title: "fix(parent): attention feedback shortcut opens the editor (in-app #323)"
+    reason: 家長專屬更新已由 docs/PARENT_UPDATES.yml 公告；不重複出現在教職員版本更新。
+
   - id: silent-2026-09-20-session-dates-row-reuse
     changelog_date: "2026-09-20"
     changelog_title: "fix(performance): reuse session-dates rows by course"
