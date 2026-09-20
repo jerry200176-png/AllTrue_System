@@ -5,7 +5,7 @@
   "task_id": "deploy-gate-fix-20260920",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "231f0db3282cc79142e3b4c1a3a43cb472e25150",
-  "branch": "chore/task-deploy-gate-fix-20260920",
+  "branch": "exo/TKT-20260830-172428-ZZYG",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/deploy-gate-fix-20260920",
   "started_at": "2026-09-20T12:07:54Z",
   "production_mutation": false,
