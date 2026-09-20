@@ -1,5 +1,5 @@
 ## 2026-09-20 — fix(performance): reuse session-dates rows by course
-<!-- release-notes: silent_ship=silent-2026-09-20-session-dates-row-reuse -->
+<!-- release-notes: staff_update=staff-2026-09-20-session-dates-performance -->
 - `POST /api/v1/student-classes/session-dates` groups already-loaded session and schedule rows by course before the existing projection and contract logic runs; response semantics, authorization, diagnostics, and historical rows are unchanged.
 
 ## 2026-09-19 — fix(course-mgmt): shared-plan slot edit preserves past/future boundaries (in-app #324 / GitHub #3074)
