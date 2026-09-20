@@ -132,6 +132,31 @@ test.describe('Tuition Collection clarity browser verification', () => {
     expect(consoleErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
   });
+
+  test('keeps dense accounting actions reachable at tablet width', async ({ page }) => {
+    await installMock(page);
+    await page.setViewportSize({ width: 900, height: 800 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+
+    const receivableAction = page.locator('.tc-table:not(.acct-table):visible tbody tr').first().locator('td:last-child button').first();
+    await expect(receivableAction).toBeVisible();
+    const receivableBox = await receivableAction.boundingBox();
+    expect(receivableBox).toBeTruthy();
+    expect(receivableBox.x).toBeGreaterThanOrEqual(0);
+    expect(receivableBox.x + receivableBox.width).toBeLessThanOrEqual(900);
+    await expect(receivableAction.locator('xpath=ancestor::td')).toHaveCSS('position', 'sticky');
+
+    await page.getByRole('tab', { name: '收據紀錄' }).click();
+    const receiptAction = page.locator('.acct-table:visible tbody tr').first().locator('td:last-child button').first();
+    await expect(receiptAction).toBeVisible();
+    const receiptBox = await receiptAction.boundingBox();
+    expect(receiptBox).toBeTruthy();
+    expect(receiptBox.x).toBeGreaterThanOrEqual(0);
+    expect(receiptBox.x + receiptBox.width).toBeLessThanOrEqual(900);
+    await expect(receiptAction.locator('xpath=ancestor::td')).toHaveCSS('position', 'sticky');
+    await expectNoOverflowAndReachableControls(page);
+  });
+
   test('keeps existing sorting and bulk selection reachable on mobile cards', async ({ page }) => {
     await installMock(page);
     await page.setViewportSize({ width: 390, height: 844 });

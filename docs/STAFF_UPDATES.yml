@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-21-tuition-actions-reachable-326
+    published_at: "2026-09-21"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務操作欄固定可見
+    summary: 窄視窗查看帳務時，右側常用操作仍留在可見區域。
+    items:
+      - category: improved
+        text: 平板與桌面窄視窗的帳務表格橫向查看時，最右側操作欄會固定在畫面邊緣。
+      - category: improved
+        text: 手機卡片、金額、收款資料、權限與既有帳務處理流程維持不變。
+    source_refs:
+      - "github:#3083"
+      - "github:in-app-326"
+      - "changelog:2026-09-21:tuition-actions-reachable-326"
+
   - id: staff-2026-09-21-makeup-assessment-pending-330
     published_at: "2026-09-21"
     audiences:

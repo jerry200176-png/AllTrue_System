@@ -4,6 +4,40 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-21-tuition-actions-reachable-326",
+    "publishedAt": "2026-09-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務操作欄固定可見",
+    "summary": "窄視窗查看帳務時，右側常用操作仍留在可見區域。",
+    "items": [
+      "平板與桌面窄視窗的帳務表格橫向查看時，最右側操作欄會固定在畫面邊緣。",
+      "手機卡片、金額、收款資料、權限與既有帳務處理流程維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "平板與桌面窄視窗的帳務表格橫向查看時，最右側操作欄會固定在畫面邊緣。",
+          "手機卡片、金額、收款資料、權限與既有帳務處理流程維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3083",
+      "github:in-app-326",
+      "changelog:2026-09-21:tuition-actions-reachable-326"
+    ],
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
     "id": "staff-2026-09-21-makeup-assessment-pending-330",
     "publishedAt": "2026-09-21",
     "effectiveAt": null,

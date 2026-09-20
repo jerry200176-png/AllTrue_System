@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "767f896ea61a46c1a2fae4ee1e0e30ea",
+  "session_id": "7122bbe1499d417db112f5c358d86a22",
   "project": "alltrue",
-  "task_id": "inapp-336-phase-c-20260921",
+  "task_id": "inapp-326-responsive-20260921",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "5408348866f491646bdf732c79a46d04a9635873",
-  "branch": "chore/task-inapp-336-phase-c-20260921",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-336-phase-c-20260921",
-  "started_at": "2026-09-20T17:17:25Z",
+  "base_sha": "a2864a9817b6d91d68ba1a19fcbfb81ff5580589",
+  "branch": "chore/task-inapp-326-responsive-20260921",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-326-responsive-20260921",
+  "started_at": "2026-09-20T21:29:25Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
+  "agent_cli": null,
   "gateway_version": "0.5.1"
 }
