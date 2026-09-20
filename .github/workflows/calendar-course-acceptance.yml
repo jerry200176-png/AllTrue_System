@@ -96,6 +96,7 @@ jobs:
           grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
+          grep -Fq 'acceptance_login_http_status_allows_acceptance "$login_status"' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "jq -e '.data.user.must_change_password == false'" scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
@@ -172,7 +173,7 @@ jobs:
           fi
           login_status="$STAGE_OUTPUT"
           acceptance_stage "login_http_status=${login_status}"
-          if [ "$login_status" != 200 ]; then
+          if ! acceptance_login_http_status_allows_acceptance "$login_status"; then
             response_taxonomy="$(acceptance_login_response_taxonomy "$login_response")"
             acceptance_stage "login_http_rejected status=${login_status} ${response_taxonomy}"
             rm -f "$login_response"

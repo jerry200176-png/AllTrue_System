@@ -21,6 +21,10 @@ acceptance_require_login_secrets() {
   fi
 }
 
+acceptance_login_http_status_allows_acceptance() {
+  [ "${1:-}" = 200 ]
+}
+
 acceptance_login_response_taxonomy() {
   local response_file="$1"
   if [ ! -s "$response_file" ] || ! grep -q '[^[:space:]]' "$response_file"; then

@@ -78,18 +78,17 @@ for must_change in false true null '"false"' missing; do
 done
 
 product_acceptance_started=0
-run_after_login() {
-  local status="$1"
-  if [ "$status" != 200 ]; then
-    return 1
-  fi
-  product_acceptance_started=1
-}
-if run_after_login 401; then
+if acceptance_login_http_status_allows_acceptance 401; then
   echo '401 unexpectedly entered acceptance' >&2
   exit 1
 fi
 test "$product_acceptance_started" -eq 0
+if ! acceptance_login_http_status_allows_acceptance 200; then
+  echo '200 unexpectedly blocked acceptance' >&2
+  exit 1
+fi
+product_acceptance_started=1
+test "$product_acceptance_started" -eq 1
 
 printf '%s\n' '{"errors":{"account":["redacted"],"password":["redacted"]},"code":"not-allowlisted","message":"must not be printed"}' > "$tmp_dir/rejected.json"
 test "$(acceptance_login_response_taxonomy "$tmp_dir/rejected.json")" = 'json=valid errors=account,password code=none'
