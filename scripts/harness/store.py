@@ -10,10 +10,11 @@ from typing import Any, Iterable
 
 from .contracts import Checkpoint, DecisionReceipt, GoalContract
 from .models import Escalation, Program, Task
+from .schema_migrate import TARGET_SCHEMA_VERSION, apply_additive_v4
 from .states import TaskState
 
 DEFAULT_DB = Path("/home/jerry/workspace/state/alltrue/harness.sqlite")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = TARGET_SCHEMA_VERSION
 
 
 def default_db_path() -> Path:
@@ -22,7 +23,12 @@ def default_db_path() -> Path:
 
 
 class HarnessStore:
-    def __init__(self, db_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path | str | None = None,
+        *,
+        migrate: bool = True,
+    ) -> None:
         self.db_path = Path(db_path) if db_path else default_db_path()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         # isolation_level=None enables explicit BEGIN IMMEDIATE for lease CAS.
@@ -30,96 +36,15 @@ class HarnessStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
-        self._migrate()
+        # For empty/test DBs. Live cutover must use schema_migrate.migrate_* first.
+        if migrate:
+            self._migrate()
 
     def close(self) -> None:
         self._conn.close()
 
     def _migrate(self) -> None:
-        cur = self._conn.cursor()
-        cur.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS meta (
-              key TEXT PRIMARY KEY,
-              value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS programs (
-              program_id TEXT PRIMARY KEY,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS tasks (
-              task_id TEXT PRIMARY KEY,
-              program_id TEXT NOT NULL,
-              status TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_tasks_program ON tasks(program_id);
-            CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-            CREATE TABLE IF NOT EXISTS escalations (
-              escalation_id TEXT PRIMARY KEY,
-              dedupe_key TEXT NOT NULL,
-              status TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_escalation_open_dedupe
-              ON escalations(dedupe_key) WHERE status = 'open';
-            CREATE TABLE IF NOT EXISTS transitions (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              task_id TEXT NOT NULL,
-              from_state TEXT NOT NULL,
-              to_state TEXT NOT NULL,
-              actor TEXT NOT NULL,
-              evidence TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS leases (
-              lease_id TEXT PRIMARY KEY,
-              resource_key TEXT NOT NULL UNIQUE,
-              holder_task_id TEXT NOT NULL,
-              holder_worker TEXT NOT NULL,
-              expires_at TEXT NOT NULL,
-              fencing_token INTEGER NOT NULL,
-              payload TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS goals (
-              goal_id TEXT PRIMARY KEY,
-              program_id TEXT NOT NULL,
-              task_id TEXT NOT NULL,
-              subject_sha TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_goals_task ON goals(task_id);
-            CREATE TABLE IF NOT EXISTS decision_receipts (
-              receipt_id TEXT PRIMARY KEY,
-              goal_id TEXT NOT NULL,
-              subject_sha TEXT NOT NULL,
-              status TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_receipts_goal ON decision_receipts(goal_id);
-            CREATE TABLE IF NOT EXISTS checkpoints (
-              checkpoint_id TEXT PRIMARY KEY,
-              task_id TEXT NOT NULL,
-              goal_id TEXT NOT NULL,
-              task_state TEXT NOT NULL,
-              payload TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_checkpoints_task ON checkpoints(task_id);
-            """
-        )
-        cur.execute(
-            "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (str(SCHEMA_VERSION),),
-        )
-        self._conn.commit()
-
+        apply_additive_v4(self._conn)
     def upsert_program(self, program: Program) -> None:
         self._conn.execute(
             """
@@ -539,3 +464,176 @@ class HarnessStore:
             "SELECT payload FROM checkpoints WHERE checkpoint_id = ?", (checkpoint_id,)
         ).fetchone()
         return Checkpoint.from_dict(json.loads(row["payload"])) if row else None
+
+    def put_dispatch_attempt(self, attempt: dict[str, Any]) -> None:
+        """Insert or update a dispatch attempt. Open-task uniqueness enforced by index."""
+        self._conn.execute(
+            """
+            INSERT INTO dispatch_attempts(
+              attempt_id, plan_id, task_id, goal_id, goal_contract_fingerprint,
+              status, worker, payload, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(attempt_id) DO UPDATE SET
+              status=excluded.status, worker=excluded.worker, payload=excluded.payload,
+              updated_at=excluded.updated_at
+            """,
+            (
+                attempt["attempt_id"], attempt["plan_id"], attempt["task_id"],
+                attempt["goal_id"], attempt["goal_contract_fingerprint"],
+                attempt["status"], attempt["worker"],
+                json.dumps(attempt.get("payload") or {}),
+                attempt["created_at"], attempt["updated_at"],
+            ),
+        )
+        self._conn.commit()
+
+    def insert_dispatch_attempt_open(self, attempt: dict[str, Any]) -> None:
+        """Insert pending attempt; raises on duplicate open task (exactly-one winner)."""
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            self._conn.execute(
+                """
+                INSERT INTO dispatch_attempts(
+                  attempt_id, plan_id, task_id, goal_id, goal_contract_fingerprint,
+                  status, worker, payload, created_at, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    attempt["attempt_id"], attempt["plan_id"], attempt["task_id"],
+                    attempt["goal_id"], attempt["goal_contract_fingerprint"],
+                    attempt["status"], attempt["worker"],
+                    json.dumps(attempt.get("payload") or {}),
+                    attempt["created_at"], attempt["updated_at"],
+                ),
+            )
+            self._conn.commit()
+        except sqlite3.IntegrityError as exc:
+            self._conn.rollback()
+            raise RuntimeError(f"dispatch_attempt_conflict:{attempt.get('task_id')}") from exc
+        except Exception:
+            self._conn.rollback()
+            raise
+
+    def get_dispatch_attempt(self, attempt_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM dispatch_attempts WHERE attempt_id = ?", (attempt_id,)
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "attempt_id": row["attempt_id"],
+            "plan_id": row["plan_id"],
+            "task_id": row["task_id"],
+            "goal_id": row["goal_id"],
+            "goal_contract_fingerprint": row["goal_contract_fingerprint"],
+            "status": row["status"],
+            "worker": row["worker"],
+            "payload": json.loads(row["payload"] or "{}"),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def list_open_dispatch_attempts(self, task_id: str | None = None) -> list[dict[str, Any]]:
+        q = (
+            "SELECT * FROM dispatch_attempts WHERE status IN ('pending','acquired','active')"
+        )
+        args: tuple[Any, ...] = ()
+        if task_id:
+            q += " AND task_id = ?"
+            args = (task_id,)
+        q += " ORDER BY created_at"
+        out = []
+        for row in self._conn.execute(q, args):
+            out.append({
+                "attempt_id": row["attempt_id"],
+                "plan_id": row["plan_id"],
+                "task_id": row["task_id"],
+                "goal_id": row["goal_id"],
+                "goal_contract_fingerprint": row["goal_contract_fingerprint"],
+                "status": row["status"],
+                "worker": row["worker"],
+                "payload": json.loads(row["payload"] or "{}"),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            })
+        return out
+
+    def _row_worker_run(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "run_id": row["run_id"],
+            "attempt_id": row["attempt_id"],
+            "task_id": row["task_id"],
+            "mode": row["mode"],
+            "status": row["status"],
+            "session_id": row["session_id"],
+            "worktree_path": row["worktree_path"],
+            "branch": row["branch"],
+            "worker": row["worker"],
+            "fencing_token": row["fencing_token"],
+            "lease_binding": json.loads(row["lease_binding"] or "{}"),
+            "payload": json.loads(row["payload"] or "{}"),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def put_worker_run(self, run: dict[str, Any]) -> None:
+        """Insert or update a WorkerRun row (H4b durable child/session identity)."""
+        self._conn.execute(
+            """
+            INSERT INTO worker_runs(
+              run_id, attempt_id, task_id, mode, status, session_id,
+              worktree_path, branch, worker, fencing_token, lease_binding,
+              payload, created_at, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+              status=excluded.status,
+              session_id=excluded.session_id,
+              worktree_path=excluded.worktree_path,
+              branch=excluded.branch,
+              worker=excluded.worker,
+              fencing_token=excluded.fencing_token,
+              lease_binding=excluded.lease_binding,
+              payload=excluded.payload,
+              updated_at=excluded.updated_at
+            """,
+            (
+                run["run_id"], run["attempt_id"], run["task_id"], run["mode"],
+                run["status"], run.get("session_id") or "",
+                run.get("worktree_path") or "", run.get("branch") or "",
+                run.get("worker") or "", run.get("fencing_token"),
+                json.dumps(run.get("lease_binding") or {}),
+                json.dumps(run.get("payload") or {}),
+                run["created_at"], run["updated_at"],
+            ),
+        )
+        self._conn.commit()
+
+    def get_worker_run(self, run_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM worker_runs WHERE run_id = ?", (run_id,)
+        ).fetchone()
+        return self._row_worker_run(row) if row else None
+
+    def list_worker_runs(
+        self,
+        *,
+        attempt_id: str | None = None,
+        task_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        args: list[Any] = []
+        if attempt_id:
+            clauses.append("attempt_id = ?")
+            args.append(attempt_id)
+        if task_id:
+            clauses.append("task_id = ?")
+            args.append(task_id)
+        if session_id:
+            clauses.append("session_id = ?")
+            args.append(session_id)
+        q = "SELECT * FROM worker_runs"
+        if clauses:
+            q += " WHERE " + " AND ".join(clauses)
+        q += " ORDER BY created_at"
+        return [self._row_worker_run(r) for r in self._conn.execute(q, tuple(args))]

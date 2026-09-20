@@ -4,6 +4,435 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-19-student-school-search",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": "2026-09-19",
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生可用姓名或就讀學校搜尋",
+    "summary": "學生清單搜尋支援姓名與就讀學校，既有分校權限與篩選行為維持不變。",
+    "items": [
+      "輸入姓名或學校即可找到授權分校內的學生。",
+      "分校權限、年級、狀態與既有篩選規則維持不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "輸入姓名或學校即可找到授權分校內的學生。",
+          "分校權限、年級、狀態與既有篩選規則維持不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3065",
+      "github:in-app-313"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-19-shared-plan-slot-edit-324",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "共用方案改時段不回補歷史堂次",
+    "summary": "多科共用方案修改固定時段時，只同步未來可變堂次，保留歷史與既有未來例外。",
+    "items": [
+      "共用方案改固定星期／時間時，不會因缺少首堂日而產生今天以前的預排堂次。",
+      "既有未來堂次與單堂例外保留，其他科目與方案堂數不受影響。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "共用方案改固定星期／時間時，不會因缺少首堂日而產生今天以前的預排堂次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "既有未來堂次與單堂例外保留，其他科目與方案堂數不受影響。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3074",
+      "github:in-app-324",
+      "changelog:2026-09-19:shared-plan-slot-edit-324"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-19-shared-plan-fixed-schedule-320",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "共用方案可選固定或不固定預排",
+    "summary": "多科共用方案堂數制可逐科選擇固定星期／時間預排，或只補登已知日期。",
+    "items": [
+      "建立堂數制共用方案時，每科可勾選固定星期／時間預排。",
+      "不固定的科目維持手動補登日期流程，不會送出固定排課設定。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "建立堂數制共用方案時，每科可勾選固定星期／時間預排。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "不固定的科目維持手動補登日期流程，不會送出固定排課設定。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3070",
+      "github:in-app-320",
+      "changelog:2026-09-19:shared-plan-fixed-schedule-320"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-19-counseling-free-325",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "輔導課免填金額且不產生應收",
+    "summary": "建立輔導課時不需填寫金額或繳費日期，系統不會產生應收帳款或繳費提醒。",
+    "items": [
+      "輔導課建立表單隱藏金額與繳費日期，並清楚標示免費課程。",
+      "新建輔導課固定不產生帳單、收款或催繳通知；既有歷史帳務與核薪規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "輔導課建立表單隱藏金額與繳費日期，並清楚標示免費課程。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "新建輔導課固定不產生帳單、收款或催繳通知；既有歷史帳務與核薪規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3075",
+      "github:in-app-325",
+      "changelog:2026-09-19:counseling-free-325"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-19-calendar-split-slot-317",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "行事曆一對二／一對三並排課卡較易閱讀",
+    "summary": "日檢視同時段多位學生的課卡，科目與班型改橫向顯示，避免窄欄文字被截斷。",
+    "items": [
+      "修正一對二、一對三並排時課卡內姓名或班型標籤被截到難以辨識。",
+      "並排窄欄的班型標示改短，保留科目與姓名可讀性。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "修正一對二、一對三並排時課卡內姓名或班型標籤被截到難以辨識。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "並排窄欄的班型標示改短，保留科目與姓名可讀性。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-317",
+      "changelog:2026-09-19:calendar-split-slot-317"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-19-calendar-print-318",
+    "publishedAt": "2026-09-19",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任可列印週／月課表做人工核對",
+    "summary": "班級行事曆新增週／月列印預覽，提供總覽與完整每日明細。",
+    "items": [
+      "在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。",
+      "明細含學生、科目／班型、教師、日期時間、校區教室及異動狀態；暗色主題列印維持白底深字與清晰邊界。",
+      "課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "在班級行事曆按「列印課表」，可選本週或當月、紙張方向及老師／教室／學生篩選。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "明細含學生、科目／班型、教師、日期時間、校區教室及異動狀態；暗色主題列印維持白底深字與清晰邊界。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "課表含學生姓名，僅供校內核對；列印後請妥善保管，不列電話、地址、帳務或備註。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3068",
+      "github:in-app-318",
+      "changelog:2026-09-19:calendar-print-318"
+    ],
+    "date": "2026-09-19",
+    "version": "2026.09.19"
+  },
+  {
+    "id": "staff-2026-09-18-course-manager-v1-on",
+    "publishedAt": "2026-09-18",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程管理改為「管理課程」單一入口",
+    "summary": "進行中課程改按「管理課程」進入工作區；原編輯／更多整理進分區，不含單堂取消或改時間。",
+    "items": [
+      "進行中列改按「管理課程」進入總覽、排課、設定、帳務與紀錄。",
+      "原編輯、更多、詳情操作整理進對應分區，仍走既有流程。",
+      "本版不含取消堂次、改時間／改老師或週期改寫。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "進行中列改按「管理課程」進入總覽、排課、設定、帳務與紀錄。",
+          "原編輯、更多、詳情操作整理進對應分區，仍走既有流程。",
+          "本版不含取消堂次、改時間／改老師或週期改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3045"
+    ],
+    "date": "2026-09-18",
+    "version": "2026.09.18"
+  },
+  {
+    "id": "staff-2026-09-18-lr-mutable-teacher-follow",
+    "publishedAt": "2026-09-18",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "未上課評量跟著目前老師",
+    "summary": "尚未發生的待填評量會跟目前課表老師；已實際上過的仍保留當時老師。",
+    "items": [
+      "換正班老師後，尚未上課的待填評量改由目前老師負責。",
+      "課表與評量顯示的負責老師對齊，避免舊老師仍看到待填項。",
+      "已上課、已核准或正式代課的歷史堂次不會被之後換師改掉。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "換正班老師後，尚未上課的待填評量改由目前老師負責。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "課表與評量顯示的負責老師對齊，避免舊老師仍看到待填項。",
+          "已上課、已核准或正式代課的歷史堂次不會被之後換師改掉。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-314"
+    ],
+    "date": "2026-09-18",
+    "version": "2026.09.18"
+  },
+  {
+    "id": "staff-2026-09-17-grade-promotion",
+    "publishedAt": "2026-09-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "年級升級改為預覽後確認",
+    "summary": "主任可先預覽再確認升級；可排除學生；同季不會重複升級；H3 只標記畢業、不自動停課。",
+    "items": [
+      "年級升級改走伺服器預覽／確認，並留下批次紀錄。",
+      "已升級學生會標為不可再執行；重試同一確認不會重複升級。",
+      "H3 畢業不再在此步驟自動停課（課務另走排程／帳務流程）。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "年級升級改走伺服器預覽／確認，並留下批次紀錄。",
+          "H3 畢業不再在此步驟自動停課（課務另走排程／帳務流程）。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "已升級學生會標為不可再執行；重試同一確認不會重複升級。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-297"
+    ],
+    "date": "2026-09-17",
+    "version": "2026.09.17"
+  },
+  {
+    "id": "staff-2026-09-17-course-session-calendar-v1",
+    "publishedAt": "2026-09-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "課程管理可開行事曆看堂次與新增未來堂",
+    "summary": "單課可開啟行事曆檢視已排／預排堂次，並在未來日期新增一堂；不含取消、改時間或改老師。",
+    "items": [
+      "課程管理單課可切換行事曆檢視（已建立＋預排堂次）。",
+      "可在未來日期新增一堂，沿用既有新增堂次流程。",
+      "本版不含取消堂次、改時間／改老師或週期改寫。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "課程管理單課可切換行事曆檢視（已建立＋預排堂次）。",
+          "可在未來日期新增一堂，沿用既有新增堂次流程。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "本版不含取消堂次、改時間／改老師或週期改寫。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#2800",
+      "github:in-app-290"
+    ],
+    "date": "2026-09-17",
+    "version": "2026.09.17"
+  },
+  {
+    "id": "staff-2026-09-17-school-typeahead",
+    "publishedAt": "2026-09-17",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生就讀學校可搜尋標準校名",
+    "summary": "新增／編輯學生時可從建議清單選校（含縣市辨識），也可繼續輸入自訂校名；不會改到舊資料。",
+    "items": [
+      "就讀學校欄位提供可搜尋的標準校名建議。",
+      "同名學校會顯示縣市／行政區，降低選錯機率。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "就讀學校欄位提供可搜尋的標準校名建議。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "同名學校會顯示縣市／行政區，降低選錯機率。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-296"
+    ],
+    "date": "2026-09-17",
+    "version": "2026.09.17"
+  },
+  {
     "id": "staff-2026-09-16-contract-amendment-remaining",
     "publishedAt": "2026-09-16",
     "effectiveAt": null,

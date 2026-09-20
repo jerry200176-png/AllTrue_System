@@ -48,3 +48,40 @@ export function canSwitchStaffMode(capabilities) {
   const caps = new Set(capabilities.map((c) => String(c).toLowerCase()));
   return caps.has('director') && caps.has('teacher');
 }
+
+/**
+ * Add the selected acting context to direct same-origin API calls too.
+ * The query-builder client already does this itself, but several legacy
+ * screens call fetch() directly. Keeping the bridge here prevents those
+ * screens from silently reverting to the account's legacy User.type.
+ */
+export function installActingAsFetchBridge(target = globalThis) {
+  if (!target?.fetch || target.__alltrueActingAsFetchBridge) return;
+  const HeadersCtor = target.Headers || globalThis.Headers;
+  if (typeof HeadersCtor !== 'function') return;
+
+  const originalFetch = target.fetch.bind(target);
+  target.fetch = (input, init = {}) => {
+    let url;
+    try {
+      const rawUrl = typeof input === 'string' ? input : input?.url;
+      url = new URL(rawUrl || '', target.location?.href);
+    } catch {
+      return originalFetch(input, init);
+    }
+
+    const origin = target.location?.origin;
+    const isApiRequest = origin && url.origin === origin
+      && url.pathname.startsWith('/api/v1/')
+      && !url.pathname.startsWith('/api/v1/auth/');
+    const hasSession = Boolean(target.localStorage?.getItem?.('alltrue_session'));
+    const actingAs = hasSession ? readStoredActingAs(target.localStorage) : null;
+    if (!isApiRequest || !actingAs) return originalFetch(input, init);
+
+    const headers = new HeadersCtor(input?.headers || undefined);
+    new HeadersCtor(init?.headers || undefined).forEach((value, key) => headers.set(key, value));
+    if (!headers.has(ACTING_AS_HEADER)) headers.set(ACTING_AS_HEADER, actingAs);
+    return originalFetch(input, { ...init, headers });
+  };
+  target.__alltrueActingAsFetchBridge = true;
+}

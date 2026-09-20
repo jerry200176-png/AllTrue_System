@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import CourseBlockContent from '../CourseBlockContent.vue';
 import { getSubjectLabel } from '../../../lib/constants';
-import { classTypeLabel } from '../../../lib/calendarFormat.js';
+import { classTypeLabel, classTypeShortLabel } from '../../../lib/calendarFormat.js';
 
 const course = { student_name: '小明', subject: 'math', class_type: 'one_on_one', teacher_id: 7, teacher_name: '王老師' };
 
@@ -73,6 +73,28 @@ describe('CourseBlockContent', () => {
     expect(full.find('.cb-student').classes()).not.toContain('cbc-badge-compact-pad');
     const compact = mount(CourseBlockContent, { props: { course, layout: { firstBadge: 'compact' } } });
     expect(compact.find('.cb-student').classes()).toContain('cbc-badge-compact-pad');
+  });
+
+  // in-app #317：1:2/1:3 並排格子用橫向 meta + 短標，避免窄欄溢出
+  it('uses horizontal meta row and short type label for split one_on_two slots', () => {
+    const multi = { ...course, class_type: 'one_on_two' };
+    const wrapper = mount(CourseBlockContent, {
+      props: { course: multi, layout: { splitSlot: true, splitCount: 2, compact: true } },
+    });
+    expect(wrapper.find('.cb-meta-row').exists()).toBe(true);
+    expect(wrapper.find('.cb-meta-row').classes()).toContain('cbc-split-slot');
+    expect(wrapper.find('.cb-type').text()).toBe(classTypeShortLabel('one_on_two'));
+    expect(wrapper.findAll('.cb-detail')).toHaveLength(1);
+  });
+
+  it('applies triple-split density classes for three-way 1:3 slots', () => {
+    const multi = { ...course, class_type: 'one_on_three' };
+    const wrapper = mount(CourseBlockContent, {
+      props: { course: multi, layout: { splitSlot: true, splitCount: 3 } },
+    });
+    expect(wrapper.find('.cb-student').classes()).toContain('cbc-split-triple');
+    expect(wrapper.find('.cb-meta-row').classes()).toContain('cbc-split-triple');
+    expect(wrapper.find('.cb-type').text()).toBe('1:3');
   });
 
   // 空值：badges / layout 預設空物件不崩潰

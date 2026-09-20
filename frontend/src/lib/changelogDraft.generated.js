@@ -5,10 +5,10 @@
  */
 export const changelogDraftNotes = [
   {
-    "version": "2026.09.17",
-    "date": "2026-09-17",
-    "title": "2026.09.17 草稿（未發布）",
-    "summary": "S6-00b same-session continuum UI；multi-role capability model behind flag",
+    "version": "2026.09.19",
+    "date": "2026-09-19",
+    "title": "2026.09.19 草稿（未發布）",
+    "summary": "plan fixed or flexible pre-schedule choice；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
     "audience": [
       "teacher",
       "director"
@@ -18,16 +18,119 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "S6-00b same-session continuum UI",
-          "multi-role capability model behind flag",
-          "S6-00a source_* auto-link on upsert"
+          "plan fixed or flexible pre-schedule choice",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "plan slot edit preserves past/future boundaries",
+          "slot wrap spacing polish",
+          "1：2/1：3 split-slot text readability",
+          "courses are free and non-collectible"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "搜尋姓名或就讀學校"
         ]
       }
     ],
     "items": [
-      "S6-00b same-session continuum UI",
-      "multi-role capability model behind flag",
-      "S6-00a source_* auto-link on upsert"
+      "plan fixed or flexible pre-schedule choice",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+      "plan slot edit preserves past/future boundaries",
+      "slot wrap spacing polish",
+      "1：2/1：3 split-slot text readability",
+      "courses are free and non-collectible",
+      "搜尋姓名或就讀學校"
+    ]
+  },
+  {
+    "version": "2026.09.18",
+    "date": "2026-09-18",
+    "title": "2026.09.18 草稿（未發布）",
+    "summary": "closed-loop product projection；Course Manager V1 for staff",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "closed-loop product projection",
+          "Course Manager V1 for staff",
+          "Manager V1 consolidates Edit/More/Details"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "link-only issue URL onto prior disposition",
+          "disposition when resolving with -only link",
+          "LR ownership follows course teacher"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "Manager IA dedupe and layout"
+        ]
+      }
+    ],
+    "items": [
+      "closed-loop product projection",
+      "Course Manager V1 for staff",
+      "Manager V1 consolidates Edit/More/Details",
+      "link-only issue URL onto prior disposition",
+      "disposition when resolving with -only link",
+      "LR ownership follows course teacher",
+      "Manager IA dedupe and layout"
+    ]
+  },
+  {
+    "version": "2026.09.17",
+    "date": "2026-09-17",
+    "title": "2026.09.17 草稿（未發布）",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+          "promotion Phase-B.1 scheduled preview",
+          "promotion staff UI",
+          "4b WorkerRun start/attach + durable session bind",
+          "S6-01 workspace progress + continuum edge helpers"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "course session calendar flag activation",
+          "assessment fill vs review label regression"
+        ]
+      }
+    ],
+    "items": [
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+      "promotion Phase-B.1 scheduled preview",
+      "promotion staff UI",
+      "4b WorkerRun start/attach + durable session bind",
+      "S6-01 workspace progress + continuum edge helpers",
+      "course session calendar flag activation",
+      "assessment fill vs review label regression"
     ]
   },
   {
@@ -626,86 +729,6 @@ export const changelogDraftNotes = [
       "課程查找同步按堂／按時計費單位",
       "移除固定時段不再誤判自己衝堂",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
-    ]
-  },
-  {
-    "version": "2026.09.01",
-    "date": "2026-09-01",
-    "title": "2026.09.01 草稿（未發布）",
-    "summary": "行事曆調課不再被不完整預判誤擋；歷史課程顯示堂數待對帳",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "行事曆調課不再被不完整預判誤擋",
-          "歷史課程顯示堂數待對帳",
-          "調課預覽優先採用當日請假狀態",
-          "未繳課程可結案但保留待對帳狀態"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "新建與編輯課程共用老師空檔查詢",
-          "新增排課可先找可行時段",
-          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-          "回報提交後保留追蹤入口",
-          "老師首頁先看今天的課表"
-        ]
-      }
-    ],
-    "items": [
-      "行事曆調課不再被不完整預判誤擋",
-      "歷史課程顯示堂數待對帳",
-      "調課預覽優先採用當日請假狀態",
-      "未繳課程可結案但保留待對帳狀態",
-      "新建與編輯課程共用老師空檔查詢",
-      "新增排課可先找可行時段",
-      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-      "回報提交後保留追蹤入口"
-    ]
-  },
-  {
-    "version": "2026.08.31",
-    "date": "2026-08-31",
-    "title": "2026.08.31 草稿（未發布）",
-    "summary": "主任可查看每週16段課達標與課程構成；月結開課日跨固定星期仍建立首堂",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "主任可查看每週16段課達標與課程構成"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "月結開課日跨固定星期仍建立首堂",
-          "調課預覽正確排除請假與取消課程"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "課程查找明確顯示堂數待對帳"
-        ]
-      }
-    ],
-    "items": [
-      "主任可查看每週16段課達標與課程構成",
-      "月結開課日跨固定星期仍建立首堂",
-      "調課預覽正確排除請假與取消課程",
-      "課程查找明確顯示堂數待對帳"
     ]
   }
 ];

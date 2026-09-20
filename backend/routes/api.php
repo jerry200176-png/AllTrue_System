@@ -68,6 +68,7 @@ use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
 use App\Http\Controllers\AdmissionInquiryController;
 use App\Http\Controllers\GlobalSearchController;
+use App\Http\Controllers\SchoolDirectoryController;
 
 
 if (app()->environment('local')) {
@@ -341,12 +342,16 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
+        // Curated read-only school directory (in-app #296). No admin write API in V1.
+        Route::get('schools', [SchoolDirectoryController::class, 'index']);
         Route::get('students', [StudentController::class, 'index']);
         Route::post('students', [StudentController::class, 'store']);
         Route::post('students/bulk-delete', [StudentController::class, 'bulkDestroy']);
         // Static paths must precede {student} or "export"/"import" are captured as IDs (#1812).
         Route::post('students/import', [ImportController::class, 'students']);
         Route::get('students/export', [ExportController::class, 'students']);
+        Route::get('grade-promotions/preview', [\App\Http\Controllers\GradePromotionController::class, 'preview']);
+        Route::post('grade-promotions/confirm', [\App\Http\Controllers\GradePromotionController::class, 'confirm']);
         Route::get('students/{student}', [StudentController::class, 'show'])->whereNumber('student');
         Route::put('students/{student}', [StudentController::class, 'update'])->whereNumber('student');
         Route::delete('students/{student}', [StudentController::class, 'destroy'])->whereNumber('student');

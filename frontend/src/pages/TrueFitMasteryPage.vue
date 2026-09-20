@@ -44,7 +44,7 @@
             儲存精熟證據
           </AtButton>
           <AtButton
-            v-if="savedRecordId"
+            v-if="canContinueFromStage({ stage: 'mastery', savedRecordId })"
             variant="ghost"
             shape="rect"
             icon="home"
@@ -74,7 +74,11 @@ import {
   fetchTrueFitRemediation,
   upsertTrueFitMastery,
 } from '../lib/truefitApi.js';
-import { seedMasteryFromRemediation } from '../lib/truefitLoop.js';
+import {
+  canContinueFromStage,
+  seedMasteryFromRemediation,
+  shouldApplyContinuumSeed,
+} from '../lib/truefitLoop.js';
 
 const props = defineProps({ session: { type: Object, default: null }, token: { type: String, required: true } });
 defineEmits(['back', 'continue']);
@@ -160,8 +164,9 @@ async function loadExisting() {
       sourceRemediationId.value = Number(remPayload.data.id) || null;
     }
     applyEvidence(masPayload?.data?.mastery || null);
-    if (!savedRecordId.value) {
-      applySeedIfEmpty(seedMasteryFromRemediation(remPayload?.data?.remediation || null));
+    const seed = seedMasteryFromRemediation(remPayload?.data?.remediation || null);
+    if (shouldApplyContinuumSeed({ savedRecordId: savedRecordId.value, seed })) {
+      applySeedIfEmpty(seed);
     }
   } catch (e) {
     error.value = e?.message || '精熟證據載入失敗';

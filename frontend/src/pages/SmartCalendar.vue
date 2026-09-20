@@ -18,6 +18,7 @@
         </template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
+          <AtButton v-if="!isTeacher" shape="rect" variant="secondary" icon="print" @click="showCalendarPrint = true">列印課表</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
             <button id="calendar-tab-week" type="button" role="tab" aria-controls="calendar-panel-week" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
             <button v-if="!isTeacher" id="calendar-tab-teacher" type="button" role="tab" aria-controls="calendar-panel-teacher" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
@@ -232,7 +233,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForTeacherAt(teacher.id, h)"
                   :key="course.id"
-                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id), 'course-block--split': getCoursesForTeacherAt(teacher.id, h).length > 1 }]"
                   :style="getTeacherCourseBlockStyle(course, teacher.id, h, cIdx)"
                   :draggable="!isTeacher"
                   role="button"
@@ -249,7 +250,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, selectedDateStr), evalMissing: evalBadge(course, selectedDateStr), teacherTag: null }"
-                    :layout="{ compact: isTeacherGridCompact, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
+                    :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, splitCount: getCoursesForTeacherAt(teacher.id, h).length, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
                   />
                 </div>
               </div>
@@ -303,7 +304,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForWeekCell(idx + 1, h)"
                   :key="course.id"
-                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id), 'course-block--split': getCoursesForWeekCell(idx + 1, h).length > 1 }]"
                   :style="getWeekCourseBlockStyle(course, idx + 1, h, cIdx)"
                   :draggable="!isTeacher"
                   role="button"
@@ -320,7 +321,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, getDisplayDateFull(idx + 1)), evalMissing: evalBadge(course, getDisplayDateFull(idx + 1)), teacherTag: weekViewTeacherIds.length !== 1 ? { name: course.teacher_name, color: getTeacherColor(course.teacher_id) } : null }"
-                    :layout="{ compact: false, firstBadge: null }"
+                    :layout="{ compact: false, splitSlot: getCoursesForWeekCell(idx + 1, h).length > 1, splitCount: getCoursesForWeekCell(idx + 1, h).length, firstBadge: null }"
                   />
                 </div>
               </div>
@@ -551,6 +552,16 @@
       <button class="ctx-item" @click="onContextLeave">📋 請假</button>
       <button class="ctx-item ctx-cancel" @click="contextMenu.show = false">取消</button>
     </div>
+
+    <CalendarPrintDialog
+      :open="showCalendarPrint"
+      :branch-id="props.branchId"
+      :branch-name="props.branchName"
+      :rooms="roomList"
+      :teachers="teachers"
+      :initial-date="selectedDateStr"
+      @close="showCalendarPrint = false"
+    />
   </div>
 </template>
 
@@ -587,6 +598,7 @@ import CalendarLeaveModal from '../components/calendar/modals/CalendarLeaveModal
 import CalendarRescheduleModal from '../components/calendar/modals/CalendarRescheduleModal.vue';
 import CalendarSubstituteLegacyModal from '../components/calendar/modals/CalendarSubstituteLegacyModal.vue';
 import CalendarExtraLessonModal from '../components/calendar/modals/CalendarExtraLessonModal.vue';
+import CalendarPrintDialog from '../components/calendar/CalendarPrintDialog.vue';
 import {
   fetchTeacherAvailability,
   previewTeacherLeaves,
@@ -626,6 +638,7 @@ import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigatio
 
 const props = defineProps({
   branchId: [String, Number],
+  branchName: { type: String, default: '' },
   userRole: String,
   userId: [String, Number],
   initialTeacherId: [String, Number],
@@ -762,6 +775,7 @@ function selectCalendarFlowStep(stepId) {
   }
 }
 const showModal = ref(false);
+const showCalendarPrint = ref(false);
 const editingCourseId = ref(null);
 /** 點擊的那一堂的實際日期（僅編輯單堂時有值），用於限定只能做請假/調課/加課 */
 const editingActionDate = ref('');
@@ -3241,6 +3255,11 @@ onMounted(() => {
 .teacher-grid.teacher-grid-compact .course-block {
   padding: 4px 3px;
   border-radius: 6px;
+}
+.course-block--split {
+  padding: 3px 3px;
+  border-radius: 6px;
+  min-width: 0;
 }
 /* var(--ds-warning) Step 5：compact cb-* 已改 prop 驅動（.cbc-compact），移至 CourseBlockContent.vue */
 .time-col {

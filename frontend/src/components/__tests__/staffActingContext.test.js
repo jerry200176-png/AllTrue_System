@@ -3,6 +3,7 @@ import {
   ACTING_AS_HEADER,
   actingAsHeaders,
   canSwitchStaffMode,
+  installActingAsFetchBridge,
   normalizeActingAs,
   readStoredActingAs,
   writeStoredActingAs,
@@ -39,5 +40,32 @@ describe('staffActingContext', () => {
     expect(canSwitchStaffMode(['director'])).toBe(false);
     expect(canSwitchStaffMode([])).toBe(false);
     expect(canSwitchStaffMode(null)).toBe(false);
+  });
+
+  it('adds the selected context to direct same-origin API calls only', () => {
+    const store = new Map([
+      ['alltrue_session', JSON.stringify({ access_token: 'synthetic' })],
+      ['alltrue_acting_as', 'teacher'],
+    ]);
+    const storage = {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+    };
+    const calls = [];
+    const target = {
+      Headers,
+      location: { origin: 'https://app.test', href: 'https://app.test/' },
+      localStorage: storage,
+      fetch: (...args) => {
+        calls.push(args);
+        return args;
+      },
+    };
+
+    installActingAsFetchBridge(target);
+    target.fetch('/api/v1/students', { headers: { Accept: 'application/json' } });
+    expect(calls[0][1].headers.get(ACTING_AS_HEADER)).toBe('teacher');
+
+    target.fetch('https://cdn.example.test/widget.js', { headers: {} });
+    expect(calls[1][1].headers.get(ACTING_AS_HEADER)).toBe(null);
   });
 });

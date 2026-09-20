@@ -83,7 +83,7 @@
             儲存觀察
           </AtButton>
           <AtButton
-            v-if="savedRecordId"
+            v-if="canContinueFromStage({ stage: 'observe', savedRecordId })"
             variant="ghost"
             shape="rect"
             icon="psychology"
@@ -109,6 +109,7 @@ import AtField from '../components/design-system/AtField.vue';
 import AtSelect from '../components/design-system/AtSelect.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import { fetchTrueFitObservation, upsertTrueFitObservation } from '../lib/truefitApi.js';
+import { canContinueFromStage } from '../lib/truefitLoop.js';
 
 const props = defineProps({
   session: { type: Object, default: null },

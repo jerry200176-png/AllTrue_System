@@ -96,11 +96,10 @@ describe('LearningRecords review queue accessibility', () => {
   it('distinguishes assessment completion from director review status on cards', () => {
     expect(source).toContain('{{ cardReviewStatusLabel(record.Status) }}');
     expect(source).toContain('{{ cardFillLabel(record) }}');
-    expect(source).toContain("pending: '審核：待主任核准'");
-    expect(source).toContain("changes_requested: '審核：老師需修改'");
-    expect(source).toContain("approved: '審核：已核准'");
-    expect(source).toContain("rejected: '審核：已退回'");
-    expect(source).toContain("hasLearningRecordBody(record) ? '評量內容已填' : '評量內容未填'");
+    expect(source).toContain("from '../lib/learningRecordStatusLabels'");
+    expect(source).toContain('fillStatusLabel(hasLearningRecordBody(record)');
+    expect(source).toContain('reviewStatusLabel(status');
+    expect(source).toContain('director: isDirectorRole.value');
   });
 
   it('uses the same director fill/review labels in table list view', () => {

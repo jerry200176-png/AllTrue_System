@@ -19,6 +19,7 @@
     { "context": "curriculum",     "match": "Subject|Room|Grade|BaseData" },
     { "context": "analytics",      "match": "BusinessDigest|Analytics|Metric|Insight|Digest|Anomaly|OperationsTrust|DirectorOperations|BranchHealth" },
     { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student|StaffCapability" },
+    { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student|StaffCapability|SchoolDirectory" },
     { "context": "platform",       "match": "Export|Import|ResetData|System|Webhook" }
   ],
   "forbiddenEdges": [

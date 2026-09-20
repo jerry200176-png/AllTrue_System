@@ -57,6 +57,22 @@ const flags = {
 
   /** TrueFit teacher learning workspace (Slice 0). Requires backend TRUEFIT_V1 too. */
   TRUEFIT_V1: import.meta.env.VITE_TRUEFIT_V1 === 'true',
+
+  /**
+   * Course Management calendar-shaped plan surface (PRODUCT_LOOP_DOGFOOD_001 Phase 0+1a).
+   * Default OFF — dark launch only. Production activation requires a separate Founder GO.
+   * Rollback = leave this false (or unset VITE_COURSE_SESSION_CALENDAR_V1).
+   */
+  COURSE_SESSION_CALENDAR_V1: import.meta.env.VITE_COURSE_SESSION_CALENDAR_V1 === 'true',
+
+  /**
+   * Course Manager workspace — consolidates Edit / More / Details / Calendar into one
+   * course-scoped IA (COURSE_MANAGER_V1). Default OFF until production activation.
+   * Rollback = unset VITE_COURSE_MANAGER_V1 (row returns to fragmented entry points).
+   * Course Manager polish shipped; flag semantics unchanged.
+   * Does not authorize Phase 1b/2/3 occurrence mutations.
+   */
+  COURSE_MANAGER_V1: import.meta.env.VITE_COURSE_MANAGER_V1 === 'true',
 };
 
 export default flags;

@@ -27,6 +27,7 @@ export default defineConfig({
     /release-notes-clarity\.spec\.js$/,
     /teacher-daily-workflow\.spec\.js$/,
     /teacher-calendar-ux\.spec\.js$/,
+    /calendar-split-slot-317\.spec\.js$/,
     /product-clarity-browser\.spec\.js$/,
     /admissions-workflow-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
@@ -55,6 +56,8 @@ export default defineConfig({
     /branch-management-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in the UI-foundation config.
     /binding-health-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server and local PDF artifacts.
+    /truefit-fixture-print\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },

@@ -91,7 +91,11 @@ jobs:
           $svc = \App\Services\BugReportService::class;
           $transition = null;
           if ($status === "new") {
-              $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl);
+              $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl, [
+                  "disposition" => "bug",
+                  "github_issue_url" => $issueUrl,
+                  "engineering_required" => true,
+              ]);
               if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
           }
           $already = \App\Models\BugReportComment::query()->where("bug_report_id", $bugId)

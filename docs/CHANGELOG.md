@@ -1,3 +1,128 @@
+## 2026-09-19 — fix(course-mgmt): shared-plan slot edit preserves past/future boundaries (in-app #324 / GitHub #3074)
+<!-- release-notes: staff_update=staff-2026-09-19-shared-plan-slot-edit-324 -->
+- SourceRef `alltrue:bug_report:324`：多科共用方案改固定時段時，缺少首堂日的 legacy edit payload 只同步未來可變堂次，不回補今天以前，也不刪除既有未來例外；方案堂數與其他科目不變。
+
+## 2026-09-19 — feat(students): shared-plan fixed or flexible pre-schedule choice (in-app #320 / GitHub #3070)
+<!-- release-notes: staff_update=staff-2026-09-19-shared-plan-fixed-schedule-320 -->
+- SourceRef `alltrue:bug_report:320`：多科共用方案堂數制可逐科選擇固定星期／時間預排；不固定時保留補登日期流程，不送固定排課 payload。
+
+## 2026-09-19 — fix(calendar): split-slot wrap spacing polish (in-app #317)
+<!-- release-notes: silent_ship=silent-2026-09-19-calendar-split-slot-317-polish -->
+- 窄欄 1:2/1:3 課卡：meta 改 wrap/間距保留 9px 字級，移除 7–8px 縮字；姓名允許換行；E2E 改查子元素 overflow。
+
+## 2026-09-19 — fix(calendar): 1:2/1:3 split-slot text readability (in-app #317)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-split-slot-317 -->
+- 日檢視同時段 1:2／1:3 並排窄欄：科目+班型改橫向 meta 列與 1:2/1:3 短標，避免姓名／標籤被截到只剩一字。
+
+## 2026-09-18 — docs(agents): in-app product-loop intake→GitHub mapping first
+<!-- release-notes: silent_ship=silent-2026-09-18-inapp-intake-github-first -->
+- product-loop skill：讀取後先建立／更新去識別化 GitHub intake 對照（SourceRef），再進入深度分診與選工；收件建單 ≠ Phase A／實作批准。
+
+## 2026-09-18 — ops(in-app): Phase-C allowlist #311/#312 + backlog read nav
+<!-- release-notes: silent_ship=silent-2026-09-18-phase-c-311-312 -->
+- Phase-C allowlist 補 in-app #311／#312（修正已在 production HEAD）；回寫 resolved + 請回報者驗收。
+- product-loop skill 補 backlog 讀取導航（queue/detail dump；limit 50／resolved 覆蓋缺口）。
+
+## 2026-09-18 — docs(agents): install in-app product-loop entry skill
+<!-- release-notes: silent_ship=silent-2026-09-18-inapp-product-loop-entry -->
+- 新增常設入口 `.agents/skills/alltrue-inapp-product-loop`（Cursor symlink），AGENTS 意圖路由改指向該 skill + 既有執行政策。
+- 修正 release／debugging skill 與政策：禁 Pi SSH；PLAN_REQUIRED 由 Agent 蒐證推薦、Founder 決策，ChatGPT 可選。
+
+## 2026-09-18 — fix(bugs): persist link-only issue URL onto prior disposition
+<!-- release-notes: silent_ship=silent-2026-09-18-bug-link-only-issue -->
+- 已定性後僅附 GitHub Issue URL 時，合併寫入先前定性，不再以 HTTP 200 默默忽略連結。
+- 狀態歷程顯示：缺 `note_display` 時剝除機器標記，保留歷史純文字；空 `note_display` 不回退成 JSON。
+
+## 2026-09-18 — fix(bugs): preserve disposition when resolving with PR-only link
+<!-- release-notes: silent_ship=silent-2026-09-18-bug-product-loop-clobber -->
+- 僅附 GitHub PR／Issue、未重填定性時，不再寫入空的 `[product_disposition]`，避免蓋掉先前定性。
+- 狀態歷程顯示改用已剝除機器標記的 `note_display`，不再回退成原始 JSON 標記。
+
+## 2026-09-18 — feat(bugs): in-app feedback closed-loop product projection
+<!-- release-notes: silent_ship=silent-2026-09-18-bug-product-loop -->
+- 意見與建議詳情新增「產品閉環摘要」：定性、GitHub 連結、Production SHA、語意階段（含 shipped≠僅合併 PR）。
+- 狀態更新可寫入定性／工程連結；`resolved` 且具 SHA 時同步寫入既有 `bug_report_evidence`。無 schema migration。
+
+## 2026-09-18 — fix(learning): mutable LR ownership follows course teacher (#314)
+<!-- release-notes: staff_update=staff-2026-09-18-lr-mutable-teacher-follow -->
+- 尚未上課、尚無授課證據的待填評量，換正班老師後會跟著目前課表老師；顯示與可填寫歸屬一致。
+- 已出席／已核准／已有實質評量內容／正式代課的歷史堂次不改寫老師；保留 #276／#312 語意。
+
+## 2026-09-18 — docs(product-ops): bounded app-shell debt + in-app execution policy
+<!-- release-notes: silent_ship=silent-2026-09-18-app-shell-inapp-policy -->
+- 新增 `APP_SHELL_DECOMPOSITION_001`（僅三切片、IMPLEMENTATION_DEFERRED）與 `INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`（訊號分類／auto-fix／Decision Packet）。
+- Docs-only；不改 App.vue、runtime、帳務或排課。
+## 2026-09-18 — polish(course-mgmt): Course Manager IA dedupe and layout
+<!-- release-notes: silent_ship=silent-2026-09-18-course-manager-polish -->
+- 管理課程去除重複 CTA（月結／補課／帳務）、移除僅重複堂次的「紀錄」分頁，排課改月曆／列表切換。
+- 總覽精簡為營運指標；設定改「返回總覽」與次要換師複製；危險刪除收合；不含 Phase 1b/2/3。
+
+## 2026-09-18 — feat(course-mgmt): activate Course Manager V1 for staff
+<!-- release-notes: staff_update=staff-2026-09-18-course-manager-v1-on -->
+- 課程管理進行中列改以「管理課程」進入單一工作區（總覽／排課與堂次／課程設定／帳務與合約／紀錄）。
+- 不改變既有排課／帳務／合約寫入；不含取消單堂、改時間／改老師或週期改寫。
+
+## 2026-09-18 — feat(course-mgmt): Course Manager V1 consolidates Edit/More/Details
+<!-- release-notes: silent_ship=silent-2026-09-18-course-manager-v1 -->
+- 進行中課程支援「管理課程」工作區（總覽／排課與堂次／課程設定／帳務與合約／紀錄），`COURSE_MANAGER_V1` 預設 OFF。
+- 啟用後取代列上編輯／更多／詳情競爭入口；仍走既有 API；不含 Phase 1b/2/3。
+
+## 2026-09-17 — fix(deploy): explicit course session calendar flag activation
+<!-- release-notes: silent_ship=silent-2026-09-17-calendar-flag-activation-control -->
+- Deployment control now accepts `course_session_calendar_v1=on|off|unchanged` (mirrors admissions), persists `COURSE_SESSION_CALENDAR_V1` for rebuild continuity, and allows Founder flag activation on an already-current tip.
+- Control-plane only until a Founder-gated run sets `course_session_calendar_v1=on`; does not authorize Phase 1b/2/3.
+
+## 2026-09-17 — feat(course-mgmt): staff calendar plan surface ON (Phase 0+1a)
+<!-- release-notes: staff_update=staff-2026-09-17-course-session-calendar-v1 -->
+- 課程管理單課可開啟行事曆檢視：顯示已建立＋預排堂次，並可在未來日期新增一堂（沿用既有新增堂次流程）。
+- **不含**取消堂次、改時間／改老師、週期改寫；不改帳務。Phase 1b／2／3 未授權。
+
+## 2026-09-17 — feat(course-mgmt): calendar plan surface Phase 0+1a (flag OFF)
+<!-- release-notes: silent_ship=silent-2026-09-17-course-session-calendar-phase-0-1a -->
+- Course Management 新增行事曆形狀的單課堂次讀取（已建立＋預排）與未來新增一堂（沿用既有 add-session／manual-sessions）；`COURSE_SESSION_CALENDAR_V1` / `VITE_COURSE_SESSION_CALENDAR_V1` 預設 OFF。
+- 不含取消、改時間、改老師、週期改寫；不改帳務 Charge／Paid／Invoice；不做 production 啟用。
+
+## 2026-09-17 — docs(audit): persist nine-domain engineering audit
+<!-- release-notes: silent_ship=silent-2026-09-17-nine-domain-engineering-audit -->
+- Add read-only nine-domain engineering audit artifact under `docs/audits/` for GitHub-side independent review.
+- Docs-only; no runtime, staff workflow, billing, or schedule changes.
+
+## 2026-09-17 — feat(students): grade promotion Phase-B.1 scheduled preview (#297)
+<!-- release-notes: silent_ship=silent-2026-09-17-grade-promotion-phase-b1 -->
+- 行政日排程僅執行年級升級「預覽」並以站內通知提醒主任／管理員；預設關閉自動確認、分校 allowlist 空白即 fail-closed（初始 rollout 需設定 campus 9）。
+- 沿用 Phase-A `GradePromotionService` writer；排程失敗寫入站內 ops 證據（Notification + BugReport）。
+
+## 2026-09-17 — feat(students): grade promotion staff UI (#297)
+<!-- release-notes: staff_update=staff-2026-09-17-grade-promotion -->
+- 學生管理「年級升級」改走伺服器預覽／確認：可排除學生、寫入批次紀錄、請求冪等；同生同季不可重複升級。
+- H3 僅標記畢業、不在此步驟停課。移除瀏覽器直寫升級的舊路徑。
+
+## 2026-09-17 — fix(learning): lock assessment fill vs review label regression
+<!-- release-notes: silent_ship=silent-2026-09-17-learning-status-label-lock -->
+- 抽出主任／老師評量狀態文案 helper，並補 Vitest＋Playwright（390／1440，含桌面列表）防止再出現含糊「未填／待審核」(#2715)。
+- 顯示語意不變；不改審核流程、請假篩選或資料。
+
+## 2026-09-17 — feat(harness): H4b WorkerRun start/attach + durable session bind
+<!-- release-notes: silent_ship=silent-2026-09-17-harness-h4b-worker-run -->
+- Dispatch spawn now records durable `worker_runs` (schema v4): session_id, worktree, fencing, handoff observe.
+- Prefer `agent-start --attach` when the task worktree already exists; create soft-defers unless `HARNESS_SPAWN_CREATE=1`.
+- H4 remains PARTIAL until Supervisor proves end-to-end wake; no product/TrueFit/In-App scope.
+
+## 2026-09-17 — feat(truefit): TF-S6-01 workspace progress + continuum edge helpers
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-01-progress-cta -->
+- TrueFit 暗啟動 UI：今日課程清單以既有 GET 扇出顯示同堂次備課／觀察／診斷／補救／精熟已存與否；continuum CTA／seed 在空表、半殘、已存邊緣失敗關閉。
+- 僅前端 Option A；`TRUEFIT_V1` / `VITE_TRUEFIT_V1` 維持 OFF，不做 aggregate API、不改教務／帳務／排課權威。
+
+## 2026-09-17 — docs(truefit): reconcile PROGRAM_STATUS after S6-01 merge
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-program-status-reconcile -->
+- 修正 #3017 文件矛盾：TF-S6-01 已於 #3024 合併；狀態改為 MERGED（非 Plan-only），並分列 CODE/MERGED/DEPLOYED/RUNTIME/ACCEPTED。
+- 不啟用 flags、不改 runtime、不實作 S6-02。
+
+## 2026-09-17 — docs(truefit): S6-00 acceptance evidence + TF-S6-01 Plan
+<!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00-evidence-s601-plan -->
+- 新增 TF-S6-00 合併後驗證證據包與 TF-S6-01 歷史 Plan 文件（僅文件）；後續以 PROGRAM_STATUS 對齊 #3024 實作真相。
+- 不啟用 flags、不改 runtime。
+
 ## 2026-09-17 — feat(truefit): TF-S6-00b same-session continuum UI
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00b-continuum-ui -->
 - TrueFit 暗啟動 UI：同堂次備課 → 觀察 → 診斷 → 補救 → 精熟的下一步 CTA，以及從前一階段 payload 種子空白表單。
@@ -7,6 +132,11 @@
 <!-- release-notes: silent_ship=silent-2026-09-17-staff-multi-role-ab -->
 - 新增校園感知 capability grant 模型、`StaffCapabilityAuthorizer` 與 `X-Acting-As` 工作身分上下文（acting_as 僅為 context，不可自行提權）。
 - `STAFF_MULTI_ROLE_V1` 預設 OFF；不含生產帳號合併／ID rewrite。雙重能力帳號可在 UI 切換主任／老師模式（flag 開啟後）。
+
+## 2026-09-17 — feat(students): searchable canonical school suggestions
+<!-- release-notes: staff_update=staff-2026-09-17-school-typeahead -->
+- 學生新增／編輯的就讀學校改為可搜尋建議清單（公司共用、含縣市／行政區辨識），選取後寫入既有校名字串欄位（in-app #296）。
+- 仍可輸入清單外自訂校名；不改歷史學生資料、不加強制外鍵、無學校管理後台。
 
 ## 2026-09-17 — feat(truefit): TF-S6-00a source_* auto-link on upsert
 <!-- release-notes: silent_ship=silent-2026-09-17-truefit-s6-00a-source-link -->
@@ -3326,3 +3456,13 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 <!-- release-notes: staff_update=staff-2026-09-15-tuition-viewport-containment -->
 
 - 帳務中心在手機與平板寬度會自動收合篩選欄位，操作按鈕會換行完整顯示；既有金額、收款、權限與資料流程不變。
+## 2026-09-19 — improved(students): 搜尋姓名或就讀學校
+<!-- release-notes: staff_update=staff-2026-09-19-student-school-search -->
+- 學生搜尋現在可用姓名或就讀學校查找；既有分校權限與篩選行為不變。
+## 2026-09-19 — fix(billing): counseling courses are free and non-collectible (in-app #325 / GitHub #3075)
+<!-- release-notes: staff_update=staff-2026-09-19-counseling-free-325 -->
+- 新建輔導課不再要求填寫金額或繳費日期；後端固定為零金額、未繳且不建立應收帳款，也不進繳費／續課提醒與催繳通知。既有歷史帳務與核薪規則不變。
+
+## 2026-09-19 — feat(calendar): director week/month print preview (in-app #318 / GitHub #3068)
+<!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
+- 主任可從班級行事曆列印目前有權限查看的週／月課表，包含總覽、每日明細、學生、課程、教師、日期時間、校區教室與異動狀態；僅透過瀏覽器列印，不建立額外檔案或資料來源。

@@ -1029,7 +1029,33 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn('"required_status_checks"', self.workflow)
         self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
 
-    def test_merged_pr_attribution_uses_actual_landed_commit_effects(self):
+    def test_classifier_gh_api_rejects_empty_or_invalid_json(self):
+        """GOV-ACTIVATE-CLASSIFIER-JSON-EOF: empty/truncated gh bodies must fail closed with path context."""
+        lookup = self.workflow[self.workflow.index("          def gh_api(path, *extra):"):]
+        lookup = lookup[:lookup.index("          def pages(value):")]
+        self.assertIn("capture_output=True", lookup)
+        self.assertIn("gh api empty JSON body", lookup)
+        self.assertIn("gh api invalid JSON", lookup)
+        self.assertIn("json.JSONDecodeError", lookup)
+        self.assertNotIn("subprocess.check_output", lookup)
+
+    def test_classifier_exception_emits_awaiting_activation_with_exception_class(self):
+        except_block = self.workflow[self.workflow.index("          except Exception as exc:"):]
+        except_block = except_block[:except_block.index("          PY")]
+        self.assertIn('emit(', except_block)
+        self.assertIn('"awaiting-activation"', except_block)
+        self.assertIn("activation policy evaluation failed; fail closed", except_block)
+        self.assertIn("type(exc).__name__", except_block)
+        # Must not flip approval_eligible true on generic parse failure
+        self.assertNotIn("approval_eligible=True", except_block)
+
+    def test_release_state_treats_empty_mode_as_fail_closed_blocked(self):
+        release = self.workflow[self.workflow.index("  release-state:"):]
+        release = release[:release.index("  production-activation:")]
+        self.assertIn('""|*', release)
+        self.assertIn("Classify produced empty or unknown release mode; fail closed", release)
+        self.assertIn("No production SSH, migration, frontend build, or data mutation was executed", release)
+
         attribution = self.workflow[self.workflow.index("              for commit in comparison.get(\"commits\") or []:"):]
         attribution = attribution[:attribution.index("              if not provenance_complete or not attributed:")]
         self.assertIn('commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")', attribution)
@@ -1143,13 +1169,41 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("admissions_funnel_v1:", self.workflow)
         self.assertIn("default: unchanged", self.workflow)
         self.assertIn('ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"', self.workflow)
-        self.assertIn('ADMISSIONS_FLAG_MODE" = "on"', self.workflow)
-        self.assertIn('ADMISSIONS_FLAG_MODE" = "off"', self.workflow)
-        self.assertIn("ADMISSIONS_FLAG_VALUE=$(grep -E", self.workflow)
-        self.assertIn("VITE_ADMISSIONS_FUNNEL_V1=%s", self.workflow)
-        self.assertIn("ADMISSIONS_FLAG_CHANGED=1", self.workflow)
+        self.assertIn('apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1', self.workflow)
+        self.assertIn("ADMISSIONS_FUNNEL_V1", self.workflow)
+        self.assertIn("VITE_ADMISSIONS_FUNNEL_V1", self.workflow)
+        self.assertIn("ADMISSIONS_FLAG_CHANGED=0", self.workflow)
         self.assertIn("admissions flag restored during rollback", self.workflow)
         self.assertIn('[ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}", self.workflow)
+
+
+    def test_course_session_calendar_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("course_session_calendar_v1:", self.workflow)
+        self.assertIn('CALENDAR_FLAG_MODE="${{ inputs.course_session_calendar_v1 }}"', self.workflow)
+        self.assertIn('apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1', self.workflow)
+        self.assertIn("COURSE_SESSION_CALENDAR_V1=", self.workflow)
+        self.assertIn("VITE_COURSE_SESSION_CALENDAR_V1", self.workflow)
+        self.assertIn("CALENDAR_FLAG_CHANGED=0", self.workflow)
+        self.assertIn("course session calendar flag restored during rollback", self.workflow)
+        self.assertIn('[ "$CALENDAR_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("explicit Founder feature-flag activation on current tip", self.workflow)
+        self.assertIn("COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}", self.workflow)
+        self.assertIn("Does not authorize Phase 1b/2/3", self.workflow)
+
+
+    def test_course_manager_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("course_manager_v1:", self.workflow)
+        self.assertIn('MANAGER_FLAG_MODE="${{ inputs.course_manager_v1 }}"', self.workflow)
+        self.assertIn('apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1', self.workflow)
+        self.assertIn("COURSE_MANAGER_V1=", self.workflow)
+        self.assertIn("VITE_COURSE_MANAGER_V1", self.workflow)
+        self.assertIn("MANAGER_FLAG_CHANGED=0", self.workflow)
+        self.assertIn("course manager flag restored during rollback", self.workflow)
+        self.assertIn('[ "$MANAGER_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}", self.workflow)
+        self.assertIn("Does not authorize Phase 1b/2/3", self.workflow)
+
 
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):
         self.assertIn("rollback_deploy()", self.workflow)

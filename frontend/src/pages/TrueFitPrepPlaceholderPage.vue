@@ -82,7 +82,10 @@
             </div>
           </div>
 
-          <div class="tf-brief__next">
+          <div
+            v-if="canContinueFromStage({ stage: 'prep', hasBrief: Boolean(brief) })"
+            class="tf-brief__next"
+          >
             <AtButton
               variant="primary"
               shape="rect"
@@ -115,6 +118,7 @@ import {
   fetchTrueFitLessonPrep,
   generateTrueFitLessonPrep,
 } from '../lib/truefitApi.js';
+import { canContinueFromStage } from '../lib/truefitLoop.js';
 
 const props = defineProps({
   session: { type: Object, default: null },

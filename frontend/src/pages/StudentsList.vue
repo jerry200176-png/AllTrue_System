@@ -42,10 +42,10 @@
 
       <AtFilterBar label="學生篩選" data-guide="students-filters">
         <div class="filter-search">
-          <label for="students-name-filter">搜尋姓名</label>
+          <label for="students-name-filter">搜尋姓名或就讀學校</label>
           <div class="search-input-wrap">
             <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
-            <input id="students-name-filter" v-model="filters.name" placeholder="輸入姓名…" @input="debouncedLoad" />
+            <input id="students-name-filter" v-model="filters.search" placeholder="輸入姓名或學校…" @input="debouncedLoad" />
           </div>
         </div>
         <div>
@@ -66,7 +66,7 @@
           </select>
         </div>
         <div class="filter-toggles">
-          <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="showGradePromotion = true">年級升級</AtButton>
+          <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="openGradePromotion">年級升級</AtButton>
           <AtButton
             shape="rect"
             size="sm"
@@ -513,8 +513,13 @@
             </select>
           </div>
           <div class="form-group">
-            <label>就讀學校</label>
-            <input v-model="studentForm.school" placeholder="例：大安國中" />
+            <label for="student-school">就讀學校</label>
+            <SchoolNameInput
+              input-id="student-school"
+              v-model="studentForm.school"
+              :auth-token="schoolAuthToken"
+              placeholder="例：大安國中"
+            />
           </div>
         </div>
 
@@ -792,37 +797,62 @@
       @purchase="interceptGoToPurchase"
       @decision="onEnrollmentConflictDecision"
     />
-    <!-- Grade Promotion Modal -->
-    <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="showGradePromotion = false">
-      <div class="modal" style="width: 500px;">
+    <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
+    <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="closeGradePromotion">
+      <div class="modal" style="width: 560px;">
         <h3 id="grade-promotion-modal-title">年級升級</h3>
-        <p class="hint">一鍵將所有在學中的學生年級 +1（例如 J1 → J2）。H3 學生會被標記為已畢業。</p>
-        <div v-if="promotionPreview.length > 0" style="max-height: 300px; overflow-y: auto; margin: 16px 0;">
+        <p class="hint">
+          行政預設日 {{ gradePromotionAdminDate || '8/1' }}；確認後寫入伺服器批次紀錄。
+          H3 僅標記畢業（不自動停課）。已於此學年升級者不可再執行。
+        </p>
+        <div v-if="gradePromotionLoading" class="empty-text">載入預覽中…</div>
+        <div v-else-if="gradePromotionError" class="empty-text text-red">{{ gradePromotionError }}</div>
+        <div v-else-if="promotionPreview.length > 0" style="max-height: 300px; overflow-y: auto; margin: 16px 0;">
           <table class="course-inner-table">
             <thead>
               <tr>
+                <th></th>
                 <th>姓名</th>
                 <th>目前年級</th>
                 <th>升級後</th>
+                <th>狀態</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="p in promotionPreview" :key="p.id">
+              <tr v-for="p in promotionPreview" :key="p.student_id" :class="{ muted: !p.actionable }">
+                <td>
+                  <input
+                    v-if="p.actionable"
+                    type="checkbox"
+                    :checked="!gradePromotionExcluded.has(p.student_id)"
+                    @change="onGradePromotionExcludeChange(p.student_id, $event.target.checked)"
+                  />
+                </td>
                 <td>{{ p.name }}</td>
-                <td>{{ getGradeLabel(p.from) }}</td>
+                <td>{{ getGradeLabel(p.from_grade) || '—' }}</td>
                 <td>
                   <strong :class="{ 'text-red': p.graduated }">
-                    {{ p.graduated ? '畢業' : getGradeLabel(p.to) }}
+                    {{ p.graduated ? '畢業' : (getGradeLabel(p.to_grade) || '—') }}
                   </strong>
+                </td>
+                <td>
+                  <span v-if="p.already_promoted">本季已升級</span>
+                  <span v-else-if="!p.actionable">略過</span>
+                  <span v-else>待確認</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div v-else class="empty-text">沒有在學中的學生</div>
+        <div v-else class="empty-text">沒有可預覽的在學學生</div>
         <div class="actions">
-          <button type="button" class="ghost" @click="showGradePromotion = false">取消</button>
-          <button type="button" class="primary" @click="executeGradePromotion" :disabled="promotionPreview.length === 0">確認升級</button>
+          <button type="button" class="ghost" @click="closeGradePromotion">取消</button>
+          <button
+            type="button"
+            class="primary"
+            @click="executeGradePromotion"
+            :disabled="gradePromotionConfirming || gradePromotionActionableSelectedCount === 0"
+          >確認升級（{{ gradePromotionActionableSelectedCount }}）</button>
         </div>
       </div>
     </div>
@@ -896,6 +926,13 @@ import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/cons
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { getPerSessionFee } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
+import {
+  buildGradePromotionConfirmPayload,
+  countActionableSelected,
+  createGradePromotionIdempotencyKey,
+  gradePromotionSuccessMessage,
+  toggleGradePromotionExclude,
+} from '../lib/gradePromotionUi.js';
 import { courseBadgeSessionLabel } from '../lib/courseBadgeDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
@@ -922,6 +959,7 @@ import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
+import SchoolNameInput from '../components/SchoolNameInput.vue';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -962,7 +1000,8 @@ const branchStudentTotal = ref(0);
 const studentCourses = ref({}); // { studentId: [courses] }
 const teachers = ref([]);
 const expandedId = ref(null);
-const filters = ref({ name: '', grade: '', status: 'active' });
+const GRADE_TO_CLASS_ID = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
+const filters = ref({ search: '', grade: '', status: 'active' });
 const selectedStudentIds = ref([]);
 const showHistoricalCourses = ref(false);
 const importInput = ref(null);
@@ -981,6 +1020,16 @@ const identityError = ref('');
 // Student modal
 const showStudentModal = ref(false);
 const editingStudentId = ref(null);
+const schoolAuthToken = ref('');
+
+const refreshSchoolAuthToken = async () => {
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    schoolAuthToken.value = sess?.access_token || '';
+  } catch {
+    schoolAuthToken.value = '';
+  }
+};
 const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '' });
 
 // LINE bindings (in edit modal)
@@ -1504,7 +1553,7 @@ const getLaravelStudentId = (student) => {
 const displayStudents = computed(() => students.value);
 const hasStudentBranch = computed(() => Number(props.branchId) > 0);
 const hasStudentFilters = computed(() => Boolean(
-  String(filters.value.name || '').trim()
+  String(filters.value.search || '').trim()
   || filters.value.grade
   || filters.value.status !== 'active'
 ));
@@ -1540,7 +1589,7 @@ const toggleHistoricalCourses = () => {
   showHistoricalCourses.value = !showHistoricalCourses.value;
 };
 const clearStudentFilters = () => {
-  filters.value = { name: '', grade: '', status: 'active' };
+  filters.value = { search: '', grade: '', status: 'active' };
   loadStudents();
 };
 const syncSelectedStudentIdsWithCurrentList = () => {
@@ -1548,38 +1597,112 @@ const syncSelectedStudentIdsWithCurrentList = () => {
   selectedStudentIds.value = selectedStudentIds.value.filter(id => visible.has(id));
 };
 
-// Grade promotion logic
-const GRADE_ORDER = ['P1','P2','P3','P4','P5','P6','J1','J2','J3','H1','H2','H3'];
-const nextGrade = (g) => {
-  const idx = GRADE_ORDER.indexOf(g);
-  if (idx < 0 || idx >= GRADE_ORDER.length - 1) return null;
-  return GRADE_ORDER[idx + 1];
-};
+// Grade promotion — canonical API (in-app #297 Phase A); no browser Supabase mutate / no course Stop.
+const gradePromotionRows = ref([]);
+const gradePromotionLoading = ref(false);
+const gradePromotionConfirming = ref(false);
+const gradePromotionError = ref('');
+const gradePromotionAdminDate = ref('');
+const gradePromotionSeasonYear = ref(null);
+const gradePromotionExcluded = ref(new Set());
+const gradePromotionIdempotencyKey = ref('');
 
-const promotionPreview = computed(() => {
-  return students.value
-    .filter(s => s.status === 'active' || !s.status)
-    .map(s => {
-      const ng = nextGrade(s.grade);
-      return { id: s.id, name: s.name, from: s.grade, to: ng, graduated: !ng };
+const promotionPreview = computed(() => gradePromotionRows.value);
+
+const gradePromotionActionableSelectedCount = computed(() => countActionableSelected(
+  promotionPreview.value,
+  gradePromotionExcluded.value
+));
+
+function closeGradePromotion() {
+  showGradePromotion.value = false;
+  gradePromotionError.value = '';
+}
+
+function onGradePromotionExcludeChange(studentId, checked) {
+  gradePromotionExcluded.value = toggleGradePromotionExclude(
+    gradePromotionExcluded.value,
+    studentId,
+    checked
+  );
+}
+
+async function openGradePromotion() {
+  showGradePromotion.value = true;
+  gradePromotionLoading.value = true;
+  gradePromotionError.value = '';
+  gradePromotionRows.value = [];
+  gradePromotionExcluded.value = new Set();
+  gradePromotionIdempotencyKey.value = createGradePromotionIdempotencyKey();
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token || !props.branchId) {
+      gradePromotionError.value = '無法取得登入或分校';
+      return;
+    }
+    const params = new URLSearchParams({ branch_id: String(props.branchId) });
+    const res = await fetch(`/api/v1/grade-promotions/preview?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
-});
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      gradePromotionError.value = json?.message || '預覽載入失敗';
+      return;
+    }
+    gradePromotionAdminDate.value = json.admin_date || '';
+    gradePromotionSeasonYear.value = json.season_year ?? null;
+    gradePromotionRows.value = Array.isArray(json.data) ? json.data : [];
+  } catch {
+    gradePromotionError.value = '預覽載入失敗';
+  } finally {
+    gradePromotionLoading.value = false;
+  }
+}
 
 const executeGradePromotion = async () => {
-  if (!confirm(`確定將 ${promotionPreview.value.length} 位學生年級升級？`)) return;
-  for (const p of promotionPreview.value) {
-    if (p.graduated) {
-      // H3 -> graduated
-      await supabase.from('students').update({ status: 'graduated' }).eq('id', p.id);
-      // Deactivate their courses
-      await supabase.from('student-classes').update({ status: 'inactive' }).eq('student_id', p.id);
-    } else {
-      await supabase.from('students').update({ grade: p.to }).eq('id', p.id);
+  const count = gradePromotionActionableSelectedCount.value;
+  if (count <= 0) return;
+  if (!confirm(`確定將 ${count} 位學生年級升級？此操作會寫入伺服器批次紀錄。`)) return;
+  gradePromotionConfirming.value = true;
+  gradePromotionError.value = '';
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      gradePromotionError.value = '未登入';
+      return;
     }
+    const res = await fetch('/api/v1/grade-promotions/confirm', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildGradePromotionConfirmPayload({
+        branchId: props.branchId,
+        seasonYear: gradePromotionSeasonYear.value,
+        idempotencyKey: gradePromotionIdempotencyKey.value,
+        excludeStudentIds: gradePromotionExcluded.value,
+      })),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = json?.message
+        || Object.values(json?.errors || {}).flat()?.[0]
+        || '升級失敗';
+      gradePromotionError.value = String(msg);
+      return;
+    }
+    showGradePromotion.value = false;
+    alert(gradePromotionSuccessMessage(json, count));
+    loadStudents();
+  } catch {
+    gradePromotionError.value = '升級失敗';
+  } finally {
+    gradePromotionConfirming.value = false;
   }
-  showGradePromotion.value = false;
-  alert('升級完成！');
-  loadStudents();
 };
 
 // --- Data Loading ---
@@ -1641,10 +1764,9 @@ const loadStudents = async () => {
           branch_id: String(props.branchId),
           per_page: '500'
         });
-        if (filters.value.name) params.set('name', filters.value.name);
+        if (filters.value.search?.trim()) params.set('search', filters.value.search);
         if (filters.value.status) params.set('status', filters.value.status || '');
-        const gradeToClassId = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
-        if (filters.value.grade && gradeToClassId[filters.value.grade]) params.set('class_id', gradeToClassId[filters.value.grade]);
+        if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) params.set('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
         const res = await fetch(`/api/v1/students?${params}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1666,10 +1788,11 @@ const loadStudents = async () => {
     } catch (_) {}
 
     // Fallback: Supabase list + merge Laravel RFID / _laravelId
-    let query = supabase.from('students').select('*').eq('branch_id', props.branchId).order('name');
-    if (filters.value.name) query = query.ilike('name', `%${filters.value.name}%`);
-    if (filters.value.grade) query = query.eq('grade', filters.value.grade);
+    let query = supabase.from('students').select('*').eq('branch_id', props.branchId);
+    if (filters.value.search?.trim()) query = query.eq('search', filters.value.search);
+    if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) query = query.eq('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
     if (filters.value.status) query = query.eq('status', filters.value.status);
+    query = query.order('name');
     const { data, error } = await query;
     if (error) throw error;
     let list = data || [];
@@ -1985,6 +2108,7 @@ const openAddStudent = () => {
   editingStudentId.value = null;
   studentForm.value = { name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '', rfid: '' };
   showStudentModal.value = true;
+  refreshSchoolAuthToken();
 };
 
 const editStudent = (student) => {
@@ -2002,6 +2126,7 @@ const editStudent = (student) => {
     rfid: student.rfid || ''
   };
   showStudentModal.value = true;
+  refreshSchoolAuthToken();
   const laravelId = student._laravelId ?? student.id;
   if (laravelId) {
     fetchLineBindings(laravelId);

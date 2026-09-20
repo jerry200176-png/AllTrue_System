@@ -54,3 +54,36 @@ exactly one requested action; Founder-only decisions require Founder actor.
 CLI: `python3 -m scripts.harness plan [--program ID] [--sync] [--main-sha SHA]`.
 H4 launcher/worktree/dispatch is out of scope for H3.
 
+## H4 dispatch
+
+`scripts/harness/dispatch.py` consumes H3 `PlanResult` with Founder amendments:
+
+- Execution-critical revalidation (goal_fp, leases, READY/WIP, governance, main SHA) —
+  **not** time-dependent `input_snapshot_fingerprint` equality
+- Structured multi-resource `LeaseBinding`
+- Durable `DispatchAttempt` (schema v3) written **before** spawn
+- Lease heartbeat/`renew` while attempt is active
+- Stale-worker fencing check on handoff ingestion
+- Fail-closed partial acquire rollback
+- Release execution leases at PR_READY / structured handoff
+- Concurrent apply: exactly one winner (`dispatch_attempts` open-task index + CAS)
+
+CLI: `python3 -m scripts.harness dispatch [--dry-run|--apply]`.
+
+## H4b WorkerRun
+
+Closes the deferred launcher gap from H4.0:
+
+- Default spawn calls `worker_run.start_or_resume_worker` after CAS
+- Durable `worker_runs` table (schema **v4**) stores child `session_id`,
+  worktree, branch, fencing snapshot, and handoff observation
+- `agent-start --attach` (gateway ≥0.5.1) resumes an existing task worktree
+  instead of failing `worktree exists`
+- Create path soft-defers unless `HARNESS_SPAWN_CREATE=1` (WORKTREE_POLICY:
+  prefer gateway create; harness attaches)
+- Handoff: `ingest_handoff` fencing against live leases, then
+  `observe_worker_handoff` marks the WorkerRun `handed_off`
+
+H4 remains **PARTIAL / NOT ACCEPTED** until Supervisor proves end-to-end
+PlanResult → attach → child identity → handoff wake.
+

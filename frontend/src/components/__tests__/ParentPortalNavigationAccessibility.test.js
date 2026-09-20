@@ -43,6 +43,13 @@ describe('parent portal navigation accessibility contract', () => {
     expect(source).toContain('重試載入');
   });
 
+  it('renders tutoring cards as free and never as unpaid', () => {
+    expect(source).toContain("c.is_tutoring || c.payment_status === 'free'");
+    expect(source).toContain('免費（不適用）');
+    expect(source).toContain("const courseCardClass = (c) => {\n  if (c.is_tutoring || c.payment_status === 'free') return '';");
+    expect(source).toContain("<span v-else class=\"pp-badge pp-badge-warning\">未繳費</span>");
+  });
+
   it('exposes the existing-data V1 home questions without adding a new data contract', () => {
     for (const label of ['最近學了什麼', '本週重點', '老師建議／處理', '回家要做什麼', '下一步／目前待辦']) {
       expect(source).toContain(label);

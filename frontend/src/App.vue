@@ -516,7 +516,7 @@
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
       <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
       <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
@@ -908,12 +908,15 @@ import { getSessionUserId, isCurrentAuthRevision, shouldClearLocalIdentity } fro
 import {
   actingAsHeaders,
   canSwitchStaffMode,
+  installActingAsFetchBridge,
   readStoredActingAs,
   writeStoredActingAs,
 } from './lib/staffActingContext';
 import { parseTrueFitRoute, buildTrueFitWorkspaceUrl, buildAdminReturnUrl } from './lib/truefitRoute.js';
 import { isTrueFitHost } from './lib/truefitHost.js';
 import { isTrueFitFeatureEnabled, loadTrueFitBackendFlag } from './lib/truefitFlags.js';
+
+installActingAsFetchBridge();
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -1336,6 +1339,10 @@ function onWindowResizeGuideFab() {
 const active = ref('director');
 const dashboardReturnContext = ref(null);
 const currentBranch = ref(null); // Will be set after branches load
+const currentBranchName = computed(() => {
+  const branch = (branches.value || []).find((item) => Number(item?.id) === Number(currentBranch.value));
+  return branch?.name?.split('(')[0]?.trim() || '';
+});
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
 const learningFeedbackFocusToken = ref(0);

@@ -2,7 +2,7 @@
 
 **Status:** Documentation only — **do not activate DNS or production routing without Founder approval.**
 
-TrueFit Slice 0 ships as the same Vue SPA + Laravel API as AllTrue. No separate backend, auth stack, or cookies are required.
+TrueFit Slice 0 ships as the same Vue SPA + Laravel API as AllTrue. A distinct hostname may point to the same governed deployment; it does not require a second backend or database, but it **does** create a separate browser origin and login-storage boundary.
 
 ## Intended URL
 
@@ -36,7 +36,7 @@ Assuming the main vhost already serves `backend/public` with SPA fallback:
 3. Rebuild frontend with `VITE_TRUEFIT_V1=true` and deploy via `deploy.yml` as usual.
 4. Set `TRUEFIT_V1=true` in production `backend/.env`, then run the standard post-deploy optimize/opcache step from the control-plane runbook.
 
-**No cross-domain cookie changes** are required when the subdomain shares the registrable domain and existing Sanctum/session cookies already cover subdomains. If cookies are host-only today, stop and get Founder approval before changing `SESSION_DOMAIN`.
+Current staff API authentication uses a Bearer token stored in origin-scoped localStorage, not a shared Sanctum/session cookie. Therefore a subdomain must initially show its own teacher login, or use a separately approved one-time exchange/SSO design. Changing `SESSION_DOMAIN` alone does not share the staff Bearer token. Do not place tokens in URLs or implement an auth bridge without Founder approval and security review.
 
 ## Internal routing (available now)
 

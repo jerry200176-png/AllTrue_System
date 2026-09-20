@@ -51,9 +51,23 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $this->grant($user->id, 'director', 1);
 
         $resolved = app(StaffCapabilityAuthorizer::class)->resolve($user, 'teacher');
-        $this->assertSame('director', $resolved['role']);
+        $this->assertSame('forbidden', $resolved['role']);
         $this->assertNull($resolved['teacher_id']);
-        $this->assertNotContains('teacher', $resolved['capabilities']);
+        $this->assertTrue($resolved['context_denied']);
+        $this->assertSame([], $resolved['campus_ids']);
+    }
+
+    public function test_unknown_acting_as_context_is_rejected_instead_of_defaulting_to_director(): void
+    {
+        $user = $this->makeUser('A');
+        $this->grant($user->id, 'director', 1);
+        $this->grant($user->id, 'teacher', 1);
+
+        $resolved = app(StaffCapabilityAuthorizer::class)->resolve($user, 'super_admin');
+
+        $this->assertSame('forbidden', $resolved['role']);
+        $this->assertTrue($resolved['context_denied']);
+        $this->assertSame([], $resolved['campus_ids']);
     }
 
     public function test_teacher_only_capability_cannot_resolve_director_context(): void
@@ -75,6 +89,13 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $this->assertFalse(app(StaffCapabilityAuthorizer::class)->enabled());
         $this->grant($user->id, 'director', 1);
         $this->assertFalse(app(StaffCapabilityAuthorizer::class)->enabled());
+        $token = $this->tokenFor($user);
+        $this->withHeaders($this->bearer($token, null))
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->assertJsonPath('id', $user->id)
+            ->assertJsonPath('role', 'teacher')
+            ->assertJsonMissingPath('capabilities');
     }
 
     public function test_me_exposes_capability_map_and_honors_acting_as_context(): void
@@ -88,7 +109,8 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $asTeacher = $this->withHeaders($this->bearer($token, 'teacher'))
             ->getJson('/api/v1/me')
             ->assertOk();
-        $asTeacher->assertJsonPath('role', 'teacher')
+        $asTeacher->assertJsonPath('id', $user->id)
+            ->assertJsonPath('role', 'teacher')
             ->assertJsonPath('acting_as', 'teacher')
             ->assertJsonPath('campuses', [1]);
         $this->assertEqualsCanonicalizing(['director', 'teacher'], $asTeacher->json('capabilities'));
@@ -98,7 +120,8 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $asDirector = $this->withHeaders($this->bearer($token, 'director'))
             ->getJson('/api/v1/me')
             ->assertOk();
-        $asDirector->assertJsonPath('role', 'director')
+        $asDirector->assertJsonPath('id', $user->id)
+            ->assertJsonPath('role', 'director')
             ->assertJsonPath('acting_as', 'director');
         $this->assertEqualsCanonicalizing([1, 2], $asDirector->json('campuses'));
     }
@@ -112,6 +135,18 @@ class StaffMultiRoleCapabilityTest extends TestCase
 
         $this->withHeaders($this->bearer($token, 'director'))
             ->getJson('/api/v1/invoices')
+            ->assertForbidden();
+    }
+
+    public function test_unrecognized_acting_as_header_is_forbidden_for_shared_me(): void
+    {
+        $user = $this->makeUser('A');
+        $this->grant($user->id, 'director', 1);
+        $this->grant($user->id, 'teacher', 1);
+        $token = $this->tokenFor($user);
+
+        $this->withHeaders($this->bearer($token, 'super_admin'))
+            ->getJson('/api/v1/me')
             ->assertForbidden();
     }
 

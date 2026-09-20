@@ -69,6 +69,7 @@ class Kernel extends ConsoleKernel
         // ADR-004 Phase 1-3: nightly orphan binding cleanup — remove bindings for
         // deleted/disabled students, report students with >3 LINE user bindings.
         $this->scheduleObservedCommand($schedule, 'bindings-cleanup-orphans');
+        $this->scheduleObservedCommand($schedule, 'grade-promotion-scheduled-preview');
     }
 
     private function scheduleObservedCommand(Schedule $schedule, string $job): void

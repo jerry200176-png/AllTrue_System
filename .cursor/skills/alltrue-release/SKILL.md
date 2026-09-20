@@ -20,16 +20,16 @@ description: >-
 ## 3. Required workflow
 
 1. **等 CI 全綠**（自己 `gh run view`，不叫使用者去看）
-2. **等 `deploy.yml` success**（docs-only merge 可跳過 deploy）
-3. **驗證 production HEAD**：
+2. **等 canonical `deploy.yml` success**（docs-only merge 可跳過 deploy；確認 **Deploy to Production** job 真的 success，勿只看 Release state）
+3. **驗證 production 雙端身分**（公開 endpoint；**禁止 Pi SSH** — 與 `AGENTS.md` 機器禁令一致）：
    ```bash
-   ssh admin@pi.lifenet.com.tw 'cd /home/admin/backend && git rev-parse HEAD'
-   # 必須 == merge commit
+   curl -fsS https://daan.lifenet.com.tw/version.json
+   curl -fsS https://daan.lifenet.com.tw/deployment.json
+   # build_sha / backend_sha / frontend_sha 必須 == 批准的 merge／activation SHA
    ```
-4. **Health**：`curl -sk https://daan.lifenet.com.tw/api/v1/health` → `status: ok`
-5. **前端有變更**：`cat /home/admin/backend/public/version.json` 時間戳更新
-6. **Smoke**：依 bug 類型 spot-check（見下方）
-7. **in-app**：`resolved` + 公開白話留言 + 請回報者驗收
+4. **Health**：`curl -fsS https://daan.lifenet.com.tw/api/v1/health` → `status: ok`
+5. **Smoke**：依 bug 類型 spot-check（見下方；只用已授權測試通道）
+6. **in-app**：`resolved` + production SHA 證據 + 公開白話留言；**不**偽造 `reporter-verify`
 
 ### Smoke 對照
 
@@ -43,19 +43,21 @@ description: >-
 
 - ⛔ feature branch 上 `npm run deploy`
 - ⛔ CI 未綠就 merge 或回報完成
-- ⛔ 未驗 production HEAD 就關 issue
-- ⛔ SSH 改 Pi 程式碼
+- ⛔ 未驗公開 `version.json` / `deployment.json` 就關 issue 或宣稱 shipped
+- ⛔ **任何 Pi SSH**（含 `git rev-parse`／讀 host 檔）；改 Pi 程式碼
+- ⛔ 把 GitHub environment 核准當成會自動喚醒本機 agent
 
 ## 5. AllTrue-specific rules
 
-- 合法路徑：WSL push → PR → merge → `deploy.yml`
-- 緊急回滾：`git revert` + deploy，不是 force push main
-- 公開留言禁技術術語（§3.8 CHAT_BUG_SYSTEM）
+- 合法路徑：WSL push → PR → merge → `deploy.yml`（Founder `production-activation` 依現行 gate）
+- 回滾：只用現行 workflow 已證明可執行的路徑；「有舊 SHA」≠「可 post-success rollback」
+- 公開留言禁技術術語（`CHAT_BUG_SYSTEM` 回覆規範）
+- merged ≠ deployed ≠ runtime verified ≠ 已回覆
 
 ## 6. Exit criteria
 
-- [ ] deploy workflow success（或 docs-only 跳過已確認）
-- [ ] production HEAD == merge SHA
-- [ ] health 200
-- [ ] smoke 有命令 + 預期 + 實際 + 證據
-- [ ] in-app `resolved` + 公開留言
+- [ ] deploy workflow 中實際 Deploy job success（或 docs-only 跳過已確認）
+- [ ] `version.json` build_sha 與 `deployment.json` backend/frontend SHA == 批准 SHA
+- [ ] health ok
+- [ ] smoke 有命令 + 預期 + 實際 + 證據（若該項需要）
+- [ ] in-app `resolved` + 公開留言（不偽造 reporter confirmation）

@@ -29,7 +29,8 @@ class StaffCapabilityAuthorizer
      *   campus_ids: list<int>,
      *   capabilities: list<string>,
      *   acting_as: ?string,
-     *   capability_campus_ids: array<string, list<int>>
+     *   capability_campus_ids: array<string, list<int>>,
+     *   context_denied: bool
      * }
      */
     public function resolve(User $user, ?string $actingAsHeader): array
@@ -40,10 +41,23 @@ class StaffCapabilityAuthorizer
             static fn (string $cap) => $capabilityCampuses[$cap] !== []
         ));
 
+        $requestedContext = is_string($actingAsHeader) && trim($actingAsHeader) !== '';
         $actingAs = $this->normalizeActingAs($actingAsHeader);
-        if ($actingAs !== null && !in_array($actingAs, $capabilities, true)) {
-            // Invalid context — do not elevate; fall back to safe single-capability default.
-            $actingAs = null;
+        $contextDenied = $requestedContext
+            && ($actingAs === null || !in_array($actingAs, $capabilities, true));
+        if ($contextDenied) {
+            // An explicitly requested but invalid/ungranted context must not fall
+            // back to director (or any other role). Shared APIs may omit the
+            // header; an invalid header is a fail-closed authorization error.
+            return [
+                'role' => 'forbidden',
+                'teacher_id' => null,
+                'campus_ids' => [],
+                'capabilities' => $capabilities,
+                'acting_as' => null,
+                'capability_campus_ids' => $capabilityCampuses,
+                'context_denied' => true,
+            ];
         }
 
         $userType = (string) $user->getAttribute('type');
@@ -86,6 +100,7 @@ class StaffCapabilityAuthorizer
             'capabilities' => $capabilities,
             'acting_as' => $actingAs,
             'capability_campus_ids' => $capabilityCampuses,
+            'context_denied' => false,
         ];
     }
 

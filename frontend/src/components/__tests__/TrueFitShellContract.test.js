@@ -19,6 +19,7 @@ const workspaceSource = readFileSync(resolve(__dirname, '../../pages/TrueFitWork
 const prepSource = readFileSync(resolve(__dirname, '../../pages/TrueFitPrepPlaceholderPage.vue'), 'utf8');
 const navSource = readFileSync(resolve(__dirname, '../../lib/navigationRegistry.js'), 'utf8');
 const trueFitAppSource = readFileSync(resolve(__dirname, '../../pages/TrueFitApp.vue'), 'utf8');
+const paperFixtureSource = readFileSync(resolve(__dirname, '../../pages/TrueFitPaperFixturePage.vue'), 'utf8');
 
 describe('TrueFit Slice 0 shell contract', () => {
   it('detects truefit subdomain host without path changes', () => {
@@ -28,11 +29,23 @@ describe('TrueFit Slice 0 shell contract', () => {
 
   it('parses workspace and prep hash routes', () => {
     expect(parseTrueFitRoute({ hash: '#/truefit', search: '', hostname: 'localhost' })).toEqual({ view: 'workspace' });
+    expect(parseTrueFitRoute({ hash: '#/truefit/paper-fixture', search: '', hostname: 'localhost' })).toEqual({ view: 'paper-fixture' });
     expect(parseTrueFitRoute({ hash: '#/truefit/prep/42', search: '', hostname: 'localhost' })).toEqual({
       view: 'prep',
       classSessionId: 42,
     });
     expect(parseTrueFitRoute({ hash: '', search: '?truefit=1', hostname: 'localhost' })).toEqual({ view: 'workspace' });
+  });
+
+  it('keeps the paper fixture local and clears stale approved previews', () => {
+    expect(trueFitAppSource).toContain('const fixtureDemoEnabled = import.meta.env.DEV');
+    expect(workspaceSource).toContain('const fixtureDemoEnabled = import.meta.env.DEV');
+    expect(paperFixtureSource).toContain('preview.value = null');
+    expect(paperFixtureSource).toContain('if (!state.approved || !preview.value) return');
+    expect(paperFixtureSource).toContain(':disabled="!state.confirmed"');
+    expect(paperFixtureSource).not.toContain('if (!state.confirmed) manual()');
+    expect(paperFixtureSource).toContain('p.verifiedAnswer ?? p.ocrAnswer');
+    expect(paperFixtureSource).toContain('state.rawAvailable && p.question.id === 8105');
   });
 
   it('parses and builds prep deep links with session_date', () => {
@@ -236,6 +249,12 @@ describe('TrueFit Slice 0 shell contract', () => {
     expect(masSource).toContain('返回今日課程');
     expect(masSource).toContain('source_remediation_id: sourceRemediationId.value');
     expect(masSource).toContain('seedMasteryFromRemediation');
+    expect(masSource).toContain('shouldApplyContinuumSeed');
+    expect(masSource).toContain('canContinueFromStage');
     expect(workspaceSource).toContain('備課 → 觀察 → 診斷 → 補救 → 精熟');
+    expect(workspaceSource).toContain('truefit-session-progress');
+    expect(workspaceSource).toContain('deriveSessionStagePresence');
+    expect(workspaceSource).toContain('loadProgressFanout');
+    expect(prepSource).toContain('canContinueFromStage');
   });
 });

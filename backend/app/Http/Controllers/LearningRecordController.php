@@ -24,6 +24,7 @@ use App\Services\SessionDeductionService;
 use App\Services\RescheduleSessionService;
 use App\Services\SubstituteScheduleService;
 use App\Support\AttendanceStatus;
+use App\Support\LearningRecordMutableOwnership;
 use App\Support\TeacherProfileDirectory;
 use App\Support\Utf8mb3SearchSanitizer;
 use Illuminate\Database\Eloquent\Builder;
@@ -45,9 +46,10 @@ class LearningRecordController extends Controller
 
     /**
      * 評量列／詳情顯示用（canonical effective instructor）：
-     * substitute schedule → LearningRecord.TeacherID → StudentClass.TeacherID。
-     * 不為單堂異動改寫課程正班；frontend/export 只消費本路徑輸出的
-     * effective_teacher_id / teacher_name（in-app #276）。
+     * formal substitute → historical occurrence instructor (LR / evidence) →
+     * current contract teacher for mutable unperformed work.
+     * Frontend/export 只消費本路徑輸出的 effective_teacher_id / teacher_name
+     *（in-app #276 historical + in-app #314 Option 2B mutable ownership）。
      */
     private function resolveEffectiveInstructorUserId(LearningRecord $record): int
     {
@@ -69,11 +71,13 @@ class LearningRecordController extends Controller
         }
 
         $recordTeacherId = (int) ($record->TeacherID ?? 0);
-        if ($recordTeacherId > 0) {
+        // Mutable unperformed placeholders follow the live contract teacher —
+        // do not let a stale LR.TeacherID stamp override calendar ownership (#314).
+        if ($recordTeacherId > 0 && !LearningRecordMutableOwnership::canFollowCurrentCourseTeacher($record)) {
             return $recordTeacherId;
         }
 
-        return $contractTid;
+        return $contractTid > 0 ? $contractTid : $recordTeacherId;
     }
 
     private function campusIdForLearningRecord(LearningRecord $learningRecord): int
@@ -267,7 +271,10 @@ class LearningRecordController extends Controller
             $filterTid = (int) $request->input('teacher_id');
             $lrTable = (new LearningRecord())->getTable();
             $query->where(function ($q) use ($filterTid, $lrTable) {
-                $q->where('TeacherID', $filterTid)
+                $q->where(function ($histTid) use ($filterTid, $lrTable) {
+                    $histTid->where('TeacherID', $filterTid);
+                    LearningRecordMutableOwnership::constrainWhereTeacherIdIsHistoricalOwner($histTid, $lrTable);
+                })
                     ->orWhereExists(function ($sub) use ($filterTid, $lrTable) {
                         $sub->select(DB::raw(1))
                             ->from('ClassSession as cs')
@@ -280,6 +287,18 @@ class LearningRecordController extends Controller
                                     ->where('s.teacher_id', '=', $filterTid);
                             })
                             ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+                    })
+                    // #314: mutable unperformed work follows live contract teacher even
+                    // when LR.TeacherID is a stale stamp.
+                    ->orWhere(function ($mutable) use ($filterTid, $lrTable) {
+                        $mutable->whereExists(function ($scSub) use ($filterTid, $lrTable) {
+                            $scSub->select(DB::raw(1))
+                                ->from('StudentClass as sc')
+                                ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
+                                ->where('sc.TeacherID', '=', $filterTid);
+                        })->whereNot(function ($hist) use ($lrTable) {
+                            LearningRecordMutableOwnership::constrainWhereTeacherIdIsHistoricalOwner($hist, $lrTable);
+                        });
                     });
             });
         }
@@ -789,23 +808,27 @@ class LearningRecordController extends Controller
 
     /**
      * 與 GET learning-records 老師視角一致的 OR 範圍（代課可見性）。
+     * in-app #314: mutable unperformed LRs follow StudentClass.TeacherID —
+     * a stale LR.TeacherID stamp alone must not keep the former teacher in queue.
      */
     private function applyTeacherScopedLearningRecordConstraint(Builder $query, int $teacherId): void
     {
         // 與 class-sessions 可見性一致：
         // 1) 若該堂存在代課（teacher_id != 正班老師），僅代課老師可見；
-        // 2) 無代課時才由正班老師/評量歸屬老師可見。
+        // 2) 無代課時：正班老師可見；歷史 LR 歸屬老師可見；mutable stale stamp 不可見。
         $lrTable = (new LearningRecord())->getTable();
         $query->where(function ($q) use ($teacherId, $lrTable) {
             $q->where(function ($baseScope) use ($teacherId, $lrTable) {
                 $baseScope->where(function ($owner) use ($teacherId, $lrTable) {
-                    $owner->where('TeacherID', $teacherId)
-                        ->orWhereExists(function ($scSub) use ($teacherId, $lrTable) {
-                            $scSub->select(DB::raw(1))
-                                ->from('StudentClass as sc')
-                                ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
-                                ->where('sc.TeacherID', '=', $teacherId);
-                        });
+                    $owner->whereExists(function ($scSub) use ($teacherId, $lrTable) {
+                        $scSub->select(DB::raw(1))
+                            ->from('StudentClass as sc')
+                            ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
+                            ->where('sc.TeacherID', '=', $teacherId);
+                    })->orWhere(function ($histOwner) use ($teacherId, $lrTable) {
+                        $histOwner->where('TeacherID', $teacherId);
+                        LearningRecordMutableOwnership::constrainWhereTeacherIdIsHistoricalOwner($histOwner, $lrTable);
+                    });
                 })->whereNotExists(function ($sub) use ($lrTable) {
                     $sub->select(DB::raw(1))
                         ->from('ClassSession as cs')
@@ -2098,27 +2121,12 @@ class LearningRecordController extends Controller
     }
 
     /**
-     * 正班（LR.TeacherID）或單堂代課 schedules 指派之代課老師皆可編輯該筆評量。
+     * 正班／歷史 LR 歸屬／mutable 合約合約老師，或單堂代課老師可編輯該筆評量。
+     * in-app #314: display / queue / edit must agree on actionable owner.
      */
     private function teacherIsInstructorForLearningRecord(LearningRecord $lr, int $authTeacherId): bool
     {
-        if ($authTeacherId <= 0) {
-            return false;
-        }
-        if ((int) ($lr->TeacherID ?? 0) === $authTeacherId) {
-            return true;
-        }
-        $csId = (int) ($lr->ClassSessionID ?? 0);
-        if ($csId <= 0) {
-            return false;
-        }
-        $cs = ClassSession::find($csId);
-        if (!$cs) {
-            return false;
-        }
-        $sub = SubstituteScheduleService::resolveSubstituteUserId((int) $cs->StudentClassID, $cs->SessionDate, $cs->StartTime);
-
-        return $sub !== null && $sub === $authTeacherId;
+        return LearningRecordMutableOwnership::isActionableOwner($lr, $authTeacherId);
     }
 
     private function teacherAllowedToCreateLearningRecord(StudentClass $sc, ClassSession $cs, int $authTeacherId, int $payloadTeacherId): bool
