@@ -34,6 +34,8 @@ export function parseTrueFitRoute(locationLike = null) {
     return { view: 'workspace' };
   }
 
+  if (hashPath === '#/truefit/paper-fixture') return { view: 'paper-fixture' };
+
   const prepMatch = hashPath.match(/^#\/truefit\/(prep|observe|diagnose|remediate|mastery)\/(\d+)$/);
   if (prepMatch) {
     return {

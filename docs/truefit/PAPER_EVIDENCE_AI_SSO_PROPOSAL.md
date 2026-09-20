@@ -56,6 +56,8 @@ For future AllTrue-generated paper assessments, print a human-readable assessmen
 
 The snapshot—not a later edited bank item—provides the correct answer, rubric, points and curriculum tags for that attempt. If no authoritative snapshot/key exists, the item remains `NEEDS_ANSWER_KEY`; AI analysis stops for that item.
 
+Public evidence checked 2026-09-20 does not yet prove an authorized import contract for the two named sources. TestGo publicly documents product/data-version APIs, but no authorized export containing stable question ID, answer, rubric, assessment version and licence grant was verified. UPAD12 publicly advertises question-bank/testing features, while its terms restrict unauthorized copying/download and redistribution. Existing account access and AllTrue's provenance columns do not establish reuse rights. Until each vendor supplies written rights plus an export/API schema, status is `NEEDS_VENDOR_EVIDENCE`; no scraping, private-session automation or content copying is allowed. The local MVP therefore uses only AllTrue-authored synthetic snapshots.
+
 ## 5. Data lifecycle: 30 days without losing the student record
 
 Separate disposable evidence from durable educational facts:
@@ -64,9 +66,9 @@ Separate disposable evidence from durable educational facts:
 |---|---|---|---|
 | A — source media | Original photo/PDF, page crops, thumbnails, vendor request/response content | 30 days from upload | Hard-delete object and content payload; retain purge receipt/hash only |
 | B — working extraction | Raw OCR tokens, bounding boxes, temporary match candidates | 30 days; earlier after teacher confirmation is allowed | Delete; confirmed projection remains |
-| C — confirmed learning record | Assessment snapshot ID, verified student answer, score, misconception decision, teacher edits, remediation revision, mastery result | Not tied to 30-day purge | Retain under the future student-learning-record policy |
+| C — confirmed learning record | Assessment snapshot ID, verified student answer, score, misconception decision, teacher edits, remediation revision, mastery result | Not tied to 30-day purge; **not approval for permanent retention** | Retain only under the future student-learning-record policy |
 | D — audit metadata | Actor, timestamps, model/prompt/schema versions, confidence summary, hashes, consent and purge status; no raw page content | Proposed 365 days minimum | Policy-governed deletion/anonymization |
-| E — printable output | Approved structured pack and answer-key manifest; generated PDF cache | Structured revision follows Tier C; PDF cache 30 days | Regenerate PDF from approved revision if still authorized |
+| E — printable output | Approved structured pack and answer-key manifest; generated PDF cache | Structured revision follows Tier C; PDF cache 30 days | Re-render the exact same approved revision; never rerun content generation |
 
 The purge worker must select only Tier A/B rows by explicit `purge_after`, be idempotent, emit a purge receipt, and never cascade into Tier C. Dashboard states should distinguish `SOURCE_AVAILABLE`, `SOURCE_EXPIRED`, and `LEARNING_RECORD_RETAINED`.
 
@@ -145,7 +147,7 @@ DRAFT → UPLOADED → SCANNING → EXTRACTED → TEACHER_REVIEW
 
 Side states: `UPLOAD_REJECTED`, `OCR_FAILED`, `NEEDS_REVIEW`, `NEEDS_ANSWER_KEY`, `AI_UNAVAILABLE`, `PURGE_PENDING`, `SOURCE_EXPIRED`, `CANCELLED`.
 
-Retries use the upload hash + stage + provider/model version as an idempotency key. Retry never creates a second confirmed attempt. Teachers can correct extraction, replace a page, select a bank item, enter evidence manually, retry generation or continue without AI. Every transition records actor and source version.
+Retries bind the authorized `upload_job_id` and `assessment_attempt_id` to student/campus, stage input revision, and processor/model/schema version. A file hash is supporting duplicate evidence, never the identity by itself. Page replacement or answer correction creates a new input revision and invalidates downstream working results; retrying an unchanged revision never creates a second confirmed record. Teachers can correct extraction, replace a page, select a bank item, enter evidence manually, retry generation or continue without AI. Every transition records actor and source version.
 
 ## 10. Security, privacy and operations
 
