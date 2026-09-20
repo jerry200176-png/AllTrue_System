@@ -108,8 +108,30 @@ jobs:
           grep -Fq 'bound=1' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'trap - EXIT ERR' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "trap 'rc=\$?; trap - ERR; exit \"\$rc\"' ERR" .github/workflows/calendar-course-acceptance.yml
-          ! grep -Fq 'export SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
-          ! grep -Fq 'php artisan tinker' .github/workflows/calendar-course-acceptance.yml
+          forbidden_export_prefix='export '
+          forbidden_export_name='SESSION_TOKEN'
+          forbidden_export="${forbidden_export_prefix}${forbidden_export_name}"
+          forbidden_php_prefix='php artisan '
+          forbidden_php_command='tinker'
+          forbidden_php="${forbidden_php_prefix}${forbidden_php_command}"
+          assert_no_forbidden_patterns() {
+            local candidate="$1"
+            ! grep -Fq "$forbidden_export" "$candidate" &&
+              ! grep -Fq "$forbidden_php" "$candidate"
+          }
+          assert_no_forbidden_patterns .github/workflows/calendar-course-acceptance.yml
+          forbidden_fixture="$(mktemp)"
+          printf '%s\n' "$forbidden_export" > "$forbidden_fixture"
+          if assert_no_forbidden_patterns "$forbidden_fixture"; then
+            echo 'forbidden export self-check fixture unexpectedly passed' >&2
+            exit 1
+          fi
+          printf '%s\n' "$forbidden_php" > "$forbidden_fixture"
+          if assert_no_forbidden_patterns "$forbidden_fixture"; then
+            echo 'forbidden PHP command self-check fixture unexpectedly passed' >&2
+            exit 1
+          fi
+          rm -f "$forbidden_fixture"
           if [ -n "$BRANCH_ID" ]; then
             [[ "$BRANCH_ID" =~ ^[1-9][0-9]{0,6}$ ]] || { echo 'branch_id must be canonical positive decimal digits' >&2; exit 1; }
             (( 10#$BRANCH_ID <= 1000000 )) || { echo 'branch_id is outside the supported range' >&2; exit 1; }
