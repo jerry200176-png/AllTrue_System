@@ -4,7 +4,7 @@ acceptance_login_request_valid() {
   local request_file="$1"
   jq -e '
     type == "object" and
-    (.account | (type == "string" and ((gsub("^\\s+|\\s+$"; "")) | length > 0 and length <= 128))) and
+    (.account | (type == "string" and (test("[\\r\\n]") | not) and ((gsub("^\\s+|\\s+$"; "")) | length > 0 and length <= 128))) and
     (.password | (type == "string" and length > 0)) and
     (.role == "director")
   ' "$request_file" >/dev/null 2>/dev/null
@@ -23,6 +23,11 @@ acceptance_require_login_secrets() {
 
 acceptance_login_http_status_allows_acceptance() {
   [ "${1:-}" = 200 ]
+}
+
+acceptance_login_401_diagnosis_result_valid() {
+  local result_file="$1"
+  jq -e 'type == "object" and (keys | sort) == ["active_director_rows", "approved_branch_16_rows", "matching_rows", "must_change_password_required_rows"] and all(.[]; type == "number" and floor == . and . >= 0)' "$result_file" >/dev/null 2>/dev/null
 }
 
 acceptance_login_response_taxonomy() {
