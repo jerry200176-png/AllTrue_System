@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=/dev/null
 source "$ROOT_DIR/scripts/acceptance/login-contract.sh"
 
+workflow_file="$ROOT_DIR/.github/workflows/calendar-course-acceptance.yml"
+grep -Fq 'php -d display_errors=0 -d log_errors=1 /dev/fd/3' "$workflow_file"
+grep -Fq 'jq -e . "$diagnosis_raw"' "$workflow_file"
+
 unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
 SMOKE_DIRECTOR_PASSWORD=placeholder
 export SMOKE_DIRECTOR_PASSWORD
@@ -36,6 +40,12 @@ fi
 printf '%s\n' '{"account":"   \t  ","password":"placeholder","role":"director"}' > "$tmp_dir/whitespace-account.json"
 if acceptance_login_request_valid "$tmp_dir/whitespace-account.json"; then
   echo 'whitespace-only account unexpectedly passed' >&2
+  exit 1
+fi
+
+printf '%s\n' '{"account":"director\nforged","password":"placeholder","role":"director"}' > "$tmp_dir/newline-account.json"
+if acceptance_login_request_valid "$tmp_dir/newline-account.json"; then
+  echo 'newline account unexpectedly passed' >&2
   exit 1
 fi
 
@@ -89,6 +99,11 @@ if ! acceptance_login_http_status_allows_acceptance 200; then
 fi
 product_acceptance_started=1
 test "$product_acceptance_started" -eq 1
+
+printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1}' > "$tmp_dir/diagnosis-valid.json"
+acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-valid.json"
+printf '%s\n' '{"matching_rows":1,"active_director_rows":1,"must_change_password_required_rows":0,"approved_branch_16_rows":1,"account":"forbidden"}' > "$tmp_dir/diagnosis-account.json"
+if acceptance_login_401_diagnosis_result_valid "$tmp_dir/diagnosis-account.json"; then exit 1; fi
 
 printf '%s\n' '{"errors":{"account":["redacted"],"password":["redacted"]},"code":"not-allowlisted","message":"must not be printed"}' > "$tmp_dir/rejected.json"
 test "$(acceptance_login_response_taxonomy "$tmp_dir/rejected.json")" = 'json=valid errors=account,password code=none'
