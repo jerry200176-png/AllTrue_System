@@ -1,9 +1,8 @@
-name: Calendar/Course Production Acceptance (read-only)
+name: Calendar/Course Production Acceptance (bounded auth setup + read-only)
 
 # Authenticated acceptance for the calendar/course-management parity contract.
-# The director session is fetched from the existing short-lived Pi smoke-token
-# path. No password is stored in GitHub or the repository; this job performs
-# only GET requests against production.
+# Auth setup uses the dedicated acceptance credentials and only mutates the
+# newly-issued auth_tokens row; product acceptance remains read-only.
 
 on:
   workflow_dispatch:
@@ -34,7 +33,7 @@ concurrency:
 
 jobs:
   acceptance:
-    name: Authenticated calendar/course parity (read-only)
+    name: Authenticated calendar/course parity (bounded auth setup + read-only)
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -46,7 +45,7 @@ jobs:
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           host-key: ${{ secrets.PI_HOST_KEY }}
-      - name: Setup SSH for read-only smoke token lookup
+      - name: Setup SSH for bounded auth setup and read-only acceptance
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
@@ -59,7 +58,26 @@ jobs:
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
-      - name: Fetch short-lived director session (read-only)
+      - name: Prepare bounded acceptance login request (secret boundary)
+        env:
+          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_LOGIN }}
+          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$SMOKE_DIRECTOR_LOGIN" && test -n "$SMOKE_DIRECTOR_PASSWORD"
+          login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
+          trap 'rm -f "$login_request"' EXIT
+          exec 9<<<"$SMOKE_DIRECTOR_LOGIN"
+          exec 10<<<"$SMOKE_DIRECTOR_PASSWORD"
+          unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
+          jq -n --rawfile account /dev/fd/9 --rawfile password /dev/fd/10 \
+            '{account:($account|rtrimstr("\n")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
+          exec 9<&- 10<&-
+          chmod 600 "$login_request"
+          trap - EXIT
+
+      - name: Issue bounded acceptance session (controlled auth setup)
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
@@ -67,78 +85,183 @@ jobs:
         run: |
           set -euo pipefail
           node .github/scripts/normalize-smoke-session.mjs --self-test
-          grep -Fq "printf '%s\\n' 'ALLTRUE_SESSION_PAYLOAD_BEGIN_V1'" .github/workflows/calendar-course-acceptance.yml
-          grep -Fq "printf '%s\\n' 'ALLTRUE_SESSION_PAYLOAD_END_V1'" .github/workflows/calendar-course-acceptance.yml
-          grep -Fq "php <<'PHP'" .github/workflows/calendar-course-acceptance.yml
-          grep -Fq "require __DIR__ . '/vendor/autoload.php';" .github/workflows/calendar-course-acceptance.yml
-          grep -Fq '$kernel->bootstrap();' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq -- "--rawfile account /dev/fd/9" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq -- "--rawfile password /dev/fd/10" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'user_id:null' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "printf '%s\\n' \"\$session_token\"" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "auth_tokens" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq -- "->update(['expires_at'" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq -- "->delete()" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'if: ${{ always() }}' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "php /dev/fd/3" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'read -r SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'exec 4<<<' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'trap revoke_step_token EXIT' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'bound=1' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'trap - EXIT ERR' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "trap 'rc=\$?; trap - ERR; exit \"\$rc\"' ERR" .github/workflows/calendar-course-acceptance.yml
+          ! grep -Fq 'export SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
           ! grep -Fq 'php artisan tinker' .github/workflows/calendar-course-acceptance.yml
-          ! grep -Fq 'ALLTRUE_SESSION_PAYLOAD_V1:' .github/workflows/calendar-course-acceptance.yml
           if [ -n "$BRANCH_ID" ]; then
             [[ "$BRANCH_ID" =~ ^[1-9][0-9]{0,6}$ ]] || { echo 'branch_id must be canonical positive decimal digits' >&2; exit 1; }
             (( 10#$BRANCH_ID <= 1000000 )) || { echo 'branch_id is outside the supported range' >&2; exit 1; }
           fi
           test -n "$PI_SSH_USER" && test -n "$PI_SSH_HOST" && test -s ~/.ssh/deploy_key
-          session_output="$({
-            ssh -i ~/.ssh/deploy_key \
-              -o IdentitiesOnly=yes \
-              -o BatchMode=yes \
-              -o ConnectTimeout=20 \
-              -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile=~/.ssh/known_hosts \
-              "$PI_SSH_USER@$PI_SSH_HOST" "bash -s -- '$BRANCH_ID'" <<'REMOTE'
+          umask 077
+          cleanup_file="$RUNNER_TEMP/alltrue-acceptance-auth-cleanup.json"
+          login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
+          login_response="$RUNNER_TEMP/alltrue-acceptance-login.response"
+          test -s "$login_request" && test "$(stat -c '%a' "$login_request")" = 600
+          trap 'rm -f "$login_request" "$login_response"' EXIT
+          login_status="$(curl --silent --output "$login_response" --write-out '%{http_code}' \
+            --request POST --header 'Accept: application/json' \
+            --header 'Content-Type: application/json' \
+            --header 'User-Agent: AllTrue-Calendar-Course-Acceptance/20260920' \
+            --data-binary "@$login_request" \
+            https://daan.lifenet.com.tw/api/v1/auth/login)"
+          test "$login_status" = 200 || { rm -f "$login_response"; exit 1; }
+          session_token="$(jq -er '.data.session.access_token | select(type == "string" and test("^[A-Za-z0-9]{64}$"))' "$login_response")"
+          session_user_id="$(jq -er '.data.user.id | select(type == "number" and floor == . and . > 0)' "$login_response" 2>/dev/null || true)"
+          echo "::add-mask::$session_token"
+          if [ -n "$session_user_id" ]; then
+            printf '%s\n' "$session_token" | jq -R --argjson user_id "$session_user_id" \
+              'select(length > 0) | {token:.,user_id:$user_id}' > "$cleanup_file"
+          else
+            printf '%s\n' "$session_token" | jq -R \
+              'select(length > 0) | {token:.,user_id:null}' > "$cleanup_file"
+          fi
+          chmod 600 "$cleanup_file"
+          bound=0
+          revoke_step_token() {
+            local original_status="$?"
+            local revoke_token revoke_user_id
+            if [ "$bound" -eq 1 ] || [ ! -s "$cleanup_file" ]; then
+              rm -f "$login_request" "$login_response"
+              return "$original_status"
+            fi
+            set +e
+            revoke_status=0
+            revoke_token="$(jq -er '.token | select(type=="string" and test("^[A-Za-z0-9]{64}$"))' "$cleanup_file")" || revoke_status=1
+            revoke_user_id="$(jq -er '.user_id | if . == null then empty else select(type=="number" and floor==. and .>0) end' "$cleanup_file" 2>/dev/null || true)"
+            if [ "$revoke_status" -eq 0 ] && [ -n "$revoke_token" ]; then
+              {
+                printf '%s\n' "$revoke_token"
+                cat <<'REMOTE'
           set -euo pipefail
-          export BRANCH_ID="${1:-}"
+          export EXPECTED_USER_ID="${1:-}"
           cd /home/admin/backend
-          printf '%s\n' 'ALLTRUE_SESSION_PAYLOAD_BEGIN_V1'
-          php <<'PHP'
+          php /dev/fd/3 0<&4 3<<'PHP'
           <?php
           define('LARAVEL_START', microtime(true));
-          require __DIR__ . '/vendor/autoload.php';
-          $app = require_once __DIR__ . '/bootstrap/app.php';
+          $base = getcwd();
+          require $base . '/vendor/autoload.php';
+          $app = require_once $base . '/bootstrap/app.php';
           $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
           $kernel->bootstrap();
-          $branch = (int) getenv("BRANCH_ID");
-          $query = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
-            ->join("User as u", "u.id", "=", "t.user_id")
-            ->join("UserCampus as uc", "uc.UserID", "=", "u.id")
-            ->where("u.type", "D")
-            ->where(function ($q) { $q->where("uc.Approved", 1)->orWhereNull("uc.Approved"); })
-            ->where("t.expires_at", ">", now())
-            ->where("t.expires_at", "<=", now()->addMinutes(30))
-            ->when($branch > 0, fn ($q) => $q->where("uc.CampusID", $branch))
-            ->orderByDesc("t.expires_at")
-            ->select("t.token", "t.expires_at", "u.id", "u.type", "u.MustChangePassword");
-          $row = $query->first();
-          if (!$row) {
-            // A super admin may administer a branch without a UserCampus row.
-            $row = \Illuminate\Support\Facades\DB::table("auth_tokens as t")
-              ->join("User as u", "u.id", "=", "t.user_id")
-              ->where("u.type", "S")
-              ->where("t.expires_at", ">", now())
-              ->where("t.expires_at", "<=", now()->addMinutes(30))
-              ->orderByDesc("t.expires_at")
-              ->select("t.token", "t.expires_at", "u.id", "u.type", "u.MustChangePassword")
-              ->first();
+          $token = trim((string) fgets(STDIN));
+          $userId = (int) getenv('EXPECTED_USER_ID');
+          $query = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('token', $token);
+          if ($userId > 0) { $query->where('user_id', $userId); }
+          $rows = $query->select('id')->get();
+          if ($rows->count() !== 1) { exit(1); }
+          $deleteQuery = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $rows->first()->id)
+            ->where('token', $token);
+          if ($userId > 0) { $deleteQuery->where('user_id', $userId); }
+          $deleted = $deleteQuery->delete();
+          if ($deleted !== 1) { exit(1); }
+          PHP
+          REMOTE
+              } | ssh -i ~/.ssh/deploy_key \
+                -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+                -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+                "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$revoke_user_id\"'" >/dev/null 2>/dev/null || revoke_status=$?
+            fi
+            if [ "$revoke_status" -ne 0 ]; then
+              rm -f "$login_request" "$login_response"
+              if [ "$original_status" -eq 0 ]; then return 1; else return "$original_status"; fi
+            fi
+            rm -f "$cleanup_file"
+            rm -f "$login_request" "$login_response"
+            return "$original_status"
           }
-          if (!$row) { throw new \RuntimeException("no valid director smoke session"); }
-          if ((bool) $row->MustChangePassword) { throw new \RuntimeException("director smoke session requires password change"); }
-          $campuses = $row->type === "S"
-            ? \Illuminate\Support\Facades\DB::table("Campus")->pluck("id")
-            : \Illuminate\Support\Facades\DB::table("UserCampus")
-                ->where("UserID", $row->id)
-                ->where(function ($q) { $q->where("Approved", 1)->orWhereNull("Approved"); })
-                ->pluck("CampusID");
+          trap revoke_step_token EXIT
+          trap 'rc=$?; trap - ERR; exit "$rc"' ERR
+          jq -e '
+            (.data.user | type == "object") and
+            (.data.user.role | . == "director" or . == "super_admin") and
+            (.data.user.must_change_password == false) and
+            (.data.user.campuses | type == "array" and length > 0 and all(.[]; type == "number" and floor == . and . > 0))
+          ' "$login_response" >/dev/null
+          session_role="$(jq -er '.data.user.role' "$login_response")"
+          test "$session_role" = director || test "$session_role" = super_admin
+          session_must_change="$(jq -er '.data.user.must_change_password' "$login_response")"
+          test "$session_must_change" = false
+          if [ -n "$BRANCH_ID" ]; then
+            jq -e --argjson branch "$BRANCH_ID" '.data.user.campuses | index($branch) != null' "$login_response" >/dev/null
+          fi
+          rm -f "$login_request" "$login_response"
+          session_output="$({
+            {
+              printf '%s\n' "$session_token"
+          cat <<'REMOTE'
+          set -euo pipefail
+          export BRANCH_ID="${1:-}" EXPECTED_USER_ID="${2:-}"
+          cd /home/admin/backend
+          printf '%s\n' 'ALLTRUE_SESSION_PAYLOAD_BEGIN_V1'
+          php /dev/fd/3 0<&4 3<<'PHP'
+          <?php
+          define('LARAVEL_START', microtime(true));
+          $base = getcwd();
+          require $base . '/vendor/autoload.php';
+          $app = require_once $base . '/bootstrap/app.php';
+          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+          $kernel->bootstrap();
+          $token = trim((string) fgets(STDIN));
+          $expectedUserId = (int) getenv('EXPECTED_USER_ID');
+          $branch = (int) getenv('BRANCH_ID');
+          if ($token === '' || !preg_match('/^[A-Za-z0-9]{64}$/', $token) || $expectedUserId < 1) {
+              throw new \RuntimeException('invalid acceptance session material');
+          }
+          $rows = \Illuminate\Support\Facades\DB::table('auth_tokens as t')
+            ->join("User as u", "u.id", "=", "t.user_id")
+            ->where('t.token', $token)
+            ->where('t.user_id', $expectedUserId)
+            ->select('t.id as auth_token_id', 't.user_id', 't.token', 'u.type', 'u.MustChangePassword')
+            ->get();
+          if ($rows->count() !== 1) { throw new \RuntimeException('acceptance token row is not unique'); }
+          $row = $rows->first();
+          if (!in_array($row->type, ['D', 'S'], true)) { throw new \RuntimeException('acceptance user role is not authorized'); }
+          if ((bool) $row->MustChangePassword) { throw new \RuntimeException('acceptance user requires password change'); }
+          $campuses = $row->type === 'S'
+            ? \Illuminate\Support\Facades\DB::table('Campus')->pluck('id')
+            : \Illuminate\Support\Facades\DB::table('UserCampus')->where('UserID', $row->user_id)
+                ->where(function ($q) { $q->where('Approved', 1)->orWhereNull('Approved'); })->pluck('CampusID');
           $campuses = $campuses->map(fn ($id) => (int) $id)->values()->all();
+          if (!$campuses || ($branch > 0 && !in_array($branch, $campuses, true))) {
+              throw new \RuntimeException('acceptance campus is not authorized');
+          }
+          $expiresAt = now()->addMinutes(30);
+          $updated = \Illuminate\Support\Facades\DB::table('auth_tokens')
+            ->where('id', $row->auth_token_id)->where('user_id', $row->user_id)->where('token', $token)
+            ->update(['expires_at' => $expiresAt]);
+          if ($updated !== 1) { throw new \RuntimeException('bounded auth token expiry update failed'); }
+          $fresh = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $row->auth_token_id)
+            ->where('user_id', $row->user_id)->where('token', $token)->first();
+          $freshExpiresAt = $fresh ? \Illuminate\Support\Carbon::parse($fresh->expires_at) : null;
+          if (!$freshExpiresAt || now()->gte($freshExpiresAt) || now()->addMinutes(30)->lt($freshExpiresAt)) {
+              throw new \RuntimeException('bounded auth token expiry verification failed');
+          }
           $payload = json_encode([
-            "access_token" => $row->token,
-            "token_type" => "Bearer",
-            "expires_at" => (string) $row->expires_at,
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'expires_at' => $freshExpiresAt->utc()->toISOString(),
             "user" => [
-              "id" => (int) $row->id,
+              "id" => (int) $row->user_id,
               "role" => $row->type === "S" ? "super_admin" : "director",
               "campuses" => $campuses,
-              "must_change_password" => (bool) $row->MustChangePassword,
+              "must_change_password" => false,
             ],
           ]);
           if ($payload === false) { throw new \RuntimeException("session payload encoding failed"); }
@@ -146,8 +269,14 @@ jobs:
           PHP
           printf '%s\n' 'ALLTRUE_SESSION_PAYLOAD_END_V1'
           REMOTE
+            } | ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$BRANCH_ID\" \"$session_user_id\"'"
           })"
           test -n "$session_output"
+          bound=1
+          trap - EXIT ERR
           printf '%s' "$session_output" > "$RUNNER_TEMP/alltrue-session.output"
           SESSION_OUTPUT_PATH="$RUNNER_TEMP/alltrue-session.output" \
           SESSION_NORMALIZED_PATH="$RUNNER_TEMP/alltrue-session.normalized.json" \
@@ -199,3 +328,52 @@ jobs:
           path: frontend/playwright-report/
           retention-days: 14
           if-no-files-found: ignore
+
+      - name: Cleanup bounded acceptance auth token
+        if: ${{ always() }}
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+        run: |
+          set -euo pipefail
+          cleanup_file="$RUNNER_TEMP/alltrue-acceptance-auth-cleanup.json"
+          if [ ! -s "$cleanup_file" ]; then exit 0; fi
+          cleanup_token="$(jq -er '.token | select(type=="string" and test("^[A-Za-z0-9]{64}$"))' "$cleanup_file")"
+          cleanup_user_id="$(jq -er '.user_id | if . == null then empty else select(type=="number" and floor==. and .>0) end' "$cleanup_file" 2>/dev/null || true)"
+          echo "::add-mask::$cleanup_token"
+          cleanup_output="$({
+            {
+              printf '%s\n' "$cleanup_token"
+              cat <<'REMOTE'
+          set -euo pipefail
+          export EXPECTED_USER_ID="${1:-}"
+          cd /home/admin/backend
+          php /dev/fd/3 0<&4 3<<'PHP'
+          <?php
+          define('LARAVEL_START', microtime(true));
+          $base = getcwd();
+          require $base . '/vendor/autoload.php';
+          $app = require_once $base . '/bootstrap/app.php';
+          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+          $kernel->bootstrap();
+          $token = trim((string) fgets(STDIN));
+          $userId = (int) getenv('EXPECTED_USER_ID');
+          $query = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('token', $token);
+          if ($userId > 0) { $query->where('user_id', $userId); }
+          $rows = $query->select('id')->get();
+          if ($rows->count() !== 1) { throw new \RuntimeException('cleanup token row is not unique'); }
+          $deleteQuery = \Illuminate\Support\Facades\DB::table('auth_tokens')->where('id', $rows->first()->id)
+            ->where('token', $token);
+          if ($userId > 0) { $deleteQuery->where('user_id', $userId); }
+          $deleted = $deleteQuery->delete();
+          if ($deleted !== 1) { throw new \RuntimeException('cleanup auth token delete failed'); }
+          echo 'cleanup=ok deleted=1';
+          PHP
+          REMOTE
+            } | ssh -i ~/.ssh/deploy_key \
+              -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$cleanup_user_id\"'"
+          })"
+          test "$cleanup_output" = 'cleanup=ok deleted=1'
+          rm -f "$cleanup_file"
