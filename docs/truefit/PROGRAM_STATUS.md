@@ -32,7 +32,7 @@
 
 AllTrue manages operations. TrueFit manages how students learn.
 
-Product intent, same-server/separate-site boundary, and the proposed paper-evidence/AI track are documented in [`PRODUCT_ARCHITECTURE_BRIEF.md`](PRODUCT_ARCHITECTURE_BRIEF.md). That brief does not change delivery status or grant implementation/activation authority.
+Product intent and same-server/separate-site boundary are documented in [`PRODUCT_ARCHITECTURE_BRIEF.md`](PRODUCT_ARCHITECTURE_BRIEF.md). The detailed paper-evidence, AI, 30-day raw retention and no-relogin proposal is [`PAPER_EVIDENCE_AI_SSO_PROPOSAL.md`](PAPER_EVIDENCE_AI_SSO_PROPOSAL.md). Neither document changes delivery status or grants implementation/activation authority.
 
 ### Privacy (until Founder GO)
 
@@ -70,7 +70,7 @@ Backend auto-links `source_*` when omitted (#3010). Frontend continuum CTAs + se
 | 0–5 | CODE+TESTS+MERGED; not ops-accepted |
 | 6 Continuum | **00a/00b MERGED**; **01 MERGED** (#3024); not ops-accepted; flags OFF |
 | Assessment Vendor Adapter | Not started |
-| Paper Evidence / OCR / AI Adapter | Proposed discovery only; not implemented; Plan + protected decisions required |
+| Paper Evidence / OCR / AI / SSO | Decision proposal documented; not implemented; pilot/provider selection + T3 auth/privacy Plan and Founder GO required |
 | S6-02 | Not started |
 
 ### APIs behind `TRUEFIT_V1`

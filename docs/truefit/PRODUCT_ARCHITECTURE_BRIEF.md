@@ -55,14 +55,18 @@ Every stage needs idempotency, retry/timeout state, manual fallback, audit histo
 ## Decisions still required before implementation
 
 - Which subjects and evidence formats form the pilot, especially handwritten Chinese, mathematics and diagrams.
-- Authoritative answer/rubric source: uploaded key, teacher entry, existing question bank, or teacher-confirmed AI proposal.
-- One file per student versus batch page splitting, and how mismatches are corrected safely.
-- Storage and deletion periods for originals, crops, OCR text, generated packs and audit metadata.
 - AI/OCR provider, training opt-out, data location, cost/latency budget and outage fallback.
 - Copyright/licence authority for uploaded exams, textbook-derived questions and generated variants.
-- Whether the first subdomain release accepts a second login or funds an approved SSO exchange.
 
 These are product/security choices, not implied authorization from this brief.
+
+### Founder decisions recorded 2026-09-20
+
+- The supplied question bank is authoritative for correct answers and rubrics; AI may match/explain but must not invent answer truth.
+- One upload job represents one student; batch multi-student splitting is out of the initial scope.
+- Raw exam evidence is retained for 30 days. Confirmed structured learning records must survive raw-file expiry; exact educational-record retention remains a policy decision.
+- A second teacher login on the TrueFit site is not acceptable. The proposed no-relogin handoff is specified in [`PAPER_EVIDENCE_AI_SSO_PROPOSAL.md`](PAPER_EVIDENCE_AI_SSO_PROPOSAL.md) and remains an auth/security Founder gate.
+- Pilot grade, subject, format and AI/OCR provider remain undecided and must be selected by evidence, not assumed.
 
 ## Phased roadmap and success measures
 
