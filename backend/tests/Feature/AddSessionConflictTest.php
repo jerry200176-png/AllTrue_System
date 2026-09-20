@@ -732,6 +732,68 @@ class AddSessionConflictTest extends TestCase
             ->assertJsonPath('is_ended', true);
     }
 
+    // In-app #330: omitting auto_approve for a historical make-up must leave
+    // the evaluation pending; approval is an explicit opt-in only.
+    public function test_add_session_defaults_to_pending_evaluation_for_ended_slot(): void
+    {
+        Carbon::setTestNow('2026-09-20 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                'session_date' => '2026-09-19',
+                'start_time' => '10:00',
+                'duration_minutes' => 120,
+                // Deliberately omit auto_approve to cover the fail-closed default.
+            ]);
+
+            $res->assertCreated()
+                ->assertJsonPath('auto_approved', false)
+                ->assertJsonPath('deducted', false);
+
+            $record = LearningRecord::where('ClassSessionID', $res->json('class_session_id'))->firstOrFail();
+            $this->assertSame('pending', (string) $record->Status);
+            $this->assertNull($record->ApprovedAt);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_add_session_explicit_auto_approve_still_approves_ended_slot(): void
+    {
+        Carbon::setTestNow('2026-09-20 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                'session_date' => '2026-09-19',
+                'start_time' => '10:00',
+                'duration_minutes' => 120,
+                'auto_approve' => true,
+            ]);
+
+            $res->assertCreated()
+                ->assertJsonPath('auto_approved', true)
+                ->assertJsonPath('deducted', true);
+
+            $record = LearningRecord::where('ClassSessionID', $res->json('class_session_id'))->firstOrFail();
+            $this->assertSame('approved', (string) $record->Status);
+            $this->assertNotNull($record->ApprovedAt);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     // --- check endpoint: is_ended flag for a slot still in the future ---
     public function test_check_endpoint_returns_is_ended_false_for_future_slot(): void
     {

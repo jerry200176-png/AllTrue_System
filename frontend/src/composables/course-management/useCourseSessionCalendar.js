@@ -98,7 +98,7 @@ export function buildManualSessionCreatePayload({ session_date, start_time }) {
 }
 
 export function buildAddSessionCreatePayload({
-  session_date, start_time, duration_minutes, note = null, auto_approve = true,
+  session_date, start_time, duration_minutes, note = null, auto_approve = false,
 }) {
   return {
     session_date: toYmd(session_date),

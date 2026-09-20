@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-21-makeup-assessment-pending-330",
+    "publishedAt": "2026-09-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "補排課不再預設核准評量",
+    "summary": "補排或補登已結束堂次時，評量預設保留待填／待審。",
+    "items": [
+      "未明確選擇自動核准時，補排課不會因日期已過而直接核准評量或扣堂。",
+      "既有「確認後自動核准」選項仍保留，但必須由主任明確勾選並確認。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "未明確選擇自動核准時，補排課不會因日期已過而直接核准評量或扣堂。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "既有「確認後自動核准」選項仍保留，但必須由主任明確勾選並確認。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3103",
+      "github:in-app-330",
+      "changelog:2026-09-21:makeup-assessment-pending-330"
+    ],
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
     "id": "staff-2026-09-20-session-dates-performance",
     "publishedAt": "2026-09-20",
     "effectiveAt": null,

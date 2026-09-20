@@ -2816,7 +2816,7 @@ const quickAddSessionForm = ref({
   start_time: '16:00',
   duration_minutes: 120,
   note: '',
-  auto_approve: true,
+  auto_approve: false,
   student_name: '',
   subject: 'Math',
 });
@@ -3454,7 +3454,7 @@ function openQuickAddSessionModal(course, prefill = null) {
     start_time: prefillStart || normalizeTo30Min(course?.start_time || '16:00'),
     duration_minutes: durationMinutes,
     note: '',
-    auto_approve: true,
+    auto_approve: false,
     student_name: course?.student_name || '—',
     subject: course?.subject || 'Math',
   };

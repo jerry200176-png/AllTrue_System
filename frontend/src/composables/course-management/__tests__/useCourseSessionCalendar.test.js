@@ -51,6 +51,7 @@ describe('useCourseSessionCalendar', () => {
       session_date: '2026-09-20', start_time: '16:00', duration_minutes: 120, note: '補課',
     });
     expect(Object.keys(add).sort()).toEqual(['auto_approve', 'duration_minutes', 'note', 'session_date', 'start_time']);
+    expect(add.auto_approve).toBe(false);
     expect(add).not.toHaveProperty('status');
     expect(add).not.toHaveProperty('teacher_id');
   });

@@ -4252,7 +4252,10 @@ class StudentClassController extends Controller
 
         $now = Carbon::now();
         $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
-        $autoApprove = array_key_exists('auto_approve', $data) ? (bool) $data['auto_approve'] : $isEnded;
+        // Adding/making up a session must not silently approve an assessment
+        // merely because the selected time is in the past. Approval is an
+        // explicit director choice; omitted input fails closed to pending.
+        $autoApprove = array_key_exists('auto_approve', $data) ? (bool) $data['auto_approve'] : false;
         $teacherId = (int) ($data['teacher_id'] ?? $studentClass->TeacherID ?? 0);
         $note = trim((string) ($data['note'] ?? ''));
 
