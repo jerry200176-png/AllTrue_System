@@ -4,6 +4,46 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-20-session-dates-performance",
+    "publishedAt": "2026-09-20",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程堂次載入更穩定",
+    "summary": "課程堂次資料先按課程整理，減少多課程重複掃描。",
+    "items": [
+      "課程堂次讀取會先按課程整理資料，降低多課程查詢時的重複處理，讓載入更穩定。",
+      "保留既有已上課、預排、請假與取消堂次的顯示語意，不改帳務或授權範圍。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "課程堂次讀取會先按課程整理資料，降低多課程查詢時的重複處理，讓載入更穩定。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "保留既有已上課、預排、請假與取消堂次的顯示語意，不改帳務或授權範圍。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3135",
+      "changelog:2026-09-20:session-dates-row-reuse"
+    ],
+    "date": "2026-09-20",
+    "version": "2026.09.20"
+  },
+  {
     "id": "staff-2026-09-19-student-school-search",
     "publishedAt": "2026-09-19",
     "effectiveAt": "2026-09-19",
