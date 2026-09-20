@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "986702996b944884919d2e4a00856b32",
+  "session_id": "d86e95a86f764dcdb04204e75be5ef79",
   "project": "alltrue",
-  "task_id": "acceptance-gate-stable-identity-20260920",
+  "task_id": "inapp-296-school-production-acceptance-20260919",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "ea2a4dc4c3c591826fe002c1dbe6604f1385314b",
-  "branch": "chore/task-acceptance-gate-stable-identity-20260920",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/acceptance-gate-stable-identity-20260920",
-  "started_at": "2026-09-20T01:25:57Z",
+  "base_sha": "5301da5d5314e86ae79b9b66774c2c843df3189f",
+  "branch": "chore/task-inapp-296-school-production-acceptance-20260919",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-296-school-production-acceptance-20260919",
+  "started_at": "2026-09-19T13:33:27Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.1"
 }
