@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-20-calendar-print-localization-336
+    published_at: "2026-09-20"
+    audiences:
+      - director
+    importance: digest
+    title: 列印課表班型顯示中文
+    summary: 列印課表不再顯示 one_on_three 等系統代碼。
+    items:
+      - category: fixed
+        text: 列印課表會把一對一、一對二、一對三、輔導與試聽顯示成中文班型名稱。
+      - category: improved
+        text: 保留既有週／月範圍、篩選、學生姓名與異動狀態，不改資料或權限。
+    source_refs:
+      - "github:#3140"
+      - "github:in-app-336"
+      - "changelog:2026-09-20:calendar-print-localization-336"
+
   - id: staff-2026-09-20-session-dates-performance
     published_at: "2026-09-20"
     audiences:

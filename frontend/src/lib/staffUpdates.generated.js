@@ -44,6 +44,45 @@ export const staffUpdates = [
     "version": "2026.09.20"
   },
   {
+    "id": "staff-2026-09-20-calendar-print-localization-336",
+    "publishedAt": "2026-09-20",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "列印課表班型顯示中文",
+    "summary": "列印課表不再顯示 one_on_three 等系統代碼。",
+    "items": [
+      "列印課表會把一對一、一對二、一對三、輔導與試聽顯示成中文班型名稱。",
+      "保留既有週／月範圍、篩選、學生姓名與異動狀態，不改資料或權限。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "列印課表會把一對一、一對二、一對三、輔導與試聽顯示成中文班型名稱。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "保留既有週／月範圍、篩選、學生姓名與異動狀態，不改資料或權限。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3140",
+      "github:in-app-336",
+      "changelog:2026-09-20:calendar-print-localization-336"
+    ],
+    "date": "2026-09-20",
+    "version": "2026.09.20"
+  },
+  {
     "id": "staff-2026-09-19-student-school-search",
     "publishedAt": "2026-09-19",
     "effectiveAt": "2026-09-19",

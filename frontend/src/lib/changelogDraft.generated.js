@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.20",
     "date": "2026-09-20",
     "title": "2026.09.20 草稿（未發布）",
-    "summary": "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
+    "summary": "timetable uses Chinese class-type labels；課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "timetable uses Chinese class-type labels",
           "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。"
         ]
       }
     ],
     "items": [
+      "timetable uses Chinese class-type labels",
       "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。"
     ]
   },

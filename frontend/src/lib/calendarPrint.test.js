@@ -27,6 +27,12 @@ assert.equal(rows[0].studentName, '王小明');
 assert.deepEqual(rows[0].markers, ['請假', '補課']);
 assert.equal(rows[0].roomLabel, 'A101');
 assert.equal(rows[0].campusLabel, '分校 #11');
+const enumClassTypeRows = projectPrintRows({
+  range,
+  courses: [{ id: 2, student_id: 3, teacher_id: 9, class_type: 'one_on_three' }],
+  sessions: [{ id: 5, student_class_id: 2, session_date: '2026-09-15', start_time: '16:00', end_time: '18:00', status: 'scheduled', teacher_id: 9 }],
+});
+assert.equal(enumClassTypeRows[0].classTypeLabel, '一對三');
 assert.deepEqual(exceptionMarkers({}, { teacher_id: 10 }, 9), ['代課']);
 assert.deepEqual(exceptionMarkers({}, { teacher_id: 9 }, 9), []);
 assert.equal(summarizeRows(rows, range, 'week').total, 1);

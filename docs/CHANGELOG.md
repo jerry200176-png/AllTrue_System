@@ -1,3 +1,7 @@
+## 2026-09-20 — fix(calendar): print timetable uses Chinese class-type labels (in-app #336)
+<!-- release-notes: staff_update=staff-2026-09-20-calendar-print-localization-336 -->
+- 列印課表遇到內部班型代碼時，改沿用既有中文班型標籤（例如一對三），不再把 `one_on_three` 等系統代碼直接印給主任。
+
 ## 2026-09-20 — fix(performance): reuse session-dates rows by course
 <!-- release-notes: staff_update=staff-2026-09-20-session-dates-performance -->
 - `POST /api/v1/student-classes/session-dates` groups already-loaded session and schedule rows by course before the existing projection and contract logic runs; response semantics, authorization, diagnostics, and historical rows are unchanged.
