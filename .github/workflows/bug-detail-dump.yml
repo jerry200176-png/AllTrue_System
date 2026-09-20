@@ -1507,6 +1507,105 @@ jobs:
             }}
           }}
 
+          // #338-specific bounded capacity probe. Resolve the teacher/student
+          // names from the current report at runtime (never hard-code or emit
+          // them), require unique matches, and invoke the same read-only
+          // capacity service used by the availability endpoint. The artifact
+          // contains only aggregate slot counts/capacity values, not names or
+          // row identifiers. Ambiguous identity or unparseable coordinates
+          // remains non-decision-grade.
+          $probe338 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 338",
+          ];
+          if ($bugId === 338) {{
+            $probe338["applicable"] = true;
+            $probe338["case"] = "targeted_one_on_three_capacity_338";
+            $probe338["target_scope"] = [
+              "identity_source" => "current_bug_description_runtime_match",
+              "campus_id" => (int)$bug->CampusID,
+            ];
+            try {{
+              $description338 = trim((string)($bug->description ?? ""));
+              $dateMatch338 = [];
+              $teacherMatch338 = [];
+              $studentMatch338 = [];
+              $parsedDate338 = preg_match('/(?<month>\\d{{1,2}})\\/(?<day>\\d{{1,2}})[^\\d]{{0,20}}(?<start>\\d{{1,2}})\\s*[-~～至到]\\s*(?<end>\\d{{1,2}})/u', $description338, $dateMatch338) === 1;
+              $parsedTeacher338 = preg_match('/(?:1\\s*對\\s*3|一對三)\\s*([^\\s，,]+?)\\s*(?:明明|有位置)/u', $description338, $teacherMatch338) === 1;
+              $parsedStudent338 = preg_match('/將\\s*([^\\s，,]+?)\\s*(?:早上|上午|下午|晚上)/u', $description338, $studentMatch338) === 1;
+              $reportYear338 = (int)\\Illuminate\\Support\\Carbon::parse($bug->created_at)->year;
+              $targetDate338 = $parsedDate338
+                ? sprintf('%04d-%02d-%02d', $reportYear338, (int)$dateMatch338["month"], (int)$dateMatch338["day"])
+                : null;
+              $targetStart338 = $parsedDate338 ? sprintf('%02d:00', (int)$dateMatch338["start"]) : null;
+              $targetEnd338 = $parsedDate338 ? sprintf('%02d:00', (int)$dateMatch338["end"]) : null;
+              $teacherName338 = $parsedTeacher338 ? trim((string)$teacherMatch338[1]) : null;
+              $studentName338 = $parsedStudent338 ? trim((string)$studentMatch338[1]) : null;
+              $probe338["target_window"] = [
+                "date" => $targetDate338, "start" => $targetStart338, "end" => $targetEnd338,
+              ];
+              $probe338["identity_match"] = [
+                "teacher_name_parsed" => $teacherName338 !== null,
+                "student_name_parsed" => $studentName338 !== null,
+              ];
+              if (!$parsedDate338 || !$parsedTeacher338 || !$parsedStudent338) {{
+                throw new \\RuntimeException("target coordinates or identities could not be parsed");
+              }}
+
+              $teacherRows338 = $db::table("User")
+                ->whereRaw("TRIM(Name) = ?", [$teacherName338])
+                ->whereExists(function ($q) use ($bug, $db) {{
+                  $q->select($db::raw(1))->from("UserCampus as uc")
+                    ->whereColumn("uc.UserID", "User.id")
+                    ->where("uc.CampusID", (int)$bug->CampusID);
+                }})
+                ->get(["id"]);
+              $studentRows338 = $db::table("Student")
+                ->whereRaw("TRIM(name) = ?", [$studentName338])
+                ->get(["id", "CampusID"]);
+              $probe338["matched_teacher_count"] = $teacherRows338->count();
+              $probe338["matched_student_count"] = $studentRows338->count();
+              if ($teacherRows338->count() !== 1 || $studentRows338->count() !== 1) {{
+                throw new \\RuntimeException("target identity match is not unique");
+              }}
+
+              $teacherId338 = (int)$teacherRows338->first()->id;
+              $studentId338 = (int)$studentRows338->first()->id;
+              $service338 = app(\\App\\Services\\SubstituteService::class);
+              $withStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], $studentId338);
+              $withoutStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], null);
+              $summarize338 = function (array $slots) use ($targetStart338, $targetEnd338, $bug) {{
+                $matching = collect($slots)->filter(function ($slot) use ($targetStart338, $targetEnd338) {{
+                  return (string)($slot["start_time"] ?? "") === $targetStart338
+                    && (string)($slot["end_time"] ?? "") === $targetEnd338;
+                }})->values();
+                $local = $matching->filter(fn ($slot) => (int)($slot["campus_id"] ?? 0) === (int)$bug->CampusID);
+                $oneOnThree = $local->filter(fn ($slot) => (string)($slot["class_type"] ?? "") === "one_on_three");
+                $remaining = $oneOnThree->map(fn ($slot) => (int)($slot["remaining_capacity"] ?? 0))->values()->all();
+                sort($remaining, SORT_NUMERIC);
+                return [
+                  "exact_window_slot_count" => $matching->count(),
+                  "target_campus_slot_count" => $local->count(),
+                  "target_campus_one_on_three_count" => $oneOnThree->count(),
+                  "remaining_capacity_values" => $remaining,
+                ];
+              }};
+              $probe338["with_reported_student_excluded"] = $summarize338($withStudent338);
+              $probe338["without_student_exclusion"] = $summarize338($withoutStudent338);
+              $remainingAfterExclude338 = $probe338["with_reported_student_excluded"]["remaining_capacity_values"];
+              $probe338["classification"] = $remainingAfterExclude338 !== [] && max($remainingAfterExclude338) > 0
+                ? "target_slot_has_remaining_capacity_after_excluding_student"
+                : ($probe338["with_reported_student_excluded"]["target_campus_one_on_three_count"] > 0
+                  ? "target_slot_full_after_excluding_student"
+                  : "target_one_on_three_slot_not_found");
+              $probe338["decision_grade"] = true;
+              $probe338["error"] = null;
+            }} catch (\\Throwable $e) {{
+              $probe338["decision_grade"] = false;
+              $probe338["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
+
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1519,9 +1618,10 @@ jobs:
             272 => $probe272,
             278, 281 => $probe278281,
             315 => $probe315,
+            338 => $probe338,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1564,6 +1664,7 @@ jobs:
                 "probe_272_teacher_same_slot" => $probe272,
                 "probe_278_281_cancelled_makeup_candidates" => $probe278281,
                 "probe_315_cross_campus_busy" => $probe315,
+                "probe_338_target_capacity" => $probe338,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
