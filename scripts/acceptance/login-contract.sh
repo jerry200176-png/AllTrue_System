@@ -10,6 +10,17 @@ acceptance_login_request_valid() {
   ' "$request_file" >/dev/null 2>/dev/null
 }
 
+acceptance_require_login_secrets() {
+  if [ -z "${SMOKE_DIRECTOR_LOGIN:-}" ]; then
+    printf '%s\n' 'acceptance_stage=login_secret_missing' >&2
+    return 1
+  fi
+  if [ -z "${SMOKE_DIRECTOR_PASSWORD:-}" ]; then
+    printf '%s\n' 'acceptance_stage=login_secret_missing' >&2
+    return 1
+  fi
+}
+
 acceptance_login_response_taxonomy() {
   local response_file="$1"
   if [ ! -s "$response_file" ] || ! grep -q '[^[:space:]]' "$response_file"; then
