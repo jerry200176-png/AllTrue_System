@@ -178,7 +178,18 @@
       "future_state": "Retain as explicit manual lifecycle operation"
     },
     "bug-sla-weekly-report.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Scheduled tinker report reads production; downstream issue/report notification is not a production data write."},
-    "calendar-course-acceptance.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Workflow-run/manual acceptance probe uses read-only tinker queries and evidence output."},
+    "calendar-course-acceptance.yml": {
+      "classification": "legacy-case-specific-mutation",
+      "production_mutation": "confirmed",
+      "trigger": "workflow_dispatch or successful Deploy to Pi workflow_run; serialized calendar-course-production-acceptance group",
+      "production_command_or_path": "POST /api/v1/auth/login with dedicated acceptance User-Agent; exact-token expiry update and final exact-token delete in auth_tokens only; product acceptance GET-only",
+      "authorization": "Founder-authorized SMOKE_DIRECTOR_LOGIN/SMOKE_DIRECTOR_PASSWORD secrets, pinned SSH trust, exact director/super_admin role and requested-campus authorization",
+      "concurrency": "calendar-course-production-acceptance; cancel-in-progress=false",
+      "rollback": "always() cleanup after report upload deletes only the newly-issued auth_tokens row by exact token/user; login audit record remains",
+      "canonical": true,
+      "required": "Bounded acceptance auth setup and cleanup contract",
+      "future_state": "Retain until production acceptance has a separately governed short-lived session issuer; product acceptance remains read-only"
+    },
     "ci.yml": {"classification":"non-production","production_mutation":"not-production","evidence":"Artisan commands run against ephemeral CI services; SSH/Pi strings are comments or local contract text."},
     "classsession-duplicate-diagnose-push.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Audit and repair commands are dry-run-only; tinker output is diagnostic."},
     "credential-fingerprint-audit.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Fingerprint comparison is read-only and uploads evidence; cleanup targets runner temp files."},
