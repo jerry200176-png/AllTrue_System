@@ -1,35 +1,35 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260901-045848-UJSJ | actor: human     ║
-║  model: codex                                        ║
-║  branch: feat/TKT-20260901-045848-UJSJ               ║
+║  ticket: INT-20260920-103943-J5U8 | actor: human     ║
+║  model: gpt-5.6-sol                                  ║
+║  branch: exo/INT-20260920-103943-J5U8                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260901045942-87630ED6
+session_id: SES-20260920103950-EB4A8752
 actor: human
 vendor: openai
-model: codex
+model: gpt-5.6-sol
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260901-045848-UJSJ
-ticket_title: P1 historical course usage reconciliation visibility
+ticket_id: INT-20260920-103943-J5U8
+ticket_title: TrueFit local fixture print acceptance
 ticket_status: todo
-ticket_priority: 1
+ticket_priority: 3
 topic_id: repo:default
 lock_owner: human
-git_branch: feat/TKT-20260901-045848-UJSJ
-lock_branch: feat/TKT-20260901-045848-UJSJ
-lock_expires_at: 2026-09-01T08:59:42+08:00
+git_branch: exo/INT-20260920-103943-J5U8
+lock_branch: exo/INT-20260920-103943-J5U8
+lock_expires_at: 2026-09-20T12:39:50+08:00
 
 ## Scope
-- allow: ["frontend/src/pages/CourseManagement.vue", "frontend/src/components/__tests__/CourseManagementLensUx.test.js", "frontend/src/lib/courseRowWarnings.js", "frontend/src/lib/courseRowWarnings.test.js", "docs/CHANGELOG.md", "docs/STAFF_UPDATES.yml", "frontend/src/lib/changelogDraft.generated.js", "frontend/src/lib/staffUpdates.generated.js", ".agent-session/manifest.json", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
-- deny: ["backend/**", "**/.env*"]
+- allow: ["frontend/src/pages/TrueFitPaperFixturePage.vue", "frontend/src/lib/truefitPaperFixture.js", "frontend/src/components/__tests__/**", "frontend/e2e/**", "docs/truefit/**", ".agent-session/manifest.json", ".exo/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- deny: ["backend/**", ".github/**", "operations/**"]
 
 ## Checks
-- ["npm run test:unit", "npm run build"]
+- ["npm run test:unit", "npm run lint:no-undef", "npm run build"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -38,25 +38,15 @@ lock_expires_at: 2026-09-01T08:59:42+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 0.2
-- ram: 3.4GB available / 4.8GB total
+- load_avg_1m: 0.1
+- ram: 6.5GB available / 7.8GB total
 
 ## Start Advisories
-- [INFO] Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) — Refresh paired read-only evidence requests for in-app bug 247 after restoring ma
-- [INFO] Unmerged work on branch chore/task-bug247-evidence-refresh-20260831 (ticket=TKT-20260831-073322-7VYG, actor=human) — Refreshed the paired read-only bug dump requests for in-app bug 247, corrected t
-- [INFO] Unmerged work on branch chore/task-smart-calendar-room-form-a11y-20260831 (ticket=TKT-20260831-015607-L7IS, actor=human) — Added explicit accessible names to the SmartCalendar director room-manager name 
-- [INFO] Unmerged work on branch chore/task-learning-record-selection-a11y-20260831 (ticket=TKT-20260831-013757-EJR0, actor=human) — Added contextual aria-labels to Learning Records director batch-selection contro
-- [INFO] Unmerged work on branch chore/task-attendance-checkbox-a11y-20260831 (ticket=TKT-20260831-012049-ELLK, actor=human) — Named AttendancePage pending-session selection checkboxes with visible student, 
-- [INFO] Unmerged work on branch chore/task-students-import-button-a11y-20260831 (ticket=TKT-20260831-010101-YH5H, actor=agent:codex) — Replaced the non-focusable StudentsList import label with a native labelled butt
-- [INFO] Unmerged work on branch chore/task-subject-units-disclosure-a11y-20260831 (ticket=TKT-20260831-004116-P8Z9, actor=agent:codex) — Split Subject Units disclosure controls into separate native toggles; focused ac
-- [INFO] Unmerged work on branch chore/task-learning-filters-clear-action-a11y-20260830 (ticket=TKT-20260830-204105-QKZI, actor=human) — Split Learning Records filter controls into independent native buttons; focused 
-- [INFO] Unmerged work on branch chore/task-director-makeup-candidate-tabs-a11y-20260830 (ticket=TKT-20260830-202351-RQ41, actor=human) — Connected director parent-leave makeup candidate date tabs to their active label
-- [INFO] Unmerged work on branch chore/task-learning-feedback-preview-a11y-20260830 (ticket=TKT-20260830-200621-56BV, actor=human) — Converted both Learning Records parent-feedback preview chips from non-focusable
-- [INFO] Unmerged work on branch chore/task-calendar-teacher-list-a11y-20260830 (ticket=TKT-20260830-193601-RIQ2, actor=agent:codex) — Clarified SmartCalendar view tabs and panels, calendar filter/date semantics, an
-- [INFO] Unmerged work on branch chore/task-attendance-controls-a11y-20260830 (ticket=TKT-20260830-064903-SYI5, actor=human) — Added explicit accessible names to attendance teacher date, attendance record da
-- [INFO] Unmerged work on branch chore/task-class-session-response-envelope-20260830 (ticket=TKT-20260830-062342-OROW, actor=agent:codex) — Added class-sessions response envelope, pagination, aliases, stable row keys/typ
-- [INFO] Unmerged work on branch chore/task-calendar-247-regression-20260830 (ticket=TKT-20260830-061056-4LIH, actor=agent:codex) — Added exact #247 production-payload regression coverage for mixed-capacity subst
-- [INFO] Unmerged work on branch chore/task-teacher-overdue-partial-failure-20260830 (ticket=TKT-20260830-055433-A4MH, actor=agent:codex) — Fixed TeacherHome partial-failure classification: attendance and weekly projecti
+- [INFO] Unmerged work on branch exo/TKT-20260912-135926-9P4S (ticket=TKT-20260912-135926-9P4S, actor=human) — Integrated PR #2757 source head 458b6417 onto current main in a fresh governed s
+- [INFO] Unmerged work on branch exo/TKT-20260907-095040-GNDS (ticket=TKT-20260907-095040-GNDS, actor=human) — Added a director-authenticated, read-only production classroom-management smoke 
+- [INFO] Unmerged work on branch exo/INT-20260907-074745-682Y (ticket=INT-20260907-074745-682Y, actor=agent:codex) — Resumed the existing classroom UX delivery, reconciled the latest origin/main wi
+- [INFO] Unmerged work on branch exo/INT-20260907-071544-9K2N (ticket=INT-20260907-071544-9K2N, actor=agent:codex) — Implemented mobile More navigation search, role-scoped filtering, empty-state re
+- [INFO] Unmerged work on branch exo/INT-20260907-063735-M93H (ticket=INT-20260907-063735-M93H, actor=agent:codex) — Implemented role-authorized SPA page history with preserved notification deep-li
 
 ## Prior Session Memento
 (none)
@@ -96,6 +86,16 @@ The following patterns have been learned from prior sessions. Heed these to avoi
   -> A bounded scheduled reconciler can query exact-main CI/deploy runs and dispatch only the existing CI workflow when no active or downstream evidence exists; normal main request-file pushes then restore read-only evidence workflows, while non-deployable control-plane changes remain activation-gated and do not deploy.
   (ref: REF-20260831-081032-6RTU, scope: global)
 
+- [MEDIUM]! SPA top-level navigation loses browser context
+  -> For a Vue shell without a router, keep role-authorized page IDs in a namespaced query key and let popstate apply state without pushing; preserve existing workflow deep-link parameters only for their authorized target.
+  (ref: REF-20260907-064813-6D03, scope: global)
+
+- [MEDIUM]! Mobile navigation More sheet hides low-frequency destinations in a long list
+  -> Reuse the role-scoped navigation registry and fixed-tab exclusion, but add search and empty-state recovery at the mobile More surface; keep desktop behavior, page IDs, and backend authorization unchanged.
+  (ref: REF-20260907-072424-1OCG, scope: global)
+
+(Showing top 10. Run `exo reflections` for the full list.)
+
 ## Tool Reuse Protocol
 
 Before writing new utility functions, SEARCH the tool registry:
@@ -112,10 +112,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-修正 CourseManagement 歷史課程卡遺漏堂數待對帳標籤；只做 frontend bounded visibility change，補回歸測試與精簡 release note，不改 backend、付款、出勤、扣堂或 production data。
+TrueFit local fixture UI and print acceptance only
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260901-045848-UJSJ --owner human
+- heartbeat: EXO_ACTOR=human python3 -m exo.cli lease-heartbeat --ticket-id INT-20260920-103943-J5U8 --owner human
 - run worker once: EXO_ACTOR=human python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=human python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260901-045848-UJSJ
+- finish: EXO_ACTOR=human python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id INT-20260920-103943-J5U8

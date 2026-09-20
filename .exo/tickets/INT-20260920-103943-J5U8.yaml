@@ -1,0 +1,51 @@
+id: INT-20260920-103943-J5U8
+title: TrueFit local fixture print acceptance
+intent: TrueFit local fixture print acceptance
+kind: intent
+brain_dump: 'Preserve #3123 fixture state model; reproduce and fix stale approved
+  preview; separate draft review/edit/return/approve; generate and visually inspect
+  local student and teacher PDFs; keep DEV-only; no external services, production,
+  auth, schema, vendor content, or roadmap expansion.'
+boundary: Only existing TrueFit fixture UI/model/tests/evidence plus local acceptance
+  artifacts; no auth, SSO, schema, permissions, DNS, production flags, external OCR/AI,
+  real data, deployment, or production workflows.
+success_condition: Actual Vue/browser DOM regression passes; draft and approval are
+  separate; stale previews clear; student/teacher PDFs open and pass visual inspection;
+  production build hides entry; PR review and CI pass.
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/src/pages/TrueFitPaperFixturePage.vue
+  - frontend/src/lib/truefitPaperFixture.js
+  - frontend/src/components/__tests__/**
+  - frontend/e2e/**
+  - docs/truefit/**
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/**
+  - operations/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-20T10:39:43+08:00'
+children: []
+resource_profile: default
