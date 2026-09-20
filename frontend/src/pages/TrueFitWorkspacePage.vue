@@ -6,6 +6,7 @@
       icon="today"
     >
       <template #actions>
+        <AtButton v-if="fixtureDemoEnabled" variant="secondary" shape="rect" icon="science" @click="openFixtureDemo">合成資料驗證</AtButton>
         <AtButton variant="ghost" shape="rect" icon="refresh" :loading="loading" @click="loadSessions">重新整理</AtButton>
       </template>
       <template #meta>
@@ -120,6 +121,8 @@ import {
 
 /** Cap fan-out to first K sessions (Option A chatty-read mitigation). */
 const PROGRESS_FIRST_K = 5;
+const fixtureDemoEnabled = import.meta.env.DEV;
+function openFixtureDemo() { window.location.hash = '#/truefit/paper-fixture'; }
 
 const props = defineProps({
   token: { type: String, required: true },

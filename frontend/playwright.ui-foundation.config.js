@@ -1,13 +1,17 @@
 // @ts-check
 import { defineConfig, devices } from '@playwright/test';
 
+const productionBoundary = process.env.TRUEFIT_PRODUCTION_BOUNDARY === '1';
+const trueFitFixture = process.env.TRUEFIT_FIXTURE === '1' || productionBoundary;
+const uiFoundationTests = '(?:ui-foundation-pages|ui-foundation-role-matrix|learning-records-polish|learning-records-preview|teacher-daily-workflow|teacher-calendar-ux|calendar-split-slot-317|product-clarity-browser|admissions-workflow-clarity|admissions-clarity|bug-reports-clarity|profile-controls-clarity|question-bank-clarity|attendance-clarity|students-list-clarity|subject-settings-clarity|director-dashboard-shell-clarity|classroom-clarity|chat-shell-clarity|line-integration-clarity|branch-management-clarity|binding-health-clarity)';
+
 /**
  * Local / CI config for UI foundation page-level evidence.
  * Serves e2e/fixtures/ui-foundation via vite.ui-foundation.config.js (not production dist).
  */
 export default defineConfig({
   testDir: './e2e',
-  testMatch: /(?:ui-foundation-pages|ui-foundation-role-matrix|learning-records-polish|learning-records-preview|teacher-daily-workflow|teacher-calendar-ux|calendar-split-slot-317|product-clarity-browser|admissions-workflow-clarity|admissions-clarity|bug-reports-clarity|profile-controls-clarity|question-bank-clarity|attendance-clarity|students-list-clarity|subject-settings-clarity|director-dashboard-shell-clarity|classroom-clarity|chat-shell-clarity|line-integration-clarity|branch-management-clarity|binding-health-clarity)\.spec\.js$/,
+  testMatch: new RegExp(`${trueFitFixture ? '(?:truefit-fixture-print|' : ''}${uiFoundationTests}${trueFitFixture ? ')' : ''}\\.spec\\.js$`),
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
@@ -15,13 +19,15 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:5177',
+    baseURL: `http://127.0.0.1:${productionBoundary ? 5178 : 5177}`,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
   webServer: {
-    command: 'npx vite --config vite.ui-foundation.config.js',
-    url: 'http://127.0.0.1:5177/pilot-mount.html',
+    command: productionBoundary
+      ? 'npx vite build --config vite.ui-foundation.config.js --mode production --outDir /tmp/truefit-fixture-prod-boundary --emptyOutDir && npx vite preview --config vite.ui-foundation.config.js --host 127.0.0.1 --port 5178 --strictPort --outDir /tmp/truefit-fixture-prod-boundary'
+      : 'npx vite --config vite.ui-foundation.config.js',
+    url: `http://127.0.0.1:${productionBoundary ? 5178 : 5177}/pilot-mount.html`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },

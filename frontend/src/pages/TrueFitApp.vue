@@ -22,8 +22,9 @@
     </header>
 
     <main class="truefit-shell__main">
+      <TrueFitPaperFixturePage v-if="route.view === 'paper-fixture' && fixtureDemoEnabled" @back="goWorkspace" />
       <TrueFitPrepPlaceholderPage
-        v-if="route.view === 'prep'"
+        v-else-if="route.view === 'prep'"
         :session="selectedSession"
         :token="token"
         @back="goWorkspace"
@@ -80,6 +81,7 @@ import TrueFitObservationPage from './TrueFitObservationPage.vue';
 import TrueFitDiagnosisPage from './TrueFitDiagnosisPage.vue';
 import TrueFitRemediationPage from './TrueFitRemediationPage.vue';
 import TrueFitMasteryPage from './TrueFitMasteryPage.vue';
+import TrueFitPaperFixturePage from './TrueFitPaperFixturePage.vue';
 import {
   parseTrueFitRoute,
   buildTrueFitPrepUrl,
@@ -102,6 +104,7 @@ const { token, branchId } = defineProps({
 
 const route = ref(parseTrueFitRoute() || { view: 'workspace' });
 const selectedSession = ref(null);
+const fixtureDemoEnabled = import.meta.env.DEV;
 let hydrateRequestId = 0;
 
 const selectedSessionId = computed(() => route.value?.classSessionId || null);

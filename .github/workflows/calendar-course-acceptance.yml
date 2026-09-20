@@ -60,19 +60,22 @@ jobs:
 
       - name: Prepare bounded acceptance login request (secret boundary)
         env:
-          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_LOGIN }}
-          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASSWORD }}
+          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASS }}
         run: |
           set -euo pipefail
           umask 077
-          test -n "$SMOKE_DIRECTOR_LOGIN" && test -n "$SMOKE_DIRECTOR_PASSWORD"
+          # Keep each check before request-file creation and before any curl.
+          # shellcheck source=/dev/null
+          source scripts/acceptance/login-contract.sh
+          acceptance_require_login_secrets
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           trap 'rm -f "$login_request"' EXIT
           exec 9<<<"$SMOKE_DIRECTOR_LOGIN"
           exec 10<<<"$SMOKE_DIRECTOR_PASSWORD"
           unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
           jq -n --rawfile account /dev/fd/9 --rawfile password /dev/fd/10 \
-            '{account:($account|rtrimstr("\n")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
+            '{account:($account|rtrimstr("\n")|sub("^\\s+";"")|sub("\\s+$";"")),password:($password|rtrimstr("\n")),role:"director"}' > "$login_request"
           exec 9<&- 10<&-
           chmod 600 "$login_request"
           trap - EXIT
@@ -85,6 +88,22 @@ jobs:
         run: |
           set -euo pipefail
           node .github/scripts/normalize-smoke-session.mjs --self-test
+          # Diagnostic markers go to stderr; captured stdout remains session data.
+          # shellcheck source=/dev/null
+          source scripts/acceptance/stage-contract.sh
+          # shellcheck source=/dev/null
+          source scripts/acceptance/login-contract.sh
+          grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
+          grep -Fq "acceptance_login_http_status_allows_acceptance \"\$login_status\"" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_login_401_diagnosis_result_valid' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_login_401_diagnosis_summary' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'ALLTRUE_401_DIAGNOSIS_V1=' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_extract_b64_json_marker' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'timeout --signal=TERM --kill-after=5s 30s ssh' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'head -c 16385' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "jq -e '.data.user.must_change_password == false'" scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
           grep -Fq -- "--rawfile account /dev/fd/9" .github/workflows/calendar-course-acceptance.yml
@@ -101,15 +120,37 @@ jobs:
           guard_close='() }}'
           cleanup_guard="${guard_prefix}${guard_dollar}${guard_open}${guard_word}${guard_close}"
           test "$(grep -F -c "$cleanup_guard" .github/workflows/calendar-course-acceptance.yml)" -eq 1
-          grep -Fq "php /dev/fd/3" .github/workflows/calendar-course-acceptance.yml
+          grep -Fq "php -d display_errors=0 -d log_errors=1 /dev/fd/3" .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'read -r SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'exec 4<<<' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'trap revoke_step_token EXIT' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'bound=1' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'trap - EXIT ERR' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "trap 'rc=\$?; trap - ERR; exit \"\$rc\"' ERR" .github/workflows/calendar-course-acceptance.yml
-          ! grep -Fq 'export SESSION_TOKEN' .github/workflows/calendar-course-acceptance.yml
-          ! grep -Fq 'php artisan tinker' .github/workflows/calendar-course-acceptance.yml
+          forbidden_export_prefix='export '
+          forbidden_export_name='SESSION_TOKEN'
+          forbidden_export="${forbidden_export_prefix}${forbidden_export_name}"
+          forbidden_php_prefix='php artisan '
+          forbidden_php_command='tinker'
+          forbidden_php="${forbidden_php_prefix}${forbidden_php_command}"
+          assert_no_forbidden_patterns() {
+            local candidate="$1"
+            ! grep -Fq "$forbidden_export" "$candidate" &&
+              ! grep -Fq "$forbidden_php" "$candidate"
+          }
+          assert_no_forbidden_patterns .github/workflows/calendar-course-acceptance.yml
+          forbidden_fixture="$(mktemp)"
+          printf '%s\n' "$forbidden_export" > "$forbidden_fixture"
+          if assert_no_forbidden_patterns "$forbidden_fixture"; then
+            echo 'forbidden export self-check fixture unexpectedly passed' >&2
+            exit 1
+          fi
+          printf '%s\n' "$forbidden_php" > "$forbidden_fixture"
+          if assert_no_forbidden_patterns "$forbidden_fixture"; then
+            echo 'forbidden PHP command self-check fixture unexpectedly passed' >&2
+            exit 1
+          fi
+          rm -f "$forbidden_fixture"
           if [ -n "$BRANCH_ID" ]; then
             [[ "$BRANCH_ID" =~ ^[1-9][0-9]{0,6}$ ]] || { echo 'branch_id must be canonical positive decimal digits' >&2; exit 1; }
             (( 10#$BRANCH_ID <= 1000000 )) || { echo 'branch_id is outside the supported range' >&2; exit 1; }
@@ -120,18 +161,88 @@ jobs:
           login_request="$RUNNER_TEMP/alltrue-acceptance-login.json"
           login_response="$RUNNER_TEMP/alltrue-acceptance-login.response"
           test -s "$login_request" && test "$(stat -c '%a' "$login_request")" = 600
+          if ! acceptance_login_request_valid "$login_request"; then
+            acceptance_stage login_request_invalid
+            exit 1
+          fi
+          acceptance_stage login_request_valid
+          acceptance_stage login_request_ready
           trap 'rm -f "$login_request" "$login_response"' EXIT
-          login_status="$(curl --silent --output "$login_response" --write-out '%{http_code}' \
+          if ! acceptance_capture login_http curl --silent --output "$login_response" --write-out '%{http_code}' \
             --request POST --header 'Accept: application/json' \
             --header 'Content-Type: application/json' \
             --header 'User-Agent: AllTrue-Calendar-Course-Acceptance/20260920' \
             --data-binary "@$login_request" \
-            https://daan.lifenet.com.tw/api/v1/auth/login)"
-          test "$login_status" = 200 || { rm -f "$login_response"; exit 1; }
-          session_token="$(jq -er '.data.session.access_token | select(type == "string" and test("^[A-Za-z0-9]{64}$"))' "$login_response")"
-          session_user_id="$(jq -er '.data.user.id | select(type == "number" and floor == . and . > 0)' "$login_response" 2>/dev/null || true)"
+            https://daan.lifenet.com.tw/api/v1/auth/login; then
+            rm -f "$login_response"
+            exit 1
+          fi
+          login_status="$STAGE_OUTPUT"
+          acceptance_stage "login_http_status=${login_status}"
+          if ! acceptance_login_http_status_allows_acceptance "$login_status"; then
+            response_taxonomy="$(acceptance_login_response_taxonomy "$login_response")"
+            acceptance_stage "login_http_rejected status=${login_status} ${response_taxonomy}"
+            if [ "$login_status" = 401 ]; then
+              acceptance_stage login_401_diagnosis_start
+              diagnosis_account_b64="$(jq -er '.account' "$login_request" | base64 -w0)"
+              diagnosis_raw="$RUNNER_TEMP/alltrue-401-diagnosis.raw"
+              set +e
+              {
+                printf '%s\n' "$diagnosis_account_b64"
+                cat <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php -d display_errors=0 -d log_errors=1 /dev/fd/3 0<&4 3<<'PHP'
+          <?php
+          define('LARAVEL_START', microtime(true));
+          $base = getcwd(); require $base . '/vendor/autoload.php';
+          $app = require_once $base . '/bootstrap/app.php';
+          $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class); $kernel->bootstrap();
+          $account = trim((string) fgets(STDIN));
+          if ($account === '' || strlen($account) > 128 || preg_match('/[\\r\\n]/', $account)) { throw new \RuntimeException('invalid diagnosis input'); }
+          $matching = \Illuminate\Support\Facades\DB::table('User')->where(function ($q) use ($account) { $q->where('LoginName', $account)->orWhere('Name', $account); });
+          $active = (clone $matching)->where(function ($q) { $q->whereNull('status')->orWhereNotIn('status', ['inactive', 'suspended']); });
+          $approved = \Illuminate\Support\Facades\DB::table('User as u')->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')->where(function ($q) use ($account) { $q->where('u.LoginName', $account)->orWhere('u.Name', $account); })->where(function ($q) { $q->whereNull('u.status')->orWhereNotIn('u.status', ['inactive', 'suspended']); })->where('u.type', 'D')->where('uc.CampusID', 16)->where(function ($q) { $q->where('uc.Approved', 1)->orWhereNull('uc.Approved'); })->count();
+          $mustChangeRows = \Illuminate\Support\Facades\Schema::hasColumn('User', 'MustChangePassword') ? (clone $active)->where('type', 'D')->where('MustChangePassword', true)->count() : 0;
+          $diagnosis = json_encode(['matching_rows' => (int) $matching->count(), 'active_director_rows' => (int) (clone $active)->where('type', 'D')->count(), 'must_change_password_required_rows' => (int) $mustChangeRows, 'approved_branch_16_rows' => (int) $approved], JSON_THROW_ON_ERROR);
+          echo 'ALLTRUE_401_DIAGNOSIS_V1=' . base64_encode($diagnosis) . PHP_EOL;
+          PHP
+          REMOTE
+              } | timeout --signal=TERM --kill-after=5s 30s ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; (( \${#LOGIN_ACCOUNT_B64} % 4 == 0 )); exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode); exec bash -s'" 2>/dev/null | head -c 16385 > "$diagnosis_raw"
+              diagnosis_capture_codes=("${PIPESTATUS[@]}")
+              set -e
+              if [ "${diagnosis_capture_codes[0]}" -ne 0 ] || [ "${diagnosis_capture_codes[1]}" -ne 0 ] || [ "${diagnosis_capture_codes[2]}" -ne 0 ] || [ "$(wc -c < "$diagnosis_raw")" -gt 16384 ]; then
+                diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
+                rm -f "$diagnosis_raw" "$login_response"
+                acceptance_stage "login_401_diagnosis_invalid shape=capture_or_limit ${diagnosis_shape}"
+                exit 1
+              fi
+              if ! acceptance_extract_b64_json_marker "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then
+                diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
+                rm -f "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"
+                acceptance_stage "login_401_diagnosis_invalid shape=marker_or_json ${diagnosis_shape}"
+                exit 1
+              fi
+              rm -f "$diagnosis_raw"
+              if ! acceptance_login_401_diagnosis_result_valid "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"; exit 1; fi
+              diagnosis_summary="$(acceptance_login_401_diagnosis_summary "$RUNNER_TEMP/alltrue-401-diagnosis.json")"
+              acceptance_stage "login_401_diagnosis ${diagnosis_summary}"
+              rm -f "$RUNNER_TEMP/alltrue-401-diagnosis.json"
+            fi
+            rm -f "$login_response"
+            exit 1
+          fi
+          if ! session_token="$(jq -er '.data.session.access_token | select(type == "string" and test("^[A-Za-z0-9]{64}$"))' "$login_response")"; then
+            acceptance_stage login_schema_token_invalid
+            exit 1
+          fi
+          session_user_id=''
+          user_id_valid=1
+          if ! session_user_id="$(jq -er '.data.user.id | select(type == "number" and floor == . and . > 0)' "$login_response")"; then
+            user_id_valid=0
+          fi
           echo "::add-mask::$session_token"
-          if [ -n "$session_user_id" ]; then
+          if [ "$user_id_valid" -eq 1 ]; then
             printf '%s\n' "$session_token" | jq -R --argjson user_id "$session_user_id" \
               'select(length > 0) | {token:.,user_id:$user_id}' > "$cleanup_file"
           else
@@ -139,6 +250,11 @@ jobs:
               'select(length > 0) | {token:.,user_id:null}' > "$cleanup_file"
           fi
           chmod 600 "$cleanup_file"
+          if [ "$user_id_valid" -ne 1 ]; then
+            acceptance_stage login_schema_user_id_invalid
+            exit 1
+          fi
+          acceptance_stage login_schema_valid
           bound=0
           revoke_step_token() {
             local original_status="$?"
@@ -194,20 +310,10 @@ jobs:
           }
           trap revoke_step_token EXIT
           trap 'rc=$?; trap - ERR; exit "$rc"' ERR
-          jq -e '
-            (.data.user | type == "object") and
-            (.data.user.role | . == "director" or . == "super_admin") and
-            (.data.user.must_change_password == false) and
-            (.data.user.campuses | type == "array" and length > 0 and all(.[]; type == "number" and floor == . and . > 0))
-          ' "$login_response" >/dev/null
-          session_role="$(jq -er '.data.user.role' "$login_response")"
-          test "$session_role" = director || test "$session_role" = super_admin
-          session_must_change="$(jq -er '.data.user.must_change_password' "$login_response")"
-          test "$session_must_change" = false
-          if [ -n "$BRANCH_ID" ]; then
-            jq -e --argjson branch "$BRANCH_ID" '.data.user.campuses | index($branch) != null' "$login_response" >/dev/null
-          fi
+          acceptance_login_response_authorized "$login_response" "$BRANCH_ID"
+          acceptance_stage login_authorization_valid
           rm -f "$login_request" "$login_response"
+          acceptance_stage session_ssh_start
           session_output="$({
             {
               printf '%s\n' "$session_token"
@@ -280,7 +386,9 @@ jobs:
               -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
               "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r SESSION_TOKEN; test -n \"\$SESSION_TOKEN\"; exec 4<<<\"\$SESSION_TOKEN\"; exec bash -s -- \"$BRANCH_ID\" \"$session_user_id\"'"
           })"
+          acceptance_stage session_ssh_ok
           test -n "$session_output"
+          acceptance_stage session_payload_received
           bound=1
           trap - EXIT ERR
           printf '%s' "$session_output" > "$RUNNER_TEMP/alltrue-session.output"
@@ -288,6 +396,7 @@ jobs:
           SESSION_NORMALIZED_PATH="$RUNNER_TEMP/alltrue-session.normalized.json" \
           REQUESTED_BRANCH_ID="$BRANCH_ID" \
           node .github/scripts/normalize-smoke-session.mjs
+          acceptance_stage session_normalized
           session_b64="$(base64 -w0 "$RUNNER_TEMP/alltrue-session.normalized.json")"
           test -n "$session_b64"
           echo "::add-mask::$session_b64"
