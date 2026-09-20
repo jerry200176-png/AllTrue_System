@@ -60,6 +60,8 @@ class BugDetailDumpContractTest(unittest.TestCase):
             'collectTeacherBusySlotsWithCapacity',
             'with_reported_student_excluded',
             'without_student_exclusion',
+            'matched_teacher_target_slot_count',
+            'TRIM(name) LIKE ?',
             'target_slot_has_remaining_capacity_after_excluding_student',
             'target_slot_full_after_excluding_student',
             'target_one_on_three_slot_not_found',

@@ -1,16 +1,16 @@
 {
   "schema_version": "1.0",
-  "session_id": "44116f52b9874d5f95b59e26e99e6983",
+  "session_id": "ac33a3d857b44a448136094221afaf6a",
   "project": "alltrue",
-  "task_id": "inapp-338-capacity-probe-20260921",
+  "task_id": "inapp-338-probe-disambiguation-20260921",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "449931d6bf82d8b77f2a944a9a9fc58ed69e9e9a",
-  "branch": "chore/task-inapp-338-capacity-probe-20260921",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-338-capacity-probe-20260921",
-  "started_at": "2026-09-20T22:25:11Z",
+  "base_sha": "6b118e9785c012869f19533a48e9f19a2591ca72",
+  "branch": "chore/task-inapp-338-probe-disambiguation-20260921",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-338-probe-disambiguation-20260921",
+  "started_at": "2026-09-20T22:40:35Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": null,
+  "agent_cli": "codex",
   "gateway_version": "0.5.1"
 }
