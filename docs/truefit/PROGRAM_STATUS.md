@@ -71,6 +71,7 @@ Backend auto-links `source_*` when omitted (#3010). Frontend continuum CTAs + se
 | 6 Continuum | **00a/00b MERGED**; **01 MERGED** (#3024); not ops-accepted; flags OFF |
 | Assessment Vendor Adapter | Not started |
 | Paper Evidence / OCR / AI / SSO | Decision proposal documented; not implemented; pilot/provider selection + T3 auth/privacy Plan and Founder GO required |
+| Paper Evidence local fixture MVP | Local synthetic UI/test evidence in [`LOCAL_FIXTURE_MVP_EVIDENCE.md`](LOCAL_FIXTURE_MVP_EVIDENCE.md); no backend/vendor/production capability |
 | S6-02 | Not started |
 
 ### APIs behind `TRUEFIT_V1`
