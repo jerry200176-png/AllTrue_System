@@ -98,6 +98,10 @@ jobs:
           grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
           grep -Fq "acceptance_login_http_status_allows_acceptance \"\$login_status\"" .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_login_401_diagnosis_result_valid' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'ALLTRUE_401_DIAGNOSIS_V1=' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'acceptance_extract_b64_json_marker' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'timeout --signal=TERM --kill-after=5s 30s ssh' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'head -c 16385' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "jq -e '.data.user.must_change_password == false'" scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
@@ -181,6 +185,7 @@ jobs:
               acceptance_stage login_401_diagnosis_start
               diagnosis_account_b64="$(jq -er '.account' "$login_request" | base64 -w0)"
               diagnosis_raw="$RUNNER_TEMP/alltrue-401-diagnosis.raw"
+              set +e
               {
                 printf '%s\n' "$diagnosis_account_b64"
                 cat <<'REMOTE'
@@ -198,14 +203,23 @@ jobs:
           $active = (clone $matching)->where(function ($q) { $q->whereNull('status')->orWhereNotIn('status', ['inactive', 'suspended']); });
           $approved = \Illuminate\Support\Facades\DB::table('User as u')->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')->where(function ($q) use ($account) { $q->where('u.LoginName', $account)->orWhere('u.Name', $account); })->where(function ($q) { $q->whereNull('u.status')->orWhereNotIn('u.status', ['inactive', 'suspended']); })->where('u.type', 'D')->where('uc.CampusID', 16)->where(function ($q) { $q->where('uc.Approved', 1)->orWhereNull('uc.Approved'); })->count();
           $mustChangeRows = \Illuminate\Support\Facades\Schema::hasColumn('User', 'MustChangePassword') ? (clone $active)->where('type', 'D')->where('MustChangePassword', true)->count() : 0;
-          echo json_encode(['matching_rows' => (int) $matching->count(), 'active_director_rows' => (int) (clone $active)->where('type', 'D')->count(), 'must_change_password_required_rows' => (int) $mustChangeRows, 'approved_branch_16_rows' => (int) $approved], JSON_THROW_ON_ERROR) . PHP_EOL;
+          $diagnosis = json_encode(['matching_rows' => (int) $matching->count(), 'active_director_rows' => (int) (clone $active)->where('type', 'D')->count(), 'must_change_password_required_rows' => (int) $mustChangeRows, 'approved_branch_16_rows' => (int) $approved], JSON_THROW_ON_ERROR);
+          echo 'ALLTRUE_401_DIAGNOSIS_V1=' . base64_encode($diagnosis) . PHP_EOL;
           PHP
           REMOTE
-              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode --strict); exec bash -s'" > "$diagnosis_raw" 2>/dev/null
-              if ! jq -e . "$diagnosis_raw" > "$RUNNER_TEMP/alltrue-401-diagnosis.json"; then
+              } | timeout --signal=TERM --kill-after=5s 30s ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; (( \${#LOGIN_ACCOUNT_B64} % 4 == 0 )); exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode); exec bash -s'" 2>/dev/null | head -c 16385 > "$diagnosis_raw"
+              diagnosis_capture_codes=("${PIPESTATUS[@]}")
+              set -e
+              if [ "${diagnosis_capture_codes[0]}" -ne 0 ] || [ "${diagnosis_capture_codes[1]}" -ne 0 ] || [ "${diagnosis_capture_codes[2]}" -ne 0 ] || [ "$(wc -c < "$diagnosis_raw")" -gt 16384 ]; then
+                diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
+                rm -f "$diagnosis_raw" "$login_response"
+                acceptance_stage "login_401_diagnosis_invalid shape=capture_or_limit ${diagnosis_shape}"
+                exit 1
+              fi
+              if ! acceptance_extract_b64_json_marker "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then
                 diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
                 rm -f "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"
-                acceptance_stage "login_401_diagnosis_invalid shape=non_json ${diagnosis_shape}"
+                acceptance_stage "login_401_diagnosis_invalid shape=marker_or_json ${diagnosis_shape}"
                 exit 1
               fi
               rm -f "$diagnosis_raw"
