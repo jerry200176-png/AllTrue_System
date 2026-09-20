@@ -100,6 +100,8 @@ jobs:
           grep -Fq 'acceptance_login_401_diagnosis_result_valid' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'ALLTRUE_401_DIAGNOSIS_V1=' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_extract_b64_json_marker' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'timeout --signal=TERM --kill-after=5s 30s ssh' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'head -c 16385' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "jq -e '.data.user.must_change_password == false'" scripts/acceptance/login-contract.sh
           grep -Fq 'unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD' .github/workflows/calendar-course-acceptance.yml
           grep -Fq "auth/login" .github/workflows/calendar-course-acceptance.yml
@@ -183,6 +185,7 @@ jobs:
               acceptance_stage login_401_diagnosis_start
               diagnosis_account_b64="$(jq -er '.account' "$login_request" | base64 -w0)"
               diagnosis_raw="$RUNNER_TEMP/alltrue-401-diagnosis.raw"
+              set +e
               {
                 printf '%s\n' "$diagnosis_account_b64"
                 cat <<'REMOTE'
@@ -204,7 +207,15 @@ jobs:
           echo 'ALLTRUE_401_DIAGNOSIS_V1=' . base64_encode($diagnosis) . PHP_EOL;
           PHP
           REMOTE
-              } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; (( \${#LOGIN_ACCOUNT_B64} % 4 == 0 )); exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode); exec bash -s'" > "$diagnosis_raw" 2>/dev/null
+              } | timeout --signal=TERM --kill-after=5s 30s ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" "bash -c 'read -r LOGIN_ACCOUNT_B64; [[ \"\$LOGIN_ACCOUNT_B64\" =~ ^[A-Za-z0-9+/]+={0,2}\$ ]]; (( \${#LOGIN_ACCOUNT_B64} % 4 == 0 )); exec 4< <(printf \"%s\" \"\$LOGIN_ACCOUNT_B64\" | base64 --decode); exec bash -s'" 2>/dev/null | head -c 16385 > "$diagnosis_raw"
+              diagnosis_capture_codes=("${PIPESTATUS[@]}")
+              set -e
+              if [ "${diagnosis_capture_codes[0]}" -ne 0 ] || [ "${diagnosis_capture_codes[1]}" -ne 0 ] || [ "${diagnosis_capture_codes[2]}" -ne 0 ] || [ "$(wc -c < "$diagnosis_raw")" -gt 16384 ]; then
+                diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
+                rm -f "$diagnosis_raw" "$login_response"
+                acceptance_stage "login_401_diagnosis_invalid shape=capture_or_limit ${diagnosis_shape}"
+                exit 1
+              fi
               if ! acceptance_extract_b64_json_marker "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" 'ALLTRUE_401_DIAGNOSIS_V1='; then
                 diagnosis_shape="$(wc -l -c < "$diagnosis_raw" | awk '{print "lines=" $1 " bytes=" $2}')"
                 rm -f "$diagnosis_raw" "$RUNNER_TEMP/alltrue-401-diagnosis.json" "$login_response"

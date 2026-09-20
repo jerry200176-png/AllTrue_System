@@ -9,6 +9,9 @@ workflow_file="$ROOT_DIR/.github/workflows/calendar-course-acceptance.yml"
 grep -Fq 'php -d display_errors=0 -d log_errors=1 /dev/fd/3' "$workflow_file"
 grep -Fq 'ALLTRUE_401_DIAGNOSIS_V1=' "$workflow_file"
 grep -Fq 'acceptance_extract_b64_json_marker "$diagnosis_raw"' "$workflow_file"
+grep -Fq 'timeout --signal=TERM --kill-after=5s 30s ssh' "$workflow_file"
+grep -Fq 'head -c 16385' "$workflow_file"
+grep -Fq 'shape=capture_or_limit' "$workflow_file"
 
 unset SMOKE_DIRECTOR_LOGIN SMOKE_DIRECTOR_PASSWORD
 SMOKE_DIRECTOR_PASSWORD=placeholder
