@@ -5,8 +5,8 @@
   "task_id": "inapp-322-discount-20260921",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "dbd8851f435b84d27f7888775fa625bdbb9dbe26",
-  "branch": "chore/task-inapp-322-discount-20260921-prelude-p27",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-322-discount-prelude-p27",
+  "branch": "chore/task-inapp-322-discount-20260921-prelude-p28",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-322-discount-prelude-p28",
   "started_at": "2026-09-21T02:39:47Z",
   "production_mutation": false,
   "preflight_result": "pass",
@@ -14,8 +14,8 @@
   "agent_cli": "codex",
   "gateway_version": "0.5.1",
   "planner_model": "gpt-5.6-sol",
-  "plan_revision": "P2.7",
+  "plan_revision": "P2.8",
   "plan_file": "docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md",
-  "plan_sha256": "463c99eb36761628c9c7b8a741a657831adb4547ea2644cfe9253e4614ebc006",
-  "scope_fingerprint": "P2.7-3d86f37-322-transaction-discount-G2-A12-B10-release-evidence"
+  "plan_sha256": "1c6523d3faaca8be2bfc6d0b3d55ad08c50e819f1257f3fa837205b03fc623ac",
+  "scope_fingerprint": "P2.8-3d86f37-322-transaction-discount-G2-A12-B11-release-exemption"
 }
