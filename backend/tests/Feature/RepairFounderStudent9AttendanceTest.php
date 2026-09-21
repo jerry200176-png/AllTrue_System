@@ -119,14 +119,44 @@ class RepairFounderStudent9AttendanceTest extends TestCase
     public function test_second_execute_is_idempotent(): void
     {
         $manifest = dirname(base_path()) . '/docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json';
-        $this->assertSame(0, Artisan::call('repair:founder-student9-attendance', [
+        $result = Artisan::call('repair:founder-student9-attendance', [
             '--manifest' => $manifest, '--execute' => true,
-        ]));
-        $this->assertSame(0, Artisan::call('repair:founder-student9-attendance', [
+        ]);
+        $this->assertSame(0, $result, Artisan::output());
+        $result = Artisan::call('repair:founder-student9-attendance', [
             '--manifest' => $manifest, '--execute' => true,
-        ]));
+        ]);
+        $this->assertSame(0, $result, Artisan::output());
         $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', 2812)->whereDate('SessionDate', '2026-07-28')->count());
         $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', 316)->whereDate('SessionDate', '2026-08-05')->count());
         $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', 28451)->where('event_type', 'deduct')->count());
+    }
+
+    public function test_correction_for_completed_social_target_does_not_block_chinese_target(): void
+    {
+        DB::table('ClassSession')->insert([
+            'id' => 39434, 'StudentClassID' => 2812, 'SessionDate' => '2026-07-28',
+            'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'attended',
+            'Note' => 'founder-student9-attendance-20260921', 'session_charge' => 2750,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('session_corrections')->insert([
+            'session_id' => 39434, 'replaced_by_session_id' => null,
+            'correction_reason' => 'founder_attendance_repair',
+            'decision_reference' => 'founder-student9-attendance-20260921',
+            'decided_at' => now(), 'decided_by_user_id' => 4,
+            'decided_by_actor' => 'test', 'previous_status' => 'missing',
+            'new_status' => 'attended', 'snapshot_before' => json_encode([]),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $manifest = dirname(base_path()) . '/docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json';
+        $result = Artisan::call('repair:founder-student9-attendance', [
+            '--manifest' => $manifest, '--execute' => true,
+        ]);
+        $this->assertSame(0, $result, Artisan::output());
+
+        $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', 316)->whereDate('SessionDate', '2026-08-05')->count());
+        $this->assertSame(1, DB::table('student_class_pricing_amendments')->where('student_class_id', 316)->whereNull('voided_at')->count());
     }
 }
