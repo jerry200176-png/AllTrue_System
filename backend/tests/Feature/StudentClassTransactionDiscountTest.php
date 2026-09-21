@@ -178,6 +178,29 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertNotEmpty($response->json('state_hash'));
     }
 
+    public function test_authorized_renewal_confirm_recalculates_and_forwards_discount(): void
+    {
+        [$director, $token] = $this->directorToken();
+        $student = $this->student();
+        $course = $this->course($student->id, $director->id);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $discount = ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'];
+        $preview = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", [
+            'mode' => 'purchase_batch', 'sessions' => 4, 'start_date' => '2026-10-01', 'discount' => $discount,
+        ])->assertOk()->json();
+
+        $response = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $preview['preview_id'], 'state_hash' => $preview['state_hash'],
+            'mode' => 'purchase_batch', 'payload' => [
+                'sessions' => 4, 'start_date' => '2026-10-01', 'discount' => $discount,
+            ],
+        ]);
+        $response->assertCreated();
+        $new = StudentClass::findOrFail($response->json('new_course.id'));
+        $this->assertSame(1800, (int) $new->Charge);
+        $this->assertSame('FIXED_AMOUNT', $new->pricing_snapshot['type']);
+    }
+
     public function test_teacher_preview_and_confirm_errors_never_serialize_discount_data(): void
     {
         [$teacher, $token] = $this->teacherToken();
