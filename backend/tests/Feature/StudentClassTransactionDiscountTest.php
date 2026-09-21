@@ -58,11 +58,14 @@ class StudentClassTransactionDiscountTest extends TestCase
         return [
             [['type' => 'FIXED_AMOUNT', 'value' => '1.5', 'reason' => 'x']],
             [['type' => 'FIXED_AMOUNT', 'value' => '-1', 'reason' => 'x']],
+            [['type' => 'FIXED_AMOUNT', 'value' => '400', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '1e1', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '-1', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '12.345', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '100.001', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '10', 'reason' => '']],
+            [['type' => 'FIXED_AMOUNT', 'value' => 100, 'reason' => 'x']],
+            [['type' => 'FIXED_AMOUNT', 'value' => "\x00", 'reason' => 'x']],
         ];
     }
 
@@ -155,6 +158,72 @@ class StudentClassTransactionDiscountTest extends TestCase
         }
     }
 
+    public function test_teacher_discount_is_rejected_on_every_protected_renewal_endpoint(): void
+    {
+        $student = $this->student();
+        [$teacher, $token] = $this->staffToken('T', true);
+        $course = $this->course($student->id, $teacher->id);
+        $before = StudentClass::where('StudentID', $student->id)->count();
+        $discount = ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'teacher-forbidden'];
+
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/purchase-batch", [
+            'sessions' => 2, 'start_date' => '2032-04-01', 'mode' => 'new_purchase', 'discount' => $discount,
+        ])->assertForbidden();
+        $course->ScheduleMode = 'date';
+        $course->SessionCount = 0;
+        $course->RemainingSessions = 0;
+        $course->monthly_sessions = 2;
+        $course->EndDate = '2026-09-30';
+        $course->save();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", [
+            'mode' => 'purchase_batch', 'sessions' => 2, 'start_date' => '2032-04-01', 'discount' => $discount,
+        ])->assertForbidden();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => 'teacher-forged-preview', 'state_hash' => 'teacher-forged-hash',
+            'mode' => 'purchase_batch', 'payload' => [
+                'sessions' => 2, 'start_date' => '2032-04-01', 'discount' => $discount,
+            ],
+        ])->assertForbidden();
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2032-04-30', 'discount' => $discount,
+        ])->assertForbidden();
+
+        $this->assertSame($before, StudentClass::where('StudentID', $student->id)->count());
+        $this->assertSame(0, StudentClass::where('StudentID', $student->id)->whereNotNull('pricing_snapshot')->count());
+    }
+
+    public function test_direct_purchase_none_and_no_discount_do_not_inherit_legacy_or_prior_snapshot(): void
+    {
+        $student = $this->student();
+        [$director, $token] = $this->staffToken('A', true);
+        $course = $this->course($student->id, $director->id);
+        $prior = (new TransactionDiscountCalculator())->calculate(4000, [
+            'type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'old approval',
+        ], $director->id, 'director');
+        $course->initializePricingSnapshot($prior);
+        $course->Disconunt = 999;
+        $course->save();
+
+        $noDiscount = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/purchase-batch", [
+            'sessions' => 2, 'start_date' => '2032-05-01', 'mode' => 'new_purchase',
+        ])->assertCreated();
+        $new = StudentClass::findOrFail($noDiscount->json('new_course.id'));
+        $this->assertSame(1000, (int) $new->Charge);
+        $this->assertSame('NONE', $new->pricing_snapshot['type']);
+        $this->assertSame(0, (int) $new->pricing_snapshot['discount_amount']);
+
+        $noneSource = $this->course($student->id, $director->id);
+        $noneSource->Disconunt = 888;
+        $noneSource->save();
+        $explicitNone = $this->withToken($token)->postJson("/api/v1/student-classes/{$noneSource->ID}/purchase-batch", [
+            'sessions' => 2, 'start_date' => '2032-06-01', 'mode' => 'new_purchase',
+            'discount' => ['type' => 'NONE', 'value' => '999'],
+        ])->assertCreated();
+        $noneNew = StudentClass::findOrFail($explicitNone->json('new_course.id'));
+        $this->assertSame('NONE', $noneNew->pricing_snapshot['type']);
+        $this->assertSame(1000, (int) $noneNew->Charge);
+    }
+
     public function test_multi_subject_batch_shares_transaction_identity_and_allocates_percentage_once(): void
     {
         [$director, $directorToken] = $this->staffToken('A', true);
@@ -227,18 +296,21 @@ class StudentClassTransactionDiscountTest extends TestCase
             $second['billing']['discount']['transaction_id']
         );
 
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $first['preview_id'], 'state_hash' => $first['state_hash'],
+            'mode' => 'purchase_batch', 'payload' => $payload,
+        ])->assertCreated();
+
         $changed = $payload;
         $changed['discount']['value'] = '25';
         $changed['discount']['reason'] = 'changed approval';
-        $changedPreview = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", $changed)
-            ->assertOk()->json();
-        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+        $changedResponse = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
             'preview_id' => $first['preview_id'],
             'state_hash' => $first['state_hash'],
             'mode' => 'purchase_batch',
             'payload' => $changed,
         ])->assertStatus(409);
-        $this->assertNotSame($first['state_hash'], $changedPreview['state_hash']);
+        $this->assertSame(409, $changedResponse->status());
 
         $reasonOnly = $payload;
         $reasonOnly['discount']['reason'] = 'reason-only mutation';
@@ -253,13 +325,6 @@ class StudentClassTransactionDiscountTest extends TestCase
             'preview_id' => $first['preview_id'], 'state_hash' => $first['state_hash'],
             'mode' => 'purchase_batch', 'payload' => $periodChanged,
         ])->assertStatus(409);
-
-        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
-            'preview_id' => $first['preview_id'],
-            'state_hash' => $first['state_hash'],
-            'mode' => 'purchase_batch',
-            'payload' => $payload,
-        ])->assertCreated();
 
         $course->Charge = (int) $course->Charge + 1;
         $course->save();
@@ -343,6 +408,48 @@ class StudentClassTransactionDiscountTest extends TestCase
         $legacy->setRawAttributes(['ID' => 1, 'pricing_snapshot' => null]);
         $this->expectException(\LogicException::class);
         $legacy->initializePricingSnapshot(['type' => 'NONE']);
+    }
+
+    public function test_persisted_pricing_snapshot_cannot_be_mutated(): void
+    {
+        $student = $this->student();
+        [$director] = $this->staffToken('A', true);
+        $course = $this->course($student->id, $director->id);
+        $course->initializePricingSnapshot([
+            'transaction_id' => 'immutable-test', 'original_amount' => 4000,
+            'type' => 'NONE', 'value' => '0', 'discount_amount' => 0,
+            'final_amount' => 4000, 'reason' => '', 'actor_id' => $director->id,
+            'actor_role' => 'director', 'created_at' => now()->toISOString(),
+        ]);
+
+        $snapshot = $course->pricing_snapshot;
+        $snapshot['reason'] = 'forged mutation';
+        $course->pricing_snapshot = $snapshot;
+        $this->expectException(\LogicException::class);
+        $course->save();
+    }
+
+    public function test_convert_trial_does_not_inherit_legacy_discount_or_prior_snapshot(): void
+    {
+        $student = $this->student();
+        [$director, $token] = $this->staffToken('A', true);
+        $trial = $this->course($student->id, $director->id);
+        $trial->ClassType = 'trial';
+        $trial->Disconunt = 777;
+        $trial->save();
+        $prior = (new TransactionDiscountCalculator())->calculate(4000, [
+            'type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'trial legacy approval',
+        ], $director->id, 'director');
+        $trial->initializePricingSnapshot($prior);
+
+        $response = $this->withToken($token)->postJson("/api/v1/student-classes/{$trial->ID}/convert-trial", [
+            'sessions' => 2, 'start_date' => '2032-07-01', 'class_type' => 'one_on_one',
+        ])->assertCreated();
+        $new = StudentClass::findOrFail($response->json('new_course.id'));
+
+        $this->assertSame('NONE', $new->pricing_snapshot['type']);
+        $this->assertSame(0, (int) $new->pricing_snapshot['discount_amount']);
+        $this->assertSame(1000, (int) $new->Charge);
     }
 
     /** @return array{0: User, 1: string} */
