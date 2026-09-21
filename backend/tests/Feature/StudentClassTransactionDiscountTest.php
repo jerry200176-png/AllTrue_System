@@ -162,16 +162,45 @@ class StudentClassTransactionDiscountTest extends TestCase
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $director->id,
             'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 2,
             'confirmed_dates' => [], 'future_dates' => [],
-            'session_plan' => [['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math']],
-            'days_of_week' => [4], 'start_time' => '16:00', 'duration_minutes' => 120,
+            'session_plan' => [
+                ['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math'],
+                ['session_date' => '2026-10-01', 'start_time' => '17:00', 'kind' => 'future', 'subject' => 'English'],
+            ],
+            'days_of_week' => [4],
+            'day_time_slots' => [
+                ['day' => 4, 'start_time' => '16:00', 'duration_minutes' => 120, 'subject' => 'Math'],
+                ['day' => 4, 'start_time' => '17:00', 'duration_minutes' => 120, 'subject' => 'English'],
+            ],
+            'start_time' => '16:00', 'duration_minutes' => 120,
             'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2026-10-01',
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'],
         ]);
         $response->assertCreated();
         $courses = StudentClass::where('StudentID', $student->id)->get();
-        $this->assertNotEmpty($courses);
+        $this->assertCount(2, $courses);
         $this->assertSame(800, (int) $courses->sum('Charge'));
-        $this->assertSame(800, (int) $courses->first()->pricing_snapshot['final_amount']);
+        $this->assertSame(800, (int) $courses->sum(fn (StudentClass $course) => $course->pricing_snapshot['final_amount']));
+        $this->assertSame([500, 500], $courses->map(fn (StudentClass $course) => $course->pricing_snapshot['original_amount'])->sort()->values()->all());
+        $this->assertSame([100, 100], $courses->map(fn (StudentClass $course) => $course->pricing_snapshot['discount_amount'])->sort()->values()->all());
+        $this->assertSame([400, 400], $courses->map(fn (StudentClass $course) => $course->pricing_snapshot['final_amount'])->sort()->values()->all());
+    }
+
+    public function test_super_admin_can_authorize_discounted_batch_endpoint(): void
+    {
+        [, $token] = $this->superAdminToken();
+        $student = $this->student();
+        $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => 1,
+            'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 1,
+            'confirmed_dates' => [], 'future_dates' => [],
+            'session_plan' => [['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math']],
+            'days_of_week' => [4], 'start_time' => '16:00', 'duration_minutes' => 120,
+            'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2026-10-01',
+            'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'approved'],
+        ]);
+        $response->assertCreated();
+        $new = StudentClass::findOrFail($response->json('student_class_ids.0'));
+        $this->assertSame(400, (int) $new->pricing_snapshot['final_amount']);
     }
 
     public function test_authorized_renewal_preview_normalizes_discount_without_writing_source(): void
@@ -344,6 +373,18 @@ class StudentClassTransactionDiscountTest extends TestCase
             'Name' => '測試主任', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0912345678',
         ]);
         UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        return [$user, $token];
+    }
+
+    /** @return array{0: User, 1: string} */
+    private function superAdminToken(): array
+    {
+        $user = User::create([
+            'LoginName' => 'super-' . bin2hex(random_bytes(4)) . '@example.com',
+            'Name' => '測試超級管理員', 'PSW' => 'secret', 'type' => 'S', 'phone' => '0912345678',
+        ]);
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
         return [$user, $token];

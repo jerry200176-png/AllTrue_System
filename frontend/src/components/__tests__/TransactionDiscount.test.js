@@ -1,15 +1,51 @@
-import { describe, expect, it } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+const { createUniversalClassSchedule } = vi.hoisted(() => ({ createUniversalClassSchedule: vi.fn() }));
+vi.mock('../../lib/universalSchedulerApi', () => ({ createUniversalClassSchedule }));
+vi.mock('../../lib/coursePackagesApi', () => ({ createMultiSubjectPackage: vi.fn() }));
+vi.mock('../../lib/subjectsApi', () => ({ fetchSubjectOptions: vi.fn(async () => []) }));
+vi.mock('../../lib/substituteApi.js', () => ({ fetchTeacherAvailability: vi.fn(async () => []) }));
 import {
   calculateTransactionDiscountPreview,
   normalizeTransactionDiscount,
 } from '../../lib/coursePricing.js';
+import UniversalClassScheduler from '../UniversalClassScheduler.vue';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('transaction discount preview', () => {
+  const mountScheduler = (props = {}) => mount(UniversalClassScheduler, {
+    props: {
+      branchId: 1,
+      students: [{ id: 1, name: '學生' }],
+      teachers: [{ id: 2, name: '老師' }],
+      rooms: [],
+      ...props,
+    },
+    global: { stubs: {
+      SearchableSelect: { template: '<select><slot /></select>' },
+      TeacherAvailabilityPlanner: { template: '<div />' },
+      CoursePaymentDateField: { template: '<input />' },
+    } },
+  });
+
+  it('renders the financial panel only for an explicitly enabled mount', async () => {
+    const hidden = mountScheduler();
+    await flushPromises();
+    expect(hidden.find('[data-testid="transaction-discount-panel"]').exists()).toBe(false);
+    hidden.unmount();
+
+    const enabled = mountScheduler({ allowFinancialDiscount: true });
+    await flushPromises();
+    expect(enabled.find('[data-testid="transaction-discount-panel"]').exists()).toBe(true);
+    expect(enabled.vm.form.discount).toEqual({ type: 'NONE', value: '0', reason: '' });
+    enabled.unmount();
+  });
+
   it('gates every canonical scheduler mount and never sends calculated totals', () => {
     const app = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
     const students = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
@@ -21,6 +57,8 @@ describe('transaction discount preview', () => {
     expect(students).not.toContain(':allow-financial-discount="true"');
     expect(courseManagement).toContain(':allow-financial-discount="allowFinancialDiscount"');
     expect(smartCalendar).toContain(':allow-financial-discount="allowFinancialDiscount"');
+    expect(smartCalendar).toContain("['director', 'admin', 'super_admin'].includes(props.userRole)");
+    expect(smartCalendar).toContain("props.userRole === 'teacher'");
     expect(students).not.toContain('original_amount: purchaseDiscountPreview');
     expect(courseManagement).not.toContain('original_amount:');
     expect(smartCalendar).not.toContain('final_amount:');
