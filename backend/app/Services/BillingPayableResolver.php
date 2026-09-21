@@ -15,10 +15,9 @@ class BillingPayableResolver
 
     /**
      * @param int[] $studentClassIds
-     * @param Collection<int, StudentClass>|array<int, StudentClass> $courses
      * @return array<int, array<string, int|string|null>>
      */
-    public function byStudentClassIds(array $studentClassIds, Collection|array $courses = []): array
+    public function byStudentClassIds(array $studentClassIds, iterable $courses = []): array
     {
         $ids = collect($studentClassIds)
             ->map(fn ($id) => (int) $id)
@@ -29,9 +28,17 @@ class BillingPayableResolver
             return [];
         }
 
-        $courseMap = collect($courses)->keyBy(fn (StudentClass $course) => (int) $course->ID);
+        /** @var array<int, StudentClass> $courseMap */
+        $courseMap = [];
+        foreach ($courses as $course) {
+            if ($course instanceof StudentClass) {
+                $courseMap[(int) $course->getAttribute('ID')] = $course;
+            }
+        }
         $invoicesByClass = Invoice::query()
-            ->notVoided()
+            ->where(function ($query) {
+                $query->whereNull('Status')->orWhere('Status', '!=', 'void');
+            })
             ->with(['payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
             }])
@@ -47,7 +54,7 @@ class BillingPayableResolver
                 continue;
             }
 
-            $projection = $this->invoiceAmounts->resolve($invoice, $courseMap->get($classId));
+            $projection = $this->invoiceAmounts->resolve($invoice, $courseMap[$classId] ?? null);
             $amount = max(0, (int) $projection['total_amount']);
             $applied = min($amount, max(0, (int) $projection['net_applied']));
             $resolved[$classId] = [
@@ -55,7 +62,7 @@ class BillingPayableResolver
                 'payable_outstanding' => max(0, $amount - $applied),
                 'payable_status' => 'invoiced',
                 'payable_source' => 'invoice',
-                'payable_invoice_id' => (int) $invoice->id,
+                'payable_invoice_id' => (int) $invoice->getAttribute('id'),
                 'payable_billing_period' => $projection['billing_period'],
                 'payable_amount_source' => $projection['amount_source'],
             ];
@@ -82,19 +89,19 @@ class BillingPayableResolver
     private function selectRelevantInvoice(Collection $invoices): ?Invoice
     {
         return $invoices->sort(function (Invoice $left, Invoice $right): int {
-            $leftOpen = in_array((string) ($left->Status ?? ''), ['unpaid', 'partial'], true);
-            $rightOpen = in_array((string) ($right->Status ?? ''), ['unpaid', 'partial'], true);
+            $leftOpen = in_array((string) ($left->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
+            $rightOpen = in_array((string) ($right->getAttribute('Status') ?? ''), ['unpaid', 'partial'], true);
             if ($leftOpen !== $rightOpen) {
                 return $leftOpen ? -1 : 1;
             }
 
-            $leftPeriod = (string) ($left->billing_period ?: substr((string) $left->IssueDate, 0, 7));
-            $rightPeriod = (string) ($right->billing_period ?: substr((string) $right->IssueDate, 0, 7));
+            $leftPeriod = (string) ($left->getAttribute('billing_period') ?: substr((string) $left->getAttribute('IssueDate'), 0, 7));
+            $rightPeriod = (string) ($right->getAttribute('billing_period') ?: substr((string) $right->getAttribute('IssueDate'), 0, 7));
             if ($leftPeriod !== $rightPeriod) {
                 return strcmp($rightPeriod, $leftPeriod);
             }
 
-            return (int) $right->id <=> (int) $left->id;
+            return (int) $right->getAttribute('id') <=> (int) $left->getAttribute('id');
         })->first();
     }
 }

@@ -265,6 +265,7 @@ class PaymentReportController extends Controller
         $payableResolver = app(BillingPayableResolver::class);
         $reports->getCollection()->transform(function ($r) use ($invoiceAmounts, $payableResolver) {
             $subjectName = $r->studentClass?->subjectRecord?->Subject_Name ?? '課程';
+            $estimatedAmount = $r->studentClass?->Charge ?? 0;
             $payable = $r->invoice
                 ? (function () use ($r, $invoiceAmounts) {
                     $projection = $invoiceAmounts->resolve($r->invoice, $r->studentClass);
@@ -295,8 +296,8 @@ class PaymentReportController extends Controller
                 'confirmed_by_name' => $r->confirmedByUser?->Name ?? null,
                 'confirmed_at'     => $r->confirmed_at?->toIso8601String(),
                 'rejection_note'   => $r->rejection_note,
-                'charge'           => $r->studentClass?->Charge ?? 0,
-                'estimated_amount' => $r->studentClass?->Charge ?? 0,
+                'charge'           => $estimatedAmount,
+                'estimated_amount' => $estimatedAmount,
                 'charge_semantics' => 'estimate_only',
                 ...$payable,
                 'created_at'       => $r->created_at?->toIso8601String(),
