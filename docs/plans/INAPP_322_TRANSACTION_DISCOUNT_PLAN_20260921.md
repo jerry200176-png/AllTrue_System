@@ -4,7 +4,7 @@
 
 - SourceRef: `alltrue:bug_report:322`
 - GitHub issue: #3072
-- Plan revision: P2.8
+- Plan revision: P2.9
 - Revision reason: P1 did not bind the finance gate at every canonical
   `UniversalClassScheduler` mount. P2 adds explicit fail-closed propagation for
   Student Management, Course Management, and Smart Calendar, including the
@@ -24,11 +24,13 @@
   those tests unchanged and adds only B-local release-classification evidence
   required by Presubmit 4B after B is squash-based on main. P2.8 adds the
   repository-required release-note companion while avoiding a duplicate staff
-  announcement already delivered by A/main.
+  announcement already delivered by A/main. P2.9 splits the backend closure
+  into an independent three-file H delivery after review found renewal-hash,
+  transaction-identity, and real-role coverage gaps in B.
 - Planner: Sol (`gpt-5.6-sol`)
 - Evidence baseline: `3d86f37a87576fc9051b1b2d7c77f176cefad36d`
-- Scope fingerprint: `P2.8-3d86f37-322-transaction-discount-G2-A12-B11-release-exemption`
-- Status: P2.8 plan revision only; revising this document does not authorize
+- Scope fingerprint: `P2.9-322-backend-closure-H-3-files-B-rebase-10-paths`
+- Status: P2.9 governance prelude only; revising this document does not authorize
   production activation or historical financial mutation
 
 ## Evidence and canonical paths
@@ -306,3 +308,59 @@ Open operational evidence: production MySQL version, `student_classes` table siz
 ## Delivery boundary
 
 The agent may investigate, implement, test, open a PR, and complete CI/review within this bounded scope. `CODE WRITTEN`, `TESTS PASSED`, `PR OPENED`, `REVIEWED`, `MERGED`, `DEPLOYED`, `RUNTIME ENABLED`, and `PRODUCTION VERIFIED` must remain separate. No In-App/GitHub resolved writeback occurs until evidence covers the approved SourceRef.
+
+## P2.9 Backend Closure H (Sol review amendment)
+
+The independent review of the P2.8 exact head found three product-level gaps that
+cannot be closed by a green UI delivery alone. P2.9 therefore creates a separate
+backend closure before B is rebased. This amendment is a governance boundary and
+does not authorize production activation, migration, historical repricing, or
+In-App resolved writeback.
+
+### Exact H scope (three paths)
+
+1. `backend/app/Services/TransactionDiscountCalculator.php`
+2. `backend/app/Http/Controllers/StudentClassController.php`
+3. `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
+
+H must not change schema, routes, middleware, EnrollmentService, invoice/payment/
+refund production code, frontend, historical data, or existing snapshots. The
+existing call sites calculate one snapshot and copy it to sibling rows, so a
+server-generated JSON `transaction_id` is sufficient; no column or backfill is
+allowed.
+
+### Required H behavior and evidence
+
+- Every `calculate()` call generates a non-empty server-side `transaction_id`;
+  client input cannot select it. A multi-subject transaction has exactly one ID
+  copied unchanged to every row; independent transactions have different IDs.
+- Renewal state hashing excludes only volatile `created_at` and `transaction_id`.
+  It hashes source state, schedule, totals, and normalized discount semantics, so
+  `12.50` and `12.5` are equal while a changed value/reason/source/period is not.
+- Endpoint tests use actual middleware roles: `director` and `super_admin` pass;
+  `teacher` is rejected; `pending` cannot enter protected endpoints. `admin` is
+  not an effective runtime role and must not be invented by direct calculator
+  calls or request-attribute injection.
+- A multi-subject endpoint test proves total-level percentage HALF_UP rounding,
+  aggregate snapshot equality, allocated row-charge sum, and transaction identity.
+- Existing invoice, positive payment, negative/void payment, and reconciliation
+  results remain byte-for-byte unchanged after a new discounted transaction.
+  Monthly renewal creates only the new invoice/items and does not reprice legacy
+  records.
+
+### Delivery order and stop conditions
+
+1. Merge this P2.9 governance prelude first.
+2. Luna implements H from latest `main`, with focused tests, exact-head CI, and
+   independent review. Rollback is a revert of the H squash commit; no schema or
+   data repair is involved.
+3. After H merges, remove the controller/test backend diff from PR #3168 and
+   rebase B. B must return to its approved frontend/release evidence paths (ten
+   paths after the H dependency is on `main`), then rerun exact-head CI and UI
+   review.
+
+Stop and revise this plan if transaction identity requires a column/index,
+existing consumers treat aggregate snapshots as row totals, any legacy financial
+row changes, a real `admin` role, invoice/payment/refund production edits, a
+Smart Calendar third path, or a B diff that still contains backend production
+code. A green CI run alone never closes these conditions.
