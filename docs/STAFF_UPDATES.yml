@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-21-transaction-discount-322
+    published_at: "2026-09-21"
+    audiences:
+      - director
+    importance: digest
+    title: 建立課程時可記錄一次性折扣
+    summary: 財務授權主任可在建立課程、加購或續報時設定折扣，系統會保存原價、折扣與實收快照。
+    items:
+      - category: added
+        text: 折扣只能選固定金額或百分比其中一種，非零折扣必須填寫原因，送出前會顯示原價、折扣金額與應收總額。
+      - category: improved
+        text: 折扣由後端重新計算並鎖定在本次交易；日後帳單、收款、退款與續報不會因目前價格設定改寫歷史金額，教師不會取得折扣設定權限。
+    source_refs:
+      - "github:#3072"
+      - "github:in-app-322"
+      - "changelog:2026-09-21:transaction-discount-322"
+
   - id: staff-2026-09-21-course-student-navigation-332-337
     published_at: "2026-09-21"
     audiences:

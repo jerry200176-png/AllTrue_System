@@ -844,6 +844,7 @@
       :initial-teacher-id="schedulerInitialTeacherId"
       :allow-package-mode="true"
       mode="backfill"
+      :can-use-transaction-discount="canUseTransactionDiscount"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
       @duplicate-course="handleSchedulerDuplicateCM"
@@ -1654,11 +1655,13 @@ function addDays(ymd, days) {
 
 const props = defineProps({
   branchId: [String, Number],
+  userRole: { type: String, default: '' },
   initialTeacherId: [String, Number],
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentName: { type: String, default: '' },
 });
+const canUseTransactionDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 const goToTuitionBilling = (course) => {
