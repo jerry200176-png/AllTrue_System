@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "session_id": "2c9b0d79-c7e8-49b2-adf7-58cc84fbbb3d",
   "project": "alltrue",
-  "task_id": "inapp-322-discount-20260921-p29",
+  "task_id": "inapp-322-discount-20260921",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "8a3e6ebf7c3eb1b92518fee3e930d614c00700ec",
   "branch": "chore/task-inapp-322-discount-20260921-prelude-p29",
