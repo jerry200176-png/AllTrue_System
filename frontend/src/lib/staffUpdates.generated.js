@@ -121,6 +121,41 @@ export const staffUpdates = [
     "version": "2026.09.21"
   },
   {
+    "id": "staff-2026-09-21-student-contract-dates-321",
+    "publishedAt": "2026-09-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "學生管理可逐筆核對合約上課日期",
+    "summary": "進行中與歷史課程都會按合約顯示上課日期，預覽後可在原卡片展開完整日期。",
+    "items": [
+      "每筆合約先顯示最近前三堂日期，超過的堂次可用「再顯示」在同一張卡片展開，不會混合相同科目的其他合約。",
+      "可一次展開多筆合約比較；付款、剩餘堂數、費用與既有管理操作維持原流程。",
+      "學習檢測與題庫管理從側欄、更多功能與功能搜尋隱藏；既有路由、後端與歷史資料保留不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "每筆合約先顯示最近前三堂日期，超過的堂次可用「再顯示」在同一張卡片展開，不會混合相同科目的其他合約。",
+          "可一次展開多筆合約比較；付款、剩餘堂數、費用與既有管理操作維持原流程。",
+          "學習檢測與題庫管理從側欄、更多功能與功能搜尋隱藏；既有路由、後端與歷史資料保留不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-321",
+      "changelog:2026-09-21:student-contract-dates-321"
+    ],
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
     "id": "staff-2026-09-21-makeup-assessment-pending-330",
     "publishedAt": "2026-09-21",
     "effectiveAt": null,
