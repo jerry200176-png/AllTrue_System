@@ -210,7 +210,7 @@ class StudentClassTransactionDiscountTest extends TestCase
         $courses = StudentClass::where('StudentID', $student->id)->get();
         $this->assertCount(2, $courses);
         $this->assertSame(800, (int) $courses->sum('Charge'));
-        $this->assertSame(800, (int) $courses->sum(fn (StudentClass $course) => $course->pricing_snapshot['final_amount']));
+        $this->assertSame([800, 800], $courses->map(fn (StudentClass $course) => $course->pricing_snapshot['final_amount'])->sort()->values()->all());
         $this->assertSame([500, 500], $courses->map(fn (StudentClass $course) => $course->pricing_snapshot['original_amount'])->sort()->values()->all());
         $this->assertSame([100, 100], $courses->map(fn (StudentClass $course) => $course->pricing_snapshot['discount_amount'])->sort()->values()->all());
         $this->assertSame([400, 400], $courses->map(fn (StudentClass $course) => $course->pricing_snapshot['final_amount'])->sort()->values()->all());
