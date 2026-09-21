@@ -192,18 +192,18 @@ class StudentClassTransactionDiscountTest extends TestCase
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
             'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 2,
-            'confirmed_dates' => [], 'future_dates' => ['2030-10-03'],
+            'confirmed_dates' => [], 'future_dates' => ['2030-10-07'],
             'session_plan' => [
-                ['session_date' => '2030-10-03', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math'],
-                ['session_date' => '2030-10-03', 'start_time' => '17:00', 'kind' => 'future', 'subject' => 'English'],
+                ['session_date' => '2030-10-07', 'start_time' => '11:00', 'kind' => 'future', 'subject' => 'Math'],
+                ['session_date' => '2030-10-07', 'start_time' => '13:00', 'kind' => 'future', 'subject' => 'English'],
             ],
-            'days_of_week' => [4],
+            'days_of_week' => [1],
             'day_time_slots' => [
-                ['day' => 4, 'start_time' => '16:00', 'duration_minutes' => 120, 'subject' => 'Math'],
-                ['day' => 4, 'start_time' => '17:00', 'duration_minutes' => 120, 'subject' => 'English'],
+                ['day' => 1, 'start_time' => '11:00', 'duration_minutes' => 120, 'subject' => 'Math'],
+                ['day' => 1, 'start_time' => '13:00', 'duration_minutes' => 120, 'subject' => 'English'],
             ],
-            'start_time' => '16:00', 'duration_minutes' => 120,
-            'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2030-10-03',
+            'start_time' => '11:00', 'duration_minutes' => 120,
+            'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2030-10-07',
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'],
         ]);
         $this->assertSame(201, $response->status(), 'Batch endpoint response: ' . $response->getContent());
