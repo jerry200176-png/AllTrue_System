@@ -29,6 +29,15 @@ describe('student course session display', () => {
     expect(buildStudentCourseSessionPreview(rows, true).visible).toHaveLength(4);
   });
 
+  it('does not expose an expand CTA for empty or three-session contracts', () => {
+    for (const count of [0, 1, 3]) {
+      expect(buildStudentCourseSessionPreview(sessions(103, count))).toMatchObject({
+        total: count,
+        overflow: 0,
+      });
+    }
+  });
+
   it('keeps same-subject contracts keyed independently', () => {
     expect(sessionDateKey(7, 101)).not.toBe(sessionDateKey(7, 102));
     expect(sessions(101, 2)[0].studentClassId).toBe(101);
