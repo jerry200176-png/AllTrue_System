@@ -5652,6 +5652,16 @@ class StudentClassController extends Controller
             $severity = 'warning';
         }
 
+        // The preview hash must describe the requested transaction and current
+        // source state, not a newly generated audit timestamp.  Discount
+        // snapshots intentionally carry created_at for the response/persisted
+        // record, but including that volatile value would make every confirm
+        // recomputation look stale and reject an otherwise unchanged preview.
+        $stateBilling = $billing;
+        if (isset($stateBilling['discount']) && is_array($stateBilling['discount'])) {
+            unset($stateBilling['discount']['created_at']);
+        }
+
         $stateSource = [
             'source' => [
                 'id' => (int) $studentClass->ID,
@@ -5675,7 +5685,7 @@ class StudentClassController extends Controller
                 'months' => $data['months'] ?? null,
                 'discount' => $data['discount'] ?? null,
             ],
-            'billing' => $billing,
+            'billing' => $stateBilling,
             'schedule' => $schedule,
             'blockers' => $blockers,
         ];
