@@ -14,8 +14,8 @@
   "agent_cli": "codex",
   "gateway_version": "0.5.1",
   "planner_model": "gpt-5.6-sol",
-  "plan_revision": "P2",
+  "plan_revision": "P2.1",
   "plan_file": "docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md",
-  "plan_sha256": "f704e53246a28e865d98f9ec63c2818896ee64223e90478ac1916e109283fbe0",
-  "scope_fingerprint": "P2-3d86f37-322-transaction-discount-all-create-entrypoints"
+  "plan_sha256": "4ea04b4a9991dc5c99db01b0f9d7a95c0a2e9c7d93aae71db815325a2509b851",
+  "scope_fingerprint": "P2.1-3d86f37-322-transaction-discount-linked-A12-B10"
 }
