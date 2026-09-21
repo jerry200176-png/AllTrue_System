@@ -38,8 +38,6 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
     {
       key: 'teaching-tools', title: '進階教學工具', defaultOpen: false, primary: false,
       items: [
-        { page: 'assessments', label: '學習檢測', icon: 'grading' },
-        { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
         { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
       ],
     },
@@ -107,8 +105,6 @@ function teacherGroups({ truefitEnabled = false } = {}) {
   }, {
     key: 'teaching-tools', title: '教學工具', defaultOpen: false, primary: false,
     items: [
-      { page: 'assessments', label: '學習檢測', icon: 'grading' },
-      { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
       { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
     ],
   }, {

@@ -11,6 +11,9 @@ describe('navigation registry', () => {
     expect(pages('director')).toContain('course-mgmt');
     expect(pages('director')).toContain('admission-inquiries');
     expect(pages('teacher')).not.toContain('admission-inquiries');
+    expect(pages('director')).not.toEqual(expect.arrayContaining(['assessments', 'question-banks']));
+    expect(pages('teacher')).not.toEqual(expect.arrayContaining(['assessments', 'question-banks']));
+    expect(pages('super_admin')).not.toEqual(expect.arrayContaining(['assessments', 'question-banks']));
     expect(pages('super_admin')).toEqual(expect.arrayContaining([
       'director-accounts', 'branch-management', 'branch-health-board', 'nightly-reconcile',
     ]));
@@ -53,7 +56,7 @@ describe('navigation registry', () => {
     expect(groups.find(group => group.key === 'teaching-tools').defaultOpen).toBe(false);
     expect(groups.find(group => group.key === 'reports-payroll').defaultOpen).toBe(false);
     expect(groups.flatMap(group => group.items.map(item => item.page))).toEqual(expect.arrayContaining([
-      'assessments', 'question-banks', 'tuition-report', 'teacher-eligibility', 'chat', 'bugs',
+      'tuition-report', 'teacher-eligibility', 'chat', 'bugs',
     ]));
   });
 

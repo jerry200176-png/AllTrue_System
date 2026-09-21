@@ -3,15 +3,15 @@ import { describe, expect, it } from 'vitest';
 import RoleFeatureMapSection from '../RoleFeatureMapSection.vue';
 
 describe('RoleFeatureMapSection component', () => {
-  it('renders director feature map with all 26 official items and no super_admin leaks', () => {
+  it('renders director feature map with all 24 current items and no super_admin leaks', () => {
     const wrapper = mount(RoleFeatureMapSection, { props: { role: 'director', admissionsEnabled: true } });
     expect(wrapper.text()).toContain('主任功能指南');
-    expect(wrapper.text()).toContain('26');
+    expect(wrapper.text()).toContain('24');
     expect(wrapper.text()).toContain('常用高頻 (11)');
-    expect(wrapper.text()).toContain('進階工具 (15)');
+    expect(wrapper.text()).toContain('進階工具 (13)');
 
     const pages = wrapper.findAll('.rfm-card').map(c => c.attributes('data-page'));
-    expect(pages).toHaveLength(26);
+    expect(pages).toHaveLength(24);
 
     for (const p of ['director', 'calendar', 'attendance', 'students', 'tuition-collect', 'teachers', 'classroom']) {
       expect(pages).toContain(p);
@@ -21,15 +21,15 @@ describe('RoleFeatureMapSection component', () => {
     expect(pages).not.toContain('leave');
   });
 
-  it('renders teacher feature map with exactly 9 items and no director leaks', () => {
+  it('renders teacher feature map with exactly 7 items and no director leaks', () => {
     const wrapper = mount(RoleFeatureMapSection, { props: { role: 'teacher' } });
     expect(wrapper.text()).toContain('老師功能指南');
-    expect(wrapper.text()).toContain('9');
+    expect(wrapper.text()).toContain('7');
     expect(wrapper.text()).toContain('常用高頻 (4)');
-    expect(wrapper.text()).toContain('進階工具 (5)');
+    expect(wrapper.text()).toContain('進階工具 (3)');
 
     const pages = wrapper.findAll('.rfm-card').map(c => c.attributes('data-page'));
-    expect(pages).toEqual(['teacher-home', 'calendar', 'attendance', 'learning', 'assessments', 'question-banks', 'subject-units', 'chat', 'bugs']);
+    expect(pages).toEqual(['teacher-home', 'calendar', 'attendance', 'learning', 'subject-units', 'chat', 'bugs']);
     expect(pages).not.toContain('director');
     expect(pages).not.toContain('students');
   });
@@ -43,13 +43,13 @@ describe('RoleFeatureMapSection component', () => {
 
   it('filters features and emits select-page on click', async () => {
     const wrapper = mount(RoleFeatureMapSection, { props: { role: 'director' } });
-    expect(wrapper.findAll('.rfm-card')).toHaveLength(26);
+    expect(wrapper.findAll('.rfm-card')).toHaveLength(24);
 
     await wrapper.find('[data-testid="filter-high"]').trigger('click');
     expect(wrapper.findAll('.rfm-card')).toHaveLength(11);
 
     await wrapper.find('[data-testid="filter-advanced"]').trigger('click');
-    expect(wrapper.findAll('.rfm-card')).toHaveLength(15);
+    expect(wrapper.findAll('.rfm-card')).toHaveLength(13);
 
     const input = wrapper.find('.search-input');
     await input.setValue('兼職');

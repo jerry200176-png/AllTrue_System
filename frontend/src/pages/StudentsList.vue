@@ -240,7 +240,7 @@
                         <span class="student-course-overview__eyebrow">課程總覽</span>
                         <h5 id="student-course-overview-title">先看需要處理的課程</h5>
                       </div>
-                      <span class="student-course-overview__hint">選一門查看完整資料</span>
+                      <span class="student-course-overview__hint">快速定位合約，逐筆核對日期</span>
                     </div>
                     <div class="student-course-overview__metrics" role="list" aria-label="課程摘要">
                       <div role="listitem" class="student-course-overview__metric">
@@ -286,14 +286,25 @@
                     <div class="student-course-detail__heading">
                       <div>
                         <span class="student-course-detail__eyebrow">目前課程工作區</span>
-                        <h5 id="student-course-detail-title">查看選定課程的完整資料</h5>
+                        <h5 id="student-course-detail-title">逐筆核對合約與上課日期</h5>
                       </div>
-                      <span class="student-course-detail__hint">下一步與更多操作都在這裡</span>
+                      <div class="student-course-detail__tools">
+                        <span class="student-course-detail__hint">每筆合約獨立列示，堂次不混合</span>
+                        <button
+                          v-if="hasExpandableStudentCourseDates(student.id)"
+                          type="button"
+                          class="small ghost student-course-detail__bulk-toggle"
+                          :aria-label="areAllStudentCourseDatesExpanded(student.id) ? '全部收合上課日期' : '全部展開上課日期'"
+                          @click.stop="toggleAllStudentCourseDates(student.id)"
+                        >
+                          <span class="material-symbols-outlined" aria-hidden="true">{{ areAllStudentCourseDatesExpanded(student.id) ? 'unfold_less' : 'unfold_more' }}</span>
+                          {{ areAllStudentCourseDatesExpanded(student.id) ? '全部收合上課日期' : '全部展開上課日期' }}
+                        </button>
+                      </div>
                     </div>
                     <div class="student-course-cards" data-testid="student-course-cards">
                   <template v-for="course in getActiveStudentCourses(student.id)" :key="course.id">
                   <article
-                    v-if="getFocusedStudentCourse(student.id)?.id === course.id"
                     class="student-course-card student-course-card--focused"
                     :class="{ 'student-course-card--attention': isCourseNeedsAttention(course) }"
                     :data-course-id="course.id"
@@ -318,6 +329,37 @@
                         {{ getCoursePrimaryAction(course).label }}
                       </button>
                     </header>
+
+                    <section class="student-course-dates" :aria-labelledby="`student-course-dates-${student.id}-${course.id}`">
+                      <div class="student-course-dates__header">
+                        <div>
+                          <span class="student-course-dates__eyebrow">上課日期</span>
+                          <strong :id="`student-course-dates-${student.id}-${course.id}`">{{ studentCourseDateSummary(course) }}</strong>
+                        </div>
+                        <button
+                          v-if="studentCourseSessionPreview(student.id, course).overflow > 0"
+                          type="button"
+                          class="student-course-dates__toggle"
+                          :aria-expanded="isStudentCourseDatesExpanded(student.id, course)"
+                          @click.stop="toggleStudentCourseDates(student.id, course)"
+                        >
+                          <span class="material-symbols-outlined" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, course) ? 'expand_less' : 'expand_more' }}</span>
+                          {{ isStudentCourseDatesExpanded(student.id, course) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, course).overflow} 堂` }}
+                        </button>
+                      </div>
+                      <div v-if="isStudentCourseSessionsLoading(student.id)" class="student-course-dates__state" role="status">上課日期載入中…</div>
+                      <div v-else-if="studentCourseSessionsLoadError(student.id)" class="student-course-dates__state student-course-dates__state--error" role="alert">
+                        <span>上課日期暫時無法載入。</span>
+                        <button type="button" class="small ghost" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
+                      </div>
+                      <ol v-else-if="studentCourseSessionPreview(student.id, course).total > 0" class="student-course-dates__list">
+                        <li v-for="session in studentCourseSessionPreview(student.id, course).visible" :key="studentCourseSessionRowKey(session, course)">
+                          <span class="student-course-dates__date">{{ formatStudentCourseSessionDate(session) }}</span>
+                          <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status">{{ studentCourseSessionStatus(session) }}</span>
+                        </li>
+                      </ol>
+                      <div v-else class="student-course-dates__state">目前沒有可顯示的上課日期。</div>
+                    </section>
 
                     <div
                       class="student-course-card__next-step"
@@ -453,6 +495,31 @@
                         <span v-if="hc.payment_type === 'session'"><span class="sl-history-card__label">堂數</span>{{ hc.used_sessions || 0 }} / {{ hc.sessions_purchased || 0 }}</span>
                         <span v-if="hc.last_paid_at"><span class="sl-history-card__label">繳費</span>{{ hc.last_paid_at }}</span>
                       </div>
+                      <section class="student-course-dates student-course-dates--history" :aria-labelledby="`student-history-dates-${student.id}-${hc.id}`">
+                        <div class="student-course-dates__header">
+                          <div>
+                            <span class="student-course-dates__eyebrow">完整上課日期</span>
+                            <strong :id="`student-history-dates-${student.id}-${hc.id}`">{{ studentCourseDateSummary(hc) }}</strong>
+                          </div>
+                          <button
+                            v-if="studentCourseSessionPreview(student.id, hc).overflow > 0"
+                            type="button"
+                            class="student-course-dates__toggle"
+                            :aria-expanded="isStudentCourseDatesExpanded(student.id, hc)"
+                            @click.stop="toggleStudentCourseDates(student.id, hc)"
+                          >
+                            <span class="material-symbols-outlined" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, hc) ? 'expand_less' : 'expand_more' }}</span>
+                            {{ isStudentCourseDatesExpanded(student.id, hc) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, hc).overflow} 堂` }}
+                          </button>
+                        </div>
+                        <ol v-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list">
+                          <li v-for="session in studentCourseSessionPreview(student.id, hc).visible" :key="studentCourseSessionRowKey(session, hc)">
+                            <span class="student-course-dates__date">{{ formatStudentCourseSessionDate(session) }}</span>
+                            <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status">{{ studentCourseSessionStatus(session) }}</span>
+                          </li>
+                        </ol>
+                        <div v-else class="student-course-dates__state">目前沒有可顯示的上課日期。</div>
+                      </section>
                       <div class="sl-history-card__actions">
                         <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
                         <button type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
@@ -935,6 +1002,14 @@ import {
 } from '../lib/gradePromotionUi.js';
 import { courseBadgeSessionLabel } from '../lib/courseBadgeDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
+import { fetchClassSessions } from '../lib/classSessionsApi.js';
+import {
+  buildStudentCourseSessionPreview,
+  formatStudentCourseSessionDate,
+  sessionDateKey,
+  studentCourseSessionRowKey as buildStudentCourseSessionRowKey,
+  studentCourseSessionStatusLabel,
+} from '../lib/studentCourseSessionDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
@@ -998,6 +1073,9 @@ const studentsLoadError = ref('');
 let studentsRequestSequence = 0;
 const branchStudentTotal = ref(0);
 const studentCourses = ref({}); // { studentId: [courses] }
+const studentCourseSessions = ref({}); // { studentClassId: SessionViewModel[] }
+const studentCourseSessionsLoading = ref({}); // { studentId: boolean }
+const studentCourseSessionsError = ref({}); // { studentId: string }
 const teachers = ref([]);
 const expandedId = ref(null);
 const GRADE_TO_CLASS_ID = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
@@ -1539,6 +1617,54 @@ async function closeCourseNoRenew(course, studentName) {
 }
 
 const getStudentAllCourses = (id) => studentCourses.value[id] || [];
+const getStudentCourseSessions = (course) => (
+  studentCourseSessions.value[String(course?.id ?? '')] || []
+);
+const isStudentCourseSessionsLoading = (studentId) => Boolean(studentCourseSessionsLoading.value[String(studentId)]);
+const studentCourseSessionsLoadError = (studentId) => studentCourseSessionsError.value[String(studentId)] || '';
+const studentCourseDateKey = (studentId, course) => sessionDateKey(studentId, course?.id);
+const isStudentCourseDatesExpanded = (studentId, course) => expandedCourseDateKeys.value.has(studentCourseDateKey(studentId, course));
+const studentCourseSessionPreview = (studentId, course) => buildStudentCourseSessionPreview(
+  getStudentCourseSessions(course),
+  isStudentCourseDatesExpanded(studentId, course),
+);
+const studentCourseSessionRowKey = (session, course) => buildStudentCourseSessionRowKey(session, course?.id);
+const studentCourseSessionStatus = (session) => studentCourseSessionStatusLabel(session);
+const studentCourseDateSummary = (course) => {
+  const total = getStudentCourseSessions(course).length;
+  return total > 0 ? `${total} 堂` : '尚無已載入堂次';
+};
+const getStudentCourseDateContracts = (studentId) => [
+  ...getActiveStudentCourses(studentId),
+  ...getHistoryStudentCourses(studentId),
+];
+const hasExpandableStudentCourseDates = (studentId) => getStudentCourseDateContracts(studentId)
+  .some((course) => studentCourseSessionPreview(studentId, course).overflow > 0);
+const areAllStudentCourseDatesExpanded = (studentId) => {
+  const expandable = getStudentCourseDateContracts(studentId)
+    .filter((course) => getStudentCourseSessions(course).length > 3);
+  return expandable.length > 0 && expandable.every((course) => isStudentCourseDatesExpanded(studentId, course));
+};
+const toggleStudentCourseDates = (studentId, course) => {
+  const key = studentCourseDateKey(studentId, course);
+  const next = new Set(expandedCourseDateKeys.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedCourseDateKeys.value = next;
+};
+const toggleAllStudentCourseDates = (studentId) => {
+  const contracts = getStudentCourseDateContracts(studentId);
+  const shouldExpand = !areAllStudentCourseDatesExpanded(studentId);
+  const next = new Set(expandedCourseDateKeys.value);
+  contracts.forEach((course) => {
+    if (getStudentCourseSessions(course).length <= 3) return;
+    const key = studentCourseDateKey(studentId, course);
+    if (shouldExpand) next.add(key);
+    else next.delete(key);
+  });
+  expandedCourseDateKeys.value = next;
+};
+const expandedCourseDateKeys = ref(new Set());
 const getStudentCourses = (id) => {
   const all = getStudentAllCourses(id);
   if (showHistoricalCourses.value) return all;
@@ -1887,6 +2013,53 @@ const loadTeachers = async () => {
   }
 };
 
+const loadStudentCourseSessions = async (studentId, courses = getStudentAllCourses(studentId)) => {
+  const ids = courses
+    .map((course) => Number(course?.id ?? course?.ID ?? 0))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+  const studentKey = String(studentId);
+  if (!ids.length) {
+    studentCourseSessionsLoading.value = { ...studentCourseSessionsLoading.value, [studentKey]: false };
+    return;
+  }
+
+  studentCourseSessionsLoading.value = { ...studentCourseSessionsLoading.value, [studentKey]: true };
+  studentCourseSessionsError.value = { ...studentCourseSessionsError.value, [studentKey]: '' };
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('登入狀態已過期，請重新登入');
+
+    // One batched canonical read for the expanded student's contracts. The
+    // response is keyed by StudentClassID so same-subject contracts never mix.
+    const response = await fetchClassSessions({
+      token,
+      branchId: props.branchId,
+      studentClassIds: ids,
+      perPage: 2000,
+    });
+    const next = { ...studentCourseSessions.value };
+    ids.forEach((id) => {
+      next[String(id)] = Array.isArray(response?.byClass?.[String(id)])
+        ? response.byClass[String(id)]
+        : [];
+    });
+    studentCourseSessions.value = next;
+  } catch (error) {
+    studentCourseSessionsError.value = {
+      ...studentCourseSessionsError.value,
+      [studentKey]: error?.message || '上課日期暫時無法載入',
+    };
+  } finally {
+    studentCourseSessionsLoading.value = { ...studentCourseSessionsLoading.value, [studentKey]: false };
+  }
+};
+
+const retryLoadStudentCourseSessions = (studentId) => loadStudentCourseSessions(
+  studentId,
+  getStudentAllCourses(studentId),
+);
+
 const loadStudentCourses = async (studentId) => {
   const student = students.value.find(s => s.id === studentId);
   const laravelId = student?._laravelId ?? studentId;
@@ -1949,6 +2122,7 @@ const loadStudentCourses = async (studentId) => {
           data_source: 'laravel'
         }));
         studentCourses.value = { ...studentCourses.value, [studentId]: courses };
+        await loadStudentCourseSessions(studentId, courses);
         return;
       }
     }
@@ -1965,6 +2139,7 @@ const loadStudentCourses = async (studentId) => {
     data_source: 'supabase'
   }));
   studentCourses.value = { ...studentCourses.value, [studentId]: courses };
+  await loadStudentCourseSessions(studentId, courses);
 };
 
 const loadAllStudentCourses = async () => {
@@ -4167,26 +4342,115 @@ table th { font-size: 12.5px; }
   line-height: 1.5;
   text-align: right;
 }
+.student-course-detail__tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: flex-end;
+}
+.student-course-detail__bulk-toggle,
+.student-course-dates__toggle {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  min-height: 36px;
+  white-space: nowrap;
+}
+.student-course-detail__bulk-toggle .material-symbols-outlined,
+.student-course-dates__toggle .material-symbols-outlined {
+  font-size: 17px;
+}
 .student-course-cards {
+  border-top: 1px solid var(--ds-hairline);
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 .student-course-card {
   background: var(--ds-canvas);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  box-shadow: var(--ds-shadow-1);
+  border: 0 solid var(--ds-hairline);
+  border-bottom-width: 1px;
+  border-radius: 0;
+  box-shadow: none;
   padding: 16px;
 }
 .student-course-card--attention {
   border-color: var(--ds-warning);
-  box-shadow: 0 0 0 1px var(--ds-warning-wash), var(--ds-shadow-1);
+  box-shadow: none;
 }
 .student-course-card--focused {
-  box-shadow: 0 0 0 2px var(--ds-primary-wash), var(--ds-shadow-1);
+  box-shadow: inset 3px 0 0 var(--ds-primary);
 }
 .student-course-card--focused.student-course-card--attention {
-  box-shadow: 0 0 0 2px var(--ds-warning-wash), var(--ds-shadow-1);
+  box-shadow: inset 3px 0 0 var(--ds-warning);
+}
+.student-course-dates {
+  border-top: 1px solid var(--ds-hairline);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.student-course-dates--history {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.student-course-dates__header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.student-course-dates__eyebrow {
+  color: var(--ds-ink-mute);
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.student-course-dates__header strong {
+  color: var(--ds-ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.student-course-dates__list {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.student-course-dates__list li {
+  align-items: center;
+  background: var(--ds-canvas-soft);
+  border-left: 2px solid var(--ds-primary);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 9px;
+}
+.student-course-dates__date {
+  color: var(--ds-ink-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.student-course-dates__status {
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.student-course-dates__state {
+  align-items: center;
+  color: var(--ds-ink-mute);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  line-height: 1.5;
+  margin-top: 10px;
+}
+.student-course-dates__state--error {
+  color: var(--ds-danger);
 }
 .student-course-card__header {
   display: flex;
@@ -4613,6 +4877,13 @@ table th { font-size: 12.5px; }
     display: block;
     margin-top: 4px;
     text-align: left;
+  }
+  .student-course-detail__tools {
+    align-items: flex-start;
+    display: block;
+  }
+  .student-course-detail__bulk-toggle {
+    margin-top: 8px;
   }
   .student-course-overview__metrics {
     gap: 4px;

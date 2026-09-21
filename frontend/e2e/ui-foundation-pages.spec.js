@@ -471,6 +471,34 @@ async function installApiMocks(page, mode, pageName = '', authProfile = null, on
       });
     }
 
+    if (p.includes('/class-sessions')) {
+      const materialized = [
+        ...Array.from({ length: 7 }, (_, index) => ({
+          id: 6100 + index,
+          student_class_id: 5001,
+          session_date: `2026-09-${String(index + 1).padStart(2, '0')}`,
+          start_time: '16:00',
+          end_time: '18:00',
+          status: index === 0 ? 'attended' : 'scheduled',
+        })),
+        ...Array.from({ length: 4 }, (_, index) => ({
+          id: 6200 + index,
+          student_class_id: 5002,
+          session_date: `2026-10-${String(index + 1).padStart(2, '0')}`,
+          start_time: '17:00',
+          end_time: '19:00',
+          status: index === 0 ? 'attended' : 'scheduled',
+        })),
+      ];
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: materialized, projected: { by_class: {
+          5003: [{ date: '2026-08-01', start_time: '15:00', end_time: '17:00' }],
+        } } }),
+      });
+    }
+
     if (p.includes('/teachers') || p.includes('/subjects') || p.includes('/rooms') || p.includes('/temp-rfid')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
     }
@@ -741,6 +769,11 @@ test.describe('UI foundation — real Vue page evidence', () => {
     { name: '1440', width: 1440, height: 900 },
   ]) {
     test(`students course overview selects the next action @${vp.name}`, async ({ page }) => {
+      const sessionRequests = [];
+      page.on('request', (request) => {
+        const url = new URL(request.url());
+        if (url.pathname.endsWith('/class-sessions')) sessionRequests.push(request);
+      });
       fs.mkdirSync(outDir, { recursive: true });
       await openPilot(page, { pageName: 'students', mode: 'normal', viewport: vp });
 
@@ -757,7 +790,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(workspace).toBeVisible({ timeout: 10_000 });
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
       await expect(workspace.getByText('先看需要處理的課程')).toBeVisible();
-      await expect(workspace.getByRole('heading', { name: '查看選定課程的完整資料' })).toBeVisible();
+      await expect(workspace.getByRole('heading', { name: '逐筆核對合約與上課日期' })).toBeVisible();
+      await expect.poll(() => sessionRequests.length).toBe(1);
+      expect(new URL(sessionRequests[0].url()).searchParams.get('student_class_ids')).toBe('5001,5002,5003');
       await expect(workspace.locator('.student-course-overview__metric')).toHaveCount(3);
       await expect(workspace.locator('.student-course-overview__metric:nth-child(3) strong')).toHaveText('1');
 
@@ -766,21 +801,29 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toBeVisible();
-      await expect(workspace.locator('.student-course-card__next-step')).toContainText('先處理課程續報');
-      await expect(workspace.getByRole('button', { name: '續報加購' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]')).toContainText('7 堂');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '再顯示 4 堂' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toContainText('4 堂');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '再顯示 1 堂' })).toBeVisible();
+      await workspace.getByRole('button', { name: '全部展開上課日期' }).click();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '收合日期' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '收合日期' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"] .student-course-card__next-step')).toContainText('先處理課程續報');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '續報加購' })).toBeVisible();
 
       const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
       await historyToggle.click();
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
       await expect(page.locator('tr.course-detail-row').first().locator('.sl-history-body')).toBeVisible();
+      await expect(page.locator('tr.course-detail-row').first().locator('.student-course-dates--history')).toContainText('2026-08-01（週六） 15:00–17:00');
 
       await math.locator('button').click();
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5001"]')).toBeVisible();
-      await expect(workspace.locator('.student-course-card__next-step')).toContainText('課程資料已齊全');
-      await expect(workspace.getByRole('button', { name: '編輯課程' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"] .student-course-card__next-step')).toContainText('課程資料已齊全');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '編輯課程' })).toBeVisible();
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
 
       await page.locator('.students-page').screenshot({
