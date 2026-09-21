@@ -670,7 +670,7 @@
       :rooms="rooms"
       :initial-student-id="selectedStudentSchedulerId"
       :allow-package-mode="true"
-      :can-use-transaction-discount="true"
+      :can-use-transaction-discount="props.canUseTransactionDiscount"
       mode="create"
       @cancel="closeCourseModal"
       @success="handleUniversalSchedulerSuccess"
@@ -971,6 +971,7 @@ import SchoolNameInput from '../components/SchoolNameInput.vue';
 
 const props = defineProps({
   branchId: [String, Number],
+  canUseTransactionDiscount: { type: Boolean, default: false },
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentIntent: String,

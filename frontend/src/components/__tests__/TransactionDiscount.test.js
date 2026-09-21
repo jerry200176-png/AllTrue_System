@@ -1,10 +1,28 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   calculateTransactionDiscountPreview,
   normalizeTransactionDiscount,
 } from '../../lib/coursePricing.js';
 
 describe('transaction discount preview', () => {
+  it('gates every canonical scheduler mount and never sends calculated totals', () => {
+    const app = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
+    const students = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
+    const courseManagement = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
+    const smartCalendar = readFileSync(resolve(__dirname, '../../pages/SmartCalendar.vue'), 'utf8');
+    expect(app).toContain(':can-use-transaction-discount="isDirector"');
+    expect(students).toContain('canUseTransactionDiscount: { type: Boolean, default: false }');
+    expect(students).toContain(':can-use-transaction-discount="props.canUseTransactionDiscount"');
+    expect(students).not.toContain(':can-use-transaction-discount="true"');
+    expect(courseManagement).toContain(':can-use-transaction-discount="canUseTransactionDiscount"');
+    expect(smartCalendar).toContain(':can-use-transaction-discount="canUseTransactionDiscount"');
+    expect(students).not.toContain('original_amount: purchaseDiscountPreview');
+    expect(courseManagement).not.toContain('original_amount:');
+    expect(smartCalendar).not.toContain('final_amount:');
+  });
+
   it('defaults to NONE and preserves the original total', () => {
     expect(calculateTransactionDiscountPreview(1000)).toMatchObject({
       type: 'NONE', discountAmount: 0, finalAmount: 1000, requiresReason: false,
