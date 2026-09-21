@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.21",
     "date": "2026-09-21",
     "title": "2026.09.21 草稿（未發布）",
-    "summary": "feedback shortcut opens the editor；sessions keep assessments pending by default",
+    "summary": "Course/Student Management ownership；feedback shortcut opens the editor",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "Course/Student Management ownership",
           "feedback shortcut opens the editor",
           "sessions keep assessments pending by default"
         ]
       }
     ],
     "items": [
+      "Course/Student Management ownership",
       "feedback shortcut opens the editor",
       "sessions keep assessments pending by default"
     ]

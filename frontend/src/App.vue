@@ -523,7 +523,7 @@
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-student-name="courseMgmtFocusStudentName" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
+      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-course-id="courseMgmtFocusCourseId" :initial-student-name="courseMgmtFocusStudentName" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
       <AdmissionInquiriesPage v-if="!isPasswordChangeLocked && isDirector && active === 'admission-inquiries'" :branch-id="currentBranch" :token="session?.access_token ?? ''" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
@@ -1414,6 +1414,7 @@ const tuitionInitialTab = ref('');
 const tuitionInitialStudentId = ref(null);
 const tuitionInitialCourseId = ref(null);
 const courseMgmtFocusStudentId = ref(null);
+const courseMgmtFocusCourseId = ref(null);
 const courseMgmtFocusStudentName = ref('');
 const bindingMgmtFocusStudentName = ref('');
 const unreadNotificationCount = ref(0);
@@ -1756,7 +1757,12 @@ function onNavigateFromNotifications(payload = {}) {
     return;
   }
   if (!target) return;
-  const nextDashboardReturnContext = createDashboardReturnContext({ fromPage: active.value, target });
+  const nextDashboardReturnContext = createDashboardReturnContext({
+    fromPage: active.value,
+    target,
+    studentId,
+    courseId,
+  });
   if (target === 'calendar') {
     calendarResetToken.value += 1;
     initialTeacherIdForNav.value = normalizeNavigationId(teacherId);
@@ -1798,6 +1804,7 @@ function onNavigateFromNotifications(payload = {}) {
   }
   if (target === 'course-mgmt') {
     courseMgmtFocusStudentId.value = normalizeNavigationId(studentId);
+    courseMgmtFocusCourseId.value = normalizeNavigationId(courseId);
     courseMgmtFocusStudentName.value = typeof studentName === 'string' ? studentName.trim() : '';
     if (teacherId != null && teacherId !== '') {
       initialTeacherIdForNav.value = normalizeNavigationId(teacherId);
@@ -1859,6 +1866,7 @@ function clearStudentNavigationContext() {
 
 function clearCourseMgmtNavigationContext() {
   courseMgmtFocusStudentId.value = null;
+  courseMgmtFocusCourseId.value = null;
   courseMgmtFocusStudentName.value = '';
 }
 
@@ -1973,6 +1981,15 @@ function setActivePage(page, { history = 'push', preserveInboxContext = false } 
 }
 
 function returnToDashboard() {
+  const context = dashboardReturnContext.value;
+  if (context?.page === 'course-mgmt') {
+    onNavigateFromNotifications({
+      target: 'course-mgmt',
+      studentId: context.studentId,
+      courseId: context.courseId,
+    });
+    return;
+  }
   setActivePage('director');
 }
 

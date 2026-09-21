@@ -79,6 +79,41 @@ export const staffUpdates = [
     "version": "2026.09.21"
   },
   {
+    "id": "staff-2026-09-21-course-student-navigation-332-337",
+    "publishedAt": "2026-09-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程與學生管理分工更清楚",
+    "summary": "課程管理聚焦查找、排課與營運，商業與學生資料操作導向學生管理。",
+    "items": [
+      "建立、續報、購買與學生資料操作會清楚導向學生管理，避免在課程管理重複入口。",
+      "從課程管理前往學生管理後，可沿可驗證的課程脈絡返回原課程視圖。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "建立、續報、購買與學生資料操作會清楚導向學生管理，避免在課程管理重複入口。",
+          "從課程管理前往學生管理後，可沿可驗證的課程脈絡返回原課程視圖。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3164",
+      "github:in-app-332",
+      "github:in-app-337",
+      "changelog:2026-09-21:course-student-navigation-332-337"
+    ],
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
     "id": "staff-2026-09-20-session-dates-performance",
     "publishedAt": "2026-09-20",
     "effectiveAt": null,
