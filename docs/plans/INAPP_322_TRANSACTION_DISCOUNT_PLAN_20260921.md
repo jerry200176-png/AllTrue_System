@@ -4,7 +4,7 @@
 
 - SourceRef: `alltrue:bug_report:322`
 - GitHub issue: #3072
-- Plan revision: P2.3
+- Plan revision: P2.4
 - Revision reason: P1 did not bind the finance gate at every canonical
   `UniversalClassScheduler` mount. P2 adds explicit fail-closed propagation for
   Student Management, Course Management, and Smart Calendar, including the
@@ -14,11 +14,13 @@
   `scripts/arch-contexts.json` mapping must land with A: the mapping moves to A
   and `StudentsList.vue` moves to B. P2.3 additionally keeps release-note source
   and generated artifacts atomic in A so release sync passes; the two remaining
-  frontend implementation files move to B, yielding exact linked A12/B10 diffs.
+  frontend implementation files move to B. P2.4 changes only the same A12/B10
+  grouping to satisfy the 700-line hard limit: the canonical Plan moves to A and
+  the backend feature test moves to B.
 - Planner: Sol (`gpt-5.6-sol`)
 - Evidence baseline: `3d86f37a87576fc9051b1b2d7c77f176cefad36d`
-- Scope fingerprint: `P2.3-3d86f37-322-transaction-discount-linked-A12-B10`
-- Status: P2.3 plan revision only; revising this document does not authorize
+- Scope fingerprint: `P2.4-3d86f37-322-transaction-discount-linked-A12-B10-size-gated`
+- Status: P2.4 plan revision only; revising this document does not authorize
   production activation or historical financial mutation
 
 ## Evidence and canonical paths
@@ -119,8 +121,9 @@ or global-RBAC work is authorized.
 
 ### Governance budget choice
 
-The repository default is 12 changed files, so P2.3 does **not** silently raise
-the manifest budget. Use these exact linked deliveries:
+The repository default is 12 changed files and the hard size limit is 700 changed
+lines, so P2.4 does **not** silently raise either budget. Use these exact linked
+deliveries (estimated A ≈595 lines, B ≈515 lines):
 
 **Delivery A — exactly 12 files**
 
@@ -130,7 +133,7 @@ the manifest budget. Use these exact linked deliveries:
 4. `backend/app/Http/Controllers/ClassSessionController.php`
 5. `backend/app/Services/EnrollmentService.php`
 6. `backend/app/Http/Controllers/StudentClassController.php`
-7. `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
+7. `docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md`
 8. `docs/CHANGELOG.md`
 9. `docs/STAFF_UPDATES.yml`
 10. `frontend/src/lib/changelogDraft.generated.js`
@@ -152,14 +155,14 @@ delivery remains incomplete until B supplies the entire UI and mount-level gate.
 6. `frontend/src/App.vue`
 7. `frontend/src/pages/CourseManagement.vue`
 8. `frontend/src/pages/SmartCalendar.vue`
-9. `docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md`
+9. `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
 10. `.agent-session/manifest.json`
 
 B consumes without re-editing A's backend contract, generated release artifacts,
 and `scripts/arch-contexts.json` mapping. The relative diff is therefore exactly
 10 paths; inherited A paths are dependencies, not additional B changes.
 
-Do not pad B to 12. In particular, P2.3 does not authorize
+Do not pad B to 12. In particular, P2.4 does not authorize
 `.github/workflows/bug-phase-c-allowlist.yml` or
 `operations/closeout/bug-phase-c-allowlist.request.md`. Phase-C allowlisting and
 writeback require deployed/runtime-verified evidence and a separate bounded
@@ -169,7 +172,7 @@ The integration owner records both exact heads. Neither delivery may claim
 production readiness alone. B must consume the exact A head, and release review
 waits for cross-delivery exact-head CI plus the full endpoint/UI matrix below.
 If the operator instead wants one implementation delivery, stop and obtain an
-explicit manifest budget of at least 15 product/test files before editing; P2.3
+explicit manifest budget of at least 15 product/test files before editing; P2.4
 does not grant it.
 
 ## Required tests
