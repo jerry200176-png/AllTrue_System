@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -24,14 +24,16 @@ Preserve autonomous delivery for reversible changes while keeping a Founder gate
 ## How to classify (PR author)
 
 1. Pick the **highest** class that applies to any file or behavior in the PR.  
-2. Declare in PR body: `Risk-Class: R0|R1|R2|R3` and `Autonomy-Tier: T0|T1|T2|T3` (see PR template).
+2. Generate the declaration from the actual branch diff with
+   `scripts/governance/pr_declaration.py`, then put the resulting
+   `Risk-Class: R0|R1|R2|R3` and `Autonomy-Tier: T0|T1|T2|T3` in the PR body.
 3. If unsure between R1/R2, choose **R2/T2**. If any protected boundary applies, choose **R3/T3**.
 
 ## Enforcement (current + target)
 
 | Mechanism | Role |
 |-----------|------|
-| PR template `Risk-Class` | Declaration (CI warns if missing) |
+| PR template + machine declaration gate | Generated declaration; missing, malformed, or understated values fail before merge |
 | Required status checks on `main` | Always on (existing branch protection) |
 | CODEOWNERS | Review routing for high-risk paths; not a blanket T2 executor gate |
 | Data Repair Gate / Repair Manifest | **R3/T3** preparation and protected execution evidence |
@@ -42,7 +44,8 @@ Preserve autonomous delivery for reversible changes while keeping a Founder gate
 
 ## Autonomous delivery path
 
-For same-repository, non-draft PRs, `.github/workflows/auto-merge-safe.yml` evaluates
+For same-repository, non-draft PRs, `.github/workflows/presubmit.yml` and
+`.github/workflows/auto-merge-safe.yml` independently evaluate
 the diff from the base revision using `scripts/governance/autonomy_gate.py`.
 Only an exact, declared, machine-validated T0/T1 result can enable GitHub
 server-side squash auto-merge. GitHub still waits for every required status

@@ -1199,6 +1199,43 @@ def effective_tier(
     return max(machine_minimum_tier, declared_tier), None
 
 
+def machine_declaration(paths: Iterable[str], patch: str = "") -> dict[str, object]:
+    """Return the declaration generated from the actual changed scope.
+
+    This is an authoring aid, not an authority override: callers must still
+    validate the submitted declaration with :func:`validate_declaration`.
+    """
+
+    scope = classify_scope(paths, patch)
+    minimum = int(scope["machine_minimum_tier"])
+    return {
+        "risk_class": f"R{minimum}",
+        "autonomy_tier": f"T{minimum}",
+        "machine_minimum_tier": minimum,
+        "reasons": list(scope["reasons"]),
+    }
+
+
+def validate_declaration(
+    body: str, paths: Iterable[str], patch: str = ""
+) -> dict[str, object]:
+    """Validate a PR declaration against an independently classified scope."""
+
+    generated = machine_declaration(paths, patch)
+    declared_risk, declared_tier = parse_declaration(body)
+    effective, error = effective_tier(
+        int(generated["machine_minimum_tier"]), declared_risk, declared_tier
+    )
+    return {
+        "valid": error is None,
+        "error": error,
+        "declared_risk": None if declared_risk is None else f"R{declared_risk}",
+        "declared_tier": None if declared_tier is None else f"T{declared_tier}",
+        "effective_tier": None if effective is None else f"T{effective}",
+        "generated": generated,
+    }
+
+
 __all__ = [
     "classify_activation_scope",
     "classify_activation_provenance",
@@ -1212,6 +1249,8 @@ __all__ = [
     "wait_for_exact_successful_provenance",
     "environment_protection_is_valid",
     "effective_tier",
+    "machine_declaration",
+    "validate_declaration",
     "has_rollback_evidence",
     "is_application_runtime_path",
     "is_control_plane_only_paths",
