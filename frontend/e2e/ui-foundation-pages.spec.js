@@ -471,7 +471,7 @@ async function installApiMocks(page, mode, pageName = '', authProfile = null, on
       });
     }
 
-    if (p.includes('/class-sessions')) {
+    if (pageName === 'students' && p.includes('/class-sessions')) {
       const materialized = [
         ...Array.from({ length: 7 }, (_, index) => ({
           id: 6100 + index,
