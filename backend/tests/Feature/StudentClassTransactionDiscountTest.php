@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\StudentClass;
 use App\Models\AuthToken;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\User;
@@ -36,12 +37,13 @@ class StudentClassTransactionDiscountTest extends TestCase
         $calculator = new TransactionDiscountCalculator();
         $snapshot = $calculator->calculate(101, [
             'type' => 'PERCENTAGE', 'value' => '12.5', 'reason' => 'promo',
-            'original_amount' => 1, 'final_amount' => 999999,
+            'original_amount' => 1, 'final_amount' => 999999, 'transaction_id' => 'forged-client-id',
         ], 7, 'director');
 
         $this->assertSame(13, $snapshot['discount_amount']);
         $this->assertSame(88, $snapshot['final_amount']);
         $this->assertSame(101, $snapshot['original_amount']);
+        $this->assertNotSame('forged-client-id', $snapshot['transaction_id']);
     }
 
     /** @dataProvider invalidDiscountProvider */
@@ -55,10 +57,24 @@ class StudentClassTransactionDiscountTest extends TestCase
     {
         return [
             [['type' => 'FIXED_AMOUNT', 'value' => '1.5', 'reason' => 'x']],
+            [['type' => 'FIXED_AMOUNT', 'value' => '-1', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '1e1', 'reason' => 'x']],
+            [['type' => 'PERCENTAGE', 'value' => '-1', 'reason' => 'x']],
+            [['type' => 'PERCENTAGE', 'value' => '12.345', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '100.001', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '10', 'reason' => '']],
         ];
+    }
+
+    public function test_percentage_100_preserves_money_invariant(): void
+    {
+        $snapshot = (new TransactionDiscountCalculator())->calculate(1001, [
+            'type' => 'PERCENTAGE', 'value' => '100', 'reason' => 'full waiver',
+        ], 7, 'director');
+
+        $this->assertSame(1001, $snapshot['discount_amount']);
+        $this->assertSame(0, $snapshot['final_amount']);
+        $this->assertSame($snapshot['original_amount'] - $snapshot['discount_amount'], $snapshot['final_amount']);
     }
 
     public function test_largest_remainder_allocation_is_stable(): void
@@ -117,9 +133,31 @@ class StudentClassTransactionDiscountTest extends TestCase
         }
     }
 
+    public function test_teacher_and_pending_are_rejected_by_real_discount_middleware_without_snapshot(): void
+    {
+        $student = $this->student();
+
+        foreach ([['T', true, '2032-01-01'], ['U', true, '2032-02-01']] as [$type, $campusScoped, $start]) {
+            [$actor, $token] = $this->staffToken($type, $campusScoped);
+            $course = $this->course($student->id, $actor->id);
+            $before = StudentClass::where('StudentID', $student->id)->count();
+            $beforeSnapshots = StudentClass::where('StudentID', $student->id)->whereNotNull('pricing_snapshot')->count();
+
+            $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/purchase-batch", [
+                'sessions' => 2,
+                'start_date' => $start,
+                'mode' => 'new_purchase',
+                'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'unauthorized'],
+            ])->assertForbidden();
+
+            $this->assertSame($before, StudentClass::where('StudentID', $student->id)->count());
+            $this->assertSame($beforeSnapshots, StudentClass::where('StudentID', $student->id)->whereNotNull('pricing_snapshot')->count());
+        }
+    }
+
     public function test_multi_subject_batch_shares_transaction_identity_and_allocates_percentage_once(): void
     {
-        [, $directorToken] = $this->staffToken('A', true);
+        [$director, $directorToken] = $this->staffToken('A', true);
         [$teacher] = $this->staffToken('T', true);
         $this->grantTeacherSubjects($teacher->id, ['Math', 'English']);
         $student = $this->student();
@@ -138,7 +176,7 @@ class StudentClassTransactionDiscountTest extends TestCase
             ],
             'start_time' => '11:00', 'duration_minutes' => 120,
             'price_per_session' => 101, 'payment_type' => 'session', 'course_start_date' => '2031-10-06',
-            'discount' => ['type' => 'PERCENTAGE', 'value' => '12.5', 'reason' => 'multi-subject approval'],
+            'discount' => ['type' => 'PERCENTAGE', 'value' => '12.5', 'reason' => 'multi-subject approval', 'transaction_id' => 'forged-client-id'],
         ]);
         $response->assertCreated();
 
@@ -147,6 +185,15 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertCount(2, $courses);
         $this->assertCount(1, $snapshots->pluck('transaction_id')->unique());
         $this->assertSame([202], $snapshots->pluck('original_amount')->unique()->values()->all());
+        foreach (['transaction_id', 'original_amount', 'discount_amount', 'final_amount', 'type', 'value', 'reason', 'actor_id', 'actor_role'] as $field) {
+            $this->assertCount(1, $snapshots->pluck($field)->unique(), "sibling snapshots differ in {$field}");
+        }
+        $this->assertNotSame('forged-client-id', $snapshots->first()['transaction_id']);
+        $this->assertSame('PERCENTAGE', $snapshots->first()['type']);
+        $this->assertSame('12.5', $snapshots->first()['value']);
+        $this->assertSame('multi-subject approval', $snapshots->first()['reason']);
+        $this->assertSame((int) $director->id, (int) $snapshots->first()['actor_id']);
+        $this->assertSame('director', $snapshots->first()['actor_role']);
         $this->assertSame(177, (int) $courses->sum('Charge'));
         $this->assertSame([89, 88], $courses->pluck('Charge')->sortDesc()->values()->all());
         $this->assertSame(177, (int) $snapshots->first()['final_amount']);
@@ -192,6 +239,34 @@ class StudentClassTransactionDiscountTest extends TestCase
             'payload' => $changed,
         ])->assertStatus(409);
         $this->assertNotSame($first['state_hash'], $changedPreview['state_hash']);
+
+        $reasonOnly = $payload;
+        $reasonOnly['discount']['reason'] = 'reason-only mutation';
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $first['preview_id'], 'state_hash' => $first['state_hash'],
+            'mode' => 'purchase_batch', 'payload' => $reasonOnly,
+        ])->assertStatus(409);
+
+        $periodChanged = $payload;
+        $periodChanged['start_date'] = '2031-01-01';
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $first['preview_id'], 'state_hash' => $first['state_hash'],
+            'mode' => 'purchase_batch', 'payload' => $periodChanged,
+        ])->assertStatus(409);
+
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $first['preview_id'],
+            'state_hash' => $first['state_hash'],
+            'mode' => 'purchase_batch',
+            'payload' => $payload,
+        ])->assertCreated();
+
+        $course->Charge = (int) $course->Charge + 1;
+        $course->save();
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $first['preview_id'], 'state_hash' => $first['state_hash'],
+            'mode' => 'purchase_batch', 'payload' => $payload,
+        ])->assertStatus(409);
     }
 
     public function test_discounted_renewal_preserves_negative_void_payment_reconciliation_and_old_invoice(): void
@@ -222,7 +297,14 @@ class StudentClassTransactionDiscountTest extends TestCase
             'InvoiceID' => $invoice->id, 'Amount' => -1000,
             'PaidAt' => '2026-09-02', 'Method' => 'void',
         ]);
+        $legacyItem = InvoiceItem::create([
+            'InvoiceID' => $invoice->id, 'Description' => 'legacy period', 'Amount' => 4000,
+            'PeriodStart' => '2026-09-01', 'PeriodEnd' => '2026-09-30',
+        ]);
+        $beforeInvoiceCount = Invoice::count();
+        $beforeItemCount = InvoiceItem::count();
         $beforeInvoice = $invoice->fresh()->getRawOriginal();
+        $beforeLegacyItem = $legacyItem->fresh()->getRawOriginal();
         $beforePositive = $positive->fresh()->getRawOriginal();
         $beforeVoid = $void->fresh()->getRawOriginal();
         $beforeReconciliation = app(InvoiceAmountReconciliationService::class)
@@ -240,7 +322,15 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertSame($beforeReconciliation, app(InvoiceAmountReconciliationService::class)
             ->resolve($invoice->fresh(), $course->fresh()));
         $newCourse = StudentClass::findOrFail($response->json('new_course.id'));
-        $this->assertSame((int) $newCourse->Charge, (int) Invoice::where('StudentClassID', $newCourse->ID)->value('TotalAmount'));
+        $this->assertSame($beforeInvoiceCount + 1, Invoice::count());
+        $this->assertSame($beforeItemCount + 1, InvoiceItem::count());
+        $this->assertSame($beforeLegacyItem, $legacyItem->fresh()->getRawOriginal());
+        $newInvoices = Invoice::where('StudentClassID', $newCourse->ID)->get();
+        $this->assertCount(1, $newInvoices);
+        $newItems = InvoiceItem::where('InvoiceID', $newInvoices->first()->id)->get();
+        $this->assertCount(1, $newItems);
+        $this->assertSame((int) $newCourse->Charge, (int) $newInvoices->first()->TotalAmount);
+        $this->assertSame((int) $newCourse->Charge, (int) $newItems->sum('Amount'));
         $this->assertSame(3200, (int) $newCourse->Charge);
     }
 

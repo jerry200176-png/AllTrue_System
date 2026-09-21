@@ -12,5 +12,12 @@
   "preflight_result": "pass",
   "provenance_type": "agent-session",
   "agent_cli": "codex",
-  "gateway_version": "0.5.1"
+  "gateway_version": "0.5.1",
+  "planner_model": "gpt-5.6-sol",
+  "plan_revision": "P2.9",
+  "plan_file": "docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md",
+  "plan_sha256": "88e09f237693f2ba542ef0cfadf8496ef1c443f72d2de796758fb52144806b5b",
+  "scope_fingerprint": "P2.9-322-backend-closure-H-3-files-B-rebase-10-paths",
+  "worker_model_requested": "gpt-5.6-luna",
+  "worker_model_effective": "gpt-5.6-luna"
 }
