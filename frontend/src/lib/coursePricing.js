@@ -140,17 +140,28 @@ const courseSessionMinutes = (course) => {
 };
 
 /** Mirror StudentClassController::purchaseBatch's canonical charge calculation. */
-export const estimatePurchaseBatchCharge = (course, sessions) => estimateCreateCharge({
-  pricePerSession: course?.rate_per_30min ?? course?.Rate ?? course?.rate,
-  rateUnit: getRateUnit(course),
-  sessions,
-  avgSessionMinutes: courseSessionMinutes(course),
-}).charge;
+export const estimatePurchaseBatchCharge = (course, sessions) => {
+  const rate = Math.max(0, toNumber(course?.rate_per_30min ?? course?.Rate ?? course?.rate) ?? 0);
+  const count = Math.max(0, Math.round(toNumber(sessions) ?? 0));
+  if (rate <= 0 || count <= 0) return 0;
+  if (getRateUnit(course) === 'hour') {
+    // StudentClassController rounds total hours before multiplying the hourly rate.
+    const totalHours = Math.round((count * courseSessionMinutes(course)) / 60);
+    return Math.round(rate * totalHours);
+  }
+  return Math.round(rate * count);
+};
 
 /** Estimate a new monthly period from its contract rate, never the old source Charge. */
 export const estimateMonthlyRenewalCharge = (course) => {
   const sessions = Number(course?.monthly_sessions ?? course?.MonthlySessions ?? 0);
   return estimatePurchaseBatchCharge(course, sessions);
+};
+
+/** Read the server's date-specific renewal-preview total; never substitute source Charge. */
+export const getRenewalPreviewAmount = (preview, fallback = null) => {
+  const amount = Number(preview?.billing?.amount_due ?? preview?.proposed_course?.charge);
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount) : fallback;
 };
 
 export const getCourseTotalFee = (course) => {

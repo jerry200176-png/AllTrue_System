@@ -753,6 +753,7 @@
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
       @close="showRenewMonthlyModal = false"
+      @preview-change="loadRenewMonthlyPreview"
       @submit="submitRenewMonthly"
     />
 
@@ -1008,6 +1009,7 @@ import {
   calculateTransactionDiscountPreview,
   estimateMonthlyRenewalCharge,
   estimatePurchaseBatchCharge,
+  getRenewalPreviewAmount,
   getPerSessionFee,
 } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
@@ -3324,6 +3326,7 @@ const openAddSessionsForCourse = (course) => {
       original_amount: estimateMonthlyRenewalCharge(course),
     };
     showRenewMonthlyModal.value = true;
+    loadRenewMonthlyPreview();
     return;
   }
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
@@ -3346,6 +3349,34 @@ const openAddSessionsForCourse = (course) => {
   }
   showSessionsModal.value = true;
 };
+
+async function loadRenewMonthlyPreview(endDate = '') {
+  const course = renewMonthlyTargetCourse.value;
+  if (!course?.id) return;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) return;
+    const currentEnd = course?.end_date || course?.EndDate || null;
+    let targetEnd = endDate;
+    if (!targetEnd) {
+      const d = currentEnd ? new Date(currentEnd) : new Date();
+      d.setMonth(d.getMonth() + 1);
+      targetEnd = d.toISOString().slice(0, 10);
+    }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ mode: 'renew_monthly', end_date: targetEnd }),
+    });
+    const json = await res.json().catch(() => ({}));
+    const amount = getRenewalPreviewAmount(json);
+    if (amount != null) renewMonthlyForm.value.original_amount = amount;
+  } catch {
+    /* preview is advisory only */
+  }
+}
 
 const submitAddSessions = async () => {
   if (addSessionsSubmitting.value) return;

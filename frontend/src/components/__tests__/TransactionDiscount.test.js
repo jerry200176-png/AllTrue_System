@@ -93,6 +93,7 @@ describe('transaction discount preview', () => {
   it('uses the backend canonical hourly total for purchase and monthly renewal previews', () => {
     const hourly = { Rate: 500, rate_unit: 'hour', SessionDuration: 120, Charge: 9999, monthly_sessions: 2 };
     expect(estimatePurchaseBatchCharge(hourly, 2)).toBe(2000);
+    expect(estimatePurchaseBatchCharge({ ...hourly, SessionDuration: 90 }, 3)).toBe(2500);
     expect(estimateMonthlyRenewalCharge(hourly)).toBe(2000);
   });
 

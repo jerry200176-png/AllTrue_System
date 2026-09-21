@@ -42,13 +42,13 @@
 
       <div v-if="mode === 'months'" class="form-group">
         <label>延長月數</label>
-        <input v-model.number="form.months" type="number" min="1" max="24" step="1" placeholder="1" />
+        <input v-model.number="form.months" type="number" min="1" max="24" step="1" placeholder="1" @input="$emit('preview-change', computedEndDate)" />
         <span class="hint">新一期到期日：{{ computedEndDate }}</span>
       </div>
 
       <div v-if="mode === 'date'" class="form-group">
         <label>新到期日</label>
-        <input v-model="form.end_date" type="date" :min="minDate" />
+        <input v-model="form.end_date" type="date" :min="minDate" @change="$emit('preview-change', form.end_date)" />
       </div>
 
       <div v-if="props.form?.discount" class="form-group" data-testid="renew-transaction-discount">
