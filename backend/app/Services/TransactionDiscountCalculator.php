@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 
 /**
  * Calculates one transaction-level discount using integer TWD arithmetic.
@@ -12,7 +13,7 @@ class TransactionDiscountCalculator
 {
     private const TYPES = ['NONE', 'FIXED_AMOUNT', 'PERCENTAGE'];
 
-    /** @return array{type:string,value:string,discount_amount:int,final_amount:int,reason:string,actor_id:int,actor_role:string,created_at:string} */
+    /** @return array{transaction_id:string,original_amount:int,type:string,value:string,discount_amount:int,final_amount:int,reason:string,actor_id:int,actor_role:string,created_at:string} */
     public function calculate(int $originalAmount, ?array $input, int $actorId, string $actorRole): array
     {
         $originalAmount = max(0, $originalAmount);
@@ -113,6 +114,10 @@ class TransactionDiscountCalculator
     private function snapshot(int $original, string $type, string $value, int $discount, string $reason, int $actorId, string $actorRole): array
     {
         return [
+            // One generated identity represents the whole transaction. Callers
+            // creating multiple subject rows calculate once and persist this
+            // same snapshot on every row.
+            'transaction_id' => (string) Str::uuid(),
             'original_amount' => $original,
             'type' => $type,
             'value' => $value,

@@ -5652,6 +5652,15 @@ class StudentClassController extends Controller
             $severity = 'warning';
         }
 
+        // The state hash describes the requested transaction and current source
+        // state, not a newly generated audit timestamp or transaction identity.
+        // Both values are intentionally fresh on each calculation; including
+        // either would make an unchanged preview fail confirmation.
+        $stateBilling = $billing;
+        if (isset($stateBilling['discount']) && is_array($stateBilling['discount'])) {
+            unset($stateBilling['discount']['created_at'], $stateBilling['discount']['transaction_id']);
+        }
+
         $stateSource = [
             'source' => [
                 'id' => (int) $studentClass->ID,
@@ -5673,9 +5682,11 @@ class StudentClassController extends Controller
                 'start_date' => $this->normalizeDateString($data['start_date'] ?? null),
                 'end_date' => $this->normalizeDateString($data['end_date'] ?? null),
                 'months' => $data['months'] ?? null,
-                'discount' => $data['discount'] ?? null,
+                // Hash the server-normalized discount snapshot so equivalent
+                // inputs such as 12.5 and 12.50 confirm the same preview.
+                'discount' => $stateBilling['discount'] ?? null,
             ],
-            'billing' => $billing,
+            'billing' => $stateBilling,
             'schedule' => $schedule,
             'blockers' => $blockers,
         ];
@@ -5833,7 +5844,7 @@ class StudentClassController extends Controller
 
     private function canApplyTransactionDiscount(Request $request): bool
     {
-        return in_array((string) $request->attributes->get('auth_role'), ['director', 'admin', 'super_admin'], true);
+        return in_array((string) $request->attributes->get('auth_role'), ['director', 'super_admin'], true);
     }
 
     private function redactRenewalDiscount(array $preview, bool $financial): array
