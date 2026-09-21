@@ -206,7 +206,7 @@ class StudentClassTransactionDiscountTest extends TestCase
             'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2026-10-01',
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'],
         ]);
-        $response->assertCreated('Batch endpoint response: ' . $response->getContent());
+        $this->assertSame(201, $response->status(), 'Batch endpoint response: ' . $response->getContent());
         $courses = StudentClass::where('StudentID', $student->id)->get();
         $this->assertCount(2, $courses);
         $this->assertSame(800, (int) $courses->sum('Charge'));
