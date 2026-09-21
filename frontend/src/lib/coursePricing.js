@@ -126,6 +126,33 @@ export const estimateCreateCharge = ({ pricePerSession, rateUnit, sessions, avgS
   return { charge: Math.round(price * n), totalHours: 0 };
 };
 
+const courseSessionMinutes = (course) => {
+  const fallback = Number(course?.SessionDuration ?? course?.duration_minutes)
+    || (Number(course?.duration_hours) > 0 ? Number(course.duration_hours) * 60 : 120);
+  const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
+  if (!slots.length) return Math.max(0, fallback);
+  const total = slots.reduce((sum, slot) => {
+    const minutes = Number(slot?.duration_minutes)
+      || (Number(slot?.duration_hours) > 0 ? Number(slot.duration_hours) * 60 : fallback);
+    return sum + Math.max(0, minutes);
+  }, 0);
+  return total / slots.length;
+};
+
+/** Mirror StudentClassController::purchaseBatch's canonical charge calculation. */
+export const estimatePurchaseBatchCharge = (course, sessions) => estimateCreateCharge({
+  pricePerSession: course?.rate_per_30min ?? course?.Rate ?? course?.rate,
+  rateUnit: getRateUnit(course),
+  sessions,
+  avgSessionMinutes: courseSessionMinutes(course),
+}).charge;
+
+/** Estimate a new monthly period from its contract rate, never the old source Charge. */
+export const estimateMonthlyRenewalCharge = (course) => {
+  const sessions = Number(course?.monthly_sessions ?? course?.MonthlySessions ?? 0);
+  return estimatePurchaseBatchCharge(course, sessions);
+};
+
 export const getCourseTotalFee = (course) => {
   if (!course) return 0;
   const paymentType = String(course?.payment_type || '').toLowerCase();

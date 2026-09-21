@@ -1521,7 +1521,12 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
 import { buildTransferableSessionOption } from '../lib/sessionTransferEligibility';
-import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';
+import {
+  estimateMonthlyRenewalCharge,
+  getPerSessionFee,
+  getCourseTotalFee,
+  getRateUnitDisplayLabel,
+} from '../lib/coursePricing';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -3169,6 +3174,8 @@ function openPurchaseModal(course) {
       current_end_date: course?.end_date || course?.EndDate || null,
       months: 1,
       end_date: '',
+      discount: { type: 'NONE', value: '0', reason: '' },
+      original_amount: estimateMonthlyRenewalCharge(course),
     };
     renewMonthlyWarnings.value = [];
     showRenewMonthlyModal.value = true;
@@ -3414,7 +3421,7 @@ async function submitRenewMonthly(endDate) {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ end_date: endDate }),
+      body: JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {

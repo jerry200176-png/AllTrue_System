@@ -1004,7 +1004,12 @@ import { ref, onMounted, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
-import { calculateTransactionDiscountPreview, getPerSessionFee } from '../lib/coursePricing';
+import {
+  calculateTransactionDiscountPreview,
+  estimateMonthlyRenewalCharge,
+  estimatePurchaseBatchCharge,
+  getPerSessionFee,
+} from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
 import {
   buildGradePromotionConfirmPayload,
@@ -1237,7 +1242,7 @@ const addSessionCount = ref(8);
 const selectedCourse = ref(null);
 const purchaseDiscount = reactive({ type: 'NONE', value: '0', reason: '' });
 const purchaseDiscountPreview = computed(() => calculateTransactionDiscountPreview(
-  getPerSessionFee(selectedCourse.value) * Math.max(0, Number(addSessionCount.value) || 0), purchaseDiscount,
+  estimatePurchaseBatchCharge(selectedCourse.value, addSessionCount.value), purchaseDiscount,
 ));
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const showRenewMonthlyModal = ref(false);
@@ -3316,7 +3321,7 @@ const openAddSessionsForCourse = (course) => {
       months: 1,
       end_date: '',
       discount: { type: 'NONE', value: '0', reason: '' },
-      original_amount: Number(course?.Charge ?? course?.charge ?? 0),
+      original_amount: estimateMonthlyRenewalCharge(course),
     };
     showRenewMonthlyModal.value = true;
     return;

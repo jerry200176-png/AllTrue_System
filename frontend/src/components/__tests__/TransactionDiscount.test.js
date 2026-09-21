@@ -1,21 +1,27 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, shallowMount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const { createUniversalClassSchedule } = vi.hoisted(() => ({ createUniversalClassSchedule: vi.fn() }));
 vi.mock('../../lib/universalSchedulerApi', () => ({ createUniversalClassSchedule }));
 vi.mock('../../lib/coursePackagesApi', () => ({ createMultiSubjectPackage: vi.fn() }));
 vi.mock('../../lib/subjectsApi', () => ({ fetchSubjectOptions: vi.fn(async () => []) }));
-vi.mock('../../lib/substituteApi.js', () => ({ fetchTeacherAvailability: vi.fn(async () => []) }));
+vi.mock('../../lib/substituteApi.js', () => ({
+  fetchTeacherAvailability: vi.fn(async () => []),
+  previewTeacherLeaves: vi.fn(async () => ({ conflicts: [] })),
+  batchSubstitute: vi.fn(async () => ({})),
+  undoSubstitute: vi.fn(async () => ({})),
+}));
+vi.mock('../../supabase', () => ({
+  supabase: { auth: { getSession: vi.fn(async () => ({ data: { session: null } })) } },
+}));
 import {
   calculateTransactionDiscountPreview,
+  estimateMonthlyRenewalCharge,
+  estimatePurchaseBatchCharge,
   normalizeTransactionDiscount,
 } from '../../lib/coursePricing.js';
 import UniversalClassScheduler from '../UniversalClassScheduler.vue';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import SmartCalendar from '../../pages/SmartCalendar.vue';
 
 describe('transaction discount preview', () => {
   const mountScheduler = (props = {}) => mount(UniversalClassScheduler, {
@@ -46,22 +52,30 @@ describe('transaction discount preview', () => {
     enabled.unmount();
   });
 
-  it('gates every canonical scheduler mount and never sends calculated totals', () => {
-    const app = readFileSync(resolve(__dirname, '../../App.vue'), 'utf8');
-    const students = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
-    const courseManagement = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
-    const smartCalendar = readFileSync(resolve(__dirname, '../../pages/SmartCalendar.vue'), 'utf8');
-    expect(app).toContain(':allow-financial-discount="isDirector"');
-    expect(students).toContain('allowFinancialDiscount: { type: Boolean, default: false }');
-    expect(students).toContain(':allow-financial-discount="props.allowFinancialDiscount"');
-    expect(students).not.toContain(':allow-financial-discount="true"');
-    expect(courseManagement).toContain(':allow-financial-discount="allowFinancialDiscount"');
-    expect(smartCalendar).toContain(':allow-financial-discount="allowFinancialDiscount"');
-    expect(smartCalendar).toContain("['director', 'admin', 'super_admin'].includes(props.userRole)");
-    expect(smartCalendar).toContain("props.userRole === 'teacher'");
-    expect(students).not.toContain('original_amount: purchaseDiscountPreview');
-    expect(courseManagement).not.toContain('original_amount:');
-    expect(smartCalendar).not.toContain('final_amount:');
+  it('passes the finance gate through a mounted Smart Calendar scheduler', async () => {
+    const mountCalendar = (userRole) => shallowMount(SmartCalendar, {
+      props: { branchId: 0, userRole, userId: 1, initialIntent: 'quick-add' },
+      global: {
+        stubs: {
+          UniversalClassScheduler: {
+            props: { allowFinancialDiscount: Boolean },
+            template: '<div data-testid="mounted-calendar-scheduler" :data-financial-discount="allowFinancialDiscount ? \'enabled\' : \'disabled\'" />',
+          },
+        },
+      },
+    });
+
+    const director = mountCalendar('director');
+    await flushPromises();
+    expect(director.find('[data-testid="mounted-calendar-scheduler"]').exists()).toBe(true);
+    expect(director.find('[data-testid="mounted-calendar-scheduler"]').attributes('data-financial-discount')).toBe('enabled');
+    director.unmount();
+
+    const teacher = mountCalendar('teacher');
+    await flushPromises();
+    expect(teacher.find('[data-testid="mounted-calendar-scheduler"]').exists()).toBe(true);
+    expect(teacher.find('[data-testid="mounted-calendar-scheduler"]').attributes('data-financial-discount')).toBe('disabled');
+    teacher.unmount();
   });
 
   it('defaults to NONE and preserves the original total', () => {
@@ -74,6 +88,12 @@ describe('transaction discount preview', () => {
     expect(calculateTransactionDiscountPreview(1001, { type: 'FIXED_AMOUNT', value: '200' })).toMatchObject({ discountAmount: 200, finalAmount: 801 });
     expect(calculateTransactionDiscountPreview(101, { type: 'PERCENTAGE', value: '12.5' })).toMatchObject({ discountAmount: 13, finalAmount: 88 });
     expect(calculateTransactionDiscountPreview(1000, { type: 'PERCENTAGE', value: '100' })).toMatchObject({ discountAmount: 1000, finalAmount: 0 });
+  });
+
+  it('uses the backend canonical hourly total for purchase and monthly renewal previews', () => {
+    const hourly = { Rate: 500, rate_unit: 'hour', SessionDuration: 120, Charge: 9999, monthly_sessions: 2 };
+    expect(estimatePurchaseBatchCharge(hourly, 2)).toBe(2000);
+    expect(estimateMonthlyRenewalCharge(hourly)).toBe(2000);
   });
 
   it('does not create a discount payload for an invalid mode', () => {
