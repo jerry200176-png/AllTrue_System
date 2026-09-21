@@ -118,6 +118,11 @@ class StudentClass extends Model
         return $this->hasMany(Invoice::class, 'StudentClassID', 'ID');
     }
 
+    public function pricingAmendments()
+    {
+        return $this->hasMany(StudentClassPricingAmendment::class, 'student_class_id', 'ID');
+    }
+
     public function paymentReports()
     {
         return $this->hasMany(PaymentReport::class, 'StudentClassID', 'ID');
