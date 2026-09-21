@@ -181,6 +181,27 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertSame(2000, $new->pricing_snapshot['final_amount']);
     }
 
+    public function test_convert_trial_creates_a_full_price_none_snapshot_without_inheriting_discount(): void
+    {
+        [$director, $token] = $this->directorToken();
+        $student = $this->student();
+        $trial = $this->course($student->id, $director->id);
+        $trial->ClassType = 'trial';
+        $trial->Disconunt = 999;
+        $trial->StartDate = '2026-09-01';
+        $trial->save();
+
+        $response = $this->withToken($token)->postJson("/api/v1/student-classes/{$trial->ID}/convert-trial", [
+            'sessions' => 2, 'start_date' => '2026-10-01', 'class_type' => 'one_on_one',
+        ]);
+
+        $response->assertCreated();
+        $new = StudentClass::findOrFail($response->json('new_course.id'));
+        $this->assertSame(1000, (int) $new->Charge);
+        $this->assertNull($new->Disconunt);
+        $this->assertSame('NONE', $new->pricing_snapshot['type']);
+    }
+
     public function test_authorized_monthly_renewal_invoice_matches_discounted_course_charge(): void
     {
         [$director, $token] = $this->directorToken();
