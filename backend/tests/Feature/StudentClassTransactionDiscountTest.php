@@ -61,6 +61,7 @@ class StudentClassTransactionDiscountTest extends TestCase
             [['type' => 'FIXED_AMOUNT', 'value' => '400', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '1e1', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '-1', 'reason' => 'x']],
+            [['type' => 'PERCENTAGE', 'value' => '101', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '12.345', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '100.001', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '10', 'reason' => '']],
@@ -186,6 +187,32 @@ class StudentClassTransactionDiscountTest extends TestCase
         ])->assertForbidden();
         $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
             'end_date' => '2032-04-30', 'discount' => $discount,
+        ])->assertForbidden();
+
+        $this->assertSame($before, StudentClass::where('StudentID', $student->id)->count());
+        $this->assertSame(0, StudentClass::where('StudentID', $student->id)->whereNotNull('pricing_snapshot')->count());
+    }
+
+    public function test_teacher_class_session_batch_discount_is_rejected_before_snapshot_creation(): void
+    {
+        $student = $this->student();
+        [$teacher, $token] = $this->staffToken('T', true);
+        $this->grantTeacherSubjects($teacher->id, ['Math']);
+        $before = StudentClass::where('StudentID', $student->id)->count();
+
+        $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
+            'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 2,
+            'confirmed_dates' => [], 'future_dates' => ['2032-08-01'],
+            'session_plan' => [
+                ['session_date' => '2032-08-01', 'start_time' => '11:00', 'kind' => 'future', 'subject' => 'Math'],
+            ],
+            'days_of_week' => [7], 'day_time_slots' => [
+                ['day' => 7, 'start_time' => '11:00', 'duration_minutes' => 120, 'subject' => 'Math'],
+            ],
+            'start_time' => '11:00', 'duration_minutes' => 120,
+            'price_per_session' => 101, 'payment_type' => 'session', 'course_start_date' => '2032-08-01',
+            'discount' => ['type' => 'PERCENTAGE', 'value' => '12.5', 'reason' => 'teacher-forbidden'],
         ])->assertForbidden();
 
         $this->assertSame($before, StudentClass::where('StudentID', $student->id)->count());
