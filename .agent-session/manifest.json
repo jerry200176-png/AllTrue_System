@@ -1,16 +1,21 @@
 {
   "schema_version": "1.0",
-  "session_id": "390ef8cd74c240a481747da1efdffee4",
+  "session_id": "b990aa5e47b644e99c3902e0c2733b65",
   "project": "alltrue",
-  "task_id": "inapp-332-337-navigation-20260921",
+  "task_id": "inapp-322-discount-20260921",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "b5bd6dbffff1d618e47bf6f5b4f338df4a55d9f4",
-  "branch": "chore/task-inapp-332-337-navigation-20260921-v4",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-332-337-navigation-20260921",
-  "started_at": "2026-09-21T01:05:38Z",
+  "base_sha": "3d86f37a87576fc9051b1b2d7c77f176cefad36d",
+  "branch": "chore/task-inapp-322-discount-20260921",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-322-discount-20260921",
+  "started_at": "2026-09-21T02:28:55Z",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
   "agent_cli": "codex",
-  "gateway_version": "0.5.1"
+  "gateway_version": "0.5.1",
+  "planner_model": "gpt-5.6-sol",
+  "plan_revision": "P1",
+  "plan_file": "docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md",
+  "plan_sha256": "e3cd58a57afb5621e773abb93fc7e6333d9dd37b689911e752025c9cd81607f9",
+  "scope_fingerprint": "P1-3d86f37-322-transaction-discount"
 }

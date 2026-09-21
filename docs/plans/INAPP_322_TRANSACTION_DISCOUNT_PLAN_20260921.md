@@ -1,0 +1,103 @@
+# In-App #322 — Transaction Discount at Course Creation
+
+## Plan identity
+
+- SourceRef: `alltrue:bug_report:322`
+- GitHub issue: #3072
+- Plan revision: P1
+- Planner: Sol (`gpt-5.6-sol`)
+- Evidence baseline: `3d86f37a87576fc9051b1b2d7c77f176cefad36d`
+- Scope fingerprint: `P1-3d86f37-322-transaction-discount`
+- Status: plan only; no product files changed by this plan yet
+
+## Evidence and canonical paths
+
+- Canonical new-course UI is `frontend/src/components/UniversalClassScheduler.vue`.
+- Canonical create endpoint is `POST /api/v1/class-sessions/batch`, handled by `ClassSessionController::batchStore()` and `EnrollmentService::store()`.
+- `POST /api/v1/student-classes` is retired and returns 410; do not implement the feature in the legacy `StudentClassController::store()` path.
+- Current amount authority persists integer `StudentClass.Charge`: session mode uses rounded price × sessions; hourly mode uses rounded price × hours. The frontend mirror is `frontend/src/lib/coursePricing.js`.
+- Purchase/renewal create new transactions through `purchaseBatch()`, `renewMonthly()`, and `renewalConfirm()`.
+- Monthly renewal also creates integer `Invoice.TotalAmount` and `InvoiceItem.Amount`; payments use integer `Payment.Amount`; refund/void behavior is represented by negative/void payments.
+- Existing nullable integer `StudentClass.Disconunt` is misspelled, lacks reason/actor/time/type, and is not canonical charge calculation. It must not be reused or inherited.
+- Existing JSON snapshot convention is `Invoice.billing_snapshot`; money storage is integer TWD. No reusable Money value object was found.
+- Existing create/renew base-price calculation uses floats before integer rounding. This plan does not rewrite that authority; new discount arithmetic must consume the resulting integer original total and use integer/string arithmetic only.
+- Existing course access permits owning teachers in some paths; discount authorization must be a separate fail-closed guard.
+- A create request may create multiple course rows. Discount is calculated once on the transaction total, then allocated deterministically across rows.
+
+## Product contract
+
+The request contains one mutually exclusive object:
+
+```text
+discount.type   = NONE | FIXED_AMOUNT | PERCENTAGE
+discount.value  = decimal string
+discount.reason = free text
+```
+
+- `NONE`, `FIXED_AMOUNT`, and `PERCENTAGE` are mutually exclusive; no stacking.
+- Discount applies to the original total for this course/purchase/contract transaction, not the per-session reference price, standard course price, teacher rate, or existing billing definition.
+- Fixed amount: integer TWD, `0 < value <= original_amount`; full amount is allowed.
+- Percentage: `0 < value <= 100`, at most two decimal places; values over 100, negative, malformed, or over-precision are rejected.
+- Zero fixed or percentage input normalizes to `NONE` with value/discount zero and blank reason.
+- Any nonzero discount requires a trimmed nonempty free-text reason.
+- Backend recalculates and owns `original_amount`, `discount_amount`, and `final_amount`; clients must not submit or override those totals.
+- Use existing Money convention; if no convention exists, use TWD integer HALF_UP at the total level once. Percentage input is converted to basis points; no new binary floating-point money arithmetic.
+- Invariant: `original_amount - discount_amount = final_amount` and `NONE` means discount zero and final equals original.
+- Persist an immutable pricing snapshot containing original amount, normalized type/value, discount amount, final amount, reason, actor, and timestamp, using existing snapshot/audit conventions.
+- After creation there is no #322 historical snapshot edit. Future correction must use existing adjustment/void/refund flows; do not invent one.
+- Existing contracts, invoices, payments, refunds, and void/negative-payment reconciliation must not be rewritten or backfilled.
+- Renewal/purchase is a new transaction; default is `NONE`, and prior discount/snapshot is never inherited.
+- Only existing financial-authorized roles (`director`, `admin`, `super_admin`) may set or view discount data. Teacher mutation must fail closed with 403 and teacher responses must not expose new pricing fields. Do not redesign RBAC.
+
+## Architecture slice
+
+1. Add a nullable JSON `pricing_snapshot` to `StudentClass`, with a migration that leaves existing rows NULL and performs no historical rewrite.
+2. Add `TransactionDiscountCalculator` that parses decimal strings without floats, normalizes zero, validates reason/type/ranges, calculates one total-level HALF_UP discount, and emits the immutable snapshot.
+3. In `EnrollmentService`, derive all newly-created rows' existing integer original `Charge`, sum once, calculate the transaction discount once, and allocate the resulting final total with deterministic integer largest-remainder allocation so row totals sum exactly to final. Store the same transaction snapshot and transaction identity on each new row as permitted by the existing schema; revise the plan before adding any extra schema outside the boundary.
+4. Apply the calculator to `purchaseBatch()` and `renewMonthly()`. New course `Charge`, monthly `Invoice.TotalAmount`, and `InvoiceItem.Amount` must agree with the final amount. Renewal preview/state hashing includes normalized discount input. Never inherit legacy `Disconunt` or a previous snapshot.
+5. Keep `pricing_snapshot` hidden by default. Add it only to director/admin/super_admin course responses; teacher response shape and pricing visibility remain unchanged.
+6. Add a reusable discount section to canonical create and Student Management renewal/purchase UI: default NONE; show original, mode, value, reason, discount, and final before submit. Frontend preview is informational; backend remains authoritative.
+
+## Exact file boundary
+
+Maximum 12 product/test files:
+
+1. `backend/database/migrations/<timestamp>_add_pricing_snapshot_to_student_class.php`
+2. `backend/app/Models/StudentClass.php`
+3. `backend/app/Services/TransactionDiscountCalculator.php`
+4. `backend/app/Http/Controllers/ClassSessionController.php`
+5. `backend/app/Services/EnrollmentService.php`
+6. `backend/app/Http/Controllers/StudentClassController.php` only if an existing active renewal/purchase response path requires the bounded authorization/read projection; never implement retired create there
+7. `frontend/src/components/UniversalClassScheduler.vue`
+8. `frontend/src/pages/StudentsList.vue`
+9. `frontend/src/components/course-management/RenewMonthlyModal.vue`
+10. `frontend/src/lib/coursePricing.js`
+11. `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
+12. `frontend/src/components/__tests__/TransactionDiscount.test.js`
+
+Release note and generated artifacts are a separate bounded writeback after product tests pass:
+
+- `docs/CHANGELOG.md`
+- `docs/STAFF_UPDATES.yml`
+- `frontend/src/lib/changelogDraft.generated.js`
+- `frontend/src/lib/staffUpdates.generated.js`
+
+If runtime evidence proves another file is necessary, stop and revise this plan and its hash before editing. No coupon, promotion, approval, commission, billing-engine, refund, invoice, migration-backfill, or global-RBAC work is authorized.
+
+## Required tests
+
+Backend feature tests must cover NONE, fixed, percentage, two-decimal percentage, HALF_UP boundary, 100%, zero normalization, malformed/binary/scientific input, negative, fixed-over-original, percentage-over-100, over-precision, missing reason, forged totals, director/admin/super_admin success, teacher 403 and hidden snapshot, multi-subject allocation sum, purchase/renewal no-inherit, monthly Charge/Invoice/InvoiceItem equality, existing invoice/payment/refund invariants, immutable historical snapshot, and no-discount regression.
+
+Frontend tests must cover default NONE, mutual exclusion, all preview fields, fixed/percentage/100%/rounding previews, reason required, renewal reset/no inheritance, teacher absence and no discount payload, and no calculated total fields submitted by the client.
+
+Run focused PHPUnit/Vitest first, then canonical lint/build/full suites through `local-heavy-gate`. CI must preserve assertions and existing allowlists.
+
+## Stop conditions
+
+Stop before implementation or merge if production MySQL cannot safely add the nullable JSON column without unacceptable rewrite/lock; if canonical create cannot stage all original charges before persistence; if any existing financial record would be rewritten; if the exact financial-role mapping cannot be proven; if refund, commission, entitlement, or payment truth would change; if snapshot can be mass-assignment modified; if required migration/deploy evidence is missing; or if production activation is requested without explicit approval.
+
+Open operational evidence: production MySQL version, `student_classes` table size, and online-DDL behavior are not available from repository evidence. This is a deployment-time blocker, not permission to guess or use a destructive migration.
+
+## Delivery boundary
+
+The agent may investigate, implement, test, open a PR, and complete CI/review within this bounded scope. `CODE WRITTEN`, `TESTS PASSED`, `PR OPENED`, `REVIEWED`, `MERGED`, `DEPLOYED`, `RUNTIME ENABLED`, and `PRODUCTION VERIFIED` must remain separate. No In-App/GitHub resolved writeback occurs until evidence covers the approved SourceRef.
