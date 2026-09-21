@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   calculateTransactionDiscountPreview,
   normalizeTransactionDiscount,
 } from '../../lib/coursePricing.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('transaction discount preview', () => {
   it('gates every canonical scheduler mount and never sends calculated totals', () => {
@@ -12,12 +15,12 @@ describe('transaction discount preview', () => {
     const students = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
     const courseManagement = readFileSync(resolve(__dirname, '../../pages/CourseManagement.vue'), 'utf8');
     const smartCalendar = readFileSync(resolve(__dirname, '../../pages/SmartCalendar.vue'), 'utf8');
-    expect(app).toContain(':can-use-transaction-discount="isDirector"');
-    expect(students).toContain('canUseTransactionDiscount: { type: Boolean, default: false }');
-    expect(students).toContain(':can-use-transaction-discount="props.canUseTransactionDiscount"');
-    expect(students).not.toContain(':can-use-transaction-discount="true"');
-    expect(courseManagement).toContain(':can-use-transaction-discount="canUseTransactionDiscount"');
-    expect(smartCalendar).toContain(':can-use-transaction-discount="canUseTransactionDiscount"');
+    expect(app).toContain(':allow-financial-discount="isDirector"');
+    expect(students).toContain('allowFinancialDiscount: { type: Boolean, default: false }');
+    expect(students).toContain(':allow-financial-discount="props.allowFinancialDiscount"');
+    expect(students).not.toContain(':allow-financial-discount="true"');
+    expect(courseManagement).toContain(':allow-financial-discount="allowFinancialDiscount"');
+    expect(smartCalendar).toContain(':allow-financial-discount="allowFinancialDiscount"');
     expect(students).not.toContain('original_amount: purchaseDiscountPreview');
     expect(courseManagement).not.toContain('original_amount:');
     expect(smartCalendar).not.toContain('final_amount:');

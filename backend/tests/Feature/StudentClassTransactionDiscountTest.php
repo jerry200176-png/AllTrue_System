@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -77,6 +78,18 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertSame(900, $snapshot['final_amount']);
     }
 
+    public function test_financial_role_matrix_accepts_admin_and_super_admin_discount_contexts(): void
+    {
+        $calculator = new TransactionDiscountCalculator();
+        foreach (['admin', 'super_admin'] as $role) {
+            $snapshot = $calculator->calculate(1000, [
+                'type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'approved',
+            ], 7, $role);
+            $this->assertSame($role, $snapshot['actor_role']);
+            $this->assertSame(900, $snapshot['final_amount']);
+        }
+    }
+
     public function test_snapshot_is_hidden_by_default_and_legacy_rows_cannot_be_initialized(): void
     {
         $course = new StudentClass();
@@ -87,6 +100,16 @@ class StudentClassTransactionDiscountTest extends TestCase
         $legacy->setRawAttributes(['ID' => 1, 'pricing_snapshot' => null]);
         $this->expectException(\LogicException::class);
         $legacy->initializePricingSnapshot(['type' => 'NONE']);
+    }
+
+    public function test_persisted_snapshot_cannot_be_mutated_after_creation(): void
+    {
+        $course = new StudentClass(['StudentID' => 1]);
+        $course->save();
+        $course->initializePricingSnapshot(['type' => 'NONE', 'final_amount' => 0]);
+        $course->pricing_snapshot = ['type' => 'FIXED_AMOUNT'];
+        $this->expectException(\LogicException::class);
+        $course->save();
     }
 
     public function test_teacher_discount_mutations_are_rejected_before_any_preview_fields_are_returned(): void
@@ -114,6 +137,77 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '1', 'reason' => 'forged'],
         ])->assertForbidden()->assertJsonMissingPath('pricing_snapshot');
+    }
+
+    public function test_teacher_direct_purchase_and_monthly_renewal_discount_mutations_are_forbidden(): void
+    {
+        [$teacher, $token] = $this->teacherToken();
+        $student = $this->student();
+        $course = $this->course($student->id, $teacher->id);
+        $discount = ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'forged'];
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/purchase-batch", [
+            'sessions' => 2, 'start_date' => '2026-10-01', 'mode' => 'new_purchase', 'discount' => $discount,
+        ])->assertForbidden();
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2026-10-31', 'discount' => $discount,
+        ])->assertForbidden();
+    }
+
+    public function test_authorized_batch_create_applies_server_discount_and_allocation(): void
+    {
+        [$director, $token] = $this->directorToken();
+        $student = $this->student();
+        $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $director->id,
+            'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 2,
+            'confirmed_dates' => [], 'future_dates' => [],
+            'session_plan' => [['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math']],
+            'days_of_week' => [4], 'start_time' => '16:00', 'duration_minutes' => 120,
+            'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2026-10-01',
+            'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'],
+        ]);
+        $response->assertCreated();
+        $courses = StudentClass::where('StudentID', $student->id)->get();
+        $this->assertNotEmpty($courses);
+        $this->assertSame(800, (int) $courses->sum('Charge'));
+        $this->assertSame(800, (int) $courses->first()->pricing_snapshot['final_amount']);
+    }
+
+    public function test_authorized_renewal_preview_normalizes_discount_without_writing_source(): void
+    {
+        [$director, $token] = $this->directorToken();
+        $student = $this->student();
+        $course = $this->course($student->id, $director->id);
+        $before = $course->getRawOriginal();
+        $response = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", [
+            'mode' => 'purchase_batch', 'sessions' => 2, 'start_date' => '2026-10-01',
+            'discount' => ['type' => 'PERCENTAGE', 'value' => '12.50', 'reason' => 'approved'],
+        ]);
+        $response->assertOk()->assertJsonPath('billing.discount.type', 'PERCENTAGE')
+            ->assertJsonPath('billing.discount.value', '12.5');
+        $this->assertSame($before, $course->fresh()->getRawOriginal());
+        $this->assertNotEmpty($response->json('state_hash'));
+    }
+
+    public function test_authorized_renewal_confirm_recalculates_and_forwards_discount(): void
+    {
+        [$director, $token] = $this->directorToken();
+        $student = $this->student();
+        $course = $this->course($student->id, $director->id);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $discount = ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'];
+        $preview = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", [
+            'mode' => 'purchase_batch', 'sessions' => 4, 'start_date' => '2026-10-01', 'discount' => $discount,
+        ])->assertOk()->json();
+        $response = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $preview['preview_id'], 'state_hash' => $preview['state_hash'],
+            'mode' => 'purchase_batch', 'payload' => ['sessions' => 4, 'start_date' => '2026-10-01', 'discount' => $discount],
+        ]);
+        $response->assertCreated();
+        $new = StudentClass::findOrFail($response->json('new_course.id'));
+        $this->assertSame(1800, (int) $new->Charge);
+        $this->assertSame('FIXED_AMOUNT', $new->pricing_snapshot['type']);
     }
 
     public function test_teacher_preview_and_confirm_errors_never_serialize_discount_data(): void
@@ -206,7 +300,26 @@ class StudentClassTransactionDiscountTest extends TestCase
         $invoice = Invoice::where('StudentClassID', $newId)->latest('id')->first();
         $this->assertNotNull($invoice);
         $this->assertSame((int) $new->Charge, (int) $invoice->TotalAmount);
+        $this->assertSame((int) $new->Charge, (int) InvoiceItem::where('InvoiceID', $invoice->id)->sum('Amount'));
         $this->assertSame(4000, (int) $new->Charge);
+        $this->assertNull($new->Disconunt);
+    }
+
+    public function test_convert_trial_does_not_inherit_snapshot_or_legacy_discount(): void
+    {
+        [$director, $token] = $this->directorToken();
+        $student = $this->student();
+        $trial = $this->course($student->id, $director->id);
+        $trial->ClassType = 'trial';
+        $trial->Disconunt = 999;
+        $trial->save();
+        $trial->initializePricingSnapshot(['type' => 'FIXED_AMOUNT', 'value' => '999', 'final_amount' => 1]);
+        $response = $this->withToken($token)->postJson("/api/v1/student-classes/{$trial->ID}/convert-trial", [
+            'sessions' => 2, 'start_date' => '2026-10-01', 'class_type' => 'one_on_one',
+        ]);
+        $response->assertCreated();
+        $new = StudentClass::findOrFail($response->json('new_course.id'));
+        $this->assertSame('NONE', $new->pricing_snapshot['type']);
         $this->assertNull($new->Disconunt);
     }
 

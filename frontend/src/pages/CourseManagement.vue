@@ -844,7 +844,7 @@
       :initial-teacher-id="schedulerInitialTeacherId"
       :allow-package-mode="true"
       mode="backfill"
-      :can-use-transaction-discount="canUseTransactionDiscount"
+      :allow-financial-discount="allowFinancialDiscount"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
       @duplicate-course="handleSchedulerDuplicateCM"
@@ -1661,7 +1661,7 @@ const props = defineProps({
   initialCourseId: [String, Number],
   initialStudentName: { type: String, default: '' },
 });
-const canUseTransactionDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
+const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 const goToTuitionBilling = (course) => {

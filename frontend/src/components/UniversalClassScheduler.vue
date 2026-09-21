@@ -777,7 +777,7 @@
               </div>
               <div class="fee-estimate-note">預估金額，實際以建立後課程為準</div>
             </div>
-            <div v-if="canUseTransactionDiscount && !isTutoring" class="transaction-discount-panel" data-testid="transaction-discount-panel">
+            <div v-if="allowFinancialDiscount && !isTutoring" class="transaction-discount-panel" data-testid="transaction-discount-panel">
               <label>交易折扣</label>
               <select v-model="form.discount.type">
                 <option value="NONE">無折扣</option>
@@ -945,7 +945,7 @@ const props = defineProps({
   /** Legacy package creation is hidden from daily course creation unless explicitly enabled. */
   allowPackageMode: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
-  canUseTransactionDiscount: { type: Boolean, default: false },
+  allowFinancialDiscount: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['success', 'cancel', 'duplicate-course']);
@@ -2595,7 +2595,7 @@ async function submit() {
       mode: props.mode,
       ...(hasMultiTeacher ? { allow_multi_teacher: true } : {}),
       ...((useMonthlyRecurringPath || (form.payment_type === 'monthly' && form.end_date)) ? { end_date: form.end_date } : {}),
-      ...(props.canUseTransactionDiscount ? { discount: { ...form.discount } } : {}),
+      ...(props.allowFinancialDiscount ? { discount: { ...form.discount } } : {}),
     };
 
     if (form.payment_type === 'session') {
