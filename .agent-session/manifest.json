@@ -14,8 +14,8 @@
   "agent_cli": "codex",
   "gateway_version": "0.5.1",
   "planner_model": "gpt-5.6-sol",
-  "plan_revision": "P2.2",
+  "plan_revision": "P2.3",
   "plan_file": "docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md",
-  "plan_sha256": "d7fb5a5aeb80cdb11aba1a48e85ad1c2d6cd219ef3a93cb54faff4fda76c3541",
-  "scope_fingerprint": "P2.2-3d86f37-322-transaction-discount-linked-A12-B11"
+  "plan_sha256": "65c600821b898ab2aa270ce5e4c2d5d2920910948e0d93ced07d50f10c77c492",
+  "scope_fingerprint": "P2.3-3d86f37-322-transaction-discount-linked-A12-B10"
 }
