@@ -187,7 +187,7 @@ class StudentClassTransactionDiscountTest extends TestCase
     {
         [$director, $token] = $this->directorToken();
         [$teacher] = $this->teacherToken();
-        $this->grantTeacherSubjects($teacher, ['Math', 'English']);
+        $this->grantTeacherSubjects($teacher->id, ['Math', 'English']);
         $student = $this->student();
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
@@ -220,7 +220,7 @@ class StudentClassTransactionDiscountTest extends TestCase
     {
         [, $token] = $this->superAdminToken();
         [$teacher] = $this->teacherToken();
-        $this->grantTeacherSubjects($teacher, ['Math']);
+        $this->grantTeacherSubjects($teacher->id, ['Math']);
         $student = $this->student();
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
@@ -271,7 +271,7 @@ class StudentClassTransactionDiscountTest extends TestCase
                 'discount' => $discount,
             ],
         ]);
-        $response->assertCreated('Renewal confirm response: ' . $response->getContent());
+        $this->assertSame(201, $response->status(), 'Renewal confirm response: ' . $response->getContent());
         $new = StudentClass::findOrFail($response->json('new_course.id'));
         $this->assertSame(1800, (int) $new->Charge);
         $this->assertSame('FIXED_AMOUNT', $new->pricing_snapshot['type']);
