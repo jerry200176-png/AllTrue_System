@@ -4,7 +4,7 @@
 
 - SourceRef: `alltrue:bug_report:322`
 - GitHub issue: #3072
-- Plan revision: P2.2
+- Plan revision: P2.3
 - Revision reason: P1 did not bind the finance gate at every canonical
   `UniversalClassScheduler` mount. P2 adds explicit fail-closed propagation for
   Student Management, Course Management, and Smart Calendar, including the
@@ -12,11 +12,13 @@
   P2.1 binds the approved 15-file product/test boundary to linked deliveries.
   P2.2 changes only that grouping after FIT-10 proved the new backend service's
   `scripts/arch-contexts.json` mapping must land with A: the mapping moves to A
-  and `StudentsList.vue` moves to B, yielding exact linked A12/B11 deliveries.
+  and `StudentsList.vue` moves to B. P2.3 additionally keeps release-note source
+  and generated artifacts atomic in A so release sync passes; the two remaining
+  frontend implementation files move to B, yielding exact linked A12/B10 diffs.
 - Planner: Sol (`gpt-5.6-sol`)
 - Evidence baseline: `3d86f37a87576fc9051b1b2d7c77f176cefad36d`
-- Scope fingerprint: `P2.2-3d86f37-322-transaction-discount-linked-A12-B11`
-- Status: P2.2 plan revision only; revising this document does not authorize
+- Scope fingerprint: `P2.3-3d86f37-322-transaction-discount-linked-A12-B10`
+- Status: P2.3 plan revision only; revising this document does not authorize
   production activation or historical financial mutation
 
 ## Evidence and canonical paths
@@ -117,7 +119,7 @@ or global-RBAC work is authorized.
 
 ### Governance budget choice
 
-The repository default is 12 changed files, so P2.2 does **not** silently raise
+The repository default is 12 changed files, so P2.3 does **not** silently raise
 the manifest budget. Use these exact linked deliveries:
 
 **Delivery A — exactly 12 files**
@@ -129,37 +131,35 @@ the manifest budget. Use these exact linked deliveries:
 5. `backend/app/Services/EnrollmentService.php`
 6. `backend/app/Http/Controllers/StudentClassController.php`
 7. `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
-8. `frontend/src/components/UniversalClassScheduler.vue`
-9. `frontend/src/lib/coursePricing.js`
-10. `docs/CHANGELOG.md`
-11. `docs/STAFF_UPDATES.yml`
+8. `docs/CHANGELOG.md`
+9. `docs/STAFF_UPDATES.yml`
+10. `frontend/src/lib/changelogDraft.generated.js`
+11. `frontend/src/lib/staffUpdates.generated.js`
 12. `scripts/arch-contexts.json`
 
 Delivery A is integration-only. It must not deploy, trigger Phase-C writeback,
-or claim shipped status; its UI is incomplete until B supplies every mount-level
-finance gate and the generated release artifacts.
+or claim shipped status. Release-note sources and generated artifacts land
+together solely to satisfy the repository sync invariant; user-facing product
+delivery remains incomplete until B supplies the entire UI and mount-level gate.
 
-**Delivery B — exact 11-path integration set, based on the recorded exact A head**
+**Delivery B — exactly 10 changed paths relative to the recorded exact A head**
 
-B changes ten paths relative to A and must additionally consume, without
-re-editing, A's `scripts/arch-contexts.json`; together those are the required
-11-path integration set:
-
-1. `frontend/src/pages/StudentsList.vue`
-2. `frontend/src/components/course-management/RenewMonthlyModal.vue`
-3. `frontend/src/components/__tests__/TransactionDiscount.test.js`
-4. `frontend/src/App.vue`
-5. `frontend/src/pages/CourseManagement.vue`
-6. `frontend/src/pages/SmartCalendar.vue`
-7. `frontend/src/lib/changelogDraft.generated.js`
-8. `frontend/src/lib/staffUpdates.generated.js`
+1. `frontend/src/components/UniversalClassScheduler.vue`
+2. `frontend/src/lib/coursePricing.js`
+3. `frontend/src/pages/StudentsList.vue`
+4. `frontend/src/components/course-management/RenewMonthlyModal.vue`
+5. `frontend/src/components/__tests__/TransactionDiscount.test.js`
+6. `frontend/src/App.vue`
+7. `frontend/src/pages/CourseManagement.vue`
+8. `frontend/src/pages/SmartCalendar.vue`
 9. `docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md`
 10. `.agent-session/manifest.json`
-11. `scripts/arch-contexts.json` is not changed again in B; B records and tests
-    against the exact mapping delivered by A. This counted path entry is the
-    inherited A dependency, not a second edit.
 
-Do not pad B to 12. In particular, P2.2 does not authorize
+B consumes without re-editing A's backend contract, generated release artifacts,
+and `scripts/arch-contexts.json` mapping. The relative diff is therefore exactly
+10 paths; inherited A paths are dependencies, not additional B changes.
+
+Do not pad B to 12. In particular, P2.3 does not authorize
 `.github/workflows/bug-phase-c-allowlist.yml` or
 `operations/closeout/bug-phase-c-allowlist.request.md`. Phase-C allowlisting and
 writeback require deployed/runtime-verified evidence and a separate bounded
@@ -169,7 +169,7 @@ The integration owner records both exact heads. Neither delivery may claim
 production readiness alone. B must consume the exact A head, and release review
 waits for cross-delivery exact-head CI plus the full endpoint/UI matrix below.
 If the operator instead wants one implementation delivery, stop and obtain an
-explicit manifest budget of at least 15 product/test files before editing; P2.2
+explicit manifest budget of at least 15 product/test files before editing; P2.3
 does not grant it.
 
 ## Required tests
