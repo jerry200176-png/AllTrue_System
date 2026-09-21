@@ -1021,7 +1021,7 @@ class EnrollmentService
                 SessionDeductionService::syncCounters($studentClass);
             }
 
-            $originalAmounts = array_map(static fn (StudentClass $course): int => max(0, (int) $course->Charge), $createdStudentClasses);
+            $originalAmounts = array_map(static fn (StudentClass $course): int => max(0, (int) $course->getAttribute('Charge')), $createdStudentClasses);
             $calculator = app(TransactionDiscountCalculator::class);
             $actor = $request->attributes->get('auth_user');
             $discountSnapshot = $calculator->calculate(

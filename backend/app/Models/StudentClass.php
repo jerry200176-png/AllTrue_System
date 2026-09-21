@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
  *           fixed-session courses; never falls back to a company-wide default.
  * @property string $deduction_basis One of DeductionBasis::all(); always reads as
  *           `fixed_session` when the column is null (see the accessor below).
- * @property int|null $Charge Original/final transaction charge in integer TWD.
  * @property array<string, mixed>|null $pricing_snapshot Immutable transaction pricing snapshot.
  * @property \App\Models\Student|null $student
  * @property \App\Models\CoursePackage|null $coursePackage
