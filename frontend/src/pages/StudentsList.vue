@@ -3237,7 +3237,11 @@ const submitAddSessions = async () => {
           ? (course.payment_type === 'monthly' ? { end_date: submittedEnd } : {})
           : {
             mode: 'new_purchase',
-            ...(purchaseDiscount.type !== 'NONE' ? { discount: { ...purchaseDiscount } } : {}),
+            ...(typeof purchaseDiscount !== 'undefined'
+              && purchaseDiscount?.type
+              && purchaseDiscount.type !== 'NONE'
+              ? { discount: { ...purchaseDiscount } }
+              : {}),
           })
       })
     });
