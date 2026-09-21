@@ -12,6 +12,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Payment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -186,11 +187,12 @@ class StudentClassTransactionDiscountTest extends TestCase
     {
         [$director, $token] = $this->directorToken();
         [$teacher] = $this->teacherToken();
+        $this->grantTeacherSubjects($teacher, ['Math', 'English']);
         $student = $this->student();
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
             'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 2,
-            'confirmed_dates' => [], 'future_dates' => [],
+            'confirmed_dates' => [], 'future_dates' => ['2026-10-01'],
             'session_plan' => [
                 ['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math'],
                 ['session_date' => '2026-10-01', 'start_time' => '17:00', 'kind' => 'future', 'subject' => 'English'],
@@ -204,7 +206,7 @@ class StudentClassTransactionDiscountTest extends TestCase
             'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2026-10-01',
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'],
         ]);
-        $response->assertCreated();
+        $response->assertCreated('Batch endpoint response: ' . $response->getContent());
         $courses = StudentClass::where('StudentID', $student->id)->get();
         $this->assertCount(2, $courses);
         $this->assertSame(800, (int) $courses->sum('Charge'));
@@ -218,17 +220,18 @@ class StudentClassTransactionDiscountTest extends TestCase
     {
         [, $token] = $this->superAdminToken();
         [$teacher] = $this->teacherToken();
+        $this->grantTeacherSubjects($teacher, ['Math']);
         $student = $this->student();
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
             'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 1,
-            'confirmed_dates' => [], 'future_dates' => [],
+            'confirmed_dates' => [], 'future_dates' => ['2026-10-01'],
             'session_plan' => [['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math']],
             'days_of_week' => [4], 'start_time' => '16:00', 'duration_minutes' => 120,
             'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2026-10-01',
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'approved'],
         ]);
-        $response->assertCreated();
+        $response->assertCreated('Batch endpoint response: ' . $response->getContent());
         $new = StudentClass::findOrFail($response->json('student_class_ids.0'));
         $this->assertSame(400, (int) $new->pricing_snapshot['final_amount']);
     }
@@ -268,7 +271,7 @@ class StudentClassTransactionDiscountTest extends TestCase
                 'discount' => $discount,
             ],
         ]);
-        $response->assertCreated();
+        $response->assertCreated('Renewal confirm response: ' . $response->getContent());
         $new = StudentClass::findOrFail($response->json('new_course.id'));
         $this->assertSame(1800, (int) $new->Charge);
         $this->assertSame('FIXED_AMOUNT', $new->pricing_snapshot['type']);
@@ -471,5 +474,22 @@ class StudentClassTransactionDiscountTest extends TestCase
             'Paid' => 0, 'Stop' => 0, 'StartDate' => '2026-09-01', 'Period' => 4,
             'by1' => $teacherId, 'MDate' => now(),
         ]);
+    }
+
+    private function grantTeacherSubjects(int $teacherId, array $names): void
+    {
+        foreach ($names as $name) {
+            $subjectId = (int) DB::table('Subject')->where('Subject_Name', $name)->value('id');
+            if ($subjectId <= 0 || !DB::getSchemaBuilder()->hasTable('teacher_subject_levels')) {
+                continue;
+            }
+            DB::table('teacher_subject_levels')->insertOrIgnore([
+                'teacher_id' => $teacherId,
+                'subject_id' => $subjectId,
+                'level' => 'junior',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 }
