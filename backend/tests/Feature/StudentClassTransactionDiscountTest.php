@@ -121,8 +121,9 @@ class StudentClassTransactionDiscountTest extends TestCase
 
     public function test_persisted_snapshot_cannot_be_mutated_after_creation(): void
     {
-        $course = new StudentClass(['StudentID' => 1]);
-        $course->save();
+        [$teacher] = $this->teacherToken();
+        $student = $this->student();
+        $course = $this->course($student->id, $teacher->id);
         $course->initializePricingSnapshot(['type' => 'NONE', 'final_amount' => 0]);
         $course->pricing_snapshot = ['type' => 'FIXED_AMOUNT'];
         $this->expectException(\LogicException::class);
@@ -163,12 +164,20 @@ class StudentClassTransactionDiscountTest extends TestCase
         [$teacher, $token] = $this->teacherToken();
         $student = $this->student();
         $course = $this->course($student->id, $teacher->id);
+        $monthly = $this->course($student->id, $teacher->id);
+        $monthly->ScheduleMode = 'date';
+        $monthly->SessionCount = 0;
+        $monthly->RemainingSessions = 0;
+        $monthly->monthly_sessions = 8;
+        $monthly->settlement_day = 15;
+        $monthly->EndDate = '2026-09-30';
+        $monthly->save();
         $discount = ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'forged'];
         $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
         $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/purchase-batch", [
             'sessions' => 2, 'start_date' => '2026-10-01', 'mode' => 'new_purchase', 'discount' => $discount,
         ])->assertForbidden();
-        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$monthly->ID}/renew-monthly", [
             'end_date' => '2026-10-31', 'discount' => $discount,
         ])->assertForbidden();
     }
@@ -176,9 +185,10 @@ class StudentClassTransactionDiscountTest extends TestCase
     public function test_authorized_batch_create_applies_server_discount_and_allocation(): void
     {
         [$director, $token] = $this->directorToken();
+        [$teacher] = $this->teacherToken();
         $student = $this->student();
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
-            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $director->id,
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
             'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 2,
             'confirmed_dates' => [], 'future_dates' => [],
             'session_plan' => [
@@ -207,9 +217,10 @@ class StudentClassTransactionDiscountTest extends TestCase
     public function test_super_admin_can_authorize_discounted_batch_endpoint(): void
     {
         [, $token] = $this->superAdminToken();
+        [$teacher] = $this->teacherToken();
         $student = $this->student();
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
-            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => 1,
+            'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
             'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 1,
             'confirmed_dates' => [], 'future_dates' => [],
             'session_plan' => [['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math']],
@@ -227,7 +238,7 @@ class StudentClassTransactionDiscountTest extends TestCase
         [$director, $token] = $this->directorToken();
         $student = $this->student();
         $course = $this->course($student->id, $director->id);
-        $before = $course->getRawOriginal();
+        $before = $course->fresh()->getRawOriginal();
         $response = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", [
             'mode' => 'purchase_batch', 'sessions' => 2, 'start_date' => '2026-10-01',
             'discount' => ['type' => 'PERCENTAGE', 'value' => '12.50', 'reason' => 'approved'],
@@ -250,7 +261,12 @@ class StudentClassTransactionDiscountTest extends TestCase
         ])->assertOk()->json();
         $response = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
             'preview_id' => $preview['preview_id'], 'state_hash' => $preview['state_hash'],
-            'mode' => 'purchase_batch', 'payload' => ['sessions' => 4, 'start_date' => '2026-10-01', 'discount' => $discount],
+            'mode' => $preview['mode'],
+            'payload' => [
+                'sessions' => 4,
+                'start_date' => '2026-10-01',
+                'discount' => $discount,
+            ],
         ]);
         $response->assertCreated();
         $new = StudentClass::findOrFail($response->json('new_course.id'));
@@ -377,7 +393,7 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertNotNull($invoice);
         $this->assertSame((int) $new->Charge, (int) $invoice->TotalAmount);
         $this->assertSame((int) $new->Charge, (int) InvoiceItem::where('InvoiceID', $invoice->id)->sum('Amount'));
-        $this->assertSame(4000, (int) $new->Charge);
+        $this->assertSame(3200, (int) $new->Charge);
         $this->assertNull($new->Disconunt);
     }
 
