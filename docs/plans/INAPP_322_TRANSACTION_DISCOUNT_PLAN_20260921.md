@@ -4,15 +4,17 @@
 
 - SourceRef: `alltrue:bug_report:322`
 - GitHub issue: #3072
-- Plan revision: P2
+- Plan revision: P2.1
 - Revision reason: P1 did not bind the finance gate at every canonical
   `UniversalClassScheduler` mount. P2 adds explicit fail-closed propagation for
   Student Management, Course Management, and Smart Calendar, including the
   teacher-accessible calendar path, and makes direct endpoint coverage explicit.
+  P2.1 changes only delivery grouping: it binds the approved 15-file product/test
+  boundary to exact linked A12/B10 deliveries under the repository's 12-file cap.
 - Planner: Sol (`gpt-5.6-sol`)
 - Evidence baseline: `3d86f37a87576fc9051b1b2d7c77f176cefad36d`
-- Scope fingerprint: `P2-3d86f37-322-transaction-discount-all-create-entrypoints`
-- Status: P2 plan revision only; revising this document does not authorize
+- Scope fingerprint: `P2.1-3d86f37-322-transaction-discount-linked-A12-B10`
+- Status: P2.1 plan revision only; revising this document does not authorize
   production activation or historical financial mutation
 
 ## Evidence and canonical paths
@@ -98,7 +100,8 @@ The Plan and session manifest are governance artifacts, not product/test files:
 - `docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md`
 - `.agent-session/manifest.json`
 
-Release note and generated artifacts are a separate bounded writeback after product tests pass:
+Release-note source and generated artifacts remain supporting delivery files;
+their exact A/B placement is fixed below:
 
 - `docs/CHANGELOG.md`
 - `docs/STAFF_UPDATES.yml`
@@ -112,20 +115,53 @@ or global-RBAC work is authorized.
 
 ### Governance budget choice
 
-The repository default is 12 changed files, so P2 does **not** silently raise a
-manifest budget. Deliver the 15-file boundary as two linked governed deliveries,
-each independently within the 12-file cap and both bound to this exact P2:
+The repository default is 12 changed files, so P2.1 does **not** silently raise
+the manifest budget. Use these exact linked deliveries:
 
-1. **Backend contract delivery:** files 1–6 and 11. It establishes schema,
-   calculation, endpoint authorization, persistence, and backend regressions.
-2. **Finance-gated UI delivery:** files 7–10 and 12–15. It consumes the landed
-   backend contract and covers every scheduler mount plus Student renewal UI.
+**Delivery A — exactly 12 files**
 
-The integration owner must record both exact heads. Neither delivery may claim
-production readiness alone; merge/deploy/writeback waits for cross-delivery
-exact-head CI and the full endpoint + UI matrix below. If the operator instead
-wants one implementation delivery, stop and obtain an explicit manifest budget
-of at least 15 product/test files before editing; this P2 does not grant it.
+1. `backend/database/migrations/2026_09_21_000000_add_pricing_snapshot_to_student_class.php`
+2. `backend/app/Models/StudentClass.php`
+3. `backend/app/Services/TransactionDiscountCalculator.php`
+4. `backend/app/Http/Controllers/ClassSessionController.php`
+5. `backend/app/Services/EnrollmentService.php`
+6. `backend/app/Http/Controllers/StudentClassController.php`
+7. `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
+8. `frontend/src/components/UniversalClassScheduler.vue`
+9. `frontend/src/lib/coursePricing.js`
+10. `frontend/src/pages/StudentsList.vue`
+11. `docs/CHANGELOG.md`
+12. `docs/STAFF_UPDATES.yml`
+
+Delivery A is integration-only. It must not deploy, trigger Phase-C writeback,
+or claim shipped status; its UI is incomplete until B supplies every mount-level
+finance gate and the generated release artifacts.
+
+**Delivery B — exactly 10 files, based on the recorded exact A head**
+
+1. `frontend/src/components/course-management/RenewMonthlyModal.vue`
+2. `frontend/src/components/__tests__/TransactionDiscount.test.js`
+3. `frontend/src/App.vue`
+4. `frontend/src/pages/CourseManagement.vue`
+5. `frontend/src/pages/SmartCalendar.vue`
+6. `frontend/src/lib/changelogDraft.generated.js`
+7. `frontend/src/lib/staffUpdates.generated.js`
+8. `docs/plans/INAPP_322_TRANSACTION_DISCOUNT_PLAN_20260921.md`
+9. `.agent-session/manifest.json`
+10. `scripts/arch-contexts.json`
+
+Do not pad B to 12. In particular, P2.1 does not authorize
+`.github/workflows/bug-phase-c-allowlist.yml` or
+`operations/closeout/bug-phase-c-allowlist.request.md`. Phase-C allowlisting and
+writeback require deployed/runtime-verified evidence and a separate bounded
+release action.
+
+The integration owner records both exact heads. Neither delivery may claim
+production readiness alone. B must consume the exact A head, and release review
+waits for cross-delivery exact-head CI plus the full endpoint/UI matrix below.
+If the operator instead wants one implementation delivery, stop and obtain an
+explicit manifest budget of at least 15 product/test files before editing; P2.1
+does not grant it.
 
 ## Required tests
 
