@@ -1,3 +1,7 @@
+## 2026-09-21 — fix(tuition): show invoice payable, not course charge
+<!-- release-notes: staff_update=staff-2026-09-21-billing-payable-canonical -->
+- 帳務中心、繳費回報與課程管理的「應繳」改以相關期間的有效帳單／結算金額為準；尚未開單的課程顯示待開單，課程金額只保留為明確估算，不改寫歷史 Invoice、Payment 或 PaymentReport。
+
 ## 2026-09-21 — fix(navigation): clarify Course/Student Management ownership (in-app #332 / #337)
 <!-- release-notes: staff_update=staff-2026-09-21-course-student-navigation-332-337 -->
 - 課程管理專注查找、排課與營運；建立、續報、購買及學生資料操作明確導向學生管理，並保留可驗證的返回課程脈絡。

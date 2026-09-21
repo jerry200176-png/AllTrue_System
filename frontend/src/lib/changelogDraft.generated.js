@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.21",
     "date": "2026-09-21",
     "title": "2026.09.21 草稿（未發布）",
-    "summary": "Course/Student Management ownership；feedback shortcut opens the editor",
+    "summary": "invoice payable, not course charge；Course/Student Management ownership",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "invoice payable, not course charge",
           "Course/Student Management ownership",
           "feedback shortcut opens the editor",
           "sessions keep assessments pending by default"
@@ -25,6 +26,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "invoice payable, not course charge",
       "Course/Student Management ownership",
       "feedback shortcut opens the editor",
       "sessions keep assessments pending by default"
