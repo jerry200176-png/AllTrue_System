@@ -152,3 +152,37 @@ test('fails closed when a receipt loses its matching credential', async (t) => {
   assert.match(rerun.stderr, /receipt_credentials_missing/);
   assert.equal(fs.existsSync(credentialsPath), false, 'must not mint a replacement credential');
 });
+
+test('supports an explicitly scoped campus-2 identity without changing the campus-16 default', async (t) => {
+  const seen = [];
+  const { server, url } = await serverFor(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    if (req.url === '/api/v1/directors/register') {
+      seen.push(JSON.parse(body));
+      res.writeHead(201, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ pending_application_id: 9216 }));
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify([{ id: 2, name: '木柵分校' }]));
+  });
+  t.after(() => server.close());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-synthetic-campus2-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const result = await runHelper(url, dir, {
+    ALLTRUE_SYNTHETIC_CANONICAL_REF: 'alltrue-smoke-director-campus2-v1',
+    ALLTRUE_SYNTHETIC_CAMPUS_ID: '2',
+    ALLTRUE_SYNTHETIC_NAME: 'AllTrue Smoke Director C2',
+  });
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /synthetic_director=alltrue-smoke-director-campus2-v1/);
+  assert.match(result.stdout, /campus_id=2/);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].campus_id, 2);
+  assert.equal(seen[0].account, 'alltrue-smoke-director-campus2-v1');
+  const credentials = JSON.parse(fs.readFileSync(path.join(dir, 'synthetic-director-campus2.credentials.json')));
+  assert.equal(credentials.campus_id, 2);
+  assert.doesNotMatch(result.stdout, new RegExp(credentials.password.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});

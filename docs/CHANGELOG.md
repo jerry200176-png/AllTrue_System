@@ -1,3 +1,7 @@
+# 2026-09-21 — ops(acceptance): campus-scoped synthetic director credentials
+<!-- release-notes: silent_ship=silent-2026-09-21-acceptance-campus-scoped-identity -->
+- Production acceptance 可明確選用 campus 2 專用 synthetic director secret；未指定 campus 2 時維持既有 secret，禁止跨分校 fallback。註冊 helper 保留固定 canonical identity、owner-only credential receipt、冪等重用與碰撞拒絕。
+
 # 2026-09-21 — feat(students): contract date review workspace (in-app #321)
 <!-- release-notes: staff_update=staff-2026-09-21-student-contract-dates-321 -->
 - 學生管理的進行中與歷史課程現在以合約分開顯示上課日期：預覽 3 堂，可在原卡片逐筆展開完整日期、批次比較多筆合約，並保留既有付款、堂數與管理操作；學習檢測與題庫管理僅從導覽與功能搜尋隱藏，既有頁面路由與資料不刪除。

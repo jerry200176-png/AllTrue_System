@@ -71,11 +71,23 @@ jobs:
 
       - name: Prepare bounded acceptance login request (secret boundary)
         env:
-          SMOKE_DIRECTOR_LOGIN: ${{ secrets.SMOKE_DIRECTOR_USER }}
-          SMOKE_DIRECTOR_PASSWORD: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+          SMOKE_DIRECTOR_LOGIN_DEFAULT: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASSWORD_DEFAULT: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+          SMOKE_DIRECTOR_LOGIN_CAMPUS2: ${{ secrets.SMOKE_CAMPUS2_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASSWORD_CAMPUS2: ${{ secrets.SMOKE_CAMPUS2_DIRECTOR_PASS }}
+          BRANCH_ID: ${{ github.event.inputs.branch_id || '' }}
         run: |
           set -euo pipefail
           umask 077
+          if [ "$BRANCH_ID" = "2" ]; then
+            SMOKE_DIRECTOR_LOGIN="$SMOKE_DIRECTOR_LOGIN_CAMPUS2"
+            SMOKE_DIRECTOR_PASSWORD="$SMOKE_DIRECTOR_PASSWORD_CAMPUS2"
+          else
+            SMOKE_DIRECTOR_LOGIN="$SMOKE_DIRECTOR_LOGIN_DEFAULT"
+            SMOKE_DIRECTOR_PASSWORD="$SMOKE_DIRECTOR_PASSWORD_DEFAULT"
+          fi
+          unset SMOKE_DIRECTOR_LOGIN_DEFAULT SMOKE_DIRECTOR_PASSWORD_DEFAULT
+          unset SMOKE_DIRECTOR_LOGIN_CAMPUS2 SMOKE_DIRECTOR_PASSWORD_CAMPUS2
           # Keep each check before request-file creation and before any curl.
           # shellcheck source=/dev/null
           source scripts/acceptance/login-contract.sh
@@ -106,6 +118,11 @@ jobs:
           source scripts/acceptance/login-contract.sh
           grep -Fq 'secrets.SMOKE_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'secrets.SMOKE_CAMPUS2_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'secrets.SMOKE_CAMPUS2_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'if [ "$BRANCH_ID" = "2" ]' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'SMOKE_DIRECTOR_LOGIN_CAMPUS2' .github/workflows/calendar-course-acceptance.yml
+          grep -Fq 'SMOKE_DIRECTOR_PASSWORD_CAMPUS2' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
           grep -Fq "acceptance_login_http_status_allows_acceptance \"\$login_status\"" .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_login_401_diagnosis_result_valid' .github/workflows/calendar-course-acceptance.yml
