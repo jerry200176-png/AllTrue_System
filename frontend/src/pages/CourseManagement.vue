@@ -38,7 +38,7 @@
         <summary>
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
           <span class="course-context-disclosure__title">先看懂這一頁</span>
-          <span class="course-context-disclosure__hint">查找與分流；建立、續報與加購請從學生管理進入</span>
+          <span class="course-context-disclosure__hint">查找、排課與營運；建立、續報與購買請從學生管理進入</span>
           <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
         </summary>
         <div class="course-context-disclosure__body">
@@ -46,7 +46,7 @@
             <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
             <div>
               <strong>這一頁適合查找與分流</strong>
-              <span>建立、續報與加購課程仍從「學生管理」的學生主檔進入；本頁可直接編輯既有課程、設定月結日期與新增堂次。</span>
+              <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
             </div>
           </div>
 
@@ -254,7 +254,7 @@
             >帳務資料</button>
           </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
-            <button type="button" class="btn-soft student-group-add-btn" data-testid="student-group-goto-students" @click="emit('navigate', { target: 'students', studentId: group.student_id })">
+            <button type="button" class="btn-soft student-group-add-btn" data-testid="student-group-goto-students" @click="emit('navigate', { target: 'students', studentId: group.student_id, intent: 'create' })">
               <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_add</span>
               到學生管理新增課程
             </button>
@@ -1656,6 +1656,7 @@ const props = defineProps({
   branchId: [String, Number],
   initialTeacherId: [String, Number],
   initialStudentId: [String, Number],
+  initialCourseId: [String, Number],
   initialStudentName: { type: String, default: '' },
 });
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
@@ -2314,7 +2315,7 @@ function openEditabilityAction(action) {
   } else if (action === 'reconcile_usage') {
     emit('navigate', 'duplicate-review');
   } else if (action === 'new_contract') {
-    emit('navigate', { target: 'students', studentId: course.student_id ?? course.StudentID ?? null });
+    emit('navigate', buildStudentsCommercialNav(course, { intent: 'create' }));
   }
 }
 
@@ -5699,7 +5700,7 @@ watch(
   { immediate: true },
 );
 watch(
-  () => [props.initialStudentId, props.initialStudentName],
+  () => [props.initialStudentId, props.initialCourseId, props.initialStudentName],
   () => {
     const name = String(props.initialStudentName || '').trim();
     const sid = props.initialStudentId;
