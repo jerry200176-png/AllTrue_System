@@ -19,6 +19,17 @@ on:
         description: 'Inclusive date window end (YYYY-MM-DD)'
         required: false
         default: '2026-08-07'
+      scope:
+        description: 'Acceptance slice; all runs the complete bounded suite'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - calendar
+          - print
+          - tutoring
+          - feedback
   workflow_run:
     workflows: ['Deploy to Pi']
     types: [completed]
@@ -424,17 +435,28 @@ jobs:
           SMOKE_FEEDBACK_HOSTED: '1'
           SMOKE_START_DATE: ${{ github.event.inputs.start_date || '2026-08-05' }}
           SMOKE_END_DATE: ${{ github.event.inputs.end_date || '2026-08-07' }}
+          ACCEPTANCE_SCOPE: ${{ github.event.inputs.scope || 'all' }}
         run: |
           set -euo pipefail
           mkdir -p playwright-report
           test -n "${EFFECTIVE_BRANCH_ID:-}"
-          acceptance_args=(e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js e2e/tutoring-free-production.spec.js e2e/feedback-launcher-production.spec.js --project=chromium --reporter=json)
+          case "${ACCEPTANCE_SCOPE}" in
+            all)
+              acceptance_args=(e2e/calendar-course-consistency.spec.js e2e/calendar-print-production.spec.js e2e/tutoring-free-production.spec.js e2e/feedback-launcher-production.spec.js)
+              ;;
+            calendar) acceptance_args=(e2e/calendar-course-consistency.spec.js) ;;
+            print) acceptance_args=(e2e/calendar-print-production.spec.js) ;;
+            tutoring) acceptance_args=(e2e/tutoring-free-production.spec.js) ;;
+            feedback) acceptance_args=(e2e/feedback-launcher-production.spec.js) ;;
+            *) echo "unsupported acceptance scope: ${ACCEPTANCE_SCOPE}" >&2; exit 1 ;;
+          esac
+          acceptance_args+=(--project=chromium --reporter=json)
           if [ "$EFFECTIVE_BRANCH_ID" != "9" ]; then
             acceptance_args+=(--grep-invert 'contracted four-session detail explains two unarranged sessions')
           fi
           npx playwright test "${acceptance_args[@]}" > playwright-report/acceptance-results.json
           node ../.github/scripts/acceptance-report-gate.mjs --self-test
-          RESULTS_PATH="playwright-report/acceptance-results.json" EFFECTIVE_BRANCH_ID="$EFFECTIVE_BRANCH_ID" node ../.github/scripts/acceptance-report-gate.mjs
+          RESULTS_PATH="playwright-report/acceptance-results.json" EFFECTIVE_BRANCH_ID="$EFFECTIVE_BRANCH_ID" ACCEPTANCE_SCOPE="${ACCEPTANCE_SCOPE}" node ../.github/scripts/acceptance-report-gate.mjs
 
       - name: Upload acceptance report
         if: ${{ !cancelled() }}
