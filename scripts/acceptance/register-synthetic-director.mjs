@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Register (once) the bounded campus-16 synthetic director through the public
+ * Register (once) a bounded synthetic director through the public
  * director registration route.  This helper deliberately has no administrator
  * or database access.  It leaves a pending application in place for the
  * Founder to approve in AllTrue, then can be rerun to resume from its receipt.
@@ -15,10 +15,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const canonicalRef = 'alltrue-smoke-director-campus16-v1';
+const canonicalRef = process.env.ALLTRUE_SYNTHETIC_CANONICAL_REF || 'alltrue-smoke-director-campus16-v1';
 const account = canonicalRef;
-const campusId = 16;
-const name = 'AllTrue Smoke Director C16';
+const campusId = Number(process.env.ALLTRUE_SYNTHETIC_CAMPUS_ID || 16);
+const name = process.env.ALLTRUE_SYNTHETIC_NAME || `AllTrue Smoke Director C${campusId}`;
+
+if (!/^alltrue-smoke-director-campus[0-9]+-v[0-9]+$/.test(canonicalRef)
+  || !Number.isSafeInteger(campusId) || campusId < 1 || campusId > 1_000_000
+  || typeof name !== 'string' || name.length < 1 || name.length > 32) {
+  throw new Error('synthetic_identity_configuration_invalid');
+}
 
 function defaultDir() {
   return path.join(os.homedir(), '.config', 'alltrue');
@@ -26,9 +32,9 @@ function defaultDir() {
 
 const dir = process.env.ALLTRUE_SYNTHETIC_STATE_DIR || defaultDir();
 const credentialsPath = process.env.ALLTRUE_SYNTHETIC_CREDENTIALS_PATH
-  || path.join(dir, 'synthetic-director-campus16.credentials.json');
+  || path.join(dir, `synthetic-director-campus${campusId}.credentials.json`);
 const statePath = process.env.ALLTRUE_SYNTHETIC_STATE_PATH
-  || path.join(dir, 'synthetic-director-campus16.state.json');
+  || path.join(dir, `synthetic-director-campus${campusId}.state.json`);
 const baseUrl = (process.env.ALLTRUE_SYNTHETIC_BASE_URL || 'https://daan.lifenet.com.tw').replace(/\/$/, '');
 const registrationToken = process.env.ALLTRUE_DIRECTOR_REGISTRATION_TOKEN || '';
 
