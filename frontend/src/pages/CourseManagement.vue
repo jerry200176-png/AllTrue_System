@@ -1139,7 +1139,7 @@
       :form="renewMonthlyForm"
       :submitting="renewMonthlySubmitting"
       :warnings="renewMonthlyWarnings"
-      @close="!renewMonthlySubmitting && (showRenewMonthlyModal = false)"
+      @close="closeRenewMonthlyModal"
       @preview-change="refreshRenewMonthlyPreview"
       @submit="submitRenewMonthly"
     />
@@ -1523,7 +1523,11 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
 import { buildTransferableSessionOption } from '../lib/sessionTransferEligibility';
 import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';
-import { estimateMonthlyRenewalCharge, getRenewalPreviewAmount } from '../lib/coursePricing';
+import {
+  canApplyRenewalPreview,
+  estimateMonthlyRenewalCharge,
+  getRenewalPreviewAmount,
+} from '../lib/coursePricing';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -2418,6 +2422,7 @@ const renewMonthlyCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlySubmitting = ref(false);
 const renewMonthlyWarnings = ref([]);
+const renewMonthlyPreviewRequestId = ref(0);
 
 const showTransferSessionsModal = ref(false);
 const transferSessionsCourse = ref(null);
@@ -3173,6 +3178,7 @@ function openPurchaseModal(course) {
       end_date: '',
       discount: { type: 'NONE', value: '0', reason: '' },
       original_amount: estimateMonthlyRenewalCharge(course),
+      preview_end_date: '',
     };
     renewMonthlyWarnings.value = [];
     showRenewMonthlyModal.value = true;
@@ -3215,6 +3221,7 @@ async function loadRenewMonthlyPreview(course) {
 }
 
 async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') {
+  const requestId = ++renewMonthlyPreviewRequestId.value;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -3232,6 +3239,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
         endDate = d.toISOString().slice(0, 10);
       }
     }
+    renewMonthlyForm.value.preview_end_date = endDate;
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
@@ -3243,7 +3251,14 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
       body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
     });
     const json = await res.json().catch(() => ({}));
-    if (res.ok) {
+    if (res.ok && showRenewMonthlyModal.value && canApplyRenewalPreview({
+      requestId,
+      currentRequestId: renewMonthlyPreviewRequestId.value,
+      courseId: course.id,
+      currentCourseId: renewMonthlyCourse.value?.id,
+      requestedEndDate: endDate,
+      currentEndDate: renewMonthlyForm.value.preview_end_date,
+    })) {
       if (Array.isArray(json.warnings)) {
         renewMonthlyWarnings.value = json.warnings;
       }
@@ -3257,6 +3272,13 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
 
 function refreshRenewMonthlyPreview(endDate) {
   if (renewMonthlyCourse.value) loadRenewMonthlyPreviewForEndDate(renewMonthlyCourse.value, endDate);
+}
+
+function closeRenewMonthlyModal() {
+  if (renewMonthlySubmitting.value) return;
+  renewMonthlyPreviewRequestId.value += 1;
+  showRenewMonthlyModal.value = false;
+  renewMonthlyCourse.value = null;
 }
 
 async function submitPurchaseSessions() {

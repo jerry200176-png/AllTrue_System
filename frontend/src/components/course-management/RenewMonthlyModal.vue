@@ -80,7 +80,7 @@ const props = defineProps({
   submitting: { type: Boolean, default: false },
   warnings: { type: Array, default: () => [] },
 });
-defineEmits(['close', 'submit']);
+defineEmits(['close', 'submit', 'preview-change']);
 
 const mode = ref('months');
 

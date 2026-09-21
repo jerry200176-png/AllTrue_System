@@ -16,8 +16,10 @@ vi.mock('../../supabase', () => ({
 }));
 import {
   calculateTransactionDiscountPreview,
+  canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
   estimatePurchaseBatchCharge,
+  getRenewalPreviewAmount,
   normalizeTransactionDiscount,
 } from '../../lib/coursePricing.js';
 import UniversalClassScheduler from '../UniversalClassScheduler.vue';
@@ -95,6 +97,42 @@ describe('transaction discount preview', () => {
     expect(estimatePurchaseBatchCharge(hourly, 2)).toBe(2000);
     expect(estimatePurchaseBatchCharge({ ...hourly, SessionDuration: 90 }, 3)).toBe(2500);
     expect(estimateMonthlyRenewalCharge(hourly)).toBe(2000);
+  });
+
+  it('uses date-specific server renewal-preview totals for different weekly periods', () => {
+    const shorterPeriod = { requested_end_date: '2032-02-28', billing: { amount_due: 1500 } };
+    const longerPeriod = { requested_end_date: '2032-03-31', billing: { amount_due: 2250 } };
+    expect(getRenewalPreviewAmount(shorterPeriod)).toBe(1500);
+    expect(getRenewalPreviewAmount(longerPeriod)).toBe(2250);
+    expect(getRenewalPreviewAmount(shorterPeriod)).not.toBe(getRenewalPreviewAmount(longerPeriod));
+  });
+
+  it('rejects an out-of-order renewal preview before it can overwrite the latest period', async () => {
+    let resolveOld;
+    let resolveNew;
+    const oldResponse = new Promise((resolve) => { resolveOld = resolve; });
+    const newResponse = new Promise((resolve) => { resolveNew = resolve; });
+    const currentRequestId = 2;
+    const applied = [];
+    const apply = async (response, requestId, endDate) => {
+      const preview = await response;
+      if (canApplyRenewalPreview({
+        requestId,
+        currentRequestId,
+        courseId: 7,
+        currentCourseId: 7,
+        requestedEndDate: endDate,
+        currentEndDate: '2032-03-31',
+      })) applied.push(getRenewalPreviewAmount(preview));
+    };
+    const old = apply(oldResponse, 1, '2032-02-28');
+    const latest = apply(newResponse, 2, '2032-03-31');
+    resolveOld({ billing: { amount_due: 1500 } });
+    await old;
+    expect(applied).toEqual([]);
+    resolveNew({ billing: { amount_due: 2250 } });
+    await latest;
+    expect(applied).toEqual([2250]);
   });
 
   it('does not create a discount payload for an invalid mode', () => {

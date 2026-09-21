@@ -164,6 +164,17 @@ export const getRenewalPreviewAmount = (preview, fallback = null) => {
   return Number.isFinite(amount) && amount >= 0 ? Math.round(amount) : fallback;
 };
 
+export const canApplyRenewalPreview = ({
+  requestId,
+  currentRequestId,
+  courseId,
+  currentCourseId,
+  requestedEndDate,
+  currentEndDate,
+}) => String(requestId) === String(currentRequestId)
+  && String(courseId) === String(currentCourseId)
+  && String(requestedEndDate || '') === String(currentEndDate || '');
+
 export const getCourseTotalFee = (course) => {
   if (!course) return 0;
   const paymentType = String(course?.payment_type || '').toLowerCase();
