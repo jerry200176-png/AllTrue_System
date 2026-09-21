@@ -512,7 +512,12 @@
                             {{ isStudentCourseDatesExpanded(student.id, hc) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, hc).overflow} 堂` }}
                           </button>
                         </div>
-                        <ol v-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list">
+                        <div v-if="isStudentCourseSessionsLoading(student.id)" class="student-course-dates__state" role="status">上課日期載入中…</div>
+                        <div v-else-if="studentCourseSessionsLoadError(student.id)" class="student-course-dates__state student-course-dates__state--error" role="alert">
+                          <span>上課日期暫時無法載入。</span>
+                          <button type="button" class="small ghost" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
+                        </div>
+                        <ol v-else-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list">
                           <li v-for="session in studentCourseSessionPreview(student.id, hc).visible" :key="studentCourseSessionRowKey(session, hc)">
                             <span class="student-course-dates__date">{{ formatStudentCourseSessionDate(session) }}</span>
                             <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status">{{ studentCourseSessionStatus(session) }}</span>

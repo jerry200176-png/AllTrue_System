@@ -472,6 +472,12 @@ async function installApiMocks(page, mode, pageName = '', authProfile = null, on
     }
 
     if (pageName === 'students' && p.includes('/class-sessions')) {
+      if (mode === 'error') {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '上課日期暫時無法載入' }) });
+      }
+      if (mode === 'sessions-empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], projected: { by_class: {} } }) });
+      }
       const materialized = [
         ...Array.from({ length: 7 }, (_, index) => ({
           id: 6100 + index,
@@ -831,6 +837,28 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
     });
   }
+
+  test('student active and history dates distinguish load failure from real empty data', async ({ page, context }) => {
+    const openStudentWorkspace = async (targetPage, mode) => {
+      await openPilot(targetPage, { pageName: 'students', mode, viewport: { width: 1440, height: 900 } });
+      await targetPage.locator('tr.student-row').first().press('Enter');
+      const workspace = targetPage.getByTestId('student-course-workspace');
+      await expect(workspace).toBeVisible();
+      await targetPage.locator('.sl-history-toggle').click();
+      await expect(targetPage.locator('.sl-history-body')).toBeVisible();
+      return targetPage;
+    };
+
+    const failedPage = await openStudentWorkspace(page, 'error');
+    await expect(failedPage.locator('.student-course-dates__state--error')).toHaveCount(3);
+    await expect(failedPage.getByText('上課日期暫時無法載入。')).toHaveCount(3);
+    await expect(failedPage.getByText('目前沒有可顯示的上課日期。')).toHaveCount(0);
+
+    const emptyPage = await context.newPage();
+    const emptyResultPage = await openStudentWorkspace(emptyPage, 'sessions-empty');
+    await expect(emptyResultPage.locator('.student-course-dates__state--error')).toHaveCount(0);
+    await expect(emptyResultPage.getByText('目前沒有可顯示的上課日期。')).toHaveCount(3);
+  });
 
   for (const vp of [
     { name: '390', width: 390, height: 844 },

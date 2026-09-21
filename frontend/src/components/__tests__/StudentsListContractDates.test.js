@@ -27,4 +27,21 @@ describe('StudentsList contract date workflow', () => {
     expect(source).toContain('studentCourseSessionPreview(student.id, hc)');
     expect(source).toContain('studentCourseSessionRowKey(session, hc)');
   });
+
+  it('keeps history date states ordered as loading, error, dates, then empty', () => {
+    const historyStart = source.indexOf('student-course-dates--history');
+    const historyEnd = source.indexOf('sl-history-card__actions', historyStart);
+    const historyDates = source.slice(historyStart, historyEnd);
+    const loading = historyDates.indexOf('isStudentCourseSessionsLoading(student.id)');
+    const error = historyDates.indexOf('studentCourseSessionsLoadError(student.id)');
+    const dates = historyDates.indexOf('studentCourseSessionPreview(student.id, hc).total > 0');
+    const empty = historyDates.indexOf('目前沒有可顯示的上課日期。');
+
+    expect(historyDates).toContain('上課日期暫時無法載入。');
+    expect(historyDates).toContain('retryLoadStudentCourseSessions(student.id)');
+    expect(loading).toBeGreaterThanOrEqual(0);
+    expect(error).toBeGreaterThan(loading);
+    expect(dates).toBeGreaterThan(error);
+    expect(empty).toBeGreaterThan(dates);
+  });
 });
