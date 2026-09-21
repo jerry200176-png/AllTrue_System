@@ -1,3 +1,7 @@
+# 2026-09-21 — feat(students): contract date review workspace (in-app #321)
+<!-- release-notes: staff_update=staff-2026-09-21-student-contract-dates-321 -->
+- 學生管理的進行中與歷史課程現在以合約分開顯示上課日期：預覽 3 堂，可在原卡片逐筆展開完整日期、批次比較多筆合約，並保留既有付款、堂數與管理操作；學習檢測與題庫管理僅從導覽與功能搜尋隱藏，既有頁面路由與資料不刪除。
+
 ## 2026-09-21 — fix(tuition): show invoice payable, not course charge
 <!-- release-notes: staff_update=staff-2026-09-21-billing-payable-canonical -->
 - 帳務中心、繳費回報與課程管理的「應繳」改以相關期間的有效帳單／結算金額為準；尚未開單的課程顯示待開單，課程金額只保留為明確估算，不改寫歷史 Invoice、Payment 或 PaymentReport。

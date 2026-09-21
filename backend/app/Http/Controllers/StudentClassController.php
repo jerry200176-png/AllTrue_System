@@ -5652,14 +5652,13 @@ class StudentClassController extends Controller
             $severity = 'warning';
         }
 
-        // The preview hash must describe the requested transaction and current
-        // source state, not a newly generated audit timestamp.  Discount
-        // snapshots intentionally carry created_at for the response/persisted
-        // record, but including that volatile value would make every confirm
-        // recomputation look stale and reject an otherwise unchanged preview.
+        // The state hash describes the requested transaction and current source
+        // state, not a newly generated audit timestamp or transaction identity.
+        // Both values are intentionally fresh on each calculation; including
+        // either would make an unchanged preview fail confirmation.
         $stateBilling = $billing;
         if (isset($stateBilling['discount']) && is_array($stateBilling['discount'])) {
-            unset($stateBilling['discount']['created_at']);
+            unset($stateBilling['discount']['created_at'], $stateBilling['discount']['transaction_id']);
         }
 
         $stateSource = [
@@ -5683,7 +5682,9 @@ class StudentClassController extends Controller
                 'start_date' => $this->normalizeDateString($data['start_date'] ?? null),
                 'end_date' => $this->normalizeDateString($data['end_date'] ?? null),
                 'months' => $data['months'] ?? null,
-                'discount' => $data['discount'] ?? null,
+                // Hash the server-normalized discount snapshot so equivalent
+                // inputs such as 12.5 and 12.50 confirm the same preview.
+                'discount' => $stateBilling['discount'] ?? null,
             ],
             'billing' => $stateBilling,
             'schedule' => $schedule,
@@ -5843,7 +5844,7 @@ class StudentClassController extends Controller
 
     private function canApplyTransactionDiscount(Request $request): bool
     {
-        return in_array((string) $request->attributes->get('auth_role'), ['director', 'admin', 'super_admin'], true);
+        return in_array((string) $request->attributes->get('auth_role'), ['director', 'super_admin'], true);
     }
 
     private function redactRenewalDiscount(array $preview, bool $financial): array
