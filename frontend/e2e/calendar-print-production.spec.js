@@ -161,7 +161,7 @@ async function assertPrintPreviewContract(page, expectedPeriod) {
   expect(controls.writes, 'acceptance must not call a write API').toEqual([]);
 }
 
-function assertSuppressedTelemetry(payloads) {
+function assertBoundedTelemetry(payloads) {
   const eventNames = new Set([
     'calendar_print_preview_opened',
     'calendar_print_failed',
@@ -176,8 +176,13 @@ function assertSuppressedTelemetry(payloads) {
   const results = new Set(['success', 'network', 'validation', 'http_4xx', 'http_5xx']);
   const rowBuckets = new Set(['0', '1-25', '26-100', '101-500', '500+']);
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  expect(payloads.length, 'calendar preview should emit bounded telemetry').toBeGreaterThan(0);
+  const workflowEvents = new Set(['workflow_calendar_started', 'workflow_calendar_completed', 'workflow_calendar_returned', 'workflow_calendar_error']);
+  const printPayloads = payloads.filter((payload) => eventNames.has(payload?.event));
   for (const payload of payloads) {
+    expect(eventNames.has(payload?.event) || workflowEvents.has(payload?.event), `unexpected adoption event: ${payload?.event}`).toBe(true);
+  }
+  expect(printPayloads.length, 'calendar preview should emit bounded telemetry').toBeGreaterThan(0);
+  for (const payload of printPayloads) {
     expect(Object.keys(payload).sort()).toEqual(['branch_id', 'event', 'meta']);
     expect(eventNames.has(payload.event)).toBe(true);
     expect(Number.isInteger(payload.branch_id)).toBe(true);
@@ -231,6 +236,6 @@ test.describe('production acceptance — calendar print preview', () => {
     const controls = await page.evaluate(() => window.__calendarPrintAcceptance);
     expect(controls.printCalls).toBe(0);
     expect(controls.writes).toEqual([]);
-    assertSuppressedTelemetry(suppressedTelemetry);
+    assertBoundedTelemetry(suppressedTelemetry);
   });
 });

@@ -3,7 +3,7 @@ import path from 'node:path';
 
 const campusNineOnlyTitle = 'contracted four-session detail explains two unarranged sessions';
 
-const expectedTests = (branchId) => {
+const expectedTests = (branchId, scope = 'all') => {
   const tests = [
     ['calendar-course-consistency.spec.js', 212, 5, 'director desktop: calendar and course management agree'],
     ['calendar-course-consistency.spec.js', 212, 5, 'director mobile: calendar and course management agree'],
@@ -22,7 +22,15 @@ const expectedTests = (branchId) => {
       ['calendar-course-consistency.spec.js', 449, 5, `director mobile: ${campusNineOnlyTitle}`],
     );
   }
-  return tests.map(([file, line, column, title]) => ({ file, line, column, title, project: 'chromium' }));
+  const selected = {
+    all: tests,
+    calendar: tests.filter(([file]) => file === 'calendar-course-consistency.spec.js'),
+    print: tests.filter(([file]) => file === 'calendar-print-production.spec.js'),
+    tutoring: tests.filter(([file]) => file === 'tutoring-free-production.spec.js'),
+    feedback: tests.filter(([file]) => file === 'feedback-launcher-production.spec.js'),
+  }[scope];
+  if (!selected) throw new Error(`unsupported acceptance scope: ${scope}`);
+  return selected.map(([file, line, column, title]) => ({ file, line, column, title, project: 'chromium' }));
 };
 
 const collectTests = (report) => {
@@ -47,9 +55,9 @@ const collectTests = (report) => {
   return collected;
 };
 
-export function validateReport(report, branchId) {
+export function validateReport(report, branchId, scope = 'all') {
   const actual = collectTests(report);
-  const expected = expectedTests(branchId);
+  const expected = expectedTests(branchId, scope);
   // Source line/column are report metadata: unrelated edits may move them without
   // changing which acceptance case ran. Keep file/title/project as the stable key.
   const key = (test) => JSON.stringify({ file: test.file, title: test.title, project: test.project });
@@ -74,9 +82,9 @@ function expectReject(label, callback) {
 }
 
 function selfTest() {
-  const makeReport = (branchId) => ({
+  const makeReport = (branchId, scope = 'all') => ({
     suites: [{
-      specs: expectedTests(branchId).map((item) => ({
+      specs: expectedTests(branchId, scope).map((item) => ({
         file: item.file,
         line: item.line,
         column: item.column,
@@ -88,6 +96,9 @@ function selfTest() {
   });
   validateReport(makeReport(16), 16);
   validateReport(makeReport(9), 9);
+  for (const scope of ['calendar', 'print', 'tutoring', 'feedback']) {
+    validateReport(makeReport(16, scope), 16, scope);
+  }
   const lineShifted = makeReport(16);
   lineShifted.suites[0].specs.forEach((spec) => { spec.line += 100; });
   validateReport(lineShifted, 16);
@@ -130,7 +141,8 @@ if (process.argv.includes('--self-test')) {
 } else {
   const reportPath = process.env.RESULTS_PATH;
   const branchId = Number(process.env.EFFECTIVE_BRANCH_ID || 0);
+  const scope = process.env.ACCEPTANCE_SCOPE || 'all';
   if (!reportPath || !branchId) throw new Error('report path and effective branch are required');
-  validateReport(JSON.parse(fs.readFileSync(reportPath, 'utf8')), branchId);
-  console.log(`acceptance-report-gate: passed branch=${branchId}`);
+  validateReport(JSON.parse(fs.readFileSync(reportPath, 'utf8')), branchId, scope);
+  console.log(`acceptance-report-gate: passed branch=${branchId} scope=${scope}`);
 }
