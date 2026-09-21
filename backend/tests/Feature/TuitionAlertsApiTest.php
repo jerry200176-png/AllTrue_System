@@ -434,6 +434,9 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(8800, $row['charge']);
         $this->assertSame(0, $row['paid_amount']);
         $this->assertSame(8800, $row['outstanding']);
+        $this->assertSame('unbilled', $row['payable_status']);
+        $this->assertNull($row['payable_amount']);
+        $this->assertSame(8800, $row['estimated_amount']);
         $this->assertNull($row['latest_payment_report_id']);
     }
 
@@ -466,6 +469,10 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(10000, $row['charge']);
         $this->assertSame(3000, $row['paid_amount']);
         $this->assertSame(7000, $row['outstanding']);
+        $this->assertSame('invoiced', $row['payable_status']);
+        $this->assertSame(10000, $row['payable_amount']);
+        $this->assertSame(7000, $row['payable_outstanding']);
+        $this->assertSame('2026-04', $row['billing_period']);
     }
 
     /**

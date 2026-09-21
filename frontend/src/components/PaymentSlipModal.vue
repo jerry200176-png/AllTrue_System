@@ -132,13 +132,15 @@ function normalizeSlipData(raw) {
     };
   }
   const modeLabel = raw.schedule_mode === 'date' ? '月結制' : '堂數制';
+  const hasCanonicalPayable = raw.payable_status === 'invoiced' && raw.payable_amount != null;
+  const displayedAmount = hasCanonicalPayable ? raw.payable_amount : (raw.estimated_amount ?? raw.charge ?? 0);
   const items = [];
   items.push({
-    description: `${raw.subject}（${modeLabel}）`,
+    description: `${raw.subject}（${modeLabel}${hasCanonicalPayable ? '' : '・估算'}）`,
     period: raw.schedule_mode === 'date' && raw.period_sessions != null
       ? `本期 ${raw.period_sessions} 堂`
       : (raw.remaining_sessions != null ? `剩餘 ${raw.remaining_sessions} 堂` : '—'),
-    amount: raw.charge ? formatAmount(raw.charge) : '—',
+    amount: displayedAmount ? formatAmount(displayedAmount) : '—',
   });
 
   let dateLabel = '';
@@ -156,8 +158,8 @@ function normalizeSlipData(raw) {
     student_name: raw.student_name,
     campus_name: raw.campus_name,
     title: '繳費通知',
-    amount_label: '應繳費用',
-    amount: raw.charge || 0,
+    amount_label: hasCanonicalPayable ? '應繳費用' : '預估金額（尚無帳單）',
+    amount: displayedAmount,
     sub_amounts: null,
     ref_label: `${raw.subject}`,
     date_label: dateLabel || `產生日期　${new Date().toLocaleDateString('zh-TW')}`,

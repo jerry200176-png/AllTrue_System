@@ -12,7 +12,10 @@
         <span class="pe-info-item"><strong>學生</strong>{{ row?.student_name }}</span>
         <span class="pe-info-item"><strong>科目</strong>{{ row?.subject }}</span>
         <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}</span>
-        <span class="pe-info-item"><strong>應繳</strong>NT$ {{ Number(row?.charge || 0).toLocaleString('zh-TW') }}</span>
+        <span v-if="row?.payable_status !== 'unbilled'" class="pe-info-item"><strong>{{ row?.payable_status === 'invoiced' ? '帳單應繳' : '應繳' }}</strong>NT$ {{ Number(row?.payable_amount ?? row?.charge ?? 0).toLocaleString('zh-TW') }}</span>
+        <span v-else class="pe-info-item pe-info-item--pending"><strong>應繳</strong>待開單／尚無帳單</span>
+        <span v-if="row?.estimated_amount != null" class="pe-info-item pe-info-item--muted"><strong>估算</strong>NT$ {{ Number(row.estimated_amount).toLocaleString('zh-TW') }}</span>
+        <span v-if="row?.billing_period" class="pe-info-item"><strong>帳務期間</strong>{{ row.billing_period }}</span>
       </div>
 
       <form @submit.prevent="submit">
@@ -119,7 +122,9 @@ watch(() => props.show, (val) => {
     form.payment_date = today.value;
     form.payment_method = 'transfer';
     form.account_last5 = '';
-    form.amount = props.row.charge || 0;
+    form.amount = props.row.payable_status === 'unbilled'
+      ? ''
+      : (props.row.payable_outstanding ?? props.row.payable_amount ?? props.row.charge ?? '');
     form.note = '';
     submitError.value = '';
   }
@@ -236,6 +241,8 @@ async function submit() {
   font-weight: 600;
   font-size: 12px;
 }
+.pe-info-item--pending { color: var(--ds-warning); }
+.pe-info-item--muted { color: var(--text-light); }
 
 .pe-field {
   margin-bottom: 14px;

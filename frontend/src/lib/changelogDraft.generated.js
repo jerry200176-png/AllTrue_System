@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.21",
     "date": "2026-09-21",
     "title": "2026.09.21 草稿（未發布）",
-    "summary": "level discounts snapshot at creation；Course/Student Management ownership",
+    "summary": "level discounts snapshot at creation；invoice payable, not course charge",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "invoice payable, not course charge",
           "Course/Student Management ownership",
           "feedback shortcut opens the editor",
           "sessions keep assessments pending by default"
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "level discounts snapshot at creation",
+      "invoice payable, not course charge",
       "Course/Student Management ownership",
       "feedback shortcut opens the editor",
       "sessions keep assessments pending by default"

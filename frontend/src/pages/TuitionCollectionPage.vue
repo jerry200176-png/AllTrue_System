@@ -287,9 +287,9 @@
                 </th>
                 <th class="tc-col-mode">模式</th>
                 <th>狀態</th>
-                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('charge')" @keydown.enter.prevent="toggleSort('charge')" @keydown.space.prevent="toggleSort('charge')">
+                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('payable_amount')" @keydown.enter.prevent="toggleSort('payable_amount')" @keydown.space.prevent="toggleSort('payable_amount')">
                   應繳
-                  <span v-if="sortKey === 'charge'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                  <span v-if="sortKey === 'payable_amount'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-currency">已繳</th>
                 <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('outstanding')" @keydown.enter.prevent="toggleSort('outstanding')" @keydown.space.prevent="toggleSort('outstanding')">
@@ -349,7 +349,10 @@
                   </span>
                 </td>
                 <td class="tc-col-currency">
-                  <div>{{ r.charge != null ? formatCurrency(r.charge) : '—' }}</div>
+                  <div v-if="r.payable_status === 'invoiced'">{{ formatCurrency(r.payable_amount) }}</div>
+                  <div v-else class="tc-payable-pending">待開單</div>
+                  <span v-if="r.payable_status !== 'invoiced' && r.estimated_amount != null" class="tc-payable-estimate">估算 {{ formatCurrency(r.estimated_amount) }}</span>
+                  <span v-if="r.billing_period" class="tc-billing-period">期間 {{ r.billing_period }}</span>
                   <span
                     v-if="r.invoice_amount_discrepancy"
                     class="tc-amount-warning"
@@ -359,8 +362,8 @@
                   </span>
                 </td>
                 <td class="tc-col-currency">{{ r.paid_amount != null ? formatCurrency(r.paid_amount) : '—' }}</td>
-                <td class="tc-col-currency" :class="{ 'tc-outstanding-warn': r.outstanding > 0 }">
-                  {{ r.outstanding != null ? formatCurrency(r.outstanding) : '—' }}
+                <td class="tc-col-currency" :class="{ 'tc-outstanding-warn': r.payable_outstanding > 0 }">
+                  {{ r.payable_status === 'invoiced' ? formatCurrency(r.payable_outstanding) : '—' }}
                 </td>
                 <td class="tc-col-date">
                   <span v-if="r.last_paid_at" class="paid-date" :title="'最後一筆付款日，非本期是否結清的依據'">{{ r.last_paid_at }}</span>
@@ -823,7 +826,7 @@
               </div>
               <div class="tc-batch-preview-row__amount">
                 <span class="status-tag" :class="statusClass(row)">{{ statusLabel(row) }}</span>
-                <strong>{{ formatCurrency(row.outstanding ?? row.charge ?? 0) }}</strong>
+                <strong>{{ formatCurrency(row.payable_outstanding ?? row.payable_amount ?? 0) }}</strong>
               </div>
             </div>
           </div>
@@ -1244,6 +1247,7 @@ function isRowSelectable(r) {
   const ps = r?.payment_status;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
   if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';
+  if (r?.payable_status !== 'invoiced') return false;
   if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';
   return ps === 'unpaid' || ps === 'partial' || ps === 'pending_reconciliation';
 }
@@ -1263,7 +1267,7 @@ const batchPreviewRows = computed(() => {
   }
   return selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
 });
-const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.outstanding ?? row.charge ?? 0), 0));
+const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.payable_outstanding ?? row.payable_amount ?? 0), 0));
 const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
 const someVisibleSelected = computed(() => selectableRows.value.some((r) => selectedIdSet.value.has(r.id)));
 
@@ -1361,7 +1365,7 @@ async function submitBatchReport() {
         note: batchForm.value.note || undefined,
         entries: rows.map((r) => ({
           student_class_id: r.id,
-          amount: Number(r.outstanding ?? r.charge ?? 0),
+          amount: Number(r.payable_outstanding ?? r.payable_amount ?? 0),
           account_last5: batchForm.value.payment_method === 'transfer' ? (batchLast5ById.value[r.id] || undefined) : undefined,
         })),
       }),
@@ -1590,13 +1594,13 @@ const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report', 'pending_re
 const totalOutstanding = computed(() => {
   return rows.value
     .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
-    .reduce((sum, r) => sum + (r.outstanding || 0), 0);
+    .reduce((sum, r) => sum + (r.payable_outstanding || 0), 0);
 });
 
 // ═══ Summary Computed ═══
 const overdueRows = computed(() => rows.value.filter(isOverdue));
-const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + (r.outstanding || 0), 0));
-const totalCharge = computed(() => rows.value.reduce((s, r) => s + (r.charge || 0), 0));
+const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + (r.payable_outstanding || 0), 0));
+const totalCharge = computed(() => rows.value.reduce((s, r) => s + (r.payable_amount || 0), 0));
 const totalPaid = computed(() => rows.value.reduce((s, r) => s + (r.paid_amount || 0), 0));
 const collectionRate = computed(() => {
   if (totalCharge.value === 0) return null;
@@ -1615,7 +1619,7 @@ const sortDir = ref('');
 const SORTABLE_COLS = [
   { key: 'student_name', label: '學生' },
   { key: 'subject', label: '科目' },
-  { key: 'charge', label: '應繳' },
+  { key: 'payable_amount', label: '應繳' },
   { key: 'outstanding', label: '未結清' },
   { key: 'due_date', label: '到期／逾期' },
   { key: 'remaining_sessions', label: '剩餘堂數' },
@@ -1669,8 +1673,10 @@ const filteredRows = computed(() => {
   list.sort((a, b) => {
     let va = a[k], vb = b[k];
     const numericKeys = ['charge', 'outstanding', 'remaining_sessions'];
-    if (va == null) va = numericKeys.includes(k) ? -Infinity : '';
-    if (vb == null) vb = numericKeys.includes(k) ? -Infinity : '';
+    const payableNumericKeys = ['payable_amount', 'payable_outstanding'];
+    const isNumericKey = numericKeys.includes(k) || payableNumericKeys.includes(k);
+    if (va == null) va = isNumericKey ? -Infinity : '';
+    if (vb == null) vb = isNumericKey ? -Infinity : '';
     if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
     // remaining_sessions may arrive as numeric strings from JSON
     if (k === 'remaining_sessions') {
@@ -1695,9 +1701,9 @@ function exportCSV() {
     r.subject || '',
     r.schedule_mode === 'date' ? '月結' : '堂數',
     statusLabel(r),
-    r.charge ?? '',
+    r.payable_status === 'invoiced' ? r.payable_amount ?? '' : '',
     r.paid_amount ?? '',
-    r.outstanding ?? '',
+    r.payable_status === 'invoiced' ? r.payable_outstanding ?? '' : '',
     r.last_paid_at || '',
     r.due_date || '',
     (r.days_until_settlement != null && r.days_until_settlement < 0) ? Math.abs(r.days_until_settlement) : '',
@@ -2983,6 +2989,9 @@ loadAlerts();
   font-weight: 600;
   white-space: nowrap;
 }
+.tc-payable-pending { color: var(--ds-warning); font-weight: 600; }
+.tc-payable-estimate,
+.tc-billing-period { display: block; margin-top: 3px; color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
 
 /* ─── Tags ─── */
 .mode-tag {
