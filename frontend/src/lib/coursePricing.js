@@ -3,34 +3,6 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
-export const normalizeTransactionDiscount = (discount = {}) => {
-  const type = ['NONE', 'FIXED_AMOUNT', 'PERCENTAGE'].includes(String(discount?.type || '').toUpperCase())
-    ? String(discount.type).toUpperCase()
-    : 'NONE';
-  const value = typeof discount?.value === 'string' ? discount.value.trim() : '0';
-  return { type, value: type === 'NONE' ? '0' : value, reason: String(discount?.reason || '').trim() };
-};
-
-export const calculateTransactionDiscountPreview = (originalAmount, discount = {}) => {
-  const original = Math.max(0, Math.round(Number(originalAmount) || 0));
-  const normalized = normalizeTransactionDiscount(discount);
-  let discountAmount = 0;
-  if (normalized.type === 'FIXED_AMOUNT' && /^\d+$/.test(normalized.value)) {
-    discountAmount = Math.min(original, Number(normalized.value));
-  } else if (normalized.type === 'PERCENTAGE' && /^(?:\d+)(?:\.\d{1,2})?$/.test(normalized.value)) {
-    const [whole, fraction = ''] = normalized.value.split('.');
-    const basisPoints = (Number(whole) * 100) + Number((fraction + '00').slice(0, 2));
-    discountAmount = Math.min(original, Math.floor((original * basisPoints + 5000) / 10000));
-  }
-  return {
-    ...normalized,
-    originalAmount: original,
-    discountAmount,
-    finalAmount: original - discountAmount,
-    requiresReason: discountAmount > 0,
-  };
-};
-
 export const calcSessionFeeFromRate = (ratePer30Min, durationHours) => {
   const rate = toNumber(ratePer30Min);
   if (rate == null) return 0;

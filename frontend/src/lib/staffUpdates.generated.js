@@ -38,6 +38,45 @@ export const staffUpdates = [
     "version": "2026.09.21"
   },
   {
+    "id": "staff-2026-09-21-transaction-discount-322",
+    "publishedAt": "2026-09-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "建立課程時可記錄一次性折扣",
+    "summary": "財務授權主任可在建立課程、加購或續報時設定折扣，系統會保存原價、折扣與實收快照。",
+    "items": [
+      "折扣只能選固定金額或百分比其中一種，非零折扣必須填寫原因，送出前會顯示原價、折扣金額與應收總額。",
+      "折扣由後端重新計算並鎖定在本次交易；日後帳單、收款、退款與續報不會因目前價格設定改寫歷史金額，教師不會取得折扣設定權限。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "折扣只能選固定金額或百分比其中一種，非零折扣必須填寫原因，送出前會顯示原價、折扣金額與應收總額。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "折扣由後端重新計算並鎖定在本次交易；日後帳單、收款、退款與續報不會因目前價格設定改寫歷史金額，教師不會取得折扣設定權限。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3072",
+      "github:in-app-322",
+      "changelog:2026-09-21:transaction-discount-322"
+    ],
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
     "id": "staff-2026-09-21-makeup-assessment-pending-330",
     "publishedAt": "2026-09-21",
     "effectiveAt": null,
