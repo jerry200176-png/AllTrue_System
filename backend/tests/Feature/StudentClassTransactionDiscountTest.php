@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Payment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -52,10 +53,26 @@ class StudentClassTransactionDiscountTest extends TestCase
     {
         return [
             [['type' => 'FIXED_AMOUNT', 'value' => '1.5', 'reason' => 'x']],
+            [['type' => 'FIXED_AMOUNT', 'value' => '-1', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '1e1', 'reason' => 'x']],
+            [['type' => 'PERCENTAGE', 'value' => '-1', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '100.001', 'reason' => 'x']],
+            [['type' => 'PERCENTAGE', 'value' => '12.345', 'reason' => 'x']],
             [['type' => 'PERCENTAGE', 'value' => '10', 'reason' => '']],
         ];
+    }
+
+    public function test_percentage_boundary_at_100_is_authoritative(): void
+    {
+        $snapshot = (new TransactionDiscountCalculator())->calculate(
+            1001,
+            ['type' => 'PERCENTAGE', 'value' => '100', 'reason' => 'full waiver'],
+            7,
+            'director'
+        );
+
+        $this->assertSame(1001, $snapshot['discount_amount']);
+        $this->assertSame(0, $snapshot['final_amount']);
     }
 
     public function test_largest_remainder_allocation_is_deterministic(): void
@@ -125,18 +142,20 @@ class StudentClassTransactionDiscountTest extends TestCase
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'forged'],
         ]);
 
-        $response->assertForbidden()
-            ->assertJsonMissingPath('billing.discount')
-            ->assertJsonMissingPath('payload.discount')
-            ->assertJsonMissingPath('pricing_snapshot');
+        $response->assertForbidden();
+        $this->assertArrayNotHasKey('discount', (array) $response->json('billing'));
+        $this->assertArrayNotHasKey('discount', (array) $response->json('payload'));
+        $this->assertArrayNotHasKey('pricing_snapshot', $response->json());
     }
 
     public function test_teacher_batch_create_discount_is_rejected_before_validation(): void
     {
         [, $token] = $this->teacherToken();
-        $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
+        $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '1', 'reason' => 'forged'],
-        ])->assertForbidden()->assertJsonMissingPath('pricing_snapshot');
+        ]);
+        $response->assertForbidden();
+        $this->assertArrayNotHasKey('pricing_snapshot', $response->json());
     }
 
     public function test_teacher_direct_purchase_and_monthly_renewal_discount_mutations_are_forbidden(): void
@@ -249,20 +268,21 @@ class StudentClassTransactionDiscountTest extends TestCase
             'mode' => 'purchase_batch', 'sessions' => 2, 'start_date' => '2026-10-01',
         ]);
 
-        $preview->assertOk()
-            ->assertJsonMissingPath('billing.discount')
-            ->assertJsonMissingPath('payload.discount')
-            ->assertJsonMissingPath('pricing_snapshot');
+        $preview->assertOk();
+        $this->assertArrayNotHasKey('discount', (array) $preview->json('billing'));
+        $this->assertArrayNotHasKey('discount', (array) $preview->json('payload'));
+        $this->assertArrayNotHasKey('pricing_snapshot', $preview->json());
 
-        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+        $confirm = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
             'preview_id' => $preview->json('preview_id'),
             'state_hash' => 'forged-state',
             'mode' => 'purchase_batch',
             'payload' => ['sessions' => 2, 'start_date' => '2026-10-01'],
-        ])->assertStatus(409)
-            ->assertJsonMissingPath('preview.billing.discount')
-            ->assertJsonMissingPath('preview.payload.discount')
-            ->assertJsonMissingPath('preview.pricing_snapshot');
+        ])->assertStatus(409);
+        $previewJson = (array) $confirm->json('preview');
+        $this->assertArrayNotHasKey('discount', (array) ($previewJson['billing'] ?? null));
+        $this->assertArrayNotHasKey('discount', (array) ($previewJson['payload'] ?? null));
+        $this->assertArrayNotHasKey('pricing_snapshot', $previewJson);
     }
 
     public function test_authorized_purchase_uses_server_price_and_does_not_inherit_legacy_discount(): void
@@ -302,6 +322,33 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertSame(2000, (int) $new->Charge);
         $this->assertSame('NONE', $new->pricing_snapshot['type']);
         $this->assertSame(2000, $new->pricing_snapshot['final_amount']);
+    }
+
+    public function test_discounted_purchase_does_not_rewrite_existing_invoice_or_payment(): void
+    {
+        [$director, $token] = $this->directorToken();
+        $student = $this->student();
+        $course = $this->course($student->id, $director->id);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 4000, 'PaidAmount' => 4000,
+            'Status' => 'paid', 'Note' => 'legacy invoice',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-09-01',
+            'Method' => 'cash', 'Note' => 'legacy payment',
+        ]);
+
+        $response = $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/purchase-batch", [
+            'sessions' => 2, 'start_date' => '2026-10-01', 'mode' => 'new_purchase',
+            'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'approved'],
+        ]);
+
+        $response->assertCreated();
+        $this->assertSame(4000, (int) $invoice->fresh()->TotalAmount);
+        $this->assertSame(4000, (int) $invoice->fresh()->PaidAmount);
+        $this->assertSame(4000, (int) $payment->fresh()->Amount);
+        $this->assertSame($invoice->id, $payment->fresh()->InvoiceID);
     }
 
     public function test_authorized_monthly_renewal_invoice_matches_discounted_course_charge(): void
