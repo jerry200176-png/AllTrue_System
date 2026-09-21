@@ -326,6 +326,8 @@ class StudentClassController extends Controller
             $class->memo = $class->Memo ?? null;
             if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
                 $class->makeHidden(['pricing_snapshot']);
+            } else {
+                $class->makeVisible(['pricing_snapshot']);
             }
 
             $reverseSubjectMap = [
@@ -1404,6 +1406,8 @@ class StudentClassController extends Controller
         $studentClass->room_name = $studentClass->room?->name;
         if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
             $studentClass->makeHidden(['pricing_snapshot']);
+        } else {
+            $studentClass->makeVisible(['pricing_snapshot']);
         }
 
         return response()->json($studentClass);
@@ -3386,9 +3390,10 @@ class StudentClassController extends Controller
             ], 422);
         }
 
-        $preview = $this->buildRenewalPreview($studentClass, $data);
+            $preview = $this->buildRenewalPreview($studentClass, $data);
+            $preview = $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request));
 
-        return response()->json($preview, $preview['severity'] === 'blocked' ? 422 : 200);
+            return response()->json($preview, $preview['severity'] === 'blocked' ? 422 : 200);
     }
 
     /**
@@ -3428,14 +3433,14 @@ class StudentClassController extends Controller
             if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
                 return response()->json([
                     'message' => '課程狀態已變更，請重新預覽後再確認。',
-                    'preview' => $preview,
+                    'preview' => $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
                 ], 409);
             }
 
             if ($preview['severity'] === 'blocked') {
                 return response()->json([
                     'message' => '此續報目前不可執行。',
-                    'preview' => $preview,
+                    'preview' => $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request)),
                 ], 422);
             }
 
@@ -3672,8 +3677,7 @@ class StudentClassController extends Controller
             ];
 
             $newCourse = $this->createStudentClassRecordResilient($newPayload);
-            $newCourse->pricing_snapshot = $discountSnapshot;
-            $newCourse->save();
+            $newCourse->initializePricingSnapshot($discountSnapshot);
             $newCourse->refresh();
 
             // Close and cancel the old period before materializing the new
@@ -4059,8 +4063,7 @@ class StudentClassController extends Controller
             ];
 
             $newCourse = $this->createStudentClassRecordResilient($newPayload);
-            $newCourse->pricing_snapshot = $discountSnapshot;
-            $newCourse->save();
+            $newCourse->initializePricingSnapshot($discountSnapshot);
 
             // ── Build ClassSession rows for the new course ──
             $slots = $this->resolveScheduleSlotsForRebuild($newCourse);
@@ -5831,6 +5834,14 @@ class StudentClassController extends Controller
     private function canApplyTransactionDiscount(Request $request): bool
     {
         return in_array((string) $request->attributes->get('auth_role'), ['director', 'admin', 'super_admin'], true);
+    }
+
+    private function redactRenewalDiscount(array $preview, bool $financial): array
+    {
+        if (!$financial) {
+            unset($preview['billing']['discount'], $preview['payload']['discount']);
+        }
+        return $preview;
     }
 
     private function currentActorId(): int

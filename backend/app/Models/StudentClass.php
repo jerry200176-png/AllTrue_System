@@ -22,6 +22,10 @@ class StudentClass extends Model
     protected $primaryKey = 'ID';
     public $timestamps = false;
 
+    protected $hidden = ['pricing_snapshot'];
+
+    private bool $allowPricingSnapshotInitialization = false;
+
     /** Course memo is TEXT; keep a hard cap so paste cannot unbounded-grow the row. */
     public const MEMO_MAX_LENGTH = 8000;
 
@@ -51,7 +55,7 @@ class StudentClass extends Model
     protected static function booted(): void
     {
         static::saving(function (StudentClass $course): void {
-            if ($course->exists && $course->getOriginal('pricing_snapshot') !== null && $course->isDirty('pricing_snapshot')) {
+            if ($course->exists && $course->isDirty('pricing_snapshot') && !$course->allowPricingSnapshotInitialization) {
                 throw new \LogicException('pricing_snapshot is immutable');
             }
         });
@@ -60,6 +64,22 @@ class StudentClass extends Model
                 ClassSession::resetSettlementLockCache();
             }
         });
+    }
+
+    /** Initialize the immutable snapshot exactly once, immediately after creation. */
+    public function initializePricingSnapshot(array $snapshot): void
+    {
+        if (!$this->exists || !$this->wasRecentlyCreated || $this->getAttribute('pricing_snapshot') !== null) {
+            throw new \LogicException('pricing_snapshot may only be initialized at creation time');
+        }
+
+        $this->pricing_snapshot = $snapshot;
+        $this->allowPricingSnapshotInitialization = true;
+        try {
+            $this->saveQuietly();
+        } finally {
+            $this->allowPricingSnapshotInitialization = false;
+        }
     }
 
     public function student()

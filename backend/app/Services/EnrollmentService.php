@@ -1032,9 +1032,8 @@ class EnrollmentService
             );
             $allocatedCharges = $calculator->allocate($originalAmounts, $discountSnapshot['final_amount']);
             foreach ($createdStudentClasses as $index => $course) {
-                $course->Charge = $allocatedCharges[$index] ?? 0;
-                $course->pricing_snapshot = $discountSnapshot;
-                $course->save();
+                $course->setAttribute('Charge', $allocatedCharges[$index] ?? 0);
+                $course->initializePricingSnapshot($discountSnapshot);
             }
 
             $createdSessions = $createdConfirmedSessions + $createdFutureSessions;

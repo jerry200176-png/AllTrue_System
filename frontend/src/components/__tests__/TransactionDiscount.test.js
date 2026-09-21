@@ -20,4 +20,15 @@ describe('transaction discount preview', () => {
   it('does not create a discount payload for an invalid mode', () => {
     expect(normalizeTransactionDiscount({ type: 'coupon', value: 10 })).toEqual({ type: 'NONE', value: '0', reason: '' });
   });
+
+  it('resets stale discount state instead of inheriting it into a new transaction', () => {
+    expect(normalizeTransactionDiscount()).toEqual({ type: 'NONE', value: '0', reason: '' });
+    expect(calculateTransactionDiscountPreview(800, { type: 'NONE', value: '0', reason: '' }))
+      .toMatchObject({ discountAmount: 0, finalAmount: 800, requiresReason: false });
+  });
+
+  it('requires a reason for a non-zero discount payload', () => {
+    expect(calculateTransactionDiscountPreview(800, { type: 'FIXED_AMOUNT', value: '100', reason: '' }))
+      .toMatchObject({ type: 'FIXED_AMOUNT', discountAmount: 100, requiresReason: true });
+  });
 });
