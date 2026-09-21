@@ -192,10 +192,10 @@ class StudentClassTransactionDiscountTest extends TestCase
         $response = $this->withToken($token)->postJson('/api/v1/class-sessions/batch', [
             'branch_id' => 1, 'student_id' => $student->id, 'teacher_id' => $teacher->id,
             'subject' => 'Math', 'class_type' => 'one_on_one', 'total_classes' => 2,
-            'confirmed_dates' => [], 'future_dates' => ['2026-10-01'],
+            'confirmed_dates' => [], 'future_dates' => ['2030-10-03'],
             'session_plan' => [
-                ['session_date' => '2026-10-01', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math'],
-                ['session_date' => '2026-10-01', 'start_time' => '17:00', 'kind' => 'future', 'subject' => 'English'],
+                ['session_date' => '2030-10-03', 'start_time' => '16:00', 'kind' => 'future', 'subject' => 'Math'],
+                ['session_date' => '2030-10-03', 'start_time' => '17:00', 'kind' => 'future', 'subject' => 'English'],
             ],
             'days_of_week' => [4],
             'day_time_slots' => [
@@ -203,7 +203,7 @@ class StudentClassTransactionDiscountTest extends TestCase
                 ['day' => 4, 'start_time' => '17:00', 'duration_minutes' => 120, 'subject' => 'English'],
             ],
             'start_time' => '16:00', 'duration_minutes' => 120,
-            'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2026-10-01',
+            'price_per_session' => 500, 'payment_type' => 'session', 'course_start_date' => '2030-10-03',
             'discount' => ['type' => 'FIXED_AMOUNT', 'value' => '200', 'reason' => 'approved'],
         ]);
         $this->assertSame(201, $response->status(), 'Batch endpoint response: ' . $response->getContent());
