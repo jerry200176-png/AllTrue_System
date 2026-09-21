@@ -56,7 +56,7 @@ jobs:
           ACTOR_ID: ${{ inputs.actor_user_id }}
         run: |
           set -euo pipefail
-          test "$(sha256sum docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json | awk '{print $1}')" = "5d5854a5b40b242c0a689072ec400794dd8fdf85cf4447b290529dbf6dc3cae4"
+          test "$(sha256sum docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json | awk '{print $1}')" = "837a0fe8b7e21bc904bef330c4cd5d3a5ac140e4de6d2627d9b3cfafd9390145"
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -65,7 +65,11 @@ jobs:
           if b.get('kind') != 'founder_student9_attendance_repair_manifest': raise SystemExit('bad manifest kind')
           if b.get('decision_reference') != 'founder-student9-attendance-20260921': raise SystemExit('bad decision reference')
           if b.get('student_id') != 9 or b.get('campus_id') != 15: raise SystemExit('bad student scope')
-          if b.get('approved_session_ids') != [28451]: raise SystemExit('bad session allowlist')
+          if b.get('approved_session_ids') != [28451, 30367]: raise SystemExit('bad session allowlist')
+          ops = b.get('approved_operations') or []
+          chinese = next((op for op in ops if op.get('student_class_id') == 316), None)
+          if not chinese or chinese.get('teacher_id') != 261 or chinese.get('rate') != 2750 or chinese.get('pricing_followup_session_id') != 30367:
+              raise SystemExit('bad Chinese pricing operation')
           print('manifest_gate_ok')
           PY
           test "$ACTOR_ID" -gt 0
@@ -107,7 +111,7 @@ jobs:
           DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
           DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
           mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" --single-transaction \
-            AllTrue ClassSession LearningRecord StudentSingIn session_deduction_ledger session_corrections schedule_audit_logs \
+            AllTrue ClassSession LearningRecord StudentSingIn session_deduction_ledger session_corrections schedule_audit_logs student_class_pricing_amendments \
             | gzip > "/home/admin/backups/emergency/db_pre_founder_student9_attendance_${TS}.sql.gz"
           test -s "/home/admin/backups/emergency/db_pre_founder_student9_attendance_${TS}.sql.gz"
           export ALLOW_PROD_REPAIR=1

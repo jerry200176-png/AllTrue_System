@@ -7,6 +7,7 @@ use App\Models\LearningRecord;
 use App\Models\ScheduleAuditLog;
 use App\Models\SessionCorrection;
 use App\Models\StudentClass;
+use App\Models\StudentClassPricingAmendment;
 use App\Models\StudentSignIn;
 use App\Services\LearningRecordBackfillService;
 use App\Services\SessionDeductionService;
@@ -44,7 +45,7 @@ class RepairFounderStudent9Attendance extends Command
             'status' => 'attended',
         ],
         'social_0728' => [
-            'kind' => 'create',
+            'kind' => 'create_social',
             'class_id' => 2812,
             'session_id' => null,
             'date' => '2026-07-28',
@@ -53,6 +54,20 @@ class RepairFounderStudent9Attendance extends Command
             'teacher_id' => 49,
             'status' => 'attended',
             'rate' => 2750,
+        ],
+        'chinese_0805' => [
+            'kind' => 'create_chinese_with_pricing',
+            'class_id' => 316,
+            'session_id' => null,
+            'date' => '2026-08-05',
+            'start' => '13:00',
+            'end' => '15:00',
+            'teacher_id' => 261,
+            'subject_id' => 64,
+            'status' => 'attended',
+            'rate' => 2750,
+            'pricing_effective_from' => '2026-08-05',
+            'pricing_followup_session_id' => 30367,
         ],
     ];
 
@@ -107,8 +122,10 @@ class RepairFounderStudent9Attendance extends Command
         foreach ($actionable as $row) {
             if ($row['target']['kind'] === 'restore') {
                 $rollback ? $this->rollbackBiology($row) : $this->restoreBiology($row);
-            } else {
+            } elseif ($row['target']['kind'] === 'create_social') {
                 $rollback ? $this->rollbackSocial($row) : $this->createSocial($row, $backfill);
+            } else {
+                $rollback ? $this->rollbackChinese($row) : $this->createChinese($row, $backfill);
             }
         }
 
@@ -133,23 +150,39 @@ class RepairFounderStudent9Attendance extends Command
             $session = $target['session_id']
                 ? $sessions->firstWhere('id', $target['session_id'])
                 : $sessions->first(fn ($candidate): bool => in_array((int) $candidate->id, $createdIds, true));
+            $pricingAmendment = $target['kind'] === 'create_chinese_with_pricing'
+                ? StudentClassPricingAmendment::query()
+                    ->where('student_class_id', $target['class_id'])
+                    ->whereDate('effective_from', $target['pricing_effective_from'])
+                    ->first()
+                : null;
+            $followupSession = $target['kind'] === 'create_chinese_with_pricing'
+                ? DB::table('ClassSession')->where('id', $target['pricing_followup_session_id'])->first()
+                : null;
             $correction = SessionCorrection::query()
                 ->where('decision_reference', self::REF)
                 ->whereNull('rolled_back_at')
-                ->whereIn('session_id', $target['kind'] === 'create'
+                ->whereIn('session_id', in_array($target['kind'], ['create_social', 'create_chinese_with_pricing'], true)
                     ? $createdIds
                     : [(int) $target['session_id']])
                 ->latest('id')
                 ->first();
 
-            $error = $correction
-                ? null
-                : $this->validateTarget($target, $studentClass, $student, $sessions, $session, $rollback);
+            $already = $rollback ? $correction === null : $correction !== null;
+            $error = $this->validateTarget($target, $studentClass, $student, $sessions, $session, $rollback);
+            if (!$rollback && $target['kind'] === 'create_chinese_with_pricing' && $correction) {
+                if (!$pricingAmendment || $pricingAmendment->voided_at !== null || !$followupSession
+                    || (int) $pricingAmendment->rate !== (int) $target['rate']
+                    || (int) ($followupSession->session_charge ?? 0) !== (int) $target['rate']) {
+                    $error = 'CHINESE_PRICING_POSTCONDITION_MISSING';
+                    $already = false;
+                }
+            }
             $out[] = [
                 'key' => $key,
                 'target' => $target,
                 'error' => $error,
-                'already' => $rollback ? $correction === null : $correction !== null,
+                'already' => $already,
                 'student' => $student ? ['id' => (int) $student->id, 'campus_id' => (int) $student->CampusID] : null,
                 'student_class' => $studentClass ? [
                     'id' => (int) $studentClass->ID,
@@ -162,6 +195,8 @@ class RepairFounderStudent9Attendance extends Command
                 'active_learning_record_ids' => $session ? LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->pluck('id')->map(fn ($id): int => (int) $id)->all() : [],
                 'active_sign_in_ids' => $session ? StudentSignIn::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->pluck('id')->map(fn ($id): int => (int) $id)->all() : [],
                 'active_correction_id' => $correction?->id,
+                'pricing_amendment' => $pricingAmendment ? (array) $pricingAmendment->getAttributes() : null,
+                'pricing_followup_session' => $followupSession ? (array) $followupSession : null,
             ];
         }
 
@@ -178,11 +213,24 @@ class RepairFounderStudent9Attendance extends Command
         if ((int) $studentClass->TeacherID !== (int) $target['teacher_id'] && $target['kind'] === 'restore') {
             return 'TEACHER_DRIFT';
         }
-        if ($target['kind'] === 'create') {
+        if (in_array($target['kind'], ['create_social', 'create_chinese_with_pricing'], true)) {
             if ($rollback) {
                 return $session ? null : 'CREATED_SESSION_MISSING';
             }
-            return $sessions->isEmpty() ? null : 'DATE_ALREADY_HAS_SESSION';
+            if (!$sessions->isEmpty()) {
+                return 'DATE_ALREADY_HAS_SESSION';
+            }
+            $teacher = DB::table('User as u')
+                ->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')
+                ->where('u.id', $target['teacher_id'])
+                ->where('u.Name', '楊墨')
+                ->where('uc.CampusID', self::CAMPUS_ID)
+                ->where('uc.Approved', 1)
+                ->first();
+            if ($target['kind'] === 'create_chinese_with_pricing' && !$teacher) {
+                return 'TEACHER_DIRECTORY_DRIFT';
+            }
+            return null;
         }
         if (!$session) {
             return 'TARGET_SESSION_MISSING';
@@ -296,6 +344,123 @@ class RepairFounderStudent9Attendance extends Command
         });
     }
 
+    private function createChinese(array $row, LearningRecordBackfillService $backfill): void
+    {
+        $target = $row['target'];
+        DB::transaction(function () use ($target, $backfill): void {
+            $sc = StudentClass::query()->whereKey($target['class_id'])->lockForUpdate()->first();
+            if (!$sc || (int) $sc->StudentID !== self::STUDENT_ID || (int) $sc->SubjectID !== $target['subject_id']) {
+                throw new \RuntimeException('CHINESE_COURSE_DRIFT');
+            }
+            $teacherExists = DB::table('User as u')
+                ->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')
+                ->where('u.id', $target['teacher_id'])
+                ->where('u.Name', '楊墨')
+                ->where('uc.CampusID', self::CAMPUS_ID)
+                ->where('uc.Approved', 1)
+                ->exists();
+            if (!$teacherExists) {
+                throw new \RuntimeException('CHINESE_TEACHER_DIRECTORY_DRIFT');
+            }
+            if (DB::table('ClassSession')->where('StudentClassID', $target['class_id'])->whereDate('SessionDate', $target['date'])->exists()) {
+                throw new \RuntimeException('CHINESE_DATE_ALREADY_HAS_SESSION');
+            }
+
+            $now = now();
+            $reason = self::REF . ' — Founder confirmed 2026-08-05 Chinese attended';
+            $amendment = StudentClassPricingAmendment::query()
+                ->where('student_class_id', $target['class_id'])
+                ->whereDate('effective_from', $target['pricing_effective_from'])
+                ->lockForUpdate()
+                ->first();
+            if ($amendment && (int) $amendment->rate !== (int) $target['rate']) {
+                throw new \RuntimeException('CHINESE_PRICING_AMENDMENT_DRIFT');
+            }
+            if (!$amendment) {
+                $amendment = StudentClassPricingAmendment::query()->create([
+                    'student_class_id' => $target['class_id'],
+                    'effective_from' => $target['pricing_effective_from'],
+                    'rate' => $target['rate'],
+                    'rate_unit' => 'session',
+                    'source_reference' => self::REF,
+                    'reason' => 'Founder confirmed 2026-08-05 and 2026-08-12 Chinese rate',
+                    'created_by_user_id' => $this->actorId(),
+                    'created_at' => $now,
+                ]);
+            } elseif ($amendment->voided_at !== null) {
+                $amendment->update([
+                    'voided_at' => null,
+                    'voided_by_user_id' => null,
+                    'void_reason' => null,
+                    'source_reference' => self::REF,
+                    'reason' => 'Founder confirmed 2026-08-05 and 2026-08-12 Chinese rate',
+                    'created_by_user_id' => $this->actorId(),
+                ]);
+            }
+
+            $followup = DB::table('ClassSession')->where('id', $target['pricing_followup_session_id'])->lockForUpdate()->first();
+            if (!$followup || (int) $followup->StudentClassID !== $target['class_id']
+                || substr((string) $followup->SessionDate, 0, 10) !== '2026-08-12'
+                || strtolower((string) $followup->Status) !== 'attended') {
+                throw new \RuntimeException('CHINESE_FOLLOWUP_SESSION_DRIFT');
+            }
+            if ($followup->session_charge !== null && (int) $followup->session_charge !== (int) $target['rate']) {
+                throw new \RuntimeException('CHINESE_FOLLOWUP_CHARGE_DRIFT');
+            }
+            if ($followup->session_charge === null) {
+                DB::table('ClassSession')->where('id', $followup->id)->update([
+                    'session_charge' => $target['rate'],
+                    'updated_at' => $now,
+                ]);
+                $this->recordAudit((int) $followup->id, (array) $followup, (array) DB::table('ClassSession')->where('id', $followup->id)->first(), $reason . ' — pricing amendment');
+            }
+
+            $session = (new ClassSession([
+                'StudentClassID' => $target['class_id'],
+                'SubjectID' => $target['subject_id'],
+                'SessionDate' => $target['date'],
+                'StartTime' => $target['start'] . ':00',
+                'EndTime' => $target['end'] . ':00',
+                'Status' => 'attended',
+                'Note' => $reason,
+                'session_charge' => (int) $target['rate'],
+            ]))->setAllowStudentOverlap(false);
+            $session->save();
+
+            $signIn = new StudentSignIn([
+                'StudentClassID' => $target['class_id'],
+                'StudentID' => self::STUDENT_ID,
+                'TeacherID' => $target['teacher_id'],
+                'RecordedByUserID' => $this->actorId(),
+                'SubjectID' => $target['subject_id'],
+                'SignInDT' => $target['date'] . ' ' . $target['start'] . ':00',
+                'ClassSessionID' => $session->id,
+                'Status' => 'present',
+                'CampusID' => self::CAMPUS_ID,
+                'SessionDeducted' => false,
+                'Memo' => $reason,
+            ]);
+            $signIn->save();
+            if (!SessionDeductionService::deductOnAttendance($sc, $signIn, $session->id)) {
+                throw new \RuntimeException('CHINESE_DEDUCTION_NOT_RECORDED');
+            }
+            $backfill->ensureRequiredForAttendanceSession($session->fresh());
+            $lr = LearningRecord::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->first();
+            if (!$lr) {
+                throw new \RuntimeException('CHINESE_LEARNING_RECORD_NOT_RECORDED');
+            }
+            $lr->update(['TeacherID' => $target['teacher_id']]);
+            SessionDeductionService::recomputeCounters((int) $target['class_id']);
+            $this->recordCorrection($session->id, 'missing', 'attended', [
+                'created_session_id' => $session->id,
+                'pricing_amendment_id' => $amendment->id,
+                'followup_session_id' => $followup->id,
+                'followup_session_charge_before' => $followup->session_charge,
+            ], $reason);
+            $this->recordAudit($session->id, [], (array) $session->fresh(), $reason);
+        });
+    }
+
     private function rollbackBiology(array $row): void
     {
         $this->rollbackSession((int) $row['target']['session_id'], (int) $row['target']['class_id'], false);
@@ -304,6 +469,37 @@ class RepairFounderStudent9Attendance extends Command
     private function rollbackSocial(array $row): void
     {
         $this->rollbackSession((int) $row['session']['id'], (int) $row['target']['class_id'], true);
+    }
+
+    private function rollbackChinese(array $row): void
+    {
+        $target = $row['target'];
+        $this->rollbackSession((int) $row['session']['id'], (int) $target['class_id'], true);
+        DB::transaction(function () use ($target): void {
+            $now = now();
+            $reason = self::REF . ' — rollback Chinese pricing amendment';
+            $amendment = StudentClassPricingAmendment::query()
+                ->where('student_class_id', $target['class_id'])
+                ->whereDate('effective_from', $target['pricing_effective_from'])
+                ->whereNull('voided_at')
+                ->lockForUpdate()
+                ->first();
+            if ($amendment) {
+                $amendment->update([
+                    'voided_at' => $now,
+                    'voided_by_user_id' => $this->actorId(),
+                    'void_reason' => $reason,
+                ]);
+            }
+            $followup = DB::table('ClassSession')->where('id', $target['pricing_followup_session_id'])->lockForUpdate()->first();
+            if ($followup && (int) ($followup->session_charge ?? 0) === (int) $target['rate']) {
+                DB::table('ClassSession')->where('id', $followup->id)->update([
+                    'session_charge' => null,
+                    'updated_at' => $now,
+                ]);
+                $this->recordAudit((int) $followup->id, (array) $followup, (array) DB::table('ClassSession')->where('id', $followup->id)->first(), $reason);
+            }
+        });
     }
 
     private function rollbackSession(int $sessionId, int $classId, bool $deleteCreated): void
@@ -389,7 +585,7 @@ class RepairFounderStudent9Attendance extends Command
             || ($manifest['decision_reference'] ?? '') !== self::REF
             || ($manifest['student_id'] ?? null) !== self::STUDENT_ID
             || ($manifest['campus_id'] ?? null) !== self::CAMPUS_ID
-            || ($manifest['approved_session_ids'] ?? null) !== [28451]) {
+            || ($manifest['approved_session_ids'] ?? null) !== [28451, 30367]) {
             $this->error('repair manifest mismatch');
             return false;
         }
