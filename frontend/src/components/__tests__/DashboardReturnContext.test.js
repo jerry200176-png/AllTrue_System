@@ -16,6 +16,18 @@ describe('dashboard return context', () => {
     expect(createDashboardReturnContext({ fromPage: 'director', target: 'profile' })).toBeNull();
   });
 
+  it('carries a verifiable course context from Course Management to Students', () => {
+    expect(createDashboardReturnContext({
+      fromPage: 'course-mgmt',
+      target: 'students',
+      studentId: 12,
+      courseId: 34,
+    })).toEqual({ page: 'course-mgmt', label: '回到課程管理', studentId: 12, courseId: 34 });
+    expect(createDashboardReturnContext({
+      fromPage: 'course-mgmt', target: 'students', studentId: 'bad', courseId: 34,
+    })).toBeNull();
+  });
+
   it('applies the next return context after page navigation clears stale state', () => {
     const frontendRoot = fs.existsSync(path.resolve(process.cwd(), 'src/App.vue'))
       ? process.cwd()
@@ -27,5 +39,9 @@ describe('dashboard return context', () => {
     expect(navigationBlock.indexOf('setActivePage(target')).toBeGreaterThan(-1);
     expect(navigationBlock.indexOf('dashboardReturnContext.value = nextDashboardReturnContext'))
       .toBeGreaterThan(navigationBlock.indexOf('setActivePage(target'));
+    expect(appSource).toContain("context?.page === 'course-mgmt'");
+    expect(appSource).toContain("target: 'course-mgmt'");
+    expect(appSource).toContain(':initial-course-id="courseMgmtFocusCourseId"');
+    expect(appSource).toContain('courseMgmtFocusCourseId.value = normalizeNavigationId(courseId)');
   });
 });

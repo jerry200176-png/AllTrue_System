@@ -35,7 +35,7 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
   it('expanded student groups route course creation to 學生管理', () => {
     expect(groupEntry).toContain('data-testid="student-group-goto-students"');
     expect(groupEntry).toContain('到學生管理新增課程');
-    expect(groupEntry).toContain("@click=\"emit('navigate', { target: 'students', studentId: group.student_id })\"");
+    expect(groupEntry).toContain("@click=\"emit('navigate', { target: 'students', studentId: group.student_id, intent: 'create' })\"");
     expect(groupEntry).not.toContain('openBackfillModalForGroup');
   });
 
@@ -49,5 +49,12 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
     // handled by App.vue's onNavigateFromCourseManagement -> active.value = payload.
     expect(source).toContain("const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);");
     expect(source).toContain("emit('navigate', 'subject-settings')");
+  });
+
+  it('states the ownership boundary for lookup, scheduling, operations, and student actions', () => {
+    expect(source).toContain('查找、排課與營運');
+    expect(source).toContain('建立、續報、購買與學生資料由「學生管理」負責');
+    expect(source).toContain("buildStudentsCommercialNav(course, { intent: 'create' })");
+    expect(source).toContain('initialCourseId: [String, Number]');
   });
 });
