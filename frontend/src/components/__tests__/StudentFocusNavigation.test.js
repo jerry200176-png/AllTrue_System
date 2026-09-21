@@ -41,6 +41,6 @@ describe('student focus navigation contract', () => {
 
   it('keeps generic Students navigation context-free', () => {
     expect(courseSource).toContain("@click=\"emit('navigate', 'students')\"");
-    expect(courseSource).toContain("@click=\"emit('navigate', { target: 'students', studentId: group.student_id })\"");
+    expect(courseSource).toContain("@click=\"emit('navigate', { target: 'students', studentId: group.student_id, intent: 'create' })\"");
   });
 });
