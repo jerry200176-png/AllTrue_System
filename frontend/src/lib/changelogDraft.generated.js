@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.09.21",
     "date": "2026-09-21",
     "title": "2026.09.21 草稿（未發布）",
-    "summary": "Course/Student Management ownership；feedback shortcut opens the editor",
+    "summary": "level discounts snapshot at creation；Course/Student Management ownership",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "level discounts snapshot at creation"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -25,6 +31,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "level discounts snapshot at creation",
       "Course/Student Management ownership",
       "feedback shortcut opens the editor",
       "sessions keep assessments pending by default"
