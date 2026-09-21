@@ -14,7 +14,6 @@ function setup() {
     selectedStudent: { value: { id: 8 } }, props: { branchId: 16 },
     addSessionCount: { value: 4 }, addSessionStartDate: { value: '2026-10-01' }, tutoringEndDate: { value: '' },
     addSessionsError: { value: '' },
-    purchaseDiscount: { type: 'NONE', value: '0', reason: '' },
     isTutoringCourse: c => c?.class_type === 'tutoring', isPackageMember: c => Boolean(c?.PackageID),
     getSubjectLabel: subject => subject === 'Science' ? '自然科學' : subject,
     formatDuplicatePurchaseHint: ({ subject }) => `\\n\\n已有相同「${subject}」加購批次，請先確認是否已經續報過。`,
@@ -91,12 +90,7 @@ describe('tutoring continuation async identity', () => {
     await pending;
 
     expect(c.fetch).toHaveBeenCalledWith('/api/v1/student-classes/7/purchase-batch', expect.objectContaining({
-      body: JSON.stringify({
-        sessions: 4,
-        start_date: '2026-10-01',
-        mode: 'new_purchase',
-        discount: { type: 'NONE', value: '0', reason: '' },
-      }),
+      body: JSON.stringify({ sessions: 4, start_date: '2026-10-01', mode: 'new_purchase' }),
     }));
     expect(c.addSessionsError.value).toContain('已有相同「自然科學」加購批次');
     expect(c.addSessionsError.value).not.toContain('#99');
