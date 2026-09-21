@@ -39,6 +39,7 @@ use App\Services\SharedPackagePlanningService;
 use App\Services\SessionProjectionReadService;
 use App\Services\TeacherScopeService;
 use App\Services\CourseEditabilityService;
+use App\Services\TransactionDiscountCalculator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
@@ -303,7 +304,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -323,6 +324,9 @@ class StudentClassController extends Controller
             $class->settlement_day = $class->settlement_day !== null ? (int) $class->settlement_day : null;
             $class->monthly_sessions = $class->monthly_sessions !== null ? (int) $class->monthly_sessions : null;
             $class->memo = $class->Memo ?? null;
+            if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+                $class->makeHidden(['pricing_snapshot']);
+            }
 
             $reverseSubjectMap = [
                 '國文' => 'Chinese',
@@ -1398,6 +1402,9 @@ class StudentClassController extends Controller
         $studentClass->branch_id = $studentClass->room?->campus_id;
         $studentClass->branch_name = $studentClass->room?->campus?->name;
         $studentClass->room_name = $studentClass->room?->name;
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            $studentClass->makeHidden(['pricing_snapshot']);
+        }
 
         return response()->json($studentClass);
     }
@@ -3352,6 +3359,9 @@ class StudentClassController extends Controller
         if ($auth !== null) {
             return $auth;
         }
+        if ($request->has('discount') && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         $data = $request->validate([
             'mode'       => 'required|in:purchase_batch,renew_monthly',
@@ -3359,7 +3369,15 @@ class StudentClassController extends Controller
             'start_date' => 'nullable|date',
             'end_date'   => 'nullable|date',
             'months'     => 'nullable|integer|min:1|max:24',
+            'discount' => 'nullable|array',
+            'discount.type' => 'required_with:discount|in:NONE,FIXED_AMOUNT,PERCENTAGE',
+            'discount.value' => 'required_with:discount|string',
+            'discount.reason' => 'nullable|string|max:500',
         ]);
+
+        if ($request->has('discount') && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'tutoring') {
             return response()->json([
@@ -3383,6 +3401,10 @@ class StudentClassController extends Controller
         if ($auth !== null) {
             return $auth;
         }
+        $rawPayload = $request->input('payload');
+        if (is_array($rawPayload) && array_key_exists('discount', $rawPayload) && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         $data = $request->validate([
             'preview_id' => 'required|string|max:128',
@@ -3390,6 +3412,10 @@ class StudentClassController extends Controller
             'mode'       => 'required|in:purchase_batch,renew_monthly',
             'payload'    => 'required|array',
         ]);
+
+        if (!empty($data['payload']['discount']) && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         return DB::transaction(function () use ($request, $studentClass, $data) {
             $lockedStudentClass = StudentClass::where('ID', $studentClass->ID)
@@ -3419,6 +3445,7 @@ class StudentClassController extends Controller
                     'sessions'   => $payload['sessions'] ?? null,
                     'start_date' => $payload['start_date'] ?? null,
                     'mode'       => 'new_purchase',
+                    'discount'   => $payload['discount'] ?? null,
                 ]);
                 try {
                     $response = $this->purchaseBatch($request, $lockedStudentClass);
@@ -3430,6 +3457,7 @@ class StudentClassController extends Controller
                 $request->replace([
                     'end_date' => $preview['proposed_course']['end_date'] ?? ($payload['end_date'] ?? null),
                     'months'   => $payload['months'] ?? null,
+                    'discount' => $payload['discount'] ?? null,
                 ]);
                 try {
                     $response = $this->renewMonthly($request, $lockedStudentClass);
@@ -3490,15 +3518,31 @@ class StudentClassController extends Controller
                 'errors' => ['mode' => ['堂數制課程不支援月結續約，請使用 purchase-batch 端點。']],
             ], 422);
         }
+        if ($request->has('discount') && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         $data = $request->validate([
             'end_date'    => 'required|date|after:today',
             'months'      => 'nullable|integer|min:1|max:24',
+            'discount' => 'nullable|array',
+            'discount.type' => 'required_with:discount|in:NONE,FIXED_AMOUNT,PERCENTAGE',
+            'discount.value' => 'required_with:discount|string',
+            'discount.reason' => 'nullable|string|max:500',
         ]);
+
+        if ($request->has('discount') && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         $newEndDate = Carbon::parse($data['end_date'])->toDateString();
 
-        return DB::transaction(function () use ($studentClass, $newEndDate) {
+        $discountInput = $data['discount'] ?? null;
+        $actor = $request->attributes->get('auth_user');
+        $actorId = (int) ($actor->id ?? 0);
+        $actorRole = (string) $request->attributes->get('auth_role');
+
+        return DB::transaction(function () use ($studentClass, $newEndDate, $discountInput, $actorId, $actorRole) {
             $studentClass = StudentClass::where('ID', $studentClass->ID)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -3571,6 +3615,9 @@ class StudentClassController extends Controller
                 $periodCharge = max(0, (int) ($studentClass->Charge ?? 0));
             }
 
+            $discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
+                max(0, $periodCharge), $discountInput, $actorId, $actorRole
+            );
             $newPayload = [
                 'StudentID' => (int) $studentClass->StudentID,
                 'GradeID' => (int) ($studentClass->GradeID ?? 1),
@@ -3602,11 +3649,11 @@ class StudentClassController extends Controller
                 'duration6' => $studentClass->duration6,
                 'TotalHours' => $periodTotalHours,
                 'Memo' => $studentClass->Memo,
-                'Charge' => $periodCharge,
+                'Charge' => $discountSnapshot['final_amount'],
                 'Pay' => 0,
                 'PayDate' => null,
                 'Paid' => 0,
-                'Disconunt' => $studentClass->Disconunt,
+                'Disconunt' => null,
                 'Rate' => $rate,
                 'rate_unit' => $rateUnit,
                 'LearnTimeID' => $studentClass->LearnTimeID,
@@ -3621,9 +3668,12 @@ class StudentClassController extends Controller
                 'RemainingSessions' => $periodSessionCount,
                 'ClassType' => $studentClass->ClassType ?: 'one_on_one',
                 'UsedSessions' => 0,
+                'pricing_snapshot' => $discountSnapshot,
             ];
 
             $newCourse = $this->createStudentClassRecordResilient($newPayload);
+            $newCourse->pricing_snapshot = $discountSnapshot;
+            $newCourse->save();
             $newCourse->refresh();
 
             // Close and cancel the old period before materializing the new
@@ -3870,13 +3920,24 @@ class StudentClassController extends Controller
                 'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
             ], 422);
         }
+        if ($request->has('discount') && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         $data = $request->validate([
             'sessions' => 'required|integer|min:1|max:500',
             'start_date' => 'required|date',
             'mode' => 'nullable|in:new_purchase',
             'class_type' => 'nullable|in:one_on_one,one_on_two,one_on_three,tutoring',
+            'discount' => 'nullable|array',
+            'discount.type' => 'required_with:discount|in:NONE,FIXED_AMOUNT,PERCENTAGE',
+            'discount.value' => 'required_with:discount|string',
+            'discount.reason' => 'nullable|string|max:500',
         ]);
+
+        if ($request->has('discount') && !$this->canApplyTransactionDiscount($request)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
 
         $mode = (string) ($data['mode'] ?? 'new_purchase');
         if ($mode !== 'new_purchase') {
@@ -3892,7 +3953,12 @@ class StudentClassController extends Controller
         $startDate = Carbon::parse($data['start_date'])->toDateString();
         $newClassType = (string) ($data['class_type'] ?? $studentClass->getAttribute('ClassType') ?: 'one_on_one');
 
-        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode, $newClassType) {
+        $discountInput = $data['discount'] ?? null;
+        $actor = $request->attributes->get('auth_user');
+        $actorId = (int) ($actor->id ?? 0);
+        $actorRole = (string) $request->attributes->get('auth_role');
+
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode, $newClassType, $discountInput, $actorId, $actorRole) {
             $studentClass = StudentClass::where('ID', $studentClass->ID)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -3936,6 +4002,9 @@ class StudentClassController extends Controller
                 $charge = (int) round($rate * $sessions);
             }
 
+            $discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
+                max(0, $charge), $discountInput, $actorId, $actorRole
+            );
             $newPayload = [
                 'StudentID' => (int) $studentClass->StudentID,
                 'GradeID' => (int) ($studentClass->GradeID ?? 1),
@@ -3967,11 +4036,11 @@ class StudentClassController extends Controller
                 'duration6' => $studentClass->duration6,
                 'TotalHours' => $totalHours,
                 'Memo' => $studentClass->Memo,
-                'Charge' => $charge,
+                'Charge' => $discountSnapshot['final_amount'],
                 'Pay' => 0,
                 'PayDate' => null,
                 'Paid' => 0,
-                'Disconunt' => $studentClass->Disconunt,
+                'Disconunt' => null,
                 'Rate' => $rate,
                 'rate_unit' => $rateUnit,
                 'LearnTimeID' => $studentClass->LearnTimeID,
@@ -3986,9 +4055,12 @@ class StudentClassController extends Controller
                 'RemainingSessions' => $sessions,
                 'ClassType' => $newClassType,
                 'UsedSessions' => 0,
+                'pricing_snapshot' => $discountSnapshot,
             ];
 
             $newCourse = $this->createStudentClassRecordResilient($newPayload);
+            $newCourse->pricing_snapshot = $discountSnapshot;
+            $newCourse->save();
 
             // ── Build ClassSession rows for the new course ──
             $slots = $this->resolveScheduleSlotsForRebuild($newCourse);
@@ -5316,6 +5388,7 @@ class StudentClassController extends Controller
         $blockers = [];
         $proposedCourse = [];
         $billing = [];
+        $discountSnapshot = null;
         $schedule = [
             'created_sessions' => 0,
             'first_session_date' => null,
@@ -5409,13 +5482,17 @@ class StudentClassController extends Controller
                 'sessions' => $sessions,
                 'start_date' => $startDate,
                 'end_date' => $schedule['last_session_date'],
-                'charge' => $charge,
+                'charge' => ($discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
+                    max(0, $charge), $data['discount'] ?? null,
+                    (int) ($this->currentActorId()), (string) request()->attributes->get('auth_role')
+                ))['final_amount'],
                 'paid' => 0,
                 'total_hours' => $totalHours,
             ];
             $billing = [
                 'payment_status_after_confirm' => 'unpaid',
-                'amount_due' => $charge,
+                'amount_due' => $discountSnapshot['final_amount'],
+                'discount' => $discountSnapshot,
             ];
         } elseif ($mode === 'renew_monthly') {
             if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
@@ -5514,6 +5591,10 @@ class StudentClassController extends Controller
             if ($amount <= 0) {
                 $amount = max(0, (int) ($studentClass->Charge ?? 0));
             }
+            $discountSnapshot = app(TransactionDiscountCalculator::class)->calculate(
+                max(0, $amount), $data['discount'] ?? null,
+                (int) ($this->currentActorId()), (string) request()->attributes->get('auth_role')
+            );
 
             $openExceptions = 0;
             if (Schema::hasColumn('ClassSession', 'IsContractException')) {
@@ -5541,11 +5622,12 @@ class StudentClassController extends Controller
             ];
             $billing = [
                 'payment_status_after_confirm' => 'unpaid',
-                'amount_due' => $amount,
+                'amount_due' => $discountSnapshot['final_amount'],
+                'discount' => $discountSnapshot,
                 'invoice' => [
                     'billing_period' => $billingPeriod,
                     'due_date' => $dueDate,
-                    'total_amount' => $amount,
+                    'total_amount' => $discountSnapshot['final_amount'],
                     'will_create' => $billingPeriod ? !$invoiceExists : false,
                 ],
             ];
@@ -5588,6 +5670,7 @@ class StudentClassController extends Controller
                 'start_date' => $this->normalizeDateString($data['start_date'] ?? null),
                 'end_date' => $this->normalizeDateString($data['end_date'] ?? null),
                 'months' => $data['months'] ?? null,
+                'discount' => $data['discount'] ?? null,
             ],
             'billing' => $billing,
             'schedule' => $schedule,
@@ -5743,6 +5826,17 @@ class StudentClassController extends Controller
         }
 
         return null;
+    }
+
+    private function canApplyTransactionDiscount(Request $request): bool
+    {
+        return in_array((string) $request->attributes->get('auth_role'), ['director', 'admin', 'super_admin'], true);
+    }
+
+    private function currentActorId(): int
+    {
+        $actor = request()->attributes->get('auth_user');
+        return (int) ($actor->id ?? request()->attributes->get('auth_user_id') ?? 0);
     }
 
     private function auditEditBlocked(StudentClass $studentClass, string $reasonCode, int $status): void

@@ -49,6 +49,10 @@ class ClassSessionController extends Controller
 
     public function batchStore(Request $request)
     {
+        $role = (string) $request->attributes->get('auth_role');
+        if ($request->has('discount') && !in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
         $data = $request->validate([
             'student_id' => 'required|integer|exists:Student,id',
             'teacher_id' => 'required|integer|exists:User,id',
@@ -100,6 +104,10 @@ class ClassSessionController extends Controller
             'existing_contract_ids.*' => 'integer|min:1',
             'course_start_date' => 'nullable|date',
             'end_date' => 'nullable|date',
+            'discount' => 'nullable|array',
+            'discount.type' => 'required_with:discount|in:NONE,FIXED_AMOUNT,PERCENTAGE',
+            'discount.value' => 'required_with:discount|string',
+            'discount.reason' => 'nullable|string|max:500',
         ]);
 
         return app(EnrollmentService::class)->store($request, $data);

@@ -44,10 +44,16 @@ class StudentClass extends Model
 
     protected $casts = [
         'settlement_locked_at' => 'datetime',
+        'pricing_snapshot' => 'array',
     ];
 
     protected static function booted(): void
     {
+        static::saving(function (StudentClass $course): void {
+            if ($course->exists && $course->getOriginal('pricing_snapshot') !== null && $course->isDirty('pricing_snapshot')) {
+                throw new \LogicException('pricing_snapshot is immutable');
+            }
+        });
         static::saved(function (StudentClass $course): void {
             if ($course->wasChanged(['settlement_locked_at', 'closed_reason'])) {
                 ClassSession::resetSettlementLockCache();
