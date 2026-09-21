@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Services\TransactionDiscountCalculator;
 
 class EnrollmentService
 {
@@ -749,6 +750,7 @@ class EnrollmentService
             $skippedFutureDates = [];
             $dualTeacherWarnings = [];
             $studentClassIds = [];
+            $createdStudentClasses = [];
             $firstStudentClassId = null;
 
             foreach ($subjectGroups as $groupKey => $rowsForSubject) {
@@ -904,6 +906,7 @@ class EnrollmentService
                     'MDate' => now(),
                 ], $weekFields);
                 $studentClass = $this->createStudentClassResilient($studentClassPayload);
+                $createdStudentClasses[] = $studentClass;
 
                 if ($firstStudentClassId === null) {
                     $firstStudentClassId = (int) $studentClass->ID;
@@ -1016,6 +1019,21 @@ class EnrollmentService
                 }
 
                 SessionDeductionService::syncCounters($studentClass);
+            }
+
+            $originalAmounts = array_map(static fn (StudentClass $course): int => max(0, (int) $course->getAttribute('Charge')), $createdStudentClasses);
+            $calculator = app(TransactionDiscountCalculator::class);
+            $actor = $request->attributes->get('auth_user');
+            $discountSnapshot = $calculator->calculate(
+                array_sum($originalAmounts),
+                $data['discount'] ?? null,
+                (int) ($actor->id ?? 0),
+                (string) $role
+            );
+            $allocatedCharges = $calculator->allocate($originalAmounts, $discountSnapshot['final_amount']);
+            foreach ($createdStudentClasses as $index => $course) {
+                $course->setAttribute('Charge', $allocatedCharges[$index] ?? 0);
+                $course->initializePricingSnapshot($discountSnapshot);
             }
 
             $createdSessions = $createdConfirmedSessions + $createdFutureSessions;
