@@ -1,3 +1,7 @@
+## 2026-09-21 — fix(navigation): clarify Course/Student Management ownership (in-app #332 / #337)
+<!-- release-notes: staff_update=staff-2026-09-21-course-student-navigation-332-337 -->
+- 課程管理專注查找、排課與營運；建立、續報、購買及學生資料操作明確導向學生管理，並保留可驗證的返回課程脈絡。
+
 ## 2026-09-21 — fix(tuition): keep accounting actions reachable (in-app #326 / GitHub #3083)
 <!-- release-notes: staff_update=staff-2026-09-21-tuition-actions-reachable-326 -->
 - 帳務中心在平板／桌面窄視窗需要橫向查看欄位時，最右側常用操作會固定在可見區域；手機卡片版與既有帳務資料、權限及流程不變。
