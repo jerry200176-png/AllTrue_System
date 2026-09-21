@@ -159,12 +159,13 @@ class RepairFounderStudent9Attendance extends Command
             $followupSession = $target['kind'] === 'create_chinese_with_pricing'
                 ? DB::table('ClassSession')->where('id', $target['pricing_followup_session_id'])->first()
                 : null;
-            $correction = SessionCorrection::query()
+            $correctionSessionId = $target['session_id']
+                ? (int) $target['session_id']
+                : ($session ? (int) $session->id : null);
+            $correction = $correctionSessionId === null ? null : SessionCorrection::query()
+                ->where('session_id', $correctionSessionId)
                 ->where('decision_reference', self::REF)
                 ->whereNull('rolled_back_at')
-                ->whereIn('session_id', in_array($target['kind'], ['create_social', 'create_chinese_with_pricing'], true)
-                    ? $createdIds
-                    : [(int) $target['session_id']])
                 ->latest('id')
                 ->first();
 
