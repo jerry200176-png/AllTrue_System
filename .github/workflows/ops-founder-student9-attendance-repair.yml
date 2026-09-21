@@ -1,0 +1,126 @@
+name: Founder StudentID=9 attendance repair (gated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run (default) | execute | rollback
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute, rollback]
+      confirm_environment:
+        description: Must be PRODUCTION for execute/rollback
+        required: true
+        default: ''
+        type: string
+      confirm_phrase:
+        description: For execute, type I_APPROVE_FOUNDER_STUDENT9_ATTENDANCE_REPAIR
+        required: false
+        type: string
+      actor:
+        description: Executor audit label
+        required: true
+        default: gha:founder-student9-attendance-repair
+        type: string
+      actor_user_id:
+        description: Existing super-admin user id recorded in audit rows
+        required: true
+        default: '4'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: founder-student9-attendance-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Validate immutable repair gate
+        env:
+          MODE: ${{ inputs.mode }}
+          ENV_CONFIRM: ${{ inputs.confirm_environment }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          test "$(sha256sum docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json | awk '{print $1}')" = "5d5854a5b40b242c0a689072ec400794dd8fdf85cf4447b290529dbf6dc3cae4"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json')
+          b = json.loads(p.read_text())
+          if b.get('kind') != 'founder_student9_attendance_repair_manifest': raise SystemExit('bad manifest kind')
+          if b.get('decision_reference') != 'founder-student9-attendance-20260921': raise SystemExit('bad decision reference')
+          if b.get('student_id') != 9 or b.get('campus_id') != 15: raise SystemExit('bad student scope')
+          if b.get('approved_session_ids') != [28451]: raise SystemExit('bad session allowlist')
+          print('manifest_gate_ok')
+          PY
+          test "$ACTOR_ID" -gt 0
+          if [ "$MODE" != dry-run ]; then
+            test "$ENV_CONFIRM" = PRODUCTION
+            test "$PHRASE" = I_APPROVE_FOUNDER_STUDENT9_ATTENDANCE_REPAIR
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Run bounded repair
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+          ACTOR_ID: ${{ inputs.actor_user_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          MANIFEST_B64="$(base64 -w0 docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json)"
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$PI_SSH_USER@$PI_SSH_HOST" MODE="$MODE" ACTOR="$ACTOR" ACTOR_ID="$ACTOR_ID" MANIFEST_B64="$MANIFEST_B64" 'bash -s' <<'REMOTE' | tee out/repair.log
+          set -euo pipefail
+          cd /home/admin/backend
+          COMMON="--manifest=/tmp/founder-student9-attendance-repair-manifest.json --actor=$ACTOR --actor-user-id=$ACTOR_ID"
+          echo "$MANIFEST_B64" | base64 -d > /tmp/founder-student9-attendance-repair-manifest.json
+          php artisan repair:founder-student9-attendance --dry-run $COMMON
+          if [ "$MODE" = dry-run ]; then exit 0; fi
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency storage/app/repair-snapshots
+          DB_USER="$(grep '^DB_USERNAME=' .env | cut -d= -f2-)"
+          DB_PASS="$(grep '^DB_PASSWORD=' .env | cut -d= -f2-)"
+          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" --single-transaction \
+            AllTrue ClassSession LearningRecord StudentSingIn session_deduction_ledger session_corrections schedule_audit_logs \
+            | gzip > "/home/admin/backups/emergency/db_pre_founder_student9_attendance_${TS}.sql.gz"
+          test -s "/home/admin/backups/emergency/db_pre_founder_student9_attendance_${TS}.sql.gz"
+          export ALLOW_PROD_REPAIR=1
+          if [ "$MODE" = rollback ]; then ACTION="--rollback"; else ACTION="--execute"; fi
+          php artisan repair:founder-student9-attendance "$ACTION" --force $COMMON \
+            --snapshot="storage/app/repair-snapshots/founder-student9-attendance-${TS}.json"
+          unset ALLOW_PROD_REPAIR
+          php artisan repair:founder-student9-attendance --dry-run $COMMON
+          REMOTE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: founder-student9-attendance-repair-audit
+          path: out/repair.log
+          retention-days: 90
