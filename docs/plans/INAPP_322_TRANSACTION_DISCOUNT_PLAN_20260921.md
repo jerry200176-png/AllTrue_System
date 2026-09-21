@@ -4,7 +4,7 @@
 
 - SourceRef: `alltrue:bug_report:322`
 - GitHub issue: #3072
-- Plan revision: P2.6
+- Plan revision: P2.7
 - Revision reason: P1 did not bind the finance gate at every canonical
   `UniversalClassScheduler` mount. P2 adds explicit fail-closed propagation for
   Student Management, Course Management, and Smart Calendar, including the
@@ -20,11 +20,13 @@
   returns a compact version of that same backend feature test to A for the
   high-risk test gate, and lets B extend it with the full endpoint matrix. P2.6
   does not change paths or product scope; it binds the independent-review gaps
-  to executable B tests and requires required CI on B's exact head.
+  to executable B tests and requires required CI on B's exact head. P2.7 keeps
+  those tests unchanged and adds only B-local release-classification evidence
+  required by Presubmit 4B after B is squash-based on main.
 - Planner: Sol (`gpt-5.6-sol`)
 - Evidence baseline: `3d86f37a87576fc9051b1b2d7c77f176cefad36d`
-- Scope fingerprint: `P2.6-3d86f37-322-transaction-discount-G2-A12-B9-exact-head`
-- Status: P2.6 plan revision only; revising this document does not authorize
+- Scope fingerprint: `P2.7-3d86f37-322-transaction-discount-G2-A12-B10-release-evidence`
+- Status: P2.7 plan revision only; revising this document does not authorize
   production activation or historical financial mutation
 
 ## Evidence and canonical paths
@@ -126,7 +128,7 @@ or global-RBAC work is authorized.
 ### Governance budget choice
 
 The repository default is 12 changed files and the hard size limit is 700 changed
-lines, so P2.6 does **not** silently raise either budget. Verify each delivery's
+lines, so P2.7 does **not** silently raise either budget. Verify each delivery's
 actual diff remains below 700 lines before push. Use these exact linked
 deliveries. The Plan and manifest land first as a two-file governance prelude,
 so they are not counted again in A or B:
@@ -159,7 +161,7 @@ Its compact feature test must cover calculator normalization/ranges/rounding,
 forged-total rejection, teacher fail-closed authorization, and the baseline
 no-discount create contract. This is real behavioral coverage, not a placeholder.
 
-**Delivery B — exactly 9 changed paths relative to the recorded exact A head**
+**Delivery B — 10 required changed paths relative to its squash base**
 
 1. `frontend/src/components/UniversalClassScheduler.vue`
 2. `frontend/src/lib/coursePricing.js`
@@ -170,14 +172,22 @@ no-discount create contract. This is real behavioral coverage, not a placeholder
 7. `frontend/src/pages/CourseManagement.vue`
 8. `frontend/src/pages/SmartCalendar.vue`
 9. `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
+10. `docs/CHANGELOG.md`
 
 B consumes without re-editing A's backend contract, generated release artifacts,
 `scripts/arch-contexts.json` mapping, Plan, and manifest. It extends the existing
 A feature-test path with the remaining endpoint matrix rather than adding a new
-test file. The relative diff is therefore exactly 9 paths; inherited A/prelude
-paths are dependencies, not additional B changes.
+test file. Because Presubmit 4B evaluates B's own runtime diff, B must also make
+a concise user-visible classification update in its own `docs/CHANGELOG.md`
+diff; an identical entry already present on main is not evidence for this PR.
 
-Do not pad B to 10. In particular, P2.6 does not authorize
+If and only if the canonical release-note sync command changes
+`frontend/src/lib/changelogDraft.generated.js`, that existing generated path is
+also allowed, making B at most 11 changed paths. Do not hand-edit or touch any
+other generated release artifact merely to increase the path count. Inherited
+A/prelude paths remain dependencies, not additional B changes.
+
+Do not pad B beyond the required evidence/sync output. In particular, P2.7 does not authorize
 `.github/workflows/bug-phase-c-allowlist.yml` or
 `operations/closeout/bug-phase-c-allowlist.request.md`. Phase-C allowlisting and
 writeback require deployed/runtime-verified evidence and a separate bounded
@@ -187,7 +197,7 @@ The integration owner records both exact heads. Neither delivery may claim
 production readiness alone. B must consume the exact A head, and release review
 waits for cross-delivery exact-head CI plus the full endpoint/UI matrix below.
 If the operator instead wants one implementation delivery, stop and obtain an
-explicit manifest budget of at least 15 product/test files before editing; P2.6
+explicit manifest budget of at least 15 product/test files before editing; P2.7
 does not grant it.
 
 ## Required tests
@@ -209,7 +219,7 @@ Endpoint integration coverage is mandatory for every callable authority:
 
 Frontend tests must cover default NONE, mutual exclusion, all preview fields, fixed/percentage/100%/rounding previews, reason required, renewal reset/no inheritance, and no calculated total fields submitted by the client. They must also inspect all three canonical scheduler mounts: Student Management and Course Management receive the `App.vue` finance gate; Smart Calendar enables it only for director/admin/super_admin; teacher and omitted/default prop paths render no discount UI and emit no discount payload. Preserve existing scheduler, role, and teacher-navigation assertions.
 
-### P2.6 review-closure tests in Delivery B
+### P2.6 review-closure tests retained unchanged in P2.7 Delivery B
 
 Only the two already-authorized test paths may expand:
 
