@@ -4,7 +4,7 @@
 
 - SourceRef: `alltrue:bug_report:322`
 - GitHub issue: #3072
-- Plan revision: P2.5
+- Plan revision: P2.6
 - Revision reason: P1 did not bind the finance gate at every canonical
   `UniversalClassScheduler` mount. P2 adds explicit fail-closed propagation for
   Student Management, Course Management, and Smart Calendar, including the
@@ -18,11 +18,13 @@
   grouping to satisfy the 700-line hard limit: the canonical Plan moves to A and
   the backend feature test moves to B. P2.5 adds a two-file governance prelude,
   returns a compact version of that same backend feature test to A for the
-  high-risk test gate, and lets B extend it with the full endpoint matrix.
+  high-risk test gate, and lets B extend it with the full endpoint matrix. P2.6
+  does not change paths or product scope; it binds the independent-review gaps
+  to executable B tests and requires required CI on B's exact head.
 - Planner: Sol (`gpt-5.6-sol`)
 - Evidence baseline: `3d86f37a87576fc9051b1b2d7c77f176cefad36d`
-- Scope fingerprint: `P2.5-3d86f37-322-transaction-discount-G2-A12-B9-tested`
-- Status: P2.5 plan revision only; revising this document does not authorize
+- Scope fingerprint: `P2.6-3d86f37-322-transaction-discount-G2-A12-B9-exact-head`
+- Status: P2.6 plan revision only; revising this document does not authorize
   production activation or historical financial mutation
 
 ## Evidence and canonical paths
@@ -124,7 +126,7 @@ or global-RBAC work is authorized.
 ### Governance budget choice
 
 The repository default is 12 changed files and the hard size limit is 700 changed
-lines, so P2.5 does **not** silently raise either budget. Verify each delivery's
+lines, so P2.6 does **not** silently raise either budget. Verify each delivery's
 actual diff remains below 700 lines before push. Use these exact linked
 deliveries. The Plan and manifest land first as a two-file governance prelude,
 so they are not counted again in A or B:
@@ -175,7 +177,7 @@ A feature-test path with the remaining endpoint matrix rather than adding a new
 test file. The relative diff is therefore exactly 9 paths; inherited A/prelude
 paths are dependencies, not additional B changes.
 
-Do not pad B to 10. In particular, P2.5 does not authorize
+Do not pad B to 10. In particular, P2.6 does not authorize
 `.github/workflows/bug-phase-c-allowlist.yml` or
 `operations/closeout/bug-phase-c-allowlist.request.md`. Phase-C allowlisting and
 writeback require deployed/runtime-verified evidence and a separate bounded
@@ -185,7 +187,7 @@ The integration owner records both exact heads. Neither delivery may claim
 production readiness alone. B must consume the exact A head, and release review
 waits for cross-delivery exact-head CI plus the full endpoint/UI matrix below.
 If the operator instead wants one implementation delivery, stop and obtain an
-explicit manifest budget of at least 15 product/test files before editing; P2.5
+explicit manifest budget of at least 15 product/test files before editing; P2.6
 does not grant it.
 
 ## Required tests
@@ -206,6 +208,72 @@ Endpoint integration coverage is mandatory for every callable authority:
   internally created purchase defaults to NONE and never inherits source state.
 
 Frontend tests must cover default NONE, mutual exclusion, all preview fields, fixed/percentage/100%/rounding previews, reason required, renewal reset/no inheritance, and no calculated total fields submitted by the client. They must also inspect all three canonical scheduler mounts: Student Management and Course Management receive the `App.vue` finance gate; Smart Calendar enables it only for director/admin/super_admin; teacher and omitted/default prop paths render no discount UI and emit no discount payload. Preserve existing scheduler, role, and teacher-navigation assertions.
+
+### P2.6 review-closure tests in Delivery B
+
+Only the two already-authorized test paths may expand:
+
+- `backend/tests/Feature/StudentClassTransactionDiscountTest.php`
+- `frontend/src/components/__tests__/TransactionDiscount.test.js`
+
+The backend test must add:
+
+1. **True multi-subject endpoint allocation.** Authenticate through the existing
+   director token fixture and POST a fully valid `class-sessions/batch` request
+   whose `session_plan` contains two subjects with non-conflicting dates/times.
+   Assert 201, at least two created `StudentClass` rows, one transaction identity,
+   identical transaction snapshot totals, `sum(original row charges) ==
+   original_amount`, `sum(persisted discounted Charge) == final_amount`, and the
+   total-level percentage is rounded once. Calling `allocate()` directly is not
+   sufficient evidence.
+2. **Calculator boundaries.** Extend the existing data provider with negative
+   fixed and percentage values, percentage over 100, and percentage precision
+   over two decimals. Add explicit 100% success asserting zero final amount and
+   `original - discount == final`.
+3. **Financial-record invariants.** Create an existing invoice plus positive
+   payment and negative/void payment using the repository models, capture their
+   persisted fields and reconciliation result, execute a discounted transaction
+   on a separate/new course, and assert the old invoice/payment rows and resolved
+   totals are byte-for-byte unchanged. For discounted monthly renewal, assert
+   only the new invoice/item are created and both equal the new course final
+   `Charge`; no legacy invoice is repriced.
+4. **Authorized-role endpoint success.** Exercise a real discount mutation via
+   the normal auth middleware for director, admin, and super_admin fixtures and
+   assert success plus actor/role snapshot fields. Do not satisfy this with a
+   direct calculator call or manually injected request attributes.
+5. Retain teacher 403/hidden-snapshot, forged-total, no-inherit, immutability,
+   and no-discount regression assertions already required by P2.5.
+
+The frontend test must mount/render, not merely string-search:
+
+1. Mount `UniversalClassScheduler` with the finance prop omitted and explicitly
+   false; assert discount controls are absent and the submit payload has no
+   `discount` key.
+2. Mount its authorized path with the prop true; assert default NONE rendering,
+   mode/value/reason/original/discount/final preview behavior, and that only raw
+   discount inputs—not calculated totals—enter the request.
+3. Shallow-mount Smart Calendar with existing child/API stubs for `userRole`
+   teacher and director. Assert the scheduler child receives false for teacher
+   and true for director. Preserve source-level assertions for App → Students and
+   App → Course Management propagation, but source assertions alone cannot prove
+   the default teacher render contract.
+
+### Exact-head CI and stop conditions
+
+- A green CI run does not satisfy B. Required CI, focused PHPUnit/Vitest, release
+  sync, FIT-10, lint, and build must all report against B's exact head SHA.
+- Stop rather than weakening the test if a valid two-subject endpoint fixture
+  cannot pass existing campus/teacher/schedule authority without production-like
+  mutation; report the precise missing local fixture or contract.
+- Stop if normal persisted test fixtures cannot produce distinct effective
+  `admin` and `super_admin` roles through real middleware. Record the observed
+  role mapping and request an authorization-contract amendment; do not spoof
+  request attributes and claim endpoint coverage.
+- Stop if payment/refund invariants require changing production calculation or
+  refund code. Read existing records/services and assert non-interference only.
+- Stop if Smart Calendar cannot be mounted with existing stubs without editing a
+  third test/product path. Report the dependency and seek a Plan revision; do not
+  replace the required render evidence with source grep.
 
 Run focused PHPUnit/Vitest first, then canonical lint/build/full suites through `local-heavy-gate`. CI must preserve assertions and existing allowlists.
 
