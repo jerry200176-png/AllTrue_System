@@ -846,6 +846,7 @@
       :initial-teacher-id="schedulerInitialTeacherId"
       :allow-package-mode="true"
       mode="backfill"
+      :allow-financial-discount="allowFinancialDiscount"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
       @duplicate-course="handleSchedulerDuplicateCM"
@@ -1138,7 +1139,8 @@
       :form="renewMonthlyForm"
       :submitting="renewMonthlySubmitting"
       :warnings="renewMonthlyWarnings"
-      @close="!renewMonthlySubmitting && (showRenewMonthlyModal = false)"
+      @close="closeRenewMonthlyModal"
+      @preview-change="refreshRenewMonthlyPreview"
       @submit="submitRenewMonthly"
     />
 
@@ -1521,6 +1523,11 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
 import { buildTransferableSessionOption } from '../lib/sessionTransferEligibility';
 import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '../lib/coursePricing';
+import {
+  canApplyRenewalPreview,
+  estimateMonthlyRenewalCharge,
+  getRenewalPreviewAmount,
+} from '../lib/coursePricing';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -1656,11 +1663,13 @@ function addDays(ymd, days) {
 
 const props = defineProps({
   branchId: [String, Number],
+  userRole: { type: String, default: '' },
   initialTeacherId: [String, Number],
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentName: { type: String, default: '' },
 });
+const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
 
 const goToTuitionBilling = (course) => {
@@ -2413,6 +2422,7 @@ const renewMonthlyCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlySubmitting = ref(false);
 const renewMonthlyWarnings = ref([]);
+const renewMonthlyPreviewRequestId = ref(0);
 
 const showTransferSessionsModal = ref(false);
 const transferSessionsCourse = ref(null);
@@ -3166,6 +3176,9 @@ function openPurchaseModal(course) {
       current_end_date: course?.end_date || course?.EndDate || null,
       months: 1,
       end_date: '',
+      discount: { type: 'NONE', value: '0', reason: '' },
+      original_amount: estimateMonthlyRenewalCharge(course),
+      preview_end_date: '',
     };
     renewMonthlyWarnings.value = [];
     showRenewMonthlyModal.value = true;
@@ -3204,21 +3217,29 @@ function openPackageAdjustmentModal(course) {
 }
 
 async function loadRenewMonthlyPreview(course) {
+  return loadRenewMonthlyPreviewForEndDate(course);
+}
+
+async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') {
+  const requestId = ++renewMonthlyPreviewRequestId.value;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token || !course?.id) return;
     const currentEnd = course?.end_date || course?.EndDate || null;
-    let endDate = '';
-    if (currentEnd) {
-      const d = new Date(currentEnd);
-      d.setMonth(d.getMonth() + 1);
-      endDate = d.toISOString().slice(0, 10);
-    } else {
-      const d = new Date();
-      d.setMonth(d.getMonth() + 1);
-      endDate = d.toISOString().slice(0, 10);
+    let endDate = requestedEndDate;
+    if (!endDate) {
+      if (currentEnd) {
+        const d = new Date(currentEnd);
+        d.setMonth(d.getMonth() + 1);
+        endDate = d.toISOString().slice(0, 10);
+      } else {
+        const d = new Date();
+        d.setMonth(d.getMonth() + 1);
+        endDate = d.toISOString().slice(0, 10);
+      }
     }
+    renewMonthlyForm.value.preview_end_date = endDate;
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
@@ -3230,12 +3251,34 @@ async function loadRenewMonthlyPreview(course) {
       body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
     });
     const json = await res.json().catch(() => ({}));
-    if (res.ok && Array.isArray(json.warnings)) {
-      renewMonthlyWarnings.value = json.warnings;
+    if (res.ok && showRenewMonthlyModal.value && canApplyRenewalPreview({
+      requestId,
+      currentRequestId: renewMonthlyPreviewRequestId.value,
+      courseId: course.id,
+      currentCourseId: renewMonthlyCourse.value?.id,
+      requestedEndDate: endDate,
+      currentEndDate: renewMonthlyForm.value.preview_end_date,
+    })) {
+      if (Array.isArray(json.warnings)) {
+        renewMonthlyWarnings.value = json.warnings;
+      }
+      const amount = getRenewalPreviewAmount(json);
+      if (amount != null) renewMonthlyForm.value.original_amount = amount;
     }
   } catch {
     /* preview is advisory only */
   }
+}
+
+function refreshRenewMonthlyPreview(endDate) {
+  if (renewMonthlyCourse.value) loadRenewMonthlyPreviewForEndDate(renewMonthlyCourse.value, endDate);
+}
+
+function closeRenewMonthlyModal() {
+  if (renewMonthlySubmitting.value) return;
+  renewMonthlyPreviewRequestId.value += 1;
+  showRenewMonthlyModal.value = false;
+  renewMonthlyCourse.value = null;
 }
 
 async function submitPurchaseSessions() {
@@ -3403,7 +3446,7 @@ async function submitRenewMonthly(endDate) {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) { alert('請重新登入後再試'); return; }
-    const res = await fetch(`/api/v1/student-classes/${course.id}/renew-monthly`, {
+    const renewalRequest = {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -3412,7 +3455,11 @@ async function submitRenewMonthly(endDate) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ end_date: endDate }),
-    });
+    };
+    if (renewMonthlyForm.value.discount?.type && renewMonthlyForm.value.discount.type !== 'NONE') {
+      renewalRequest.body = JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount });
+    }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/renew-monthly`, renewalRequest);
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';

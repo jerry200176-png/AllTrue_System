@@ -757,7 +757,7 @@
               </div>
             </div>
 
-            <div v-if="!isTutoring && previewPricePerSession > 0" class="fee-estimate">
+              <div v-if="!isTutoring && previewPricePerSession > 0" class="fee-estimate">
               <div class="fee-estimate-head">
                 <span class="fee-estimate-label">計價方式</span>
                 <strong :class="['fee-estimate-unit', previewRateUnit === 'hour' ? 'is-hour' : 'is-session']">
@@ -776,6 +776,17 @@
                 </template>
               </div>
               <div class="fee-estimate-note">預估金額，實際以建立後課程為準</div>
+            </div>
+            <div v-if="allowFinancialDiscount && !isTutoring" class="transaction-discount-panel" data-testid="transaction-discount-panel">
+              <label>交易折扣</label>
+              <select v-model="form.discount.type">
+                <option value="NONE">無折扣</option>
+                <option value="FIXED_AMOUNT">固定金額</option>
+                <option value="PERCENTAGE">百分比</option>
+              </select>
+              <input v-if="form.discount.type !== 'NONE'" v-model="form.discount.value" type="text" inputmode="decimal" placeholder="折扣值" />
+              <input v-if="form.discount.type !== 'NONE'" v-model="form.discount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
+              <span>原始 {{ discountPreview.originalAmount.toLocaleString() }} · 折扣 {{ discountPreview.discountAmount.toLocaleString() }} · 實收 {{ discountPreview.finalAmount.toLocaleString() }}</span>
             </div>
 
             <div v-if="form.course_start_date" class="course-start-info">
@@ -876,7 +887,7 @@ import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
 import { calculateCoverage, lessonEquivalent } from '../lib/lessonCoverage';
 import perfFlags from '../lib/perfFlags';
-import { estimateCreateCharge } from '../lib/coursePricing';
+import { calculateTransactionDiscountPreview, estimateCreateCharge } from '../lib/coursePricing';
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import { getBranchName } from '../lib/useBranches.js';
 import {
@@ -934,6 +945,7 @@ const props = defineProps({
   /** Legacy package creation is hidden from daily course creation unless explicitly enabled. */
   allowPackageMode: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
+  allowFinancialDiscount: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['success', 'cancel', 'duplicate-course']);
@@ -1001,6 +1013,7 @@ const form = reactive({
   paid_at: '',
   course_start_date: toYmd(new Date()),
   end_date: '',
+  discount: { type: 'NONE', value: '0', reason: '' },
 });
 
 const isMonthlyRecurring = computed(() => {
@@ -1543,6 +1556,7 @@ const feeEstimate = computed(() => estimateCreateCharge({
   sessions: previewSessions.value,
   avgSessionMinutes: previewAvgSlotMinutes.value,
 }));
+const discountPreview = computed(() => calculateTransactionDiscountPreview(feeEstimate.value.charge, form.discount));
 
 const courseStartDateFarWarning = computed(() => {
   if (!form.course_start_date) return '';
@@ -2581,6 +2595,7 @@ async function submit() {
       mode: props.mode,
       ...(hasMultiTeacher ? { allow_multi_teacher: true } : {}),
       ...((useMonthlyRecurringPath || (form.payment_type === 'monthly' && form.end_date)) ? { end_date: form.end_date } : {}),
+      ...(props.allowFinancialDiscount ? { discount: { ...form.discount } } : {}),
     };
 
     if (form.payment_type === 'session') {

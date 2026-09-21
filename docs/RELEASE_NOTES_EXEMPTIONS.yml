@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: staff-2026-09-21-transaction-discount-322-b-evidence
+    changelog_date: "2026-09-21"
+    changelog_title: "feat(billing): transaction-level discounts snapshot at creation (in-app #322 / GitHub #3072)"
+    reason: B 的前端與驗收切片沿用 main 已發布的 #322 STAFF_UPDATES 公告；本項僅為 release-classification companion evidence，不新增產品、部署或 Phase-C 授權。
+
   - id: silent-2026-09-21-parent-attention-feedback-jump-323
     changelog_date: "2026-09-21"
     changelog_title: "fix(parent): attention feedback shortcut opens the editor (in-app #323)"

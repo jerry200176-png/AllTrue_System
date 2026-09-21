@@ -742,6 +742,7 @@
       :rooms="rooms"
       :initial-student-id="selectedStudentSchedulerId"
       :allow-package-mode="true"
+      :allow-financial-discount="props.allowFinancialDiscount"
       mode="create"
       @cancel="closeCourseModal"
       @success="handleUniversalSchedulerSuccess"
@@ -751,7 +752,8 @@
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
-      @close="showRenewMonthlyModal = false"
+      @close="closeRenewMonthlyModal"
+      @preview-change="loadRenewMonthlyPreview"
       @submit="submitRenewMonthly"
     />
 
@@ -837,6 +839,13 @@
         <div v-if="isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly'" class="form-group">
           <label>下一期結束日期</label>
           <input v-model="tutoringEndDate" type="date" :min="addSessionStartDate" />
+        </div>
+        <div v-if="selectedCourse && !isTutoringCourse(selectedCourse) && !selectedCourse?.PackageID" class="form-group" data-testid="purchase-transaction-discount">
+          <label>交易折扣</label>
+          <select v-model="purchaseDiscount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
+          <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.value" type="text" inputmode="decimal" placeholder="折扣值" />
+          <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
+          <span class="hint">原始 {{ purchaseDiscountPreview.originalAmount.toLocaleString() }} · 折扣 {{ purchaseDiscountPreview.discountAmount.toLocaleString() }} · 實收 {{ purchaseDiscountPreview.finalAmount.toLocaleString() }}</span>
         </div>
         <p class="hint" v-if="addSessionCount > 0">
           <template v-if="isTutoringCourse(selectedCourse)">下一期費用：<strong>0 元，無須繳費</strong></template>
@@ -992,11 +1001,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
-import { getPerSessionFee } from '../lib/coursePricing';
+import {
+  calculateTransactionDiscountPreview,
+  canApplyRenewalPreview,
+  estimateMonthlyRenewalCharge,
+  estimatePurchaseBatchCharge,
+  getRenewalPreviewAmount,
+  getPerSessionFee,
+} from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
 import {
   buildGradePromotionConfirmPayload,
@@ -1043,6 +1059,7 @@ import SchoolNameInput from '../components/SchoolNameInput.vue';
 
 const props = defineProps({
   branchId: [String, Number],
+  allowFinancialDiscount: { type: Boolean, default: false },
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentIntent: String,
@@ -1225,17 +1242,22 @@ const tutoringEndDate = ref('');
 const addSessionsSubmitting = ref(false);
 const addSessionsError = ref('');
 const addSessionCount = ref(8);
+const selectedCourse = ref(null);
+const purchaseDiscount = reactive({ type: 'NONE', value: '0', reason: '' });
+const purchaseDiscountPreview = computed(() => calculateTransactionDiscountPreview(
+  estimatePurchaseBatchCharge(selectedCourse.value, addSessionCount.value), purchaseDiscount,
+));
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
+const renewMonthlyPreviewRequestId = ref(0);
 
 // --- Monthly Invoice Modal ---
 const showInvoiceModal = ref(false);
 const invoiceModalCourse = ref(null);
 const invoiceModalList = ref([]);
 const invoiceModalLoading = ref(false);
-const selectedCourse = ref(null);
 
 // Duplicate course intercept modal
 const showDuplicateInterceptModal = ref(false);
@@ -3302,14 +3324,21 @@ const openAddSessionsForCourse = (course) => {
       current_end_date: course?.end_date || course?.EndDate || null,
       months: 1,
       end_date: '',
+      discount: { type: 'NONE', value: '0', reason: '' },
+      original_amount: estimateMonthlyRenewalCharge(course),
+      preview_end_date: '',
     };
     showRenewMonthlyModal.value = true;
+    loadRenewMonthlyPreview();
     return;
   }
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
   selectedCourse.value = course;
   addSessionsError.value = '';
-  addSessionCount.value = 8;
+    addSessionCount.value = 8;
+    purchaseDiscount.type = 'NONE';
+    purchaseDiscount.value = '0';
+    purchaseDiscount.reason = '';
   addSessionStartDate.value = new Date().toISOString().slice(0, 10);
   tutoringEndDate.value = '';
   if (isTutoringCourse(course)) {
@@ -3323,6 +3352,51 @@ const openAddSessionsForCourse = (course) => {
   }
   showSessionsModal.value = true;
 };
+
+const closeRenewMonthlyModal = () => {
+  renewMonthlyPreviewRequestId.value += 1;
+  showRenewMonthlyModal.value = false;
+  renewMonthlyTargetCourse.value = null;
+};
+
+async function loadRenewMonthlyPreview(endDate = '') {
+  const course = renewMonthlyTargetCourse.value;
+  if (!course?.id) return;
+  const requestId = ++renewMonthlyPreviewRequestId.value;
+  const courseId = course.id;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) return;
+    const currentEnd = course?.end_date || course?.EndDate || null;
+    let targetEnd = endDate;
+    if (!targetEnd) {
+      const d = currentEnd ? new Date(currentEnd) : new Date();
+      d.setMonth(d.getMonth() + 1);
+      targetEnd = d.toISOString().slice(0, 10);
+    }
+    renewMonthlyForm.value.preview_end_date = targetEnd;
+    const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ mode: 'renew_monthly', end_date: targetEnd }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!showRenewMonthlyModal.value || !canApplyRenewalPreview({
+      requestId,
+      currentRequestId: renewMonthlyPreviewRequestId.value,
+      courseId,
+      currentCourseId: renewMonthlyTargetCourse.value?.id,
+      requestedEndDate: targetEnd,
+      currentEndDate: renewMonthlyForm.value.preview_end_date,
+    })) return;
+    const amount = getRenewalPreviewAmount(json);
+    if (amount != null) renewMonthlyForm.value.original_amount = amount;
+  } catch {
+    /* preview is advisory only */
+  }
+}
 
 const submitAddSessions = async () => {
   if (addSessionsSubmitting.value) return;
@@ -3397,7 +3471,14 @@ const submitAddSessions = async () => {
         start_date: submittedStart,
         ...(tutoring
           ? (course.payment_type === 'monthly' ? { end_date: submittedEnd } : {})
-          : { mode: 'new_purchase' })
+          : {
+            mode: 'new_purchase',
+            ...(typeof purchaseDiscount !== 'undefined'
+              && purchaseDiscount?.type
+              && purchaseDiscount.type !== 'NONE'
+              ? { discount: { ...purchaseDiscount } }
+              : {}),
+          })
       })
     });
 
@@ -3493,7 +3574,7 @@ const submitRenewMonthly = async (endDate) => {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ end_date: endDate }),
+      body: JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {

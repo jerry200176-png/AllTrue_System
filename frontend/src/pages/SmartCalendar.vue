@@ -403,6 +403,7 @@
       :initial-days-of-week="modalForm.days_of_week || []"
       :initial-calendar-ymd="modalForm.action_date || modalForm.first_class_date || ''"
       mode="create"
+      :allow-financial-discount="allowFinancialDiscount"
       @cancel="showModal = false"
       @success="handleUniversalSchedulerSuccess"
       @duplicate-course="handleSchedulerDuplicate"
@@ -651,6 +652,7 @@ const props = defineProps({
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context', 'navigate']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
+const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
 const currentTeacherId = computed(() => {
   const raw = props.userId;
   if (raw == null || raw === '') return null;

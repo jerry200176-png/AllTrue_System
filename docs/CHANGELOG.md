@@ -9,6 +9,7 @@
 ## 2026-09-21 — feat(billing): transaction-level discounts snapshot at creation (in-app #322 / GitHub #3072)
 <!-- release-notes: staff_update=staff-2026-09-21-transaction-discount-322 -->
 - 建立課程、加購與續報時，財務授權主任可選擇固定金額或百分比折扣；系統在後端重新計算並保存原價、折扣與實收金額快照，既有帳單、收款與退款資料不回溯改寫。
+- 建立課程畫面同步顯示折扣方式、理由、折扣金額與實收總額；教師與非財務角色不會取得折扣設定能力。
 
 ## 2026-09-21 — fix(navigation): clarify Course/Student Management ownership (in-app #332 / #337)
 <!-- release-notes: staff_update=staff-2026-09-21-course-student-navigation-332-337 -->
