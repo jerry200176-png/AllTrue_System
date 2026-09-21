@@ -5,7 +5,7 @@
   "task_id": "inapp-322-discount-20260921",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "3d86f37a87576fc9051b1b2d7c77f176cefad36d",
-  "branch": "chore/task-inapp-322-discount-20260921",
+  "branch": "chore/task-inapp-322-discount-20260921-delivery-b",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-322-discount-20260921",
   "started_at": "2026-09-21T02:28:55Z",
   "production_mutation": false,
