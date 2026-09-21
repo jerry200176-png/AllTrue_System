@@ -13,6 +13,14 @@
 **Review / protected-boundary evidence：** <!-- T3: Founder decision packet and exact boundary; otherwise N/A -->
 **Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
 
+<!--
+Generate the two declaration values from the actual branch diff before opening
+the PR; do not choose a lower tier by hand:
+  python3 scripts/governance/pr_declaration.py --base origin/main --head HEAD
+The presubmit gate independently recomputes the minimum from the PR file list
+and patch, so a missing or understated declaration cannot merge.
+-->
+
 ## Production Release Impact (required for deployable changes)
 <!-- Pick exactly one. This is machine-readable; publication still uses the existing CHANGELOG/STAFF_UPDATES flow. -->
 Release-Impact: user-visible
