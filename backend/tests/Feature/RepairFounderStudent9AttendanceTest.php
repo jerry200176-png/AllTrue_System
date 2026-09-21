@@ -25,10 +25,28 @@ class RepairFounderStudent9AttendanceTest extends TestCase
                 'SessionCount' => 3, 'UsedSessions' => 1, 'RemainingSessions' => 2, 'Stop' => 0,
             ]);
         }
+        DB::table('StudentClass')->insert([
+            'ID' => 316, 'StudentID' => 9, 'GradeID' => 1, 'SubjectID' => 64,
+            'TeacherID' => 60, 'by1' => 1, 'Period' => 4, 'TotalHours' => 0,
+            'StartDate' => '2026-04-12 00:00:00', 'EndDate' => '2026-09-14 00:00:00',
+            'Charge' => 6600, 'Pay' => 0, 'Paid' => 0,
+            'Rate' => 2200, 'SessionDuration' => 120, 'ScheduleMode' => 'date',
+            'SessionCount' => 0, 'UsedSessions' => 1, 'RemainingSessions' => 0, 'Stop' => 1,
+        ]);
+        DB::table('User')->insert([
+            'id' => 261, 'LoginName' => 'yangmo@example.com', 'Name' => '楊墨',
+            'PSW' => 'secret', 'type' => 'T', 'phone' => 900000261,
+        ]);
+        DB::table('UserCampus')->insert(['UserID' => 261, 'CampusID' => 15, 'Approved' => 1]);
         DB::table('ClassSession')->insert([
             'id' => 28451, 'StudentClassID' => 2819, 'SessionDate' => '2026-08-03',
             'StartTime' => '10:00:00', 'EndTime' => '12:00:00', 'Status' => 'cancelled',
             'Note' => 'projected-monthly-materialized', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('ClassSession')->insert([
+            'id' => 30367, 'StudentClassID' => 316, 'SubjectID' => 64, 'SessionDate' => '2026-08-12',
+            'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'attended',
+            'Note' => '系統加課', 'session_charge' => null, 'created_at' => now(), 'updated_at' => now(),
         ]);
         DB::table('LearningRecord')->insert([
             'id' => 15134, 'StudentClassID' => 2819, 'ClassSessionID' => 28451,
@@ -57,7 +75,7 @@ class RepairFounderStudent9AttendanceTest extends TestCase
         ]);
     }
 
-    public function test_execute_restores_biology_and_creates_social_without_touching_financial_tables(): void
+    public function test_execute_repairs_three_attendance_rows_and_pricing_without_touching_financial_tables(): void
     {
         $manifest = dirname(base_path()) . '/docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json';
         $snapshot = storage_path('app/repair-snapshots/test-founder-student9-attendance.json');
@@ -82,6 +100,17 @@ class RepairFounderStudent9AttendanceTest extends TestCase
         $this->assertSame(1, DB::table('StudentSingIn')->where('ClassSessionID', $social->id)->whereNull('VoidedAt')->count());
         $this->assertSame(1, DB::table('LearningRecord')->where('ClassSessionID', $social->id)->whereNull('VoidedAt')->count());
 
+        $chinese = DB::table('ClassSession')->where('StudentClassID', 316)->whereDate('SessionDate', '2026-08-05')->first();
+        $this->assertNotNull($chinese);
+        $this->assertSame('13:00:00', $chinese->StartTime);
+        $this->assertSame('15:00:00', $chinese->EndTime);
+        $this->assertSame('attended', $chinese->Status);
+        $this->assertSame(261, (int) DB::table('StudentSingIn')->where('ClassSessionID', $chinese->id)->value('TeacherID'));
+        $this->assertSame(261, (int) DB::table('LearningRecord')->where('ClassSessionID', $chinese->id)->value('TeacherID'));
+        $this->assertSame(2750, (int) $chinese->session_charge);
+        $this->assertSame(1, DB::table('student_class_pricing_amendments')->where('student_class_id', 316)->whereNull('voided_at')->where('rate', 2750)->count());
+        $this->assertSame(2750, (int) DB::table('ClassSession')->where('id', 30367)->value('session_charge'));
+
         $this->assertFileExists($snapshot);
         $this->assertSame(0, DB::table('Invoice')->count());
         $this->assertSame(0, DB::table('payment_reports')->count());
@@ -97,6 +126,7 @@ class RepairFounderStudent9AttendanceTest extends TestCase
             '--manifest' => $manifest, '--execute' => true,
         ]));
         $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', 2812)->whereDate('SessionDate', '2026-07-28')->count());
+        $this->assertSame(1, DB::table('ClassSession')->where('StudentClassID', 316)->whereDate('SessionDate', '2026-08-05')->count());
         $this->assertSame(1, DB::table('session_deduction_ledger')->where('class_session_id', 28451)->where('event_type', 'deduct')->count());
     }
 }
