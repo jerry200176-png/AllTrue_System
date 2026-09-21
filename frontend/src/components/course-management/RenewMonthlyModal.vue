@@ -51,14 +51,6 @@
         <input v-model="form.end_date" type="date" :min="minDate" />
       </div>
 
-      <div v-if="props.form?.discount" class="form-group" data-testid="renew-transaction-discount">
-        <label>交易折扣</label>
-        <select v-model="props.form.discount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
-        <input v-if="props.form.discount.type !== 'NONE'" v-model="props.form.discount.value" type="text" inputmode="decimal" placeholder="折扣值" />
-        <input v-if="props.form.discount.type !== 'NONE'" v-model="props.form.discount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
-        <span class="hint">原始 {{ discountPreview.originalAmount.toLocaleString() }} · 折扣 {{ discountPreview.discountAmount.toLocaleString() }} · 實收 {{ discountPreview.finalAmount.toLocaleString() }}</span>
-      </div>
-
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
         <button class="primary" :disabled="submitting" @click="$emit('submit', finalEndDate)">
@@ -72,7 +64,6 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
-import { calculateTransactionDiscountPreview } from '../../lib/coursePricing';
 
 const props = defineProps({
   show: Boolean,
@@ -85,7 +76,6 @@ defineEmits(['close', 'submit']);
 const mode = ref('months');
 
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
-const discountPreview = computed(() => calculateTransactionDiscountPreview(props.form?.original_amount, props.form?.discount));
 
 const minDate = computed(() => {
   const d = new Date();
