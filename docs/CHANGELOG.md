@@ -1,3 +1,7 @@
+## 2026-09-21 — fix(tuition): show invoice payable, not course charge
+<!-- release-notes: staff_update=staff-2026-09-21-billing-payable-canonical -->
+- 帳務中心、繳費回報與課程管理的「應繳」改以相關期間的有效帳單／結算金額為準；尚未開單的課程顯示待開單，課程金額只保留為明確估算，不改寫歷史 Invoice、Payment 或 PaymentReport。
+
 ## 2026-09-21 — feat(billing): transaction-level discounts snapshot at creation (in-app #322 / GitHub #3072)
 <!-- release-notes: staff_update=staff-2026-09-21-transaction-discount-322 -->
 - 建立課程、加購與續報時，財務授權主任可選擇固定金額或百分比折扣；系統在後端重新計算並保存原價、折扣與實收金額快照，既有帳單、收款與退款資料不回溯改寫。

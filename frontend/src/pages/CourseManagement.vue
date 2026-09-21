@@ -768,7 +768,9 @@
                     <div class="subject-line">
                       <span class="tag subject-tag">{{ getSubjectLabel(row.course.subject) }}</span>
                     </div>
-                    <div class="price-line">應繳 ${{ formatMoney(row.course.Charge ?? row.course.charge ?? 0) }}</div>
+                    <div v-if="currentInvoiceForBillingRow(row)" class="price-line">應繳 ${{ formatMoney(currentInvoiceForBillingRow(row).total_amount ?? 0) }}</div>
+                    <div v-else class="price-line price-line--pending">應繳：待開單</div>
+                    <div v-if="!currentInvoiceForBillingRow(row) && (row.course.Charge ?? row.course.charge) != null" class="price-line price-line--estimate">估算 ${{ formatMoney(row.course.Charge ?? row.course.charge) }}</div>
                   </td>
                   <td>
                     <span
@@ -4482,6 +4484,10 @@ const paymentStatusButtonClass = (course) => {
   if (course?.payment_status === 'pending_report') return 'tag-pending-report';
   return 'tag-unpaid';
 };
+const currentInvoiceForBillingRow = (row) => {
+  const invoices = Array.isArray(row?.invoices) ? row.invoices.filter((invoice) => invoice?.status !== 'void') : [];
+  return invoices.find((invoice) => ['unpaid', 'partial'].includes(invoice?.status)) || invoices[0] || null;
+};
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
@@ -6754,6 +6760,8 @@ onUnmounted(() => {
   color: #475569;
   font-weight: 600;
 }
+.price-line--pending { color: var(--ds-warning); }
+.price-line--estimate { color: var(--ds-ink-mute); font-size: 12px; font-weight: 500; }
 
 .memo-line {
   margin-top: 4px;

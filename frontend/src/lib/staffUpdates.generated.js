@@ -4,6 +4,50 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-21-billing-payable-canonical",
+    "publishedAt": "2026-09-21",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "action_required",
+    "title": "帳務中心改以帳單金額顯示應繳",
+    "summary": "「應繳」以有效帳單金額為準，沒有帳單時顯示待開單。",
+    "items": [
+      "帳務中心、繳費回報與課程管理的「應繳」會優先顯示有效 Invoice 的金額與帳務期間。",
+      "尚未開單的課程會顯示「待開單」，課程 Charge 只會以「估算」呈現；請逐筆確認實際付款金額後再送出回報。",
+      "若畫面顯示待開單，請先依既有帳務流程確認期間與金額；本次修正不會改寫歷史帳單、付款或收款回報。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "帳務中心、繳費回報與課程管理的「應繳」會優先顯示有效 Invoice 的金額與帳務期間。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "尚未開單的課程會顯示「待開單」，課程 Charge 只會以「估算」呈現；請逐筆確認實際付款金額後再送出回報。"
+        ]
+      },
+      {
+        "title": "需要你注意",
+        "items": [
+          "若畫面顯示待開單，請先依既有帳務流程確認期間與金額；本次修正不會改寫歷史帳單、付款或收款回報。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-21:billing-payable-canonical"
+    ],
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
     "id": "staff-2026-09-21-tuition-actions-reachable-326",
     "publishedAt": "2026-09-21",
     "effectiveAt": null,
