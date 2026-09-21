@@ -6,15 +6,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
-
 class RepairFounderStudent9AttendanceTest extends TestCase
 {
     use RefreshDatabase;
-
     protected function setUp(): void
     {
         parent::setUp();
-
         DB::table('Student')->insert([
             'id' => 9, 'name' => '翟君和', 'CampusID' => 15, 'ClassID' => 1, 'enable' => 1,
         ]);
@@ -23,7 +20,7 @@ class RepairFounderStudent9AttendanceTest extends TestCase
                 'ID' => $id, 'StudentID' => 9, 'GradeID' => 1, 'SubjectID' => $subject,
                 'TeacherID' => $teacher, 'by1' => 1, 'Period' => 4, 'TotalHours' => 0,
                 'StartDate' => '2026-07-01 00:00:00', 'EndDate' => '2026-08-31 00:00:00',
-                'Charge' => $id === 2812 ? 8250 : 8250, 'Pay' => 0, 'Paid' => 0,
+                'Charge' => 8250, 'Pay' => 0, 'Paid' => 0,
                 'Rate' => 2750, 'SessionDuration' => 120, 'ScheduleMode' => 'count',
                 'SessionCount' => 3, 'UsedSessions' => 1, 'RemainingSessions' => 2, 'Stop' => 0,
             ]);
@@ -90,7 +87,6 @@ class RepairFounderStudent9AttendanceTest extends TestCase
         $this->assertSame(0, DB::table('payment_reports')->count());
         $this->assertSame(0, DB::table('Payment')->count());
     }
-
     public function test_second_execute_is_idempotent(): void
     {
         $manifest = dirname(base_path()) . '/docs/incidents/2026-09-21-founder-student9-attendance-repair-manifest.json';

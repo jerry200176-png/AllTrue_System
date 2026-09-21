@@ -12,14 +12,6 @@ use App\Services\LearningRecordBackfillService;
 use App\Services\SessionDeductionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-
-/**
- * Founder-approved, fixed-scope attendance repair for StudentID=9.
- *
- * This command deliberately covers only the two records whose complete
- * metadata is proven. It does not mutate invoices, payment reports, payments,
- * course rates, or the unresolved 2026-08-05 Chinese occurrence.
- */
 class RepairFounderStudent9Attendance extends Command
 {
     protected $signature = 'repair:founder-student9-attendance
@@ -37,7 +29,6 @@ class RepairFounderStudent9Attendance extends Command
     private const REF = 'founder-student9-attendance-20260921';
     private const STUDENT_ID = 9;
     private const CAMPUS_ID = 15;
-
     /** @var array<string,array<string,mixed>> */
     private const TARGETS = [
         'biology_28451' => [
@@ -124,7 +115,6 @@ class RepairFounderStudent9Attendance extends Command
         $this->info(($rollback ? 'Rolled back ' : 'Applied ') . count($actionable) . ' repair item(s).');
         return self::SUCCESS;
     }
-
     /** @return list<array<string,mixed>> */
     private function plan(bool $rollback): array
     {
@@ -177,7 +167,6 @@ class RepairFounderStudent9Attendance extends Command
 
         return $out;
     }
-
     private function validateTarget(array $target, ?object $studentClass, ?object $student, $sessions, ?object $session, bool $rollback): ?string
     {
         if (!$studentClass || (int) $studentClass->StudentID !== self::STUDENT_ID) {
@@ -341,8 +330,6 @@ class RepairFounderStudent9Attendance extends Command
             $this->recordCorrection($sessionId, 'attended', 'cancelled', $old, $reason);
             $this->recordAudit($sessionId, $old, (array) DB::table('ClassSession')->where('id', $sessionId)->first(), $reason);
             if ($deleteCreated) {
-                // Keep all audit/LR/sign-in/ledger rows. The session remains as
-                // a cancelled historical shell; no destructive DELETE occurs.
             }
         });
     }
