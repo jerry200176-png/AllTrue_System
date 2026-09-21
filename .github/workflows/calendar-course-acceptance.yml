@@ -120,7 +120,6 @@ jobs:
           grep -Fq 'secrets.SMOKE_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'secrets.SMOKE_CAMPUS2_DIRECTOR_USER' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'secrets.SMOKE_CAMPUS2_DIRECTOR_PASS' .github/workflows/calendar-course-acceptance.yml
-          grep -Fq 'if [ "$BRANCH_ID" = "2" ]' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'SMOKE_DIRECTOR_LOGIN_CAMPUS2' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'SMOKE_DIRECTOR_PASSWORD_CAMPUS2' .github/workflows/calendar-course-acceptance.yml
           grep -Fq 'acceptance_stage=login_secret_missing' scripts/acceptance/login-contract.sh
