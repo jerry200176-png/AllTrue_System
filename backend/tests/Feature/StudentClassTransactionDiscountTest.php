@@ -339,6 +339,10 @@ class StudentClassTransactionDiscountTest extends TestCase
         $student = $this->student();
         [$director, $token] = $this->staffToken('A', true);
         $course = $this->course($student->id, $director->id);
+        $course->initializePricingSnapshot((new TransactionDiscountCalculator())->calculate(4000, [
+            'type' => 'FIXED_AMOUNT', 'value' => '100', 'reason' => 'legacy monthly approval',
+        ], $director->id, 'director'));
+        $course->Disconunt = 999;
         $course->ScheduleMode = 'date';
         $course->SessionCount = 0;
         $course->RemainingSessions = 0;
@@ -396,6 +400,8 @@ class StudentClassTransactionDiscountTest extends TestCase
         $this->assertCount(1, $newItems);
         $this->assertSame((int) $newCourse->Charge, (int) $newInvoices->first()->TotalAmount);
         $this->assertSame((int) $newCourse->Charge, (int) $newItems->sum('Amount'));
+        $this->assertSame('FIXED_AMOUNT', $newCourse->pricing_snapshot['type']);
+        $this->assertSame(800, (int) $newCourse->pricing_snapshot['discount_amount']);
         $this->assertSame(3200, (int) $newCourse->Charge);
     }
 
