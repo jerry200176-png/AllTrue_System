@@ -73,7 +73,6 @@ jobs:
           $open = \Illuminate\Support\Facades\DB::table("bug_reports")
             ->whereIn("status", ["new","triaged","in_progress"])
             ->orderByDesc("id")
-            ->limit(50)
             ->get($columns);
           $resolved = \Illuminate\Support\Facades\DB::table("bug_reports")
             ->where("status", "resolved")
@@ -186,6 +185,10 @@ jobs:
               if len(target_rows) != 1 or target_rows[0].get("status") not in {"new", "triaged", "in_progress"}:
                   raise SystemExit(f"target bug #{target_id} is not uniquely present in the fresh open queue")
           if meta:
+              expected_open = sum(int(meta.get("counts", {}).get(status, 0)) for status in ("new", "triaged", "in_progress"))
+              expected_resolved = int(meta.get("counts", {}).get("resolved", 0))
+              if len(open_rows) != expected_open or len(resolved_rows) != expected_resolved:
+                  raise SystemExit(f"queue row/count mismatch: open={len(open_rows)}/{expected_open}, resolved={len(resolved_rows)}/{expected_resolved}")
               meta["queue_dump_run_id"] = os.environ.get("GITHUB_RUN_ID")
               meta["queue_dump_attempt"] = os.environ.get("GITHUB_RUN_ATTEMPT")
               meta["target_bug_id"] = int(target_id) if target_id else None
