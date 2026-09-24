@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.24",
+    "date": "2026-09-24",
+    "title": "2026.09.24 草稿（未發布）",
+    "summary": "printed detail pages within their titled date",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "printed detail pages within their titled date"
+        ]
+      }
+    ],
+    "items": [
+      "printed detail pages within their titled date"
+    ]
+  },
+  {
     "version": "2026.09.21",
     "date": "2026-09-21",
     "title": "2026.09.21 草稿（未發布）",
@@ -669,53 +691,6 @@ export const changelogDraftNotes = [
       "phone binding classifier parity",
       "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
       "高頻核心頁面降低切換與認知負擔"
-    ]
-  },
-  {
-    "version": "2026.09.04",
-    "date": "2026-09-04",
-    "title": "2026.09.04 草稿（未發布）",
-    "summary": "dark-launch acceptance for 新生問班；新生問班招生閉環 V1",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "dark-launch acceptance for 新生問班",
-          "新生問班招生閉環 V1",
-          "主任與老師角色新手教學"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "新手教學標註錨點補齊",
-          "合約提前結束未繳費可回帳務中心對帳",
-          "多科共用方案分離購買、已用與未來預排堂數",
-          "月結請假維持合約日期邊界",
-          "activate admissions flags"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "主任與老師新手任務 V1.1"
-        ]
-      }
-    ],
-    "items": [
-      "dark-launch acceptance for 新生問班",
-      "新生問班招生閉環 V1",
-      "主任與老師角色新手教學",
-      "新手教學標註錨點補齊",
-      "合約提前結束未繳費可回帳務中心對帳",
-      "多科共用方案分離購買、已用與未來預排堂數",
-      "月結請假維持合約日期邊界",
-      "activate admissions flags"
     ]
   }
 ];

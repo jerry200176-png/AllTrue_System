@@ -1,3 +1,7 @@
+## 2026-09-24 — fix(calendar): keep printed detail pages within their titled date (in-app #335)
+<!-- release-notes: staff_update=staff-2026-09-24-calendar-print-day-pages-335 -->
+- 列印課表的每日明細現在換日時會另起一頁，頁面日期標題與表格內所有堂次日期一致；同日資料超過頁面容量時仍保留續頁，不更動排課或堂次資料。
+
 # 2026-09-21 — feat(students): contract date review workspace (in-app #321)
 <!-- release-notes: staff_update=staff-2026-09-21-student-contract-dates-321 -->
 - 學生管理的進行中與歷史課程現在以合約分開顯示上課日期：預覽 3 堂，可在原卡片逐筆展開完整日期、批次比較多筆合約，並保留既有付款、堂數與管理操作；學習檢測與題庫管理僅從導覽與功能搜尋隱藏，既有頁面路由與資料不刪除。

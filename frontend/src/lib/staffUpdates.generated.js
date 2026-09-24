@@ -4,6 +4,37 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-24-calendar-print-day-pages-335",
+    "publishedAt": "2026-09-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "列印課表每日明細日期對齊",
+    "summary": "列印課表換日時會另起一頁，頁面標題與該頁堂次日期一致。",
+    "items": [
+      "每日明細不再把隔天堂次接在前一天的日期標題下；同日堂次太多時仍會正常續頁。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "每日明細不再把隔天堂次接在前一天的日期標題下；同日堂次太多時仍會正常續頁。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-335",
+      "changelog:2026-09-24:calendar-print-day-pages-335"
+    ],
+    "date": "2026-09-24",
+    "version": "2026.09.24"
+  },
+  {
     "id": "staff-2026-09-21-billing-payable-canonical",
     "publishedAt": "2026-09-21",
     "effectiveAt": null,
