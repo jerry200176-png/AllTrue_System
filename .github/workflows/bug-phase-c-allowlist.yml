@@ -48,10 +48,13 @@ jobs:
           import re
           from pathlib import Path
           request = Path("operations/closeout/bug-phase-c-allowlist.request.md").read_text(encoding="utf-8")
-          matches = re.findall(r"(?m)^bug_id:\s*([1-9][0-9]*)\s*$", request)
-          if len(matches) != 1:
+          target_lines = [line for line in request.splitlines() if re.match(r"^[ \t]*bug_id[ \t]*:", line)]
+          if len(target_lines) != 1:
               raise SystemExit("request must contain exactly one bug_id: <positive integer> line")
-          print(matches[0])
+          match = re.fullmatch(r"bug_id:[ \t]*([1-9][0-9]*)[ \t]*", target_lines[0])
+          if match is None:
+              raise SystemExit("request bug_id line must be a positive integer with no trailing content")
+          print(match.group(1))
           PY
             )"
           fi

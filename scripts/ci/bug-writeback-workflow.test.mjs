@@ -40,9 +40,9 @@ assert.ok(phaseASource.includes('$svc::normalizeDispositionOptions(['),
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
 assert.match(phaseCSource, /workflow_dispatch:\s+inputs:\s+bug_id:\s+description:[^\n]+\s+required: true/,
   'Phase-C manual dispatch must require one target ID');
-assert.match(phaseCSource, /matches = re\.findall\(r"\(\?m\)\^bug_id:/,
-  'Phase-C request-file push must parse an explicit target ID');
-assert.match(phaseCSource, /if len\(matches\) != 1:/,
+assert.match(phaseCSource, /re\.fullmatch\(r"bug_id:\[ \\t\]\*\(\[1-9\]\[0-9\]\*\)/,
+  'Phase-C request-file push must parse an exact positive target ID line');
+assert.match(phaseCSource, /if len\(target_lines\) != 1:/,
   'Phase-C request-file push must reject absent or ambiguous target IDs');
 assert.match(phaseCSource, /TARGET_BUG_ID: \$\{\{ steps\.target\.outputs\.bug_id \}\}/,
   'Phase-C must pass the validated target into the write step');
@@ -75,6 +75,12 @@ try {
     'an old request without an explicit target must fail closed');
   assert.throws(() => selectTarget('push', '', 'bug_id: 329\nbug_id: 323\n'),
     'a request with two targets must fail closed');
+  assert.throws(() => selectTarget('push', '', 'bug_id: 329\nbug_id: 323 # duplicate request\n'),
+    'a malformed second target must not be ignored');
+  assert.throws(() => selectTarget('push', '', 'bug_id:\n329\n'),
+    'a target split across lines must fail closed');
+  assert.throws(() => selectTarget('push', '', 'bug_id: 329 # comment\n'),
+    'trailing content on the target line must fail closed');
   assert.equal(selectTarget('push', '', 'bug_id: 329\n'), 'bug_id=329');
   assert.throws(() => selectTarget('workflow_dispatch', '0', ''),
     'a nonpositive manual target must fail closed');
