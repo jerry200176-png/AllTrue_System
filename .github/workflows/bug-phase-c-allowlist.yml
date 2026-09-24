@@ -5,6 +5,11 @@ name: Bug Phase-C allowlist resolve (Pi)
 # Allowlist only — never invent new bug IDs here without Evidence Contract.
 on:
   workflow_dispatch:
+    inputs:
+      bug_id:
+        description: "One allowlisted in-app bug ID to resolve"
+        required: true
+        type: string
   push:
     branches: [main]
     paths:
@@ -22,12 +27,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and request
         uses: actions/checkout@v7
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            operations/closeout/bug-phase-c-allowlist.request.md
           sparse-checkout-cone-mode: false
+      - name: Select one target
+        id: target
+        env:
+          DISPATCH_BUG_ID: ${{ inputs.bug_id || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            ID="$DISPATCH_BUG_ID"
+          else
+            ID="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          request = Path("operations/closeout/bug-phase-c-allowlist.request.md").read_text(encoding="utf-8")
+          matches = re.findall(r"(?m)^bug_id:\s*([1-9][0-9]*)\s*$", request)
+          if len(matches) != 1:
+              raise SystemExit("request must contain exactly one bug_id: <positive integer> line")
+          print(matches[0])
+          PY
+            )"
+          fi
+          [[ "$ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid bug_id" >&2; exit 1; }
+          echo "bug_id=$ID" >> "$GITHUB_OUTPUT"
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -48,8 +77,10 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          TARGET_BUG_ID: ${{ steps.target.outputs.bug_id }}
         run: |
           set -euo pipefail
+          [[ "$TARGET_BUG_ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid target" >&2; exit 1; }
           mkdir -p out
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
@@ -57,7 +88,7 @@ jobs:
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/phase-c.log
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "TARGET_BUG_ID='$TARGET_BUG_ID' bash" <<'REMOTE' | tee out/phase-c.log
           set -euo pipefail
           cd /home/admin/backend
           PROD_HEAD=$(git rev-parse HEAD)
@@ -565,6 +596,22 @@ jobs:
               "deploy" => "",
             ],
           ];
+          // One authorized target per run. A request for an unknown ID or an
+          // unshipped revision fails before any comment/status mutation.
+          $targetBugId = filter_var(getenv("TARGET_BUG_ID"), FILTER_VALIDATE_INT);
+          if ($targetBugId === false || $targetBugId < 1 || !isset($items[$targetBugId])) {
+            throw new \RuntimeException("target is not allowlisted");
+          }
+          $target = $items[$targetBugId];
+          $requiredRevision = (string)($target["rev"] ?? "");
+          if (!preg_match("/^[0-9a-f]{40}$/", $requiredRevision) || !preg_match("/^[0-9a-f]{40}$/", $prodHead)) {
+            throw new \RuntimeException("invalid revision evidence");
+          }
+          exec("git merge-base --is-ancestor ".escapeshellarg($requiredRevision)." ".escapeshellarg($prodHead), $unused, $ancestorExit);
+          if ($ancestorExit !== 0) {
+            throw new \RuntimeException("required revision is not in production");
+          }
+          $items = [$targetBugId => $target];
           $results = [];
           foreach ($items as $bugId => $cfg) {
             $bug = \App\Models\BugReport::find($bugId);
