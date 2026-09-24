@@ -1529,7 +1529,7 @@ jobs:
               $teacherId359 = 29;
               $busy359 = app(\App\Services\SubstituteService::class)
                 ->collectTeacherBusySlotsWithCapacity($teacherId359, "2026-09-26", [], null);
-              $probe359["busy_slots"] = collect($busy359)->filter(function ($slot) {{
+              $busySlots359 = collect($busy359)->filter(function ($slot) {{
                 return substr((string)($slot["start_time"] ?? ""), 0, 5) < "12:00"
                   && substr((string)($slot["end_time"] ?? ""), 0, 5) > "10:00";
               }})->map(function ($slot) {{
@@ -1543,6 +1543,10 @@ jobs:
                   "source_types" => $slot["source_types"] ?? [],
                 ];
               }})->values()->all();
+              if (count($busySlots359) > 100) {{
+                throw new \RuntimeException("busy slot limit exceeded");
+              }}
+              $probe359["busy_slots"] = $busySlots359;
 
               $sessions359 = $db::table("ClassSession as cs")
                 ->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
@@ -1594,6 +1598,9 @@ jobs:
               $probe359["error"] = null;
             }} catch (\Throwable $e) {{
               $probe359["decision_grade"] = false;
+              $probe359["busy_slots"] = [];
+              $probe359["class_sessions"] = [];
+              $probe359["schedules"] = [];
               $probe359["error"] = get_class($e);
             }}
           }}

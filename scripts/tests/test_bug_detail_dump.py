@@ -97,6 +97,20 @@ class BugDetailDumpContractTest(unittest.TestCase):
             self.assertNotIn(write, block)
         self.assertIn('359], true)', source)
 
+    def test_bug_359_discards_partial_evidence_on_source_overflow(self):
+        source = self.source
+        gate = source.index('if ($bugId === 359) {{')
+        end = source.index('// #338-specific bounded capacity probe', gate)
+        block = source[gate:end]
+        busy_map = block.index('$busySlots359 = collect($busy359)')
+        busy_limit = block.index('if (count($busySlots359) > 100)')
+        busy_output = block.index('$probe359["busy_slots"] = $busySlots359;')
+        self.assertLess(busy_map, busy_limit)
+        self.assertLess(busy_limit, busy_output)
+        catch = block[block.index('catch (\\Throwable $e) {{'):]
+        for field in ('busy_slots', 'class_sessions', 'schedules'):
+            self.assertIn(f'$probe359["{field}"] = [];', catch)
+
     def test_parser_rejects_ambiguous_or_mismatched_output(self):
         source = self.source
         self.assertIn('expected exactly one JSON evidence envelope', source)
