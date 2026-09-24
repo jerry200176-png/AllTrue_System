@@ -30,7 +30,7 @@ description: >-
 5. **In-app backlog 讀取**（缺 dogfood actor ≠ 無法讀 backlog）：依 [`docs/sop/BUG_INTAKE_TO_PRODUCTION.md`](../../../docs/sop/BUG_INTAKE_TO_PRODUCTION.md)  
    - 本機 `gh` 已授權：`gh workflow run bug-queue-dump.yml` / `bug-detail-dump.yml` → `gh run download` artifact（`meta.json` + `open-bugs.json` / detail JSON）。**禁止**本機 Pi SSH。  
    - Cloud／無 `workflow_dispatch`：走 request-file push 路徑；從 job log 取 JSON（勿硬下 artifact zip）。  
-   - 新鮮度：queue dump ≤15 分鐘；detail 須對同一 ID。`meta.counts` 對照 `open-bugs` unique IDs；`limit(50)` 截斷 → **PARTIAL**。`resolved` 不在 open dump — 標覆蓋缺口，勿宣稱全量。  
+   - 新鮮度：queue dump ≤15 分鐘；detail 須對同一 ID。`meta.counts` 對照 `open-bugs.json`、`resolved-bugs.json` 的 unique IDs 與筆數；任一缺失或計數不符 → **PARTIAL**。`resolved` 是待回報者確認的獨立營運佇列，不回填 active delivery owner。
 6. 依風險再開：`alltrue-debugging` · `alltrue-testing` · `alltrue-code-review` · `alltrue-release` · `alltrue-security`（非每筆全開）
 
 Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁編禁止 checkout）。
@@ -55,7 +55,7 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
    - `PLAN_REQUIRED`：Decision Packet（證據、選項、推薦、驗收、資料操作、恢復）；**Agent 自行蒐證與推薦**；Founder 決策；ChatGPT **可選顧問**，非必經關卡。不得把 `PLAN_REQUIRED` 改名來取消 Founder gate。  
    - 路由／Plan handoff 契約（portfolio-ops）：`docs/model-routed-product-delivery.md` + `docs/templates/strong-plan-handoff.md`；本機 `model-route-resolve`／`codex-route`。  
 7. **發佈**：只走 canonical `deploy.yml`／既有 environment gate；**不** Pi SSH；**不**把本 skill 當 production 授權。  
-8. **驗證**：公開 `version.json` / `deployment.json` / health + 受影響的真實使用者路徑；UI 可讀性不能只用「沒有 overflow」驗收。區分 **implemented ≠ merged ≠ deployed ≠ runtime verified ≠ operationally accepted ≠ 已回覆**。
+8. **驗證**：依 [執行政策的風險分層](../../../docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md#production-discipline-autonomous-small-fixes)：R0/R1 無 protected boundary 時，exact production SHA + deterministic affected-path regression + 公開 `version.json` / `deployment.json` / health 可完成 engineering delivery；未觀測到的 production user-path 必須標 `NO`，reporter acceptance 留在既有異步流程。R2/R3 或資料／權限／billing／migration 仍須直接受影響 production-path 證據，不得套用低風險例外。UI 可讀性測試不能只看「沒有 overflow」。區分 **code verified ≠ merged ≠ deployed ≠ production version verified ≠ production user-path verified ≠ reporter accepted**。
 9. **回寫與學習**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。依 recurrence evidence 補 regression test／共用 authority／`AI_REGRESSION_LESSONS`／tech debt；未根治就明列剩餘風險。
 10. **續跑與重核**：一張 PR 完成不是停點；繼續下一筆已授權、無衝突工作。第一項 blocked（等 Founder）時，推進其他合法項。結束前重取同口徑 snapshot，分開本輪處理、新進、open/resolved/closed coverage，逐筆留下真實 next action。
 
@@ -96,7 +96,7 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
 - [ ] SourceRef → issue → Plan/not-required → PR/head → CI/review → merge → deploy → runtime → acceptance → writeback 可逐段核對；未知階段明標 `UNKNOWN`／`UNVERIFIED`
 - [ ] 根因深度與 recurrence search 有記錄；有相稱的防再犯 artifact，或明列 canonical debt/defer 與剩餘風險
 - [ ] 測試／review／CI 依風險完成；測試涵蓋實際失敗角色、分校或資料形狀
-- [ ] 若宣稱上線：deployed SHA + health + 使用者路徑證據；若宣稱 operationally accepted，另有產品驗收證據
+- [ ] 若宣稱 engineering delivery 完成：依風險有 deployed SHA、health/version 與對應的 regression 或直接 production-path 證據；production user-path 未觀測到時明標 `NO`；reporter acceptance 獨立記錄
 - [ ] in-app 回寫符合 §3.7；`product_loop` 語意正確（SHIPPED 需 production SHA）；reporter verification 不由 Agent 代填
 - [ ] checkpoint／delivery 證據已更新；結束 snapshot 已區分本輪處理與新進；下一筆已授權工作已接或明確標 blocked 範圍
 
