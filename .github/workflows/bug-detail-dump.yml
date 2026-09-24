@@ -1526,6 +1526,9 @@ jobs:
               if ((int)$bug->CampusID !== 9 || !$db::table("User")->where("id", 29)->where("type", "T")->exists()) {{
                 throw new \RuntimeException("target scope mismatch");
               }}
+              // Per-run secret prevents sequential source IDs being recovered
+              // from artifact refs; keep the key out of the evidence envelope.
+              $probeRefKey359 = random_bytes(32);
               $teacherId359 = 29;
               $busy359 = app(\App\Services\SubstituteService::class)
                 ->collectTeacherBusySlotsWithCapacity($teacherId359, "2026-09-26", [], null);
@@ -1571,10 +1574,10 @@ jobs:
               if ($sessions359->count() > 100 || $schedules359->count() > 100) {{
                 throw new \RuntimeException("source row limit exceeded");
               }}
-              $probe359["class_sessions"] = $sessions359->map(function ($row) {{
+              $probe359["class_sessions"] = $sessions359->map(function ($row) use ($probeRefKey359) {{
                 return [
-                  "session_ref" => substr(hash("sha256", "cs|".(int)$row->session_id), 0, 12),
-                  "course_ref" => substr(hash("sha256", "sc|".(int)$row->course_id), 0, 12),
+                  "session_ref" => substr(hash_hmac("sha256", "cs|".(int)$row->session_id, $probeRefKey359), 0, 12),
+                  "course_ref" => substr(hash_hmac("sha256", "sc|".(int)$row->course_id, $probeRefKey359), 0, 12),
                   "campus_id" => (int)($row->campus_id ?? 0),
                   "start" => substr((string)$row->StartTime, 0, 5),
                   "end" => substr((string)$row->EndTime, 0, 5),
@@ -1582,11 +1585,11 @@ jobs:
                   "course_stop" => (int)($row->course_stop ?? 0),
                 ];
               }})->values()->all();
-              $probe359["schedules"] = $schedules359->map(function ($row) {{
+              $probe359["schedules"] = $schedules359->map(function ($row) use ($probeRefKey359) {{
                 return [
-                  "schedule_ref" => substr(hash("sha256", "sch|".(int)$row->id), 0, 12),
+                  "schedule_ref" => substr(hash_hmac("sha256", "sch|".(int)$row->id, $probeRefKey359), 0, 12),
                   "course_ref" => (int)($row->student_course_id ?? 0) > 0
-                    ? substr(hash("sha256", "sc|".(int)$row->student_course_id), 0, 12) : null,
+                    ? substr(hash_hmac("sha256", "sc|".(int)$row->student_course_id, $probeRefKey359), 0, 12) : null,
                   "campus_id" => (int)($row->branch_id ?? 0),
                   "start" => substr((string)$row->start_time, 0, 5),
                   "end" => substr((string)$row->end_time, 0, 5),

@@ -86,11 +86,14 @@ class BugDetailDumpContractTest(unittest.TestCase):
             'collectTeacherBusySlotsWithCapacity',
             '->limit(101)',
             'source row limit exceeded',
-            '"session_ref" => substr(hash("sha256"',
-            '"schedule_ref" => substr(hash("sha256"',
             '"probe_359_cross_campus_source" => $probe359',
         ):
             self.assertIn(marker, source)
+        self.assertIn('$probeRefKey359 = random_bytes(32);', block)
+        self.assertEqual(2, block.count('->map(function ($row) use ($probeRefKey359) {{'))
+        self.assertEqual(4, block.count('hash_hmac("sha256",'))
+        self.assertNotIn('hash("sha256",', block)
+        self.assertNotIn('"probe_ref_key"', block)
         for field in ('"teacher_name" =>', '"student_name" =>', '"teacher_id" =>', '"student_id" =>'):
             self.assertNotIn(field, block)
         for write in ('->insert(', '->update(', '->delete(', '->save('):
