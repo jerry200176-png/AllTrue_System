@@ -223,6 +223,22 @@ Rank unresolved signals by:
 A five-minute high-frequency UX defect may outrank a large feature ask.  
 A severe billing discrepancy may outrank both — and still require a decision boundary before mutation.
 
+### Work-conserving queue scheduling
+
+Canonical identity is `alltrue:bug_report:<id>`; record a related GitHub issue separately. The operational queue is not blocked merely because no item is immediately deliverable. Keep at most **3 active engineering lanes** across:
+
+- **A — delivery-ready:** evidence, scope, risk and authority suffice for bounded implementation through verification.
+- **B — evidence-work:** the Agent can still acquire evidence through an existing authorized read-only path, code/runtime comparison, attachment review, reproduction or telemetry. B is active work, not a wait label.
+- **C — reconciliation:** an existing implementation, PR, deploy, In-App writeback or duplicate/already-fixed state has a concrete autonomous closeout action. C is active work.
+
+**D — Founder decision** crosses an actual authority/product boundary; batch exact-action decision packages without stopping other lanes. **E — external wait** requires reporter, third party or external authorization that the Agent cannot obtain; it exits active engineering capacity. As a lane finishes or moves to D/E, refill from the highest-value eligible C, then A, then B. Only after those are exhausted should stale external follow-up or historical `resolved` reconciliation take the lane. Within each class, use the harm/frequency/evidence/risk ranking above, not FIFO. `resolved` remains an asynchronous operational queue, not a permanent engineering owner.
+
+For each B item, record (1) the exact missing evidence, (2) whether the Agent can obtain it, (3) the existing lawful source/tool, (4) an observation that would permit A, and (5) an observation that would close as no-action or duplicate. Acquire what is available; if only the reporter can answer, ask one concrete question through the existing In-App follow-up and move that item to E. Do not repeatedly poll unchanged reports or use production user paths with hidden writes as “read-only” probes.
+
+For C, an implemented/tested branch without a PR needs a documented decision to open a properly scoped PR or withdraw the speculative candidate from delivery; a green mergeable PR needs an explicit classification of autonomous merge, Founder decision, or concrete dependency. Merge, deploy, production version, production user-path and reporter acceptance remain separate evidence claims. This scheduling rule grants no new production-write, protected-domain or acceptance authority.
+
+Overall queue status is `ACTIVE`, `WAITING_EXTERNAL`, `DECISION_CAPACITY_EXHAUSTED`, or `EMPTY`. Use `WAITING_EXTERNAL` only when no safe A/B/C remains, and `DECISION_CAPACITY_EXHAUSTED` only when remaining actionable work truly requires Founder authority. Reserve system-level `BLOCKED` for an actual execution outage, not an empty A class. A session may end after a bounded active batch and an updated canonical handoff; it must not claim an unverified runner will resume automatically.
+
 ---
 
 ## Collision awareness
