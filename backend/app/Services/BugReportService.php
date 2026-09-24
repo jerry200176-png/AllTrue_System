@@ -823,11 +823,11 @@ class BugReportService
                 ->where('is_internal_note', false)
                 ->where('author_user_id', '!=', (int) $rawReporterId)
                 ->where('created_at', '>=', $resolveLog->created_at->copy()->subDay())
-                ->where('created_at', '<=', $cutoff)
                 ->orderByDesc('created_at')
+                ->orderByDesc('id')
                 ->get()
                 ->first(fn (BugReportComment $comment) => preg_match('/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u', (string) $comment->getAttribute('body')) === 1);
-            if (!$retestRequest) {
+            if (!$retestRequest || $retestRequest->created_at->gt($cutoff)) {
                 continue;
             }
 

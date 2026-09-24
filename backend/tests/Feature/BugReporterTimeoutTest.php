@@ -149,6 +149,27 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_newer_retest_request_restarts_the_seven_day_wait(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $resolvedAt = Carbon::parse('2026-07-01 12:00:00');
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, $resolvedAt, true);
+        BugReportComment::create([
+            'bug_report_id' => $bug->id,
+            'author_user_id' => $admin->id,
+            'body' => '請再試一次',
+            'is_internal_note' => false,
+            'created_at' => Carbon::parse('2026-07-16 12:00:00'),
+        ]);
+
+        $ids = array_column(BugReportService::listEligibleForReporterTimeout(7), 'bug_id');
+        $this->assertNotContains($bug->id, $ids);
+        $this->assertSame('not_eligible', BugReportService::closeByReporterTimeout($bug->id, $admin->id, false, 7)['code']);
+        $this->assertSame('resolved', $bug->fresh()->status);
+        Carbon::setTestNow();
+    }
+
     private function seedUsers(): array
     {
         $user = User::create([
