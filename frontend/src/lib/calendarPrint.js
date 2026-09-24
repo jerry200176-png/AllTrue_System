@@ -191,7 +191,7 @@ export function chunkPrintRows(rows, orientation = 'landscape') {
   const sheets = [{ kind: 'summary', rows: [] }];
   let current = null;
   rows.forEach((row) => {
-    if (!current || current.rows.length >= cap || (current.date !== row.date && current.rows.length >= cap - 2)) {
+    if (!current || current.rows.length >= cap || current.date !== row.date) {
       current = { kind: 'detail', date: row.date, continuation: !!current && current.date === row.date, rows: [] };
       sheets.push(current);
     }

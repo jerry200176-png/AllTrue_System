@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-24-calendar-print-day-pages-335
+    published_at: "2026-09-24"
+    audiences:
+      - director
+    importance: digest
+    title: 列印課表每日明細日期對齊
+    summary: 列印課表換日時會另起一頁，頁面標題與該頁堂次日期一致。
+    items:
+      - category: fixed
+        text: 每日明細不再把隔天堂次接在前一天的日期標題下；同日堂次太多時仍會正常續頁。
+    source_refs:
+      - "github:in-app-335"
+      - "changelog:2026-09-24:calendar-print-day-pages-335"
+
   - id: staff-2026-09-21-student-contract-dates-321
     published_at: "2026-09-21"
     audiences:
