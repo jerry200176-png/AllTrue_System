@@ -72,7 +72,30 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertNotIn('"student_name" =>', block)
         self.assertNotIn('teacher_id" =>', block)
         self.assertNotIn('student_id" =>', block)
-        self.assertIn('338], true)', source)
+        self.assertRegex(source, r'338(?:,\s*\d+)*\], true\)')
+
+    def test_bug_359_source_probe_is_bounded_and_redacted(self):
+        source = self.source
+        gate = source.index('if ($bugId === 359) {{')
+        end = source.index('// #338-specific bounded capacity probe', gate)
+        block = source[gate:end]
+        for marker in (
+            '"date" => "2026-09-26"',
+            '"viewing_campus_id" => (int)$bug->CampusID',
+            'where("id", 29)->where("type", "T")',
+            'collectTeacherBusySlotsWithCapacity',
+            '->limit(101)',
+            'source row limit exceeded',
+            '"session_ref" => substr(hash("sha256"',
+            '"schedule_ref" => substr(hash("sha256"',
+            '"probe_359_cross_campus_source" => $probe359',
+        ):
+            self.assertIn(marker, source)
+        for field in ('"teacher_name" =>', '"student_name" =>', '"teacher_id" =>', '"student_id" =>'):
+            self.assertNotIn(field, block)
+        for write in ('->insert(', '->update(', '->delete(', '->save('):
+            self.assertNotIn(write, block)
+        self.assertIn('359], true)', source)
 
     def test_parser_rejects_ambiguous_or_mismatched_output(self):
         source = self.source

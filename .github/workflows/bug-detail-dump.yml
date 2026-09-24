@@ -1507,6 +1507,97 @@ jobs:
             }}
           }}
 
+          // #359 read-only source check for the reported 2026-09-26 transfer.
+          // Teacher ID 29 was uniquely resolved by the existing identity
+          // diagnostic. Keep this probe confined to this bug, date and teacher;
+          // emit source statuses and opaque refs, never names or raw IDs.
+          $probe359 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 359",
+          ];
+          if ($bugId === 359) {{
+            $probe359["applicable"] = true;
+            $probe359["case"] = "cross_campus_busy_source_359";
+            $probe359["target_window"] = [
+              "date" => "2026-09-26", "start" => "10:00", "end" => "12:00",
+              "viewing_campus_id" => (int)$bug->CampusID,
+            ];
+            try {{
+              if ((int)$bug->CampusID !== 9 || !$db::table("User")->where("id", 29)->where("type", "T")->exists()) {{
+                throw new \RuntimeException("target scope mismatch");
+              }}
+              $teacherId359 = 29;
+              $busy359 = app(\App\Services\SubstituteService::class)
+                ->collectTeacherBusySlotsWithCapacity($teacherId359, "2026-09-26", [], null);
+              $probe359["busy_slots"] = collect($busy359)->filter(function ($slot) {{
+                return substr((string)($slot["start_time"] ?? ""), 0, 5) < "12:00"
+                  && substr((string)($slot["end_time"] ?? ""), 0, 5) > "10:00";
+              }})->map(function ($slot) {{
+                return [
+                  "start" => substr((string)($slot["start_time"] ?? ""), 0, 5),
+                  "end" => substr((string)($slot["end_time"] ?? ""), 0, 5),
+                  "campus_id" => (int)($slot["campus_id"] ?? 0),
+                  "class_type" => (string)($slot["class_type"] ?? ""),
+                  "student_count" => (int)($slot["student_count"] ?? 0),
+                  "remaining_capacity" => (int)($slot["remaining_capacity"] ?? 0),
+                  "source_types" => $slot["source_types"] ?? [],
+                ];
+              }})->values()->all();
+
+              $sessions359 = $db::table("ClassSession as cs")
+                ->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
+                ->leftJoin("Student as st", "sc.StudentID", "=", "st.id")
+                ->where("sc.TeacherID", $teacherId359)
+                ->whereDate("cs.SessionDate", "2026-09-26")
+                ->whereRaw("SUBSTRING(cs.StartTime, 1, 5) < ?", ["17:00"])
+                ->whereRaw("SUBSTRING(cs.EndTime, 1, 5) > ?", ["03:00"])
+                ->orderBy("cs.id")
+                ->limit(101)
+                ->get(["cs.id as session_id", "cs.Status as session_status", "cs.StartTime", "cs.EndTime",
+                  "sc.Stop as course_stop", "sc.ID as course_id", "st.CampusID as campus_id"]);
+              $schedules359 = $db::table("schedules")
+                ->where("teacher_id", $teacherId359)
+                ->whereDate("schedule_date", "2026-09-26")
+                ->whereRaw("SUBSTRING(start_time, 1, 5) < ?", ["17:00"])
+                ->whereRaw("SUBSTRING(end_time, 1, 5) > ?", ["03:00"])
+                ->orderBy("id")
+                ->limit(101)
+                ->get(["id", "status", "start_time", "end_time", "branch_id",
+                  "student_course_id", "original_schedule_id"]);
+              if ($sessions359->count() > 100 || $schedules359->count() > 100) {{
+                throw new \RuntimeException("source row limit exceeded");
+              }}
+              $probe359["class_sessions"] = $sessions359->map(function ($row) {{
+                return [
+                  "session_ref" => substr(hash("sha256", "cs|".(int)$row->session_id), 0, 12),
+                  "course_ref" => substr(hash("sha256", "sc|".(int)$row->course_id), 0, 12),
+                  "campus_id" => (int)($row->campus_id ?? 0),
+                  "start" => substr((string)$row->StartTime, 0, 5),
+                  "end" => substr((string)$row->EndTime, 0, 5),
+                  "status" => strtolower(trim((string)$row->session_status)),
+                  "course_stop" => (int)($row->course_stop ?? 0),
+                ];
+              }})->values()->all();
+              $probe359["schedules"] = $schedules359->map(function ($row) {{
+                return [
+                  "schedule_ref" => substr(hash("sha256", "sch|".(int)$row->id), 0, 12),
+                  "course_ref" => (int)($row->student_course_id ?? 0) > 0
+                    ? substr(hash("sha256", "sc|".(int)$row->student_course_id), 0, 12) : null,
+                  "campus_id" => (int)($row->branch_id ?? 0),
+                  "start" => substr((string)$row->start_time, 0, 5),
+                  "end" => substr((string)$row->end_time, 0, 5),
+                  "status" => (string)$row->status,
+                  "is_substitute_exception" => $row->original_schedule_id !== null,
+                ];
+              }})->values()->all();
+              $probe359["decision_grade"] = true;
+              $probe359["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe359["decision_grade"] = false;
+              $probe359["error"] = get_class($e);
+            }}
+          }}
+
           // #338-specific bounded capacity probe. Resolve the teacher/student
           // names from the current report at runtime (never hard-code or emit
           // them), require unique matches, and invoke the same read-only
@@ -1633,9 +1724,10 @@ jobs:
             278, 281 => $probe278281,
             315 => $probe315,
             338 => $probe338,
+            359 => $probe359,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1679,6 +1771,7 @@ jobs:
                 "probe_278_281_cancelled_makeup_candidates" => $probe278281,
                 "probe_315_cross_campus_busy" => $probe315,
                 "probe_338_target_capacity" => $probe338,
+                "probe_359_cross_campus_source" => $probe359,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
