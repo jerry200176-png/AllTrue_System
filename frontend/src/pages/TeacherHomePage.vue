@@ -86,10 +86,10 @@
           <h3 id="teacher-work-queue-title" tabindex="-1">今天要完成</h3>
           <p class="th-work-queue__description">依照期限與影響排序；完成後會從清單移除。</p>
         </div>
-        <span class="th-work-queue__count" aria-live="polite">{{ teacherTasksLoading ? '載入中…' : (teacherTasksError ? '待確認' : `${teacherTaskCount} 項`) }}</span>
+        <span class="th-work-queue__count" aria-live="polite">{{ teacherTasksLoading ? '載入中…' : (teacherTasksError ? '待確認' : (teacherTasksProgressive ? `至少 ${teacherTaskCount} 項` : `${teacherTaskCount} 項`)) }}</span>
       </div>
 
-      <details v-if="!teacherTasksLoading && teacherTasks.length" class="th-priority-disclosure">
+      <details v-if="!teacherTasksLoading && !teacherTasksError && !teacherTasksProgressive && teacherTasks.length" class="th-priority-disclosure">
         <summary>
           <span>查看排序規則</span>
           <strong>依期限與影響</strong>
@@ -136,6 +136,13 @@
         <AtButton type="button" shape="rect" size="sm" variant="ghost" @click="scrollToWeekSchedule">查看本週課表</AtButton>
       </div>
       <div v-else class="th-work-queue__list">
+        <div v-if="teacherTasksProgressive" class="th-work-queue__partial-error" role="status">
+          <span class="material-symbols-outlined" aria-hidden="true">hourglass_top</span>
+          <div>
+            <strong>已載入的工作可以先處理</strong>
+            <p>其他待辦仍在整理，項目與順序可能變動。</p>
+          </div>
+        </div>
         <div v-if="teacherTasksPartialError" class="th-work-queue__partial-error" role="alert">
           <span class="material-symbols-outlined" aria-hidden="true">info</span>
           <div>
@@ -152,7 +159,7 @@
             <span class="material-symbols-outlined">arrow_forward</span>
           </div>
           <div class="th-next-action__content">
-            <p class="th-next-action__eyebrow">現在先做</p>
+            <p class="th-next-action__eyebrow">{{ teacherTasksProgressive ? '已載入，可先做' : '現在先做' }}</p>
             <div class="th-next-action__title-row">
               <span class="th-work-task__type">{{ teacherTaskTypeLabel(teacherTasks[0].type) }}</span>
               <h4 id="teacher-next-action-title">{{ teacherTasks[0].title }}</h4>
@@ -166,7 +173,7 @@
         </article>
 
         <div v-if="teacherTasks.length > 1" class="th-work-queue__remaining" data-guide="teacher-secondary-actions">
-          <p class="th-work-queue__remaining-label">接著處理</p>
+          <p class="th-work-queue__remaining-label">{{ teacherTasksProgressive ? '其他已載入工作' : '接著處理' }}</p>
           <article v-for="task in teacherTasks.slice(1)" :key="task.id" class="th-work-task">
             <div class="th-work-task__main">
               <div class="th-work-task__title-row">
@@ -190,9 +197,9 @@
     <section class="th-companion" data-guide="teacher-home-companion" aria-labelledby="teacher-companion-title">
       <div class="th-companion__copy">
         <p class="th-companion__eyebrow">今天的節奏</p>
-        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了')) }}</h3>
+        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasksProgressive ? '已載入的工作可先處理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了'))) }}</h3>
         <p class="th-companion__description">
-          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTaskCount} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
+          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasksProgressive ? `目前至少有 ${teacherTaskCount} 項工作，其他待辦仍在整理。` : (teacherTasks.length ? `還有 ${teacherTaskCount} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。'))) }}
         </p>
         <button v-if="teacherTasksError" type="button" class="th-companion__action" :disabled="refreshing" @click="refreshAll">
           <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
@@ -361,6 +368,7 @@ import {
 import { fetchActiveForSession } from '../lib/scheduleDiscrepanciesApi.js';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 import { buildTeacherTasks, countTeacherTasks } from '../lib/teacherDailyWorkflow.js';
+import { teacherWorkQueuePhase } from '../lib/teacherWorkQueuePresentation.js';
 import {
   readTeacherStreak,
   isTeacherStreakDisplayEnabled,
@@ -774,9 +782,6 @@ const teacherTasks = computed(() => buildTeacherTasks({
 }));
 const teacherTaskCount = computed(() => countTeacherTasks(teacherTasks.value));
 
-const teacherTasksLoading = computed(() => (
-  loadingAttendance.value || loadingOverdue.value || (loadingWeek.value && !weekLoadedOnce.value) || awaitingReplyLoading.value
-));
 // Attendance and weekly projection are critical task sources: if either fails,
 // fail closed to avoid a false all-clear state. Overdue reminders and reply
 // counts are supplemental; when another known task exists, surface their
@@ -791,6 +796,14 @@ const teacherTasksError = computed(() => (
   || (overdueLoadError.value && teacherTasks.value.length === 0)
   || (awaitingReplyLoadError.value && !teacherTasksHasNonFeedbackWork.value)
 ));
+const teacherTasksPhase = computed(() => teacherWorkQueuePhase({
+  criticalLoading: loadingAttendance.value || (loadingWeek.value && !weekLoadedOnce.value),
+  supplementalLoading: loadingOverdue.value || awaitingReplyLoading.value,
+  hasError: !!teacherTasksError.value,
+  taskCount: teacherTasks.value.length,
+}));
+const teacherTasksLoading = computed(() => teacherTasksPhase.value === 'loading');
+const teacherTasksProgressive = computed(() => teacherTasksPhase.value === 'partial');
 const teacherTasksPartialError = computed(() => {
   if (teacherTasksCriticalError.value || teacherTasks.value.length === 0) return '';
 
