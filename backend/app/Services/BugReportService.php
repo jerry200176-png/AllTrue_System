@@ -785,10 +785,11 @@ class BugReportService
         $now = $now ?: Carbon::now();
         $cutoff = $now->copy()->subDays($days);
 
-        $bugs = BugReport::query()->where('status', 'resolved')->get(['id', 'reporter_user_id']);
+        $reporterIdsByBug = BugReport::query()->where('status', 'resolved')
+            ->pluck('reporter_user_id', 'id')->all();
         $out = [];
-        foreach ($bugs as $bug) {
-            $bugId = (int) $bug->id;
+        foreach ($reporterIdsByBug as $rawBugId => $rawReporterId) {
+            $bugId = (int) $rawBugId;
             $resolveLog = BugReportStatusLog::query()
                 ->where('bug_report_id', $bugId)
                 ->where('to_status', 'resolved')
@@ -809,7 +810,7 @@ class BugReportService
             }
             if (BugReportComment::query()
                 ->where('bug_report_id', $bugId)
-                ->where('author_user_id', $bug->reporter_user_id)
+                ->where('author_user_id', (int) $rawReporterId)
                 ->where('created_at', '>=', $resolveLog->created_at)
                 ->exists()) {
                 continue;
@@ -820,12 +821,12 @@ class BugReportService
             $retestRequest = BugReportComment::query()
                 ->where('bug_report_id', $bugId)
                 ->where('is_internal_note', false)
-                ->where('author_user_id', '!=', $bug->reporter_user_id)
+                ->where('author_user_id', '!=', (int) $rawReporterId)
                 ->where('created_at', '>=', $resolveLog->created_at->copy()->subDay())
                 ->where('created_at', '<=', $cutoff)
                 ->orderByDesc('created_at')
                 ->get()
-                ->first(fn (BugReportComment $comment) => preg_match('/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u', $comment->body) === 1);
+                ->first(fn (BugReportComment $comment) => preg_match('/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u', (string) $comment->getAttribute('body')) === 1);
             if (!$retestRequest) {
                 continue;
             }
