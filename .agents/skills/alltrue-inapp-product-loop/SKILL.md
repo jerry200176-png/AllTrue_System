@@ -59,6 +59,12 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
 9. **回寫與學習**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。依 recurrence evidence 補 regression test／共用 authority／`AI_REGRESSION_LESSONS`／tech debt；未根治就明列剩餘風險。
 10. **續跑與重核**：一張 PR 完成不是停點；繼續下一筆已授權、無衝突工作。第一項 blocked（等 Founder）時，推進其他合法項。結束前重取同口徑 snapshot，分開本輪處理、新進、open/resolved/closed coverage，逐筆留下真實 next action。
 
+### Work-conserving queue
+
+以 `alltrue:bug_report:<id>` 為每筆唯一 SourceRef，GitHub issue number 另記，不混用。最多同時維持 3 個 **A delivery-ready、B evidence-work、C reconciliation** 工程 lane；A=證據與授權已足可交付，B=Agent 仍可自行取得影響選工的證據，C=實作、PR、部署、回寫或去重尚待收斂。D Founder decision 與 E external wait 不佔 lane。某件轉 D/E 或完成後，依 C → A → B → stale follow-up → resolved-history 的價值順序補位；不可只因 A=0 就宣稱整體 blocked，也不可用低價值歷史對照取代可執行的 B/C。
+
+每件 B 記清楚缺哪項證據、Agent 能否自行取得、既有合法來源、何種結果可進 A，以及何種結果會 no-action／duplicate；可取得就執行，不可取得才轉 E 並用既有 In-App follow-up 精準詢問。已實作未開 PR 要決定提出有證據的 PR 或撤出 speculative delivery；綠燈 PR 要明記可自主合併、需 Founder 決策或具體依賴。整體狀態只用 `ACTIVE`、`WAITING_EXTERNAL`、`DECISION_CAPACITY_EXHAUSTED`、`EMPTY`；`WAITING_EXTERNAL` 僅在所有安全 A/B/C 均已耗盡時使用。詳見執行政策的 work-conserving 排程節。
+
 ## 5. Authority & roles
 
 | 來源 | 效力 |
