@@ -24,10 +24,18 @@ for (const workflow of workflows) {
 
 const phaseASource = fs.readFileSync('.github/workflows/bug-phase-a-triage.yml', 'utf8');
 assert.ok(
-  phaseASource.includes('"disposition" => "bug"')
+  phaseASource.includes('DISPOSITION: ${{ inputs.disposition }}')
+    && phaseASource.includes('"disposition" => $disposition')
     && phaseASource.includes('"github_issue_url" => $issueUrl'),
-  'Phase-A must write product_disposition + github_issue_url into changeStatus options',
+  'Phase-A must pass the selected disposition and GitHub issue to the existing service',
 );
+assert.match(phaseASource, /\[\[ "\$DISPOSITION" =~ \^\[a-z_\]\+\$ \]\]/,
+  'Phase-A must constrain the disposition before passing it through SSH');
+assert.ok(!phaseASource.includes('"disposition" => "bug"'), 'Phase-A must not force every report to bug');
+assert.ok(!phaseASource.includes('"engineering_required" => true'),
+  'Phase-A must use the service-owned engineering requirement default');
+assert.ok(phaseASource.includes('$svc::normalizeDispositionOptions(['),
+  'Phase-A must validate disposition against the deployed service even on an idempotent rerun');
 
 const phaseCSource = fs.readFileSync('.github/workflows/bug-phase-c-allowlist.yml', 'utf8');
 assert.match(
