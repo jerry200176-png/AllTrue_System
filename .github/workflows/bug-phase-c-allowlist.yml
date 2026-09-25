@@ -5,6 +5,11 @@ name: Bug Phase-C allowlist resolve (Pi)
 # Allowlist only — never invent new bug IDs here without Evidence Contract.
 on:
   workflow_dispatch:
+    inputs:
+      bug_id:
+        description: "One allowlisted in-app bug ID to resolve"
+        required: true
+        type: string
   push:
     branches: [main]
     paths:
@@ -22,12 +27,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and request
         uses: actions/checkout@v7
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            operations/closeout/bug-phase-c-allowlist.request.md
           sparse-checkout-cone-mode: false
+      - name: Select one target
+        id: target
+        env:
+          DISPATCH_BUG_ID: ${{ inputs.bug_id || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            ID="$DISPATCH_BUG_ID"
+          else
+            ID="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          request = Path("operations/closeout/bug-phase-c-allowlist.request.md").read_text(encoding="utf-8")
+          target_lines = [line for line in request.splitlines() if re.match(r"^[ \t]*bug_id[ \t]*:", line)]
+          if len(target_lines) != 1:
+              raise SystemExit("request must contain exactly one bug_id: <positive integer> line")
+          match = re.fullmatch(r"bug_id:[ \t]*([1-9][0-9]*)[ \t]*", target_lines[0])
+          if match is None:
+              raise SystemExit("request bug_id line must be a positive integer with no trailing content")
+          print(match.group(1))
+          PY
+            )"
+          fi
+          [[ "$ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid bug_id" >&2; exit 1; }
+          echo "bug_id=$ID" >> "$GITHUB_OUTPUT"
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -48,8 +80,10 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          TARGET_BUG_ID: ${{ steps.target.outputs.bug_id }}
         run: |
           set -euo pipefail
+          [[ "$TARGET_BUG_ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid target" >&2; exit 1; }
           mkdir -p out
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
@@ -57,7 +91,7 @@ jobs:
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/phase-c.log
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "TARGET_BUG_ID='$TARGET_BUG_ID' bash" <<'REMOTE' | tee out/phase-c.log
           set -euo pipefail
           cd /home/admin/backend
           PROD_HEAD=$(git rev-parse HEAD)
@@ -544,6 +578,16 @@ jobs:
               "rev" => "3d86f37a87576fc9051b1b2d7c77f176cefad36d",
               "deploy" => "35554030780",
             ],
+            323 => [
+              "reply" => "家長入口的待回覆提醒已修好並上線：點選提醒後，系統會找到跨頁的待回覆評量、打開回覆編輯區並聚焦輸入框。請重新整理家長頁面後重試；若仍無法回覆，請按「問題仍存在」並提供操作步驟，我們會重新調查。這次工程測試與正式環境版本檢查已完成，仍等待您實際確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3073",
+              "rev" => "64cc175e48c962be82d4347601ebe53dfc75d9e4",
+              "deploy" => "35621758599",
+            ],
+            317 => [
+              "reply" => "行事曆日檢視的一對二／一對三並排課程格已調整：窄欄中的姓名、科目和班型改用較緊湊的排列與短標示，避免文字被裁切；一對一格仍保留完整標示。修正已上線，請重新整理行事曆後查看原本的時段；若仍有看不到的文字，請按「問題仍存在」並告訴我們畫面寬度與時段，我們會重新調查。這次工程測試與正式環境版本檢查已完成，仍等待您實際確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3067",
+              "rev" => "64cc175e48c962be82d4347601ebe53dfc75d9e4",
+              "deploy" => "35621758599",
+            ],
             336 => [
               "reply" => "已修好並上線：列印課表時，班型會顯示「一對一／一對二／一對三／輔導／試聽」等中文，不再顯示 one_on_three 等系統代碼。週／月範圍、老師／教室／學生篩選與主任人工核對用的內容維持不變。請重新整理課表，按「列印課表」確認；若仍看到英文代碼，請回覆這則訊息。這次先完成 #336 的班型顯示，#335 的日期範圍問題仍另行處理。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3140",
               "rev" => "5408348866f491646bdf732c79a46d04a9635873",
@@ -555,6 +599,22 @@ jobs:
               "deploy" => "",
             ],
           ];
+          // One authorized target per run. A request for an unknown ID or an
+          // unshipped revision fails before any comment/status mutation.
+          $targetBugId = filter_var(getenv("TARGET_BUG_ID"), FILTER_VALIDATE_INT);
+          if ($targetBugId === false || $targetBugId < 1 || !isset($items[$targetBugId])) {
+            throw new \RuntimeException("target is not allowlisted");
+          }
+          $target = $items[$targetBugId];
+          $requiredRevision = (string)($target["rev"] ?? "");
+          if (!preg_match("/^[0-9a-f]{40}$/", $requiredRevision) || !preg_match("/^[0-9a-f]{40}$/", $prodHead)) {
+            throw new \RuntimeException("invalid revision evidence");
+          }
+          exec("git merge-base --is-ancestor ".escapeshellarg($requiredRevision)." ".escapeshellarg($prodHead), $unused, $ancestorExit);
+          if ($ancestorExit !== 0) {
+            throw new \RuntimeException("required revision is not in production");
+          }
+          $items = [$targetBugId => $target];
           $results = [];
           foreach ($items as $bugId => $cfg) {
             $bug = \App\Models\BugReport::find($bugId);

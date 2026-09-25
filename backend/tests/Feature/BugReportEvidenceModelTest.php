@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\BugReport;
+use App\Models\BugReportComment;
 use App\Models\BugReportEvidence;
 use App\Models\BugReportStatusLog;
 use App\Models\User;
@@ -78,13 +79,27 @@ class BugReportEvidenceModelTest extends TestCase
     /** @return array{0:BugReport,1:Carbon} */
     private function makeLegacyResolvedBug(User $admin, Carbon $resolvedAt): array
     {
+        $reporter = User::create([
+            'LoginName' => 'evidence-reporter-'.Str::random(8).'@test.com',
+            'Name' => 'Evidence Reporter',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => rand(900000000, 999999999),
+        ]);
         $bug = BugReport::create([
             'CampusID' => 1,
-            'reporter_user_id' => $admin->id,
+            'reporter_user_id' => $reporter->id,
             'title' => 'Legacy evidence candidate',
             'description' => 'D',
             'severity' => 'low',
             'status' => 'resolved',
+        ]);
+        BugReportComment::create([
+            'bug_report_id' => $bug->id,
+            'author_user_id' => $admin->id,
+            'body' => '已上線，請再試一次並確認是否修好',
+            'is_internal_note' => false,
+            'created_at' => $resolvedAt,
         ]);
         BugReportStatusLog::create([
             'bug_report_id' => $bug->id,

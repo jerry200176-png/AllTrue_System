@@ -4,6 +4,132 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-25-tuition-remaining-lessons-362",
+    "publishedAt": "2026-09-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務剩餘堂數更易查看",
+    "summary": "剩餘堂數移到學生旁，桌面不必橫向捲到表格最右側。",
+    "items": [
+      "手機卡片也會在課程科目上方顯示剩餘堂數；上課明細入口與帳務處理不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "手機卡片也會在課程科目上方顯示剩餘堂數；上課明細入口與帳務處理不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3205",
+      "in-app:#362",
+      "changelog:2026-09-25:tuition-remaining-lessons-362"
+    ],
+    "date": "2026-09-25",
+    "version": "2026.09.25"
+  },
+  {
+    "id": "staff-2026-09-25-student-subject-label-366",
+    "publishedAt": "2026-09-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程科目名稱保留設定",
+    "summary": "自訂科目會繼續顯示課程原本設定的名稱。",
+    "items": [
+      "學生管理會優先顯示課程原始科目名稱；標準理化標籤與課程操作不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理會優先顯示課程原始科目名稱；標準理化標籤與課程操作不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3265",
+      "in-app:#366",
+      "changelog:2026-09-25:student-subject-label-366"
+    ],
+    "date": "2026-09-25",
+    "version": "2026.09.25"
+  },
+  {
+    "id": "staff-2026-09-25-course-close-in-place-352",
+    "publishedAt": "2026-09-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找可就地結束課程",
+    "summary": "結束課程不再跳到學生管理，並保留既有確認與帳務防護。",
+    "items": [
+      "可在課程查找頁直接確認並結束課程；剩餘堂數放棄提示、未繳費待對帳與已上課紀錄保留規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "可在課程查找頁直接確認並結束課程；剩餘堂數放棄提示、未繳費待對帳與已上課紀錄保留規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-352",
+      "changelog:2026-09-25:course-close-in-place-352"
+    ],
+    "date": "2026-09-25",
+    "version": "2026.09.25"
+  },
+  {
+    "id": "staff-2026-09-24-calendar-print-day-pages-335",
+    "publishedAt": "2026-09-24",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "列印課表每日明細日期對齊",
+    "summary": "列印課表換日時會另起一頁，頁面標題與該頁堂次日期一致。",
+    "items": [
+      "每日明細不再把隔天堂次接在前一天的日期標題下；同日堂次太多時仍會正常續頁。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "每日明細不再把隔天堂次接在前一天的日期標題下；同日堂次太多時仍會正常續頁。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-335",
+      "changelog:2026-09-24:calendar-print-day-pages-335"
+    ],
+    "date": "2026-09-24",
+    "version": "2026.09.24"
+  },
+  {
     "id": "staff-2026-09-21-billing-payable-canonical",
     "publishedAt": "2026-09-21",
     "effectiveAt": null,

@@ -420,7 +420,7 @@
                           v-if="canCloseCourse(c)"
                           class="small ghost course-settle-action"
                           title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒"
-                          @click="goToStudentsCommercial(c, 'close')"
+                          @click="closeCourseInPlace(c)"
                         >結束課程（不再續課）</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
@@ -484,7 +484,7 @@
                             <p class="action-section-label">狀態管理</p>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
-                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒" @click="goToStudentsCommercial(c, 'close'); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結束課程（不再續課）</button>
+                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒" @click="closeCourseInPlace(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結束課程（不再續課）</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
@@ -1517,6 +1517,7 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { supabase } from '../supabase';
+import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -1681,6 +1682,32 @@ const goToTuitionBilling = (course) => {
 const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
 };
+
+function courseRemainingSessionsForClose(course) {
+  const value = Number(course?.remaining_sessions ?? course?.RemainingSessions);
+  return Number.isFinite(value) ? value : null;
+}
+
+function courseIsSettledForClose(course) {
+  const paymentStatus = String(course?.payment_status || '').toLowerCase();
+  if (paymentStatus === 'paid') return true;
+  const paid = Number(course?.Paid ?? course?.paid);
+  const charge = Number(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
+  if (Number.isFinite(paid) && Number.isFinite(charge)) return paid >= charge && charge > 0;
+  return Number.isFinite(paid) && paid > 0;
+}
+
+function closeCourseInPlace(course) {
+  return runCloseCourseNoRenew({
+    course,
+    studentName: course?.student_name || course?.student?.name,
+    getRemainingSessions: courseRemainingSessionsForClose,
+    getSubjectLabel,
+    isCourseSettled: courseIsSettledForClose,
+    supabase,
+    reloadCourses: () => loadCourses(pagination.value.page),
+  });
+}
 
 const courses = ref([]);
 const coursesLoading = ref(false);

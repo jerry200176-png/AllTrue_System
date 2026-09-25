@@ -1,3 +1,19 @@
+## 2026-09-25 — fix(students): 課程保留已設定的科目名稱（in-app #366）
+<!-- release-notes: staff_update=staff-2026-09-25-student-subject-label-366 -->
+- 學生管理的課程列、課程卡片與後續操作會優先顯示 API 提供的原始科目名稱；標準科目維持既有標籤，不改課程資料、排課或帳務語意。
+
+## 2026-09-25 — fix(tuition): 帳務中心剩餘堂數更易查看（in-app #362）
+<!-- release-notes: staff_update=staff-2026-09-25-tuition-remaining-lessons-362 -->
+- 帳務中心把「剩餘堂數」移到學生欄旁，桌面不必橫向捲到表格最右側；手機卡片也會在課程科目上方顯示堂數。原有上課明細入口、堂數與帳務處理不變。
+
+## 2026-09-25 — fix(courses): 課程查找就地結束課程（in-app #352）
+<!-- release-notes: staff_update=staff-2026-09-25-course-close-in-place-352 -->
+- 課程查找頁現在可就地確認並結束課程，不再為此操作跳到學生管理；沿用既有確認、剩餘堂數放棄提示及未繳費待對帳處理，不改課程或付款規則。
+
+## 2026-09-24 — fix(calendar): keep printed detail pages within their titled date (in-app #335)
+<!-- release-notes: staff_update=staff-2026-09-24-calendar-print-day-pages-335 -->
+- 列印課表的每日明細現在換日時會另起一頁，頁面日期標題與表格內所有堂次日期一致；同日資料超過頁面容量時仍保留續頁，不更動排課或堂次資料。
+
 # 2026-09-21 — feat(students): contract date review workspace (in-app #321)
 <!-- release-notes: staff_update=staff-2026-09-21-student-contract-dates-321 -->
 - 學生管理的進行中與歷史課程現在以合約分開顯示上課日期：預覽 3 堂，可在原卡片逐筆展開完整日期、批次比較多筆合約，並保留既有付款、堂數與管理操作；學習檢測與題庫管理僅從導覽與功能搜尋隱藏，既有頁面路由與資料不刪除。

@@ -19,6 +19,8 @@ class BugReportService
 {
     public const MAX_ATTACHMENTS = 5;
 
+    public const REPORTER_TIMEOUT_MIN_DAYS = 7;
+
     /** Structured status-log marker for product disposition (no schema migration). */
     public const DISPOSITION_MARKER = '[product_disposition]';
 
@@ -773,20 +775,23 @@ class BugReportService
 
     /**
      * Bugs eligible for Evidence Contract reporter-verify timeout.
-     * Requires status=resolved, last resolve ≥ $days ago, and either the legacy
-     * machine [resolution_evidence] marker or a valid append-only production
-     * verification event (do not timeout unverified "text-only" resolves).
+     * Requires status=resolved, last resolve and public staff retest request
+     * both ≥ $days ago, no reporter reply since resolve, and verified production
+     * evidence. This is only a candidate list; cross-issue regression review is
+     * still required before a manual apply.
      *
-     * @return list<array{bug_id:int,resolved_at:string,days_resolved:int}>
+     * @return list<array{bug_id:int,resolved_at:string,retest_requested_at:string,days_resolved:int}>
      */
     public static function listEligibleForReporterTimeout(int $days = 7, ?Carbon $now = null): array
     {
+        $days = max(self::REPORTER_TIMEOUT_MIN_DAYS, $days);
         $now = $now ?: Carbon::now();
         $cutoff = $now->copy()->subDays($days);
 
-        $bugIds = BugReport::query()->where('status', 'resolved')->pluck('id')->all();
+        $reporterIdsByBug = BugReport::query()->where('status', 'resolved')
+            ->pluck('reporter_user_id', 'id')->all();
         $out = [];
-        foreach ($bugIds as $rawBugId) {
+        foreach ($reporterIdsByBug as $rawBugId => $rawReporterId) {
             $bugId = (int) $rawBugId;
             $resolveLog = BugReportStatusLog::query()
                 ->where('bug_report_id', $bugId)
@@ -806,10 +811,33 @@ class BugReportService
                 // Exclusion: production-unverified resolve (legacy / pre-enforcement)
                 continue;
             }
-            // Exclusion: reporter already reopened after this resolve (status would not be resolved)
+            if (BugReportComment::query()
+                ->where('bug_report_id', $bugId)
+                ->where('author_user_id', (int) $rawReporterId)
+                ->where('created_at', '>=', $resolveLog->created_at)
+                ->exists()) {
+                continue;
+            }
+
+            // The existing lifecycle posts the public reply just before resolve.
+            // A bounded window prevents an old triage comment from qualifying.
+            $retestRequest = BugReportComment::query()
+                ->where('bug_report_id', $bugId)
+                ->where('is_internal_note', false)
+                ->where('author_user_id', '!=', (int) $rawReporterId)
+                ->where('created_at', '>=', $resolveLog->created_at->copy()->subDay())
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->get()
+                ->first(fn (BugReportComment $comment) => preg_match('/(?:請|麻煩您|麻煩你).{0,100}(?:確認|重試|再試|試一次)/u', (string) $comment->getAttribute('body')) === 1);
+            if (!$retestRequest || $retestRequest->created_at->gt($cutoff)) {
+                continue;
+            }
+
             $out[] = [
                 'bug_id' => $bugId,
                 'resolved_at' => $resolveLog->created_at->toIso8601String(),
+                'retest_requested_at' => $retestRequest->created_at->toIso8601String(),
                 'days_resolved' => $resolveLog->created_at->diffInDays($now),
             ];
         }
@@ -853,7 +881,7 @@ class BugReportService
                 'ok' => false,
                 'action' => 'skip',
                 'code' => 'not_eligible',
-                'message' => 'Not eligible (age, missing resolution_evidence, or exclusion)',
+                'message' => 'Not eligible (age, evidence, public retest request, reporter reply, or exclusion)',
             ];
         }
 

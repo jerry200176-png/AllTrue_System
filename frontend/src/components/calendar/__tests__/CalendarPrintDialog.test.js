@@ -89,6 +89,30 @@ describe('CalendarPrintDialog acceptance contract', () => {
     wrapper.unmount();
   });
 
+  it('keeps each printed detail heading on the same date as every row beneath it', async () => {
+    const previousSessions = api.sessions;
+    api.sessions = [
+      { ...previousSessions[0], id: 40, session_date: '2026-09-15' },
+      { ...previousSessions[0], id: 41, session_date: '2026-09-16' },
+    ];
+    const wrapper = mount(CalendarPrintDialog, { attachTo: document.body, props: { open: false, branchId: 11, initialDate: '2026-09-15' } });
+    try {
+      await wrapper.setProps({ open: true });
+      await flushPromises();
+      const detailSheets = [...document.body.querySelectorAll('.calendar-print-sheet')].filter((sheet) => sheet.querySelector('table'));
+      expect(detailSheets.map((sheet) => ({
+        heading: sheet.querySelector('h3')?.textContent.trim(),
+        rowDates: [...sheet.querySelectorAll('tbody tr td:first-child')].map((cell) => cell.textContent.slice(0, 10)),
+      }))).toEqual([
+        { heading: '2026-09-15', rowDates: ['2026-09-15'] },
+        { heading: '2026-09-16', rowDates: ['2026-09-16'] },
+      ]);
+    } finally {
+      wrapper.unmount();
+      api.sessions = previousSessions;
+    }
+  });
+
   it('installs print mode, calls print, and restores opener after cleanup', async () => {
     vi.useFakeTimers();
     const opener = document.createElement('button');
