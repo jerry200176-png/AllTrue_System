@@ -1,16 +1,17 @@
 {
   "schema_version": "1.0",
-  "session_id": "83fabf1e51a944298c94209524db7338",
+  "session_id": "84facb6e512f462a9aeceb0ecbc6f003",
   "project": "alltrue",
-  "task_id": "inapp-campus2-acceptance-20260921",
+  "task_id": "INAPP-366-SUBJECT-LABEL-20260925",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
-  "base_sha": "0c10eecb22e46d57d0bfda3995f8616015069a63",
-  "branch": "chore/task-inapp-campus2-acceptance-20260921",
-  "worktree_path": "/home/jerry/workspace/tasks/alltrue/inapp-campus2-acceptance-20260921",
-  "started_at": "2026-09-21T15:30:56Z",
+  "base_sha": "126154cb8d0c5ee17641a0c7c095402fc54d43a6",
+  "branch": "chore/task-INAPP-366-SUBJECT-LABEL-20260925",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/INAPP-366-SUBJECT-LABEL-20260925",
+  "started_at": "2026-09-25T08:45:43Z",
+  "lifecycle_state": "active",
   "production_mutation": false,
   "preflight_result": "pass",
   "provenance_type": "agent-session",
-  "agent_cli": "codex",
-  "gateway_version": "0.5.1"
+  "agent_cli": null,
+  "gateway_version": "0.6.0"
 }

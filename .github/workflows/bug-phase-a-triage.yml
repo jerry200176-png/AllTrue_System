@@ -13,6 +13,11 @@ on:
         description: GitHub issue URL, required in the public reply
         required: true
         type: string
+      disposition:
+        description: Product disposition kind validated by BugReportService
+        required: true
+        default: bug
+        type: string
       public_reply:
         description: Public reply to post on the in-app bug
         required: true
@@ -56,11 +61,13 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           BUG_ID: ${{ inputs.bug_id }}
           GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
+          DISPOSITION: ${{ inputs.disposition }}
           PUBLIC_REPLY: ${{ inputs.public_reply }}
         run: |
           set -euo pipefail
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/deploy_key \
@@ -70,14 +77,15 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
-          export BUG_ID GITHUB_ISSUE_URL PUBLIC_REPLY
+          export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY
           php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
           $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
+          $disposition = (string)getenv("DISPOSITION");
           $reply = (string)getenv("PUBLIC_REPLY");
           $bug = \App\Models\BugReport::find($bugId);
           if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
@@ -89,12 +97,16 @@ jobs:
               ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
           $actor = $admin ? (int)$admin : 1;
           $svc = \App\Services\BugReportService::class;
+          $validatedDisposition = $svc::normalizeDispositionOptions([
+              "disposition" => $disposition,
+              "github_issue_url" => $issueUrl,
+          ]);
+          if (!($validatedDisposition["ok"] ?? false)) { throw new \RuntimeException(json_encode($validatedDisposition)); }
           $transition = null;
           if ($status === "new") {
               $transition = $svc::changeStatus($bugId, $actor, "triaged", "phase-a verified intake; GitHub issue=".$issueUrl, [
-                  "disposition" => "bug",
+                  "disposition" => $disposition,
                   "github_issue_url" => $issueUrl,
-                  "engineering_required" => true,
               ]);
               if (!($transition["ok"] ?? false)) { throw new \RuntimeException(json_encode($transition)); }
           }

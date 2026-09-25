@@ -27,7 +27,7 @@ Do **not** invent the missing Founder decision. Do **not** code merely because t
 The product loop has three separate completion claims. Never collapse them into one:
 
 1. **Inventory closure**: a fresh, bounded snapshot was reconciled to unique SourceRefs and GitHub issues. This proves coverage of that snapshot only; it does not prove historical completion.
-2. **Delivery closure**: the selected item has implementation, tests, review/CI, merge, deploy, runtime identity, and target user-path evidence appropriate to its risk.
+2. **Delivery closure**: the selected item has implementation, tests, review/CI, merge, deploy, runtime identity, and verification evidence appropriate to its risk. A missing reporter reply is not an engineering blocker.
 3. **Learning closure**: the root cause and recurrence family were assessed, a proportionate prevention artifact was added or explicitly deferred, the in-app reporter received the lawful public update, and reporter verification or the documented timeout path determined final closure.
 
 An item is not product-loop complete merely because intake exists, a Plan exists, a PR merged, or GitHub was closed. A queue sweep is not complete while an executable, non-conflicting item is silently abandoned after the first PR.
@@ -44,8 +44,8 @@ Maintain one traceable row per SourceRef. Reuse existing issues, Plans, PRs, rel
 | Build | implementation worker/run where applicable, actual diff/head SHA, focused tests |
 | Integrate | review and required CI, PR, merge SHA |
 | Release | deploy run, deployed SHA, environment, rollback boundary |
-| Verify | runtime identity/health plus the affected user path; layout work needs readability/usability evidence, not only “no overflow” |
-| Accept | operational acceptance evidence, in-app public comment/status, reporter verification or documented timeout |
+| Verify | R0/R1: exact production SHA, deterministic affected-path regression, and production health/version; record direct production user-path observation separately if available. Higher risk: direct affected production-path evidence remains required. Layout evidence must test readability/usability, not only “no overflow”. |
+| Accept | in-app public comment/status and asynchronous reporter verification or documented timeout; do not infer reporter acceptance from engineering delivery |
 | Learn | root-cause depth, recurrence search, prevention artifact or explicit debt/defer reason |
 
 Unknown evidence stays `UNKNOWN`, `UNVERIFIED`, or `BLOCKED`; it must not be inferred from a nearby stage.
@@ -105,7 +105,11 @@ Do **not** ask Founder merely because code changed.
 
 ### Production discipline (autonomous small fixes)
 
-Distinguish: code written → tests passed → reviewed → merged → **deployed** → runtime verified → user path verified → issue / in-app evidence reconciled.
+Distinguish: code verified → merged → **deployed** → production version verified → production user-path verified → reporter accepted. Record each separately; `NO` and `PENDING` are not synonyms.
+
+For R0/R1 only, when the change has no schema, identity/permission, billing, migration, or production data mutation/repair, engineering delivery may finish with the exact production SHA containing the fix, a deterministic automated regression of the affected path, and production health/version evidence. Direct production user-path observation remains valuable but is not a universal prerequisite for this tier; mark it `NO` when absent. Use the existing `resolved` plus public retest request where applicable, and leave reporter confirmation to the existing asynchronous reporter-verify/timeout process. If the reporter says it still fails, reopen investigation.
+
+For R2/R3 or any data, permission, billing, or migration change, retain the stronger direct affected production-path evidence, existing approvals, rollback, and acceptance gates. This R0/R1 distinction does not downgrade those changes or authorize a synthetic production fixture.
 
 Never report **done** at PR merge alone.  
 Do **not** auto-activate a materially new product capability without Founder approval.  
@@ -222,6 +226,22 @@ Rank unresolved signals by:
 
 A five-minute high-frequency UX defect may outrank a large feature ask.  
 A severe billing discrepancy may outrank both — and still require a decision boundary before mutation.
+
+### Work-conserving queue scheduling
+
+Canonical identity is `alltrue:bug_report:<id>`; record a related GitHub issue separately. The operational queue is not blocked merely because no item is immediately deliverable. Keep at most **3 active engineering lanes** across:
+
+- **A — delivery-ready:** evidence, scope, risk and authority suffice for bounded implementation through verification.
+- **B — evidence-work:** the Agent can still acquire evidence through an existing authorized read-only path, code/runtime comparison, attachment review, reproduction or telemetry. B is active work, not a wait label.
+- **C — reconciliation:** an existing implementation, PR, deploy, In-App writeback or duplicate/already-fixed state has a concrete autonomous closeout action. C is active work.
+
+**D — Founder decision** crosses an actual authority/product boundary; batch exact-action decision packages without stopping other lanes. **E — external wait** requires reporter, third party or external authorization that the Agent cannot obtain; it exits active engineering capacity. As a lane finishes or moves to D/E, refill from the highest-value eligible C, then A, then B. Only after those are exhausted should stale external follow-up or historical `resolved` reconciliation take the lane. Within each class, use the harm/frequency/evidence/risk ranking above, not FIFO. `resolved` remains an asynchronous operational queue, not a permanent engineering owner.
+
+For each B item, record (1) the exact missing evidence, (2) whether the Agent can obtain it, (3) the existing lawful source/tool, (4) an observation that would permit A, and (5) an observation that would close as no-action or duplicate. Acquire what is available; if only the reporter can answer, ask one concrete question through the existing In-App follow-up and move that item to E. Do not repeatedly poll unchanged reports or use production user paths with hidden writes as “read-only” probes.
+
+For C, an implemented/tested branch without a PR needs a documented decision to open a properly scoped PR or withdraw the speculative candidate from delivery; a green mergeable PR needs an explicit classification of autonomous merge, Founder decision, or concrete dependency. Merge, deploy, production version, production user-path and reporter acceptance remain separate evidence claims. This scheduling rule grants no new production-write, protected-domain or acceptance authority.
+
+Overall queue status is `ACTIVE`, `WAITING_EXTERNAL`, `DECISION_CAPACITY_EXHAUSTED`, or `EMPTY`. Use `WAITING_EXTERNAL` only when no safe A/B/C remains, and `DECISION_CAPACITY_EXHAUSTED` only when remaining actionable work truly requires Founder authority. Reserve system-level `BLOCKED` for an actual execution outage, not an empty A class. A session may end after a bounded active batch and an updated canonical handoff; it must not claim an unverified runner will resume automatically.
 
 ---
 

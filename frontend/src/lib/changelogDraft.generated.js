@@ -5,6 +5,54 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.25",
+    "date": "2026-09-25",
+    "title": "2026.09.25 草稿（未發布）",
+    "summary": "課程保留已設定的科目名稱；帳務中心剩餘堂數更易查看",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "課程保留已設定的科目名稱",
+          "帳務中心剩餘堂數更易查看",
+          "課程查找就地結束課程"
+        ]
+      }
+    ],
+    "items": [
+      "課程保留已設定的科目名稱",
+      "帳務中心剩餘堂數更易查看",
+      "課程查找就地結束課程"
+    ]
+  },
+  {
+    "version": "2026.09.24",
+    "date": "2026-09-24",
+    "title": "2026.09.24 草稿（未發布）",
+    "summary": "printed detail pages within their titled date",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "printed detail pages within their titled date"
+        ]
+      }
+    ],
+    "items": [
+      "printed detail pages within their titled date"
+    ]
+  },
+  {
     "version": "2026.09.21",
     "date": "2026-09-21",
     "title": "2026.09.21 草稿（未發布）",
@@ -627,95 +675,6 @@ export const changelogDraftNotes = [
     "items": [
       "修正共用方案付款狀態與排課繳費日期更正安全機制",
       "統一主任與老師新手教學並清理重複入口"
-    ]
-  },
-  {
-    "version": "2026.09.05",
-    "date": "2026-09-05",
-    "title": "2026.09.05 草稿（未發布）",
-    "summary": "補齊負責人、追蹤與詢問歷程；科目數改為日粒度明細",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "補齊負責人、追蹤與詢問歷程",
-          "科目數改為日粒度明細"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-          "phone binding classifier parity"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-          "高頻核心頁面降低切換與認知負擔"
-        ]
-      }
-    ],
-    "items": [
-      "補齊負責人、追蹤與詢問歷程",
-      "科目數改為日粒度明細",
-      "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-      "phone binding classifier parity",
-      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-      "高頻核心頁面降低切換與認知負擔"
-    ]
-  },
-  {
-    "version": "2026.09.04",
-    "date": "2026-09-04",
-    "title": "2026.09.04 草稿（未發布）",
-    "summary": "dark-launch acceptance for 新生問班；新生問班招生閉環 V1",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "dark-launch acceptance for 新生問班",
-          "新生問班招生閉環 V1",
-          "主任與老師角色新手教學"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "新手教學標註錨點補齊",
-          "合約提前結束未繳費可回帳務中心對帳",
-          "多科共用方案分離購買、已用與未來預排堂數",
-          "月結請假維持合約日期邊界",
-          "activate admissions flags"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "主任與老師新手任務 V1.1"
-        ]
-      }
-    ],
-    "items": [
-      "dark-launch acceptance for 新生問班",
-      "新生問班招生閉環 V1",
-      "主任與老師角色新手教學",
-      "新手教學標註錨點補齊",
-      "合約提前結束未繳費可回帳務中心對帳",
-      "多科共用方案分離購買、已用與未來預排堂數",
-      "月結請假維持合約日期邊界",
-      "activate admissions flags"
     ]
   }
 ];

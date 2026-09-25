@@ -36,6 +36,21 @@ assert.equal(enumClassTypeRows[0].classTypeLabel, '一對三');
 assert.deepEqual(exceptionMarkers({}, { teacher_id: 10 }, 9), ['代課']);
 assert.deepEqual(exceptionMarkers({}, { teacher_id: 9 }, 9), []);
 assert.equal(summarizeRows(rows, range, 'week').total, 1);
-assert.equal(chunkPrintRows(Array.from({ length: 25 }, (_, i) => ({ ...rows[0], occurrenceKey: String(i), date: '2026-09-15' }))).length, 3);
+const overflowSheets = chunkPrintRows(Array.from({ length: 25 }, (_, i) => ({ ...rows[0], occurrenceKey: String(i), date: '2026-09-15' })));
+assert.equal(overflowSheets.length, 3);
+assert.equal(overflowSheets[2].date, '2026-09-15');
+assert.equal(overflowSheets[2].continuation, true);
+const crossDateSheets = chunkPrintRows([
+  { ...rows[0], occurrenceKey: 'day-one', date: '2026-09-02' },
+  { ...rows[0], occurrenceKey: 'day-two', date: '2026-09-03' },
+]);
+assert.deepEqual(crossDateSheets.filter((sheet) => sheet.kind === 'detail').map((sheet) => ({
+  titleDate: sheet.date,
+  rowDates: sheet.rows.map((row) => row.date),
+  continuation: sheet.continuation,
+})), [
+  { titleDate: '2026-09-02', rowDates: ['2026-09-02'], continuation: false },
+  { titleDate: '2026-09-03', rowDates: ['2026-09-03'], continuation: false },
+]);
 assert.equal(serializePrintableRows(rows)[0].occurrenceKey, undefined);
 console.log('calendarPrint tests passed');
