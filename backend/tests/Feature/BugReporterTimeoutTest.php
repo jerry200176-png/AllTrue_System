@@ -108,6 +108,28 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_timeout_cannot_be_shortened_below_seven_days(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-16 12:00:00'), true);
+
+        $this->assertNotContains($bug->id, array_column(BugReportService::listEligibleForReporterTimeout(1), 'bug_id'));
+        $this->assertSame('not_eligible', BugReportService::closeByReporterTimeout($bug->id, $admin->id, false, 1)['code']);
+        $this->artisan('bugs:close-stale-resolved', [
+            '--days' => 1,
+            '--actor' => $admin->id,
+            '--reviewed-ids' => (string) $bug->id,
+        ])->assertExitCode(1);
+        $this->artisan('bugs:close-stale-resolved', [
+            '--days' => 'invalid',
+            '--dry-run' => true,
+            '--actor' => $admin->id,
+        ])->assertExitCode(1);
+        $this->assertSame('resolved', $bug->fresh()->status);
+        Carbon::setTestNow();
+    }
+
     public function test_reporter_reply_and_missing_retest_request_are_excluded(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));

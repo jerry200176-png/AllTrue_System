@@ -19,6 +19,8 @@ class BugReportService
 {
     public const MAX_ATTACHMENTS = 5;
 
+    public const REPORTER_TIMEOUT_MIN_DAYS = 7;
+
     /** Structured status-log marker for product disposition (no schema migration). */
     public const DISPOSITION_MARKER = '[product_disposition]';
 
@@ -782,6 +784,7 @@ class BugReportService
      */
     public static function listEligibleForReporterTimeout(int $days = 7, ?Carbon $now = null): array
     {
+        $days = max(self::REPORTER_TIMEOUT_MIN_DAYS, $days);
         $now = $now ?: Carbon::now();
         $cutoff = $now->copy()->subDays($days);
 

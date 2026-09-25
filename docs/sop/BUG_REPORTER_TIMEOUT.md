@@ -29,6 +29,8 @@ The dry-run is a **candidate list, not approval to close**. For each ID, read th
 public thread and related issues, check for later regression signals, and only
 then include it in `--reviewed-ids`. The apply command refuses missing, duplicate,
 or ineligible IDs before changing any status; unlisted candidates stay resolved.
+The command and service enforce a minimum of seven calendar days even if a caller
+passes a lower `--days` value; the command rejects malformed or shorter values.
 The machine recognizes a public staff retest request near the latest resolve;
 ambiguous free text is excluded rather than assumed to be a request. Neither
 the machine check nor a seven-day wait proves reporter acceptance.

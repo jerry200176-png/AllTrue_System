@@ -24,7 +24,12 @@ class CloseStaleResolvedBugsCommand extends Command
 
     public function handle(): int
     {
-        $days = max(1, (int) $this->option('days'));
+        $rawDays = (string) $this->option('days');
+        if (!preg_match('/^[1-9][0-9]*$/', $rawDays) || (int) $rawDays < BugReportService::REPORTER_TIMEOUT_MIN_DAYS) {
+            $this->error('Reporter timeout requires --days=' . BugReportService::REPORTER_TIMEOUT_MIN_DAYS . ' or more calendar days');
+            return self::FAILURE;
+        }
+        $days = (int) $rawDays;
         $dryRun = (bool) $this->option('dry-run');
         $actorOpt = $this->option('actor');
 
