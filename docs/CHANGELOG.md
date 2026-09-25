@@ -1,3 +1,7 @@
+## 2026-09-25 — fix(courses): 課程查找就地結束課程（in-app #352）
+<!-- release-notes: staff_update=staff-2026-09-25-course-close-in-place-352 -->
+- 課程查找頁現在可就地確認並結束課程，不再為此操作跳到學生管理；沿用既有確認、剩餘堂數放棄提示及未繳費待對帳處理，不改課程或付款規則。
+
 ## 2026-09-24 — fix(calendar): keep printed detail pages within their titled date (in-app #335)
 <!-- release-notes: staff_update=staff-2026-09-24-calendar-print-day-pages-335 -->
 - 列印課表的每日明細現在換日時會另起一頁，頁面日期標題與表格內所有堂次日期一致；同日資料超過頁面容量時仍保留續頁，不更動排課或堂次資料。

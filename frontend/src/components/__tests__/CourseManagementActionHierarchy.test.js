@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
 const studentsPagePath = resolve(__dirname, '../../pages/StudentsList.vue');
+const closeCourseActionPath = resolve(__dirname, '../../lib/closeCourseNoRenew.js');
 const manualSessionModalPath = resolve(__dirname, '../course-management/ManualSessionModal.vue');
 const source = readFileSync(pagePath, 'utf8');
 const studentsSource = readFileSync(studentsPagePath, 'utf8');
+const closeCourseActionSource = readFileSync(closeCourseActionPath, 'utf8');
 const manualSessionModalSource = readFileSync(manualSessionModalPath, 'utf8');
 const activeActionsStart = source.indexOf('<td class="cell-actions">');
 const activeActionsEnd = source.indexOf('<tr v-if="!courseManagerEnabled && expandedDates.has(c.id)"', activeActionsStart) >= 0
@@ -79,12 +81,14 @@ describe('CourseManagement action hierarchy', () => {
     expect(source.match(/title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒"/g)).toHaveLength(2);
     expect(studentsSource).toContain("['session', 'monthly'].includes");
     expect(studentsSource).toContain("course?.closed_reason !== 'settled_pending'");
-    expect(source).toContain("goToStudentsCommercial(c, 'close')");
-    expect(studentsSource).toContain("reason: 'settled'");
+    expect(source.match(/@click="closeCourseInPlace\(c\)/g)).toHaveLength(2);
+    expect(source).toContain('function closeCourseInPlace(course)');
+    expect(studentsSource).toContain('runCloseCourseNoRenew({');
+    expect(closeCourseActionSource).toContain("reason: 'settled'");
     expect(source).toContain('settled_pending');
     expect(studentsSource).toContain('settled_pending');
-    expect(studentsSource).toContain('forfeit_remaining: true');
-    expect(studentsSource).toContain('放棄這 ${remaining} 堂剩餘額度');
+    expect(closeCourseActionSource).toContain('forfeit_remaining: true');
+    expect(closeCourseActionSource).toContain('放棄這 ${remaining} 堂剩餘額度');
   });
 
   it('normalizes legacy course IDs and gives monthly scheduling failures a visible result', () => {

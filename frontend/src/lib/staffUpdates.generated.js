@@ -4,6 +4,37 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-25-course-close-in-place-352",
+    "publishedAt": "2026-09-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程查找可就地結束課程",
+    "summary": "結束課程不再跳到學生管理，並保留既有確認與帳務防護。",
+    "items": [
+      "可在課程查找頁直接確認並結束課程；剩餘堂數放棄提示、未繳費待對帳與已上課紀錄保留規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "可在課程查找頁直接確認並結束課程；剩餘堂數放棄提示、未繳費待對帳與已上課紀錄保留規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:in-app-352",
+      "changelog:2026-09-25:course-close-in-place-352"
+    ],
+    "date": "2026-09-25",
+    "version": "2026.09.25"
+  },
+  {
     "id": "staff-2026-09-24-calendar-print-day-pages-335",
     "publishedAt": "2026-09-24",
     "effectiveAt": null,
