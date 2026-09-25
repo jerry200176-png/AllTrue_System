@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.25",
+    "date": "2026-09-25",
+    "title": "2026.09.25 草稿（未發布）",
+    "summary": "課程查找就地結束課程",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "課程查找就地結束課程"
+        ]
+      }
+    ],
+    "items": [
+      "課程查找就地結束課程"
+    ]
+  },
+  {
     "version": "2026.09.24",
     "date": "2026-09-24",
     "title": "2026.09.24 草稿（未發布）",
@@ -649,48 +671,6 @@ export const changelogDraftNotes = [
     "items": [
       "修正共用方案付款狀態與排課繳費日期更正安全機制",
       "統一主任與老師新手教學並清理重複入口"
-    ]
-  },
-  {
-    "version": "2026.09.05",
-    "date": "2026-09-05",
-    "title": "2026.09.05 草稿（未發布）",
-    "summary": "補齊負責人、追蹤與詢問歷程；科目數改為日粒度明細",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "補齊負責人、追蹤與詢問歷程",
-          "科目數改為日粒度明細"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-          "phone binding classifier parity"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-          "高頻核心頁面降低切換與認知負擔"
-        ]
-      }
-    ],
-    "items": [
-      "補齊負責人、追蹤與詢問歷程",
-      "科目數改為日粒度明細",
-      "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-      "phone binding classifier parity",
-      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-      "高頻核心頁面降低切換與認知負擔"
     ]
   }
 ];
