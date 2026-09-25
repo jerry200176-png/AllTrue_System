@@ -1,3 +1,7 @@
+## 2026-09-25 — fix(students): 課程保留已設定的科目名稱（in-app #366）
+<!-- release-notes: staff_update=staff-2026-09-25-student-subject-label-366 -->
+- 學生管理的課程列、課程卡片與後續操作會優先顯示 API 提供的原始科目名稱；標準科目維持既有標籤，不改課程資料、排課或帳務語意。
+
 ## 2026-09-25 — fix(tuition): 帳務中心剩餘堂數更易查看（in-app #362）
 <!-- release-notes: staff_update=staff-2026-09-25-tuition-remaining-lessons-362 -->
 - 帳務中心把「剩餘堂數」移到學生欄旁，桌面不必橫向捲到表格最右側；手機卡片也會在課程科目上方顯示堂數。原有上課明細入口、堂數與帳務處理不變。

@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-25-student-subject-label-366
+    published_at: "2026-09-25"
+    audiences:
+      - director
+    importance: digest
+    title: 課程科目名稱保留設定
+    summary: 自訂科目會繼續顯示課程原本設定的名稱。
+    items:
+      - category: fixed
+        text: 學生管理會優先顯示課程原始科目名稱；標準理化標籤與課程操作不變。
+    source_refs:
+      - "github:#3265"
+      - "in-app:#366"
+      - "changelog:2026-09-25:student-subject-label-366"
+
   - id: staff-2026-09-25-tuition-remaining-lessons-362
     published_at: "2026-09-25"
     audiences:

@@ -181,7 +181,7 @@
                   :key="course.id"
                   :class="['subject-pill', { low: isSessionPaymentLowRemaining(course) }]"
                 >
-                  {{ getSubjectLabel(course.subject).split('(')[0].trim() }}
+                  {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
                 </span>
               </div>
@@ -271,7 +271,7 @@
                           :aria-pressed="getFocusedStudentCourse(student.id)?.id === course.id"
                           @click.stop="selectStudentCourse(student.id, course.id, $event)"
                         >
-                          <span class="student-course-picker__subject">{{ getSubjectLabel(course.subject) }}</span>
+                          <span class="student-course-picker__subject">{{ getStudentCourseSubjectDisplayLabel(course) }}</span>
                           <span class="student-course-picker__status">{{ getCourseAttentionLabel(course) }}</span>
                           <span class="student-course-picker__detail">{{ getCourseProgressSummary(course) }}</span>
                           <span class="student-course-picker__chevron material-symbols-outlined" aria-hidden="true">chevron_right</span>
@@ -312,7 +312,7 @@
                     <header class="student-course-card__header">
                       <div class="student-course-card__identity">
                         <span class="student-course-card__eyebrow">學生課程</span>
-                        <h5>{{ getSubjectLabel(course.subject) }}</h5>
+                        <h5>{{ getStudentCourseSubjectDisplayLabel(course) }}</h5>
                         <div class="student-course-card__badges">
                           <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
                           <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
@@ -482,7 +482,7 @@
                   >
                     <div v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card">
                       <div class="sl-history-card__header">
-                        <span class="tag sl-history-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
+                        <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                         <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
@@ -762,7 +762,7 @@
       <div class="modal" style="max-width: 480px;">
         <h3 id="invoice-modal-title" style="margin-bottom: 4px;">月結帳單記錄</h3>
         <p class="invoice-modal-subtitle">
-          {{ invoiceModalCourse?.student_name || '' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
+          {{ invoiceModalCourse?.student_name || '' }} — {{ getStudentCourseSubjectDisplayLabel(invoiceModalCourse) }}
         </p>
 
         <div v-if="invoiceModalLoading" class="invoice-modal-loading">
@@ -808,7 +808,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
-        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -1005,6 +1005,7 @@ import { ref, onMounted, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import {
   calculateTransactionDiscountPreview,
@@ -2078,6 +2079,7 @@ const loadStudentCourses = async (studentId) => {
           id: c.id,
           student_id: studentId,
           subject: c.subject,
+          subject_name: c.subject_name ?? null,
           teacher_id: c.teacher_id,
           teacher_name: c.teacher_name,
           class_type: c.class_type,
@@ -2163,6 +2165,7 @@ const loadAllStudentCourses = async () => {
             id: c.id,
             student_id: sid,
             subject: c.subject,
+            subject_name: c.subject_name ?? null,
             teacher_id: c.teacher_id,
             teacher_name: c.teacher_name || '',
             class_type: c.class_type,

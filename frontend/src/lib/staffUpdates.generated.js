@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.09.25"
   },
   {
+    "id": "staff-2026-09-25-student-subject-label-366",
+    "publishedAt": "2026-09-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "課程科目名稱保留設定",
+    "summary": "自訂科目會繼續顯示課程原本設定的名稱。",
+    "items": [
+      "學生管理會優先顯示課程原始科目名稱；標準理化標籤與課程操作不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理會優先顯示課程原始科目名稱；標準理化標籤與課程操作不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3265",
+      "in-app:#366",
+      "changelog:2026-09-25:student-subject-label-366"
+    ],
+    "date": "2026-09-25",
+    "version": "2026.09.25"
+  },
+  {
     "id": "staff-2026-09-25-course-close-in-place-352",
     "publishedAt": "2026-09-25",
     "effectiveAt": null,

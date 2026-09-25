@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.25",
     "date": "2026-09-25",
     "title": "2026.09.25 草稿（未發布）",
-    "summary": "帳務中心剩餘堂數更易查看；課程查找就地結束課程",
+    "summary": "課程保留已設定的科目名稱；帳務中心剩餘堂數更易查看",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "課程保留已設定的科目名稱",
           "帳務中心剩餘堂數更易查看",
           "課程查找就地結束課程"
         ]
       }
     ],
     "items": [
+      "課程保留已設定的科目名稱",
       "帳務中心剩餘堂數更易查看",
       "課程查找就地結束課程"
     ]
