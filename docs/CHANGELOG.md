@@ -1,3 +1,7 @@
+## 2026-09-25 — fix(tuition): 帳務中心剩餘堂數更易查看（in-app #362）
+<!-- release-notes: staff_update=staff-2026-09-25-tuition-remaining-lessons-362 -->
+- 帳務中心把「剩餘堂數」移到學生欄旁，桌面不必橫向捲到表格最右側；手機卡片也會在課程科目上方顯示堂數。原有上課明細入口、堂數與帳務處理不變。
+
 ## 2026-09-25 — fix(courses): 課程查找就地結束課程（in-app #352）
 <!-- release-notes: staff_update=staff-2026-09-25-course-close-in-place-352 -->
 - 課程查找頁現在可就地確認並結束課程，不再為此操作跳到學生管理；沿用既有確認、剩餘堂數放棄提示及未繳費待對帳處理，不改課程或付款規則。

@@ -281,6 +281,10 @@
                   學生
                   <span v-if="sortKey === 'student_name'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
+                <th class="tc-col-sessions tc-th-sort" role="button" tabindex="0" @click="toggleSort('remaining_sessions')" @keydown.enter.prevent="toggleSort('remaining_sessions')" @keydown.space.prevent="toggleSort('remaining_sessions')">
+                  剩餘堂數
+                  <span v-if="sortKey === 'remaining_sessions'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('subject')" @keydown.enter.prevent="toggleSort('subject')" @keydown.space.prevent="toggleSort('subject')">
                   科目
                   <span v-if="sortKey === 'subject'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
@@ -300,10 +304,6 @@
                 <th class="tc-col-date tc-th-sort" role="button" tabindex="0" @click="toggleSort('due_date')" @keydown.enter.prevent="toggleSort('due_date')" @keydown.space.prevent="toggleSort('due_date')">
                   到期／逾期
                   <span v-if="sortKey === 'due_date'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-col-sessions tc-th-sort" role="button" tabindex="0" @click="toggleSort('remaining_sessions')" @keydown.enter.prevent="toggleSort('remaining_sessions')" @keydown.space.prevent="toggleSort('remaining_sessions')">
-                  剩餘堂數
-                  <span v-if="sortKey === 'remaining_sessions'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-actions">操作</th>
               </tr>
@@ -331,6 +331,18 @@
                     placeholder="後5碼"
                     @click.stop
                   />
+                </td>
+                <td class="tc-col-sessions">
+                  <template v-if="r.schedule_mode === 'count' && r.remaining_sessions != null">
+                    <button
+                      v-if="r.id"
+                      class="tc-sessions-link"
+                      @click="openSessionDetail(r)"
+                      :title="'點入查看上課明細'"
+                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
+                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
+                  </template>
+                  <span v-else class="text-light">—</span>
                 </td>
                 <td>
                   <div>{{ r.subject }}</div>
@@ -378,18 +390,6 @@
                     <span v-else-if="r.days_until_settlement != null && r.days_until_settlement <= 2" class="soon-tag">
                       {{ r.days_until_settlement }}天後
                     </span>
-                  </template>
-                  <span v-else class="text-light">—</span>
-                </td>
-                <td class="tc-col-sessions">
-                  <template v-if="r.schedule_mode === 'count' && r.remaining_sessions != null">
-                    <button
-                      v-if="r.id"
-                      class="tc-sessions-link"
-                      @click="openSessionDetail(r)"
-                      :title="'點入查看上課明細'"
-                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
-                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
                   </template>
                   <span v-else class="text-light">—</span>
                 </td>
@@ -3508,30 +3508,32 @@ loadAlerts();
   .tc-table:not(.acct-table) td:nth-child(1) { grid-column: 2; grid-row: 1; width: 44px; }
   .tc-table:not(.acct-table) td:nth-child(2) { grid-column: 1; grid-row: 1; font-size: 15px; }
   .tc-table:not(.acct-table) td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; color: var(--text-light); }
-  .tc-table:not(.acct-table) td:nth-child(4) { grid-column: 1; grid-row: 3; }
-  .tc-table:not(.acct-table) td:nth-child(5) { grid-column: 2; grid-row: 3; text-align: right; }
-  .tc-table:not(.acct-table) td:nth-child(6) { grid-column: 1; grid-row: 4; }
-  .tc-table:not(.acct-table) td:nth-child(7) { grid-column: 2; grid-row: 4; text-align: right; }
-  .tc-table:not(.acct-table) td:nth-child(8) { grid-column: 1; grid-row: 5; }
-  .tc-table:not(.acct-table) td:nth-child(9) { grid-column: 2; grid-row: 5; text-align: right; }
-  .tc-table:not(.acct-table) td:nth-child(10) { grid-column: 1 / -1; grid-row: 6; }
+  .tc-table:not(.acct-table) td:nth-child(3)::before { content: '剩餘堂數'; color: var(--text-light); font-size: 11px; margin-right: 4px; }
+  .tc-table:not(.acct-table) td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; color: var(--text-light); }
+  .tc-table:not(.acct-table) td:nth-child(5) { grid-column: 1; grid-row: 4; }
+  .tc-table:not(.acct-table) td:nth-child(6) { grid-column: 2; grid-row: 4; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(7) { grid-column: 1; grid-row: 5; }
+  .tc-table:not(.acct-table) td:nth-child(8) { grid-column: 2; grid-row: 5; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(9) { grid-column: 1; grid-row: 6; }
+  .tc-table:not(.acct-table) td:nth-child(10) { grid-column: 2; grid-row: 6; text-align: right; }
   .tc-table:not(.acct-table) td:nth-child(11) { grid-column: 1 / -1; grid-row: 7; }
-  .tc-table:not(.acct-table) td:nth-child(4)::before,
-  .tc-table:not(.acct-table) td:nth-child(6)::before,
+  .tc-table:not(.acct-table) td:nth-child(12) { grid-column: 1 / -1; grid-row: 8; }
+  .tc-table:not(.acct-table) td:nth-child(5)::before,
   .tc-table:not(.acct-table) td:nth-child(7)::before,
   .tc-table:not(.acct-table) td:nth-child(8)::before,
   .tc-table:not(.acct-table) td:nth-child(9)::before,
-  .tc-table:not(.acct-table) td:nth-child(10)::before {
+  .tc-table:not(.acct-table) td:nth-child(10)::before,
+  .tc-table:not(.acct-table) td:nth-child(11)::before {
     color: var(--text-light);
     font-size: 11px;
     margin-right: 4px;
   }
-  .tc-table:not(.acct-table) td:nth-child(4)::before { content: '模式'; }
-  .tc-table:not(.acct-table) td:nth-child(6)::before { content: '應繳'; }
-  .tc-table:not(.acct-table) td:nth-child(7)::before { content: '已繳'; }
-  .tc-table:not(.acct-table) td:nth-child(8)::before { content: '未結清'; }
-  .tc-table:not(.acct-table) td:nth-child(9)::before { content: '最近付款'; }
-  .tc-table:not(.acct-table) td:nth-child(10)::before { content: '到期／逾期'; }
+  .tc-table:not(.acct-table) td:nth-child(5)::before { content: '模式'; }
+  .tc-table:not(.acct-table) td:nth-child(7)::before { content: '應繳'; }
+  .tc-table:not(.acct-table) td:nth-child(8)::before { content: '已繳'; }
+  .tc-table:not(.acct-table) td:nth-child(9)::before { content: '未結清'; }
+  .tc-table:not(.acct-table) td:nth-child(10)::before { content: '最近付款'; }
+  .tc-table:not(.acct-table) td:nth-child(11)::before { content: '到期／逾期'; }
   .tc-table:not(.acct-table) .tc-actions { justify-content: flex-start; }
   .tc-table:not(.acct-table) .tc-col-actions { padding-top: 10px; }
 
