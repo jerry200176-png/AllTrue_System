@@ -762,7 +762,7 @@
       <div class="modal" style="max-width: 480px;">
         <h3 id="invoice-modal-title" style="margin-bottom: 4px;">月結帳單記錄</h3>
         <p class="invoice-modal-subtitle">
-          {{ invoiceModalCourse?.student_name || '' }} — {{ getStudentCourseSubjectDisplayLabel(invoiceModalCourse) }}
+          {{ invoiceModalCourse?.student_name || '' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
         </p>
 
         <div v-if="invoiceModalLoading" class="invoice-modal-loading">
