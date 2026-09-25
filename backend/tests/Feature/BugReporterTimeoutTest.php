@@ -21,11 +21,11 @@ class BugReporterTimeoutTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
 
-        [$admin] = $this->seedAdmin();
+        [$admin, $reporter] = $this->seedUsers();
 
-        $fresh = $this->makeResolvedBug($admin->id, Carbon::parse('2026-07-17 12:00:00'), true);
-        $oldNoEvidence = $this->makeResolvedBug($admin->id, Carbon::parse('2026-07-01 12:00:00'), false);
-        $oldOk = $this->makeResolvedBug($admin->id, Carbon::parse('2026-07-01 12:00:00'), true);
+        $fresh = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-17 12:00:00'), true);
+        $oldNoEvidence = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-01 12:00:00'), false);
+        $oldOk = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-01 12:00:00'), true);
 
         $eligible = BugReportService::listEligibleForReporterTimeout(7);
         $ids = array_column($eligible, 'bug_id');
@@ -40,8 +40,8 @@ class BugReporterTimeoutTest extends TestCase
     public function test_dry_run_does_not_close(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
-        [$admin] = $this->seedAdmin();
-        $bug = $this->makeResolvedBug($admin->id, Carbon::parse('2026-07-01 12:00:00'), true);
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-01 12:00:00'), true);
 
         $result = BugReportService::closeByReporterTimeout($bug->id, $admin->id, true, 7);
         $this->assertTrue($result['ok']);
@@ -54,8 +54,8 @@ class BugReporterTimeoutTest extends TestCase
     public function test_close_is_idempotent(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
-        [$admin] = $this->seedAdmin();
-        $bug = $this->makeResolvedBug($admin->id, Carbon::parse('2026-07-01 12:00:00'), true);
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-01 12:00:00'), true);
 
         $r1 = BugReportService::closeByReporterTimeout($bug->id, $admin->id, false, 7);
         $this->assertSame('closed', $r1['action']);
@@ -74,8 +74,8 @@ class BugReporterTimeoutTest extends TestCase
     public function test_artisan_dry_run(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
-        [$admin] = $this->seedAdmin();
-        $bug = $this->makeResolvedBug($admin->id, Carbon::parse('2026-07-01 12:00:00'), true);
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-01 12:00:00'), true);
 
         $this->artisan('bugs:close-stale-resolved', [
             '--dry-run' => true,
@@ -86,7 +86,91 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
-    private function seedAdmin(): array
+    public function test_artisan_apply_requires_explicit_reviewed_eligible_ids(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::parse('2026-07-01 12:00:00'), true);
+
+        $this->artisan('bugs:close-stale-resolved', ['--actor' => $admin->id])
+            ->assertExitCode(1);
+        $this->assertSame('resolved', $bug->fresh()->status);
+        $this->artisan('bugs:close-stale-resolved', [
+            '--actor' => $admin->id,
+            '--reviewed-ids' => $bug->id . ',999999',
+        ])->assertExitCode(1);
+        $this->assertSame('resolved', $bug->fresh()->status);
+        $this->artisan('bugs:close-stale-resolved', [
+            '--actor' => $admin->id,
+            '--reviewed-ids' => (string) $bug->id,
+        ])->assertSuccessful();
+        $this->assertSame('closed', $bug->fresh()->status);
+        Carbon::setTestNow();
+    }
+
+    public function test_reporter_reply_and_missing_retest_request_are_excluded(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $resolvedAt = Carbon::parse('2026-07-01 12:00:00');
+        $replied = $this->makeResolvedBug($admin->id, $reporter->id, $resolvedAt, true);
+        BugReportComment::create([
+            'bug_report_id' => $replied->id,
+            'author_user_id' => $reporter->id,
+            'body' => '仍然有問題',
+            'is_internal_note' => false,
+            'created_at' => $resolvedAt->copy()->addDay(),
+        ]);
+        $noAsk = $this->makeResolvedBug($admin->id, $reporter->id, $resolvedAt, true);
+        BugReportComment::query()->where('bug_report_id', $noAsk->id)->update(['body' => '已上線']);
+
+        $ids = array_column(BugReportService::listEligibleForReporterTimeout(7), 'bug_id');
+        $this->assertNotContains($replied->id, $ids);
+        $this->assertNotContains($noAsk->id, $ids);
+        $this->assertSame('not_eligible', BugReportService::closeByReporterTimeout($replied->id, $admin->id, false, 7)['code']);
+        Carbon::setTestNow();
+    }
+
+    public function test_retest_request_must_be_recent_to_resolve_and_at_least_seven_days_old(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $resolvedAt = Carbon::parse('2026-07-01 12:00:00');
+        $oldAsk = $this->makeResolvedBug($admin->id, $reporter->id, $resolvedAt, true);
+        BugReportComment::query()->where('bug_report_id', $oldAsk->id)
+            ->update(['created_at' => $resolvedAt->copy()->subDays(2)]);
+        $lateAsk = $this->makeResolvedBug($admin->id, $reporter->id, $resolvedAt, true);
+        BugReportComment::query()->where('bug_report_id', $lateAsk->id)
+            ->update(['created_at' => Carbon::parse('2026-07-17 12:00:00')]);
+
+        $ids = array_column(BugReportService::listEligibleForReporterTimeout(7), 'bug_id');
+        $this->assertNotContains($oldAsk->id, $ids);
+        $this->assertNotContains($lateAsk->id, $ids);
+        Carbon::setTestNow();
+    }
+
+    public function test_newer_retest_request_restarts_the_seven_day_wait(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-18 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $resolvedAt = Carbon::parse('2026-07-01 12:00:00');
+        $bug = $this->makeResolvedBug($admin->id, $reporter->id, $resolvedAt, true);
+        BugReportComment::create([
+            'bug_report_id' => $bug->id,
+            'author_user_id' => $admin->id,
+            'body' => '請再試一次',
+            'is_internal_note' => false,
+            'created_at' => Carbon::parse('2026-07-16 12:00:00'),
+        ]);
+
+        $ids = array_column(BugReportService::listEligibleForReporterTimeout(7), 'bug_id');
+        $this->assertNotContains($bug->id, $ids);
+        $this->assertSame('not_eligible', BugReportService::closeByReporterTimeout($bug->id, $admin->id, false, 7)['code']);
+        $this->assertSame('resolved', $bug->fresh()->status);
+        Carbon::setTestNow();
+    }
+
+    private function seedUsers(): array
     {
         $user = User::create([
             'LoginName' => 'timeoutAdmin@test.com',
@@ -101,14 +185,21 @@ class BugReporterTimeoutTest extends TestCase
             'Admin' => 1,
             'Approved' => 1,
         ]);
-        return [$user];
+        $reporter = User::create([
+            'LoginName' => 'timeoutReporter@test.com',
+            'Name' => 'Timeout Reporter',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => rand(900000000, 999999999),
+        ]);
+        return [$user, $reporter];
     }
 
-    private function makeResolvedBug(int $adminId, Carbon $resolvedAt, bool $withEvidence): BugReport
+    private function makeResolvedBug(int $adminId, int $reporterId, Carbon $resolvedAt, bool $withEvidence): BugReport
     {
         $bug = BugReport::create([
             'CampusID' => 1,
-            'reporter_user_id' => $adminId,
+            'reporter_user_id' => $reporterId,
             'title' => 'Timeout candidate',
             'description' => 'D',
             'severity' => 'low',
