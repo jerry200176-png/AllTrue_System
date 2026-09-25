@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-25-tuition-remaining-lessons-362
+    published_at: "2026-09-25"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務剩餘堂數更易查看
+    summary: 剩餘堂數移到學生旁，桌面不必橫向捲到表格最右側。
+    items:
+      - category: improved
+        text: 手機卡片也會在課程科目上方顯示剩餘堂數；上課明細入口與帳務處理不變。
+    source_refs:
+      - "github:#3205"
+      - "in-app:#362"
+      - "changelog:2026-09-25:tuition-remaining-lessons-362"
+
   - id: staff-2026-09-25-course-close-in-place-352
     published_at: "2026-09-25"
     audiences:

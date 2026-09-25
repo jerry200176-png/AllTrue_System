@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-25-tuition-remaining-lessons-362",
+    "publishedAt": "2026-09-25",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務剩餘堂數更易查看",
+    "summary": "剩餘堂數移到學生旁，桌面不必橫向捲到表格最右側。",
+    "items": [
+      "手機卡片也會在課程科目上方顯示剩餘堂數；上課明細入口與帳務處理不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "手機卡片也會在課程科目上方顯示剩餘堂數；上課明細入口與帳務處理不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3205",
+      "in-app:#362",
+      "changelog:2026-09-25:tuition-remaining-lessons-362"
+    ],
+    "date": "2026-09-25",
+    "version": "2026.09.25"
+  },
+  {
     "id": "staff-2026-09-25-course-close-in-place-352",
     "publishedAt": "2026-09-25",
     "effectiveAt": null,
