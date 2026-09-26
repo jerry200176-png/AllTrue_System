@@ -61,3 +61,64 @@ test.describe('Students List width acceptance', () => {
     });
   }
 });
+
+test.describe('In-App #367 shared-pool ownership', () => {
+  for (const width of [390, 1440]) {
+    test(`shows a pool once and no balance on member cards @${width}`, async ({ page }) => {
+      const requests = [];
+      const courses = ['English', 'Science'].map((subject, index) => ({
+        id: 7001 + index, student_id: 2001, subject, subject_name: index ? '自然' : '英文',
+        payment_type: 'session', status: 'active', class_type: 'one_on_three',
+        payment_status: 'unpaid', PackageID: 9000, package_total_sessions: 25,
+        package_remaining_sessions: 25, package_used_sessions: 0,
+        sessions_purchased: 99, remaining_sessions: 99,
+      }));
+      const sessions = courses.flatMap((course) => Array.from({ length: 25 }, (_, i) => ({
+        id: course.id * 100 + i, student_class_id: course.id, student_id: 2001,
+        session_date: `2026-10-${String(i + 1).padStart(2, '0')}`,
+        start_time: '15:00', end_time: '17:00', status: 'scheduled',
+      })));
+      await page.route('**/api/v1/**', async (route) => {
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        requests.push({ method: request.method(), path });
+        const body = path === '/api/v1/students' ? { data: [students[1]], total: 1 }
+          : path === '/api/v1/student-classes' ? { data: courses }
+            : path === '/api/v1/class-sessions' ? { data: sessions }
+              : { data: [] };
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+      });
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/pilot-mount.html?page=students');
+      await page.locator('.student-name-cell').click();
+      const cards = page.locator('.student-course-card');
+      await expect(cards).toHaveCount(2);
+      await expect(page.locator('.subject-pill strong')).toHaveText(['共用方案', '共用方案']);
+      const pool = page.locator('.student-package-summary');
+      await expect(pool).toHaveCount(1);
+      const poolBounds = await pool.boundingBox();
+      expect(poolBounds.x).toBeGreaterThanOrEqual(0);
+      expect(poolBounds.x + poolBounds.width).toBeLessThanOrEqual(width);
+      await expect(pool.getByTestId('package-remaining')).toHaveText('25');
+      await expect(pool.getByTestId('package-total')).toHaveText('25');
+      await expect(pool.getByTestId('package-used')).toHaveText('0');
+      for (const card of await cards.all()) {
+        await expect(card.locator('.student-course-card__progress')).toHaveCount(0);
+        await expect(card.getByRole('progressbar')).toHaveCount(0);
+        await expect(card).not.toContainText('堂剩餘');
+        await expect(card).not.toContainText('99');
+        await expect(card).toContainText('共用方案');
+        await expect(card.locator('.student-course-card__primary')).toBeVisible();
+        await card.getByRole('button', { name: '再顯示 22 堂' }).click();
+        await expect(card.locator('.student-course-dates__list li')).toHaveCount(25);
+        const bounds = await card.locator('.student-course-card__progress-empty').evaluate((element) => ({
+          width: element.clientWidth, content: element.scrollWidth,
+        }));
+        expect(bounds.content).toBeLessThanOrEqual(bounds.width);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      expect(requests.every((request) => request.method === 'GET')).toBe(true);
+      await page.screenshot({ path: `/tmp/inapp367-shared-pool-${width}.png`, fullPage: true });
+    });
+  }
+});

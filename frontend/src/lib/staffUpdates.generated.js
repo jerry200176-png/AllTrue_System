@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-shared-pool-367",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "共用堂數集中在方案摘要",
+    "summary": "共用方案的總堂數、已使用與剩餘堂數集中顯示一次。",
+    "items": [
+      "成員課程保留自己的上課日期，共用堂數不拆成各科餘額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "成員課程保留自己的上課日期，共用堂數不拆成各科餘額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3267",
+      "in-app:#367",
+      "changelog:2026-09-26:shared-pool-367"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-26-settled-label-help-348",
     "publishedAt": "2026-09-26",
     "effectiveAt": null,

@@ -2,6 +2,10 @@
 <!-- release-notes: staff_update=staff-2026-09-26-assessment-page-clarity -->
 - 學習檢測頁面在手機上以卡片呈現範圍、日期、狀態及原有操作；建立與結果視窗沿用共用對話框，檢測處理流程與入口設定維持既有行為。
 
+## 2026-09-26 — fix(students): shared balance belongs to package (in-app #367)
+<!-- release-notes: staff_update=staff-2026-09-26-shared-pool-367 -->
+- 學生管理將共用方案的總堂數、已使用與剩餘堂數集中在方案摘要；成員課程顯示自己的上課日期，不再重複顯示方案池進度。
+
 ## 2026-09-26 — fix(tuition): explain existing settled-course labels (in-app #348)
 <!-- release-notes: staff_update=staff-2026-09-26-settled-label-help-348 -->
 - 已結清課程彙總補上「舊制無帳單」與「例外待處理」的既有狀態說明，並提示從原有繳費明細核對紀錄；不改款項、標籤分類或帳務操作。
