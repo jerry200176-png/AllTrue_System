@@ -68,6 +68,39 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-assessment-page-clarity",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "學習檢測頁面的手機呈現調整",
+    "summary": "手機卡片集中顯示檢測範圍、日期與狀態。",
+    "items": [
+      "建立與結果視窗調整為共用對話框；檢測處理流程與入口設定維持既有行為。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "建立與結果視窗調整為共用對話框；檢測處理流程與入口設定維持既有行為。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2661",
+      "changelog:2026-09-26:assessment-page-clarity"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-25-tuition-remaining-lessons-362",
     "publishedAt": "2026-09-25",
     "effectiveAt": null,
