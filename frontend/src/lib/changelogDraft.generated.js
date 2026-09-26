@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.26",
     "date": "2026-09-26",
     "title": "2026.09.26 草稿（未發布）",
-    "summary": "successful unlink confirmation；balance belongs to package",
+    "summary": "campus editor target during save；successful unlink confirmation",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "campus editor target during save",
           "successful unlink confirmation",
           "balance belongs to package",
           "existing settled-course labels",
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "campus editor target during save",
       "successful unlink confirmation",
       "balance belongs to package",
       "existing settled-course labels",
