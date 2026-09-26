@@ -1,3 +1,7 @@
+## 2026-09-27 — fix(assessment): align missing-record diagnostics with attendance rules (GitHub #1078)
+<!-- release-notes: staff_update=staff-2026-09-27-assessment-diagnostic-scope -->
+- 營運摘要的缺少評量提示依既有需填評量的上課狀態計算，排除缺席，並涵蓋已完成、試聽與輔導有到；不建立評量、不改點名或扣堂。
+
 ## 2026-09-26 — fix(calendar): guard leave and extra request ownership (PR #2677)
 <!-- release-notes: staff_update=staff-2026-09-26-calendar-request-safety -->
 - 行事曆請假先核對本次影響；加課檢查與送出綁定同一課程、日期及時段。送出期間避免重複操作，舊回應不覆蓋新目標，既有堂數制與月結處理規則不變。

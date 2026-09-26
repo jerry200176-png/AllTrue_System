@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\PendingSwipe;
 use App\Models\StudentSignIn;
 use App\Models\TeacherSignIn;
+use App\Support\AttendanceStatus;
 use App\Support\SchedulerEvidence;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -171,6 +172,7 @@ class SchedulerEvidenceSummary extends Command
     {
         $databaseChecksAt ??= CarbonImmutable::now(SchedulerEvidence::TIMEZONE);
         $today = CarbonImmutable::parse($date, SchedulerEvidence::TIMEZONE)->startOfDay();
+        $assessmentStatuses = AttendanceStatus::requiresLogSessionStatuses();
 
         $studentOrphans = StudentSignIn::query()
             ->whereNull('SignOutDT')
@@ -229,18 +231,18 @@ class SchedulerEvidenceSummary extends Command
             'expired_pending_swipes_remaining' => PendingSwipe::query()
                 ->where('created_at', '<', $today->subDays(30)->toDateTimeString())
                 ->count(),
-            'past_attended_sessions_without_learning_record' => (int) (DB::selectOne(<<<'SQL'
+            'past_attended_sessions_without_learning_record' => (int) (DB::selectOne(sprintf(<<<'SQL'
                 SELECT COUNT(*) AS c
                 FROM ClassSession cs
                 JOIN StudentClass sc ON sc.ID = cs.StudentClassID
-                WHERE LOWER(cs.Status) IN ('attended','late','absent')
+                WHERE LOWER(cs.Status) IN (%s)
                   AND CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= ?
                   AND NOT EXISTS (
                     SELECT 1 FROM LearningRecord lr
                     WHERE lr.ClassSessionID = cs.id AND lr.VoidedAt IS NULL
                   )
-                SQL,
-                [$databaseChecksAt->toDateTimeString()]
+                SQL, implode(',', array_fill(0, count($assessmentStatuses), '?'))),
+                array_merge($assessmentStatuses, [$databaseChecksAt->toDateTimeString()])
             )->c ?? 0),
         ];
     }

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\AttendanceStatus;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -514,7 +515,7 @@ class BusinessDigestService
     {
         $q = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->whereRaw("LOWER(cs.Status) IN ('attended','late','absent')")
+            ->whereIn(DB::raw('LOWER(cs.Status)'), AttendanceStatus::requiresLogSessionStatuses())
             ->whereRaw("CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()")
             ->whereNotExists(function ($e) {
                 $e->select(DB::raw(1))->from('LearningRecord as lr')

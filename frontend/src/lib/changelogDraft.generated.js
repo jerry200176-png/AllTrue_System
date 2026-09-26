@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.27",
+    "date": "2026-09-27",
+    "title": "2026.09.27 草稿（未發布）",
+    "summary": "missing-record diagnostics with attendance rules",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "missing-record diagnostics with attendance rules"
+        ]
+      }
+    ],
+    "items": [
+      "missing-record diagnostics with attendance rules"
+    ]
+  },
+  {
     "version": "2026.09.26",
     "date": "2026-09-26",
     "title": "2026.09.26 草稿（未發布）",
@@ -656,38 +678,6 @@ export const changelogDraftNotes = [
       "科目數完整加總後才除以 8",
       "Cmd-K 可搜尋授權的學生、老師與課程",
       "意見與建議入口更容易使用"
-    ]
-  },
-  {
-    "version": "2026.09.07",
-    "date": "2026-09-07",
-    "title": "2026.09.07 草稿（未發布）",
-    "summary": "老師管理載入與篩選回復更清楚；學生管理載入與搜尋回復更清楚",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "其他改善",
-        "items": [
-          "老師管理載入與篩選回復更清楚",
-          "學生管理載入與搜尋回復更清楚",
-          "教室管理錯誤回復更清楚",
-          "手機更多功能可搜尋",
-          "跨頁工作可接續",
-          "側欄更多功能漸進搜尋與快捷鍵"
-        ]
-      }
-    ],
-    "items": [
-      "老師管理載入與篩選回復更清楚",
-      "學生管理載入與搜尋回復更清楚",
-      "教室管理錯誤回復更清楚",
-      "手機更多功能可搜尋",
-      "跨頁工作可接續",
-      "側欄更多功能漸進搜尋與快捷鍵"
     ]
   }
 ];
