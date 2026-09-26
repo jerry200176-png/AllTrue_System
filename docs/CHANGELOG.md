@@ -1,3 +1,7 @@
+## 2026-09-26 — fix(accounts): preserve campus editor target during save (PR #2646)
+<!-- release-notes: staff_update=staff-2026-09-26-director-dialog-safety -->
+- 主任帳號管理的手機操作與錯誤提示更清楚；儲存分校期間保留原主任的視窗，避免切換目標或重複送出，原有權限與帳號操作不變。
+
 ## 2026-09-26 — improve(diagnostics): keyboard sorting and reachable report controls (PR #2656)
 <!-- release-notes: staff_update=staff-2026-09-26-nightly-diagnostic-controls -->
 - 夜間堂數診斷的排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷，不改堂數或帳務。

@@ -131,6 +131,37 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-director-dialog-safety",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任帳號管理的操作提示改善",
+    "summary": "手機操作與錯誤提示更清楚，儲存時保留原主任的視窗。",
+    "items": [
+      "儲存分校期間避免切換目標或重複送出，失敗時可在原視窗重試；權限不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "儲存分校期間避免切換目標或重複送出，失敗時可在原視窗重試；權限不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2646",
+      "changelog:2026-09-26:director-dialog-safety"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-26-binding-confirmation-close",
     "publishedAt": "2026-09-26",
     "effectiveAt": null,
