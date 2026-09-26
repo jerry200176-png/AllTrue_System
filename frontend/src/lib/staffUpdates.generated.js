@@ -4,6 +4,39 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-27-homework-hint",
+    "publishedAt": "2026-09-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "本次作業提示一致",
+    "summary": "學習評量的作業輸入提示與欄位標題使用相同用語。",
+    "items": [
+      "「本次作業範圍」不再提示為下次作業，避免誤解填寫內容。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "「本次作業範圍」不再提示為下次作業，避免誤解填寫內容。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:43",
+      "changelog:2026-09-27:homework-hint"
+    ],
+    "date": "2026-09-27",
+    "version": "2026.09.27"
+  },
+  {
     "id": "staff-2026-09-27-assessment-diagnostic-scope",
     "publishedAt": "2026-09-27",
     "effectiveAt": null,

@@ -1,3 +1,7 @@
+## 2026-09-27 — fix(learning): align homework hint with current-assignment label (in-app #43)
+<!-- release-notes: staff_update=staff-2026-09-27-homework-hint -->
+- 學習評量「本次作業範圍」的輸入提示使用相同用語，避免誤解為下堂課才要寫的作業。
+
 ## 2026-09-27 — fix(assessment): align missing-record diagnostics with attendance rules (GitHub #1078)
 <!-- release-notes: staff_update=staff-2026-09-27-assessment-diagnostic-scope -->
 - 營運摘要的缺少評量提示依既有需填評量的上課狀態計算，排除缺席，並涵蓋已完成、試聽與輔導有到；不建立評量、不改點名或扣堂。
