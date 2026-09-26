@@ -341,7 +341,7 @@ async function confirmUnbind() {
   try {
     await unbindBinding(unbindTarget.value.id);
     const removedId = unbindTarget.value.id;
-    closeUnbindDialog();
+    unbindTarget.value = null;
     list.value = list.value.filter((r) => r.id !== removedId);
     if (list.value.length === 0) await load();
     loadStats();
