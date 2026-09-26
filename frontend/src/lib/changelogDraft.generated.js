@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.26",
     "date": "2026-09-26",
     "title": "2026.09.26 草稿（未發布）",
-    "summary": "existing settled-course labels；主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑",
+    "summary": "balance belongs to package；existing settled-course labels",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "balance belongs to package",
           "existing settled-course labels",
           "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
         ]
       }
     ],
     "items": [
+      "balance belongs to package",
       "existing settled-course labels",
       "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
     ]
