@@ -1,3 +1,7 @@
+## 2026-09-26 — fix(tuition): bound existing desktop action area (in-app #339)
+<!-- release-notes: silent_ship=silent-2026-09-26-tuition-action-width-339 -->
+- 帳務中心桌面待處理表格的操作區限制寬度並自動換行，減少固定操作欄遮住金額；原有按鈕、順序、付款流程及手機卡片版維持既有行為。
+
 ## 2026-09-25 — fix(students): 課程保留已設定的科目名稱（in-app #366）
 <!-- release-notes: staff_update=staff-2026-09-25-student-subject-label-366 -->
 - 學生管理的課程列、課程卡片與後續操作會優先顯示 API 提供的原始科目名稱；標準科目維持既有標籤，不改課程資料、排課或帳務語意。

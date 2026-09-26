@@ -2876,6 +2876,13 @@ loadAlerts();
   .tc-table tbody tr:hover td:last-child { background: var(--ds-canvas-soft); }
   .tc-table tbody tr.tc-row--focused td:last-child,
   .tc-table tbody tr.acct-row-selected td:last-child { background: var(--ds-primary-wash); }
+  /* #339: retain every action in its existing order without letting the
+   * sticky receivables cell cover most of the readable data area. */
+  .tc-table:not(.acct-table) .tc-actions {
+    flex-wrap: wrap;
+    width: max-content;
+    max-width: min(18rem, 32vw);
+  }
 }
 
 .tc-th-sort {
