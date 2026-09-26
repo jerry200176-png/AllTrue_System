@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-26-settled-label-help-348
+    published_at: "2026-09-26"
+    audiences:
+      - director
+    importance: digest
+    title: 已結清課程標籤補上說明
+    summary: 「舊制無帳單」與「例外待處理」旁提供既有狀態的解釋。
+    items:
+      - category: improved
+        text: 可從同一列的繳費明細查看原有紀錄，與帳務負責人核對；款項與帳務操作不變。
+    source_refs:
+      - "github:#3213"
+      - "in-app:#348"
+      - "changelog:2026-09-26:settled-label-help-348"
+
   - id: staff-2026-09-26-tuition-action-width-339
     published_at: "2026-09-26"
     audiences:

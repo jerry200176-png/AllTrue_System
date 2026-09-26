@@ -747,6 +747,10 @@
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
         <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
+          舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
+          請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+        </p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
           <AtSkeleton :rows="4" height="28px" />
