@@ -43,7 +43,7 @@ one-time #362 adjudication. That adjudication is not reused as authority.
   `AlertController`. Restore those fields for the existing synthetic invoice
   rows; retain all original selection/sorting assertions and production guards.
 - The standard changelog generator updates its draft bundle as a necessary
-  derived artifact; it does not publish a staff announcement or change actions.
+  derived artifact; the corresponding existing staff digest records only this bounded presentation change.
 - Design: retain the existing operational accounting table, design tokens,
   type scale, icon set and functional motion. No new visual system. Local
   screenshot review: AI Slop 1/10; distinctiveness 8/10.
