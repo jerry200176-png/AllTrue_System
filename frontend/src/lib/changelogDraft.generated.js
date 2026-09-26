@@ -22,12 +22,19 @@ export const changelogDraftNotes = [
           "existing settled-course labels",
           "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "page clarity on mobile"
+        ]
       }
     ],
     "items": [
       "balance belongs to package",
       "existing settled-course labels",
-      "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
+      "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑",
+      "page clarity on mobile"
     ]
   },
   {
