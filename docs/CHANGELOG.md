@@ -1,3 +1,7 @@
+## 2026-09-26 — fix(binding): close successful unlink confirmation (PR #3280)
+<!-- release-notes: staff_update=staff-2026-09-26-binding-confirmation-close -->
+- 綁定管理在解除成功後會關閉確認視窗並更新清單；失敗時仍顯示錯誤並可重試，解除流程與權限不變。
+
 ## 2026-09-26 — improve(assessment): existing page clarity on mobile (PR #2661)
 <!-- release-notes: staff_update=staff-2026-09-26-assessment-page-clarity -->
 - 學習檢測頁面在手機上以卡片呈現範圍、日期、狀態及原有操作；建立與結果視窗沿用共用對話框，檢測處理流程與入口設定維持既有行為。

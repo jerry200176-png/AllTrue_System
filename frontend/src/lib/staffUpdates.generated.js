@@ -100,6 +100,37 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-binding-confirmation-close",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "解除成功後關閉確認視窗",
+    "summary": "綁定管理在解除成功後會關閉確認視窗並更新清單。",
+    "items": [
+      "失敗時仍顯示錯誤並可重試；解除流程與權限不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "失敗時仍顯示錯誤並可重試；解除流程與權限不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#3280",
+      "changelog:2026-09-26:binding-confirmation-close"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-26-assessment-page-clarity",
     "publishedAt": "2026-09-26",
     "effectiveAt": null,

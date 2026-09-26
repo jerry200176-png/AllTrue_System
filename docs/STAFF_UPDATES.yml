@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-26-binding-confirmation-close
+    published_at: "2026-09-26"
+    audiences:
+      - director
+    importance: digest
+    title: 解除成功後關閉確認視窗
+    summary: 綁定管理在解除成功後會關閉確認視窗並更新清單。
+    items:
+      - category: fixed
+        text: 失敗時仍顯示錯誤並可重試；解除流程與權限不變。
+    source_refs:
+      - "github:pr#3280"
+      - "changelog:2026-09-26:binding-confirmation-close"
+
   - id: staff-2026-09-26-assessment-page-clarity
     published_at: "2026-09-26"
     audiences:
