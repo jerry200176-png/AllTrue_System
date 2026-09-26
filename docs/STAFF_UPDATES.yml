@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-26-shared-pool-367
+    published_at: "2026-09-26"
+    audiences:
+      - director
+    importance: digest
+    title: 共用堂數集中在方案摘要
+    summary: 共用方案的總堂數、已使用與剩餘堂數集中顯示一次。
+    items:
+      - category: fixed
+        text: 成員課程保留自己的上課日期，共用堂數不拆成各科餘額。
+    source_refs:
+      - "github:#3267"
+      - "in-app:#367"
+      - "changelog:2026-09-26:shared-pool-367"
+
   - id: staff-2026-09-26-settled-label-help-348
     published_at: "2026-09-26"
     audiences:
