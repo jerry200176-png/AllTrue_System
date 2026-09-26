@@ -36,6 +36,38 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-settled-label-help-348",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "已結清課程標籤補上說明",
+    "summary": "「舊制無帳單」與「例外待處理」旁提供既有狀態的解釋。",
+    "items": [
+      "可從同一列的繳費明細查看原有紀錄，與帳務負責人核對；款項與帳務操作不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "可從同一列的繳費明細查看原有紀錄，與帳務負責人核對；款項與帳務操作不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3213",
+      "in-app:#348",
+      "changelog:2026-09-26:settled-label-help-348"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-25-tuition-remaining-lessons-362",
     "publishedAt": "2026-09-25",
     "effectiveAt": null,
