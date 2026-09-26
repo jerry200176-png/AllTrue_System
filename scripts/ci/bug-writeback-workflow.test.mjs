@@ -184,10 +184,11 @@ try {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
-// This closeout batch adds only two immutable per-report metadata records.
+// Immutable per-report closeout metadata must retain exact evidence and bounded claims.
 for (const [id, revision, issue] of [
   [339, '345b0f4cbf2cbdd23d76ecb350f96c1a7096aafc', 3268],
   [348, 'ad2f90260d4914611ce24f4778aafd8f4742b101', 3213],
+  [367, '44662351fa33c2052900781f674737f74ef00402', 3267],
 ]) {
   const entry = phaseCSource.match(new RegExp(`\\n            ${id} => \\[([\\s\\S]*?)\\n            \\],`));
   assert.ok(entry, `scoped Phase-C entry ${id} must exist`);
