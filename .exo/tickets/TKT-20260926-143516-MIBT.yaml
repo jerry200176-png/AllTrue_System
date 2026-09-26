@@ -1,0 +1,36 @@
+id: TKT-20260926-143516-MIBT
+title: Publish existing assessment routing independently
+intent: Publish existing assessment routing independently
+kind: task
+parent_id: INT-20260926-143508-A1CE
+boundary: ''
+success_condition: ''
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/playwright.config.js
+  - frontend/playwright.ui-foundation.config.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 7
+  max_loc_changed: 240
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-26T14:35:16+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
