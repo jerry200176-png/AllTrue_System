@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-26-nightly-diagnostic-controls
+    published_at: "2026-09-26"
+    audiences:
+      - director
+    importance: digest
+    title: 堂數診斷可用鍵盤排序
+    summary: 夜間堂數診斷的排序與篩選操作更容易使用。
+    items:
+      - category: improved
+        text: 排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷。
+    source_refs:
+      - "github:pr#2656"
+      - "changelog:2026-09-26:nightly-diagnostic-controls"
+
   - id: staff-2026-09-26-binding-confirmation-close
     published_at: "2026-09-26"
     audiences:

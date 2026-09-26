@@ -100,6 +100,37 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-nightly-diagnostic-controls",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "堂數診斷可用鍵盤排序",
+    "summary": "夜間堂數診斷的排序與篩選操作更容易使用。",
+    "items": [
+      "排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2656",
+      "changelog:2026-09-26:nightly-diagnostic-controls"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-26-binding-confirmation-close",
     "publishedAt": "2026-09-26",
     "effectiveAt": null,
