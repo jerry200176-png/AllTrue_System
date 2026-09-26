@@ -4,6 +4,37 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-27-assessment-diagnostic-scope",
+    "publishedAt": "2026-09-27",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "缺少評量提示範圍更準確",
+    "summary": "依既有需填評量的上課狀態檢查，減少缺席造成的誤報。",
+    "items": [
+      "排除缺席並涵蓋已完成、試聽與輔導有到；不改點名、扣堂或評量資料。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "排除缺席並涵蓋已完成、試聽與輔導有到；不改點名、扣堂或評量資料。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:issue#1078",
+      "changelog:2026-09-27:assessment-diagnostic-scope"
+    ],
+    "date": "2026-09-27",
+    "version": "2026.09.27"
+  },
+  {
     "id": "staff-2026-09-26-tuition-action-width-339",
     "publishedAt": "2026-09-26",
     "effectiveAt": null,
