@@ -67,9 +67,23 @@ describe('#2677 complete request ownership',()=>{
   const one=api.submitLeave();await settle();api.leaveForm.value.student_id=11;held.resolve({ok:false,json:async()=>({message:'old failure'})});await one;
   expect(api.leaveSubmitError.value).toBe('');expect(api.leaveSubmitting.value).toBe(false);
  });
- it('old extra failure or exception cannot alert a changed or reopened target',async()=>{
+ it('old extra failed response cannot alert a changed target',async()=>{
   const {api,deps}=setup();api.openExtraLesson();await settle();const held=deferred();fetch.mockImplementation(()=>held.promise);alert.mockClear();
   const one=api.submitExtraLesson();await settle();deps.editingCourseId.value=100;held.resolve({ok:false,json:async()=>({message:'old failure'})});await one;
   expect(alert).not.toHaveBeenCalled();expect(api.extraSubmitting.value).toBe(false);
+ });
+ it('token-stage pending leave cannot duplicate or close and a changed payload cannot send',async()=>{
+  const {api,deps}=setup();api.openLeaveModal();await settle();fetch.mockClear();const held=deferred();deps.getToken.mockImplementation(()=>held.promise);
+  const one=api.submitLeave();await api.submitLeave();api.closeLeaveModal();api.openLeaveModal();expect(api.showLeaveModal.value).toBe(true);expect(api.leaveSubmitting.value).toBe(true);
+  api.leaveForm.value.duration_hours=1;held.resolve('synthetic-token');await one;expect(fetch).not.toHaveBeenCalled();expect(api.leaveSubmitting.value).toBe(false);
+ });
+ it('old extra network exception cannot alert another target',async()=>{
+  const {api,deps}=setup();api.openExtraLesson();await settle();let reject;fetch.mockImplementation(()=>new Promise((_,r)=>{reject=r;}));alert.mockClear();
+  const one=api.submitExtraLesson();await settle();deps.editingCourseId.value=100;reject(new Error('old network'));await one;expect(alert).not.toHaveBeenCalled();expect(api.extraSubmitting.value).toBe(false);
+ });
+ it('same tuple reopened generation ignores old extra success',async()=>{
+  const {api}=setup();api.openExtraLesson();await settle();const held=deferred();fetch.mockImplementation(()=>held.promise);alert.mockClear();
+  const one=api.submitExtraLesson();await settle();api.showExtraModal.value=false;api.showExtraModal.value=true;held.resolve(response({message:'old success'}));await one;
+  expect(api.showExtraModal.value).toBe(true);expect(alert).not.toHaveBeenCalled();expect(api.extraSubmitting.value).toBe(false);
  });
 });
