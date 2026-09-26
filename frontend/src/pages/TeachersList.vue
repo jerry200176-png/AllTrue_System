@@ -86,16 +86,39 @@
       :aria-labelledby="`teachers-tab-${tab}`"
       tabindex="0"
     >
-      <AtSkeleton v-if="shouldShowInitialListSkeleton(loading, teachers)" rows="4" aria-label="老師資料載入中" />
-      <div v-else-if="filteredTeachers.length === 0" class="empty-state">
-        目前沒有符合條件的老師資料。
+      <AtSkeleton v-if="shouldShowInitialListSkeleton(loading, teachers) && !teachersLoaded" rows="4" aria-label="老師資料載入中" />
+      <div v-else-if="!teachers.length && teachersLoadError" class="empty-state teachers-list-state teachers-list-state--error" role="alert">
+        <strong>老師清單暫時無法載入</strong>
+        <span>{{ teachersLoadError }}</span>
+        <button type="button" class="teachers-list-state__action" @click="loadTeachers">重試</button>
       </div>
 
-      <div
-        v-else
-        class="teacher-card-grid"
-        data-guide="teachers-cards"
-      >
+      <template v-else>
+        <div v-if="loading" class="teachers-refresh-state" role="status" aria-live="polite">
+          <span class="material-symbols-outlined" aria-hidden="true">sync</span>
+          <span>正在更新老師清單…</span>
+        </div>
+        <div v-else-if="teachersLoadError" class="teachers-refresh-state teachers-refresh-state--error" role="status" aria-live="polite">
+          <span class="material-symbols-outlined" aria-hidden="true">cloud_off</span>
+          <span>更新失敗，仍顯示上次成功載入的老師資料。</span>
+          <button type="button" class="teachers-list-state__action" @click="loadTeachers">重試</button>
+        </div>
+
+        <div v-if="filteredTeachers.length === 0 && hasTeacherFilters" class="empty-state teachers-list-state teachers-list-state--filtered-empty">
+          <strong>找不到符合條件的老師</strong>
+          <span>請調整搜尋或篩選條件，或清除篩選查看全部老師。</span>
+          <button type="button" class="teachers-list-state__action" @click="clearTeacherFilters">清除篩選</button>
+        </div>
+        <div v-else-if="filteredTeachers.length === 0" class="empty-state teachers-list-state teachers-list-state--true-empty">
+          <strong>目前沒有老師資料</strong>
+          <span>可新增老師或稍後重新整理。</span>
+        </div>
+
+        <div
+          v-else
+          class="teacher-card-grid"
+          data-guide="teachers-cards"
+        >
       <article
         v-for="teacher in filteredTeachers"
         :key="'tc-' + teacher.id"
@@ -198,6 +221,7 @@
         </footer>
       </article>
       </div>
+      </template>
     </section>
 
 
@@ -494,6 +518,8 @@ const teacherRanks = ref({}); // user_id -> { rank_key, rank_label, hidden }
 const subjects = ref([]);
 const allBranchOptions = ref([]);
 const loading = ref(false);
+const teachersLoaded = ref(false);
+const teachersLoadError = ref('');
 const showAddModal = ref(false);
 const showBulkModal = ref(false);
 const editingId = ref(null);
@@ -991,6 +1017,14 @@ const filteredTeachers = computed(() => {
     return list;
 });
 
+const hasTeacherFilters = computed(() => Boolean(
+  searchQ.value.trim()
+  || filterStatus.value
+  || filterSubjectId.value
+  || selectedTeacherIds.value.length > 0
+  || tab.value !== 'active'
+));
+
 const pendingCount = computed(() => teachers.value.filter(t => t.status === 'pending').length);
 const activeTeachersCount = computed(() => teachers.value.filter(t => t.status === 'active').length);
 const suspendedCount = computed(() => teachers.value.filter(t => t.status === 'suspended').length);
@@ -1028,6 +1062,7 @@ function debouncedLoad() {
 const loadTeachers = async () => {
   const requestId = ++loadRequestId;
   loading.value = true;
+  teachersLoadError.value = '';
   try {
     const params = new URLSearchParams();
     params.set('per_page', 'all');
@@ -1039,18 +1074,32 @@ const loadTeachers = async () => {
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     if (!res.ok) {
-      alert('載入老師資料失敗：' + (data?.message || res.statusText));
+      if (isCurrentListRequest(requestId, loadRequestId)) {
+        teachersLoadError.value = data?.message || res.statusText || '請檢查網路連線後再試。';
+      }
       return;
     }
     if (!isCurrentListRequest(requestId, loadRequestId)) return;
     teachers.value = list;
+    teachersLoaded.value = true;
     loadRanks(list.map((t) => t.id).filter((id) => id != null));
   } catch (err) {
     console.error('loadTeachers error:', err);
-    alert('載入老師資料時發生錯誤');
+    if (isCurrentListRequest(requestId, loadRequestId)) {
+      teachersLoadError.value = '請檢查網路連線後再試。';
+    }
   } finally {
     if (isCurrentListRequest(requestId, loadRequestId)) loading.value = false;
   }
+};
+
+const clearTeacherFilters = () => {
+  searchQ.value = '';
+  filterStatus.value = '';
+  filterSubjectId.value = '';
+  selectedTeacherIds.value = [];
+  tab.value = 'active';
+  loadTeachers();
 };
 
 // 批次撈各老師軍階徽章（後端依角色/opt-out 決定可見性，不回 XP 數字）
@@ -2195,6 +2244,49 @@ button.small.danger {
   color: var(--ds-ink-mute);
   padding: 18px;
   text-align: center;
+}
+
+.teachers-list-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.teachers-list-state > span {
+  color: var(--ds-ink-mute);
+}
+
+.teachers-list-state--error strong,
+.teachers-refresh-state--error {
+  color: var(--ds-danger);
+}
+
+.teachers-list-state__action {
+  margin-top: 4px;
+  border: 1px solid var(--ds-hairline-input);
+  border-radius: var(--ds-radius-md, 6px);
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  cursor: pointer;
+  padding: 6px 12px;
+}
+
+.teachers-refresh-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-md, 6px);
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.teachers-refresh-state .teachers-list-state__action {
+  margin: 0 0 0 auto;
 }
 
 .bulk-row {

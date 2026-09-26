@@ -7,46 +7,10 @@
       icon="today"
       data-guide="teacher-home-header"
     >
-      <template #meta>
-        <span v-if="streakChipVisible" class="th-streak-chip" role="status">
-          <span class="material-symbols-outlined th-streak-icon" aria-hidden="true">local_fire_department</span>
-          連續使用 <strong>{{ streakCurrent }}</strong> 天
-          <span v-if="streakLongest > streakCurrent" class="th-streak-longest">（累積最高 {{ streakLongest }}）</span>
-        </span>
-        <span v-if="engagementChipVisible" class="th-engagement-chip" role="status">
-          <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
-        </span>
-      </template>
       <template #actions>
         <AtButton variant="ghost" shape="rect" icon="refresh" :loading="refreshing" @click="refreshAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
-
-    <!-- A small brand moment: warm and encouraging, without competing with the
-      operational queue below. The illustration is decorative; all action copy
-      remains available as real text and a keyboard-focusable link. -->
-    <section class="th-companion" data-guide="teacher-home-companion" aria-labelledby="teacher-companion-title">
-      <div class="th-companion__copy">
-        <p class="th-companion__eyebrow">今天的節奏</p>
-        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了')) }}</h3>
-        <p class="th-companion__description">
-          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTaskCount} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
-        </p>
-        <button v-if="teacherTasksError" type="button" class="th-companion__action" :disabled="refreshing" @click="refreshAll">
-          <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
-          <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
-        </button>
-        <a v-else class="th-companion__action" href="#teacher-work-queue-title" @click="focusTeacherWorkQueue">
-          <span>{{ teacherTasks.length || teacherTasksLoading ? '查看今日任務' : '查看今日摘要' }}</span>
-          <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-        </a>
-      </div>
-      <div class="th-companion__art" aria-hidden="true">
-        <span class="th-companion__spark th-companion__spark--one">✦</span>
-        <span class="th-companion__spark th-companion__spark--two">✦</span>
-        <img :src="learningCompanionUrl" alt="" width="180" height="198" fetchpriority="high" />
-      </div>
-    </section>
 
     <!-- Clock-in Status Card -->
     <button
@@ -154,9 +118,9 @@
           <strong>今天的工作清單尚未完整載入</strong>
           <p>為避免漏掉點名或評量，暫時不把空白清單當成已完成。</p>
         </div>
-        <button type="button" class="ghost small" :disabled="refreshing" @click="refreshAll">
+        <AtButton type="button" shape="rect" size="sm" variant="ghost" :disabled="refreshing" @click="refreshAll">
           {{ refreshing ? '整理中…' : '重新整理' }}
-        </button>
+        </AtButton>
       </div>
       <div v-else-if="teacherTasks.length === 0" class="th-work-queue__empty">
         <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
@@ -164,7 +128,7 @@
           <strong>今天沒有待完成工作</strong>
           <p>可以查看本週課表，先準備下一堂課。</p>
         </div>
-        <button type="button" class="ghost small" @click="scrollToWeekSchedule">查看本週課表</button>
+        <AtButton type="button" shape="rect" size="sm" variant="ghost" @click="scrollToWeekSchedule">查看本週課表</AtButton>
       </div>
       <div v-else class="th-work-queue__list">
         <div v-if="teacherTasksPartialError" class="th-work-queue__partial-error" role="alert">
@@ -191,9 +155,9 @@
             <p class="th-next-action__summary">{{ teacherTasks[0].summary }}</p>
             <small>期限：{{ teacherTasks[0].dueAt || '今天' }}</small>
           </div>
-          <button type="button" class="primary small th-next-action__cta" @click="openTeacherTask(teacherTasks[0])">
+          <AtButton type="button" shape="rect" size="sm" variant="primary" class="th-next-action__cta" @click="openTeacherTask(teacherTasks[0])">
             {{ teacherTasks[0].actionLabel }}
-          </button>
+          </AtButton>
         </article>
 
         <div v-if="teacherTasks.length > 1" class="th-work-queue__remaining" data-guide="teacher-secondary-actions">
@@ -207,13 +171,50 @@
               <p>{{ task.summary }}</p>
               <small>期限：{{ task.dueAt || '今天' }}</small>
             </div>
-            <button type="button" class="ghost small th-work-task__cta" @click="openTeacherTask(task)">
+            <AtButton type="button" shape="rect" size="sm" variant="ghost" class="th-work-task__cta" @click="openTeacherTask(task)">
               {{ task.actionLabel }}
-            </button>
+            </AtButton>
           </article>
         </div>
       </div>
     </section>
+
+    <!-- Keep the warm brand moment after the operational queue so it cannot hide
+      the first action. The illustration remains decorative and the copy remains
+      available as real text and a keyboard-focusable link. -->
+    <section class="th-companion" data-guide="teacher-home-companion" aria-labelledby="teacher-companion-title">
+      <div class="th-companion__copy">
+        <p class="th-companion__eyebrow">今天的節奏</p>
+        <h3 id="teacher-companion-title">{{ teacherTasksLoading ? '先準備今天的課務' : (teacherTasksError ? '今天的工作需要重新整理' : (teacherTasks.length ? '先完成最重要的一件事' : '今天的課務完成了')) }}</h3>
+        <p class="th-companion__description">
+          {{ teacherTasksLoading ? '正在整理今天的任務，等一下就會顯示。' : (teacherTasksError ? '部分工作資料暫時無法載入，請重新整理後再開始處理。' : (teacherTasks.length ? `還有 ${teacherTaskCount} 項工作，完成一項就更接近下課。` : '可以放心查看本週課表，準備下一堂課。')) }}
+        </p>
+        <button v-if="teacherTasksError" type="button" class="th-companion__action" :disabled="refreshing" @click="refreshAll">
+          <span>{{ refreshing ? '重新整理中…' : '重新整理今日任務' }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+        </button>
+        <a v-else class="th-companion__action" href="#teacher-work-queue-title" @click="focusTeacherWorkQueue">
+          <span>{{ teacherTasks.length || teacherTasksLoading ? '查看今日任務' : '查看今日摘要' }}</span>
+          <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+        </a>
+      </div>
+      <div class="th-companion__art" aria-hidden="true">
+        <span class="th-companion__spark th-companion__spark--one">✦</span>
+        <span class="th-companion__spark th-companion__spark--two">✦</span>
+        <img :src="learningCompanionUrl" alt="" width="180" height="198" fetchpriority="high" />
+      </div>
+    </section>
+
+    <div v-if="streakChipVisible || engagementChipVisible" class="th-secondary-motivation" aria-label="工作進度與品牌資訊">
+      <span v-if="streakChipVisible" class="th-streak-chip" role="status">
+        <span class="material-symbols-outlined th-streak-icon" aria-hidden="true">local_fire_department</span>
+        連續使用 <strong>{{ streakCurrent }}</strong> 天
+        <span v-if="streakLongest > streakCurrent" class="th-streak-longest">（累積最高 {{ streakLongest }}）</span>
+      </span>
+      <span v-if="engagementChipVisible" class="th-engagement-chip" role="status">
+        <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
+      </span>
+    </div>
 
 
     <!-- B. Weekly Schedule (merged across all branches) -->
@@ -366,6 +367,7 @@ const props = defineProps({
   userRole: { type: String, default: '' },
   teacherBranchIds: { type: Array, default: () => [] },
   unreadFeedbackCount: { type: Number, default: 0 },
+  feedbackQueueEpoch: { type: Number, default: 0 },
   initialEngagement: { type: Object, default: null },
 });
 
@@ -548,8 +550,10 @@ async function fetchAwaitingReplyCount() {
 const loadingOverdue = ref(false);
 const overdueRecords = ref([]);
 const overdueLoadError = ref('');
+let overdueLoadSequence = 0;
 
 async function fetchOverdueLearning() {
+  const requestSequence = ++overdueLoadSequence;
   loadingOverdue.value = true;
   overdueLoadError.value = '';
   try {
@@ -607,11 +611,13 @@ async function fetchOverdueLearning() {
     });
 
     missing.sort((a, b) => b.date.localeCompare(a.date) || b.startTime.localeCompare(a.startTime));
+    if (requestSequence !== overdueLoadSequence) return;
     overdueRecords.value = missing;
   } catch {
+    if (requestSequence !== overdueLoadSequence) return;
     overdueLoadError.value = '補填提醒資料暫時無法載入';
   } finally {
-    loadingOverdue.value = false;
+    if (requestSequence === overdueLoadSequence) loadingOverdue.value = false;
   }
 }
 
@@ -902,6 +908,7 @@ function startPolling() {
     if (document.visibilityState === 'visible') {
       fetchPendingAttendance();
       fetchOverdueLearning();
+      fetchAwaitingReplyCount();
     }
   }, POLL_INTERVAL);
 }
@@ -919,6 +926,15 @@ function onVisibilityChange() {
     fetchOverdueLearning();
   }
 }
+
+watch(
+  () => props.feedbackQueueEpoch,
+  (epoch, prev) => {
+    if (epoch !== prev) {
+      fetchAwaitingReplyCount();
+    }
+  },
+);
 
 // ── Report discrepancy helpers ──
 async function refreshActiveReport(sessionId) {
@@ -992,8 +1008,15 @@ watch(() => props.branchId, () => {
   fetchPendingAttendance();
   fetchOverdueLearning();
 });
-watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
+watch(() => props.teacherBranchIds, () => {
+  // The login payload can name only the current campus while /me later
+  // hydrates the full teacher campus list. Refresh both campus-scoped queues
+  // so overdue learning work is never left limited to that first campus.
+  fetchOverdueLearning();
+  loadWeekSchedule();
+}, { deep: true });
 onBeforeUnmount(() => {
+  overdueLoadSequence++;
   weekLoadSequence++;
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -1070,7 +1093,7 @@ onBeforeUnmount(() => {
 .th-next-action__title-row h4 { margin: 0; color: var(--ds-ink); font-size: 16px; }
 .th-next-action__summary { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .th-next-action__content small { display: block; margin-top: 5px; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
-.th-next-action__cta { flex: 0 0 auto; min-width: 104px; }
+.th-next-action__cta { flex: 0 0 auto; min-width: 104px; min-height: var(--ds-control-height-touch, 44px); }
 .th-work-queue__remaining { display: grid; gap: 0; padding-top: 4px; }
 .th-work-queue__remaining-label { margin: 4px 0 0; color: var(--ds-ink-mute); font-size: 12px; font-weight: 800; }
 .th-work-task { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--ds-hairline); }
@@ -1081,12 +1104,14 @@ onBeforeUnmount(() => {
 .th-work-task__type { color: var(--ds-ink-mute); font-size: 12px; font-weight: 700; }
 .th-work-task__main p { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .th-work-task__main small { display: block; margin-top: 5px; color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
-.th-work-task__cta { flex: 0 0 auto; min-width: 104px; }
+.th-work-task__cta { flex: 0 0 auto; min-width: 104px; min-height: var(--ds-control-height-touch, 44px); }
 .th-work-queue__empty { display: flex; align-items: center; gap: 12px; padding-top: 16px; color: var(--ds-ink-secondary); }
 .th-work-queue__empty > .material-symbols-outlined { color: var(--ds-success); font-size: 26px; }
 .th-work-queue__empty strong { color: var(--ds-ink); }
 .th-work-queue__empty p { margin: 4px 0 0; font-size: 13px; }
 .th-work-queue__empty button { margin-left: auto; }
+.th-work-queue__empty .at-btn,
+.th-work-queue__error .at-btn { min-height: var(--ds-control-height-touch, 44px); }
 .th-work-queue__error { display: flex; align-items: flex-start; gap: 12px; padding: 16px 0 2px; color: var(--ds-ink-secondary); }
 .th-work-queue__error > .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-danger); font-size: 24px; }
 .th-work-queue__error strong { color: var(--ds-ink); }
@@ -1186,6 +1211,8 @@ onBeforeUnmount(() => {
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 8px 0;
 }
 .th-companion__action:hover { color: var(--ds-cta-hover); text-decoration: underline; }
 .th-companion__action:disabled { cursor: wait; opacity: 0.65; }
@@ -1260,6 +1287,13 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--ds-primary) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--ds-primary) 18%, transparent);
 }
+.th-secondary-motivation {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.th-secondary-motivation .th-streak-chip,
+.th-secondary-motivation .th-engagement-chip { margin: 0; }
 
 /* ──────── Section Titles ──────── */
 .th-section-title {
@@ -1300,7 +1334,7 @@ onBeforeUnmount(() => {
 .th-day-summary {
   position: sticky; top: 0; z-index: 2;
   display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-  cursor: pointer; user-select: none; font-size: 14px; font-weight: 600;
+  cursor: pointer; user-select: none; min-height: var(--ds-control-height-touch, 44px); font-size: 14px; font-weight: 600;
   color: var(--text); list-style: none; border-radius: 10px;
   background: var(--card-bg);
   transition: background 0.15s;
@@ -1376,14 +1410,14 @@ onBeforeUnmount(() => {
 
 .th-fill-btn {
   background: var(--primary-bg); border: none; border-radius: 8px;
-  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+  width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--primary); transition: var(--transition); flex-shrink: 0;
 }
 .th-fill-btn:hover { background: var(--ds-primary); color: var(--ds-on-primary); }
 
 .th-report-btn {
   background: transparent; border: none; border-radius: 8px;
-  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--text-light); transition: var(--transition); flex-shrink: 0;
   font-size: 20px;
 }
@@ -1406,7 +1440,7 @@ onBeforeUnmount(() => {
 }
 
 .icon-btn {
-  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: inline-flex; align-items: center; justify-content: center;
   padding: 0; font-size: 18px; font-weight: 700; border-radius: 8px;
 }
 

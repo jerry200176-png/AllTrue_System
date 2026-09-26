@@ -5,6 +5,11 @@ name: Bug Phase-C allowlist resolve (Pi)
 # Allowlist only — never invent new bug IDs here without Evidence Contract.
 on:
   workflow_dispatch:
+    inputs:
+      bug_id:
+        description: "One allowlisted in-app bug ID to resolve"
+        required: true
+        type: string
   push:
     branches: [main]
     paths:
@@ -22,12 +27,39 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout pinned SSH trust helper
+      - name: Checkout pinned SSH trust helper and request
         uses: actions/checkout@v7
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            operations/closeout/bug-phase-c-allowlist.request.md
           sparse-checkout-cone-mode: false
+      - name: Select one target
+        id: target
+        env:
+          DISPATCH_BUG_ID: ${{ inputs.bug_id || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            ID="$DISPATCH_BUG_ID"
+          else
+            ID="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          request = Path("operations/closeout/bug-phase-c-allowlist.request.md").read_text(encoding="utf-8")
+          target_lines = [line for line in request.splitlines() if re.match(r"^[ \t]*bug_id[ \t]*:", line)]
+          if len(target_lines) != 1:
+              raise SystemExit("request must contain exactly one bug_id: <positive integer> line")
+          match = re.fullmatch(r"bug_id:[ \t]*([1-9][0-9]*)[ \t]*", target_lines[0])
+          if match is None:
+              raise SystemExit("request bug_id line must be a positive integer with no trailing content")
+          print(match.group(1))
+          PY
+            )"
+          fi
+          [[ "$ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid bug_id" >&2; exit 1; }
+          echo "bug_id=$ID" >> "$GITHUB_OUTPUT"
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -48,8 +80,10 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          TARGET_BUG_ID: ${{ steps.target.outputs.bug_id }}
         run: |
           set -euo pipefail
+          [[ "$TARGET_BUG_ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid target" >&2; exit 1; }
           mkdir -p out
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
@@ -57,7 +91,7 @@ jobs:
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/phase-c.log
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "TARGET_BUG_ID='$TARGET_BUG_ID' bash" <<'REMOTE' | tee out/phase-c.log
           set -euo pipefail
           cd /home/admin/backend
           PROD_HEAD=$(git rev-parse HEAD)
@@ -288,7 +322,6 @@ jobs:
               "reply" => "補充驗證：已再次核對正職老師的核薪科目總數與科目數統計，現在會保留完整公司／老師範圍及各老師原始貢獻，並在最後總額才計算核薪值。請重新整理正職薪資要件與科目數統計頁確認；若仍不一致，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2539",
               "rev" => "c431b9d08b165d37e911f4801acb2bfc884f306d",
               "deploy" => "34186501865",
-              "repair_resolved" => true,
             ],
             256 => [
               "reply" => "已完成修正並上線：科目數統計現在會先保留正課、輔導及其他適用類別的原始科目數，完整加總完成後才在最終總額除以 8，不會再把各類別或中間小計先除造成數字漂移；頁面也提供分校正職老師按月份查看的科目數摘要。請重新整理科目數統計頁確認；若仍不一致，請回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2540",
@@ -355,6 +388,11 @@ jobs:
               "rev" => "11c01ef4849f2d8c5176c3749bb7c823520e2d5a",
               "deploy" => "34334142080",
             ],
+            276 => [
+              "reply" => "已完成修正並上線：9/9 何昀佳評量表現在會顯示實際授課老師「邱崴」。先前「回復正班老師」可能只標成成功、卻留下過期代課排程，造成畫面仍顯示代課老師；系統已改為必須清掉代課排程並一併對齊評量表老師後才算完成，並補上回歸測試。點名紀錄維持原樣，沒有改動出勤或扣堂。請重新整理評量表／匯出後確認；若仍有問題，請回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2663",
+              "rev" => "56449f466a811b35c71ae6f9a1484a56d3ca45c3",
+              "deploy" => "34386475290",
+            ],
             273 => [
               "reply" => "已完成修正並上線：課程類型為「輔導」時會顯示「無須繳費」，不會再引導登記繳費；一般課程的既有繳費流程維持不變。若輔導課仍顯示收費或付款提示，畫面會先提示帳務資料需要檢查，不會引導付款。請重新整理課程查找後確認；若仍有問題，請回覆課程編號或畫面截圖。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2592",
               "rev" => "cdf336f90c711cfa6404f75084679d34cf8c45de",
@@ -385,19 +423,264 @@ jobs:
               "rev" => "30d30c47d2de5a1ae7314cceea46cbb4471f4e2a",
               "deploy" => "34203695848",
             ],
+            277 => [
+              "reply" => "已修好並上線：課程明細現在會清楚顯示已排／購買堂數與尚未安排的堂數，並說明日期清單只列已實際排定的堂次。這不會建立預留堂次，也不改扣堂、帳務、到期或既有排課權限。您調整後的課程明細可看到購買 4 堂、已上 2 堂、尚有 2 堂未安排。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2695",
+              "rev" => "c5e83183d82564b450ea444c4b3f10a205e124fc",
+              "deploy" => "34559408656",
+            ],
+            279 => [
+              "reply" => "已修好並上線：課程管理的繳費欄位現在會把目前付款狀態與下一步帳務操作分開顯示，狀態更容易辨識，也更容易找到並點選下一步。原有的帳務入口、權限和繳費規則都不變。請重新整理課程管理後確認；若畫面仍擠在一起或按鈕不好點，請按「問題仍存在」並回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2702",
+              "rev" => "5c5ff6b701d9868f1ccfde7b78c8b81b9ad6cb47",
+              "deploy" => "34591624669",
+            ],
+            278 => [
+              "reply" => "已修好並上線：取消堂次留下的舊紀錄不會再讓補課／補登失敗；重新安排時，系統會安全沿用原本的堂次與評量紀錄，不會重複建立。請重新整理課程管理後，再從「補課／補登」重試；若已正常，請按「確認已修好」，若仍失敗請按「問題仍存在」並回覆發生日期與時段。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2701",
+              "rev" => "6919ac65d5fbc078fa9cdc997f8cc93996b05e5f",
+              "deploy" => "34634118269",
+            ],
+            280 => [
+              "reply" => "謝謝你指出真正原因。這次確認不是請假篩選失效，而是評量卡上「未填」與「待審核」標示不清。正式站已再鎖定：卡片／列表會分開顯示「評量內容已填／未填」與「審核：…」，並附回歸測試防止再退化。這次沒有修改請假、課堂、評量內容、出缺勤、扣堂、帳務或既有資料。請重新整理後查看；若仍不清楚，請在這裡回覆。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2715",
+              "rev" => "16e38fb969cf73a227a86c4dfe9918078b00a459",
+              "deploy" => "35183308316",
+            ],
+            281 => [
+              "reply" => "謝謝確認目前已正常。8/12 那堂課的畫面現在會固定採用有效的已上狀態，不再因載入順序顯示成取消或未安排；正式站的桌面、手機與登入後課表已驗證。這次沒有修改課表、簽到、評量、扣堂、帳務或歷史資料。此單先標記已解決；若之後再發生，請按「問題仍存在」並回覆當下畫面。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2743",
+              "rev" => "86602e4ddaf8c03b73c78ee99d745507d884e958",
+              "deploy" => "34670532157",
+            ],
+            282 => [
+              "reply" => "已修好並上線：評量成功儲存後，畫面現在會正確辨識伺服器回傳的學生資料，不再把已寫入的紀錄誤顯示為「無法確認儲存結果」。學生、老師、堂次與狀態仍會核對；若仍看到提示，請先重新查詢該堂評量，再回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2726",
+              "rev" => "481ecadd2db0632efe4b696a91bb305269f7583e",
+              "deploy" => "34621357508",
+            ],
+            283 => [
+              "reply" => "謝謝你說明真正卡住的地方。正式站已把提示改成「另一門課仍在同時段」，並說明這不是重複課堂，而是另一門仍在進行中的課程使用相同老師與時段；原本的「結案（不續報）」也改成「結束課程（不再續課）」，會保留已上課與付款紀錄。這次沒有更改重疊判定，也沒有自動結束課程、修改排課、出缺勤、扣堂、帳務或歷史資料。請重新整理課程管理確認；若仍不清楚，請在這裡回覆。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2727",
+              "rev" => "86602e4ddaf8c03b73c78ee99d745507d884e958",
+              "deploy" => "34670532157",
+            ],
+            284 => [
+              "reply" => "已完成並上線：工作台會把待點名與待填評量放在同一優先層級，依上課時間排序，所以 10:00 會排在 13:00 前。老師的評量頁現在以「評量待辦」和「家長回覆」分開，完整評量預設收合，需要時可再展開；老師手機版也移除多餘的顯示切換。這次只調整排序與畫面呈現，沒有更改課程、評量內容、家長回覆、出缺勤或既有資料。請重新整理後確認；若仍不符合使用方式，請按「問題仍存在」並回覆這則訊息。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2751",
+              "rev" => "921fe606766172e63252f03805504ae08c8ac8d8",
+              "deploy" => "34675463987",
+            ],
+            287 => [
+              "reply" => "針對您補充的「原本四堂、已上一堂後改成三堂」情況，現在預覽、確認與實際處理會使用同一組未來預排堂次，不會因原本堂數再次補回；已上課、點名、評量與扣堂歷史維持不變，已收款、月結及共用方案規則也不變。請重新整理後再試一次；若仍遇到問題，請按「問題仍存在」並附上畫面。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2761",
+              "rev" => "025f4e6ee3657c702178ca3ef8a8753b8002fe3e",
+              "deploy" => "34705892308",
+            ],
+            289 => [
+              "reply" => "已完成並驗證恢復：木柵簡湧耆理化課程、原有歷史堂次與評量紀錄已恢復，包含原本的請假紀錄；沒有新增 2026/9/17 堂次，也沒有改動出缺勤、扣堂或帳務。請重新整理老師端與主任端確認；若仍看不到，請按「問題仍存在」並附上畫面。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2799",
+              "rev" => "09be02bf8f6ca559d8173091c7171b5a8e2b0189",
+              "deploy" => "34927408130",
+            ],
+            294 => [
+              "reply" => "已完成並驗證恢復：木柵簡湧耆理化課程、原有歷史堂次與評量紀錄已恢復，包含原本的請假紀錄；沒有新增 2026/9/17 堂次，也沒有改動出缺勤、扣堂或帳務。請重新整理老師端與主任端確認；若仍看不到，請按「問題仍存在」並附上畫面。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2799",
+              "rev" => "09be02bf8f6ca559d8173091c7171b5a8e2b0189",
+              "deploy" => "34927408130",
+            ],
+            298 => [
+              "reply" => "已完成並上線：學生名單匯入旁新增「下載範例」，可先下載只有欄位標題的 CSV，再填寫後依原規格匯入；既有匯入流程、API、驗證、權限與學生資料都不變。請重新整理學生管理頁確認；若仍找不到「下載範例」，請回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2907",
+              "rev" => "b4a5f64b1549a0ca8c154e7a7253948597f99f09",
+              "deploy" => "34954544684",
+            ],
+            291 => [
+              "reply" => "已修正並上線：學生清單中的課程若沒有可確認的購買堂數或剩餘資料，現在會顯示「堂數待確認」，不會把不完整資料誤顯示為 0 堂。已設定堂數的課程、月結與共用方案維持原有顯示；本次不更改課程、排課或收費資料。請重新整理學生清單確認；若仍看到不正確的堂數，請回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2807",
+              "rev" => "b4a5f64b1549a0ca8c154e7a7253948597f99f09",
+              "deploy" => "34954544684",
+            ],
+            301 => [
+              "reply" => "已完成並上線：行事曆週視圖現在會以紅色虛線標示老師在其他分校已有滿席課程的時段，方便主任安排課程時辨識跨校占用。本次僅增加唯讀提示，不改排課規則、API、權限、課程資料、帳務或任何破壞性操作。請重新整理行事曆確認；若仍看不到提示，請回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2910",
+              "rev" => "6b8ff9f4e6e5ae87417557386ab69fe4c1278ef5",
+              "deploy" => "34969016619",
+            ],
+            308 => [
+              "reply" => "沈柏宇數學合約已個案復原並可再操作：合約已重新開啟（剩餘 2 堂），9/16、9/23 預排已恢復為可排課狀態。之後若再按「提前結束／調整合約總堂數」，系統會保留「新總堂數 − 已完成」的剩餘堂數，不會再把剩餘堂數清成 0。請重新整理課程管理後確認；若已正常請按「確認已修好」，若仍無法調整請按「問題仍存在」並簡述現況。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2934",
+              "rev" => "0107ff1c224825141728d4e54d1c4380cb65924f",
+              "deploy" => "35075861918",
+            ],
+            307 => [
+              "reply" => "已修好並上線：兼職薪資在代課情境會依課表代課老師歸屬，不再誤計入合約老師。請重新整理兼職薪資頁確認；若仍有錯帳請回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2936",
+              "rev" => "0107ff1c224825141728d4e54d1c4380cb65924f",
+              "deploy" => "35075861918",
+            ],
+            309 => [
+              "reply" => "已完成並上線：帳務中心待處理列表可依「剩餘堂數」排序，方便先對快上完的學生發繳費通知。僅調整畫面排序，不改帳務計算。請重新整理帳務中心確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2941",
+              "rev" => "0107ff1c224825141728d4e54d1c4380cb65924f",
+              "deploy" => "35075861918",
+            ],
+            310 => [
+              "reply" => "已修好並上線：排課衝突時會直接寫出卡住的學生／課程，並附簡短排除方向；排課規則與容量上限不變。請重新整理後再試排課。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2940",
+              "rev" => "0107ff1c224825141728d4e54d1c4380cb65924f",
+              "deploy" => "35075861918",
+            ],
+            311 => [
+              "reply" => "已修好並上線：編輯課表時，系統不會再把「同一位學生自己」誤判成衝堂；其他學生的一對一衝突仍會正確擋住。請重新整理課程管理後再試調整該時段；若已正常請按「確認已修好」，若仍無法調整請按「問題仍存在」並回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2954",
+              "rev" => "1a413b1deb954e61952f99692b88ae676d19e575",
+              "deploy" => "35290038429",
+            ],
+            312 => [
+              "reply" => "已修好並上線：課程改正班老師後，未來行事曆堂次不會再殘留錯誤的舊老師標示；真實代課與過去已上歷史仍會保留原樣。請重新整理行事曆確認；若已正常請按「確認已修好」，若某天仍顯示錯老師請回覆日期與時段。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2969",
+              "rev" => "1a413b1deb954e61952f99692b88ae676d19e575",
+              "deploy" => "35290038429",
+            ],
+            304 => [
+              "reply" => "已完成並上線：學生帳務對帳的帳單主標改顯示科目與上課日期，方便辨識；帳單編號仍保留於稽核資料。金額、付款狀態與權限不變。請重新整理對帳頁確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2920",
+              "rev" => "0107ff1c224825141728d4e54d1c4380cb65924f",
+              "deploy" => "35075861918",
+            ],
+            305 => [
+              "reply" => "已完成並上線：課程管理「堂數待對帳」現在可直接開啟學生帳務對帳明細；本次僅增加唯讀導引，不自動改堂數或帳務。請重新整理課程管理確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2928",
+              "rev" => "0107ff1c224825141728d4e54d1c4380cb65924f",
+              "deploy" => "35075861918",
+            ],
+            306 => [
+              "reply" => "已修好並上線：帳務中心在窄螢幕／平板寬度下，右側操作不再被裁切。僅調整版面，不改帳務計算。請縮小視窗或用平板再確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2925",
+              "rev" => "0107ff1c224825141728d4e54d1c4380cb65924f",
+              "deploy" => "35075861918",
+            ],
+            297 => [
+              "reply" => "已完成並上線（Phase-A）：學生管理「年級升級」改走伺服器預覽／確認，可排除學生、寫入批次紀錄並支援冪等；H3 僅標記畢業、不在此步驟停課。沒有歷史回填、沒有年度自動排程、也尚未做 Phase-B 提醒。請主任先用預覽確認名單，再謹慎執行確認；若預覽／確認有異常，請回覆此單並附上分校與畫面。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/2906",
+              "rev" => "16e38fb969cf73a227a86c4dfe9918078b00a459",
+              "deploy" => "35183308316",
+            ],
+            314 => [
+              "reply" => "已修好並上線（問項1）：尚未發生、尚未有授課紀錄的評量會跟著目前授課老師；已經實際上過的歷史課程仍保留當時老師，不會被之後換師改掉。課表與評量顯示／可填寫歸屬會一致。請重新整理後再看何昀佳輔導那堂；若仍顯示錯老師，請回覆此單並附上日期時段。另：點名已請假時評量不應再跳出催填（問項2）若仍發生，請另附截圖，我們會再查。",
+              "rev" => "1a413b1deb954e61952f99692b88ae676d19e575",
+              "deploy" => "35290038429",
+            ],
+            313 => [
+              "reply" => "已修好並上線：學生管理的搜尋現在會同時比對學生姓名與就讀學校，且仍只顯示目前帳號與校區有權限查看的學生。請重新整理後輸入學校名稱確認；若仍找不到，請按「問題仍存在」並回覆學校名稱與校區。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3065",
+              "rev" => "e6e2fc3eb542cc7fe5024f6bf615f22c1c18c811",
+              "deploy" => "35439427926",
+            ],
+            321 => [
+              "reply" => "已修好並上線：課程管理清單的時段欄現在會直接顯示今天起最近三堂有效上課日期；超過三堂時會顯示「另有 N 堂」。請假、已取消與內部占位不會算進近期上課日期。請重新整理課程管理後確認；若日期仍不正確，請按「問題仍存在」並回覆課程與日期。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3071",
+              "rev" => "5de77ffb62e5186a9d47469cd2eb3123c7ddb6f0",
+              "deploy" => "35440432572",
+            ],
+            320 => [
+              "reply" => "已完成並上線：建立多科共用方案時，每個科目現在可選擇固定每週星期與時間預排，或保留彈性、之後手動選擇上課日期；既有排課權限與容量規則維持不變。請重新整理學生管理後確認；若仍無法選擇，請按「問題仍存在」並回覆此單。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3070",
+              "rev" => "5d5c259c543fcafa1572d0d98f9281a8839dbda2",
+              "deploy" => "35434032476",
+            ],
+            324 => [
+              "reply" => "已修好並上線：修改多科共用方案的固定上課時段時，只會同步今天起尚未完成、未點名且未結算的未來預排；過去紀錄與既有例外堂次會保留，不會再往今天以前新增預排。請重新整理課程管理後確認；若仍看到過去日期被新增，請按「問題仍存在」並回覆日期。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3074",
+              "rev" => "5d5c259c543fcafa1572d0d98f9281a8839dbda2",
+              "deploy" => "35434032476",
+            ],
+            332 => [
+              "reply" => "已完成並上線：課程管理現在清楚標示查找、排課與營運用途；建立課程、續報、購買與學生資料操作會導向學生管理，從課程管理進入時會保留返回脈絡，方便完成後回到原本位置。這次只調整導覽與說明，不改課程、帳務、權限或資料。請重新整理後確認；若仍找不到要做的操作，請按「問題仍存在」並回覆畫面與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3101",
+              "rev" => "3d86f37a87576fc9051b1b2d7c77f176cefad36d",
+              "deploy" => "35554030780",
+            ],
+            337 => [
+              "reply" => "已完成並上線：學生管理與課程管理的入口分工與說明已整理，課程管理保留查找、排課與營運視角，建立課程、續報、購買與學生資料仍從學生管理處理；評量與題庫入口目前保留，沒有在這次變更中移除。請重新整理後確認導覽是否清楚；若仍有重複或找不到的入口，請按「問題仍存在」並回覆畫面與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3149",
+              "rev" => "3d86f37a87576fc9051b1b2d7c77f176cefad36d",
+              "deploy" => "35554030780",
+            ],
+            323 => [
+              "reply" => "家長入口的待回覆提醒已修好並上線：點選提醒後，系統會找到跨頁的待回覆評量、打開回覆編輯區並聚焦輸入框。請重新整理家長頁面後重試；若仍無法回覆，請按「問題仍存在」並提供操作步驟，我們會重新調查。這次工程測試與正式環境版本檢查已完成，仍等待您實際確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3073",
+              "rev" => "64cc175e48c962be82d4347601ebe53dfc75d9e4",
+              "deploy" => "35621758599",
+            ],
+            317 => [
+              "reply" => "行事曆日檢視的一對二／一對三並排課程格已調整：窄欄中的姓名、科目和班型改用較緊湊的排列與短標示，避免文字被裁切；一對一格仍保留完整標示。修正已上線，請重新整理行事曆後查看原本的時段；若仍有看不到的文字，請按「問題仍存在」並告訴我們畫面寬度與時段，我們會重新調查。這次工程測試與正式環境版本檢查已完成，仍等待您實際確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3067",
+              "rev" => "64cc175e48c962be82d4347601ebe53dfc75d9e4",
+              "deploy" => "35621758599",
+            ],
+            335 => [
+              "reply" => "已修正並上線：列印課表的每日明細現在換日時會另起一頁，頁面標題不會再寫 09/02 卻列出 09/03 的堂次。同一天若堂次較多，仍會正常續頁。我們已通過列印回歸測試並核對正式版本。請重新整理後再列印確認；若仍看到日期不一致，請回覆選的是「本週」或「當月」及不一致的日期，我們會重新調查。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3140",
+              "rev" => "a265831e26cb03e0451a5626f440d3dc17d4bc51",
+              "deploy" => "35951902774",
+              "existing_notice_id" => 808,
+              "expected_log_ids" => [1094],
+            ],
+            336 => [
+              "reply" => "已修好並上線：列印課表時，班型會顯示「一對一／一對二／一對三／輔導／試聽」等中文，不再顯示 one_on_three 等系統代碼。週／月範圍、老師／教室／學生篩選與主任人工核對用的內容維持不變。請重新整理課表，按「列印課表」確認；若仍看到英文代碼，請回覆這則訊息。這次先完成 #336 的班型顯示，#335 的日期範圍問題仍另行處理。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3140",
+              "rev" => "5408348866f491646bdf732c79a46d04a9635873",
+              "deploy" => "35524903138",
+            ],
+            329 => [
+              "reply" => "意見與建議的回報入口已更新上線：現在可直接選擇「使用上有問題／希望更好用／想要新功能」，手機與電腦版都可操作，原本的回報資料仍照常送出。請重新整理後再開啟回報入口確認；若仍看不到選項或無法選取，請按「問題仍存在」並回覆畫面與操作步驟，我們會重新調查。這次工程與正式環境版本檢查已完成，仍等待您實際確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3100",
+              "rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",
+              "deploy" => "36218370051",
+            ],
+            339 => [
+              "reply" => "已修正並上線：帳務中心桌面待處理表格的固定操作欄會限制寬度並將按鈕換行，減少遮住鄰近金額；原有按鈕、順序、帳務數值與處理流程不變，金額欄仍可透過表格橫向捲動查看。這次只處理畫面中的操作欄擁擠，沒有宣稱其他外觀問題已解決。工程回歸測試與正式版本檢查已完成，仍等待您實際確認。請重新整理後重試；若仍被遮住，請按「問題仍存在」並回覆畫面寬度與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3268",
+              "rev" => "345b0f4cbf2cbdd23d76ecb350f96c1a7096aafc",
+              "deploy" => "36217751197",
+            ],
+            348 => [
+              "reply" => "已補上說明並上線：已結清課程彙總現在解釋「舊制無帳單」是課程已標記繳費、但沒有有效帳單；「例外待處理」是至少一張有效帳單的淨收款超過帳單金額。可從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對。這次只補說明，沒有變更款項、標籤分類或帳務操作，也未代為核實或修復個別帳務。工程回歸測試與正式版本檢查已完成，仍等待您實際確認。請重新整理後查看；若仍不清楚，請按「問題仍存在」並回覆畫面與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3213",
+              "rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",
+              "deploy" => "36218370051",
+            ],
+            362 => [
+              "reply" => "已調整並上線：帳務中心待處理清單的「剩餘堂數」現在放在學生姓名旁，手機卡片也會在科目上方顯示，不必再捲到表格最右側找。這次只調整呈現位置，堂數與帳務數值、排序及上課明細入口沿用原本流程。請重新整理帳務中心，再查看原本的學生；若仍看不到或標示不清楚，請按「問題仍存在」並回覆畫面寬度與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3205",
+              "rev" => "8f69c5019b75393c6dd6ab55b8f33b72b5ad26a8",
+              "deploy" => "36120867844",
+            ],
+            366 => [
+              "reply" => "已修正並上線：學生管理的課程科目會保留原先設定的「自然」，不再把這筆回報中的自然顯示成「理化」；標準科目標籤與課程資料都沒有變更。請重新整理學生管理，再查看原本的課程科目；若仍顯示「理化」，請按「問題仍存在」並回覆此單，我們會再調查。這次修正的驗證範圍是本回報中的自然科目顯示，不代表所有自訂科目名稱都已完整支援。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3265",
+              "rev" => "8f69c5019b75393c6dd6ab55b8f33b72b5ad26a8",
+              "deploy" => "36120867844",
+            ],
+            315 => [
+              "reply" => "已用正式環境唯讀資料核對 9/19 10:00–12:00：王俞方在本校的原時段已因請假後調課成功改為「已調課」，本校空位有放出。同時間芝琳老師在另一分校仍有一堂一對一且已滿席的排程，所以行事曆顯示「跨校忙碌」是正確提示（方便辨識老師已被其他分校占滿），不是殘留的幽靈忙碌。這次沒有改排課規則或資料。若您希望跨校滿席改成不顯示或只作弱提示，請回覆說明期望，我們另開產品決策；否則請重新整理行事曆確認。證據：dump run 35298862865。",
+              "rev" => "1a413b1deb954e61952f99692b88ae676d19e575",
+              "deploy" => "",
+            ],
           ];
+          // One authorized target per run. A request for an unknown ID or an
+          // unshipped revision fails before any comment/status mutation.
+          $targetBugId = filter_var(getenv("TARGET_BUG_ID"), FILTER_VALIDATE_INT);
+          if ($targetBugId === false || $targetBugId < 1 || !isset($items[$targetBugId])) {
+            throw new \RuntimeException("target is not allowlisted");
+          }
+          $target = $items[$targetBugId];
+          $requiredRevision = (string)($target["rev"] ?? "");
+          if (!preg_match("/^[0-9a-f]{40}$/", $requiredRevision) || !preg_match("/^[0-9a-f]{40}$/", $prodHead)) {
+            throw new \RuntimeException("invalid revision evidence");
+          }
+          exec("git merge-base --is-ancestor ".escapeshellarg($requiredRevision)." ".escapeshellarg($prodHead), $unused, $ancestorExit);
+          if ($ancestorExit !== 0) {
+            throw new \RuntimeException("required revision is not in production");
+          }
+          $items = [$targetBugId => $target];
+          // BEGIN existing-notice guard: pure predicate covered by executable regression.
+          $canReuseNotice = static function ($status, $logs, $comments, $cfg) {
+            return $status === "triaged"
+              && $logs === $cfg["expected_log_ids"]
+              && count($comments) > 0
+              && (int)end($comments)["id"] === $cfg["existing_notice_id"]
+              && end($comments)["body"] === $cfg["reply"]
+              && !end($comments)["is_internal_note"];
+          };
+          // END existing-notice guard
           $results = [];
           foreach ($items as $bugId => $cfg) {
-            $bug = \App\Models\BugReport::find($bugId);
+            $reuseNotice = isset($cfg["existing_notice_id"]);
+            if ($reuseNotice) \Illuminate\Support\Facades\DB::beginTransaction();
+            $bug = $reuseNotice
+              ? \App\Models\BugReport::where("id", $bugId)->lockForUpdate()->first()
+              : \App\Models\BugReport::find($bugId);
             if (!$bug) {
+              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "missing"];
               continue;
             }
             $status = (string)$bug->status;
             if (in_array($status, ["resolved", "closed"], true)) {
-              if ($status !== "resolved" || empty($cfg["repair_resolved"])) {
-                $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
-                continue;
+              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
+              $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
+              continue;
+            }
+            if ($reuseNotice) {
+              $logs = $bug->statusLogs()->orderBy("id")->pluck("id")->map(fn($id) => (int)$id)->all();
+              $comments = $bug->comments()->orderBy("id")->get(["id", "body", "is_internal_note"])->toArray();
+              if (!$canReuseNotice($status, $logs, $comments, $cfg)) {
+                \Illuminate\Support\Facades\DB::rollBack();
+                throw new \RuntimeException("existing notice or status history changed; no closeout writes");
               }
             }
             // Walk legal transitions toward resolved
@@ -405,7 +688,6 @@ jobs:
             if ($status === "new") $path = ["triaged", "in_progress", "resolved"];
             elseif ($status === "triaged") $path = ["in_progress", "resolved"];
             elseif ($status === "in_progress") $path = ["resolved"];
-            elseif ($status === "resolved" && !empty($cfg["repair_resolved"])) $path = ["in_progress", "resolved"];
             else {
               $results[] = ["id" => $bugId, "action" => "unsupported_status", "status" => $status];
               continue;
@@ -415,7 +697,7 @@ jobs:
             foreach ($path as $st) {
               if ($st === "resolved") {
                 // Public reply before resolve (Evidence Contract)
-                $svc::addComment($bugId, $actor, $cfg["reply"], false);
+                if (!$reuseNotice) $svc::addComment($bugId, $actor, $cfg["reply"], false);
                 $opts = ["production_revision" => $cfg["rev"]];
                 if ($cfg["deploy"] !== "") $opts["deploy_run_id"] = $cfg["deploy"];
                 $last = $svc::changeStatus($bugId, $actor, "resolved", "phase-c allowlist; prod_head=".$prodHead, $opts);
@@ -423,6 +705,10 @@ jobs:
                 $last = $svc::changeStatus($bugId, $actor, $st, "phase-c allowlist triage");
               }
               if (!($last["ok"] ?? false)) { $ok = false; break; }
+            }
+            if ($reuseNotice) {
+              if ($ok) \Illuminate\Support\Facades\DB::commit();
+              else \Illuminate\Support\Facades\DB::rollBack();
             }
             $fresh = \App\Models\BugReport::find($bugId);
             $results[] = [

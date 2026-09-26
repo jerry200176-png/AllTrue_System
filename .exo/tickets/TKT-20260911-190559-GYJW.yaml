@@ -1,0 +1,39 @@
+id: TKT-20260911-190559-GYJW
+title: Apply and verify PHPStan 2.2.13 lockfile update
+intent: Apply and verify PHPStan 2.2.13 lockfile update
+kind: task
+parent_id: INT-20260911-190552-JWQ1
+boundary: Restrict to PHPStan lockfile update and required records.
+success_condition: Fresh Composer install, PHPStan, and the repository's isolated
+  PHPUnit wrapper pass.
+priority: 2
+labels:
+- dependencies
+scope:
+  allow:
+  - backend/composer.lock
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/app/**
+  - .github/**
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 100
+checks:
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-11T19:05:59+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

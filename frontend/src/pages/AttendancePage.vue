@@ -54,8 +54,8 @@
           <div class="att-section-title">課表異常待處理</div>
           <span v-if="teacherAnomalies.length" class="att-badge">{{ teacherAnomalies.length }}</span>
         </div>
-      <div v-if="teacherLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
-      <div v-else-if="teacherAnomalies.length === 0" class="att-empty enterprise-empty">
+      <div v-if="teacherLoading" class="att-empty enterprise-empty enterprise-loading" role="status" aria-live="polite">載入中…</div>
+      <div v-else-if="teacherAnomalies.length === 0" class="att-empty enterprise-empty" role="status">
           今日無課表異常 ✓
         </div>
         <div v-else class="ta-anomaly-list">
@@ -142,8 +142,8 @@
             </button>
           </div>
         </div>
-        <div v-if="teacherLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
-        <div v-else-if="teacherRecords.length === 0" class="att-empty enterprise-empty">今日無老師打卡紀錄</div>
+        <div v-if="teacherLoading" class="att-empty enterprise-empty enterprise-loading" role="status" aria-live="polite">載入中…</div>
+        <div v-else-if="teacherRecords.length === 0" class="att-empty enterprise-empty" role="status">今日無老師打卡紀錄</div>
         <div v-else class="att-table-scroll">
           <table>
             <thead>
@@ -228,7 +228,7 @@
       </div>
     </details>
 
-    <div v-if="fetchError" class="att-msg error" style="margin-bottom:12px">{{ fetchError }}</div>
+    <div v-if="fetchError" class="att-msg error" role="alert" aria-live="assertive" style="margin-bottom:12px">{{ fetchError }}</div>
 
     <!-- Unified Check-in Panel -->
     <div class="card att-checkin-card" data-guide="attendance-pending-list">
@@ -242,8 +242,8 @@
           : '該分校今日已結束但尚未點名的堂次。點名後到班/遲到會自動扣堂。' }}
       </p>
       <div v-if="!isTeacher && !branchId" class="att-empty enterprise-empty">請先選擇分校</div>
-      <div v-else-if="pendingLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
-      <div v-else-if="pendingSessions.length === 0" class="att-completed-next-step" data-test="attendance-next-action">
+      <div v-else-if="pendingLoading" class="att-empty enterprise-empty enterprise-loading" role="status" aria-live="polite">載入中…</div>
+      <div v-else-if="pendingSessions.length === 0" class="att-completed-next-step" role="status" data-test="attendance-next-action">
         <div class="att-completed-msg">
           <span class="material-symbols-outlined att-completed-icon" aria-hidden="true">check_circle</span>
           <div>
@@ -3410,4 +3410,23 @@ button.danger:hover:not(:disabled) { background: var(--ds-danger) !important; }
   vertical-align: -2px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Keep attendance actions and compact filters on the shared touch rhythm. */
+.att-page button {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.att-page input:not([type="checkbox"]),
+.att-page select,
+.att-page textarea {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.att-page .att-tab-btn {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.att-page .at-btn,
+.att-page .att-status-btn,
+.att-page .att-card-submit,
+.att-page .att-mode-btn {
+  min-height: var(--ds-control-height-touch, 44px) !important;
+}
 </style>

@@ -19,8 +19,11 @@ final class ContractAmendmentService
         $classId = (int) $course->getKey();
         $diagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? [];
         $used = max((int) ($diagnostic['expected_used'] ?? 0), (int) ($diagnostic['uncapped_used'] ?? 0));
+        $newRemaining = max(0, $newCount - $used);
         $future = $this->futureScheduled($classId);
         $futureSchedules = $this->futureSchedules($classId);
+        $futureScheduledCount = count($future);
+        $futureSchedulesCount = count($futureSchedules);
         return [
             'student_class_id' => $classId,
             'student_id' => (int) $course->getAttribute('StudentID'),
@@ -29,11 +32,13 @@ final class ContractAmendmentService
             'new_session_count' => $newCount,
             'completed_sessions' => $used,
             'original_remaining_sessions' => (int) ($course->RemainingSessions ?? 0),
-            'new_remaining_sessions' => 0,
-            'affected_future_scheduled' => $future,
-            'affected_future_scheduled_count' => count($future),
-            'affected_future_schedules' => $futureSchedules,
-            'affected_future_schedules_count' => count($futureSchedules),
+            'new_remaining_sessions' => $newRemaining,
+            'forfeited_sessions' => max(0, (int) ($course->RemainingSessions ?? 0) - $newRemaining),
+            'affected_future_scheduled_count' => max(0, $futureScheduledCount - $newRemaining),
+            'affected_future_schedules_count' => max(0, $futureSchedulesCount - $newRemaining),
+            'affected_future_scheduled' => array_slice($future, $newRemaining),
+            'affected_future_schedules' => array_slice($futureSchedules, $newRemaining),
+            'closes_contract' => $newRemaining === 0,
             'financial' => $this->financialSummary($classId),
             'financial_mutation' => 'none',
             'financial_note' => '本流程不修改 Charge、Invoice、Payment、PaymentReport、退款或收據；請沿用既有帳務流程處理差額。',
@@ -53,24 +58,28 @@ final class ContractAmendmentService
             }
             $preview = $this->preview($locked, $newCount);
             $before = $this->contractSnapshot($locked);
+            $newRemaining = (int) ($preview['new_remaining_sessions'] ?? 0);
             $cancelledIds = [];
             $sessions = ClassSession::query()
                 ->where('StudentClassID', $locked->getKey())
                 ->where('Status', 'scheduled')
                 ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())
+                ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
                 ->lockForUpdate()->get();
-            foreach ($sessions as $session) {
+            foreach ($sessions->slice($newRemaining) as $session) {
                 $session->Status = 'cancelled';
                 $note = trim((string) ($session->Note ?? ''));
                 $session->Note = trim($note . ' [合約提前結束取消]');
                 $session->save();
                 $cancelledIds[] = (int) $session->getKey();
             }
-            $scheduleIds = Schedule::query()
+            $futureSchedules = Schedule::query()
                 ->where('student_course_id', $locked->getKey())
                 ->where('status', 'scheduled')
                 ->whereDate('schedule_date', '>=', Carbon::today()->toDateString())
-                ->lockForUpdate()->pluck('id')->map(fn ($id): int => (int) $id)->all();
+                ->orderBy('schedule_date')->orderBy('start_time')->orderBy('id')
+                ->lockForUpdate()->get();
+            $scheduleIds = $futureSchedules->slice($newRemaining)->pluck('id')->map(fn ($id): int => (int) $id)->all();
             if ($scheduleIds !== []) {
                 Schedule::query()->whereIn('id', $scheduleIds)->update([
                     'status' => 'cancelled',
@@ -79,19 +88,24 @@ final class ContractAmendmentService
             }
             $locked->setAttribute('SessionCount', $newCount);
             $locked->setAttribute('UsedSessions', (int) $preview['completed_sessions']);
-            $locked->setAttribute('RemainingSessions', 0);
-            $locked->setAttribute('Stop', 1);
-            $locked->setAttribute('closed_reason', self::CLOSED_REASON);
-            $locked->setAttribute('EndDate', Carbon::today()->toDateString());
+            $locked->setAttribute('RemainingSessions', $newRemaining);
+            if ($newRemaining === 0) {
+                $locked->setAttribute('Stop', 1);
+                $locked->setAttribute('closed_reason', self::CLOSED_REASON);
+                $locked->setAttribute('EndDate', Carbon::today()->toDateString());
+            } else {
+                $locked->setAttribute('Stop', 0);
+                $locked->setAttribute('closed_reason', null);
+            }
             $locked->setAttribute('settlement_snapshot', json_encode([
                 'kind' => self::CLOSED_REASON,
                 'before' => $before,
                 'after' => [
                     'session_count' => $newCount,
                     'used_sessions' => (int) $preview['completed_sessions'],
-                    'remaining_sessions' => 0,
-                    'stop' => 1,
-                    'closed_reason' => self::CLOSED_REASON,
+                    'remaining_sessions' => $newRemaining,
+                    'stop' => $newRemaining === 0 ? 1 : 0,
+                    'closed_reason' => $newRemaining === 0 ? self::CLOSED_REASON : null,
                 ],
                 'cancelled_session_ids' => $cancelledIds,
                 'cancelled_schedule_ids' => $scheduleIds,
@@ -115,14 +129,17 @@ final class ContractAmendmentService
                     'old_session_count' => $before['session_count'],
                     'new_session_count' => $newCount,
                     'old_remaining_sessions' => $before['remaining_sessions'],
-                    'new_remaining_sessions' => 0,
+                    'new_remaining_sessions' => $newRemaining,
                     'reason_code' => self::CLOSED_REASON,
                     'reason_hash' => hash('sha256', $reason),
                     'outcome' => 'success',
                 ]
             );
+            $message = $newRemaining === 0
+                ? "合約已調整為 {$newCount} 堂、剩餘 0 堂；已上課紀錄保留，未來預排已取消。帳務資料未變更。"
+                : "合約已調整為 {$newCount} 堂、剩餘 {$newRemaining} 堂；已上課紀錄保留，超額未來預排已取消。帳務資料未變更。";
             return [
-                'message' => "合約已調整為 {$newCount} 堂、剩餘 0 堂；已上課紀錄保留，未來預排已取消。帳務資料未變更。",
+                'message' => $message,
                 'preview' => $preview,
                 'cancelled_session_ids' => $cancelledIds,
                 'cancelled_schedule_ids' => $scheduleIds,

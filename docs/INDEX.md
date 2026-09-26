@@ -5,7 +5,7 @@
 > **Single runtime spec:** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (I1–I5) — supreme on conflict  
 > **Decision (I3):** INCIDENT stack via [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md)  
 > **Execution (I1):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only  
-> **Audit / conflicts:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md)
+> **Audit / conflicts:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md) · [`audits/alltrue-nine-domain-engineering-audit-2026-09-17.md`](audits/alltrue-nine-domain-engineering-audit-2026-09-17.md)
 
 > **Source of truth:** committed files on `origin/main` only.
 
@@ -27,7 +27,8 @@
 
 **Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
 **Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3 classify risk). **Operator:** fleet [portfolio-ops `AUTONOMY_POLICY`](https://github.com/jerry200176-png/portfolio-ops/blob/main/governance/AUTONOMY_POLICY.md) — Agent squash-merges after required checks, including R3 with a Repair Manifest.  
-**CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`
+**CI governance / preflight:** [`governance/CI_GOVERNANCE.md`](governance/CI_GOVERNANCE.md) · `npm run ci:preflight`  
+**Autonomous Execution Harness:** [`harness/HARNESS_STATUS.md`](harness/HARNESS_STATUS.md) · `python3 -m scripts.harness status`
 
 ---
 
@@ -136,6 +137,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 19. **單科堂數制轉多科方案安全流程（2026-08-27，Draft，T3）**：[`plans/2026-08-27-single-course-to-package-conversion.md`](plans/2026-08-27-single-course-to-package-conversion.md) — 預檢、零歷史安全轉換、既有歷史導向新方案；不搬移付款／發票／出席／評量帳本。
 20. **出勤／評量一致性與主任指標（2026-08-28，Implementation slice）**：[`architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md`](architecture/RFC_ATTENDANCE_ASSESSMENT_INTEGRITY.md) — ClassSession 單一事件來源、到課必有評量、請假／缺席／取消不產生，主任首屏分開顯示缺表與待完成。
 21. **新生問班招生閉環 V1（runtime activated；E2E／retention sign-off pending）**：[`architecture/RFC_ADMISSIONS_FUNNEL_V1.md`](architecture/RFC_ADMISSIONS_FUNNEL_V1.md) · REP [`runbooks/admissions-funnel-v1-activation-execution-package.md`](runbooks/admissions-funnel-v1-activation-execution-package.md) · brief [`runbooks/admissions-funnel-v1-founder-activation-brief.md`](runbooks/admissions-funnel-v1-founder-activation-brief.md) — code default `ADMISSIONS_FUNNEL_V1` 仍為 off；production 已由 Founder-gated deploy 啟用，完整 staff／public E2E 與 retention／PII sign-off 仍需指定安全測試身份。
+22. **TrueFit v0.1（學習工作台）**：產品／架構邊界 [`truefit/PRODUCT_ARCHITECTURE_BRIEF.md`](truefit/PRODUCT_ARCHITECTURE_BRIEF.md) · 紙本考卷／AI／30 天保留／免重登提案 [`truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md`](truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md) · canonical 狀態 [`truefit/PROGRAM_STATUS.md`](truefit/PROGRAM_STATUS.md) — Slice 0–5、S6-00a/b 與 S6-01 已 merge；flags OFF，尚未 runtime verified／operationally accepted；新 evidence track 尚未實作且不得略過 T3 auth、PII、版權與老師確認閘門。
+23. **App shell 有界拆分（PLAN_READY / DEFERRED）**：[`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — 僅 badge／More+Search／Help 三切片；產品訊號驅動才 pull；不自動實作。
+24. **In-app Product Loop 執行政策**：[`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) — 訊號分類、auto-fix envelope、PLAN_REQUIRED Decision Packet；非 FIFO。常設入口 skill：[`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](../.agents/skills/alltrue-inapp-product-loop/SKILL.md)。
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -165,6 +169,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 教職員版本更新（Staff Updates） | `docs/STAFF_UPDATES.yml`（教職員唯一來源）、`docs/GUIDE_STAFF_UPDATES.md`、`docs/AI_REGRESSION_LESSONS.md` §R85；CHANGELOG 只產草稿不自動發布 |
 | **家長帳號／學生綁定（ADR Accepted；PB-04 partial via guardians）** | Benchmark [`research/PARENT_BINDING_BENCHMARK.md`](research/PARENT_BINDING_BENCHMARK.md) · Architecture [`architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md`](architecture/PARENT_IDENTITY_TARGET_ARCHITECTURE.md) · ADR [`adr/ADR-PARENT-STUDENT-BINDING.md`](adr/ADR-PARENT-STUDENT-BINDING.md) · UX [`product/PARENT_BINDING_UX_SPEC.md`](product/PARENT_BINDING_UX_SPEC.md) · Threat [`security/PARENT_BINDING_THREAT_MODEL.md`](security/PARENT_BINDING_THREAT_MODEL.md) · Rollout [`operations/PARENT_BINDING_ROLLOUT.md`](operations/PARENT_BINDING_ROLLOUT.md) · Issues [`product/parent-binding-implementation-issues/`](product/parent-binding-implementation-issues/) — **PB-00 hard-block lifted**（Founder GO 2026-09-03）；**`guardians`≈ParentIdentity / `student_guardians`≈GSR**；portal dual-read under `PERF_MULTI_GUARDIAN`；PB-05–09 backlog；no `parent_phone` cutover |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
+| **App.vue shell 有界拆分（deferred）** | [`plans/APP_SHELL_DECOMPOSITION_001.md`](plans/APP_SHELL_DECOMPOSITION_001.md) — badge／More+Search／Help only；勿自動大拆 |
+| **In-app 訊號執行政策** | [`plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md) · `CHAT_BUG_SYSTEM.md` §3.6 |
 
 ### 部署 / 維運
 | 需要什麼 | Registry 入口 |
@@ -287,8 +293,18 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/GUIDE_UI_COPY.md` | UI 文案、空狀態、loading 規範 |
 | `docs/GUIDE_DESIGN_QA_SMOKE.md` | 前端設計 QA / smoke 驗收清單 |
 | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md` | SmartCalendar 受控拆分與元件/ composable 對照 |
+| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_INAPP_290_CALENDAR_COURSE_SESSION_EDITING.md` | Product Loop dogfood：in-app #290 / GH #2800 Proposal（Phase 0+1a GO；1b/2/3 未授權） |
+| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_CHALLENGE_REVIEW.md` | CubeLV independent challenge review (`5d7d05c0`) |
+| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_FOUNDER_PLAN_DECISION.md` | Founder Plan Decision — Phase 0+1a GO; cancel deferred |
+| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_GOAL_CONTRACT_PHASE_0_1A.json` | Implementation GoalContract (create-only; Phase 0+1a impl in progress, flag OFF) |
+| `docs/proposals/PRODUCT_LOOP_DOGFOOD_001_IMPL_HANDOFF_PHASE_0_1A.md` | Implementation handoff for Phase 0+1a |
+| `docs/programs/PRODUCT_LOOP_DOGFOOD_001_STATUS.md` | Program lifecycle status (do not collapse MERGED≠done) |
+| `docs/plans/APP_SHELL_DECOMPOSITION_001.md` | App.vue 有界拆分計畫（PLAN_READY / IMPLEMENTATION_DEFERRED） |
+| `docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md` | In-app 訊號分類與 auto-fix / Decision Packet 政策 |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
-| `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）|
+| `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）；產品意圖見 RFC |
+| `docs/architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md` | #2809 RFID 在校證明 v1 政策／架構合約（presence ≠ attendance）|
+| `docs/programs/RFID_2809_STATUS.md` | #2809 程式進度（slice / PR / merge / runtime）|
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
 | `docs/RULE_MIGRATION_COMPAT.md` | **Migration 向後相容守則**（Expand/Contract、down() 可逆性、PR 必填欄位）|
 | `docs/AMBIENT_AUDIO_LICENSES.md` | 環境音效彩蛋的音檔授權清單 |
@@ -311,6 +327,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 模組文件
 | 檔案 | 一行說明 |
 |------|---------|
+| `docs/truefit/PROGRAM_STATUS.md` | **TrueFit v0.1 程式狀態 SSOT**（Slice 0–6、blocker、下一票）|
 | `docs/archive/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表出入差異審核流程（已移入 archive）|
 | `docs/SUBSTITUTE_UX.md` | 代課 UX 設計 |
 | `docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md` | 排課日期語義 |

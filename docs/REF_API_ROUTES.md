@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 462 api/* routes · generated 2026-09-08
+> Source: `php artisan route:list --json` · 479 api/* routes · generated 2026-09-17
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -423,6 +423,13 @@
 |--------|-----|--------|------|
 | GET | `api/v1/global-search` | `GlobalSearchController@index` | role+campus |
 
+## /api/v1/grade-promotions (2)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| POST | `api/v1/grade-promotions/confirm` | `GradePromotionController@confirm` | role+campus |
+| GET | `api/v1/grade-promotions/preview` | `GradePromotionController@preview` | role+campus |
+
 ## /api/v1/health (2)
 
 | Method | URI | Action | Auth |
@@ -442,12 +449,13 @@
 | GET | `api/v1/invoices/{invoice}/slip-data` | `BillingController@slipData` | role+campus |
 | POST | `api/v1/invoices/{invoice}/void` | `BillingController@voidInvoice` | role+campus |
 
-## /api/v1/learning-record-feedbacks (5)
+## /api/v1/learning-record-feedbacks (6)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/learning-record-feedbacks` | `LearningRecordFeedbackController@index` | role+campus |
 | GET | `api/v1/learning-record-feedbacks/analytics` | `LearningRecordFeedbackController@analytics` | role+campus |
+| POST | `api/v1/learning-record-feedbacks/{feedback}/dismiss-awaiting` | `LearningRecordFeedbackController@dismissAwaiting` | role+campus |
 | POST | `api/v1/learning-record-feedbacks/{feedback}/read` | `LearningRecordFeedbackController@markRead` | role+campus |
 | GET | `api/v1/learning-record-feedbacks/{feedback}/replies` | `LearningRecordFeedbackController@replies` | role+campus |
 | POST | `api/v1/learning-record-feedbacks/{feedback}/reply` | `LearningRecordFeedbackController@staffReply` | role+campus |
@@ -690,7 +698,13 @@
 | POST | `api/v1/schedules/{schedule}/cancel-makeup` | `ScheduleController@cancelMakeup` | role+campus |
 | POST | `api/v1/schedules/{schedule}/undo-leave` | `ScheduleController@undoLeave` | role+campus |
 
-## /api/v1/student-classes (33)
+## /api/v1/schools (1)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
+
+## /api/v1/student-classes (34)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -709,6 +723,7 @@
 | POST | `api/v1/student-classes/{studentClass}/billing-correction` | `StudentClassController@billingCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/charge-correction` | `StudentClassController@chargeCorrection` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/confirm-payment` | `StudentClassController@confirmPayment` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/continue-tutoring` | `StudentClassController@continueTutoring` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/contract-amendment` | `ContractAmendmentController@execute` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/contract-amendment/preview` | `ContractAmendmentController@preview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/convert-to-package` | `CoursePackageController@convertToPackage` | role+campus |
@@ -845,3 +860,20 @@
 |--------|-----|--------|------|
 | GET | `api/v1/temp-rfid` | `TempRfidController@show` | role+campus |
 | POST | `api/v1/temp-rfid/consume` | `TempRfidController@consume` | role+campus |
+
+## /api/v1/truefit (12)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/truefit/diagnoses` | `TrueFitController@showDiagnosis` | role+campus |
+| POST | `api/v1/truefit/diagnoses` | `TrueFitController@upsertDiagnosis` | role+campus |
+| GET | `api/v1/truefit/lesson-preps` | `TrueFitController@showLessonPrep` | role+campus |
+| POST | `api/v1/truefit/lesson-preps/generate` | `TrueFitController@generateLessonPrep` | role+campus |
+| GET | `api/v1/truefit/mastery-evidence` | `TrueFitController@showMasteryEvidence` | role+campus |
+| POST | `api/v1/truefit/mastery-evidence` | `TrueFitController@upsertMasteryEvidence` | role+campus |
+| GET | `api/v1/truefit/material-units` | `TrueFitController@materialUnits` | role+campus |
+| GET | `api/v1/truefit/observations` | `TrueFitController@showObservation` | role+campus |
+| POST | `api/v1/truefit/observations` | `TrueFitController@upsertObservation` | role+campus |
+| GET | `api/v1/truefit/remediations` | `TrueFitController@showRemediation` | role+campus |
+| POST | `api/v1/truefit/remediations` | `TrueFitController@upsertRemediation` | role+campus |
+| GET | `api/v1/truefit/today-sessions` | `TrueFitController@todaySessions` | role+campus |

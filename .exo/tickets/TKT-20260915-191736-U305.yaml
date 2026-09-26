@@ -1,0 +1,41 @@
+id: TKT-20260915-191736-U305
+title: 'Allowlist in-app #291'
+intent: 'Allowlist in-app #291'
+kind: task
+parent_id: INT-20260915-191725-01WC
+boundary: 'Only add the existing Phase-C allowlist entry, focused contract assertion,
+  and auditable request record for #291; no application or production-data changes.'
+success_condition: 'A governed, idempotent Phase-C writeback resolves only in-app
+  #291 against b4a5f64 and deploy run 34954544684.'
+priority: 1
+labels: []
+scope:
+  allow:
+  - .github/workflows/bug-phase-c-allowlist.yml
+  - scripts/ci/bug-writeback-workflow.test.mjs
+  - operations/closeout/bug-phase-c-allowlist.request.md
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 180
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-15T19:17:36+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

@@ -208,3 +208,123 @@ failure_modes:
       behavior, page IDs, and backend authorization unchanged.
   severity: medium
   frequency: recurring
+- id: FM-20260910-172912-0QKR
+  name: Release Notes disclosure controls were native details summaries with weak
+    visual hierarchy and no consistent touch or fo
+  detection:
+    signal: Release Notes disclosure controls were native details summaries with weak
+      visual hierarchy and no consistent touch or focus affordance, while the role-empty
+      state bypassed the shared empty primitive.
+    source: reflection:REF-20260910-172912-HQAF
+  mitigation:
+    practice: For a low-risk static announcement page, keep native details semantics
+      and source/audience filtering unchanged; style summary and external-link actions
+      as 44px keyboard-visible controls with the existing focus token, replace ad
+      hoc empty copy with AtEmpty, and verify real rendered SFC behavior for populated
+      and zero-note roles across the standard responsive matrix.
+  severity: medium
+  frequency: recurring
+- id: FM-20260910-165512-SSBX
+  name: Page-local dialog overlays remain after shared dialog adoption
+  detection:
+    signal: Page-local dialog overlays remain after shared dialog adoption
+    source: reflection:REF-20260910-165512-DQKO
+  mitigation:
+    practice: Migrate one bounded, high-frequency workflow dialog to AtDialog with
+      a shared action footer; preserve the existing save handler and validate focus,
+      Escape, 44px actions, long Chinese text, viewport bounds, console, and network
+      behavior in the real browser.
+  severity: medium
+  frequency: recurring
+- id: FM-20260910-171808-M6R5
+  name: Primary role navigation can have correct ARIA and roving keyboard behavior
+    yet still lack a visible focus affordance and
+  detection:
+    signal: Primary role navigation can have correct ARIA and roving keyboard behavior
+      yet still lack a visible focus affordance and a comfortable touch target.
+    source: reflection:REF-20260910-171808-D9JB
+  mitigation:
+    practice: For bounded tab-navigation convergence, preserve the existing tab semantics
+      and keyboard handler, add the existing --ds-focus-ring token to :focus-visible,
+      use a minimum 52px tab target, and verify ArrowRight focus plus return to the
+      original panel in the real role workflow at every required viewport.
+  severity: medium
+  frequency: recurring
+- id: FM-20260910-191806-W1NM
+  name: Parent Portal action queue focus and long-copy convergence
+  detection:
+    signal: Parent Portal action queue focus and long-copy convergence
+    source: reflection:REF-20260910-191806-DI2T
+  mitigation:
+    practice: Keep next-step action rows at the shared mobile ergonomics floor (52px
+      here), use the canonical --ds-focus-ring, expose the queue as a labelled section
+      with a status-aware empty state, and test :focus-visible after restoring keyboard
+      modality when a prior pointer click changed the browser modality.
+  severity: medium
+  frequency: recurring
+- id: FM-20260910-194128-II4H
+  name: Parent Portal progress hub actions looked clickable without a semantic section
+    or a shared keyboard focus contract
+  detection:
+    signal: Parent Portal progress hub actions looked clickable without a semantic
+      section or a shared keyboard focus contract
+    source: reflection:REF-20260910-194128-4XPC
+  mitigation:
+    practice: Use a labelled section with a real heading for dashboard summaries;
+      give every actionable metric tile a canonical focus-visible ring, a 112px touch-safe
+      floor, and anchor its next-step CTA consistently. Mark decorative icons aria-hidden
+      so the heading name stays human-readable.
+  severity: medium
+  frequency: recurring
+- id: FM-20260910-200756-2FL6
+  name: Fresh governed worktrees may have no dependencies, while browser fixtures
+    can still run through npx; full build then fai
+  detection:
+    signal: Fresh governed worktrees may have no dependencies, while browser fixtures
+      can still run through npx; full build then fails at missing eslint.
+    source: reflection:REF-20260910-200756-HC85
+  mitigation:
+    practice: Run npm ci in a newly created task worktree before the governed full
+      build when node_modules is absent. For Parent Portal attendance slices, verify
+      the real Vue role-matrix fixture at 390/412/768/1280/1440 and keep attendance
+      section semantics, 44px show-more controls, visible 3px focus, and overflow-safe
+      long Traditional Chinese wrapping aligned to existing Parent Portal patterns.
+  severity: medium
+  frequency: recurring
+- id: FM-20260912-142953-4FV7
+  name: App navigation prepared dashboard return context before setActivePage
+  detection:
+    signal: App navigation prepared dashboard return context before setActivePage
+    source: reflection:REF-20260912-142953-DHGO
+  mitigation:
+    practice: setActivePage intentionally clears stale dashboard return state; compute
+      the next context before navigation but assign it only after setActivePage, and
+      verify through the mounted App rather than only the pure helper.
+  severity: medium
+  frequency: recurring
+- id: FM-20260912-142954-3TJH
+  name: Handed-off PR source session could not be legally reused after base drift
+    and singleton manifest conflict
+  detection:
+    signal: Handed-off PR source session could not be legally reused after base drift
+      and singleton manifest conflict
+    source: reflection:REF-20260912-142954-40OW
+  mitigation:
+    practice: Create a fresh governed integration worktree on current main, carry
+      the source product diff without its session/ticket evidence, record source head
+      and patch comparison, then generate new checks on the integration head.
+  severity: medium
+  frequency: recurring
+- id: FM-20260912-143759-EZNJ
+  name: Teacher task comparator applied display time before reliable same-session
+    dependency ordering
+  detection:
+    signal: Teacher task comparator applied display time before reliable same-session
+      dependency ordering
+    source: reflection:REF-20260912-143759-6JSX
+  mitigation:
+    practice: When two ordinary tasks share a reliable ClassSession id, enforce attendance-before-learning
+      before comparing potentially stale display times; use time ordering only across
+      different sessions and cover mismatched-time payloads.
+  severity: medium
+  frequency: recurring

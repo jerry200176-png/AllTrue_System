@@ -40,6 +40,7 @@ use App\Http\Controllers\ActionInboxController;
 use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ClassSessionController;
+use App\Http\Controllers\TrueFitController;
 use App\Http\Controllers\SubstituteController;
 use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
@@ -67,6 +68,7 @@ use App\Http\Controllers\PopOperationController;
 use App\Http\Controllers\ContractAmendmentController;
 use App\Http\Controllers\AdmissionInquiryController;
 use App\Http\Controllers\GlobalSearchController;
+use App\Http\Controllers\SchoolDirectoryController;
 
 
 if (app()->environment('local')) {
@@ -340,12 +342,16 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
+        // Curated read-only school directory (in-app #296). No admin write API in V1.
+        Route::get('schools', [SchoolDirectoryController::class, 'index']);
         Route::get('students', [StudentController::class, 'index']);
         Route::post('students', [StudentController::class, 'store']);
         Route::post('students/bulk-delete', [StudentController::class, 'bulkDestroy']);
         // Static paths must precede {student} or "export"/"import" are captured as IDs (#1812).
         Route::post('students/import', [ImportController::class, 'students']);
         Route::get('students/export', [ExportController::class, 'students']);
+        Route::get('grade-promotions/preview', [\App\Http\Controllers\GradePromotionController::class, 'preview']);
+        Route::post('grade-promotions/confirm', [\App\Http\Controllers\GradePromotionController::class, 'confirm']);
         Route::get('students/{student}', [StudentController::class, 'show'])->whereNumber('student');
         Route::put('students/{student}', [StudentController::class, 'update'])->whereNumber('student');
         Route::delete('students/{student}', [StudentController::class, 'destroy'])->whereNumber('student');
@@ -549,6 +555,7 @@ Route::prefix('v1')->group(function () {
     });
 
     Route::middleware(['role:director,admin,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('student-classes/{studentClass}/continue-tutoring', [StudentClassController::class, 'continueTutoring']);
         Route::post('student-classes/{studentClass}/manual-sessions/check', [StudentClassController::class, 'checkManualSession']);
         Route::post('student-classes/{studentClass}/manual-sessions', [StudentClassController::class, 'createManualSession']);
     });
@@ -644,8 +651,21 @@ Route::prefix('v1')->group(function () {
         // 家長回饋雙向回覆（員工端，沿用本群組 role:teacher,director + require_campus）
         Route::get('learning-record-feedbacks/{feedback}/replies', [LearningRecordFeedbackController::class, 'replies']);
         Route::post('learning-record-feedbacks/{feedback}/reply', [LearningRecordFeedbackController::class, 'staffReply']);
+        Route::post('learning-record-feedbacks/{feedback}/dismiss-awaiting', [LearningRecordFeedbackController::class, 'dismissAwaiting']);
         Route::get('class-sessions/projection', [ClassSessionController::class, 'projection']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
+        Route::get('truefit/today-sessions', [TrueFitController::class, 'todaySessions']);
+        Route::get('truefit/material-units', [TrueFitController::class, 'materialUnits']);
+        Route::get('truefit/lesson-preps', [TrueFitController::class, 'showLessonPrep']);
+        Route::post('truefit/lesson-preps/generate', [TrueFitController::class, 'generateLessonPrep']);
+        Route::get('truefit/observations', [TrueFitController::class, 'showObservation']);
+        Route::post('truefit/observations', [TrueFitController::class, 'upsertObservation']);
+        Route::get('truefit/diagnoses', [TrueFitController::class, 'showDiagnosis']);
+        Route::post('truefit/diagnoses', [TrueFitController::class, 'upsertDiagnosis']);
+        Route::get('truefit/remediations', [TrueFitController::class, 'showRemediation']);
+        Route::post('truefit/remediations', [TrueFitController::class, 'upsertRemediation']);
+        Route::get('truefit/mastery-evidence', [TrueFitController::class, 'showMasteryEvidence']);
+        Route::post('truefit/mastery-evidence', [TrueFitController::class, 'upsertMasteryEvidence']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         // #770 批次排課 CSV 匯入 — 衝突檢查 preview（純讀取）。
         Route::post('schedule-import/preview', [\App\Http\Controllers\ScheduleImportController::class, 'preview']);

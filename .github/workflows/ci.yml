@@ -37,6 +37,13 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Validate GitHub Actions workflows with pinned actionlint
+        run: |
+          # Full-repository parser/expression lint is bounded and does not invoke
+          # shellcheck; the canonical production workflow gets the complete check below.
+          timeout 60s bash scripts/ci/actionlint.sh --parser-only
+          timeout 60s bash scripts/ci/actionlint.sh .github/workflows/calendar-course-acceptance.yml
+
       - name: Run control plane lint
         env:
           PR_TITLE: ${{ github.event.pull_request.title || '' }}
@@ -46,8 +53,14 @@ jobs:
           node scripts/ci-cost-guard.mjs
           node scripts/ci-cost-guard.mjs --self-test
           node scripts/ci/bug-writeback-workflow.test.mjs
+          node scripts/ci/inapp-product-loop-entry.test.mjs
+          node --test scripts/tests/register-synthetic-director.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
+          python3 scripts/tests/test_required_php_checks.py
+          bash scripts/tests/production-acceptance-stage-contract.test.sh
+          bash scripts/tests/acceptance-login-contract.test.sh
+          bash scripts/tests/synthetic-director-workflow-contract.test.sh
 
       - name: Test control plane lint catches violations
         run: |
@@ -107,6 +120,9 @@ jobs:
               - 'frontend/playwright.ui-foundation.config.js'
               - 'frontend/vite.ui-foundation.config.js'
               - 'scripts/check-no-public-ui-fixtures.sh'
+              - 'frontend/src/pages/TeacherEligibilityPage.vue'
+              - 'frontend/e2e/teacher-eligibility-clarity.spec.js'
+              - 'frontend/e2e/teacher-eligibility-playwright.config.js'
 
   # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
   golden_scenarios:
@@ -134,7 +150,9 @@ jobs:
   phpunit:
     name: PHPUnit Feature & Unit Tests
     needs: changes
-    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci_config == 'true'
+    # This job is a required main-branch check. Run it for every non-draft PR:
+    # GitHub rulesets do not treat a path-skipped required job as satisfied.
+    # Keep the real suite and its existing threshold; never synthesize a pass.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Non-sensitive password for the ephemeral CI-only MySQL service.
@@ -198,6 +216,9 @@ jobs:
       - name: Verify generated API route reference
         run: bash scripts/generate-ref-api-routes.sh --check
 
+      - name: Verify Composer audit parser
+        run: python3 scripts/tests/test_composer_audit_shape.py
+
       - name: Composer audit (security)
         working-directory: backend
         run: |
@@ -220,6 +241,14 @@ jobs:
               return []
 
           advisories = data.get("advisories", {})
+          # Composer emits [] rather than {} when there are no advisories.
+          # Package iteration below is intentionally map-only so that an
+          # empty successful audit remains a successful audit.
+          if not isinstance(advisories, dict):
+              advisories = {}
+          ignored_advisories = data.get("ignored-advisories", {})
+          if not isinstance(ignored_advisories, dict):
+              ignored_advisories = {}
           has_high = False
           for pkg, adv_list in advisories.items():
               for adv in normalize_advisories(adv_list):
@@ -232,7 +261,7 @@ jobs:
                       has_high = True
                   else:
                       print(f"::warning::{pkg}: [{sev}] {title}")
-          for pkg, adv_list in data.get("ignored-advisories", {}).items():
+          for pkg, adv_list in ignored_advisories.items():
               for adv in normalize_advisories(adv_list):
                   if not isinstance(adv, dict):
                       continue
@@ -257,7 +286,15 @@ jobs:
           php artisan key:generate --force
 
       - name: Install MySQL client
-        run: sudo apt-get update -y && sudo apt-get install -y mysql-client
+        run: |
+          # Runner images ship a Google Chrome apt source that periodically 502/hash-mismatches
+          # and fails unrelated apt-get update (blocks PHPUnit). Drop every dl.google.com chrome
+          # entry (.list / .sources / fragments) before installing mysql-client.
+          sudo find /etc/apt -type f -exec grep -l 'dl.google.com/linux/chrome' {} + 2>/dev/null | sudo xargs -r rm -f || true
+          sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/*chrome* || true
+          sudo rm -rf /var/lib/apt/lists/partial /var/lib/apt/lists/*chrome* || true
+          sudo apt-get update -y || sudo apt-get update -y --allow-releaseinfo-change || true
+          sudo apt-get install -y mysql-client
 
       - name: Wait for MySQL
         run: |

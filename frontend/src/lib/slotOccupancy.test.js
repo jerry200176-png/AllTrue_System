@@ -111,6 +111,15 @@ const renewalOverlap = coursesWithSlotConflicts([
 ]);
 assert.deepEqual([...renewalOverlap].sort(), [1272, 2382]);
 
+// In-app #283: a paused course stays visible for staff follow-up, but Stop=1
+// does not occupy a teacher slot and must not create an "ongoing" conflict.
+const pausedCourseOverlap = coursesWithSlotConflicts([
+  { id: 2831, status: 'active', Stop: 0, teacher_id: 91, days_of_week: [5], start_time: '18:00', end_time: '20:00' },
+  { id: 2832, status: 'inactive', teacher_id: 91, days_of_week: [5], start_time: '18:00', end_time: '20:00' },
+  { id: 2833, Stop: 1, teacher_id: 91, days_of_week: [5], start_time: '18:00', end_time: '20:00' },
+]);
+assert.equal(pausedCourseOverlap.size, 0);
+
 // Same recurring slot but disjoint contract periods is a normal renewal, not
 // a live overlap. The course list must agree with the date-expanded detail.
 const disjointRenewal = coursesWithSlotConflicts([

@@ -121,6 +121,10 @@ class ClassSessionsHideStoppedScheduledTest extends TestCase
 
     public function test_future_scheduled_sign_in_residue_does_not_promote_the_row_to_attended(): void
     {
+        // Keep the fixture's 2026-09-10 occurrence genuinely future as the
+        // wall clock advances; otherwise the endpoint correctly applies its
+        // same-day EndTime rule and the test becomes date-dependent.
+        Carbon::setTestNow(Carbon::parse('2026-09-03 09:00:00'));
         [$token, $activeId] = $this->seedStop1Overlap();
         $course = StudentClass::findOrFail((int) ClassSession::findOrFail($activeId)->StudentClassID);
         $future = ClassSession::create([

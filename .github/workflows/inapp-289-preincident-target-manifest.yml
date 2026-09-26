@@ -1,0 +1,303 @@
+name: In-app #289 pre-incident target manifest (read-only)
+
+# governance-capability: non-production
+# Founder-approved, one-case evidence collection for the reported Muzha course.
+# This workflow has no caller-provided lookup values and never connects a backup
+# to the application or production database. It fails closed unless one and
+# only one pre-incident StudentClass matches the committed identity digest.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inapp-289-preincident-target-manifest
+  cancel-in-progress: false
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - name: Checkout pinned production SSH trust helper
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Install SSH key
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Build a sanitized single-course manifest from the pre-incident backup
+        env:
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+
+          # This is an identity digest of the Founder-scoped student, subject,
+          # and teacher tuple. Names are deliberately not emitted or accepted as
+          # workflow inputs, so this workflow cannot become a backup browser.
+          target_identity_sha256=0ead8c52fbbc1b046d0a7c6b473b4c46ae3cefc717f5dd81bc710e5a74f37025
+          # These pair digests are only a fail-closed diagnostic for this one
+          # Founder-scoped identity. They reveal counts, never any names or
+          # alternate records, when the full persisted-label tuple misses.
+          target_student_teacher_sha256=cec1271fe342a1e81bc34e6da668d637569e0110a964a4757399ea7dec011a31
+          target_student_subject_sha256=ef9197a386943c1928ba89a267ada995248806f6f47892b1d7f76cbcff18b342
+          target_subject_teacher_sha256=235a141b5c4ad77bad4cdfffda1873ba1156429f842e6d763da5951c617a79dc
+          incident_cutoff_epoch=1789280220
+          backup_dir=/home/admin/backups/sixhour
+          test -d "$backup_dir"
+
+          mapfile -t snapshots < <(
+            find "$backup_dir" -maxdepth 1 -type f -name 'alltrue_6h_*.sql.gz' \
+              -printf '%T@\t%f\n' | sort -n
+          )
+          test "${#snapshots[@]}" -gt 0
+
+          selected=''
+          for row in "${snapshots[@]}"; do
+            epoch=${row%%$'\t'*}
+            integer_epoch=${epoch%%.*}
+            if [ "$integer_epoch" -le "$incident_cutoff_epoch" ]; then
+              selected=$row
+            fi
+          done
+          test -n "$selected"
+          snapshot_epoch=${selected%%$'\t'*}
+          snapshot_name=${selected#*$'\t'}
+          snapshot="$backup_dir/$snapshot_name"
+          test -f "$snapshot"
+          gzip -t "$snapshot"
+
+          db_value() {
+            sed -n "s/^$1=//p" /home/admin/backend/.env | head -n 1
+          }
+          db_user=$(db_value DB_USERNAME)
+          db_pass=$(db_value DB_PASSWORD)
+          test -n "$db_user"
+          test -n "$db_pass"
+
+          temporary_db="alltrue_inapp289_manifest_$(date +%s)_$$"
+          cleanup() {
+            trap - EXIT
+            if ! mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" \
+              -e "DROP DATABASE IF EXISTS \`$temporary_db\`;"; then
+              echo 'temporary_manifest_database_cleanup=failed' >&2
+              exit 1
+            fi
+            echo 'temporary_manifest_database_cleanup=ok'
+          }
+          trap cleanup EXIT
+
+          mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" \
+            -e "CREATE DATABASE \`$temporary_db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          zcat "$snapshot" | mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db"
+
+          match_rows=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+            --batch --skip-column-names -e "
+              SELECT sc.ID, sc.StudentID, sc.SubjectID, sc.TeacherID, st.CampusID
+              FROM \`StudentClass\` sc
+              INNER JOIN \`Student\` st ON st.id = sc.StudentID
+              INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+              INNER JOIN \`User\` teacher ON teacher.id = sc.TeacherID
+              WHERE SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(sub.Subject_Name), CHAR(31), TRIM(teacher.Name)), 256)
+                = '$target_identity_sha256'
+              ORDER BY sc.ID;")
+          if [ -z "$match_rows" ]; then
+            match_count=0
+          else
+            match_count=$(printf '%s\n' "$match_rows" | wc -l | tr -d '[:space:]')
+          fi
+          if [ "$match_count" -ne 1 ]; then
+            student_teacher_match_count=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT COUNT(*)
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Student\` st ON st.id = sc.StudentID
+                INNER JOIN \`User\` teacher ON teacher.id = sc.TeacherID
+                WHERE SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(teacher.Name)), 256)
+                  = '$target_student_teacher_sha256';")
+            student_subject_match_count=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT COUNT(*)
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Student\` st ON st.id = sc.StudentID
+                INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+                WHERE SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(sub.Subject_Name)), 256)
+                  = '$target_student_subject_sha256';")
+            subject_teacher_match_count=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT COUNT(*)
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+                INNER JOIN \`User\` teacher ON teacher.id = sc.TeacherID
+                WHERE SHA2(CONCAT(TRIM(sub.Subject_Name), CHAR(31), TRIM(teacher.Name)), 256)
+                  = '$target_subject_teacher_sha256';")
+            candidate_rows=''
+            # The pair mismatch has already proved the full tuple cannot pick
+            # a course. At most two fixed student-subject candidates may be
+            # surfaced as internal identifiers and aggregate session shape for
+            # explicit human selection; any larger set remains fail-closed.
+            if [ "$student_subject_match_count" -gt 0 ] && [ "$student_subject_match_count" -le 2 ]; then
+              candidate_rows=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+                --batch --skip-column-names -e "
+                  SELECT sc.ID, sc.TeacherID, st.CampusID, COUNT(cs.id),
+                         COALESCE(MIN(cs.SessionDate), ''), COALESCE(MAX(cs.SessionDate), '')
+                  FROM \`StudentClass\` sc
+                  INNER JOIN \`Student\` st ON st.id = sc.StudentID
+                  INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+                  LEFT JOIN \`ClassSession\` cs ON cs.StudentClassID = sc.ID
+                  WHERE SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(sub.Subject_Name)), 256)
+                    = '$target_student_subject_sha256'
+                  GROUP BY sc.ID, sc.TeacherID, st.CampusID
+                  ORDER BY sc.ID;")
+              candidate_row_count=$(printf '%s\n' "$candidate_rows" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+              if [ "$candidate_row_count" -ne "$student_subject_match_count" ]; then
+                echo 'manifest_result=candidate_cardinality_mismatch_fail_closed' >&2
+                exit 1
+              fi
+            fi
+            printf 'case=in-app-289\n'
+            printf 'read_only=true\n'
+            printf 'identity_match_count=%s\n' "$match_count"
+            printf 'student_teacher_match_count=%s\n' "$student_teacher_match_count"
+            printf 'student_subject_match_count=%s\n' "$student_subject_match_count"
+            printf 'subject_teacher_match_count=%s\n' "$subject_teacher_match_count"
+            if [ -n "$candidate_rows" ]; then
+              printf '%s\n' "$candidate_rows" | while IFS=$'\t' read -r candidate_course_id candidate_teacher_id candidate_campus_id candidate_session_count candidate_first_session_date candidate_last_session_date; do
+                case "$candidate_course_id:$candidate_teacher_id:$candidate_campus_id:$candidate_session_count" in
+                  *[!0-9:]*|::::) echo 'manifest_result=invalid_candidate_identifier_fail_closed' >&2; exit 1 ;;
+                esac
+                printf 'student_subject_candidate=%s,%s,%s,%s,%s,%s\n' "$candidate_course_id" "$candidate_teacher_id" "$candidate_campus_id" "$candidate_session_count" "$candidate_first_session_date" "$candidate_last_session_date"
+              done
+            fi
+
+            # The fixed weekly-course report narrows the two opaque candidate
+            # summaries to this one row. Every emitted session remains gated
+            # by its complete backup fingerprint; any drift falls through to
+            # the existing fail-closed path below.
+            verified_target=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+              --batch --skip-column-names -e "
+                SELECT sc.ID, sc.TeacherID, st.CampusID, COUNT(cs.id),
+                       COALESCE(MIN(cs.SessionDate), ''), COALESCE(MAX(cs.SessionDate), '')
+                FROM \`StudentClass\` sc
+                INNER JOIN \`Student\` st ON st.id = sc.StudentID
+                INNER JOIN \`Subject\` sub ON sub.id = sc.SubjectID
+                LEFT JOIN \`ClassSession\` cs ON cs.StudentClassID = sc.ID
+                WHERE sc.ID = 2817
+                  AND SHA2(CONCAT(TRIM(st.name), CHAR(31), TRIM(sub.Subject_Name)), 256)
+                    = '$target_student_subject_sha256'
+                GROUP BY sc.ID, sc.TeacherID, st.CampusID;")
+            if [ "$verified_target" = $'2817\t67\t16\t10\t2026-07-30\t2026-09-17' ]; then
+              target_course=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+                --batch --skip-column-names -e "
+                  SELECT ID, StudentID, SubjectID, TeacherID, PackageID,
+                         COALESCE(ScheduleMode, ''), COALESCE(StartDate, ''), COALESCE(EndDate, ''),
+                         COALESCE(SessionCount, 0), COALESCE(Stop, 0)
+                  FROM \`StudentClass\` WHERE ID = 2817;")
+              if [ "$(printf '%s\n' "$target_course" | sed '/^$/d' | wc -l | tr -d '[:space:]')" -ne 1 ]; then
+                echo 'manifest_result=verified_target_course_snapshot_mismatch_fail_closed' >&2
+                exit 1
+              fi
+              target_sessions=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+                --batch --skip-column-names -e "
+                  SELECT id, StudentClassID, SubjectID, SessionDate, TIME_FORMAT(StartTime, '%H:%i'), TIME_FORMAT(EndTime, '%H:%i'),
+                         Status, COALESCE(IsContractException, 0)
+                  FROM \`ClassSession\`
+                  WHERE StudentClassID = 2817
+                  ORDER BY SessionDate, StartTime, id;")
+              target_session_count=$(printf '%s\n' "$target_sessions" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+              if [ "$target_session_count" -ne 10 ]; then
+                echo 'manifest_result=verified_target_session_count_mismatch_fail_closed' >&2
+                exit 1
+              fi
+              printf 'verified_target_course_id=2817\n'
+              IFS=$'\t' read -r target_course_id target_student_id target_subject_id target_teacher_id target_package_id target_schedule_mode target_start_date target_end_date target_session_count target_stop <<< "$target_course"
+              printf 'verified_target_course=%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$target_course_id" "$target_student_id" "$target_subject_id" "$target_teacher_id" "$target_package_id" "$target_schedule_mode" "$target_start_date" "$target_end_date" "$target_session_count" "$target_stop"
+              printf '%s\n' "$target_sessions" | while IFS=$'\t' read -r target_session_id target_session_course_id target_session_subject_id target_session_date target_start_time target_end_time target_status target_contract_exception; do
+                case "$target_session_id" in *[!0-9]*|'') echo 'manifest_result=invalid_target_session_identifier_fail_closed' >&2; exit 1 ;; esac
+                printf 'verified_target_session=%s,%s,%s,%s,%s,%s,%s,%s\n' "$target_session_id" "$target_session_course_id" "$target_session_subject_id" "$target_session_date" "$target_start_time" "$target_end_time" "$target_status" "$target_contract_exception"
+              done
+              target_learning_records=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+                --batch --skip-column-names -e "
+                  SELECT id, StudentClassID, ClassSessionID
+                  FROM \`LearningRecord\`
+                  WHERE StudentClassID = 2817 OR ClassSessionID IN (SELECT id FROM \`ClassSession\` WHERE StudentClassID = 2817)
+                  ORDER BY id;")
+              if [ -n "$target_learning_records" ]; then
+                printf '%s\n' "$target_learning_records" | while IFS=$'\t' read -r learning_record_id learning_record_course_id learning_record_session_id; do
+                  printf 'verified_target_learning_record=%s,%s,%s\n' "$learning_record_id" "$learning_record_course_id" "$learning_record_session_id"
+                done
+              fi
+              printf 'manifest_result=single_target_found\n'
+              exit 0
+            fi
+            echo 'manifest_result=ambiguous_or_missing_fail_closed' >&2
+            exit 1
+          fi
+
+          IFS=$'\t' read -r student_class_id student_id subject_id teacher_id campus_id <<< "$match_rows"
+          case "$student_class_id:$student_id:$subject_id:$teacher_id:$campus_id" in
+            *[!0-9:]*|::::) echo 'manifest_result=invalid_identifier_fail_closed' >&2; exit 1 ;;
+          esac
+
+          sessions=$(mysql -h 127.0.0.1 -u "$db_user" -p"$db_pass" "$temporary_db" \
+            --batch --skip-column-names -e "
+              SELECT id, SessionDate, TIME_FORMAT(StartTime, '%H:%i'), TIME_FORMAT(EndTime, '%H:%i'), Status
+              FROM \`ClassSession\`
+              WHERE StudentClassID = $student_class_id
+              ORDER BY SessionDate, StartTime, id;")
+          if [ -z "$sessions" ]; then
+            session_count=0
+          else
+            session_count=$(printf '%s\n' "$sessions" | wc -l | tr -d '[:space:]')
+          fi
+
+          printf 'case=in-app-289\n'
+          printf 'read_only=true\n'
+          printf 'backup_filename=%s\n' "$snapshot_name"
+          printf 'backup_epoch=%s\n' "${snapshot_epoch%%.*}"
+          printf 'backup_sha256=%s\n' "$(sha256sum "$snapshot" | awk '{print $1}')"
+          printf 'identity_match_count=%s\n' "$match_count"
+          printf 'student_class_id=%s\n' "$student_class_id"
+          printf 'student_id=%s\n' "$student_id"
+          printf 'subject_id=%s\n' "$subject_id"
+          printf 'teacher_id=%s\n' "$teacher_id"
+          printf 'campus_id=%s\n' "$campus_id"
+          printf 'class_session_count=%s\n' "$session_count"
+          if [ -n "$sessions" ]; then
+            printf '%s\n' "$sessions" | while IFS=$'\t' read -r session_id session_date start_time end_time status; do
+              printf 'class_session=%s,%s,%s,%s,%s\n' "$session_id" "$session_date" "$start_time" "$end_time" "$status"
+            done
+          fi
+          printf 'manifest_result=single_target_found\n'
+          REMOTE
+
+      - name: Record the strict boundary
+        if: always()
+        run: |
+          {
+            echo '### In-app #289 pre-incident target manifest'
+            echo ''
+            echo 'A single pre-incident backup is restored only into an isolated temporary database to locate one Founder-scoped course.'
+            echo 'The workflow cannot accept arbitrary lookup inputs, fails closed unless exactly one match exists, and emits no names or other-course records.'
+            echo 'It never writes to the production application database, reconstructs a course, or changes attendance, evaluation, billing, scheduling, or history.'
+          } >> "$GITHUB_STEP_SUMMARY"

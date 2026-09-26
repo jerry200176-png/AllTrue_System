@@ -15,21 +15,326 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.governance.autonomy_gate import (  # noqa: E402
+    aggregate_landed_pr_effects,
     classify_activation_scope,
+    classify_activation_provenance,
     classify_production_runtime,
+    wait_for_exact_successful_provenance,
     classify_scope,
     decide_activation,
     decide_manual_activation,
     environment_protection_is_valid,
     effective_tier,
+    has_rollback_evidence,
+    is_founder_approval_eligible,
     is_application_runtime_path,
+    is_control_plane_only_paths,
+    is_control_plane_path,
     is_deployable_path,
     is_production_activation_sensitive_path,
     parse_declaration,
+    reconcile_preexisting_pr_provenance,
 )
 
 
 class DeployActivationPolicyTest(unittest.TestCase):
+    @staticmethod
+    def _landed_effect(number, commit_sha, paths, patch, risk=1, tier=1):
+        return {
+            "number": number,
+            "commit_sha": commit_sha,
+            "merged_at": "2026-09-14T00:00:00Z",
+            "paths": paths,
+            "patch": patch,
+            "patch_complete": True,
+            "declared_risk": risk,
+            "declared_tier": tier,
+        }
+
+    def test_merged_pr_uses_landed_effect_not_historical_branch_files(self):
+        protected_workflow = ".github/workflows/inapp-289-course-2817-restore.yml"
+        landed = aggregate_landed_pr_effects([
+            self._landed_effect(
+                "B", "a" * 40,
+                ["frontend/src/pages/DirectorDashboard.vue"],
+                "diff --git a/frontend/src/pages/DirectorDashboard.vue b/frontend/src/pages/DirectorDashboard.vue\n+@@ -1 +1 @@\n-old\n+new",
+            ),
+        ])
+        self.assertEqual(landed[0]["paths"], ["frontend/src/pages/DirectorDashboard.vue"])
+        self.assertNotIn(protected_workflow, landed[0]["paths"])
+        classified = classify_activation_provenance(landed)
+        self.assertFalse(classified["blocked"])
+        self.assertEqual(classified["tier_name"], "T1")
+
+    def test_multiple_landed_commits_for_one_pr_are_aggregated(self):
+        landed = aggregate_landed_pr_effects([
+            self._landed_effect("B", "a" * 40, ["frontend/src/pages/One.vue"], "first"),
+            self._landed_effect("B", "b" * 40, ["frontend/src/pages/Two.vue"], "second"),
+        ])
+        self.assertEqual(len(landed), 1)
+        self.assertEqual(landed[0]["paths"], ["frontend/src/pages/One.vue", "frontend/src/pages/Two.vue"])
+        self.assertLess(landed[0]["patch"].index("commit " + "a" * 40), landed[0]["patch"].index("commit " + "b" * 40))
+
+    def test_actual_landed_protected_effect_remains_t3(self):
+        landed = aggregate_landed_pr_effects([
+            self._landed_effect(
+                "A", "a" * 40,
+                [".github/workflows/inapp-289-course-2817-restore.yml", "frontend/src/pages/One.vue"],
+                "diff --git a/.github/workflows/inapp-289-course-2817-restore.yml b/.github/workflows/inapp-289-course-2817-restore.yml\n+@@ -1 +1 @@\n-old\n+new",
+                risk=3,
+                tier=3,
+            ),
+        ])
+        classified = classify_activation_provenance(landed)
+        self.assertFalse(classified["blocked"])
+        self.assertEqual(classified["tier_name"], "T3")
+        self.assertTrue(classified["protected_activation"])
+
+    @staticmethod
+    def _provenance(number, paths, patch, risk, tier, *, patch_complete=True):
+        return {
+            "number": number,
+            "merged_at": "2026-09-10T00:00:00Z",
+            "paths": paths,
+            "patch": patch,
+            "patch_complete": patch_complete,
+            "declared_risk": risk,
+            "declared_tier": tier,
+        }
+
+    @staticmethod
+    def _reconciliation_case():
+        parent = "b" * 40
+        tree = "c" * 40
+        target = "a" * 40
+        head = "d" * 40
+        patch = "@@ -1,1 +1,2 @@\n-old\n+new\n"
+        files = [{
+            "filename": "frontend/src/pages/CourseManagement.vue",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 1,
+            "changes": 2,
+            "patch": patch,
+        }]
+        target_commit = {
+            "sha": target,
+            "committer_date": "2026-09-13T09:20:03Z",
+            "parents": [{"sha": parent}],
+            "tree": {"sha": tree},
+        }
+        pr = {
+            "number": 2817,
+            "state": "closed",
+            "merged_at": None,
+            "created_at": "2026-09-13T08:43:57Z",
+            "closed_at": "2026-09-13T11:29:44Z",
+            "head": {"sha": head},
+            "base": {"ref": "main"},
+            "body": "Risk-Class: R1\nAutonomy-Tier: T1",
+        }
+        head_commit = {
+            "committer_date": "2026-09-13T08:43:52Z",
+            "parents": [{"sha": parent}],
+            "tree": {"sha": tree},
+        }
+        evidence = {
+            "check_runs": [
+                {"name": "Required check", "app": {"id": 15368}, "status": "completed", "conclusion": "success"},
+                {"name": "Other check", "app": {"id": 15368}, "status": "completed", "conclusion": "skipped"},
+            ],
+            "check_runs_total": 2,
+            "statuses": [],
+            "statuses_total": 0,
+            "required_status_checks": [
+                {"context": "Required check", "integration_id": 15368},
+            ],
+        }
+        comments = [{
+            "created_at": "2026-09-13T11:29:44Z",
+            "author_association": "OWNER",
+            "body": (
+                "Closing as already integrated: target `aaaaaaaa` contains the same "
+                "change as PR head `dddddddd`."
+            ),
+        }]
+        return {
+            "target_commit": target_commit,
+            "pr": pr,
+            "pr_files": files,
+            "target_files": list(files),
+            "pr_head_commit": head_commit,
+            "check_evidence": evidence,
+            "closeout_comments": comments,
+        }
+
+    def _reconcile(self, **changes):
+        case = self._reconciliation_case()
+        case.update(changes)
+        return reconcile_preexisting_pr_provenance(**case)
+
+    def test_preexisting_exact_equivalent_closed_pr_is_reconciled(self):
+        result = self._reconcile()
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["record"]["provenance_state"], "reconciled")
+        self.assertEqual(result["record"]["reconciliation_basis"], "pre-existing-exact-equivalent")
+        self.assertNotIn("merged_at", result["record"])
+
+        classified = classify_activation_provenance([result["record"]])
+        self.assertFalse(classified["blocked"])
+        self.assertEqual(classified["tier_name"], "T1")
+        self.assertEqual(classified["application_prs"][0]["provenance_state"], "reconciled")
+
+    def test_reconciliation_rejects_pr_created_after_target(self):
+        pr = dict(self._reconciliation_case()["pr"])
+        pr["created_at"] = "2026-09-13T09:20:04Z"
+        result = self._reconcile(pr=pr)
+        self.assertFalse(result["accepted"])
+        self.assertIn("created after", result["reason"])
+
+    def test_reconciliation_rejects_one_line_patch_difference(self):
+        target_files = list(self._reconciliation_case()["target_files"])
+        target_files[0] = dict(target_files[0], patch="@@ -1,1 +1,2 @@\n-old\n+different\n")
+        result = self._reconcile(target_files=target_files)
+        self.assertFalse(result["accepted"])
+        self.assertIn("exact-equivalent", result["reason"])
+
+    def test_reconciliation_rejects_missing_or_failed_required_checks(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["check_runs"] = [{"status": "completed", "conclusion": "failure"}]
+        evidence["check_runs_total"] = 1
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+        result = self._reconcile(check_evidence={"check_runs": [], "check_runs_total": 0, "statuses": [], "statuses_total": 0})
+        self.assertFalse(result["accepted"])
+
+    def test_reconciliation_rejects_green_existing_checks_when_required_context_is_missing(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["required_status_checks"] = [{"context": "Missing required check", "integration_id": 15368}]
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+
+    def test_reconciliation_rejects_required_context_with_wrong_integration_identity(self):
+        evidence = dict(self._reconciliation_case()["check_evidence"])
+        evidence["required_status_checks"] = [{"context": "Required check", "integration_id": 99999}]
+        result = self._reconcile(check_evidence=evidence)
+        self.assertFalse(result["accepted"])
+        self.assertIn("checks", result["reason"])
+
+    def test_reconciliation_rejects_r2_t2_declaration(self):
+        pr = dict(self._reconciliation_case()["pr"])
+        pr["body"] = "Risk-Class: R2\nAutonomy-Tier: T2"
+        result = self._reconcile(pr=pr)
+        self.assertFalse(result["accepted"])
+        self.assertIn("R0/T0 or R1/T1", result["reason"])
+
+    def test_reconciliation_rejects_protected_path(self):
+        protected_files = [{
+            "filename": ".github/workflows/deploy.yml",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 1,
+            "changes": 2,
+            "patch": "@@ -1,1 +1,1 @@\n-old\n+new\n",
+        }]
+        result = self._reconcile(pr_files=protected_files, target_files=protected_files)
+        self.assertFalse(result["accepted"])
+        self.assertIn("reversible", result["reason"])
+
+    def test_reconciliation_rejects_review_rejection_closeout(self):
+        comments = [{
+            "created_at": "2026-09-13T11:29:44Z",
+            "body": "Closed after review rejection; target aaaaaaaa and head dddddddd.",
+        }]
+        result = self._reconcile(closeout_comments=comments)
+        self.assertFalse(result["accepted"])
+        self.assertIn("closeout", result["reason"])
+
+    def test_reconciliation_rejects_untrusted_already_integrated_closeout(self):
+        comments = [{
+            "created_at": "2026-09-13T11:29:44Z",
+            "author_association": "CONTRIBUTOR",
+            "body": (
+                "Closing as already integrated: target `aaaaaaaa` contains the same "
+                "change as PR head `dddddddd`."
+            ),
+        }]
+        result = self._reconcile(closeout_comments=comments)
+        self.assertFalse(result["accepted"])
+        self.assertIn("closeout", result["reason"])
+
+    def test_reconciliation_rejects_message_only_without_patch_proof(self):
+        result = self._reconcile(target_files=[])
+        self.assertFalse(result["accepted"])
+        self.assertIn("exact-equivalent", result["reason"])
+
+    def test_normal_merged_pr_provenance_path_remains_supported(self):
+        result = classify_activation_provenance([
+            self._provenance(
+                2817,
+                ["frontend/src/pages/CourseManagement.vue"],
+                "+display only",
+                1,
+                1,
+            ),
+        ])
+        self.assertFalse(result["blocked"])
+        self.assertEqual(result["tier_name"], "T1")
+
+    def test_control_plane_only_t3_does_not_raise_following_t2_app(self):
+        result = classify_activation_provenance([
+            self._provenance(2671, [".github/workflows/deploy.yml"], "", 3, 3),
+            self._provenance(2678, ["backend/app/Services/ScheduleService.php"], "+schedule", 2, 2),
+        ])
+        self.assertEqual(result["tier_name"], "T2")
+        self.assertFalse(result["blocked"])
+
+    def test_t3_application_pr_cannot_be_overridden_by_following_t2_app(self):
+        result = classify_activation_provenance([
+            self._provenance(2667, ["backend/app/Http/Controllers/AuthController.php"], "+return response();", 3, 3),
+            self._provenance(2678, ["backend/app/Services/ScheduleService.php"], "+schedule", 2, 2),
+        ])
+        self.assertEqual(result["tier_name"], "T3")
+        self.assertTrue(result["founder_required"])
+        self.assertFalse(result["blocked"])
+
+    def test_t2_application_followed_by_control_plane_only_stays_t2(self):
+        result = classify_activation_provenance([
+            self._provenance(2678, ["backend/app/Services/ScheduleService.php"], "+schedule", 2, 2),
+            self._provenance(2671, ["scripts/governance/autonomy_gate.py"], "", 3, 3),
+        ])
+        self.assertEqual(result["tier_name"], "T2")
+        self.assertFalse(result["blocked"])
+
+    def test_mixed_control_plane_and_application_pr_is_t3(self):
+        result = classify_activation_provenance([
+            self._provenance(
+                2671,
+                [".github/workflows/deploy.yml", "frontend/src/pages/SmartCalendar.vue"],
+                "+schedule",
+                3,
+                3,
+            ),
+        ])
+        self.assertEqual(result["tier_name"], "T3")
+        self.assertTrue(result["founder_required"])
+
+    def test_incomplete_application_provenance_is_blocked(self):
+        result = classify_activation_provenance([
+            self._provenance(
+                2678,
+                ["backend/app/Services/ScheduleService.php"],
+                "",
+                2,
+                2,
+                patch_complete=False,
+            ),
+        ])
+        self.assertTrue(result["blocked"])
+        self.assertEqual(result["activation_class"], "blocked")
+
     def test_r0_t0_normal_change_is_auto_eligible(self):
         result = decide_activation(
             event_name="workflow_run", deployable=True, classifier_available=True,
@@ -46,15 +351,234 @@ class DeployActivationPolicyTest(unittest.TestCase):
         )
         self.assertEqual(result["decision"], "auto")
 
-    def test_t2_and_t3_are_held(self):
-        for tier in ("T2", "T3"):
-            with self.subTest(tier=tier):
-                result = decide_activation(
-                    event_name="workflow_run", deployable=True, classifier_available=True,
-                    machine_validated=True, machine_tier=tier,
-                    declared_risk=f"R{tier[-1]}", declared_tier=tier,
-                )
-                self.assertEqual(result["decision"], "awaiting-activation")
+    def test_t2_without_ci_or_rollback_evidence_is_held(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T2", declared_risk="R2",
+            declared_tier="T2",
+        )
+        self.assertEqual(result["decision"], "awaiting-activation")
+        self.assertIn("successful CI", result["reason"])
+        self.assertIn("rollback evidence", result["reason"])
+
+    def test_t2_incomplete_evidence_is_blocked_and_not_founder_eligible(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T2", declared_risk="R2",
+            declared_tier="T2", ci_success=True, rollback_evidence=False,
+        )
+        self.assertEqual(result["decision"], "awaiting-activation")
+        self.assertEqual(result["effective_tier"], "T2")
+        self.assertIn("activation blocked until required evidence is satisfied", result["reason"])
+        self.assertNotIn("Founder approval required", result["reason"])
+        self.assertFalse(is_founder_approval_eligible(result))
+
+    def test_validated_reversible_t2_is_auto_without_second_reviewer(self):
+        scope = classify_activation_scope(
+            ["frontend/src/pages/SmartCalendar.vue"], "+schedule conflict"
+        )
+        self.assertEqual(scope["tier_name"], "T2")
+        self.assertFalse(scope["protected_activation"])
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier=scope["tier_name"], declared_risk="R2",
+            declared_tier="T2", ci_success=True,
+            rollback_evidence=True,
+        )
+        self.assertEqual(result["decision"], "auto")
+
+    def test_bounded_read_only_sensitive_change_uses_guarded_t2(self):
+        patch = """diff --git a/frontend/src/pages/BillingStatus.vue b/frontend/src/pages/BillingStatus.vue
++++ b/frontend/src/pages/BillingStatus.vue
+@@ -10,1 +10,1 @@
+-<span>{{ oldStatus }}</span>
++<span>{{ payment_status }}</span>
+"""
+        scope = classify_activation_scope(["frontend/src/pages/BillingStatus.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T2")
+        self.assertEqual(scope["activation_class"], "guarded-sensitive")
+        self.assertFalse(scope["protected_activation"])
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T2", declared_risk="R2",
+            declared_tier="T2", ci_success=True, rollback_evidence=True,
+        )
+        self.assertEqual(result["decision"], "auto")
+
+    def test_billing_effect_stays_founder_required(self):
+        patch = """diff --git a/backend/app/Http/Controllers/BillingController.php b/backend/app/Http/Controllers/BillingController.php
++++ b/backend/app/Http/Controllers/BillingController.php
+@@ -20,1 +20,1 @@
+-return response()->json(['payment_status' => $status]);
++return response()->json(['payable_amount' => calculateCharge($course)]);
+"""
+        scope = classify_activation_scope(["backend/app/Http/Controllers/BillingController.php"], patch)
+        self.assertEqual(scope["activation_class"], "founder-required")
+        self.assertTrue(scope["protected_activation"])
+
+    def test_uninspectable_sensitive_change_fails_closed(self):
+        scope = classify_activation_scope(["frontend/src/pages/BillingStatus.vue"], "")
+        self.assertEqual(scope["activation_class"], "founder-required")
+        self.assertIn("not inspectable", " ".join(scope["reasons"]))
+
+    def test_generated_history_cannot_raise_a_learning_records_change(self):
+        patch = """diff --git a/frontend/src/pages/LearningRecordsPage.vue b/frontend/src/pages/LearningRecordsPage.vue
++++ b/frontend/src/pages/LearningRecordsPage.vue
+@@ -10,1 +10,1 @@
+-<span>{{ student }}</span>
++<span>{{ instructor }}</span>
+diff --git a/frontend/src/lib/staffUpdates.generated.js b/frontend/src/lib/staffUpdates.generated.js
++++ b/frontend/src/lib/staffUpdates.generated.js
+@@ -1,1 +1,1 @@
+-const old = 'old';
++const historical = 'payment, auth, token, billing';
+"""
+        scope = classify_activation_scope(
+            ["frontend/src/pages/LearningRecordsPage.vue", "frontend/src/lib/staffUpdates.generated.js"],
+            patch,
+        )
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertEqual(scope["activation_class"], "routine")
+
+    def test_generated_release_history_cannot_raise_merge_classifier_tier(self):
+        patch = """diff --git a/frontend/src/lib/sessionPlanningStatus.js b/frontend/src/lib/sessionPlanningStatus.js
++++ b/frontend/src/lib/sessionPlanningStatus.js
+@@ -10,1 +10,1 @@
+-message: 'old'
++message: 'actual scheduled sessions only'
+diff --git a/frontend/src/lib/changelogDraft.generated.js b/frontend/src/lib/changelogDraft.generated.js
++++ b/frontend/src/lib/changelogDraft.generated.js
+@@ -1,1 +1,1 @@
+-const old = 'old';
++const historical = 'restore, payment, token';
+"""
+        scope = classify_scope(
+            ["frontend/src/lib/sessionPlanningStatus.js", "frontend/src/lib/changelogDraft.generated.js"],
+            patch,
+        )
+        self.assertEqual(scope["tier_name"], "T2")
+        self.assertNotIn("restore", " ".join(scope["reasons"]))
+
+    def test_merge_classifier_keeps_real_protected_operation_at_t3(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -10,1 +10,1 @@
+-return true;
++await auth();
+"""
+        scope = classify_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T3")
+        self.assertIn("protected semantic marker: auth", " ".join(scope["reasons"]))
+
+    def test_ui_copy_next_to_unchanged_payment_context_stays_t1(self):
+        patch = """diff --git a/frontend/src/components/CourseEditForm.vue b/frontend/src/components/CourseEditForm.vue
++++ b/frontend/src/components/CourseEditForm.vue
+@@ -10,2 +10,2 @@
+-<label>繳費方式</label>
++<label>課程期間計算方式</label>
+ <select v-model=\"form.payment_type\">
+"""
+        scope = classify_scope(["frontend/src/components/CourseEditForm.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertNotIn("payment", " ".join(scope["reasons"]))
+
+    def test_replaced_unchanged_marker_line_does_not_escalate_ui_change(self):
+        patch = """diff --git a/frontend/src/pages/StudentsList.vue b/frontend/src/pages/StudentsList.vue
++++ b/frontend/src/pages/StudentsList.vue
+@@ -10,1 +10,1 @@
+-<button @click=\"openIdentityModal\">跨分校身份</button>
++<AtButton @click=\"openIdentityModal\">跨分校身份</AtButton>
+diff --git a/frontend/playwright.ui-foundation.config.js b/frontend/playwright.ui-foundation.config.js
++++ b/frontend/playwright.ui-foundation.config.js
+@@ -1,1 +1,1 @@
+-testMatch: /(?:attendance-clarity)\\.spec\\.js$/
++testMatch: /(?:attendance-clarity|students-list-clarity)\\.spec\\.js$/
+"""
+        scope = classify_activation_scope(
+            ["frontend/src/pages/StudentsList.vue", "frontend/playwright.ui-foundation.config.js"],
+            patch,
+        )
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertNotIn("identity", " ".join(scope["reasons"]))
+        self.assertNotIn("attendance", " ".join(scope["reasons"]))
+
+    def test_actual_protected_marker_remains_after_net_diff_filtering(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -10,1 +10,1 @@
+-<button>Continue</button>
++<button @click=\"await logout()\">Continue</button>
+"""
+        scope = classify_activation_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T3")
+        self.assertTrue(scope["protected_activation"])
+
+    def test_real_billing_identity_and_permission_operations_stay_t3(self):
+        cases = (
+            (["backend/app/Http/Controllers/BillingController.php"], "+$invoice->TotalAmount = $amount;"),
+            (["frontend/src/pages/ParentPortal.vue"], "+await auth();"),
+            (["frontend/src/pages/DirectorDashboard.vue"], "+await authorizePermission();"),
+        )
+        for paths, patch in cases:
+            with self.subTest(paths=paths):
+                self.assertEqual(classify_scope(paths, patch)["tier_name"], "T3")
+
+    def test_t2_write_path_and_security_path_keep_distinct_boundaries(self):
+        routine = classify_activation_scope(
+            ["backend/app/Services/ScheduleService.php"],
+            "+$schedule = $this->schedule; $schedule->save();",
+        )
+        auth = classify_activation_scope(
+            ["backend/app/Http/Controllers/AuthController.php"],
+            "+return response()->json($user);",
+        )
+        self.assertEqual(routine["tier_name"], "T2")
+        self.assertEqual(routine["activation_class"], "routine")
+        self.assertEqual(auth["activation_class"], "founder-required")
+
+    def test_css_logout_selector_does_not_trigger_authentication_boundary(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -20,1 +20,5 @@
++.pp-btn-logout:focus-visible,
++.pp-chip:focus-visible {
++  outline: 3px solid var(--ds-focus-ring);
++}
+"""
+        scope = classify_activation_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T1")
+        self.assertEqual(scope["activation_class"], "routine")
+        self.assertFalse(scope["protected_activation"])
+
+    def test_logout_operation_remains_an_authentication_boundary(self):
+        patch = """diff --git a/frontend/src/pages/ParentPortal.vue b/frontend/src/pages/ParentPortal.vue
++++ b/frontend/src/pages/ParentPortal.vue
+@@ -20,1 +20,1 @@
++await logout()
+"""
+        scope = classify_activation_scope(["frontend/src/pages/ParentPortal.vue"], patch)
+        self.assertEqual(scope["tier_name"], "T3")
+        self.assertTrue(scope["protected_activation"])
+
+    def test_sensitive_blast_radius_is_founder_required(self):
+        paths = [f"frontend/src/pages/BillingStatus{i}.vue" for i in range(4)]
+        patch = "\n".join(
+            f"diff --git a/{path} b/{path}\n+++ b/{path}\n@@ -1,1 +1,1 @@\n+<span>{{ status }}</span>"
+            for path in paths
+        )
+        scope = classify_activation_scope(paths, patch)
+        self.assertEqual(scope["activation_class"], "founder-required")
+        self.assertIn("blast radius", " ".join(scope["reasons"]))
+
+    def test_t3_remains_protected_even_with_complete_evidence(self):
+        result = decide_activation(
+            event_name="workflow_run", deployable=True, classifier_available=True,
+            machine_validated=True, machine_tier="T3", declared_risk="R3",
+            declared_tier="T3", ci_success=True,
+            rollback_evidence=True,
+        )
+        self.assertEqual(result["decision"], "awaiting-activation")
+        self.assertTrue(is_founder_approval_eligible(result))
 
     def test_production_side_effect_is_held_even_when_declared_t0_or_t1(self):
         for tier, risk in (("T0", "R0"), ("T1", "R1")):
@@ -89,6 +613,10 @@ class DeployActivationPolicyTest(unittest.TestCase):
     def test_production_executor_and_sensitive_paths_remain_protected(self):
         self.assertTrue(is_production_activation_sensitive_path(".github/workflows/deploy.yml"))
         self.assertTrue(is_production_activation_sensitive_path("backend/database/migrations/2026_01_flag.php"))
+        self.assertTrue(is_production_activation_sensitive_path("frontend/src/pages/BillingStatus.vue"))
+        self.assertFalse(is_production_activation_sensitive_path(
+            "frontend/src/components/__tests__/AuthoritativeMutationOwnership.test.js"
+        ))
         self.assertFalse(is_production_activation_sensitive_path(".github/workflows/autonomous-convergence.yml"))
         scope = classify_activation_scope(
             [".github/workflows/deploy.yml", "frontend/src/pages/StudentsList.vue"]
@@ -152,6 +680,19 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             with self.subTest(path=path):
                 self.assertTrue(is_application_runtime_path(path))
 
+    def test_control_plane_only_changes_do_not_require_application_deploy(self):
+        self.assertTrue(is_control_plane_path(".github/workflows/deploy.yml"))
+        self.assertTrue(is_control_plane_path("scripts/governance/autonomy_gate.py"))
+        self.assertTrue(is_control_plane_only_paths([
+            ".github/workflows/deploy.yml",
+            "scripts/governance/autonomy_gate.py",
+            "docs/governance/RISK_BASED_MERGE_POLICY.md",
+        ]))
+        self.assertFalse(is_control_plane_only_paths([
+            ".github/workflows/deploy.yml",
+            "backend/app/Http/Controllers/HealthController.php",
+        ]))
+
     def test_deploy_queue_uses_runtime_manifest_and_full_undeployed_range(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("/deployment.json", workflow)
@@ -192,6 +733,43 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertEqual((risk, tier), (1, 1))
         self.assertEqual(effective_tier(1, risk, tier), (1, None))
         self.assertEqual(effective_tier(3, risk, tier)[0], None)
+
+    def test_rollback_evidence_rejects_template_placeholder(self):
+        self.assertFalse(has_rollback_evidence("**Rollback:** <!-- revert SHA / prior deploy -->"))
+        self.assertFalse(has_rollback_evidence("**Rollback:** n/a"))
+        self.assertTrue(has_rollback_evidence("**Rollback:** revert commit abc123 and rerun deploy"))
+
+    
+    def test_blocked_understated_migration_provenance_is_founder_eligible(self):
+        """Migration understatement must hold auto-deploy but open Founder Environment."""
+        records = [{
+            "number": 2978,
+            "merged_at": "2026-09-16T11:00:00Z",
+            "paths": [
+                "backend/database/migrations/2026_09_16_190000_create_truefit_lesson_preps_table.php",
+                "backend/app/Http/Controllers/TrueFitController.php",
+            ],
+            "patch": "+Schema::create",
+            "patch_complete": True,
+            "declared_risk": 2,
+            "declared_tier": 2,
+            "provenance_state": "merged",
+        }]
+        provenance = classify_activation_provenance(records)
+        self.assertTrue(provenance["blocked"])
+        self.assertTrue(provenance["protected_activation"])
+        self.assertEqual(provenance["tier_name"], "T3")
+        self.assertTrue(
+            is_founder_approval_eligible(
+                {
+                    "decision": "awaiting-activation",
+                    "effective_tier": provenance["tier_name"],
+                    "reason": provenance["reason"],
+                },
+                protected_activation=bool(provenance.get("protected_activation")),
+            )
+        )
+
 
     def test_understated_and_mismatched_declarations_fail_closed(self):
         understated = decide_activation(
@@ -289,17 +867,45 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertFalse(unknown_provenance["retry_allowed"])
         self.assertFalse(invalid_manifest["retry_allowed"])
 
-    def test_solo_environment_rejects_required_reviewer_gate(self):
-        self.assertTrue(environment_protection_is_valid(
+    def test_same_sha_provenance_recheck_accepts_only_delayed_exact_success(self):
+        expected = "a" * 40
+        responses = iter([None, None, expected])
+        sleeps = []
+        result = wait_for_exact_successful_provenance(
+            lookup=lambda _sha: next(responses), expected_sha=expected,
+            sleep_fn=sleeps.append,
+        )
+        self.assertEqual(result, expected)
+        self.assertEqual(sleeps, [10, 10])
+
+    def test_same_sha_provenance_recheck_times_out_and_rejects_wrong_or_missing_sha(self):
+        expected = "a" * 40
+        sleeps = []
+        self.assertIsNone(wait_for_exact_successful_provenance(
+            lookup=lambda _sha: "b" * 40, expected_sha=expected,
+            sleep_fn=sleeps.append,
+        ))
+        self.assertEqual(sleeps, [10, 10, 10, 10, 10, 10])
+        self.assertIsNone(wait_for_exact_successful_provenance(
+            lookup=lambda _sha: None, expected_sha=expected,
+            sleep_fn=lambda _seconds: None,
+        ))
+
+    def test_static_environment_requires_founder_reviewer_and_allows_self_review(self):
+        for event_name, phase in (
+            ("workflow_run", "application-deploy"),
+            ("repository_dispatch", "application-deploy"),
+            ("workflow_dispatch", "application-deploy"),
+            ("workflow_dispatch", "pop-bootstrap"),
+            ("workflow_dispatch", "parent-portal-smoke"),
+        ):
+            with self.subTest(event_name=event_name, phase=phase):
+                self.assertTrue(environment_protection_is_valid(
+                    event_name=event_name, phase=phase,
+                    required_reviewers_configured=True, prevent_self_review=False,
+                ))
+        self.assertFalse(environment_protection_is_valid(
             event_name="workflow_dispatch", phase="application-deploy",
-            required_reviewers_configured=False, prevent_self_review=False,
-        ))
-        self.assertTrue(environment_protection_is_valid(
-            event_name="workflow_dispatch", phase="pop-bootstrap",
-            required_reviewers_configured=False, prevent_self_review=False,
-        ))
-        self.assertTrue(environment_protection_is_valid(
-            event_name="workflow_dispatch", phase="parent-portal-smoke",
             required_reviewers_configured=False, prevent_self_review=False,
         ))
         self.assertFalse(environment_protection_is_valid(
@@ -307,14 +913,19 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             required_reviewers_configured=True, prevent_self_review=True,
         ))
         for event_name, phase in (
-            ("workflow_run", "application-deploy"),
+            ("workflow_run", "parent-portal-smoke"),
             ("workflow_dispatch", "unknown-phase"),
         ):
             with self.subTest(event_name=event_name, phase=phase):
                 self.assertFalse(environment_protection_is_valid(
                     event_name=event_name, phase=phase,
-                    required_reviewers_configured=False, prevent_self_review=False,
+                    required_reviewers_configured=True, prevent_self_review=False,
                 ))
+
+    def test_environment_logs_match_self_review_policy(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("review boundary verified: required reviewer, self-review allowed", workflow)
+        self.assertNotIn("review boundary verified: required reviewer, prevent self-review", workflow)
 
 
 class DeployActivationWorkflowContractTest(unittest.TestCase):
@@ -342,10 +953,53 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("Checkout target revision for gate policy", self.workflow)
         self.assertIn("production environment protection is not configured", self.workflow)
         self.assertIn("required_reviewers_configured", self.workflow)
-        self.assertIn("solo mode requires no required-reviewer rule", self.workflow)
+        self.assertIn("protected activation events require the Founder required-reviewer gate", self.workflow)
         self.assertIn("environment_protection_is_valid", self.workflow)
         self.assertIn('EVENT_NAME: ${{ github.event_name }}', self.workflow)
         self.assertIn('PHASE: ${{ inputs.phase }}', self.workflow)
+
+    def test_all_activation_events_share_one_static_environment_gate(self):
+        gate_start = self.workflow.index("  production-activation:\n")
+        deploy_start = self.workflow.index("  deploy:\n")
+        gate = self.workflow[gate_start:deploy_start]
+        for event_name in ("workflow_run", "repository_dispatch", "workflow_dispatch"):
+            with self.subTest(event_name=event_name):
+                self.assertIn(f"github.event_name == '{event_name}'", gate)
+        self.assertEqual(gate.count("environment:\n      name: production-activation"), 1)
+        self.assertIn("required_reviewers_configured", gate)
+        self.assertIn("prevent_self_review", gate)
+        self.assertIn("environment.get(\"can_admins_bypass\") is not False", gate)
+        self.assertIn('names != ["main"]', gate)
+
+    def test_only_t3_reaches_founder_environment(self):
+        self.assertIn("is_founder_approval_eligible", self.workflow)
+        self.assertIn('protected_activation=bool(provenance.get("protected_activation"))', self.workflow)
+        self.assertNotIn('decision["effective_tier"] in {"T2", "T3"}', self.workflow)
+
+    def test_control_plane_merge_is_verified_without_application_deploy(self):
+        self.assertIn("is_control_plane_only_paths", self.workflow)
+        self.assertIn('"$RUNTIME_STATE" == "control-plane-only"', self.workflow)
+        self.assertIn('mode=control-plane-verified', self.workflow)
+        self.assertIn("state=control-plane-verified", self.workflow)
+        self.assertIn("no application runtime deployment required", self.workflow)
+
+    def test_validated_t2_does_not_reference_founder_environment(self):
+        self.assertIn("rollback_evidence", self.workflow)
+        self.assertIn("ci_success=True", self.workflow)
+        self.assertNotIn("has_independent_review", self.workflow)
+        self.assertNotIn("has_trusted_verifier_evidence", self.workflow)
+        self.assertNotIn("/pulls/{pr_number}/reviews", self.workflow)
+        self.assertIn("/check-runs?per_page=100", self.workflow)
+        self.assertIn("is_founder_approval_eligible", self.workflow)
+        self.assertIn("if provenance.get(\"blocked\"):", self.workflow)
+        self.assertIn("protected_activation=bool(provenance.get(\"protected_activation\"))", self.workflow)
+        # blocked provenance must not emit without computing approval_eligible
+        blocked_idx = self.workflow.index("if provenance.get(\"blocked\"):")
+        emit_idx = self.workflow.index("emit(", blocked_idx)
+        self.assertLess(blocked_idx, emit_idx)
+        self.assertIn("approval_eligible", self.workflow[blocked_idx:emit_idx+200])
+
+        self.assertIn("bool(provenance.get(\"protected_activation\"))", self.workflow)
 
     def test_manual_workflow_revision_is_canonical_main(self):
         self.assertIn('WORKFLOW_REF: ${{ github.ref }}', self.workflow)
@@ -363,7 +1017,62 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("decide_activation", self.workflow)
         self.assertIn("parse_declaration", self.workflow)
         self.assertIn("effective_tier", self.workflow)
+        self.assertIn("classify_activation_provenance", self.workflow)
         self.assertNotIn("re.search(r\"(?m)^\\*\\*Risk-Class", self.workflow)
+
+    def test_preexisting_reconciliation_is_explicit_and_message_is_only_a_locator(self):
+        self.assertIn("reconcile_preexisting_pr_provenance", self.workflow)
+        self.assertIn('recovered.append(reconciliation["record"])', self.workflow)
+        self.assertIn("referenced_prs", self.workflow)
+        self.assertIn("Commit-message PR references are only candidate locators", (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
+        self.assertIn("active_main_required_status_checks", self.workflow)
+        self.assertIn('"required_status_checks"', self.workflow)
+        self.assertIn('"author_association"', (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8"))
+
+    def test_classifier_gh_api_rejects_empty_or_invalid_json(self):
+        """GOV-ACTIVATE-CLASSIFIER-JSON-EOF: empty/truncated gh bodies must fail closed with path context."""
+        lookup = self.workflow[self.workflow.index("          def gh_api(path, *extra):"):]
+        lookup = lookup[:lookup.index("          def pages(value):")]
+        self.assertIn("capture_output=True", lookup)
+        self.assertIn("gh api empty JSON body", lookup)
+        self.assertIn("gh api invalid JSON", lookup)
+        self.assertIn("json.JSONDecodeError", lookup)
+        self.assertNotIn("subprocess.check_output", lookup)
+
+    def test_classifier_exception_emits_awaiting_activation_with_exception_class(self):
+        except_block = self.workflow[self.workflow.index("          except Exception as exc:"):]
+        except_block = except_block[:except_block.index("          PY")]
+        self.assertIn('emit(', except_block)
+        self.assertIn('"awaiting-activation"', except_block)
+        self.assertIn("activation policy evaluation failed; fail closed", except_block)
+        self.assertIn("type(exc).__name__", except_block)
+        # Must not flip approval_eligible true on generic parse failure
+        self.assertNotIn("approval_eligible=True", except_block)
+
+    def test_release_state_treats_empty_mode_as_fail_closed_blocked(self):
+        release = self.workflow[self.workflow.index("  release-state:"):]
+        release = release[:release.index("  production-activation:")]
+        self.assertIn('""|*', release)
+        self.assertIn("Classify produced empty or unknown release mode; fail closed", release)
+        self.assertIn("No production SSH, migration, frontend build, or data mutation was executed", release)
+
+        attribution = self.workflow[self.workflow.index("              for commit in comparison.get(\"commits\") or []:"):]
+        attribution = attribution[:attribution.index("              if not provenance_complete or not attributed:")]
+        self.assertIn('commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")', attribution)
+        self.assertIn('actual_files = commit_detail.get("files")', attribution)
+        self.assertIn('landed_effects.append({', attribution)
+        self.assertIn('attributed.extend(aggregate_landed_pr_effects(landed_effects))', attribution)
+        self.assertNotIn('pr_pages = gh_api', attribution)
+
+    def test_ruleset_branch_condition_is_verified_from_detail_response(self):
+        lookup = self.workflow[self.workflow.index("          def active_main_required_status_checks(repo):"):]
+        list_lookup = lookup[:lookup.index("              detail = gh_api")]
+        detail_lookup = lookup[lookup.index("              detail = gh_api"):]
+        self.assertIn('and ruleset.get("id")', list_lookup)
+        self.assertNotIn('ruleset.get("conditions")', list_lookup)
+        self.assertIn('detail.get("conditions", {}).get("ref_name", {})', detail_lookup)
+        self.assertIn('"~DEFAULT_BRANCH"', detail_lookup)
+        self.assertIn('raise ValueError("active main-protection default-branch evidence is unavailable or invalid")', detail_lookup)
 
     def test_state_machine_has_fail_closed_modes(self):
         policy = (ROOT / "scripts" / "governance" / "autonomy_gate.py").read_text(encoding="utf-8")
@@ -376,6 +1085,43 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs.classify-activation.outputs.mode == 'auto'", self.workflow)
         self.assertIn("needs.production-activation.result == 'success'", self.workflow)
         self.assertIn('TARGET_SHA="${{ needs.resolve-target.outputs.target_sha }}"', self.workflow)
+
+    def test_protected_deploy_has_no_production_side_effect_before_same_run_approval(self):
+        gate_start = self.workflow.index("  production-activation:\n")
+        deploy_start = self.workflow.index("  deploy:\n")
+        gate = self.workflow[gate_start:deploy_start]
+        deploy = self.workflow[deploy_start:]
+        self.assertIn("environment:\n      name: production-activation", gate)
+        self.assertIn("needs.production-activation.result == 'success'", deploy)
+        self.assertIn("mode == 'awaiting-activation'", deploy)
+        self.assertLess(deploy.index("needs.production-activation.result == 'success'"), deploy.index("- name: Setup SSH"))
+
+    def test_protected_activation_queue_cancels_stale_waiting_targets(self):
+        gate_start = self.workflow.index("  production-activation:\n")
+        deploy_start = self.workflow.index("  deploy:\n")
+        gate = self.workflow[gate_start:deploy_start]
+        self.assertIn("concurrency:\n      group: alltrue-production-activation-gate", gate)
+        self.assertIn("cancel-in-progress: true", gate)
+        self.assertIn("newer exact-main target supersedes an older approval request", gate)
+        # The gate remains an environment-protected reviewer boundary; queue
+        # coalescing must not turn it into an auto-approval path.
+        self.assertIn("environment:\n      name: production-activation", gate)
+        self.assertNotIn("approved", gate.split("concurrency:", 1)[1].split("environment:", 1)[0])
+
+    def test_production_executor_has_bounded_runner_and_ssh_keepalive(self):
+        deploy_start = self.workflow.index("  deploy:\n")
+        parent_smoke_start = self.workflow.index("  parent-portal-smoke:\n")
+        deploy = self.workflow[deploy_start:parent_smoke_start]
+        self.assertIn("timeout-minutes: 30", deploy)
+        for option in (
+            "-o BatchMode=yes",
+            "-o ConnectTimeout=20",
+            "-o ServerAliveInterval=15",
+            "-o ServerAliveCountMax=4",
+            "-o IdentitiesOnly=yes",
+        ):
+            with self.subTest(option=option):
+                self.assertIn(option, deploy)
 
     def test_pop_bootstrap_is_a_protected_host_local_executor(self):
         self.assertIn("  pop-bootstrap:", self.workflow)
@@ -442,18 +1188,49 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("expected_deployed_application_sha", self.workflow)
         self.assertIn("parent-portal-safe", self.workflow)
         self.assertIn("application-runtime-delta", self.workflow)
+        self.assertIn("deployed == head", self.workflow)
+        self.assertIn("attempts=7", self.workflow)
+        self.assertIn("interval_seconds=10", self.workflow)
 
     def test_admissions_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
         self.assertIn("admissions_funnel_v1:", self.workflow)
         self.assertIn("default: unchanged", self.workflow)
         self.assertIn('ADMISSIONS_FLAG_MODE="${{ inputs.admissions_funnel_v1 }}"', self.workflow)
-        self.assertIn('ADMISSIONS_FLAG_MODE" = "on"', self.workflow)
-        self.assertIn('ADMISSIONS_FLAG_MODE" = "off"', self.workflow)
-        self.assertIn("ADMISSIONS_FLAG_VALUE=$(grep -E", self.workflow)
-        self.assertIn("VITE_ADMISSIONS_FUNNEL_V1=%s", self.workflow)
-        self.assertIn("ADMISSIONS_FLAG_CHANGED=1", self.workflow)
+        self.assertIn('apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1', self.workflow)
+        self.assertIn("ADMISSIONS_FUNNEL_V1", self.workflow)
+        self.assertIn("VITE_ADMISSIONS_FUNNEL_V1", self.workflow)
+        self.assertIn("ADMISSIONS_FLAG_CHANGED=0", self.workflow)
         self.assertIn("admissions flag restored during rollback", self.workflow)
         self.assertIn('[ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}", self.workflow)
+
+
+    def test_course_session_calendar_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("course_session_calendar_v1:", self.workflow)
+        self.assertIn('CALENDAR_FLAG_MODE="${{ inputs.course_session_calendar_v1 }}"', self.workflow)
+        self.assertIn('apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1', self.workflow)
+        self.assertIn("COURSE_SESSION_CALENDAR_V1=", self.workflow)
+        self.assertIn("VITE_COURSE_SESSION_CALENDAR_V1", self.workflow)
+        self.assertIn("CALENDAR_FLAG_CHANGED=0", self.workflow)
+        self.assertIn("course session calendar flag restored during rollback", self.workflow)
+        self.assertIn('[ "$CALENDAR_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("explicit Founder feature-flag activation on current tip", self.workflow)
+        self.assertIn("COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}", self.workflow)
+        self.assertIn("Does not authorize Phase 1b/2/3", self.workflow)
+
+
+    def test_course_manager_flag_requires_explicit_manual_mode_and_preserves_auto_value(self):
+        self.assertIn("course_manager_v1:", self.workflow)
+        self.assertIn('MANAGER_FLAG_MODE="${{ inputs.course_manager_v1 }}"', self.workflow)
+        self.assertIn('apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1', self.workflow)
+        self.assertIn("COURSE_MANAGER_V1=", self.workflow)
+        self.assertIn("VITE_COURSE_MANAGER_V1", self.workflow)
+        self.assertIn("MANAGER_FLAG_CHANGED=0", self.workflow)
+        self.assertIn("course manager flag restored during rollback", self.workflow)
+        self.assertIn('[ "$MANAGER_FLAG_CHANGED" -eq 1 ]', self.workflow)
+        self.assertIn("COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}", self.workflow)
+        self.assertIn("Does not authorize Phase 1b/2/3", self.workflow)
+
 
     def test_deploy_failures_are_fail_closed_and_share_rollback(self):
         self.assertIn("rollback_deploy()", self.workflow)

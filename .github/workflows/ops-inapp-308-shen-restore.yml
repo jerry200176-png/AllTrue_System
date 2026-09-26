@@ -1,0 +1,228 @@
+name: In-app #308 沈柏宇 contract restore (protected one-off)
+# governance-capability: legacy-case-specific-mutation
+
+# One-case Data Repair Gate for Founder-requested reopen of SC#3495 after the
+# buggy contract_amended close (in-app #308). Code fix already shipped; this
+# only restores the single wrongly locked row + two entitlement sessions.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run or apply
+        required: true
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+      confirm:
+        description: Exact confirmation for the selected mode
+        required: true
+        type: string
+      deployed_backend_sha:
+        description: Exact backend SHA already deployed in production
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alltrue-production-side-effects-v2
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Validate #308 restore gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate exact mode, confirmation, and SHA shape
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$MODE" == dry-run || "$MODE" == apply ]] || exit 1
+          [[ "$DEPLOYED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo '::error::deployed_backend_sha must be a full commit SHA' >&2
+            exit 1
+          }
+          if [[ "$MODE" == dry-run ]]; then
+            [[ "$CONFIRM" == DRY_RUN_INAPP_308_SHEN_BOYU_RESTORE_20260916 ]] || exit 1
+          else
+            [[ "$CONFIRM" == APPROVE_INAPP_308_SHEN_BOYU_RESTORE_20260916 ]] || exit 1
+          fi
+
+  preflight:
+    name: Read-only #308 preflight
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Inspect exact production rows without mutation
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          ssh_dir="$RUNNER_TEMP/inapp-308-preflight-ssh"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
+          [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo "::error::production SHA drift: $manifest_sha" >&2; exit 1; }
+          DEPLOYED_SHA="$manifest_sha" php artisan tinker --no-ansi --execute='
+          $db = \Illuminate\Support\Facades\DB::class;
+          $student = $db::table("Student")->where("id", 396)->first(["id","name","CampusID"]);
+          $sc = $db::table("StudentClass")->where("ID", 3495)->first();
+          $sessions = $db::table("ClassSession")->where("StudentClassID", 3495)->whereIn("id", [33542,33543,33544,33545,33546,33547,33548,33549])->orderBy("id")->get(["id","SessionDate","Status","Note"]);
+          echo json_encode([
+            "production_backend_sha" => getenv("DEPLOYED_SHA"),
+            "student" => $student,
+            "class_3495" => $sc,
+            "sessions" => $sessions,
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
+
+  apply:
+    name: Apply and verify #308 restore
+    needs: [guard, preflight]
+    if: ${{ inputs.mode == 'apply' }}
+    environment:
+      name: production-activation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Execute exact SC#3495 reopen on production
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [[ "$CONFIRM" == APPROVE_INAPP_308_SHEN_BOYU_RESTORE_20260916 ]] || exit 1
+          ssh_dir="$RUNNER_TEMP/inapp-308-apply-ssh"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          base_url=https://daan.lifenet.com.tw
+          work_dir="$(mktemp -d /tmp/inapp-308-restore.XXXXXX)"
+          cleanup() { rm -f "$work_dir"/*; rmdir "$work_dir" 2>/dev/null || true; }
+          trap cleanup EXIT
+          manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 "$base_url/deployment.json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
+          [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo "::error::production SHA drift: $manifest_sha" >&2; exit 1; }
+
+          php artisan tinker --no-interaction --no-ansi --execute='
+          $db = \Illuminate\Support\Facades\DB::class;
+          $out = $db::transaction(function () use ($db) {
+            $student = $db::table("Student")->where("id", 396)->lockForUpdate()->first();
+            if (!$student || (string)$student->name !== "沈柏宇" || (int)$student->CampusID !== 9) {
+              throw new \RuntimeException("student 396 identity mismatch");
+            }
+            $sc = $db::table("StudentClass")->where("ID", 3495)->lockForUpdate()->first();
+            if (!$sc || (int)$sc->StudentID !== 396 || (int)$sc->TeacherID !== 289 || (int)$sc->SubjectID !== 66) {
+              throw new \RuntimeException("SC 3495 identity mismatch");
+            }
+            if ((string)($sc->ScheduleMode ?? "") !== "count" || (int)$sc->SessionCount !== 4 || (int)$sc->UsedSessions !== 2 || (int)$sc->RemainingSessions !== 2) {
+              throw new \RuntimeException("SC 3495 entitlement mismatch");
+            }
+            $attended = $db::table("ClassSession")->where("StudentClassID", 3495)->whereIn("id", [33542, 33543])->where("Status", "attended")->count();
+            if ($attended !== 2) throw new \RuntimeException("attended pair mismatch");
+            $targetSessions = $db::table("ClassSession")->where("StudentClassID", 3495)->whereIn("id", [33544,33545,33546,33547,33548,33549])->lockForUpdate()->get();
+            if ($targetSessions->count() !== 6) throw new \RuntimeException("cancelled set size mismatch");
+            $endDate = $sc->EndDate ? substr((string)$sc->EndDate, 0, 10) : null;
+            $pairOk = $targetSessions->whereIn("id", [33544, 33545])->every(fn ($r) => (string)$r->Status === "scheduled");
+            $already = (int)$sc->Stop === 0 && ($sc->closed_reason === null || $sc->closed_reason === "") && $endDate === null && $pairOk;
+            if ($already) {
+              return ["result" => "already_production_verified", "class_id" => 3495];
+            }
+            if ((int)$sc->Stop !== 1 || (string)$sc->closed_reason !== "contract_amended") {
+              throw new \RuntimeException("SC 3495 not in expected locked state");
+            }
+            foreach ($targetSessions as $row) {
+              if ((string)$row->Status !== "cancelled" || !str_contains((string)($row->Note ?? ""), "合約提前結束取消")) {
+                throw new \RuntimeException("cancelled session precondition failed id=" . $row->id);
+              }
+            }
+            $snap = json_decode((string)($sc->settlement_snapshot ?? "{}"), true) ?: [];
+            $snap["inapp_308_restore"] = [
+              "at" => now()->toIso8601String(),
+              "action" => "reopen_stop_clear_reason_restore_two_sessions",
+              "restored_session_ids" => [33544, 33545],
+              "left_cancelled_session_ids" => [33546, 33547, 33548, 33549],
+              "manifest" => "RM-308-SHEN-BOYU-RESTORE-20260916",
+            ];
+            $updated = $db::table("StudentClass")->where("ID", 3495)->where("Stop", 1)->where("closed_reason", "contract_amended")->update([
+              "Stop" => 0,
+              "closed_reason" => null,
+              "EndDate" => null,
+              "settlement_snapshot" => json_encode($snap, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+              "MDate" => now(),
+            ]);
+            if ($updated !== 1) throw new \RuntimeException("SC 3495 update row count mismatch");
+            foreach ([33544, 33545] as $sid) {
+              $row = $targetSessions->firstWhere("id", $sid);
+              $note = trim(str_replace("[合約提前結束取消]", "", (string)($row->Note ?? "")));
+              $n = $db::table("ClassSession")->where("id", $sid)->where("StudentClassID", 3495)->where("Status", "cancelled")->update([
+                "Status" => "scheduled",
+                "Note" => $note,
+                "updated_at" => now(),
+              ]);
+              if ($n !== 1) throw new \RuntimeException("session restore row count mismatch id=" . $sid);
+            }
+            $after = $db::table("StudentClass")->where("ID", 3495)->first(["ID","Stop","closed_reason","EndDate","SessionCount","UsedSessions","RemainingSessions"]);
+            $restored = $db::table("ClassSession")->whereIn("id", [33544, 33545])->get(["id","Status","Note"]);
+            $stillCancel = $db::table("ClassSession")->whereIn("id", [33546,33547,33548,33549])->where("Status", "cancelled")->count();
+            if ((int)$after->Stop !== 0 || $after->closed_reason !== null || $after->EndDate !== null) {
+              throw new \RuntimeException("postcondition SC reopen failed");
+            }
+            if ($restored->count() !== 2 || $restored->contains(fn ($r) => (string)$r->Status !== "scheduled")) {
+              throw new \RuntimeException("postcondition session restore failed");
+            }
+            if ($stillCancel !== 4) throw new \RuntimeException("postcondition excess cancel preserve failed");
+            return ["result" => "restored", "after" => $after, "restored_sessions" => $restored];
+          });
+          echo json_encode($out, JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE

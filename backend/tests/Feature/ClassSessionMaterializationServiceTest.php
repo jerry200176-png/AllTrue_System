@@ -22,7 +22,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
 
         $slot = [
             'StudentClassID' => $courseId,
-            'SessionDate' => '2026-09-10',
+            'SessionDate' => '2099-09-10',
             'StartTime' => '16:00',
             'EndTime' => '18:00:00',
             'Status' => 'scheduled',
@@ -44,7 +44,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
             1,
             DB::table('ClassSession')
                 ->where('StudentClassID', $courseId)
-                ->whereDate('SessionDate', '2026-09-10')
+                ->whereDate('SessionDate', '2099-09-10')
                 ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', ['16:00'])
                 ->count()
         );
@@ -112,7 +112,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
 
         $service->upsertSlot([
             'StudentClassID' => $firstCourseId,
-            'SessionDate' => '2026-09-10',
+            'SessionDate' => '2099-09-10',
             'StartTime' => '16:00',
             'EndTime' => '18:00',
             'Status' => 'scheduled',
@@ -121,7 +121,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
         try {
             $service->upsertSlot([
                 'StudentClassID' => $secondCourseId,
-                'SessionDate' => '2026-09-10',
+                'SessionDate' => '2099-09-10',
                 'StartTime' => '17:00',
                 'EndTime' => '19:00',
                 'Status' => 'scheduled',
@@ -140,7 +140,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
 
         ClassSession::create([
             'StudentClassID' => $firstCourseId,
-            'SessionDate' => '2026-09-12',
+            'SessionDate' => '2099-09-12',
             'StartTime' => '16:00:00',
             'EndTime' => '18:00:00',
             'Status' => 'scheduled',
@@ -150,7 +150,7 @@ class ClassSessionMaterializationServiceTest extends TestCase
         $this->expectExceptionMessage('學生在此時段已有其他課程');
         ClassSession::create([
             'StudentClassID' => $secondCourseId,
-            'SessionDate' => '2026-09-12',
+            'SessionDate' => '2099-09-12',
             'StartTime' => '17:00:00',
             'EndTime' => '19:00:00',
             'Status' => 'scheduled',

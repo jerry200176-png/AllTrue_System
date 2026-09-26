@@ -38,6 +38,7 @@
 - [Reported-paid accounting split RFC](RFC_REPORTED_PAID_ACCOUNTING_SPLIT.md) — 行政回報與會計入帳分離。
 - [Control Plane Contract](../CONTROL_PLANE_CONTRACT.md) — production execution boundary。
 - [Parent Identity target architecture](PARENT_IDENTITY_TARGET_ARCHITECTURE.md) — 家長／學生 identity 目標架構。
+- [RFID campus presence v1 RFC](RFC_RFID_CAMPUS_PRESENCE_V1.md) — #2809：門禁 RFID = 在校證明；課程出席／扣堂仍走既有點名路徑。
 
 若圖稿與 RFC、ADR 或 control-plane contract 衝突，以後者為準；圖稿應
 更新或刪除，不得自行成為新的行為規範。

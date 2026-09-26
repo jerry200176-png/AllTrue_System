@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Services\TransactionDiscountCalculator;
 
 class EnrollmentService
 {
@@ -638,6 +639,7 @@ class EnrollmentService
         $scheduleGuard = app(ScheduleGuardService::class);
         $capacityConflicts = [];
         $classType = (string) ($data['class_type'] ?? 'one_on_one');
+        $isTutoring = strtolower(trim($classType)) === 'tutoring';
         $roomId = !empty($data['room_id']) ? (int) $data['room_id'] : null;
         foreach ($subjectGroups as $groupKey => $rowsForSubject) {
             $teacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
@@ -672,6 +674,7 @@ class EnrollmentService
                 'message' => $capacityConflicts[0]['message'] ?? '老師此時段已有其他課程或已達人數上限，無法排課。',
                 'code' => 'teacher_schedule_conflict',
                 'conflicts' => $capacityConflicts,
+                'suggested_actions' => $capacityConflicts[0]['suggested_actions'] ?? [],
             ], 409);
         }
 
@@ -700,7 +703,7 @@ class EnrollmentService
             $identitySourceStudentId,
             $role,
             $campusIds,
-            $classType
+            $isTutoring
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
@@ -725,7 +728,9 @@ class EnrollmentService
             $rateUnit = (!empty($data['rate_unit']) && $data['rate_unit'] === 'hour')
                 ? 'hour'
                 : 'session';
-            $price = (float) $data['price_per_session'];
+            // Server-canonical free tutoring contract: client amount/payment values
+            // are ignored, including forged compatibility payloads.
+            $price = $isTutoring ? 0.0 : (float) ($data['price_per_session'] ?? 0);
 
             $hasSessionDeductedColumn = Schema::hasColumn('LearningRecord', 'SessionDeducted');
             $authUser = $request->attributes->get('auth_user');
@@ -745,6 +750,7 @@ class EnrollmentService
             $skippedFutureDates = [];
             $dualTeacherWarnings = [];
             $studentClassIds = [];
+            $createdStudentClasses = [];
             $firstStudentClassId = null;
 
             foreach ($subjectGroups as $groupKey => $rowsForSubject) {
@@ -850,9 +856,9 @@ class EnrollmentService
                     $charge = (int) round($price * $chargeUnits);
                 }
 
-                // 輔導課永遠不產生收費義務；Rate 仍保留供既有課務／核薪語意使用，
-                // 但 StudentClass.Charge 不得因 enrollment 的輸入單價被算成應收款。
-                if ($classType === 'tutoring') {
+                // 輔導課永遠不產生收費義務；新課的 Rate/Charge 均由上方
+                // canonical contract 固定為 0，且不影響既有課程的核薪規則。
+                if ($isTutoring) {
                     $charge = 0;
                 }
 
@@ -862,7 +868,7 @@ class EnrollmentService
                     'SubjectID' => $subjectId,
                     'ClassType' => (string) $data['class_type'],
                     'by1' => $by1Map[$data['class_type']] ?? 1,
-                    'Rate' => $price,
+                    'Rate' => $isTutoring ? 0 : $price,
                     'rate_unit' => $rateUnit,
                     'Charge' => $charge,
                     'Pay' => 0,
@@ -892,14 +898,15 @@ class EnrollmentService
                     'week' => $primaryWeekday,
                     'time' => $startTimeForGroup,
                     'Memo' => $data['memo'] ?? null,
-                    'PayDate' => !empty($data['paid_at']) ? $data['paid_at'] : null,
-                    'Paid' => !empty($data['paid_at']) ? 1 : 0,
+                    'PayDate' => $isTutoring ? null : (!empty($data['paid_at']) ? $data['paid_at'] : null),
+                    'Paid' => $isTutoring ? 0 : (!empty($data['paid_at']) ? 1 : 0),
                     'room_id' => !empty($data['room_id']) ? (int) $data['room_id'] : null,
                     'GradeID' => $this->resolveStudentGradeId((int) $student->id),
                     'Stop' => 0,
                     'MDate' => now(),
                 ], $weekFields);
                 $studentClass = $this->createStudentClassResilient($studentClassPayload);
+                $createdStudentClasses[] = $studentClass;
 
                 if ($firstStudentClassId === null) {
                     $firstStudentClassId = (int) $studentClass->ID;
@@ -1012,6 +1019,21 @@ class EnrollmentService
                 }
 
                 SessionDeductionService::syncCounters($studentClass);
+            }
+
+            $originalAmounts = array_map(static fn (StudentClass $course): int => max(0, (int) $course->getAttribute('Charge')), $createdStudentClasses);
+            $calculator = app(TransactionDiscountCalculator::class);
+            $actor = $request->attributes->get('auth_user');
+            $discountSnapshot = $calculator->calculate(
+                array_sum($originalAmounts),
+                $data['discount'] ?? null,
+                (int) ($actor->id ?? 0),
+                (string) $role
+            );
+            $allocatedCharges = $calculator->allocate($originalAmounts, $discountSnapshot['final_amount']);
+            foreach ($createdStudentClasses as $index => $course) {
+                $course->setAttribute('Charge', $allocatedCharges[$index] ?? 0);
+                $course->initializePricingSnapshot($discountSnapshot);
             }
 
             $createdSessions = $createdConfirmedSessions + $createdFutureSessions;

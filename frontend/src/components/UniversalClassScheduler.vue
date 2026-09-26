@@ -206,8 +206,20 @@
                   @click.stop="pkgForm.subjects.splice(idx, 1); if (pkgActiveSubjectIdx >= pkgForm.subjects.length) pkgActiveSubjectIdx = Math.max(0, pkgForm.subjects.length - 1)"
                 >✕</button>
               </div>
-              <div v-if="pkgForm.payment_type === 'monthly'" class="pkg-card-schedule" @click.stop>
-                <div class="pkg-weekday-row">
+              <div class="pkg-card-schedule" @click.stop>
+                <label v-if="pkgForm.payment_type === 'session'" class="pkg-fixed-toggle">
+                  <input
+                    type="checkbox"
+                    :checked="subj.fixed_schedule === true"
+                    @change="togglePkgSubjectFixed(idx, $event.target.checked)"
+                  />
+                  <span>固定星期／時間預排</span>
+                </label>
+                <span v-if="pkgForm.payment_type === 'session' && subj.fixed_schedule !== true" class="pkg-flexible-hint">
+                  不固定：建立方案時只補登已知日期，不自動預排未來堂次
+                </span>
+                <div v-if="pkgForm.payment_type === 'monthly' || subj.fixed_schedule === true" class="pkg-fixed-schedule-fields">
+                  <div class="pkg-weekday-row">
                   <label
                     v-for="day in weekdayOptions"
                     :key="'pkg-wd-' + idx + '-' + day.value"
@@ -221,10 +233,11 @@
                     />
                     <span>{{ day.label }}</span>
                   </label>
+                  </div>
+                  <select v-model="subj.start_time" class="pkg-inline-time" title="上課時間" @click.stop>
+                    <option v-for="t in halfHourTimeOptions" :key="'pkg-t-' + idx + '-' + t" :value="t">{{ t }}</option>
+                  </select>
                 </div>
-                <select v-model="subj.start_time" class="pkg-inline-time" title="上課時間" @click.stop>
-                  <option v-for="t in halfHourTimeOptions" :key="'pkg-t-' + idx + '-' + t" :value="t">{{ t }}</option>
-                </select>
               </div>
               <div v-if="subj.confirmed_dates.length > 0" class="pkg-card-dates">
                 <span class="pkg-card-count">{{ subj.confirmed_dates.length }} 堂已補登</span>
@@ -391,13 +404,17 @@
                 </select>
               </div>
 
-              <div class="form-group">
+              <div v-if="!isTutoring" class="form-group">
                 <label>{{ hasPerDayDuration ? '每小時費用 *' : '單堂費用 *' }}</label>
                 <input v-model.number="form.price_per_session" type="number" min="0" step="50" />
               </div>
 
+              <p v-else class="field-note free-course-note">
+                輔導課免費，不需填金額，也不會產生應收帳款。
+              </p>
+
               <div class="form-group">
-                <label>繳費方式 *</label>
+                <label>{{ isTutoring ? '課程期間計算方式' : '繳費方式 *' }}</label>
                 <select v-model="form.payment_type">
                   <option value="session">按堂數</option>
                   <option value="monthly">月結制</option>
@@ -487,7 +504,7 @@
                 </select>
               </div>
 
-              <CoursePaymentDateField v-model="form.paid_at" />
+              <CoursePaymentDateField v-if="!isTutoring" v-model="form.paid_at" />
 
               <div class="form-group">
                 <label>開課日 *</label>
@@ -740,7 +757,7 @@
               </div>
             </div>
 
-            <div v-if="previewPricePerSession > 0" class="fee-estimate">
+              <div v-if="!isTutoring && previewPricePerSession > 0" class="fee-estimate">
               <div class="fee-estimate-head">
                 <span class="fee-estimate-label">計價方式</span>
                 <strong :class="['fee-estimate-unit', previewRateUnit === 'hour' ? 'is-hour' : 'is-session']">
@@ -759,6 +776,17 @@
                 </template>
               </div>
               <div class="fee-estimate-note">預估金額，實際以建立後課程為準</div>
+            </div>
+            <div v-if="allowFinancialDiscount && !isTutoring" class="transaction-discount-panel" data-testid="transaction-discount-panel">
+              <label>交易折扣</label>
+              <select v-model="form.discount.type">
+                <option value="NONE">無折扣</option>
+                <option value="FIXED_AMOUNT">固定金額</option>
+                <option value="PERCENTAGE">百分比</option>
+              </select>
+              <input v-if="form.discount.type !== 'NONE'" v-model="form.discount.value" type="text" inputmode="decimal" placeholder="折扣值" />
+              <input v-if="form.discount.type !== 'NONE'" v-model="form.discount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
+              <span>原始 {{ discountPreview.originalAmount.toLocaleString() }} · 折扣 {{ discountPreview.discountAmount.toLocaleString() }} · 實收 {{ discountPreview.finalAmount.toLocaleString() }}</span>
             </div>
 
             <div v-if="form.course_start_date" class="course-start-info">
@@ -859,7 +887,7 @@ import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constants';
 import { calculateCoverage, lessonEquivalent } from '../lib/lessonCoverage';
 import perfFlags from '../lib/perfFlags';
-import { estimateCreateCharge } from '../lib/coursePricing';
+import { calculateTransactionDiscountPreview, estimateCreateCharge } from '../lib/coursePricing';
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import { getBranchName } from '../lib/useBranches.js';
 import {
@@ -917,6 +945,7 @@ const props = defineProps({
   /** Legacy package creation is hidden from daily course creation unless explicitly enabled. */
   allowPackageMode: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
+  allowFinancialDiscount: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['success', 'cancel', 'duplicate-course']);
@@ -984,6 +1013,7 @@ const form = reactive({
   paid_at: '',
   course_start_date: toYmd(new Date()),
   end_date: '',
+  discount: { type: 'NONE', value: '0', reason: '' },
 });
 
 const isMonthlyRecurring = computed(() => {
@@ -1101,7 +1131,7 @@ function resetPkgForm() {
   pkgForm.class_type = 'one_on_one';
   pkgForm.paid_at = '';
   pkgForm.subjects = [
-    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] },
+    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', fixed_schedule: false, days_of_week: [], start_time: '16:00', confirmed_dates: [] },
   ];
 }
 
@@ -1130,6 +1160,19 @@ function togglePkgSubjectDay(subjectIdx, dayValue) {
   } else {
     subj.days_of_week.push(dayValue);
     subj.days_of_week.sort((a, b) => a - b);
+  }
+}
+
+function togglePkgSubjectFixed(subjectIdx, enabled) {
+  const subj = pkgForm.subjects[subjectIdx];
+  if (!subj) return;
+  subj.fixed_schedule = Boolean(enabled);
+  if (subj.fixed_schedule && (!Array.isArray(subj.days_of_week) || subj.days_of_week.length === 0)) {
+    const anchor = subj.start_date ? new Date(`${subj.start_date}T12:00:00`) : new Date();
+    subj.days_of_week = [weekdayOneToSeven(anchor)];
+  }
+  if (!subj.fixed_schedule) {
+    subj.days_of_week = [];
   }
 }
 
@@ -1260,7 +1303,7 @@ function addPkgSubject() {
   if (pkgForm.subjects.length >= 10) return;
   const existing = pkgForm.subjects.map((s) => s.subject);
   const next = ['English', 'Science', 'Chinese', 'Physics', 'Chemistry', 'Biology', 'Social'].find((s) => !existing.includes(s)) || 'English';
-  pkgForm.subjects.push({ subject: next, teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [], days_of_week: [], start_time: '16:00' });
+  pkgForm.subjects.push({ subject: next, teacher_id: '', duration_hours: 2, start_date: '', fixed_schedule: false, confirmed_dates: [], days_of_week: [], start_time: '16:00' });
 }
 
 function pkgSubjectColor(idx) {
@@ -1484,6 +1527,7 @@ const hasPerDayDuration = computed(() => {
 const plannedCountLabel = computed(() => (
   form.payment_type === 'monthly' ? '本月預排堂數' : '購買總堂數'
 ));
+const isTutoring = computed(() => form.class_type === 'tutoring');
 /** 排課次數的說法。actual_duration 時「次數」與「購買堂數」是兩個不同的數字。 */
 const occurrenceCountLabel = computed(() => (
   isActualDuration.value ? '預計排課次數' : plannedCountLabel.value
@@ -1512,6 +1556,7 @@ const feeEstimate = computed(() => estimateCreateCharge({
   sessions: previewSessions.value,
   avgSessionMinutes: previewAvgSlotMinutes.value,
 }));
+const discountPreview = computed(() => calculateTransactionDiscountPreview(feeEstimate.value.charge, form.discount));
 
 const courseStartDateFarWarning = computed(() => {
   if (!form.course_start_date) return '';
@@ -2239,7 +2284,7 @@ async function submitPackage() {
         duration_hours: Number(s.duration_hours) || 2,
         start_date: s.start_date || null,
         confirmed_dates: (s.confirmed_dates || []).filter(Boolean),
-        ...(isMonthly && (s.days_of_week || []).length > 0
+        ...((isMonthly || s.fixed_schedule === true) && (s.days_of_week || []).length > 0
           ? { days_of_week: s.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7), start_time: s.start_time || '16:00' }
           : {}
         ),
@@ -2345,13 +2390,13 @@ async function submit() {
         start_time: normalizeHalfHourTime(form.start_time || '16:00'),
         duration_minutes: durationMinutes,
         rate_unit: 'session',
-        price_per_session: Math.max(0, Number(form.price_per_session) || 0),
+        ...(!isTutoring.value ? { price_per_session: Math.max(0, Number(form.price_per_session) || 0) } : {}),
         payment_type: 'session',
         scheduling_policy: 'manual_occurrence',
         total_classes: manualTotal,
         room_id: form.room_id ? Number(form.room_id) : null,
         memo: form.memo || null,
-        paid_at: form.paid_at || null,
+        ...(!isTutoring.value ? { paid_at: form.paid_at || null } : {}),
         course_start_date: form.course_start_date || null,
         ...(form.end_date ? { end_date: form.end_date } : {}),
         mode: props.mode,
@@ -2536,7 +2581,7 @@ async function submit() {
       start_time: normalizedStartTime,
       duration_minutes: durationMinutes,
       rate_unit: hasPerDayDuration.value ? 'hour' : 'session',
-      price_per_session: Math.max(0, Number(form.price_per_session) || 0),
+      ...(!isTutoring.value ? { price_per_session: Math.max(0, Number(form.price_per_session) || 0) } : {}),
       payment_type: form.payment_type || 'session',
       scheduling_policy: form.scheduling_policy || 'auto_recurrence',
       settlement_day: form.payment_type === 'monthly' ? Number(form.settlement_day) || null : null,
@@ -2545,11 +2590,12 @@ async function submit() {
         : null,
       room_id: form.room_id ? Number(form.room_id) : null,
       memo: form.memo || null,
-      paid_at: form.paid_at || null,
+      ...(!isTutoring.value ? { paid_at: form.paid_at || null } : {}),
       course_start_date: form.course_start_date || null,
       mode: props.mode,
       ...(hasMultiTeacher ? { allow_multi_teacher: true } : {}),
       ...((useMonthlyRecurringPath || (form.payment_type === 'monthly' && form.end_date)) ? { end_date: form.end_date } : {}),
+      ...(props.allowFinancialDiscount ? { discount: { ...form.discount } } : {}),
     };
 
     if (form.payment_type === 'session') {
@@ -3863,6 +3909,24 @@ async function submit() {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
+  flex-wrap: wrap;
+}
+.pkg-fixed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ds-ink);
+  white-space: nowrap;
+}
+.pkg-flexible-hint {
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+}
+.pkg-fixed-schedule-fields {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .pkg-weekday-row {

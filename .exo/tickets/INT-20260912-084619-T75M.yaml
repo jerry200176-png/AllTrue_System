@@ -1,0 +1,60 @@
+id: INT-20260912-084619-T75M
+title: 'In-app #281 deterministic canonical session display'
+intent: 'In-app #281 deterministic canonical session display'
+kind: intent
+brain_dump: 'Prioritize unresolved in-app #281. Production evidence uniquely matches
+  course 2483 and shows attended plus cancelled materialized rows for 2026-08-12 18:00,
+  while the frontend merge currently lets response/fetch order choose the visible
+  row. Align the read-only session view model with the existing attended-over-cancelled
+  display precedence; preserve every underlying row, mutation path, attendance, ledger,
+  billing, and history.'
+boundary: Only make same-course same-slot frontend view-model selection deterministic.
+  Do not change or repair production data, backend queries/writes, schedules, ClassSession,
+  attendance, deduction, billing, authentication, permissions, workflows, or cancellation
+  semantics.
+success_condition: 'A regression using the production evidence shape fails before
+  the fix and proves attended wins over cancelled regardless of input/fetch order;
+  scheduled also wins over cancelled, real all-cancelled remains cancelled, unit/lint/build
+  and required CI pass, exact SHA deploys, production is verified, and in-app #281
+  is updated without resolving unless the exact case is verified.'
+risk: low
+priority: 1
+labels:
+- in-app
+- bug
+- session-projection
+scope:
+  allow:
+  - frontend/src/lib/classSessionsApi.js
+  - frontend/src/lib/classSessionsApi.test.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 260
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T08:46:19+08:00'
+children:
+- TKT-20260912-084627-S7H1
+resource_profile: default

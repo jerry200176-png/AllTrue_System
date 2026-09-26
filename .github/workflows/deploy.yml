@@ -44,6 +44,24 @@ on:
           - unchanged
           - "on"
           - "off"
+      course_session_calendar_v1:
+        description: "Application deploy only: explicitly set Course Management calendar flag (Phase 0+1a staff surface), or preserve its current production value. Does not authorize Phase 1b/2/3."
+        required: false
+        default: unchanged
+        type: choice
+        options:
+          - unchanged
+          - "on"
+          - "off"
+      course_manager_v1:
+        description: "Application deploy only: explicitly set Course Manager IA flag (管理課程 workspace), or preserve its current production value. Does not authorize Phase 1b/2/3."
+        required: false
+        default: unchanged
+        type: choice
+        options:
+          - unchanged
+          - "on"
+          - "off"
 
 permissions:
   contents: read
@@ -147,6 +165,9 @@ jobs:
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ needs.resolve-target.outputs.target_sha }}
           PHASE: ${{ inputs.phase }}
+          ADMISSIONS_FUNNEL_V1: ${{ inputs.admissions_funnel_v1 }}
+          COURSE_SESSION_CALENDAR_V1: ${{ inputs.course_session_calendar_v1 }}
+          COURSE_MANAGER_V1: ${{ inputs.course_manager_v1 }}
           PRODUCTION_URL: https://daan.lifenet.com.tw
         run: |
           python3 - <<'PYEOF'
@@ -157,13 +178,21 @@ jobs:
           from scripts.governance.autonomy_gate import (
               classify_production_runtime,
               is_application_runtime_path,
-              is_deployable_path,
+              is_control_plane_only_paths,
+              wait_for_exact_successful_provenance,
           )
 
           repo = os.environ["REPO"]
           head = os.environ["HEAD_SHA"]
           output = os.environ["GITHUB_OUTPUT"]
           manifest_source = None
+          explicit_flag_activation = (
+              os.environ.get("PHASE") == "application-deploy"
+              and any(
+                  (os.environ.get(key) or "unchanged").strip().lower() in {"on", "off"}
+                  for key in ("ADMISSIONS_FUNNEL_V1", "COURSE_SESSION_CALENDAR_V1", "COURSE_MANAGER_V1")
+              )
+          )
 
           def emit(
               deployable,
@@ -324,24 +353,65 @@ jobs:
           except ValueError:
               emit(True, deployed, "production-to-main comparison was invalid; classifier must fail closed", "invalid-evidence")
               raise SystemExit(0)
+          files = [item.get("filename", "") for item in comparison.get("files", [])]
+          application_files = [path for path in files if is_application_runtime_path(path)]
+          control_plane_only = is_control_plane_only_paths(files)
+          provenance_sha = successful_deploy_provenance(deployed)
+          # A deployment manifest is identity evidence, never success proof.
+          # Only when it already names this exact target may a bounded 60-second
+          # recheck wait for the authoritative completed-success deployment run.
+          if deployed == head and manifest_source == "github-actions:deploy.yml" and provenance_sha is None:
+              provenance_sha = wait_for_exact_successful_provenance(
+                  lookup=successful_deploy_provenance,
+                  expected_sha=deployed,
+                  attempts=7,
+                  interval_seconds=10,
+              )
           runtime = classify_production_runtime(
               production_sha=deployed,
               target_sha=head,
               comparison_status=comparison.get("status"),
-              provenance_sha=successful_deploy_provenance(deployed),
+              provenance_sha=provenance_sha,
               manifest_source=manifest_source,
           )
           runtime_state = str(runtime["state"])
           print(f"Production runtime state: {runtime_state} ({runtime['reason']})")
           if runtime_state == "current":
+              if explicit_flag_activation:
+                  # Flag on/off must rebuild the Vite bundle even when the tip SHA
+                  # already matches production (admissions / calendar activation).
+                  emit(
+                      True,
+                      deployed,
+                      "explicit Founder feature-flag activation on current tip; frontend rebuild required",
+                      "current",
+                      provenance_sha or deployed,
+                  )
+                  raise SystemExit(0)
+              if control_plane_only:
+                  emit(
+                      False,
+                      deployed,
+                      "control-plane-only change is effective on main; application runtime already current",
+                      "control-plane-only",
+                  )
+                  raise SystemExit(0)
               emit(False, deployed, str(runtime["reason"]), runtime_state)
               raise SystemExit(0)
           if runtime_state != "normal-version-lag":
               emit(True, deployed, str(runtime["reason"]), runtime_state)
               raise SystemExit(0)
 
-          files = [item.get("filename", "") for item in comparison.get("files", [])]
-          deployable = any(is_deployable_path(path) for path in files)
+          if control_plane_only:
+              emit(
+                  False,
+                  deployed,
+                  "control-plane-only change is effective on main; no application runtime deployment required",
+                  "control-plane-only",
+              )
+              raise SystemExit(0)
+
+          deployable = bool(application_files)
           print(f"Production runtime base: {deployed}")
           print("Changed files since the deployed runtime:")
           for path in files:
@@ -358,6 +428,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
+      approval_eligible: ${{ steps.classify.outputs.approval_eligible }}
       tier: ${{ steps.classify.outputs.tier }}
       pr_number: ${{ steps.classify.outputs.pr_number }}
       reason: ${{ steps.classify.outputs.reason }}
@@ -384,6 +455,7 @@ jobs:
           hold() {
             {
               echo "mode=awaiting-activation"
+              echo "approval_eligible=${4:-false}"
               echo "tier=${1:-unknown}"
               echo "pr_number=${2:-none}"
               echo "reason=${3}"
@@ -391,8 +463,19 @@ jobs:
           }
 
           if [[ "$DEPLOYABLE" != "true" ]]; then
+            if [[ "$RUNTIME_STATE" == "control-plane-only" ]]; then
+              {
+                echo "mode=control-plane-verified"
+                echo "approval_eligible=false"
+                echo "tier=none"
+                echo "pr_number=none"
+                echo "reason=control-plane change is effective on main; no application runtime deployment required"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             {
               echo "mode=no-op"
+              echo "approval_eligible=false"
               echo "tier=none"
               echo "pr_number=none"
               echo "reason=non-deployable change"
@@ -407,6 +490,7 @@ jobs:
           if [[ "$EVENT_NAME" == "workflow_dispatch" && "$PHASE" == "pop-bootstrap" ]]; then
             {
               echo "mode=manual"
+              echo "approval_eligible=true"
               echo "tier=protected"
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested"
@@ -421,6 +505,7 @@ jobs:
             fi
             {
               echo "mode=manual"
+              echo "approval_eligible=true"
               echo "tier=protected"
               echo "pr_number=manual"
               echo "reason=explicit authenticated Parent Portal fixture and smoke verification"
@@ -444,6 +529,7 @@ jobs:
             fi
             {
               echo "mode=manual"
+              echo "approval_eligible=true"
               echo "tier=protected"
               echo "pr_number=manual"
               echo "reason=Founder exact-SHA activation requested; runtime_state=${RUNTIME_STATE}"
@@ -459,15 +545,40 @@ jobs:
           REPO="$REPO" TARGET_SHA="$TARGET_SHA" GH_TOKEN="$GH_TOKEN" python3 - <<'PY'
           import json
           import os
+          import re
           import subprocess
           import sys
 
           def gh_api(path, *extra):
-              return json.loads(subprocess.check_output(
+              # Fail closed on empty/truncated bodies. The Go `gh` client can
+              # print "unexpected end of JSON input" on stderr while stdout is
+              # empty; json.loads("") then loses the path context.
+              proc = subprocess.run(
                   ["gh", "api", path, *extra],
                   text=True,
+                  capture_output=True,
                   env=os.environ.copy(),
-              ))
+                  check=False,
+              )
+              body = proc.stdout or ""
+              if proc.returncode != 0:
+                  err = (proc.stderr or body or "").strip().replace("\n", " ")[:180]
+                  raise RuntimeError(
+                      f"gh api failed path={path} code={proc.returncode} err={err!r}"
+                  )
+              stripped = body.strip()
+              if not stripped:
+                  err = (proc.stderr or "").strip().replace("\n", " ")[:180]
+                  raise RuntimeError(
+                      f"gh api empty JSON body path={path} err={err!r}"
+                  )
+              try:
+                  return json.loads(stripped)
+              except json.JSONDecodeError as exc:
+                  prefix = stripped[:80].replace("\n", " ")
+                  raise RuntimeError(
+                      f"gh api invalid JSON path={path}: {exc}; body_prefix={prefix!r}"
+                  ) from exc
 
           def pages(value):
               if isinstance(value, list):
@@ -477,9 +588,44 @@ jobs:
                   return result
               return value if isinstance(value, list) else []
 
-          def emit(mode, tier, pr_number, reason):
+          def active_main_required_status_checks(repo):
+              ruleset_pages = gh_api(
+                  f"/repos/{repo}/rulesets?per_page=100",
+                  "--paginate", "--slurp",
+              )
+              rulesets = pages(ruleset_pages)
+              candidates = [ruleset for ruleset in rulesets if (
+                  ruleset.get("name") == "main-protection"
+                  and ruleset.get("target") == "branch"
+                  and ruleset.get("enforcement") == "active"
+                  and ruleset.get("id")
+              )]
+              if len(candidates) != 1 or not candidates[0].get("id"):
+                  raise ValueError("active main-protection ruleset evidence is unavailable or ambiguous")
+              detail = gh_api(f"/repos/{repo}/rulesets/{candidates[0]['id']}")
+              if (
+                  detail.get("name") != "main-protection"
+                  or detail.get("target") != "branch"
+                  or detail.get("enforcement") != "active"
+                  or "~DEFAULT_BRANCH" not in (
+                      detail.get("conditions", {}).get("ref_name", {}).get("include", [])
+                  )
+              ):
+                  raise ValueError("active main-protection default-branch evidence is unavailable or invalid")
+              required_rules = [rule for rule in detail.get("rules", []) if (
+                  rule.get("type") == "required_status_checks"
+              )]
+              if len(required_rules) != 1:
+                  raise ValueError("main-protection required_status_checks evidence is unavailable or ambiguous")
+              required = required_rules[0].get("parameters", {}).get("required_status_checks")
+              if not isinstance(required, list) or not required:
+                  raise ValueError("main-protection required_status_checks is missing")
+              return required
+
+          def emit(mode, tier, pr_number, reason, approval_eligible=False):
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write(f"mode={mode}\n")
+                  output.write(f"approval_eligible={str(approval_eligible).lower()}\n")
                   output.write(f"tier={tier}\n")
                   output.write(f"pr_number={pr_number}\n")
                   output.write(f"reason={reason}\n")
@@ -488,133 +634,324 @@ jobs:
           target = os.environ["TARGET_SHA"]
           try:
               from scripts.governance.autonomy_gate import (
-                  classify_activation_scope,
-                  effective_tier,
+                  classify_activation_provenance,
+                  aggregate_landed_pr_effects,
                   decide_activation,
+                  has_rollback_evidence,
+                  is_founder_approval_eligible,
                   is_deployable_path,
                   is_production_activation_sensitive_path,
                   parse_declaration,
+                  reconcile_preexisting_pr_provenance,
               )
 
               base = os.environ["RUNTIME_BASE_SHA"]
+              required_status_checks = active_main_required_status_checks(repo)
               comparison = gh_api(f"/repos/{repo}/compare/{base}...{target}")
               files = comparison.get("files") or []
               if not files:
                   emit("awaiting-activation", "unknown", "none", "runtime range has no inspectable file evidence; fail closed")
                   sys.exit(0)
 
-              # A runtime range can contain more than one merged PR. Use the
-              # declaration from the newest PR that actually contributed a
-              # runtime or protected production path; a read-only scheduler
-              # or test/docs PR must not raise an unrelated runtime release
-              # to T3. All evidence is read-only GitHub API metadata.
-              merged = []
-              seen_prs = set()
+              # Attribute the undeployed range to each merged PR before
+              # classifying it. A control-plane-only PR is already effective
+              # at merge; it must not raise a later application release. Do
+              # not classify one aggregate diff with the newest declaration.
+              # All provenance evidence is read-only GitHub API metadata.
+              # Each application record still uses classify_activation_scope
+              # so its complete effect remains subject to the existing boundary.
+              attributed = []
+              landed_effects = []
+              seen_reconciled_prs = set()
+              attributed_commits = set()
+              provenance_complete = True
               for commit in comparison.get("commits") or []:
                   commit_sha = commit.get("sha")
                   if not commit_sha:
+                      provenance_complete = False
                       continue
+                  commit_detail = gh_api(f"/repos/{repo}/commits/{commit_sha}")
+                  actual_files = commit_detail.get("files")
+                  if not isinstance(actual_files, list):
+                      provenance_complete = False
+                      continue
+                  actual_paths = [item.get("filename", "") for item in actual_files]
+                  actual_patch_parts = []
+                  actual_patch_complete = True
+                  for item in actual_files:
+                      path = item.get("filename", "")
+                      item_patch = item.get("patch")
+                      if item_patch is None:
+                          actual_patch_complete = False
+                      actual_patch_parts.append(
+                          f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item_patch or ''}"
+                      )
+                  actual_effect = {
+                      "commit_sha": commit_sha,
+                      "paths": actual_paths,
+                      "patch": "\n".join(actual_patch_parts),
+                      "patch_complete": actual_patch_complete,
+                  }
                   candidates = gh_api(
                       f"/repos/{repo}/commits/{commit_sha}/pulls",
                       "--header", "Accept: application/vnd.github+json",
                   )
+                  if not candidates:
+                      referenced_prs = sorted(set(re.findall(
+                          r"(?<![A-Za-z0-9])#([1-9][0-9]*)\b",
+                          str((commit.get("commit") or {}).get("message") or ""),
+                      )))
+                      recovered = []
+                      for pr_number in referenced_prs:
+                          try:
+                              candidate_pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
+                              if candidate_pr.get("base", {}).get("ref") != "main":
+                                  continue
+                              pr_files = pages(gh_api(
+                                  f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
+                                  "--paginate", "--slurp",
+                              ))
+                              target_files = commit_detail.get("files") or []
+                              head_sha = candidate_pr.get("head", {}).get("sha")
+                              head_commit = gh_api(f"/repos/{repo}/commits/{head_sha}")
+                              check_runs = gh_api(
+                                  f"/repos/{repo}/commits/{head_sha}/check-runs?per_page=100",
+                                  "--header", "Accept: application/vnd.github+json",
+                              )
+                              statuses = gh_api(f"/repos/{repo}/commits/{head_sha}/status")
+                              closeout_comments = pages(gh_api(
+                                  f"/repos/{repo}/issues/{pr_number}/comments?per_page=100",
+                                  "--paginate", "--slurp",
+                              ))
+                              reconciliation = reconcile_preexisting_pr_provenance(
+                                  target_commit={
+                                      "sha": commit_sha,
+                                      "committer_date": (commit_detail.get("commit") or {}).get("committer", {}).get("date"),
+                                      "parents": commit_detail.get("parents"),
+                                      "tree": (commit_detail.get("commit") or {}).get("tree"),
+                                  },
+                                  pr=candidate_pr,
+                                  pr_files=pr_files,
+                                  target_files=target_files,
+                                  pr_head_commit={
+                                      "committer_date": (head_commit.get("commit") or {}).get("committer", {}).get("date"),
+                                      "parents": head_commit.get("parents"),
+                                      "tree": (head_commit.get("commit") or {}).get("tree"),
+                                  },
+                                  check_evidence={
+                                      "check_runs": check_runs.get("check_runs") or [],
+                                      "check_runs_total": check_runs.get("total_count"),
+                                      "statuses": statuses.get("statuses") or [],
+                                      "statuses_total": statuses.get("total_count", 0),
+                                      "required_status_checks": required_status_checks,
+                                  },
+                                  closeout_comments=closeout_comments,
+                              )
+                              if reconciliation.get("accepted"):
+                                  recovered.append(reconciliation["record"])
+                              else:
+                                  print(f"PR #{pr_number} reconciliation rejected: {reconciliation.get('reason')}")
+                          except (OSError, ValueError, subprocess.CalledProcessError) as error:
+                              print(f"PR #{pr_number} reconciliation evidence unavailable: {error}")
+                      if len(recovered) == 1:
+                          attributed.append(recovered[0])
+                          seen_reconciled_prs.add(recovered[0]["number"])
+                          attributed_commits.add(commit_sha)
+                          continue
+                      provenance_complete = False
                   for candidate in candidates:
                       pr_number = candidate.get("number")
                       if (
                           not pr_number
-                          or pr_number in seen_prs
                           or candidate.get("base", {}).get("ref") != "main"
                           or not candidate.get("merged_at")
                       ):
                           continue
-                      pr_pages = gh_api(
-                          f"/repos/{repo}/pulls/{pr_number}/files?per_page=100",
-                          "--paginate", "--slurp",
-                      )
-                      pr_files = pages(pr_pages)
-                      pr_paths = [item.get("filename", "") for item in pr_files]
+                      if pr_number in seen_reconciled_prs:
+                          attributed_commits.add(commit_sha)
+                          continue
+                      pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
                       if not any(
                           is_deployable_path(path)
                           or is_production_activation_sensitive_path(path)
-                          for path in pr_paths
+                          for path in actual_paths
                       ):
-                          seen_prs.add(pr_number)
+                          attributed_commits.add(commit_sha)
                           continue
-                      seen_prs.add(pr_number)
-                      merged.append(candidate)
-              merged.sort(key=lambda pr: pr.get("merged_at", ""), reverse=True)
-              if not merged:
-                  emit("awaiting-activation", "unknown", "none", "no merged PR provenance for current main target; fail closed")
+                      declared_risk, declared_tier = parse_declaration(pr.get("body") or "")
+                      landed_effects.append({
+                          "number": pr_number,
+                          "merged_at": pr.get("merged_at"),
+                          **actual_effect,
+                          "declared_risk": declared_risk,
+                          "declared_tier": declared_tier,
+                      })
+                      attributed_commits.add(commit_sha)
+              attributed.extend(aggregate_landed_pr_effects(landed_effects))
+              if not provenance_complete or not attributed:
+                  emit("awaiting-activation", "unknown", "none", "incomplete merged PR provenance; fail closed")
                   sys.exit(0)
-
-              pr = merged[0]
-              pr_number = str(pr.get("number", "unknown"))
-              paths = [item.get("filename", "") for item in files]
-              patch_parts = []
-              for item in files:
-                  path = item.get("filename", "")
-                  patch_parts.append(
-                      f"diff --git a/{path} b/{path}\n+++ b/{path}\n{item.get('patch') or ''}"
-                  )
-              scope = classify_activation_scope(paths, "\n".join(patch_parts))
-              machine_tier = scope.get("tier_name")
-              body = pr.get("body") or ""
-              declared_risk, declared_tier = parse_declaration(body)
-              declaration_risk = f"R{declared_risk}" if declared_risk is not None else None
-              declaration_tier = f"T{declared_tier}" if declared_tier is not None else None
-              _, declaration_error = effective_tier(
-                  int(scope["machine_minimum_tier"]), declared_risk, declared_tier
+              if len(attributed_commits) != len(comparison.get("commits") or []):
+                  emit("awaiting-activation", "unknown", "none", "incomplete commit-to-PR provenance; fail closed")
+                  sys.exit(0)
+              attributed.sort(
+                  key=lambda pr: pr.get("merged_at")
+                  or (pr.get("reconciliation_evidence") or {}).get("target_commit_at")
+                  or "",
+                  reverse=True,
               )
-              if declaration_error:
+              provenance = classify_activation_provenance(attributed)
+              if provenance.get("blocked"):
+                  # Declaration understatement / attribution holds are protected
+                  # activations: keep fail-closed (no auto), but open the same-run
+                  # Founder Environment so exact-SHA activation can proceed.
+                  approval_eligible = is_founder_approval_eligible(
+                      {
+                          "decision": "awaiting-activation",
+                          "effective_tier": provenance.get("tier_name", "unknown"),
+                          "reason": provenance["reason"],
+                      },
+                      protected_activation=bool(provenance.get("protected_activation")),
+                  )
                   emit(
-                      "awaiting-activation", machine_tier, pr_number,
-                      f"PR #{pr_number}: {declaration_error}; fail closed",
+                      "awaiting-activation",
+                      provenance.get("tier_name", "unknown"),
+                      "multiple",
+                      provenance["reason"],
+                      approval_eligible,
                   )
                   sys.exit(0)
+              if provenance.get("activation_class") == "control-plane-only":
+                  emit("control-plane-verified", "none", "multiple", provenance["reason"])
+                  sys.exit(0)
+              machine_tier = provenance["tier_name"]
+              pr_number = ",".join(str(pr["number"]) for pr in provenance["application_prs"])
+              rollback_evidence = all(
+                  has_rollback_evidence(
+                      gh_api(f"/repos/{repo}/pulls/{pr['number']}").get("body") or ""
+                  )
+                  for pr in provenance["application_prs"]
+              )
+              print(
+                  "T2 evidence: "
+                  "ci_success=true "
+                  f"rollback_evidence={str(rollback_evidence).lower()}"
+              )
+              declaration_risk = f"R{provenance['declared_risk']}"
+              declaration_tier = f"T{provenance['declared_tier']}"
 
               decision = decide_activation(
                   event_name=os.environ["EVENT_NAME"], deployable=True,
                   classifier_available=True, machine_validated=True,
                   machine_tier=machine_tier, declared_risk=declaration_risk,
                   declared_tier=declaration_tier,
-                  protected_activation=bool(scope.get("protected_activation")),
+                  protected_activation=bool(provenance.get("protected_activation")),
+                  ci_success=True,
+                  rollback_evidence=rollback_evidence,
               )
-              emit(decision["decision"], decision["effective_tier"], pr_number, decision["reason"])
-          except Exception:
-              emit("awaiting-activation", "unknown", "none", "activation policy evaluation failed; fail closed")
+              approval_eligible = is_founder_approval_eligible(
+                  decision,
+                  protected_activation=bool(provenance.get("protected_activation")),
+              )
+              emit(
+                  decision["decision"], decision["effective_tier"], pr_number,
+                  decision["reason"], approval_eligible,
+              )
+          except Exception as exc:
+              # Keep fail-closed. Surface exception class so empty/truncated GitHub
+              # JSON bodies are diagnosable without weakening approval eligibility.
+              print(
+                  f"activation classifier failed closed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr,
+              )
+              detail = f"{type(exc).__name__}"
+              emit(
+                  "awaiting-activation",
+                  "unknown",
+                  "none",
+                  f"activation policy evaluation failed; fail closed ({detail})",
+              )
           PY
 
-  merged-awaiting-activation:
-    name: Merged — awaiting production activation
+  release-state:
+    name: Release state
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.mode == 'awaiting-activation' }}
+    if: ${{ always() && needs.classify-activation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Record protected boundary
+      - name: Record explicit pre-deploy state
         env:
-          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
-          TIER: ${{ needs.classify-activation.outputs.tier }}
-          PR_NUMBER: ${{ needs.classify-activation.outputs.pr_number }}
+          MODE: ${{ needs.classify-activation.outputs.mode }}
+          APPROVAL_ELIGIBLE: ${{ needs.classify-activation.outputs.approval_eligible }}
           REASON: ${{ needs.classify-activation.outputs.reason }}
         run: |
           set -euo pipefail
-          {
-            echo "## merged-awaiting-activation"
-            echo ""
-            echo "- target SHA: ${TARGET_SHA}"
-            echo "- source PR: ${PR_NUMBER}"
-            echo "- declared tier: ${TIER}"
-            echo "- reason: ${REASON}"
-            echo ""
-            echo "No production SSH, migration, frontend build, or data mutation was executed."
-            echo "Founder activation must dispatch Deploy to Pi with the exact current main SHA and the phase-specific confirmation phrase."
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          # Strip CR so empty/corrupt classifier outputs cannot fall through to
+          # a misleading "Unknown release mode" when mode was actually set.
+          MODE="${MODE//$'\r'/}"
+          APPROVAL_ELIGIBLE="${APPROVAL_ELIGIBLE//$'\r'/}"
+          REASON="${REASON//$'\r'/}"
+          case "$MODE" in
+            control-plane-verified)
+              {
+                echo "## state=control-plane-verified"
+                echo "The merged control-plane revision is effective on main. No application runtime deployment is required or reported."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            no-op)
+              echo "## state=merged (no-op)" >> "$GITHUB_STEP_SUMMARY"
+              echo "No deployable runtime change was found." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            auto)
+              {
+                echo "## state=ready"
+                echo "This state is not deployed. The validated reversible release may proceed to the executor."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            awaiting-activation)
+              if [[ "$APPROVAL_ELIGIBLE" != "true" ]]; then
+                {
+                  echo "## state=blocked"
+                  echo "Production activation evidence is incomplete or invalid. No production SSH, migration, frontend build, or data mutation was executed."
+                  echo "Reason: ${REASON}"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 1
+              fi
+              {
+                echo "## state=awaiting-approval"
+                echo "This state is not deployed. The same workflow run is held by the production-activation Environment; no second dispatch is required."
+                echo "Reason: ${REASON}"
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            manual)
+              {
+                echo "## state=awaiting-approval"
+                echo "This explicit exceptional operation remains Founder-controlled and is not deployed until its gate succeeds."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            ""|*)
+              {
+                echo "## state=blocked"
+                echo "Classify produced empty or unknown mode; fail closed. No production SSH, migration, frontend build, or data mutation was executed."
+                echo "mode=${MODE:-<empty>}"
+                echo "Reason: ${REASON:-<empty>}"
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Classify produced empty or unknown release mode; fail closed." >&2
+              exit 1
+              ;;
+          esac
 
   production-activation:
-    name: Founder production activation gate
+    name: Founder production approval (same run)
     needs: [resolve-target, detect-deployable, classify-activation]
-    if: ${{ always() && needs.classify-activation.result == 'success' && needs.classify-activation.outputs.mode == 'manual' }}
+    if: ${{ always() && needs.classify-activation.result == 'success' && (((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && needs.classify-activation.outputs.mode == 'manual')) }}
+    # A newer exact-main target supersedes an older approval request. The
+    # protected environment still requires the Founder reviewer; this only
+    # prevents stale waiting runs from accumulating behind the live target.
+    concurrency:
+      group: alltrue-production-activation-gate
+      cancel-in-progress: true
     environment:
       name: production-activation
     runs-on: ubuntu-latest
@@ -630,7 +967,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
-          PHASE: ${{ inputs.phase }}
+          PHASE: ${{ inputs.phase || 'application-deploy' }}
         run: |
           set -euo pipefail
           REPO="$REPO" GH_TOKEN="$GH_TOKEN" EVENT_NAME="$EVENT_NAME" PHASE="$PHASE" PYTHONPATH=. python3 - <<'PY'
@@ -651,15 +988,18 @@ jobs:
           reviewers = [rule for rule in rules if rule.get("type") == "required_reviewers"]
           required_reviewers_configured = bool(reviewers)
           prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers) if reviewers else False
+          event_name = os.environ["EVENT_NAME"]
+          phase = os.environ.get("PHASE", "")
           if not environment_protection_is_valid(
-              event_name=os.environ["EVENT_NAME"],
-              phase=os.environ.get("PHASE", ""),
+              event_name=event_name,
+              phase=phase,
               required_reviewers_configured=required_reviewers_configured,
               prevent_self_review=prevent_self_review,
           ):
               raise SystemExit(
                   "production environment protection is not configured: "
-                  "solo mode requires no required-reviewer rule; self-review cannot be a hidden gate"
+                  "protected activation events require the Founder required-reviewer gate, "
+                  "self-review allowed, no admin bypass, and main-only deployment policy"
               )
           if environment.get("can_admins_bypass") is not False:
               raise SystemExit("production environment protection is not configured: administrator bypass must be disabled")
@@ -671,10 +1011,14 @@ jobs:
           names = sorted(str(policy.get("name")) for policy in policies)
           if names != ["main"]:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
-          print("production-activation solo boundary verified: no reviewer gate, no admin bypass, main only")
+          if event_name in {"workflow_run", "repository_dispatch"}:
+              print("production-activation review boundary verified: required reviewer, self-review allowed, no admin bypass, main only")
+          else:
+              print("production-activation static Founder boundary verified: required reviewer, self-review allowed, no admin bypass, main only")
           PY
 
       - name: Require exact typed activation confirmation
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           PHASE: ${{ inputs.phase }}
           CAMPUS_ID: ${{ inputs.campus_id }}
@@ -734,12 +1078,23 @@ jobs:
           )"
           echo "Manual activation policy result: ${POLICY_RESULT}"
 
+      - name: Record approved activation state
+        run: |
+          {
+            echo "## state=approved"
+            echo "Founder/environment approval completed for this exact target; production side effects have not yet been reported as deployed."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: Deploy to Production
     needs: [resolve-target, detect-deployable, classify-activation, production-activation]
-    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || (needs.classify-activation.outputs.mode == 'manual' && needs.production-activation.result == 'success')) }}
+    if: ${{ always() && inputs.phase != 'pop-bootstrap' && inputs.phase != 'parent-portal-smoke' && needs.resolve-target.result == 'success' && needs.detect-deployable.result == 'success' && needs.classify-activation.result == 'success' && needs.detect-deployable.outputs.deployable == 'true' && (needs.classify-activation.outputs.mode == 'auto' || ((needs.classify-activation.outputs.mode == 'manual' || (needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true')) && needs.production-activation.result == 'success')) }}
     # Production credentials remain on the ephemeral GitHub-hosted runner.
     runs-on: ubuntu-latest
+    # Bound the sole production executor so a lost SSH session cannot leave a
+    # run waiting indefinitely. The remote script retains its existing
+    # rollback-on-error behavior before this runner-level deadline.
+    timeout-minutes: 30
     # Serialize only the side-effecting executor. Read-only preflight and
     # activation classification must remain schedulable when an old deploy is
     # pending in GitHub's queue.
@@ -801,6 +1156,11 @@ jobs:
       - name: Deploy
         run: |
           ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            -o IdentitiesOnly=yes \
             "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH'
           set -uo pipefail
           cd /home/admin
@@ -813,6 +1173,14 @@ jobs:
           ADMISSIONS_FLAG_CHANGED=0
           ADMISSIONS_FLAG_WAS_PRESENT=0
           ADMISSIONS_FLAG_BACKUP=""
+          CALENDAR_FLAG_MODE="${{ inputs.course_session_calendar_v1 }}"
+          CALENDAR_FLAG_CHANGED=0
+          CALENDAR_FLAG_WAS_PRESENT=0
+          CALENDAR_FLAG_BACKUP=""
+          MANAGER_FLAG_MODE="${{ inputs.course_manager_v1 }}"
+          MANAGER_FLAG_CHANGED=0
+          MANAGER_FLAG_WAS_PRESENT=0
+          MANAGER_FLAG_BACKUP=""
 
           write_deployment_manifest() {
             python3 /home/admin/scripts/write-deployment-manifest.py \
@@ -853,6 +1221,24 @@ jobs:
                 sed -i -E '/^ADMISSIONS_FUNNEL_V1=/d' /home/admin/backend/.env
               fi
               echo "✅ admissions flag restored during rollback"
+            fi
+
+            if [ "$CALENDAR_FLAG_CHANGED" -eq 1 ]; then
+              if [ "$CALENDAR_FLAG_WAS_PRESENT" -eq 1 ]; then
+                sed -i -E "s/^COURSE_SESSION_CALENDAR_V1=.*/$CALENDAR_FLAG_BACKUP/" /home/admin/backend/.env
+              else
+                sed -i -E '/^COURSE_SESSION_CALENDAR_V1=/d' /home/admin/backend/.env
+              fi
+              echo "✅ course session calendar flag restored during rollback"
+            fi
+
+            if [ "$MANAGER_FLAG_CHANGED" -eq 1 ]; then
+              if [ "$MANAGER_FLAG_WAS_PRESENT" -eq 1 ]; then
+                sed -i -E "s/^COURSE_MANAGER_V1=.*/$MANAGER_FLAG_BACKUP/" /home/admin/backend/.env
+              else
+                sed -i -E '/^COURSE_MANAGER_V1=/d' /home/admin/backend/.env
+              fi
+              echo "✅ course manager flag restored during rollback"
             fi
 
             if ! (cd /home/admin/backend && php artisan optimize); then
@@ -1023,38 +1409,35 @@ jobs:
           if ! echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local; then
             abort_deploy "frontend temporary environment 寫入失敗"
           fi
-          if [ "$ADMISSIONS_FLAG_MODE" = "on" ]; then
-            ADMISSIONS_FLAG_VALUE=true
-            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
-              ADMISSIONS_FLAG_WAS_PRESENT=1
-              ADMISSIONS_FLAG_BACKUP=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^ADMISSIONS_FUNNEL_V1=.*/ADMISSIONS_FUNNEL_V1=true/' /home/admin/backend/.env
+          apply_bool_feature_flag() {
+            # $1 mode var, $2 backend key, $3 vite key, $4 changed-var name, $5 present-var, $6 backup-var
+            local mode="$1" key="$2" vite_key="$3"
+            local value=false changed=0 present=0 backup=""
+            if [ "$mode" = "on" ] || [ "$mode" = "off" ]; then
+              value=$([ "$mode" = "on" ] && echo true || echo false)
+              if grep -qE "^${key}=" /home/admin/backend/.env; then
+                present=1
+                backup=$(grep -E "^${key}=" /home/admin/backend/.env | tail -n 1)
+                sed -i -E "s/^${key}=.*/${key}=${value}/" /home/admin/backend/.env
+              else
+                printf '\n%s=%s\n' "$key" "$value" >> /home/admin/backend/.env
+              fi
+              changed=1
             else
-              printf '\nADMISSIONS_FUNNEL_V1=true\n' >> /home/admin/backend/.env
+              if grep -qE "^${key}=" /home/admin/backend/.env; then
+                value=$(grep -E "^${key}=" /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+              fi
+              case "$value" in true|false) ;; *) value=false ;; esac
             fi
-            ADMISSIONS_FLAG_CHANGED=1
-          elif [ "$ADMISSIONS_FLAG_MODE" = "off" ]; then
-            ADMISSIONS_FLAG_VALUE=false
-            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
-              ADMISSIONS_FLAG_WAS_PRESENT=1
-              ADMISSIONS_FLAG_BACKUP=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1)
-              sed -i -E 's/^ADMISSIONS_FUNNEL_V1=.*/ADMISSIONS_FUNNEL_V1=false/' /home/admin/backend/.env
-            else
-              printf '\nADMISSIONS_FUNNEL_V1=false\n' >> /home/admin/backend/.env
-            fi
-            ADMISSIONS_FLAG_CHANGED=1
-          else
-            ADMISSIONS_FLAG_VALUE=false
-            if grep -qE '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env; then
-              ADMISSIONS_FLAG_VALUE=$(grep -E '^ADMISSIONS_FUNNEL_V1=' /home/admin/backend/.env | tail -n 1 | cut -d= -f2- | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
-            fi
-            case "$ADMISSIONS_FLAG_VALUE" in
-              true|false) ;;
-              *) ADMISSIONS_FLAG_VALUE=false ;;
-            esac
-          fi
-          printf 'VITE_ADMISSIONS_FUNNEL_V1=%s\n' "$ADMISSIONS_FLAG_VALUE" >> /home/admin/frontend/.env.production.local
-          echo "✅ admissions funnel flag prepared for backend/frontend deployment (mode=${ADMISSIONS_FLAG_MODE:-unchanged}, value=$ADMISSIONS_FLAG_VALUE)"
+            printf '%s=%s\n' "$vite_key" "$value" >> /home/admin/frontend/.env.production.local
+            echo "✅ ${key} prepared (mode=${mode:-unchanged}, value=$value)"
+            eval "$4=$changed"
+            eval "$5=$present"
+            eval "$6=\"\$backup\""
+          }
+          apply_bool_feature_flag "$ADMISSIONS_FLAG_MODE" ADMISSIONS_FUNNEL_V1 VITE_ADMISSIONS_FUNNEL_V1 ADMISSIONS_FLAG_CHANGED ADMISSIONS_FLAG_WAS_PRESENT ADMISSIONS_FLAG_BACKUP
+          apply_bool_feature_flag "$CALENDAR_FLAG_MODE" COURSE_SESSION_CALENDAR_V1 VITE_COURSE_SESSION_CALENDAR_V1 CALENDAR_FLAG_CHANGED CALENDAR_FLAG_WAS_PRESENT CALENDAR_FLAG_BACKUP
+          apply_bool_feature_flag "$MANAGER_FLAG_MODE" COURSE_MANAGER_V1 VITE_COURSE_MANAGER_V1 MANAGER_FLAG_CHANGED MANAGER_FLAG_WAS_PRESENT MANAGER_FLAG_BACKUP
           echo "✅ frontend .env.production.local 已寫入"
 
           echo "=== [4/7] 前端變動偵測 ==="
@@ -1063,8 +1446,8 @@ jobs:
           # 若 index.html 不存在（git rm --cached 後首次 deploy），強制 build
           ASSETS_MISSING=0
           [ ! -f /home/admin/backend/public/index.html ] && ASSETS_MISSING=1
-          if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ] || [ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ]; then
-            echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}）或招生 flag 變更（${ADMISSIONS_FLAG_CHANGED}），執行 build + deploy..."
+          if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ] || [ "$ADMISSIONS_FLAG_CHANGED" -eq 1 ] || [ "$CALENDAR_FLAG_CHANGED" -eq 1 ] || [ "$MANAGER_FLAG_CHANGED" -eq 1 ]; then
+            echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}）或招生 flag 變更（${ADMISSIONS_FLAG_CHANGED}）或行事曆 flag 變更（${CALENDAR_FLAG_CHANGED}）或課程管理 flag 變更（${MANAGER_FLAG_CHANGED}），執行 build + deploy..."
             if ! (cd /home/admin/frontend && npm install --prefer-offline && npm run deploy); then
               rm -f /home/admin/frontend/.env.production.local || true
               abort_deploy "frontend build/deploy 失敗"
@@ -1186,6 +1569,16 @@ jobs:
           fi
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
+
+      - name: Record deployed and production-verified state
+        run: |
+          {
+            echo "## state=deployed"
+            echo "Exact target SHA was activated by the sole production executor."
+            echo ""
+            echo "## state=production-verified"
+            echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   parent-portal-smoke:
     name: Authenticated Parent Portal production smoke

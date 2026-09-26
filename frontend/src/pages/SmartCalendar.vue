@@ -18,6 +18,7 @@
         </template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
+          <AtButton v-if="!isTeacher" shape="rect" variant="secondary" icon="print" @click="showCalendarPrint = true">列印課表</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
             <button id="calendar-tab-week" type="button" role="tab" aria-controls="calendar-panel-week" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
             <button v-if="!isTeacher" id="calendar-tab-teacher" type="button" role="tab" aria-controls="calendar-panel-teacher" :aria-selected="viewMode === 'teacher'" :class="{ active: viewMode === 'teacher' }" @click="viewMode = 'teacher'">老師清單</button>
@@ -98,6 +99,9 @@
                   <span class="capacity-legend-chip capacity-legend-chip--ok">1/3</span>可加
                   <span class="capacity-legend-chip capacity-legend-chip--warn">2/3</span>剩 1 位
                   <span class="capacity-legend-chip capacity-legend-chip--full">3/3</span>已滿
+                </span>
+                <span v-if="!isWeekOverview" class="rc-legend cross-campus-legend" title="紅色虛線表示老師在其他分校已有滿席課程，僅供提示">
+                  <span class="cross-campus-legend-chip" aria-hidden="true"></span>跨校忙碌
                 </span>
               </div>
             </div>
@@ -210,8 +214,10 @@
                 :class="{
                   'no-click': isTeacher,
                   'slot-room-full': isSlotRoomFull(selectedDow, h),
+                  'slot-cross-campus-busy': isCrossCampusBusyAt(teacher.id, h),
                   'drag-over': !isTeacher && dragOverSlot && dragOverSlot.teacherId === teacher.id && dragOverSlot.h === h
                 }"
+                :title="crossCampusBusyTitle(teacher.id, h)"
                 @click="!isTeacher && onSlotClick(selectedDow, h, selectedDateStr, teacher.id)"
                 @dragover.prevent="!isTeacher && (dragOverSlot = { teacherId: teacher.id, h })"
                 @dragleave="dragOverSlot = null"
@@ -227,7 +233,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForTeacherAt(teacher.id, h)"
                   :key="course.id"
-                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id), 'course-block--split': getCoursesForTeacherAt(teacher.id, h).length > 1 }]"
                   :style="getTeacherCourseBlockStyle(course, teacher.id, h, cIdx)"
                   :draggable="!isTeacher"
                   role="button"
@@ -244,7 +250,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, selectedDateStr), evalMissing: evalBadge(course, selectedDateStr), teacherTag: null }"
-                    :layout="{ compact: isTeacherGridCompact, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
+                    :layout="{ compact: isTeacherGridCompact, splitSlot: getCoursesForTeacherAt(teacher.id, h).length > 1, splitCount: getCoursesForTeacherAt(teacher.id, h).length, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
                   />
                 </div>
               </div>
@@ -298,7 +304,7 @@
                 <div
                   v-for="(course, cIdx) in getCoursesForWeekCell(idx + 1, h)"
                   :key="course.id"
-                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id) }]"
+                  :class="['course-block', { 'course-block--focused': focusedCalendarCourseId === Number(course.id), 'course-block--split': getCoursesForWeekCell(idx + 1, h).length > 1 }]"
                   :style="getWeekCourseBlockStyle(course, idx + 1, h, cIdx)"
                   :draggable="!isTeacher"
                   role="button"
@@ -315,7 +321,7 @@
                   <CourseBlockContent
                     :course="course"
                     :badges="{ rollCall: rollCallBadge(course, getDisplayDateFull(idx + 1)), evalMissing: evalBadge(course, getDisplayDateFull(idx + 1)), teacherTag: weekViewTeacherIds.length !== 1 ? { name: course.teacher_name, color: getTeacherColor(course.teacher_id) } : null }"
-                    :layout="{ compact: false, firstBadge: null }"
+                    :layout="{ compact: false, splitSlot: getCoursesForWeekCell(idx + 1, h).length > 1, splitCount: getCoursesForWeekCell(idx + 1, h).length, firstBadge: null }"
                   />
                 </div>
               </div>
@@ -397,6 +403,7 @@
       :initial-days-of-week="modalForm.days_of_week || []"
       :initial-calendar-ymd="modalForm.action_date || modalForm.first_class_date || ''"
       mode="create"
+      :allow-financial-discount="allowFinancialDiscount"
       @cancel="showModal = false"
       @success="handleUniversalSchedulerSuccess"
       @duplicate-course="handleSchedulerDuplicate"
@@ -452,7 +459,6 @@
       @confirm-cancel="doConfirmCancelSession"
       @restore-session="restoreCancelledSession"
       @delete-exception="deleteException"
-      @delete-course="deleteCourse"
       @cancel-makeup="cancelMakeupClass"
       @teacher-change="checkConflict"
       @goto-attendance="goToAttendanceFromSession"
@@ -547,6 +553,16 @@
       <button class="ctx-item" @click="onContextLeave">📋 請假</button>
       <button class="ctx-item ctx-cancel" @click="contextMenu.show = false">取消</button>
     </div>
+
+    <CalendarPrintDialog
+      :open="showCalendarPrint"
+      :branch-id="props.branchId"
+      :branch-name="props.branchName"
+      :rooms="roomList"
+      :teachers="teachers"
+      :initial-date="selectedDateStr"
+      @close="showCalendarPrint = false"
+    />
   </div>
 </template>
 
@@ -558,6 +574,7 @@ import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { dedupeCalendarRowsByStudentSlot, mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
+import { hasCrossCampusBusySlot, normalizeCrossCampusBusySlots } from '../lib/crossCampusBusySlots.js';
 import { resolveTeacherAliasIds, courseBelongsToTeacherAlias } from '../lib/teacherAliasMatch';
 import { buildAttendanceNav } from '../lib/authoritativeMutationRoutes.js';
 import {
@@ -582,6 +599,7 @@ import CalendarLeaveModal from '../components/calendar/modals/CalendarLeaveModal
 import CalendarRescheduleModal from '../components/calendar/modals/CalendarRescheduleModal.vue';
 import CalendarSubstituteLegacyModal from '../components/calendar/modals/CalendarSubstituteLegacyModal.vue';
 import CalendarExtraLessonModal from '../components/calendar/modals/CalendarExtraLessonModal.vue';
+import CalendarPrintDialog from '../components/calendar/CalendarPrintDialog.vue';
 import {
   fetchTeacherAvailability,
   previewTeacherLeaves,
@@ -621,6 +639,7 @@ import { courseIdOf, resolveCalendarFocusCourse } from '../lib/workflowNavigatio
 
 const props = defineProps({
   branchId: [String, Number],
+  branchName: { type: String, default: '' },
   userRole: String,
   userId: [String, Number],
   initialTeacherId: [String, Number],
@@ -633,6 +652,7 @@ const props = defineProps({
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-intent', 'clear-initial-context', 'navigate']);
 
 const isTeacher = computed(() => props.userRole === 'teacher');
+const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
 const currentTeacherId = computed(() => {
   const raw = props.userId;
   if (raw == null || raw === '') return null;
@@ -757,6 +777,7 @@ function selectCalendarFlowStep(stepId) {
   }
 }
 const showModal = ref(false);
+const showCalendarPrint = ref(false);
 const editingCourseId = ref(null);
 /** 點擊的那一堂的實際日期（僅編輯單堂時有值），用於限定只能做請假/調課/加課 */
 const editingActionDate = ref('');
@@ -768,6 +789,11 @@ const evalRecordsLoading = ref(false);
 // Drag-to-reschedule state
 const draggingCourse = ref(null); // { course, originalDate }
 const dragOverSlot = ref(null);   // { dow, h }
+
+// Cross-campus availability is a read-only presentation hint. It never
+// participates in conflict checks or disables existing booking actions.
+const crossCampusBusyByTeacher = ref({});
+let crossCampusAvailabilityRequest = 0;
 
 // Right-click context menu state
 const contextMenu = ref({ show: false, x: 0, y: 0, course: null, date: null });
@@ -1703,6 +1729,41 @@ const dayViewTeacherColumns = computed(() => {
   );
 });
 
+async function loadCrossCampusBusySlots() {
+  const requestId = ++crossCampusAvailabilityRequest;
+  crossCampusBusyByTeacher.value = {};
+  if (isTeacher.value || !Number(props.branchId) || !selectedDateStr.value || isWeekOverview.value) return;
+
+  const date = selectedDateStr.value;
+  const teacherIds = dayViewTeacherColumns.value
+    .map((teacher) => Number(teacher.id))
+    .filter((id) => id > 0);
+  if (teacherIds.length === 0) return;
+
+  const entries = await Promise.all(teacherIds.map(async (teacherId) => {
+    try {
+      const response = await fetchTeacherAvailability(teacherId, date);
+      return [String(teacherId), normalizeCrossCampusBusySlots(response?.busy_slots, props.branchId)];
+    } catch {
+      // Availability is advisory; a failed request must not alter the
+      // existing calendar or booking behavior.
+      return [String(teacherId), []];
+    }
+  }));
+  if (requestId !== crossCampusAvailabilityRequest) return;
+  crossCampusBusyByTeacher.value = Object.fromEntries(entries);
+}
+
+function isCrossCampusBusyAt(teacherId, hour) {
+  return hasCrossCampusBusySlot(crossCampusBusyByTeacher.value[String(teacherId)] || [], hour);
+}
+
+function crossCampusBusyTitle(teacherId, hour) {
+  return isCrossCampusBusyAt(teacherId, hour)
+    ? '老師此時段在其他分校已有課程（僅提示，不會改變排課規則）'
+    : undefined;
+}
+
 /** 週檢視目前選定老師名稱（多選時顯示聯集） */
 const weekViewSelectedLabel = computed(() => {
   if (weekViewTeacherIds.value.length === 0) return '全部老師';
@@ -2281,14 +2342,6 @@ const submitModal = async () => {
   alert('已儲存');
 };
 
-const deleteCourse = async () => {
-  if (!confirm('確定刪除此排課？')) return;
-  await supabase.from('student-classes').delete().eq('id', editingCourseId.value);
-  editingActionDate.value = '';
-  showModal.value = false;
-  await loadCourses();
-};
-
 const deleteException = async () => {
   const exc = editingException.value;
   if (!exc) return;
@@ -2634,6 +2687,11 @@ watch(
 );
 
 watch(() => props.resetWeekToken, () => { focusCalendarToday(); }, { immediate: true });
+watch(
+  [selectedDateStr, dayViewTeacherColumns, () => props.branchId, isWeekOverview, isTeacher],
+  loadCrossCampusBusySlots,
+  { immediate: true },
+);
 watch(() => props.initialTeacherId, (id) => {
   if (id != null && id !== '') {
     filterTeacherId.value = String(id);
@@ -3200,6 +3258,11 @@ onMounted(() => {
   padding: 4px 3px;
   border-radius: 6px;
 }
+.course-block--split {
+  padding: 3px 3px;
+  border-radius: 6px;
+  min-width: 0;
+}
 /* var(--ds-warning) Step 5：compact cb-* 已改 prop 驅動（.cbc-compact），移至 CourseBlockContent.vue */
 .time-col {
   position: sticky;
@@ -3243,6 +3306,31 @@ onMounted(() => {
   position: relative;
   cursor: pointer;
   transition: background 0.15s;
+}
+.slot.slot-cross-campus-busy {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 5px,
+    rgba(220, 38, 38, 0.08) 5px,
+    rgba(220, 38, 38, 0.08) 10px
+  );
+  outline: 1px dashed rgba(220, 38, 38, 0.65);
+  outline-offset: -3px;
+}
+.slot.slot-cross-campus-busy::after {
+  content: '跨校忙碌';
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  z-index: 1;
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: var(--ds-danger, #b91c1c);
+  background: var(--ds-canvas, #fff);
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
 }
 .slot:hover { background: var(--ds-warning-wash); }
 .slot.no-click { cursor: default; }
@@ -3947,6 +4035,20 @@ onMounted(() => {
 .capacity-legend-chip--ok { background: var(--ds-success, var(--ds-success)); }
 .capacity-legend-chip--warn { background: var(--ds-warning, var(--ds-warning)); }
 .capacity-legend-chip--full { background: var(--ds-danger, var(--ds-danger)); }
+.cross-campus-legend-chip {
+  display: inline-block;
+  width: 26px;
+  height: 16px;
+  border: 1px dashed rgba(220, 38, 38, 0.7);
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 4px,
+    rgba(220, 38, 38, 0.08) 4px,
+    rgba(220, 38, 38, 0.08) 8px
+  );
+  border-radius: 4px;
+}
 @media (max-width: 768px) {
   .capacity-badge {
     font-size: 8px;

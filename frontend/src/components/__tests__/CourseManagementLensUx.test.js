@@ -16,5 +16,20 @@ describe('CourseManagement lens UX', () => {
     expect(historySection).toContain("hc.usage_balance_status === 'review_required'");
     expect(historySection).toContain('usageBalanceWarningTitle(hc)');
     expect(historySection).toContain('堂數待對帳');
+    expect(historySection).toContain('@click.stop="openLedgerForCourse(hc)"');
+    expect(historySection).toContain('查看對帳明細');
+  });
+
+  it('provides a read-only next step from active-course reconciliation warnings', () => {
+    const activeSection = source.slice(0, source.indexOf('class="history-section"'));
+    expect(activeSection).toContain('@click.stop="openLedgerForCourse(c)"');
+    expect(activeSection).toContain('tag-usage-review--action');
+    expect(activeSection).toContain('點擊查看對帳明細');
+  });
+
+  it('explains stored versus canonical remaining-session drift', () => {
+    expect(source).toContain('diagnostic.stored_remaining_sessions');
+    expect(source).toContain('diagnostic.expected_remaining_sessions');
+    expect(source).toContain('目前畫面依出席與扣堂證據顯示');
   });
 });

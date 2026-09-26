@@ -102,7 +102,7 @@ last_reviewed: 2026-08-23
 
 ### 3.7 In-app Bug 完整生命週期（分診 → 修 code → 回寫系統）
 
-**權威流程**：本節 + §3.6。修程式仍走 `.cursor/rules/bug-fix-plan.mdc`（B1 根因 → Bug Fix Plan → CI → merge）。
+**權威流程**：本節 + §3.6。分類、auto-fix／Plan 門檻、閉環證據與模型 handoff 依 [`INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1`](plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md)；修程式仍沿用 `.cursor/rules/bug-fix-plan.mdc` 的根因、測試、CI 與 review 要求。
 
 **口訣**：**開 GitHub issue 時回系統一次；merge 上線後一定要再回系統一次**。不能只關 GitHub。
 
@@ -118,6 +118,7 @@ last_reviewed: 2026-08-23
 
 - **回報者驗收**（2026-05-16 起）：`resolved` → `closed` 需回報者呼叫 `POST /api/v1/bugs/{id}/reporter-verify`。AI 標 `resolved` 後要請老師在 App 按「確認已修好／問題仍存在」。
 - **內部備註**（`is_internal_note=1`）：不驅動回報者未讀紅點；分診給工程師用，不要當成給老師的回覆。
+- **產品閉環投影**（2026-09-18 起，無 schema migration）：`GET /bugs/{id}` 回傳 `product_loop`（語意階段／定性／GitHub 連結／production SHA／shipped）。定性與工程連結寫入 status_log 標記 `[product_disposition]`；`resolved` 且具 SHA 時同步 append-only `bug_report_evidence`。合併 PR **不算** shipped；需 production SHA 證據。
 
 #### Phase A — 分診（收到「看 bug 回報／開 issue」；不改 production 程式碼）
 
@@ -126,8 +127,8 @@ last_reviewed: 2026-08-23
 | A1 | 讀 §3.6：附件、reporter 歷史、跨分校、comments／status_logs |
 | A2 | 必要時查業務表驗證假設（`StudentClass`、`ClassSession`…）；高風險帳務先對 `DIRECTOR_PAYMENT_ALERT_RULES.md` |
 | A3 | `gh issue create`：title 含現象；body 必含 **in-app #**、**附件 id**、分校、B1 發現、預期 vs 實際 |
-| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL |
-| A5 | 回報 CEO：in-app # ↔ GitHub # 對照表 |
+| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop` |
+| A5 | 回報 CEO：in-app # ↔ GitHub # 對照表（亦可直接讀 `product_loop`） |
 
 **分診留言範本（公開）**：已收到 #___、已看附件 #___（若有）、已建 GitHub #___ 追蹤；勿叫補截圖若附件已存在。
 
@@ -135,10 +136,10 @@ last_reviewed: 2026-08-23
 
 | 步驟 | 動作 |
 |------|------|
-| B1 | [BUG] 根因確認 → 使用者批准（見 `bug-fix-plan.mdc` §0） |
-| B2 | Bug Fix Plan → 批准 → `fix/<slug>` branch → 測試 RED → 改 code → CI 綠 → PR |
+| B1 | 確認 observed failure、direct cause、recurrence family 與可行的 prevention；分開判斷技術難度與操作授權。只有產品決策或 protected operation 才等 Founder GO。 |
+| B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才進 task worktree → regression RED → 改 code → focused tests／review／CI → PR。 |
 | B3 | PR body：`Closes #<github>`（或 Epic 用 `Refs`，見 PR 模板） |
-| B4 | merge → `deploy.yml` → `GET /api/v1/health`（前端有改再查 `version.json`） |
+| B4 | merge → `deploy.yml` → 核對 deployed SHA、`GET /api/v1/health`／`deployment.json`（前端有改再查 `version.json`）→ 驗證原回報角色、分校與使用者路徑。 |
 
 #### Phase C — 上線後回寫 in-app（與 B4 綁定）
 
@@ -164,9 +165,12 @@ last_reviewed: 2026-08-23
 
 - [ ] §3.6 資料已撈（含附件 id 寫進 GitHub issue）
 - [ ] GitHub issue 已開；in-app 已 `triaged` + 公開回覆含連結
-- [ ]（若修 code）CI 綠、已 merge、health OK
-- [ ]（若修 code）in-app 已 `resolved` + 公開回覆請回報者驗收
-- [ ]（可選）CHANGELOG 已記
+- [ ] 根因深度與同類 recurrence 已檢查；regression test／共用 authority／防再犯文件或明確 debt/defer 與剩餘風險已記錄
+- [ ]（若修 code）head/PR、focused tests、review、required CI 與 merge SHA 可核對
+- [ ]（若宣稱上線）deploy run、deployed SHA、health/runtime identity 與原使用者路徑證據可核對；UI 修復另有可讀性／互動驗收
+- [ ]（若修 code）in-app 已 `resolved` + 公開回覆請回報者驗收；`reporter-verify` 只能由回報者或既有 timeout policy 完成
+- [ ] `SourceRef → issue → Plan/not-required → PR → merge → deploy → runtime → acceptance → writeback` 未知階段明標，沒有從 merge 推定 production 完成
+- [ ] 有 deployable 修復時 CHANGELOG／staff update 決策與適用的防再犯記憶已寫回
 
 #### 雙軌對照（避免只做一半）
 
@@ -213,7 +217,7 @@ last_reviewed: 2026-08-23
 ## 4. 資料表
 
 - 聊天：`chat_threads`、`chat_thread_members`、`chat_messages`
-- Bug：`bug_reports`、`bug_report_comments`、`bug_report_status_logs`、`bug_report_attachments`、`bug_report_user_reads`
+- Bug：`bug_reports`、`bug_report_comments`、`bug_report_status_logs`、`bug_report_attachments`、`bug_report_user_reads`、`bug_report_evidence`（append-only；live resolve 寫入）
 
 ---
 
@@ -226,8 +230,8 @@ last_reviewed: 2026-08-23
 - [ ] 前端變更後走 PR → CI → merge → `deploy.yml` 自動部署
 - [ ] 測試：GitHub Actions 跑 `ChatApiTest` / `BugReportApiTest` / `ProfileCenterApiTest`
 - [ ] AI 處理 bug 前：先撈 `bug_report_attachments` + reporter 全部歷史 + reporter 跨分校紀錄（§3.6）
-- [ ] 分診：§3.7 Phase A（開 issue + in-app `triaged` + 公開回覆）
-- [ ] 修完上線：§3.7 Phase C（`resolved` + 公開回覆 + 等回報者驗收）（§R53）
+- [ ] 分診：§3.7 Phase A（開 issue + in-app `triaged` + 公開回覆；建議寫 disposition／github_issue_url）
+- [ ] 修完上線：§3.7 Phase C（`resolved` + production SHA + 公開回覆 + 等回報者驗收）（§R53）；確認 `product_loop.shipped`
 - [ ] 公開留言：§3.8 白話檢查（無欄位名 / SQL / class 名漏出）
 
-*最後更新：2026-05-24*
+*最後更新：2026-09-18*

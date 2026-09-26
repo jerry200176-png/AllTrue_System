@@ -21,20 +21,37 @@
       </section>
 
       <AtSection title="分校健康看板">
-        <div v-if="!rows.length" class="branch-health__empty" role="status">目前沒有啟用中的分校資料。</div>
-        <div v-else class="branch-health__table-wrap">
-          <table class="branch-health__table">
-            <caption class="sr-only">各分校五個營運健康維度</caption>
-            <thead><tr><th scope="col">分校</th><th v-for="dimension in dimensionOrder" :key="dimension.key" scope="col">{{ dimension.label }}</th><th scope="col">主要訊號</th></tr></thead>
-            <tbody>
-              <tr v-for="row in rows" :key="row.branch_id" :class="{ 'is-selected': selected?.branch_id === row.branch_id }" @click="select(row)">
-                <th scope="row"><button type="button" class="branch-health__branch" @click.stop="select(row)">{{ row.branch_name }}</button></th>
-                <td v-for="dimension in dimensionOrder" :key="dimension.key"><span :class="pillClass(row.dimensions?.[dimension.key])" :title="row.dimensions?.[dimension.key]?.next_step || ''">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</span></td>
-                <td class="branch-health__headline">{{ row.headline }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <AtEmpty v-if="!rows.length" class="branch-health__empty" icon="monitor_heart" title="目前沒有啟用中的分校資料" description="啟用分校並接入營運訊號後，總部才能在這裡查看詳情。" />
+        <template v-else>
+          <div class="branch-health__table-wrap">
+            <table class="branch-health__table">
+              <caption class="sr-only">各分校五個營運健康維度</caption>
+              <thead><tr><th scope="col">分校</th><th v-for="dimension in dimensionOrder" :key="dimension.key" scope="col">{{ dimension.label }}</th><th scope="col">主要訊號</th></tr></thead>
+              <tbody>
+                <tr v-for="row in rows" :key="row.branch_id" :class="{ 'is-selected': selected?.branch_id === row.branch_id }" @click="select(row)">
+                  <th scope="row"><AtButton shape="rect" size="sm" variant="ghost" class="branch-health__branch" @click.stop="select(row)">{{ row.branch_name }}</AtButton></th>
+                  <td v-for="dimension in dimensionOrder" :key="dimension.key"><span :class="pillClass(row.dimensions?.[dimension.key])" :title="row.dimensions?.[dimension.key]?.next_step || ''">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</span></td>
+                  <td class="branch-health__headline">{{ row.headline }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="branch-health__mobile-list" aria-label="分校健康清單">
+            <article v-for="row in rows" :key="row.branch_id" class="branch-health__mobile-card" :class="{ 'is-selected': selected?.branch_id === row.branch_id }">
+              <div class="branch-health__mobile-head">
+                <AtButton shape="rect" variant="ghost" class="branch-health__mobile-branch" @click="select(row)">{{ row.branch_name }}</AtButton>
+                <span class="branch-health__mobile-hint">查看詳情</span>
+              </div>
+              <dl class="branch-health__mobile-dimensions">
+                <div v-for="dimension in dimensionOrder" :key="dimension.key">
+                  <dt>{{ dimension.label }}</dt>
+                  <dd><span :class="pillClass(row.dimensions?.[dimension.key])">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</span></dd>
+                </div>
+              </dl>
+              <p class="branch-health__mobile-headline"><strong>主要訊號</strong>{{ row.headline || '—' }}</p>
+            </article>
+          </div>
+        </template>
       </AtSection>
 
       <AtSection v-if="selected" :title="`${selected.branch_name} 詳情`">
@@ -58,6 +75,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtSection from '../components/design-system/AtSection.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 
@@ -91,12 +109,13 @@ onMounted(load);
 .branch-health__note .material-symbols-outlined { color: var(--ds-info); font-size: 19px; }
 .branch-health__summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
 .branch-health__table-wrap { overflow-x: auto; }
+.branch-health__mobile-list { display: none; }
 .branch-health__table { width: 100%; min-width: 920px; border-collapse: collapse; font-size: 13px; }
 .branch-health__table th, .branch-health__table td { padding: 13px 12px; border-top: 1px solid var(--ds-hairline); text-align: left; vertical-align: middle; }
 .branch-health__table thead th { color: var(--ds-ink-mute); font-size: 11px; font-weight: 800; white-space: nowrap; }
 .branch-health__table tbody tr { cursor: pointer; transition: background .15s ease; }
 .branch-health__table tbody tr:hover, .branch-health__table tbody tr.is-selected { background: var(--ds-surface-subtle); }
-.branch-health__branch { padding: 0; border: 0; background: transparent; color: var(--ds-ink); font: inherit; font-weight: 800; cursor: pointer; }
+.branch-health__branch { font-weight: 800; }
 .branch-health__headline { max-width: 300px; color: var(--ds-ink-secondary); line-height: 1.5; }
 .branch-health__pill { display: inline-flex; align-items: center; min-height: 26px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .branch-health__pill--green { color: var(--ds-success); background: var(--ds-success-wash); }
@@ -115,7 +134,19 @@ onMounted(load);
 .branch-health__period, .branch-health__next, .branch-health__disclaimer { margin: 0; color: var(--ds-ink-mute); font-size: 12px; line-height: 1.6; }
 .branch-health__next { margin-top: 8px; color: var(--ds-ink-secondary); }
 .branch-health__disclaimer { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ds-hairline); }
-.branch-health__empty { padding: 32px 12px; color: var(--ds-ink-mute); text-align: center; }
+.branch-health__empty { margin: 0; }
+.branch-health__mobile-card { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-canvas); }
+.branch-health__mobile-card + .branch-health__mobile-card { margin-top: 12px; }
+.branch-health__mobile-card.is-selected { border-color: var(--ds-primary); box-shadow: 0 0 0 2px var(--ds-primary-wash); }
+.branch-health__mobile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.branch-health__mobile-branch { min-width: 0; font-weight: 800; text-align: left; white-space: normal; }
+.branch-health__mobile-hint { flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 12px; }
+.branch-health__mobile-dimensions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+.branch-health__mobile-dimensions > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 10px; border-radius: var(--ds-radius-md); background: var(--ds-surface-0); }
+.branch-health__mobile-dimensions dt { color: var(--ds-ink-mute); font-size: 12px; }
+.branch-health__mobile-dimensions dd { margin: 0; }
+.branch-health__mobile-headline { display: grid; gap: 4px; margin: 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.branch-health :deep(.at-btn) { min-height: 44px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-@media (max-width: 720px) { .branch-health__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .branch-health__detail-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .branch-health__summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .branch-health__detail-grid { grid-template-columns: 1fr; } .branch-health__table-wrap { display: none; } .branch-health__mobile-list { display: block; } }
 </style>

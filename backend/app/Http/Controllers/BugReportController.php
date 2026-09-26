@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Services\BugReportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class BugReportController extends Controller
 {
@@ -19,8 +21,30 @@ class BugReportController extends Controller
             'client_info' => 'nullable|string|max:2000',
             'branch_id' => 'required|integer',
             'attachments' => "nullable|array|max:{$maxAtt}",
-            'attachments.*' => 'file|mimes:jpeg,jpg,png,gif,webp|max:5120',
         ]);
+
+        // Do not use Laravel's wildcard file validation here. Older Laravel
+        // releases are vulnerable to crafted wildcard-like array keys in
+        // `files.*` rules (CVE-2025-27515). Validate each uploaded object
+        // under a fixed attribute name so the user-controlled key is never
+        // interpreted by the framework's wildcard parser.
+        // Validate the merged input/file bag: file() alone silently drops
+        // non-file values, including mixed text/file arrays that must fail.
+        $uploaded = $request->all()['attachments'] ?? [];
+        if (is_array($uploaded)) {
+            foreach ($uploaded as $key => $file) {
+                $fileValidator = Validator::make(
+                    ['attachment' => $file],
+                    ['attachment' => 'file|mimes:jpeg,jpg,png,gif,webp|max:5120']
+                );
+
+                if ($fileValidator->fails()) {
+                    throw ValidationException::withMessages([
+                        "attachments.{$key}" => $fileValidator->errors()->first('attachment'),
+                    ]);
+                }
+            }
+        }
 
         $userId = $this->resolveUserId($request);
         if (!$userId) {
@@ -46,10 +70,6 @@ class BugReportController extends Controller
             'client_info' => $request->input('client_info'),
         ]);
 
-        $uploaded = $request->file('attachments', []);
-        if ($uploaded instanceof \Illuminate\Http\UploadedFile) {
-            $uploaded = [$uploaded];
-        }
         $attachmentErrors = 0;
         if (is_array($uploaded)) {
             $attachmentErrors = BugReportService::attachUploadedFiles($bug, $uploaded);
@@ -209,6 +229,10 @@ class BugReportController extends Controller
             'production_revision' => 'nullable|string|max:40',
             'deploy_run_id' => 'nullable|string|max:64',
             'evidence_exception_reason' => 'nullable|string|max:500',
+            'disposition' => 'nullable|string|in:bug,suggestion,ux_friction,duplicate,already_solved,not_planned,needs_info',
+            'github_issue_url' => 'nullable|string|max:500',
+            'github_pr_url' => 'nullable|string|max:500',
+            'engineering_required' => 'nullable|boolean',
         ]);
 
         $userId = $this->resolveUserId($request);
@@ -231,6 +255,12 @@ class BugReportController extends Controller
                 'deploy_run_id' => $request->input('deploy_run_id'),
                 'evidence_exception_reason' => $request->input('evidence_exception_reason'),
                 'allow_exception' => $isSuperAdmin,
+                'disposition' => $request->input('disposition'),
+                'github_issue_url' => $request->input('github_issue_url'),
+                'github_pr_url' => $request->input('github_pr_url'),
+                'engineering_required' => $request->has('engineering_required')
+                    ? $request->boolean('engineering_required')
+                    : null,
             ]
         );
         if (!$result['ok']) {

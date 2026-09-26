@@ -12,7 +12,7 @@
 ## Script
 
 - Path: `scripts/smoke-api.sh` — deploy.yml 內嵌 smoke（公開 + 可選 teacher 登入）
-- Path: `scripts/post-merge-smoke.sh` — **§B5 post-merge 完整驗收**（公開 + Pi bundle 指紋 + auth API；無密碼時從 Pi DB 讀最新有效 token，唯讀）
+- Path: `scripts/post-merge-smoke.sh` — **由 deploy.yml 呼叫的完整驗收**（公開 + Pi bundle 指紋 + auth API；無密碼時從 Pi DB 讀最新有效 token，唯讀）
 
 ## Checks Performed
 
@@ -68,14 +68,11 @@ SMOKE_BRANCH_ID="15" \
 bash scripts/smoke-api.sh
 ```
 
-Post-merge 完整驗收（§B5，merge + deploy 後 AI/CEO 執行）：
-
-```bash
-cd <safe-task-worktree> && git pull origin main  # never /home/jerry/alltrue
-bash scripts/post-merge-smoke.sh
-```
-
-可選：`.cursor/.local/smoke.env`（gitignore）放置 `SMOKE_TEACHER_LOGIN` 等；未設定時腳本從 Pi 讀最新有效 session token（唯讀，不寫入 DB）。
+Post-merge 完整驗收由 `deploy.yml` 在唯一 production executor 內執行。
+正常流程不由 Agent/CEO 另開第二次 production smoke 或 dispatch；operator
+讀取 workflow artifact、exact SHA、health、smoke evidence。可選的
+`.cursor/.local/smoke.env`（gitignore）仍可供本地 dry run 使用；未設定時腳本
+從 Pi 讀最新有效 session token（唯讀，不寫入 DB）。
 
 ## Failure Handling
 

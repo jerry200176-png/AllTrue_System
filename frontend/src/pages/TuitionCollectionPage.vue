@@ -2,11 +2,11 @@
   <div class="tc-page">
     <AtPageHeader
       title="帳務中心"
-      description="處理未繳待收、待對帳、續課提醒與已結清課程。"
+      description="處理應收、已回報待查帳、確認入帳與續課提醒。"
       icon="account_balance"
       data-guide="tuition-header"
     >
-      <template #meta><span>先確認對象，再完成回報或入帳</span></template>
+      <template #meta><span>先確認對象，再回報，最後確認入帳</span></template>
       <template #actions>
         <AtButton
           variant="ghost"
@@ -71,32 +71,15 @@
     >
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
-      <div class="tc-summary">
-        <div class="tc-card tc-card--skeleton" v-for="i in 5" :key="i">
-          <span class="skel skel-num"></span>
-          <span class="skel skel-label"></span>
-        </div>
-      </div>
-      <div class="tc-table-wrap">
-        <table class="tc-table">
-          <thead>
-            <tr>
-              <th v-for="i in 8" :key="i"><span class="skel skel-th"></span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="i in 5" :key="i">
-              <td v-for="j in 8" :key="j"><span class="skel skel-cell" :style="{ width: j === 1 ? '120px' : j <= 4 ? '72px' : '80px' }"></span></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <AtSkeleton :rows="8" height="28px" />
     </div>
 
-    <div v-else-if="error" class="tc-error">
-      <span class="material-symbols-outlined" style="font-size:20px">error</span>
+    <AtInlineAlert v-else-if="error" tone="danger" title="帳務待處理資料載入失敗">
       {{ error }}
-    </div>
+      <template #action>
+        <AtButton variant="secondary" size="sm" shape="rect" :loading="loading" @click="loadAlerts">重新載入</AtButton>
+      </template>
+    </AtInlineAlert>
 
     <template v-else>
       <!-- The row-level queue is the primary surface; totals remain available on demand. -->
@@ -113,7 +96,7 @@
           </div>
           <div class="tc-card tc-card--danger">
             <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
-            <span class="tc-card-label">未繳費</span>
+            <span class="tc-card-label">應收／未完成</span>
           </div>
           <div class="tc-card tc-card--overdue">
             <span class="tc-card-num">{{ overdueRows.length }}</span>
@@ -121,7 +104,7 @@
           </div>
           <div class="tc-card tc-card--warn">
             <span class="tc-card-num">{{ statusCounts.pending_report + statusCounts.pending_reconciliation }}</span>
-            <span class="tc-card-label">待對帳</span>
+            <span class="tc-card-label">已回報／待查帳</span>
           </div>
           <div class="tc-card tc-card--outstanding">
             <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
@@ -147,9 +130,11 @@
       </div>
 
       <div v-if="!rows.length" class="tc-empty">
-        <span class="material-symbols-outlined" style="font-size:52px;color:var(--success)">check_circle</span>
-        <p>本分校目前無待催繳課程</p>
-        <button class="tc-cta-btn" @click="$emit('navigate', 'tuition-report')">查看當月學收</button>
+        <AtEmpty icon="check_circle" title="本分校目前無待催繳課程" description="待催繳佇列已清空，仍可從學收報表查看當月明細。">
+          <template #action>
+            <AtButton variant="primary" shape="rect" @click="$emit('navigate', 'tuition-report')">查看當月學收</AtButton>
+          </template>
+        </AtEmpty>
       </div>
 
       <div v-else>
@@ -246,16 +231,39 @@
 
         <!-- Empty state for current tab -->
         <div v-if="!filteredRows.length" class="tc-empty" style="padding:32px 0">
-          <span v-if="searchQuery" class="material-symbols-outlined" style="font-size:40px;color:var(--text-light)">person_search</span>
-          <span v-else class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">inbox</span>
-          <p v-if="searchQuery">找不到包含「{{ searchQuery }}」的學生</p>
-          <p v-else>此分類目前無資料</p>
-          <button v-if="searchQuery" class="tc-cta-btn tc-cta-btn--ghost" @click="searchQuery = ''">清除搜尋</button>
-          <button v-else-if="activeTab !== 'all'" class="tc-cta-btn tc-cta-btn--ghost" @click="activeTab = 'all'">查看全部</button>
+          <AtEmpty
+            :icon="searchQuery ? 'person_search' : 'inbox'"
+            :title="searchQuery ? `找不到包含「${searchQuery}」的學生` : '此分類目前無資料'"
+          >
+            <template #action>
+              <AtButton v-if="searchQuery" variant="secondary" shape="rect" @click="searchQuery = ''">清除搜尋</AtButton>
+              <AtButton v-else-if="activeTab !== 'all'" variant="secondary" shape="rect" @click="activeTab = 'all'">查看全部</AtButton>
+            </template>
+          </AtEmpty>
         </div>
 
         <!-- Table -->
         <div v-else class="tc-table-wrap">
+          <div class="tc-mobile-list-controls" aria-label="待處理行動版清單控制">
+            <label>
+              排序
+              <select :value="sortKey" aria-label="待處理排序" @change="chooseMobileSort($event.target.value)">
+                <option value="">不排序</option>
+                <option v-for="column in SORTABLE_COLS" :key="column.key" :value="column.key">{{ column.label }}</option>
+              </select>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                :checked="allVisibleSelected"
+                :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
+                :disabled="!selectableRows.length"
+                @change="toggleSelectAll($event.target.checked)"
+                aria-label="行動版全選待處理"
+              />
+              全選
+            </label>
+          </div>
           <table class="tc-table">
             <thead>
               <tr>
@@ -269,27 +277,31 @@
                     :aria-label="batchMode === 'confirm' ? '全選待對帳' : batchMode === 'mixed' ? '全選待處理' : '全選未繳'"
                   />
                 </th>
-                <th class="tc-th-sort" @click="toggleSort('student_name')">
+                <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('student_name')" @keydown.enter.prevent="toggleSort('student_name')" @keydown.space.prevent="toggleSort('student_name')">
                   學生
                   <span v-if="sortKey === 'student_name'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
-                <th class="tc-th-sort" @click="toggleSort('subject')">
+                <th class="tc-col-sessions tc-th-sort" role="button" tabindex="0" @click="toggleSort('remaining_sessions')" @keydown.enter.prevent="toggleSort('remaining_sessions')" @keydown.space.prevent="toggleSort('remaining_sessions')">
+                  剩餘堂數
+                  <span v-if="sortKey === 'remaining_sessions'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('subject')" @keydown.enter.prevent="toggleSort('subject')" @keydown.space.prevent="toggleSort('subject')">
                   科目
                   <span v-if="sortKey === 'subject'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-mode">模式</th>
                 <th>狀態</th>
-                <th class="tc-col-currency tc-th-sort" @click="toggleSort('charge')">
+                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('payable_amount')" @keydown.enter.prevent="toggleSort('payable_amount')" @keydown.space.prevent="toggleSort('payable_amount')">
                   應繳
-                  <span v-if="sortKey === 'charge'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                  <span v-if="sortKey === 'payable_amount'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-currency">已繳</th>
-                <th class="tc-col-currency tc-th-sort" @click="toggleSort('outstanding')">
+                <th class="tc-col-currency tc-th-sort" role="button" tabindex="0" @click="toggleSort('outstanding')" @keydown.enter.prevent="toggleSort('outstanding')" @keydown.space.prevent="toggleSort('outstanding')">
                   未結清
                   <span v-if="sortKey === 'outstanding'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-date">最近付款</th>
-                <th class="tc-col-date tc-th-sort" @click="toggleSort('due_date')">
+                <th class="tc-col-date tc-th-sort" role="button" tabindex="0" @click="toggleSort('due_date')" @keydown.enter.prevent="toggleSort('due_date')" @keydown.space.prevent="toggleSort('due_date')">
                   到期／逾期
                   <span v-if="sortKey === 'due_date'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
@@ -320,6 +332,18 @@
                     @click.stop
                   />
                 </td>
+                <td class="tc-col-sessions">
+                  <template v-if="r.schedule_mode === 'count' && r.remaining_sessions != null">
+                    <button
+                      v-if="r.id"
+                      class="tc-sessions-link"
+                      @click="openSessionDetail(r)"
+                      :title="'點入查看上課明細'"
+                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
+                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
+                  </template>
+                  <span v-else class="text-light">—</span>
+                </td>
                 <td>
                   <div>{{ r.subject }}</div>
                   <span v-if="r.id" class="tc-course-ref">
@@ -337,7 +361,10 @@
                   </span>
                 </td>
                 <td class="tc-col-currency">
-                  <div>{{ r.charge != null ? formatCurrency(r.charge) : '—' }}</div>
+                  <div v-if="r.payable_status === 'invoiced'">{{ formatCurrency(r.payable_amount) }}</div>
+                  <div v-else class="tc-payable-pending">待開單</div>
+                  <span v-if="r.payable_status !== 'invoiced' && r.estimated_amount != null" class="tc-payable-estimate">估算 {{ formatCurrency(r.estimated_amount) }}</span>
+                  <span v-if="r.billing_period" class="tc-billing-period">期間 {{ r.billing_period }}</span>
                   <span
                     v-if="r.invoice_amount_discrepancy"
                     class="tc-amount-warning"
@@ -347,8 +374,8 @@
                   </span>
                 </td>
                 <td class="tc-col-currency">{{ r.paid_amount != null ? formatCurrency(r.paid_amount) : '—' }}</td>
-                <td class="tc-col-currency" :class="{ 'tc-outstanding-warn': r.outstanding > 0 }">
-                  {{ r.outstanding != null ? formatCurrency(r.outstanding) : '—' }}
+                <td class="tc-col-currency" :class="{ 'tc-outstanding-warn': r.payable_outstanding > 0 }">
+                  {{ r.payable_status === 'invoiced' ? formatCurrency(r.payable_outstanding) : '—' }}
                 </td>
                 <td class="tc-col-date">
                   <span v-if="r.last_paid_at" class="paid-date" :title="'最後一筆付款日，非本期是否結清的依據'">{{ r.last_paid_at }}</span>
@@ -363,15 +390,6 @@
                     <span v-else-if="r.days_until_settlement != null && r.days_until_settlement <= 2" class="soon-tag">
                       {{ r.days_until_settlement }}天後
                     </span>
-                  </template>
-                  <template v-else-if="r.schedule_mode === 'count'">
-                    <button
-                      v-if="r.id"
-                      class="tc-sessions-link"
-                      @click="openSessionDetail(r)"
-                      :title="'點入查看上課明細'"
-                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
-                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
                   </template>
                   <span v-else class="text-light">—</span>
                 </td>
@@ -521,18 +539,15 @@
         </div>
       </div>
 
-      <div v-if="accountingError" class="tc-error">
-        <span class="material-symbols-outlined" style="font-size:20px">error</span>
+      <AtInlineAlert v-if="accountingError" tone="danger" title="收據紀錄載入失敗">
         {{ accountingError }}
-      </div>
+        <template #action>
+          <AtButton variant="secondary" size="sm" shape="rect" :loading="accountingLoading" @click="loadAccountingPayments">重新載入</AtButton>
+        </template>
+      </AtInlineAlert>
 
-      <div v-if="accountingLoading && !accountingRows.length" class="tc-skeleton-area">
-        <div class="tc-summary">
-          <div class="tc-card tc-card--skeleton" v-for="i in 5" :key="i">
-            <span class="skel skel-num"></span>
-            <span class="skel skel-label"></span>
-          </div>
-        </div>
+      <div v-else-if="accountingLoading && !accountingRows.length" class="tc-skeleton-area">
+        <AtSkeleton :rows="6" height="28px" />
       </div>
 
       <template v-else>
@@ -571,9 +586,11 @@
         </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
-          <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">receipt_long</span>
-          <p>此區間尚無已核帳收款</p>
-          <button class="tc-cta-btn tc-cta-btn--ghost" @click="activeAccountingTab = 'receivables'">前往待處理</button>
+          <AtEmpty icon="receipt_long" title="此區間尚無已核帳收款" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
+            <template #action>
+              <AtButton variant="secondary" shape="rect" @click="activeAccountingTab = 'receivables'">前往待處理</AtButton>
+            </template>
+          </AtEmpty>
         </div>
 
         <div v-else class="tc-table-wrap">
@@ -585,24 +602,38 @@
               匯出已選取
             </button>
           </div>
-          <table class="tc-table acct-table">
+          <div class="tc-mobile-list-controls" aria-label="收據行動版清單控制">
+            <label>
+              排序
+              <select :value="accountingSortKey" aria-label="收據排序" @change="chooseMobileAccountingSort($event.target.value)">
+                <option value="payment_date">繳費日期／收據編號</option>
+                <option value="student_name">學生</option>
+                <option value="total_amount">合計</option>
+              </select>
+            </label>
+            <label>
+              <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="行動版全選收據" />
+              全選
+            </label>
+          </div>
+          <table class="tc-table acct-table acct-table--payments">
             <thead>
               <tr>
                 <th class="acct-col-check">
                   <input type="checkbox" :checked="allAccountingSelected" @change="toggleSelectAllAccounting" aria-label="全選" />
                 </th>
-                <th class="acct-th-sortable" @click="toggleAccountingSort('payment_date')">
+                <th class="acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('payment_date')" @keydown.enter.prevent="toggleAccountingSort('payment_date')" @keydown.space.prevent="toggleAccountingSort('payment_date')">
                   繳費日期／收據編號
                   <span v-if="accountingSortKey === 'payment_date'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
-                <th class="acct-th-sortable" @click="toggleAccountingSort('student_name')">
+                <th class="acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('student_name')" @keydown.enter.prevent="toggleAccountingSort('student_name')" @keydown.space.prevent="toggleAccountingSort('student_name')">
                   學生
                   <span v-if="accountingSortKey === 'student_name'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th>科目／第一堂課</th>
                 <th class="tc-col-currency">現金</th>
                 <th class="tc-col-currency">匯款</th>
-                <th class="tc-col-currency acct-th-sortable" @click="toggleAccountingSort('total_amount')">
+                <th class="tc-col-currency acct-th-sortable" role="button" tabindex="0" @click="toggleAccountingSort('total_amount')" @keydown.enter.prevent="toggleAccountingSort('total_amount')" @keydown.space.prevent="toggleAccountingSort('total_amount')">
                   合計
                   <span v-if="accountingSortKey === 'total_amount'" class="acct-sort-arrow">{{ accountingSortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
@@ -699,10 +730,12 @@
         </div>
       </div>
 
-      <div v-if="settledError" class="tc-error">
-        <span class="material-symbols-outlined" style="font-size:20px">error</span>
+      <AtInlineAlert v-if="settledError" tone="danger" title="已結清課程載入失敗">
         {{ settledError }}
-      </div>
+        <template #action>
+          <AtButton variant="secondary" size="sm" shape="rect" :loading="settledLoading" @click="loadSettledCourses">重新載入</AtButton>
+        </template>
+      </AtInlineAlert>
 
       <template v-else>
         <div class="tc-summary">
@@ -714,16 +747,19 @@
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
         <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
+          舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
+          請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+        </p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
-          <div class="tc-card tc-card--skeleton"><span class="skel skel-num"></span><span class="skel skel-label"></span></div>
+          <AtSkeleton :rows="4" height="28px" />
         </div>
         <div v-else-if="!settledRows.length" class="tc-empty">
-          <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">task_alt</span>
-          <p>目前查無已結清課程</p>
+          <AtEmpty icon="task_alt" title="目前查無已結清課程" description="符合目前篩選條件的課程會顯示在這裡。" />
         </div>
         <div v-else class="tc-table-wrap">
-          <table class="tc-table acct-table">
+          <table class="tc-table acct-table acct-table--settled">
             <thead>
               <tr>
                 <th>課程</th><th>學生</th><th>科目</th><th>模式</th><th class="tc-col-currency">已記入</th><th>最近付款</th><th>標籤</th><th>操作</th>
@@ -794,7 +830,7 @@
               </div>
               <div class="tc-batch-preview-row__amount">
                 <span class="status-tag" :class="statusClass(row)">{{ statusLabel(row) }}</span>
-                <strong>{{ formatCurrency(row.outstanding ?? row.charge ?? 0) }}</strong>
+                <strong>{{ formatCurrency(row.payable_outstanding ?? row.payable_amount ?? 0) }}</strong>
               </div>
             </div>
           </div>
@@ -912,26 +948,25 @@
     </Transition>
 
     <!-- Session Detail Modal -->
-    <Transition name="fade">
-      <div v-if="sessionDetailOpen" class="tc-overlay" @click.self="sessionDetailOpen = false">
-        <div class="tc-dialog tc-dialog--wide">
-          <div class="tc-dialog-header">
-            <div>
-              <h3 class="tc-dialog-title" style="margin-bottom:2px">
-                <span class="material-symbols-outlined" style="font-size:20px;color:var(--primary)">history_edu</span>
-                上課紀錄查核
-              </h3>
-              <div v-if="sessionDetailRow" style="font-size:13px;color:var(--text-light)">
-                {{ sessionDetailRow.student_name }} — {{ sessionDetailRow.subject }}
-              </div>
-            </div>
-            <button class="tc-dialog-close" @click="sessionDetailOpen = false">
-              <span class="material-symbols-outlined">close</span>
-            </button>
-          </div>
+    <AtDialog
+      :open="sessionDetailOpen"
+      panel-class="tc-session-dialog"
+      aria-label="上課紀錄查核"
+      close-label="關閉上課紀錄查核"
+      @close="sessionDetailOpen = false"
+    >
+      <template #header>
+        <h2 class="tc-session-dialog-title">
+          <span class="material-symbols-outlined" aria-hidden="true">history_edu</span>
+          上課紀錄查核
+        </h2>
+        <div v-if="sessionDetailRow" class="tc-session-dialog-subtitle">
+          {{ sessionDetailRow.student_name }} — {{ sessionDetailRow.subject }}
+        </div>
+      </template>
 
           <!-- Summary bar -->
-          <div v-if="sessionDetailRow" class="tc-session-summary">
+      <div v-if="sessionDetailRow" class="tc-session-summary">
             <span class="tc-ss-item tc-ss-attended">
               <strong>{{ sessionDetailAttended }}</strong> 堂已上
             </span>
@@ -939,21 +974,16 @@
             <span class="tc-ss-item">購買 <strong>{{ sessionDetailRow.sessions_purchased }}</strong> 堂</span>
             <span class="tc-ss-sep">·</span>
             <span class="tc-ss-item">剩餘 <strong>{{ sessionDetailRow.remaining_sessions }}</strong> 堂</span>
-          </div>
+      </div>
 
           <!-- Loading -->
-          <div v-if="sessionDetailLoading" class="tc-session-loading">
-            <span class="material-symbols-outlined spin">progress_activity</span>
-            載入中…
-          </div>
+      <AtSkeleton v-if="sessionDetailLoading" :rows="4" height="24px" />
 
           <!-- Empty -->
-          <div v-else-if="!sessionDetailList.length" class="tc-session-empty">
-            尚無上課紀錄
-          </div>
+      <AtEmpty v-else-if="!sessionDetailList.length" icon="event_busy" title="尚無上課紀錄" />
 
           <!-- Table -->
-          <div v-else class="tc-session-table-wrap">
+      <div v-else class="tc-session-table-wrap">
             <table class="tc-session-table">
               <thead>
                 <tr>
@@ -972,14 +1002,12 @@
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          <div class="tc-dialog-btns" style="margin-top:12px">
-            <button class="tc-btn tc-btn--ghost" @click="sessionDetailOpen = false">關閉</button>
-          </div>
-        </div>
       </div>
-    </Transition>
+
+      <template #actions>
+        <AtButton class="tc-session-dialog-action" variant="secondary" shape="rect" @click="sessionDetailOpen = false">關閉</AtButton>
+      </template>
+    </AtDialog>
 
     <!-- Toast -->
     <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
@@ -995,7 +1023,11 @@ import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
   formatTuitionSettleSummary,
@@ -1068,6 +1100,10 @@ function toggleAccountingSort(key) {
     accountingSortKey.value = key;
     accountingSortDir.value = key === 'total_amount' ? 'desc' : 'asc';
   }
+}
+
+function chooseMobileAccountingSort(key) {
+  if (accountingSortKey.value !== key) toggleAccountingSort(key);
 }
 
 const sortedAccountingRows = computed(() => {
@@ -1154,10 +1190,10 @@ const activeTab = ref('action');
 const TAB_DEFS = [
   { key: 'action', label: '待處理' },
   { key: 'all', label: '全部' },
-  { key: 'unpaid', label: '未繳' },
-  { key: 'overdue', label: '逾期' },
-  { key: 'pending_report', label: '待對帳' },
-  { key: 'pending_reconciliation', label: '結案待對帳' },
+  { key: 'unpaid', label: '應收／尚未回報' },
+  { key: 'overdue', label: '逾期應收' },
+  { key: 'pending_report', label: '已回報／待查帳' },
+  { key: 'pending_reconciliation', label: '結案／待查帳' },
   { key: 'renewal', label: '續課/將到期' },
 ];
 
@@ -1171,7 +1207,7 @@ const billingFlowCurrentId = computed(() => {
 const billingFlowSteps = [
   { id: 'queue', icon: 'playlist_add_check', title: '查看待處理', description: '先依學生與狀態找到課程。', action: '查看待處理' },
   { id: 'report', icon: 'mark_email_read', title: '登記繳費回報', description: '家長已付款時先登記回報。', action: '查看未繳' },
-  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看待對帳' },
+  { id: 'confirm', icon: 'verified', title: '確認入帳與收據', description: '核對資料後才建立正式入帳。', action: '查看已回報／待查帳' },
 ];
 
 const billingWorkflowStarts = new Map();
@@ -1215,6 +1251,7 @@ function isRowSelectable(r) {
   const ps = r?.payment_status;
   if (activeTab.value === 'pending_report') return ps === 'pending_report' && !!r.latest_payment_report_id;
   if (activeTab.value === 'pending_reconciliation') return ps === 'pending_reconciliation';
+  if (r?.payable_status !== 'invoiced') return false;
   if (activeTab.value === 'action') return ps === 'unpaid' || ps === 'partial' || ps === 'pending_report' || ps === 'pending_reconciliation';
   return ps === 'unpaid' || ps === 'partial' || ps === 'pending_reconciliation';
 }
@@ -1234,7 +1271,7 @@ const batchPreviewRows = computed(() => {
   }
   return selectedRows.value.filter((r) => r.payment_status === 'unpaid' || r.payment_status === 'partial' || r.payment_status === 'pending_reconciliation');
 });
-const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.outstanding ?? row.charge ?? 0), 0));
+const batchPreviewTotal = computed(() => batchPreviewRows.value.reduce((total, row) => total + Number(row.payable_outstanding ?? row.payable_amount ?? 0), 0));
 const allVisibleSelected = computed(() => selectableRows.value.length > 0 && selectableRows.value.every((r) => selectedIdSet.value.has(r.id)));
 const someVisibleSelected = computed(() => selectableRows.value.some((r) => selectedIdSet.value.has(r.id)));
 
@@ -1332,7 +1369,7 @@ async function submitBatchReport() {
         note: batchForm.value.note || undefined,
         entries: rows.map((r) => ({
           student_class_id: r.id,
-          amount: Number(r.outstanding ?? r.charge ?? 0),
+          amount: Number(r.payable_outstanding ?? r.payable_amount ?? 0),
           account_last5: batchForm.value.payment_method === 'transfer' ? (batchLast5ById.value[r.id] || undefined) : undefined,
         })),
       }),
@@ -1401,11 +1438,11 @@ async function submitBatchConfirm() {
 
 // ═══ Payment Status Helpers ═══
 const STATUS_CONFIG = {
-  unpaid:           { label: '未繳費',        cls: 'st-unpaid' },
-  partial:          { label: '部分付款',      cls: 'st-partial' },
-  pending_report:   { label: '待對帳',        cls: 'st-pending' },
-  pending_reconciliation: { label: '結案待對帳', cls: 'st-pending' },
-  paid:             { label: '已繳費',        cls: 'st-paid' },
+  unpaid:           { label: '應收／尚未回報', cls: 'st-unpaid' },
+  partial:          { label: '部分已入帳',      cls: 'st-partial' },
+  pending_report:   { label: '已回報／待查帳', cls: 'st-pending' },
+  pending_reconciliation: { label: '結案／待查帳', cls: 'st-pending' },
+  paid:             { label: '已確認入帳',        cls: 'st-paid' },
   renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
 };
@@ -1413,7 +1450,7 @@ const STATUS_CONFIG = {
 function statusLabel(r) {
   const ps = r.payment_status;
   if (ps && STATUS_CONFIG[ps]) return STATUS_CONFIG[ps].label;
-  return r.paid ? '已繳費' : '未繳費';
+  return r.paid ? '已確認入帳' : '應收／尚未回報';
 }
 
 function statusClass(r) {
@@ -1561,13 +1598,13 @@ const OUTSTANDING_STATUSES = ['unpaid', 'partial', 'pending_report', 'pending_re
 const totalOutstanding = computed(() => {
   return rows.value
     .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
-    .reduce((sum, r) => sum + (r.outstanding || 0), 0);
+    .reduce((sum, r) => sum + (r.payable_outstanding || 0), 0);
 });
 
 // ═══ Summary Computed ═══
 const overdueRows = computed(() => rows.value.filter(isOverdue));
-const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + (r.outstanding || 0), 0));
-const totalCharge = computed(() => rows.value.reduce((s, r) => s + (r.charge || 0), 0));
+const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + (r.payable_outstanding || 0), 0));
+const totalCharge = computed(() => rows.value.reduce((s, r) => s + (r.payable_amount || 0), 0));
 const totalPaid = computed(() => rows.value.reduce((s, r) => s + (r.paid_amount || 0), 0));
 const collectionRate = computed(() => {
   if (totalCharge.value === 0) return null;
@@ -1586,9 +1623,10 @@ const sortDir = ref('');
 const SORTABLE_COLS = [
   { key: 'student_name', label: '學生' },
   { key: 'subject', label: '科目' },
-  { key: 'charge', label: '應繳' },
+  { key: 'payable_amount', label: '應繳' },
   { key: 'outstanding', label: '未結清' },
   { key: 'due_date', label: '到期／逾期' },
+  { key: 'remaining_sessions', label: '剩餘堂數' },
 ];
 
 function toggleSort(key) {
@@ -1601,6 +1639,15 @@ function toggleSort(key) {
     sortKey.value = '';
     sortDir.value = '';
   }
+}
+
+function chooseMobileSort(key) {
+  if (!key) {
+    sortKey.value = '';
+    sortDir.value = '';
+    return;
+  }
+  if (sortKey.value !== key) toggleSort(key);
 }
 
 // ═══ Filtered + Sorted Rows (3-layer pipeline) ═══
@@ -1629,9 +1676,18 @@ const filteredRows = computed(() => {
   const dir = sortDir.value === 'desc' ? -1 : 1;
   list.sort((a, b) => {
     let va = a[k], vb = b[k];
-    if (va == null) va = k === 'charge' || k === 'outstanding' ? -Infinity : '';
-    if (vb == null) vb = k === 'charge' || k === 'outstanding' ? -Infinity : '';
+    const numericKeys = ['charge', 'outstanding', 'remaining_sessions'];
+    const payableNumericKeys = ['payable_amount', 'payable_outstanding'];
+    const isNumericKey = numericKeys.includes(k) || payableNumericKeys.includes(k);
+    if (va == null) va = isNumericKey ? -Infinity : '';
+    if (vb == null) vb = isNumericKey ? -Infinity : '';
     if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    // remaining_sessions may arrive as numeric strings from JSON
+    if (k === 'remaining_sessions') {
+      const na = Number(va);
+      const nb = Number(vb);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return (na - nb) * dir;
+    }
     return String(va).localeCompare(String(vb), 'zh-TW') * dir;
   });
   return list;
@@ -1649,9 +1705,9 @@ function exportCSV() {
     r.subject || '',
     r.schedule_mode === 'date' ? '月結' : '堂數',
     statusLabel(r),
-    r.charge ?? '',
+    r.payable_status === 'invoiced' ? r.payable_amount ?? '' : '',
     r.paid_amount ?? '',
-    r.outstanding ?? '',
+    r.payable_status === 'invoiced' ? r.payable_outstanding ?? '' : '',
     r.last_paid_at || '',
     r.due_date || '',
     (r.days_until_settlement != null && r.days_until_settlement < 0) ? Math.abs(r.days_until_settlement) : '',
@@ -2240,6 +2296,9 @@ watch(() => props.initialTab, (tab) => {
   } else if (tab === 'unpaid') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'unpaid';
+  } else if (tab === 'pending_reconciliation') {
+    activeAccountingTab.value = 'receivables';
+    activeTab.value = 'pending_reconciliation';
   } else if (tab === 'renewal') {
     activeAccountingTab.value = 'receivables';
     activeTab.value = 'renewal';
@@ -2305,7 +2364,20 @@ loadAlerts();
   border-radius: 14px;
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
+.tc-page button,
+.tc-page input:not([type="checkbox"]),
+.tc-page select,
+.tc-page textarea {
+  min-height: 44px;
+}
+.tc-page input[type="checkbox"] { min-height: 20px; min-width: 20px; }
+.tc-page :deep(.at-btn) { min-height: 44px; }
+.tc-page :deep(.at-inline-alert) { flex-wrap: wrap; }
+.tc-page :deep(.at-inline-alert__action) { margin-left: auto; }
 .tc-process-disclosure,
 .tc-summary-disclosure {
   margin-bottom: 16px;
@@ -2473,6 +2545,11 @@ loadAlerts();
 }
 .acct-table .tc-btn {
   white-space: nowrap;
+}
+
+/* Keep the dense accounting surface inside its flex parent at tablet widths. */
+@media (max-width: 1100px) {
+  .acct-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* ─── Summary cards ─── */
@@ -2744,6 +2821,7 @@ loadAlerts();
 .tc-table-wrap {
   overflow-x: auto;
   margin: 0 -4px;
+  min-width: 0;
 }
 .tc-table {
   width: 100%;
@@ -2781,6 +2859,34 @@ loadAlerts();
 }
 .tc-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+/* Keep high-frequency accounting actions reachable when a dense table needs
+ * horizontal scrolling at tablet/desktop widths. Mobile widths use the card
+ * layout below, so the sticky treatment is intentionally limited to tables. */
+@media (min-width: 769px) {
+  .tc-table th:last-child,
+  .tc-table td:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: var(--card-bg);
+    box-shadow: -8px 0 12px -12px rgba(15, 23, 42, 0.75);
+  }
+  .tc-table thead th:last-child {
+    z-index: 2;
+    background: var(--bg);
+  }
+  .tc-table tbody tr:hover td:last-child { background: var(--ds-canvas-soft); }
+  .tc-table tbody tr.tc-row--focused td:last-child,
+  .tc-table tbody tr.acct-row-selected td:last-child { background: var(--ds-primary-wash); }
+  /* In-App 339: retain every action in its existing order without letting the
+   * sticky receivables cell cover most of the readable data area. */
+  .tc-table:not(.acct-table) .tc-actions {
+    flex-wrap: wrap;
+    width: max-content;
+    max-width: min(18rem, 32vw);
+  }
 }
 
 .tc-th-sort {
@@ -2879,6 +2985,7 @@ loadAlerts();
 .tc-course-ref { display: block; margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
 .tc-col-currency { width: 90px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
 .tc-col-date { white-space: nowrap; }
+.tc-col-sessions { white-space: nowrap; min-width: 7rem; }
 .tc-col-actions { width: 1%; white-space: nowrap; }
 
 .row-paid { opacity: 0.55; }
@@ -2893,6 +3000,9 @@ loadAlerts();
   font-weight: 600;
   white-space: nowrap;
 }
+.tc-payable-pending { color: var(--ds-warning); font-weight: 600; }
+.tc-payable-estimate,
+.tc-billing-period { display: block; margin-top: 3px; color: var(--ds-ink-mute); font-size: 11px; white-space: nowrap; }
 
 /* ─── Tags ─── */
 .mode-tag {
@@ -3235,7 +3345,6 @@ loadAlerts();
 .tc-sessions-link:hover { color: var(--ds-ink-mute); }
 
 /* ─── Session Detail Dialog ─── */
-.tc-dialog--wide { max-width: 620px; width: 95vw; max-height: 80vh; display: flex; flex-direction: column; }
 .tc-dialog-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .tc-dialog-close { background: none; border: none; cursor: pointer; color: var(--text-light); display: flex; align-items: center; padding: 2px; border-radius: 6px; }
 .tc-dialog-close:hover { color: var(--text); background: var(--ds-canvas-soft); }
@@ -3256,6 +3365,23 @@ loadAlerts();
   font-size: 13px;
   margin-bottom: 12px;
   flex-wrap: wrap;
+}
+:global(.at-dialog__panel.tc-session-dialog) { max-width: 620px; animation: none; }
+.tc-session-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ds-ink);
+  font-size: 18px;
+  line-height: 1.25;
+}
+.tc-session-dialog-title .material-symbols-outlined { color: var(--primary); font-size: 20px; }
+.tc-session-dialog-subtitle { margin-top: 4px; color: var(--text-light); font-size: 13px; }
+:global(.at-dialog__panel.tc-session-dialog .at-dialog__close) { min-width: 44px; min-height: 44px; }
+:global(.tc-session-dialog-action) { min-height: 44px; }
+@media (max-width: 640px) {
+  :global(.at-dialog__panel.tc-session-dialog) { max-height: calc(92dvh - 8px); }
 }
 .tc-ss-attended strong { color: var(--ds-success); }
 .tc-ss-sep { color: var(--text-light); }
@@ -3328,6 +3454,8 @@ loadAlerts();
 @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 @keyframes toastOut { to { opacity: 0; transform: translateX(-50%) translateY(10px); } }
 
+.tc-mobile-list-controls { display: none; }
+
 /* fade transition for dialog */
 .fade-enter-active { transition: opacity 0.2s ease; }
 .fade-leave-active { transition: opacity 0.15s ease; }
@@ -3342,6 +3470,164 @@ loadAlerts();
   .tc-card--outstanding .tc-card-num { font-size: 15px; }
   .tc-search-wrap { width: 100%; }
   .acct-filter-grid { grid-template-columns: 1fr 1fr; }
+  .tc-mobile-list-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 10px;
+  }
+  .tc-mobile-list-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    color: var(--text-light);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .tc-mobile-list-controls select { min-height: 44px; }
+  .tc-table-wrap:has(.tc-table:not(.acct-table)) {
+    overflow: visible;
+    margin: 0;
+  }
+  .tc-table:not(.acct-table),
+  .tc-table:not(.acct-table) tbody {
+    display: block;
+  }
+  .tc-table:not(.acct-table) thead { display: none; }
+  .tc-table:not(.acct-table) tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 12px;
+    align-items: start;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-bg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  }
+  .tc-table:not(.acct-table) tbody tr:last-child { margin-bottom: 0; }
+  .tc-table:not(.acct-table) td {
+    min-width: 0;
+    padding: 4px 0;
+    border-bottom: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tc-table:not(.acct-table) td:nth-child(1) { grid-column: 2; grid-row: 1; width: 44px; }
+  .tc-table:not(.acct-table) td:nth-child(2) { grid-column: 1; grid-row: 1; font-size: 15px; }
+  .tc-table:not(.acct-table) td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; color: var(--text-light); }
+  .tc-table:not(.acct-table) td:nth-child(3)::before { content: '剩餘堂數'; color: var(--text-light); font-size: 11px; margin-right: 4px; }
+  .tc-table:not(.acct-table) td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; color: var(--text-light); }
+  .tc-table:not(.acct-table) td:nth-child(5) { grid-column: 1; grid-row: 4; }
+  .tc-table:not(.acct-table) td:nth-child(6) { grid-column: 2; grid-row: 4; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(7) { grid-column: 1; grid-row: 5; }
+  .tc-table:not(.acct-table) td:nth-child(8) { grid-column: 2; grid-row: 5; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(9) { grid-column: 1; grid-row: 6; }
+  .tc-table:not(.acct-table) td:nth-child(10) { grid-column: 2; grid-row: 6; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(11) { grid-column: 1 / -1; grid-row: 7; }
+  .tc-table:not(.acct-table) td:nth-child(12) { grid-column: 1 / -1; grid-row: 8; }
+  .tc-table:not(.acct-table) td:nth-child(5)::before,
+  .tc-table:not(.acct-table) td:nth-child(7)::before,
+  .tc-table:not(.acct-table) td:nth-child(8)::before,
+  .tc-table:not(.acct-table) td:nth-child(9)::before,
+  .tc-table:not(.acct-table) td:nth-child(10)::before,
+  .tc-table:not(.acct-table) td:nth-child(11)::before {
+    color: var(--text-light);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .tc-table:not(.acct-table) td:nth-child(5)::before { content: '模式'; }
+  .tc-table:not(.acct-table) td:nth-child(7)::before { content: '應繳'; }
+  .tc-table:not(.acct-table) td:nth-child(8)::before { content: '已繳'; }
+  .tc-table:not(.acct-table) td:nth-child(9)::before { content: '未結清'; }
+  .tc-table:not(.acct-table) td:nth-child(10)::before { content: '最近付款'; }
+  .tc-table:not(.acct-table) td:nth-child(11)::before { content: '到期／逾期'; }
+  .tc-table:not(.acct-table) .tc-actions { justify-content: flex-start; }
+  .tc-table:not(.acct-table) .tc-col-actions { padding-top: 10px; }
+
+  .tc-table.acct-table,
+  .tc-table.acct-table tbody {
+    display: block;
+  }
+  .tc-table.acct-table thead { display: none; }
+  .tc-table.acct-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0 12px;
+    align-items: start;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-bg);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  }
+  .tc-table.acct-table tbody tr:last-child { margin-bottom: 0; }
+  .tc-table.acct-table td {
+    min-width: 0;
+    padding: 4px 0;
+    border-bottom: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tc-table.acct-table .tc-actions { justify-content: flex-start; }
+  .tc-table.acct-table .acct-col-check { width: 44px; }
+  .tc-table.acct-table .tc-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .tc-table.acct-table .tc-actions .tc-btn {
+    flex: 1 1 9rem;
+    min-width: 0;
+    justify-content: center;
+  }
+  .acct-bulkbar { flex-wrap: wrap; }
+  .acct-bulkbar .tc-btn { flex: 1 1 10rem; justify-content: center; }
+
+  .tc-table.acct-table--payments td:nth-child(1) { grid-column: 2; grid-row: 1; }
+  .tc-table.acct-table--payments td:nth-child(2) { grid-column: 1; grid-row: 1; }
+  .tc-table.acct-table--payments td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; font-size: 15px; }
+  .tc-table.acct-table--payments td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
+  .tc-table.acct-table--payments td:nth-child(5) { grid-column: 1; grid-row: 4; }
+  .tc-table.acct-table--payments td:nth-child(6) { grid-column: 2; grid-row: 4; text-align: right; }
+  .tc-table.acct-table--payments td:nth-child(7) { grid-column: 1 / -1; grid-row: 5; }
+  .tc-table.acct-table--payments td:nth-child(8) { grid-column: 1 / -1; grid-row: 6; }
+  .tc-table.acct-table--payments td:nth-child(9) { grid-column: 1 / -1; grid-row: 7; padding-top: 10px; }
+  .tc-table.acct-table--payments td:nth-child(5)::before,
+  .tc-table.acct-table--payments td:nth-child(6)::before,
+  .tc-table.acct-table--payments td:nth-child(7)::before {
+    color: var(--text-light);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .tc-table.acct-table--payments td:nth-child(5)::before { content: '現金'; }
+  .tc-table.acct-table--payments td:nth-child(6)::before { content: '匯款'; }
+  .tc-table.acct-table--payments td:nth-child(7)::before { content: '合計'; }
+
+  .tc-table.acct-table--settled td:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .tc-table.acct-table--settled td:nth-child(2) { grid-column: 2; grid-row: 1; text-align: right; font-size: 15px; }
+  .tc-table.acct-table--settled td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+  .tc-table.acct-table--settled td:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .tc-table.acct-table--settled td:nth-child(5) { grid-column: 2; grid-row: 3; text-align: right; }
+  .tc-table.acct-table--settled td:nth-child(6) { grid-column: 1 / -1; grid-row: 4; }
+  .tc-table.acct-table--settled td:nth-child(7) { grid-column: 1 / -1; grid-row: 5; }
+  .tc-table.acct-table--settled td:nth-child(8) { grid-column: 1 / -1; grid-row: 6; padding-top: 10px; }
+  .tc-table.acct-table--settled td:nth-child(4)::before,
+  .tc-table.acct-table--settled td:nth-child(5)::before,
+  .tc-table.acct-table--settled td:nth-child(6)::before {
+    color: var(--text-light);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .tc-table.acct-table--settled td:nth-child(4)::before { content: '模式'; }
+  .tc-table.acct-table--settled td:nth-child(5)::before { content: '已記入'; }
+  .tc-table.acct-table--settled td:nth-child(6)::before { content: '最近付款'; }
+}
+@media (max-width: 900px) and (min-width: 769px) {
+  .acct-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .acct-tabs { white-space: nowrap; }
@@ -3353,4 +3639,10 @@ loadAlerts();
   .tc-toolbar { flex-direction: column; align-items: stretch; }
   .tc-toolbar-right { margin-left: 0; justify-content: flex-end; }
 }
+
+/* Keep legacy billing actions on the same touch-target floor as shared buttons. */
+.tc-page .tc-btn { min-height: 44px; }
+.tc-page .acct-filter-grid input,
+.tc-page .acct-filter-grid select,
+.tc-page .acct-filters input { min-height: 44px; }
 </style>

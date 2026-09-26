@@ -16,17 +16,60 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 const panelRef = ref(null);
 let scrollLocked = false;
+let returnFocusEl = null;
+
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function focusPanel() {
+  nextTick(() => panelRef.value?.focus());
+}
+
+function onTab(event) {
+  const panel = panelRef.value;
+  if (!panel) return;
+  const focusable = [...panel.querySelectorAll(focusableSelector)];
+  if (focusable.length === 0) {
+    event.preventDefault();
+    panel.focus();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function restoreFocus() {
+  const target = returnFocusEl;
+  returnFocusEl = null;
+  if (target && target.isConnected && typeof target.focus === 'function') target.focus();
+}
 
 function syncScrollLock(isOpen) {
   if (isOpen && !scrollLocked) {
+    returnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     lockScroll();
     scrollLocked = true;
-    nextTick(() => panelRef.value?.focus());
+    focusPanel();
     return;
   }
   if (!isOpen && scrollLocked) {
     unlockScroll();
     scrollLocked = false;
+    restoreFocus();
   }
 }
 
@@ -55,6 +98,7 @@ onBeforeUnmount(() => syncScrollLock(false));
         :aria-label="title ? undefined : (ariaLabel || '對話框')"
         tabindex="-1"
         @keydown.esc.prevent="close"
+        @keydown.tab="onTab"
       >
         <header v-if="title || $slots.header" class="at-dialog__header">
           <div class="at-dialog__heading">

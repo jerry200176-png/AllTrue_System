@@ -35,8 +35,11 @@
       <span class="policy-chip">本月分校總科目數 {{ formatSubjects(branchSubjectTotal) }} 科｜制度 {{ policyVersion }}｜{{ lockLabel }}</span>
     </div>
 
-    <div v-if="loading" class="eligibility-card loading">載入中…</div>
-    <div v-else-if="error" class="eligibility-card error">{{ error }} <button class="btn-outline small" @click="loadData">重試</button></div>
+    <AtSkeleton v-if="loading" :rows="5" />
+    <AtInlineAlert v-else-if="error" tone="danger" title="無法載入正職薪資要件">
+      <p>{{ error }}</p>
+      <template #action><AtButton type="button" shape="rect" size="md" variant="ghost" @click="loadData">重試</AtButton></template>
+    </AtInlineAlert>
     <template v-else>
       <div class="summary-grid">
         <div class="summary-card"><span>老師總數</span><strong>{{ filteredTeachers.length }}</strong></div>
@@ -45,6 +48,7 @@
         <div class="summary-card danger"><span>有扣除案件</span><strong>{{ deductionCount }}</strong></div>
       </div>
 
+      <template v-if="filteredTeachers.length">
       <div class="eligibility-card table-wrap desktop-table">
         <table>
           <thead>
@@ -119,7 +123,6 @@
                 </details>
               </td>
             </tr>
-            <tr v-if="filteredTeachers.length === 0"><td colspan="12" class="empty">查詢期間沒有符合條件的正職老師資料。</td></tr>
           </tbody>
         </table>
       </div>
@@ -163,8 +166,14 @@
           </details>
           <p class="mobile-reason">{{ reasonText(teacher) }}</p>
         </article>
-        <div v-if="filteredTeachers.length === 0" class="eligibility-card empty">查詢期間沒有符合條件的正職老師資料。</div>
       </div>
+      </template>
+      <AtEmpty
+        v-else
+        icon="person_off"
+        title="查詢期間沒有符合條件的正職老師"
+        description="請調整結算月份、查詢層級或老師搜尋條件後再試。"
+      />
       <TeacherEligibilityInputPanel
         :branch-id="props.branchId"
         :teachers="filteredTeachers"
@@ -181,7 +190,10 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { fetchTeacherEligibility, saveTeacherMultiplierProfile, approveTeacherSalaryProfile, lockFulltimePayroll, reopenFulltimePayroll, exportFulltimePayrollCsv } from '../lib/teacherEligibilityApi.js';
 import TeacherEligibilityInputPanel from '../components/TeacherEligibilityInputPanel.vue';
 import {
@@ -386,6 +398,14 @@ onMounted(loadData);
 
 <style scoped>
 .eligibility-page { padding: 24px; max-width: 1800px; margin: 0 auto; }
+.eligibility-page :deep(.at-btn),
+.eligibility-page button,
+.eligibility-page select,
+.eligibility-page input,
+.eligibility-page :deep(.eligibility-input-panel button),
+.eligibility-page :deep(.eligibility-input-panel select),
+.eligibility-page :deep(.eligibility-input-panel input),
+.eligibility-page :deep(.eligibility-input-panel textarea) { min-height: 44px; }
 .page-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; }
 .page-header-left { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .page-icon { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:var(--ds-primary-wash); color:var(--ds-primary); }

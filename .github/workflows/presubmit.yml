@@ -39,6 +39,22 @@ jobs:
       - name: "[CHECK 0] Agent preflight (CI mode)"
         run: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
 
+      - name: "[CHECK 0b] Machine risk/tier declaration"
+        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          gh api "/repos/${REPO}/pulls/${PR_NUMBER}" > "$tmpdir/pr.json"
+          gh api "/repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --paginate --slurp > "$tmpdir/files.json"
+          python3 scripts/governance/check_pr_declaration.py \
+            --pr-json "$tmpdir/pr.json" \
+            --files-json "$tmpdir/files.json"
+
       - name: "[CHECK 1] Branch naming convention"
         env:
           # workflow_dispatch has no head_ref (pull_request-only); fall back

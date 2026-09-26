@@ -3,7 +3,8 @@
   "_ruleOrder": "first match wins; order specific -> general. The abstract base Controller.php is excluded by FIT-10.",
   "rules": [
     { "context": "billing",        "match": "PopOperationController" },
-    { "context": "scheduling",     "match": "Schedule|Reschedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession|DuplicateSession|Reconcile|Commitment|ContractSlot|HistoryCadence|PrepaidHorizon|HorizonPhase0|PreviewSessionHorizon|EnsureSessionHorizon|ShadowSessionHorizon|Coverage|AllocateSession|ReleaseSession|PoolCoverage|NonstandardDuration|ManualSessionBooking|SharedPackagePlanning" },
+    { "context": "scheduling",     "match": "Schedule|Reschedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession|DuplicateSession|Reconcile|Commitment|ContractSlot|HistoryCadence|PrepaidHorizon|HorizonPhase0|PreviewSessionHorizon|EnsureSessionHorizon|ShadowSessionHorizon|Coverage|AllocateSession|ReleaseSession|PoolCoverage|NonstandardDuration|ManualSessionBooking|SharedPackagePlanning|TrueFit" },
+    { "context": "billing",        "match": "TransactionDiscountCalculator" },
     { "context": "enrollment",     "match": "AdmissionInquiry|Enrollment|StudentClass|CoursePackage|PackageDeduction|FrontendSubjectIdResolver|CourseContract|CourseContinuity|CourseEditability" },
     { "context": "enrollment",     "match": "ContractAmendment" },
     { "context": "billing",        "match": "Finance|Payment|Invoice|Tuition|Accounting|Bank|Dunning|SessionDeduction|SessionCharge|SessionEntitlement|SessionContractRecovery|PaymentReport|Billing|DeductionBasis" },
@@ -18,7 +19,8 @@
     { "context": "support",        "match": "BugReport|GitHubIssue" },
     { "context": "curriculum",     "match": "Subject|Room|Grade|BaseData" },
     { "context": "analytics",      "match": "BusinessDigest|Analytics|Metric|Insight|Digest|Anomaly|OperationsTrust|DirectorOperations|BranchHealth" },
-    { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student" },
+    { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student|StaffCapability" },
+    { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student|StaffCapability|SchoolDirectory" },
     { "context": "platform",       "match": "Export|Import|ResetData|System|Webhook" }
   ],
   "forbiddenEdges": [

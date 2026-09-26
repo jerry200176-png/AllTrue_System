@@ -4,8 +4,8 @@
  * Persists teacher draft form data in localStorage so that partially-filled
  * evaluation forms survive page navigation and can be resumed later.
  *
- * Key format: lr_draft_v1_{teacherId}_{classSessionId}
- *   - For new records without classSessionId: lr_draft_v1_{teacherId}_new_{studentClassId}_{sessionDate}
+ * Key format: lr_draft_v1_{actorId}_branch_{branchId}_{classSessionId}.
+ * Old unscoped entries are not guessed or migrated; the existing store is reused.
  *
  * Each draft stores only the editable content fields (no identity / PII beyond
  * what is needed to display the draft list). The backend LearningRecord table
@@ -27,15 +27,10 @@ const CONTENT_FIELDS = [
   'Comment',
 ];
 
-function buildKey(teacherId, classSessionId, fallback = null) {
-  if (classSessionId && Number(classSessionId) > 0) {
-    return `${KEY_PREFIX}${teacherId}_${classSessionId}`;
-  }
-  if (fallback) {
-    const { studentClassId, sessionDate } = fallback;
-    return `${KEY_PREFIX}${teacherId}_new_${studentClassId || 0}_${sessionDate || ''}`;
-  }
-  return null;
+const positiveId = value => Number.isInteger(Number(value)) && Number(value) > 0;
+function buildKey(teacherId, classSessionId, branchId) {
+  if (![teacherId, branchId, classSessionId].every(positiveId)) return null;
+  return `${KEY_PREFIX}${Number(teacherId)}_branch_${Number(branchId)}_${Number(classSessionId)}`;
 }
 
 function isExpired(draft) {
@@ -52,8 +47,12 @@ function allDraftKeys() {
   return keys;
 }
 
-function teacherDraftKeys(teacherId) {
-  const prefix = `${KEY_PREFIX}${teacherId}_`;
+function teacherDraftKeys(teacherId, branchId = null) {
+  if (!positiveId(teacherId)) return [];
+  if (branchId != null && !positiveId(branchId)) return [];
+  const prefix = branchId == null
+    ? `${KEY_PREFIX}${Number(teacherId)}_`
+    : `${KEY_PREFIX}${Number(teacherId)}_branch_${Number(branchId)}_`;
   return allDraftKeys().filter(k => k.startsWith(prefix));
 }
 
@@ -70,6 +69,7 @@ function parseDraft(raw) {
 
 function hasContent(draft) {
   if (!draft) return false;
+  if (draft._clearedContent === true) return true;
   return CONTENT_FIELDS.some(f => {
     const v = draft[f];
     if (v === undefined || v === null || v === '') return false;
@@ -86,17 +86,19 @@ function hasContent(draft) {
  * @param {number|string} opts.classSessionId
  * @param {object} opts.form - reactive form object
  * @param {object} [opts.meta] - display metadata (studentName, subject, sessionDate, startTime, endTime)
- * @param {object} [opts.fallback] - { studentClassId, sessionDate } for new-record mode
+ * @param {number|string} opts.branchId - active campus; required for scoped recovery
  * @returns {{ saved: boolean, key: string|null, error: string|null }}
  */
-export function saveDraft({ teacherId, classSessionId, form, meta = {}, fallback = null }) {
-  const key = buildKey(teacherId, classSessionId, fallback);
+export function saveDraft({ teacherId, branchId = null, classSessionId, form, meta = {} }) {
+  const key = buildKey(teacherId, classSessionId, branchId);
   if (!key) return { saved: false, key: null, error: 'no_key' };
 
   const data = { _version: DRAFT_VERSION, _savedAt: Date.now() };
   for (const f of CONTENT_FIELDS) {
     data[f] = form[f] ?? '';
   }
+  // Clearing an existing record is also an edit that must survive a failed save.
+  if (positiveId(form.id) && !hasContent(data)) data._clearedContent = true;
   Object.assign(data, {
     _studentName: meta.studentName || '',
     _subject: meta.subject || '',
@@ -124,8 +126,8 @@ export function saveDraft({ teacherId, classSessionId, form, meta = {}, fallback
  * Load a draft from localStorage.
  * @returns {{ draft: object|null, key: string|null, expired: boolean }}
  */
-export function loadDraft({ teacherId, classSessionId, fallback = null }) {
-  const key = buildKey(teacherId, classSessionId, fallback);
+export function loadDraft({ teacherId, branchId = null, classSessionId }) {
+  const key = buildKey(teacherId, classSessionId, branchId);
   if (!key) return { draft: null, key: null, expired: false };
 
   try {
@@ -157,8 +159,8 @@ export function loadDraft({ teacherId, classSessionId, fallback = null }) {
 export function applyDraftToForm(draft, form) {
   if (!draft) return;
   for (const f of CONTENT_FIELDS) {
-    if (draft[f] !== undefined && draft[f] !== null && draft[f] !== '') {
-      form[f] = draft[f];
+    if (Object.prototype.hasOwnProperty.call(draft, f) && draft[f] !== undefined) {
+      form[f] = draft[f] ?? '';
     }
   }
 }
@@ -166,8 +168,8 @@ export function applyDraftToForm(draft, form) {
 /**
  * Clear a specific draft.
  */
-export function clearDraft({ teacherId, classSessionId, fallback = null }) {
-  const key = buildKey(teacherId, classSessionId, fallback);
+export function clearDraft({ teacherId, branchId = null, classSessionId }) {
+  const key = buildKey(teacherId, classSessionId, branchId);
   if (!key) return;
   try { localStorage.removeItem(key); } catch {}
 }
@@ -175,8 +177,8 @@ export function clearDraft({ teacherId, classSessionId, fallback = null }) {
 /**
  * Clear all drafts for a specific teacher (call on logout).
  */
-export function clearAllDraftsByTeacher(teacherId) {
-  const keys = teacherDraftKeys(teacherId);
+export function clearAllDraftsByTeacher(teacherId, branchId = null) {
+  const keys = teacherDraftKeys(teacherId, branchId);
   for (const k of keys) {
     try { localStorage.removeItem(k); } catch {}
   }
@@ -186,8 +188,9 @@ export function clearAllDraftsByTeacher(teacherId) {
  * List all non-expired drafts for a teacher, sorted by most recently saved first.
  * @returns {Array<{ key, studentName, subject, sessionDate, startTime, endTime, savedAt, classSessionId }>}
  */
-export function listDrafts(teacherId) {
-  const keys = teacherDraftKeys(teacherId);
+export function listDrafts(teacherId, branchId = null) {
+  if (!positiveId(branchId)) return [];
+  const keys = teacherDraftKeys(teacherId, branchId);
   const results = [];
 
   for (const k of keys) {
@@ -219,19 +222,20 @@ export function listDrafts(teacherId) {
 /**
  * Remove a draft by its storage key.
  */
-export function removeDraftByKey(key) {
+export function removeDraftByKey(key, { teacherId, branchId } = {}) {
+  if (!positiveId(branchId) || !teacherDraftKeys(teacherId, branchId).includes(key)) return;
   try { localStorage.removeItem(key); } catch {}
 }
 
 /**
  * Enforce max drafts limit for a teacher by removing oldest.
  */
-export function pruneOldDrafts(teacherId) {
-  const drafts = listDrafts(teacherId);
+export function pruneOldDrafts(teacherId, branchId = null) {
+  const drafts = listDrafts(teacherId, branchId);
   if (drafts.length <= MAX_DRAFTS_PER_TEACHER) return;
   const toRemove = drafts.slice(MAX_DRAFTS_PER_TEACHER);
   for (const d of toRemove) {
-    removeDraftByKey(d.key);
+    removeDraftByKey(d.key, { teacherId, branchId });
   }
 }
 

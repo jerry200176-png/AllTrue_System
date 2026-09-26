@@ -142,7 +142,7 @@ export function buildSessionPlanningStatus({
     code: 'course_partially_scheduled',
     severity: 'info',
     title: '尚未排滿',
-    message: `已排 ${effective}／購買 ${purchased} 堂，尚有 ${unscheduled} 堂未安排。`,
+    message: `已排 ${effective}／購買 ${purchased} 堂，尚有 ${unscheduled} 堂未安排；下方日期清單只列已實際排定的堂次。`,
     action: 'quick_add',
     counts: { ...counts, unscheduled },
   };

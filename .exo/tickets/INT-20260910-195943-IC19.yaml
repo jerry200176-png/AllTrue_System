@@ -1,0 +1,47 @@
+id: INT-20260910-195943-IC19
+title: Parent Portal attendance clarity
+intent: Parent Portal attendance clarity
+kind: intent
+brain_dump: Bounded presentation and accessibility improvement for the authenticated
+  Parent Portal attendance timeline. Preserve attendance data, statuses, permissions,
+  navigation, and APIs.
+boundary: Do not change backend contracts, attendance semantics, auth, billing, scheduling,
+  production data, or unrelated Parent Portal sections.
+success_condition: Attendance section has clear semantics, keyboard-visible controls,
+  readable responsive dense/long content behavior, and browser evidence at 390/412/768/1280/1440
+  with no overflow or console/API failures.
+risk: low
+priority: 2
+labels:
+- ux
+scope:
+  allow:
+  - frontend/src/pages/ParentPortal.vue
+  - frontend/e2e/parent-portal-production.spec.js
+  - frontend/e2e/ui-foundation-role-matrix.spec.js
+  - docs/CHANGELOG.md
+  - docs/PARENT_UPDATES.yml
+  - docs/RELEASE_NOTES_EXEMPTIONS.yml
+  - frontend/src/lib/parentUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-10T19:59:43+08:00'
+children: []
+resource_profile: default

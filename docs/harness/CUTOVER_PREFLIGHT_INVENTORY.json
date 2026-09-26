@@ -1,0 +1,133 @@
+{
+  "recorded_at": "2026-09-17T08:48:45Z",
+  "live_path": "/home/jerry/workspace/state/alltrue/harness.sqlite",
+  "size_bytes": 86016,
+  "inode": 4949637,
+  "mtime": "2026-09-17T03:18:17.225856+00:00",
+  "sha256_live_at_inventory": "f1601b6c753c807a89d795bf64beb536f4ab8cfede504c9f27481085317001a2",
+  "snapshot_path": "/home/jerry/workspace/state/alltrue/harness-backups/harness.sqlite.pre-cutover-20260917T084845Z",
+  "snapshot_sha256": "2d6ff3be701e21be96fcd4a2fc57b18f2ca475678bb0fe46d8ab26b8b7b1140a",
+  "integrity_check": "ok",
+  "schema_version": "1",
+  "tables": [
+    "escalations",
+    "leases",
+    "meta",
+    "programs",
+    "sqlite_sequence",
+    "tasks",
+    "transitions"
+  ],
+  "counts": {
+    "programs": 4,
+    "tasks": 6,
+    "leases": 8,
+    "escalations": 0,
+    "transitions": 4,
+    "meta": 10
+  },
+  "tasks": [
+    {
+      "task_id": "INAPP-DOCS-RECONCILE",
+      "program_id": "alltrue-inapp",
+      "status": "READY",
+      "updated_at": "2026-09-16T11:10:18Z"
+    },
+    {
+      "task_id": "STAGING-DOCS-ALIGN",
+      "program_id": "platform-staging",
+      "status": "BLOCKED",
+      "updated_at": "2026-09-16T11:10:18Z"
+    },
+    {
+      "task_id": "RFID-0",
+      "program_id": "rfid-2809",
+      "status": "DONE",
+      "updated_at": "2026-09-16T15:16:46Z"
+    },
+    {
+      "task_id": "RFID-1",
+      "program_id": "rfid-2809",
+      "status": "PR_OPEN",
+      "updated_at": "2026-09-16T17:29:08Z"
+    },
+    {
+      "task_id": "TF-S1-A",
+      "program_id": "truefit",
+      "status": "DONE",
+      "updated_at": "2026-09-16T15:12:55Z"
+    },
+    {
+      "task_id": "TF-S0-STAGING-ACCEPT",
+      "program_id": "truefit",
+      "status": "BLOCKED",
+      "updated_at": "2026-09-16T11:10:18Z"
+    }
+  ],
+  "leases": [
+    {
+      "lease_id": "lease_truefit_vert",
+      "resource_key": "ownership:truefit/**",
+      "holder_task_id": "truefit-idle",
+      "holder_worker": "worker-C-idle",
+      "expires_at": "2026-09-17T15:15:25Z",
+      "fencing_token": 1789614925
+    },
+    {
+      "lease_id": "lease_inapp_queue",
+      "resource_key": "ownership:alltrue-inapp/**",
+      "holder_task_id": "INAPP-297-UI",
+      "holder_worker": "worker-B",
+      "expires_at": "2026-09-17T15:15:25Z",
+      "fencing_token": 1789614925
+    },
+    {
+      "lease_id": "lease_coord",
+      "resource_key": "ownership:state/alltrue/coordination",
+      "holder_task_id": "COORD",
+      "holder_worker": "supervisor",
+      "expires_at": "2026-09-17T15:15:25Z",
+      "fencing_token": 1789614925
+    },
+    {
+      "lease_id": "lease_h4b",
+      "resource_key": "ownership:scripts/harness/**",
+      "holder_task_id": "H4b-WORKER-RUN",
+      "holder_worker": "worker-A",
+      "expires_at": "2026-09-17T15:15:25Z",
+      "fencing_token": 1789614925
+    },
+    {
+      "lease_id": "lease_learning_2715",
+      "resource_key": "ownership:frontend/learning-records",
+      "holder_task_id": "FIX-2715",
+      "holder_worker": "worker-C",
+      "expires_at": "2026-09-17T15:15:25Z",
+      "fencing_token": 1789614925
+    },
+    {
+      "lease_id": null,
+      "resource_key": "lease_h4b_harness",
+      "holder_task_id": "A-task",
+      "holder_worker": "A",
+      "expires_at": "2026-09-17T11:18:17Z",
+      "fencing_token": 9001
+    },
+    {
+      "lease_id": null,
+      "resource_key": "lease_inapp_297_ui",
+      "holder_task_id": "B-task",
+      "holder_worker": "B",
+      "expires_at": "2026-09-17T11:18:17Z",
+      "fencing_token": 9002
+    },
+    {
+      "lease_id": null,
+      "resource_key": "lease_learning_2715",
+      "holder_task_id": "C-task",
+      "holder_worker": "C",
+      "expires_at": "2026-09-17T11:18:17Z",
+      "fencing_token": 9003
+    }
+  ]
+}

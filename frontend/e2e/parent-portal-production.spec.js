@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { notesForRole, parentReleaseNoteTeaser } from '../src/lib/releaseNotes.js';
 
 /**
  * Authenticated production smoke for the isolated TEST Parent Portal fixture.
@@ -39,12 +40,19 @@ async function assertParentSurface(page, viewport, testInfo) {
   await expect(page.getByText('回家要做什麼', { exact: true })).toBeVisible();
   await expect(page.getByText('下一步／目前待辦', { exact: true })).toBeVisible();
   const parentUpdate = page.locator('.pp-parent-update__btn');
+  const expectedParentUpdate = notesForRole('parent')[0];
+  expect(expectedParentUpdate, 'current parent update source').toBeTruthy();
   await expect(parentUpdate).toBeVisible();
+  await expect(parentUpdate.locator('.pp-parent-update__meta')).toContainText(expectedParentUpdate.version);
+  await expect(parentUpdate.locator('.pp-parent-update__t')).toHaveText(parentReleaseNoteTeaser(expectedParentUpdate));
   await parentUpdate.click();
-  await expect(page.getByText('學習評量重點更清楚', { exact: true })).toBeVisible();
-  await expect(page.getByText('已核准的學習評量仍可從「學習」分頁逐堂展開查看；尚未完成老師複核時，頁面會清楚說明目前沒有可查看的評量內容。', { exact: true })).toBeVisible();
+  const releaseDetail = page.locator('.pp-release-detail');
+  await expect(releaseDetail).toBeVisible();
+  await expect(releaseDetail.locator('.pp-release-detail-head strong')).toHaveText(expectedParentUpdate.title);
+  await expect(releaseDetail.locator('.pp-release-detail-summary')).toHaveText(expectedParentUpdate.summary);
+  await expect(releaseDetail.locator('.pp-release-detail-body')).toHaveText(expectedParentUpdate.details);
   await page.getByRole('button', { name: '關閉', exact: true }).click();
-  await expect(page.getByText('學習評量重點更清楚', { exact: true })).toBeHidden();
+  await expect(releaseDetail).toBeHidden();
 
   const learningTab = page.getByRole('tab', { name: /學習/ });
   const scheduleTab = page.getByRole('tab', { name: /課表/ });
@@ -52,11 +60,12 @@ async function assertParentSurface(page, viewport, testInfo) {
   await expect(learningTab).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText('目前沒有需要處理的事項。', { exact: false })).toBeVisible();
 
-  await page.getByRole('button', { name: /本週學習/ }).click();
+  const progressHub = page.locator('[data-guide="parent-progress-hub"]');
+  await progressHub.getByRole('button', { name: /本週學習/ }).click();
   await expect(learningTab).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', { name: /下次課程/ }).click();
+  await progressHub.getByRole('button', { name: /下次課程/ }).click();
   await expect(scheduleTab).toHaveAttribute('aria-selected', 'true');
-  await page.getByRole('button', { name: /繳費狀態/ }).click();
+  await progressHub.getByRole('button', { name: /繳費狀態/ }).click();
   await expect(billingTab).toHaveAttribute('aria-selected', 'true');
 
   await scheduleTab.click();

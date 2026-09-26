@@ -141,6 +141,7 @@ class SchedulerEvidenceTest extends TestCase
             'learning-records-void-stale-leave' => "learning-records:void-stale-leave — total voided: 0.\n",
             'bugs-verify-reproductions' => "{\"regressed\":0,\"conditions\":[{\"key\":\"fixed-condition\",\"count\":0,\"state\":\"FIXED-OK\"}]}\n",
             'bindings-cleanup-orphans' => "orphan_bindings_deleted=0 anomaly_students=0\n",
+            'grade-promotion-scheduled-preview' => "{\"status\":\"skipped\",\"reason\":\"empty_campus_allowlist\"}\n",
             'ops-business-digest' => <<<'OUTPUT'
                 === AllTrue Business Digest — 2037-01-02 04:10:00 ===
                 +----------------------------+-------+-----------------------------------------+

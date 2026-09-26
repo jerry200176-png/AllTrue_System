@@ -28,8 +28,12 @@ async function installTeacherMocks(page, mode = 'normal') {
       return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '今日課表暫時無法載入' }) });
     }
     if (path.includes('/class-sessions')) {
-      const rows = mode === 'empty' ? [] : [
-        { id: 101, class_session_id: 101, student_id: 401, student_class_id: 201, branch_id: 1, session_date: localToday, start_time: '09:00', end_time: '10:00', student_name: '測試學生甲', subject_name: '數學', status: 'scheduled', learning_record_status: 'changes_requested', learning_record_id: 301 },
+      const rows = mode === 'empty' ? [] : mode === 'time-order' ? [
+        { id: 110, class_session_id: 110, student_id: 410, student_class_id: 210, branch_id: 1, session_date: localToday, start_time: '10:00', end_time: '12:00', student_name: '上午課程學生', subject_name: '數學', status: 'scheduled', learning_record_status: 'approved', learning_record_id: 310 },
+        { id: 113, class_session_id: 113, student_id: 413, student_class_id: 213, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '15:00', student_name: '下午課程學生', subject_name: '化學', status: 'scheduled', learning_record_status: 'missing' },
+        { id: 114, class_session_id: 114, student_id: 414, student_class_id: 214, branch_id: 9, session_date: localToday, start_time: '13:00', end_time: '15:00', student_name: '跨校同時段學生', subject_name: '物理', status: 'scheduled', learning_record_status: 'missing' },
+      ] : [
+        { id: 101, class_session_id: 101, student_id: 401, student_class_id: 201, branch_id: 1, session_date: localToday, start_time: '09:00', end_time: '10:00', student_name: mode === 'long' ? '測試學生超長姓名用於驗證課表操作區折行與可達性' : '測試學生甲', subject_name: mode === 'long' ? '英文進階閱讀與寫作' : '數學', status: 'scheduled', learning_record_status: 'changes_requested', learning_record_id: 301 },
         { id: 102, class_session_id: 102, student_id: 402, student_class_id: 202, branch_id: 1, session_date: localToday, start_time: '10:30', end_time: '11:30', student_name: '測試學生乙', subject_name: '英文', status: 'scheduled', learning_record_status: 'missing' },
         { id: 103, class_session_id: 103, student_id: 403, student_class_id: 203, branch_id: 1, session_date: localToday, start_time: '13:00', end_time: '14:00', student_name: '請假學生', subject_name: '自然', status: 'leave_requested', learning_record_status: 'missing' },
       ];
@@ -69,6 +73,60 @@ async function installTeacherMocks(page, mode = 'normal') {
 }
 
 test.describe('Teacher daily workflow real Vue page', () => {
+  const viewports = [
+    { name: '390', width: 390, height: 844 },
+    { name: '412', width: 412, height: 915 },
+    { name: '768', width: 768, height: 1024 },
+    { name: '1280', width: 1280, height: 900 },
+    { name: '1440', width: 1440, height: 900 },
+  ];
+
+  for (const viewport of viewports) {
+    test(`keeps teacher actions reachable with long content @${viewport.name}`, async ({ page }) => {
+      const consoleErrors = [];
+      const failedRequests = [];
+      page.on('console', (message) => {
+        if (message.type() === 'error') consoleErrors.push(message.text());
+      });
+      page.on('requestfailed', (request) => failedRequests.push(`${request.method()} ${request.url()}`));
+      await installTeacherMocks(page, 'long');
+      await page.setViewportSize(viewport);
+      await page.goto('/pilot-mount.html?page=teacher&mode=long');
+      await expect(page.locator('[data-guide="teacher-home-today"]')).toBeVisible();
+
+      const actionable = page.locator('.th-next-action__cta, .th-work-task__cta, .th-fill-btn, .th-report-btn, .icon-btn');
+      await expect(actionable.first()).toBeVisible();
+      const dimensions = await actionable.evaluateAll((elements) => elements.map((element) => ({
+        height: element.getBoundingClientRect().height,
+        visible: Boolean(element.offsetWidth || element.offsetHeight || element.getClientRects().length),
+      })));
+      expect(dimensions.every(({ visible }) => visible)).toBe(true);
+      expect(dimensions.filter(({ height }) => height > 0).every(({ height }) => height >= 44)).toBe(true);
+      const nextAction = page.locator('.th-next-action__cta');
+      await nextAction.focus();
+      await expect(nextAction).toBeFocused();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
+      expect(consoleErrors).toEqual([]);
+      expect(failedRequests).toEqual([]);
+      await page.locator('.th-page').screenshot({
+        path: `${process.env.TEACHER_DAILY_SHOT_DIR || 'test-results/teacher-daily'}/vue-teacher-long-${viewport.name}.png`,
+      });
+    });
+  }
+
+  test('keeps the teacher work queue explicit while data is loading', async ({ page }) => {
+    await installTeacherMocks(page);
+    await page.route('**/api/v1/**', async () => new Promise(() => {}));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/pilot-mount.html?page=teacher&mode=loading');
+    await expect(page.locator('.th-work-task--skeleton').first()).toBeVisible();
+    await expect(page.getByText('正在整理今天的任務，等一下就會顯示。')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth));
+    await page.locator('.th-page').screenshot({
+      path: `${process.env.TEACHER_DAILY_SHOT_DIR || '/tmp/alltrue-teacher-after-20260909'}/vue-teacher-loading-390.png`,
+    });
+  });
+
   test('prioritizes actionable work and excludes leave-requested sessions', async ({ page }) => {
     await installTeacherMocks(page);
     const secondaryRequests = [];
@@ -81,6 +139,8 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.goto('/pilot-mount.html?page=teacher');
     const companion = page.locator('[data-guide="teacher-home-companion"]');
     await expect(companion).toBeVisible();
+    const sectionOrder = await page.locator('.th-page > [data-guide]').evaluateAll((nodes) => nodes.map((node) => node.dataset.guide));
+    expect(sectionOrder.indexOf('teacher-home-today')).toBeLessThan(sectionOrder.indexOf('teacher-home-companion'));
     await expect(companion.getByRole('heading', { name: '先完成最重要的一件事' })).toBeVisible();
     await expect(companion.locator('img')).toHaveAttribute('alt', '');
     const queueLink = companion.getByRole('link', { name: '查看今日任務' });
@@ -100,11 +160,11 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await expect(nextAction.getByText('現在先做')).toBeVisible();
     await expect(nextAction.getByRole('heading', { name: '評量需要修改' })).toBeVisible();
     await expect(nextAction.getByRole('button', { name: '修改評量' })).toBeVisible();
-    await expect(nextAction.locator('.th-next-action__cta')).toHaveClass(/primary/);
+    await expect(nextAction.locator('.th-next-action__cta')).toHaveClass(/at-btn--primary/);
     const secondaryCta = page.locator('.th-work-task__cta').first();
     await expect(secondaryCta).toBeVisible();
-    await expect(secondaryCta).toHaveClass(/ghost/);
-    await expect(secondaryCta).not.toHaveClass(/primary/);
+    await expect(secondaryCta).toHaveClass(/at-btn--ghost/);
+    await expect(secondaryCta).not.toHaveClass(/at-btn--primary/);
     await expect(page.getByRole('button', { name: '開始點名' }).first()).toBeVisible();
     await expect(page.locator('.th-work-task').getByText('請假學生')).toHaveCount(0);
     const clockinCard = page.getByRole('button', { name: /今日打卡狀態/ });
@@ -119,6 +179,29 @@ test.describe('Teacher daily workflow real Vue page', () => {
     expect(await page.locator('.th-work-task__cta').first().isVisible()).toBeTruthy();
     expect(secondaryRequests).toHaveLength(0);
     await expect(page.locator('[data-guide="teacher-secondary-actions"]')).toBeVisible();
+  });
+
+  test('orders same-tier attendance and learning work by class time', async ({ page }) => {
+    await installTeacherMocks(page, 'time-order');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/pilot-mount.html?page=teacher&mode=time-order');
+
+    const nextAction = page.locator('[data-guide="teacher-next-action"]');
+    await expect(nextAction.getByRole('heading', { name: '待點名' })).toBeVisible();
+    await expect(nextAction).toContainText('10:00–12:00');
+    await expect(nextAction.getByRole('button', { name: '開始點名' })).toBeVisible();
+
+    const followingTasks = page.locator('.th-work-task');
+    await expect(followingTasks.nth(0)).toContainText('13:00–15:00');
+    await expect(followingTasks.nth(0).getByRole('button', { name: '開始點名' })).toBeVisible();
+    await expect(followingTasks.nth(1)).toContainText('13:00–15:00');
+    await expect(followingTasks.nth(1).getByRole('button', { name: '填寫評量' })).toBeVisible();
+    await expect(followingTasks.nth(2)).toContainText('跨校同時段學生');
+    await expect(followingTasks.nth(2).getByRole('button', { name: '開始點名' })).toBeVisible();
+    await expect(followingTasks.nth(3).getByRole('button', { name: '填寫評量' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
   });
 
   test('shows a clear empty state without horizontal overflow', async ({ page }) => {
@@ -150,12 +233,29 @@ test.describe('Teacher daily workflow real Vue page', () => {
     await page.goto('/pilot-mount.html?page=teacher');
     await expect(page.getByRole('heading', { name: '今天要完成' })).toBeVisible();
     await expect(page.locator('[data-guide="teacher-next-action"]')).toBeVisible();
-    await expect(page.locator('[data-guide="teacher-next-action"] .th-next-action__cta')).toHaveClass(/primary/);
-    await expect(page.locator('.th-work-task__cta').first()).toHaveClass(/ghost/);
+    await expect(page.locator('[data-guide="teacher-next-action"] .th-next-action__cta')).toHaveClass(/at-btn--primary/);
+    await expect(page.locator('.th-work-task__cta').first()).toHaveClass(/at-btn--ghost/);
     await expect(page.getByRole('button', { name: '修改評量' })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     expect(overflow).toBeTruthy();
   });
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 720 }]) {
+    test(`shows the first actionable work in the initial viewport @${viewport.width}`, async ({ page }) => {
+      await installTeacherMocks(page);
+      await page.setViewportSize(viewport);
+      await page.goto('/pilot-mount.html?page=teacher');
+      const nextAction = page.locator('[data-guide="teacher-next-action"]');
+      await expect(nextAction).toBeVisible();
+      await expect(nextAction.locator('.th-next-action__cta')).toBeVisible();
+      const bounds = await nextAction.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        await page.evaluate(() => document.documentElement.clientWidth),
+      );
+    });
+  }
 
   test('surfaces a schedule error without hiding the workbench', async ({ page }) => {
     await installTeacherMocks(page, 'error');

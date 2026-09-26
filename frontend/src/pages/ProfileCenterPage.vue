@@ -11,16 +11,16 @@
       </template>
     </AtPageHeader>
 
-    <div class="profile-tabs card" data-guide="profile-tabs">
-      <button :class="['tab-btn', { active: activeTab === 'profile' }]" :disabled="forcePasswordChange" @click="setActiveTab('profile')">基本資料</button>
-      <button :class="['tab-btn', { active: activeTab === 'security' }]" @click="setActiveTab('security')">安全性</button>
-      <button :class="['tab-btn', { active: activeTab === 'notifications' }]" :disabled="forcePasswordChange" @click="setActiveTab('notifications')">通知偏好</button>
+    <div class="profile-tabs card" data-guide="profile-tabs" role="tablist" aria-label="個人資料工作區">
+      <button id="profile-tab-profile" type="button" role="tab" aria-controls="profile-panel-profile" :aria-selected="activeTab === 'profile'" :class="['tab-btn', { active: activeTab === 'profile' }]" :disabled="forcePasswordChange" @click="setActiveTab('profile')">基本資料</button>
+      <button id="profile-tab-security" type="button" role="tab" aria-controls="profile-panel-security" :aria-selected="activeTab === 'security'" :class="['tab-btn', { active: activeTab === 'security' }]" @click="setActiveTab('security')">安全性</button>
+      <button id="profile-tab-notifications" type="button" role="tab" aria-controls="profile-panel-notifications" :aria-selected="activeTab === 'notifications'" :class="['tab-btn', { active: activeTab === 'notifications' }]" :disabled="forcePasswordChange" @click="setActiveTab('notifications')">通知偏好</button>
     </div>
 
-    <div v-if="loading" class="card">載入中...</div>
+    <div v-if="loading" class="card" role="status" aria-live="polite">載入中...</div>
 
     <template v-else>
-      <section v-if="activeTab === 'profile'" class="card" data-guide="profile-active-panel">
+      <section v-if="activeTab === 'profile'" id="profile-panel-profile" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-profile" tabindex="0">
         <h3>基本資料</h3>
         <div class="muted">更新姓名、登入帳號、手機與個人頭像。</div>
 
@@ -63,9 +63,9 @@
               <input v-model.trim="profileForm.phone" type="text" placeholder="09xxxxxxxx" />
             </div>
             <div class="actions">
-              <button class="primary" :disabled="savingProfile" @click="submitProfile">
+              <AtButton shape="rect" variant="primary" :disabled="savingProfile" :loading="savingProfile" @click="submitProfile">
                 {{ savingProfile ? '儲存中...' : '儲存基本資料' }}
-              </button>
+              </AtButton>
             </div>
           </div>
         </div>
@@ -192,14 +192,14 @@
           </div>
 
           <div class="actions">
-            <button class="primary" :disabled="savingTeaching" @click="submitTeaching">
+            <AtButton shape="rect" variant="primary" :disabled="savingTeaching" :loading="savingTeaching" @click="submitTeaching">
               {{ savingTeaching ? '儲存中...' : '儲存教學設定' }}
-            </button>
+            </AtButton>
           </div>
         </div>
       </section>
 
-      <section v-if="activeTab === 'security'" class="card" data-guide="profile-active-panel">
+      <section v-if="activeTab === 'security'" id="profile-panel-security" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-security" tabindex="0">
         <h3>安全性</h3>
         <div class="muted">修改密碼與查看最近登入記錄。</div>
 
@@ -219,15 +219,15 @@
           <input v-model="passwordForm.confirmPassword" type="password" autocomplete="new-password" />
         </div>
         <div class="actions">
-          <button class="primary" :disabled="savingPassword" @click="submitPassword">
+          <AtButton shape="rect" variant="primary" :disabled="savingPassword" :loading="savingPassword" @click="submitPassword">
             {{ savingPassword ? '更新中...' : '更新密碼' }}
-          </button>
+          </AtButton>
         </div>
 
         <div class="security-block">
           <div class="security-header">
             <h4>最近登入</h4>
-            <button class="ghost small" @click="refreshSecurity">重新整理</button>
+            <AtButton shape="rect" size="sm" variant="ghost" @click="refreshSecurity">重新整理</AtButton>
           </div>
           <div v-if="securityMsg" :class="['section-msg', securityMsg.type]">{{ securityMsg.text }}</div>
           <table v-if="securitySummary.recent_logins.length > 0">
@@ -258,9 +258,9 @@
         <div class="security-block">
           <div class="security-header">
             <h4>目前登入裝置</h4>
-            <button class="ghost small" :disabled="revokingOtherSessions" @click="handleLogoutOtherDevices">
+            <AtButton shape="rect" size="sm" variant="ghost" :disabled="revokingOtherSessions" :loading="revokingOtherSessions" @click="handleLogoutOtherDevices">
               {{ revokingOtherSessions ? '處理中...' : '登出其他裝置' }}
-            </button>
+            </AtButton>
           </div>
           <table v-if="securitySummary.active_sessions.length > 0">
             <thead>
@@ -288,7 +288,7 @@
         </div>
       </section>
 
-      <section v-if="activeTab === 'notifications'" class="card" data-guide="profile-active-panel">
+      <section v-if="activeTab === 'notifications'" id="profile-panel-notifications" class="card" data-guide="profile-active-panel" role="tabpanel" aria-labelledby="profile-tab-notifications" tabindex="0">
         <h3>通知偏好</h3>
         <div class="muted">目前僅儲存偏好設定，暫不影響既有通知流程。</div>
         <div v-if="prefMsg" :class="['section-msg', prefMsg.type]">{{ prefMsg.text }}</div>
@@ -340,9 +340,9 @@
         </div>
 
         <div class="actions">
-          <button class="primary" :disabled="savingPrefs" @click="submitPrefs">
+          <AtButton shape="rect" variant="primary" :disabled="savingPrefs" :loading="savingPrefs" @click="submitPrefs">
             {{ savingPrefs ? '儲存中...' : '儲存通知偏好' }}
-          </button>
+          </AtButton>
         </div>
       </section>
     </template>
@@ -351,6 +351,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AvatarCropModal from '../components/AvatarCropModal.vue';
 import {
@@ -872,30 +873,41 @@ onMounted(loadData);
 
 .profile-tabs {
   display: flex;
-  gap: 8px;
+  gap: 0;
   margin-bottom: 0;
-  padding: 12px;
+  padding: 0 12px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--ds-hairline);
 }
 
 .tab-btn {
-  padding: 10px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
+  color: var(--ds-text-secondary, var(--text));
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .tab-btn.active {
-  border-color: var(--accent);
-  color: var(--accent-hover);
-  background: var(--primary-bg);
+  border-bottom-color: var(--ds-primary);
+  color: var(--ds-primary-deep);
+  background: transparent;
 }
 
 .tab-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.tab-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
 
 .muted {
@@ -990,6 +1002,12 @@ onMounted(loadData);
   min-width: 0;
 }
 
+.profile-center-page input:not([type='file']):not([type='checkbox']),
+.profile-center-page select {
+  min-height: var(--ds-control-height-touch, 44px);
+  box-sizing: border-box;
+}
+
 .section-msg {
   padding: 9px 12px;
   border-radius: 8px;
@@ -1009,6 +1027,20 @@ onMounted(loadData);
 
 .grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.actions .at-btn,
+.security-header .at-btn {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+
+.actions .at-btn {
+  min-width: 144px;
 }
 
 .security-block {
@@ -1033,6 +1065,7 @@ onMounted(loadData);
   gap: 6px;
   border: 1px solid var(--border);
   border-radius: 999px;
+  min-height: var(--ds-control-height-touch, 44px);
   padding: 6px 10px;
   background: #fafafa;
   font-size: 13px;
@@ -1087,6 +1120,7 @@ onMounted(loadData);
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: var(--ds-control-height-touch, 44px);
   margin: 0;
 }
 
@@ -1096,6 +1130,15 @@ onMounted(loadData);
 }
 
 @media (max-width: 900px) {
+  .profile-tabs { padding: 0; }
+
+  .tab-btn {
+    flex: 1 0 auto;
+    min-width: 0;
+  }
+
+  .actions .at-btn { width: 100%; }
+
   .profile-layout {
     grid-template-columns: 1fr;
     gap: 14px;

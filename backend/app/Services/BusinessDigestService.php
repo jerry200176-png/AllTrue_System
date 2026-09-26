@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\DB;
  */
 class BusinessDigestService
 {
+    /** @var array<string,list<int>> */
+    private array $canonicallyExhaustedCourseIdsByCampus = [];
+
     /** @return array<string,mixed> */
     public function metrics(?int $campusId = null): array
     {
@@ -259,6 +262,10 @@ class BusinessDigestService
                 'sc.RemainingSessions as remaining_sessions',
                 'sc.Rate as rate',
             ]);
+        $exhaustedCourseIds = $this->canonicallyExhaustedCourseIds($campusId);
+        if ($exhaustedCourseIds !== []) {
+            $q->whereNotIn('sc.ID', $exhaustedCourseIds);
+        }
         if ($campusId !== null && $campusId > 0) {
             $q->where('s.CampusID', $campusId);
         }
@@ -367,6 +374,46 @@ class BusinessDigestService
         $q = DB::table('StudentClass as sc')
             ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
             ->where('sc.ScheduleMode', 'count')
+            ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> ?", ['tutoring'])
+            ->where('sc.RemainingSessions', '>', 0)
+            ->whereNotExists(function ($e) {
+                $e->select(DB::raw(1))->from('ClassSession as cs')
+                    ->whereColumn('cs.StudentClassID', 'sc.ID')
+                    ->whereRaw('cs.SessionDate >= CURDATE()')
+                    ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')");
+            });
+        $exhaustedCourseIds = $this->canonicallyExhaustedCourseIds($campusId);
+        if ($exhaustedCourseIds !== []) {
+            $q->whereNotIn('sc.ID', $exhaustedCourseIds);
+        }
+        if ($campusId !== null && $campusId > 0) {
+            $q->join('Student as s', 's.id', '=', 'sc.StudentID')
+                ->where('s.CampusID', $campusId);
+        }
+
+        return $q;
+    }
+
+    /**
+     * Courses whose whole-session evidence has consumed the purchased count.
+     *
+     * This is a read-only exclusion for the revenue-risk projection. Stored
+     * counter drift remains visible in data quality, while partial-minute
+     * balances retain their existing authority and are never filtered here.
+     *
+     * @return list<int>
+     */
+    private function canonicallyExhaustedCourseIds(?int $campusId): array
+    {
+        $cacheKey = ($campusId !== null && $campusId > 0) ? (string) $campusId : 'all';
+        if (array_key_exists($cacheKey, $this->canonicallyExhaustedCourseIdsByCampus)) {
+            return $this->canonicallyExhaustedCourseIdsByCampus[$cacheKey];
+        }
+
+        $candidates = DB::table('StudentClass as sc')
+            ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+            ->where('sc.ScheduleMode', 'count')
+            ->where('sc.SessionCount', '>', 0)
             ->where('sc.RemainingSessions', '>', 0)
             ->whereNotExists(function ($e) {
                 $e->select(DB::raw(1))->from('ClassSession as cs')
@@ -375,11 +422,24 @@ class BusinessDigestService
                     ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')");
             });
         if ($campusId !== null && $campusId > 0) {
-            $q->join('Student as s', 's.id', '=', 'sc.StudentID')
+            $candidates->join('Student as s', 's.id', '=', 'sc.StudentID')
                 ->where('s.CampusID', $campusId);
         }
 
-        return $q;
+        $courseIds = $candidates->pluck('sc.ID')->map(fn ($id) => (int) $id)->all();
+        $diagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics($courseIds);
+        $exhausted = [];
+        foreach ($diagnostics as $courseId => $diagnostic) {
+            if (
+                !$diagnostic['has_partial']
+                && $diagnostic['session_count'] > 0
+                && $diagnostic['expected_used'] >= $diagnostic['session_count']
+            ) {
+                $exhausted[] = (int) $courseId;
+            }
+        }
+
+        return $this->canonicallyExhaustedCourseIdsByCampus[$cacheKey] = $exhausted;
     }
 
     /** @return array{sessions:int, amount:float} */
@@ -400,6 +460,7 @@ class BusinessDigestService
     {
         $q = DB::table('StudentClass as sc')
             ->where('sc.Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> ?", ['tutoring'])
             ->where(fn ($w) => $w->where('sc.Paid', 0)->orWhereNull('sc.Paid')->orWhere('sc.RemainingSessions', '<=', 2));
         if ($campusId !== null && $campusId > 0) {
             $q->join('Student as s', 's.id', '=', 'sc.StudentID')->where('s.CampusID', $campusId);

@@ -2,6 +2,170 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: staff-2026-09-21-transaction-discount-322-b-evidence
+    changelog_date: "2026-09-21"
+    changelog_title: "feat(billing): transaction-level discounts snapshot at creation (in-app #322 / GitHub #3072)"
+    reason: B 的前端與驗收切片沿用 main 已發布的 #322 STAFF_UPDATES 公告；本項僅為 release-classification companion evidence，不新增產品、部署或 Phase-C 授權。
+
+  - id: silent-2026-09-21-parent-attention-feedback-jump-323
+    changelog_date: "2026-09-21"
+    changelog_title: "fix(parent): attention feedback shortcut opens the editor (in-app #323)"
+    reason: 家長專屬更新已由 docs/PARENT_UPDATES.yml 公告（本次補上跨分頁尋找可留言評量）；不重複出現在教職員版本更新。
+
+  - id: silent-2026-09-20-session-dates-row-reuse
+    changelog_date: "2026-09-20"
+    changelog_title: "fix(performance): reuse session-dates rows by course"
+    reason: 僅改善既有 session-dates 讀取路徑的記憶體掃描工作量；不新增教職員流程、不改回傳契約，且尚未部署或 production verified。
+
+  - id: silent-2026-09-19-calendar-split-slot-317-polish
+    changelog_date: "2026-09-19"
+    changelog_title: "fix(calendar): split-slot wrap spacing polish (in-app #317)"
+    reason: 同 #317 窄欄可讀性補修（wrap/字級）；staff 更新已在同日 digest 涵蓋。
+
+  - id: silent-2026-09-18-inapp-intake-github-first
+    changelog_date: "2026-09-18"
+    changelog_title: "docs(agents): in-app product-loop intake→GitHub mapping first"
+    reason: Agent skill 流程順序（intake 對照先於分診）；不改教職員 App runtime。
+
+  - id: silent-2026-09-18-phase-c-311-312
+    changelog_date: "2026-09-18"
+    changelog_title: "ops(in-app): Phase-C allowlist #311/#312 + backlog read nav"
+    reason: Phase-C 回寫已上線修正與 Agent 讀取導航；不改教職員功能語意。
+
+  - id: silent-2026-09-18-inapp-product-loop-entry
+    changelog_date: "2026-09-18"
+    changelog_title: "docs(agents): install in-app product-loop entry skill"
+    reason: Agent 入口／技能與政策措辭；不改教職員 App runtime 或回報 UI。
+
+  - id: silent-2026-09-18-bug-link-only-issue
+    changelog_date: "2026-09-18"
+    changelog_title: "fix(bugs): persist link-only issue URL onto prior disposition"
+    reason: Super-admin 閉環連結保存修正；不改老師／主任回報入口。
+
+  - id: silent-2026-09-18-bug-product-loop-clobber
+    changelog_date: "2026-09-18"
+    changelog_title: "fix(bugs): preserve disposition when resolving with PR-only link"
+    reason: Super-admin 閉環投影修正；不改老師／主任回報入口。
+
+  - id: silent-2026-09-18-bug-product-loop
+    changelog_date: "2026-09-18"
+    changelog_title: "feat(bugs): in-app feedback closed-loop product projection"
+    reason: Super-admin 意見閉環摘要／定性欄位與既有 evidence 寫入；不改變老師／主任回報入口或公開通知，無需教職員版本更新。
+
+  - id: silent-2026-09-18-course-manager-polish-tip
+    changelog_date: "2026-09-18"
+    changelog_title: "chore(release): tip CI for Course Manager polish deploy"
+    reason: docs-only tip lacked CI; this silent entry enables exact-SHA activation of already-merged polish.
+
+  - id: silent-2026-09-18-app-shell-inapp-policy
+    changelog_date: "2026-09-18"
+    changelog_title: "docs(product-ops): bounded app-shell debt + in-app execution policy"
+    reason: 僅新增 App shell 延期計畫與 in-app 執行政策文件；不改 runtime、教職員流程、帳務或排課。
+  - id: silent-2026-09-18-course-manager-polish
+    changelog_date: "2026-09-18"
+    changelog_title: "polish(course-mgmt): Course Manager IA dedupe and layout"
+    reason: COURSE_MANAGER_V1 既有功能 UI/IA 精煉；無新產品語意，啟用狀態不變。
+
+  - id: silent-2026-09-18-course-manager-v1
+    changelog_date: "2026-09-18"
+    changelog_title: "feat(course-mgmt): Course Manager V1 consolidates Edit/More/Details"
+    reason: COURSE_MANAGER_V1 預設 OFF；啟用前不改線上教職員入口，不開 Phase 1b/2/3。
+
+  - id: silent-2026-09-17-calendar-flag-activation-control
+    changelog_date: "2026-09-17"
+    changelog_title: "fix(deploy): explicit course session calendar flag activation"
+    reason: Deploy 控制面新增 course_session_calendar_v1 輸入與 rollback；在 Founder 另下 GO 前不改變 production flag 現值，不開 Phase 1b/2/3。
+
+  - id: silent-2026-09-17-course-session-calendar-phase-0-1a
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(course-mgmt): calendar plan surface Phase 0+1a (flag OFF)"
+    reason: Course Management 行事曆形狀堂次讀取＋未來新增（PRODUCT_LOOP_DOGFOOD_001 Phase 0+1a）暗啟動；COURSE_SESSION_CALENDAR_V1 / VITE_COURSE_SESSION_CALENDAR_V1 預設 OFF，不做 production 啟用，不改線上可見流程／帳務。
+
+  - id: silent-2026-09-17-nine-domain-engineering-audit
+    changelog_date: "2026-09-17"
+    changelog_title: "docs(audit): persist nine-domain engineering audit"
+    reason: 僅新增工程審計文件供 GitHub 獨立審查；不改 runtime、教職員流程、帳務或排課。
+
+  - id: silent-2026-09-17-grade-promotion-phase-b1
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(students): grade promotion Phase-B.1 scheduled preview (#297)"
+    reason: 排程預覽＋站內提醒；預設 allowlist 空白 fail-closed、不自動確認。待 staging／campus 9 啟用後再以 staff update 公告。
+
+  - id: silent-2026-09-17-learning-status-label-lock
+    changelog_date: "2026-09-17"
+    changelog_title: "fix(learning): lock assessment fill vs review label regression"
+    reason: 僅抽出評量填寫／審核文案 helper 並補回歸測試；教職員可見標籤語意已於 staff-2026-09-16-learning-table-status-clarity 公告，本次不重複推播。
+
+  - id: silent-2026-09-17-harness-h4b-worker-run
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(harness): H4b WorkerRun start/attach + durable session bind"
+    reason: Autonomous Execution Harness 內部 WorkerRun start/attach 與 durable session bind；不改線上教職員可見流程、帳務或排課。
+
+  - id: silent-2026-09-17-truefit-s6-01-progress-cta
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(truefit): TF-S6-01 workspace progress + continuum edge helpers"
+    reason: TrueFit 暗啟動（TRUEFIT_V1 / VITE_TRUEFIT_V1 OFF）前端同堂次進度條與 continuum CTA／seed 邊緣；不改線上教職員可見流程、帳務或排課。
+
+  - id: silent-2026-09-17-truefit-program-status-reconcile
+    changelog_date: "2026-09-17"
+    changelog_title: "docs(truefit): reconcile PROGRAM_STATUS after S6-01 merge"
+    reason: 僅文件狀態對齊（S6-01 已 MERGED）；不改 runtime、教職員流程、帳務或排課。
+
+  - id: silent-2026-09-17-truefit-s6-00-evidence-s601-plan
+    changelog_date: "2026-09-17"
+    changelog_title: "docs(truefit): S6-00 acceptance evidence + TF-S6-01 Plan"
+    reason: 僅 TrueFit 驗證證據與歷史 Plan 文件；不改 runtime、教職員流程、帳務或排課。
+
+  - id: silent-2026-09-17-truefit-s6-00b-continuum-ui
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(truefit): TF-S6-00b same-session continuum UI"
+    reason: TrueFit 暗啟動（TRUEFIT_V1 / VITE_TRUEFIT_V1 OFF）前端同堂次 continuum CTA 與前階段種子；不改線上教職員可見流程、帳務或排課。
+
+  - id: silent-2026-09-17-staff-multi-role-ab
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(auth): staff multi-role capability model behind flag (#299)"
+    reason: Phase A/B 暗啟動（STAFF_MULTI_ROLE_V1 預設 OFF）；新增 capability／acting 上下文與測試，不含生產帳號合併或線上啟用。
+
+  - id: silent-2026-09-17-truefit-s6-00a-source-link
+    changelog_date: "2026-09-17"
+    changelog_title: "feat(truefit): TF-S6-00a source_* auto-link on upsert"
+    reason: TrueFit 暗啟動（TRUEFIT_V1 OFF）後端同堂次 source_* 自動連結；不改線上教職員可見流程、帳務或排課。
+
+  - id: silent-2026-09-16-rfid-presence-policy
+    changelog_date: "2026-09-16"
+    changelog_title: "docs(attendance): lock RFID campus-presence v1 contract (#2809)"
+    reason: 僅新增／更新政策與架構文件（RFC、程式狀態、交叉索引）；不改 runtime、教職員流程、帳務或扣堂語意。
+
+  - id: security-2026-09-12-file-validation-bypass-mitigation
+    changelog_date: "2026-09-12"
+    changelog_title: "security: harden in-app attachment validation against wildcard-key bypass"
+    reason: 僅修補既有意見與建議附件上傳的 CVE-2025-27515 app-level validation bypass；不新增教職員流程或業務語意，Dependabot #3 仍待 Laravel framework migration #977。
+
+  - id: silent-2026-09-10-parent-attendance-clarity
+    changelog_date: "2026-09-10"
+    changelog_title: "improved(parent): 出缺勤紀錄更容易閱讀"
+    reason: 家長 Portal 既有出缺勤紀錄的 landmark semantics、觸控尺寸、鍵盤焦點與長文字 responsive 改善；家長溝通另由 PARENT_UPDATES.yml 明確提供，不新增教職員操作流程或業務語意。
+
+  - id: silent-2026-09-10-parent-progress-hub-clarity
+    changelog_date: "2026-09-10"
+    changelog_title: "improved(parent): 進度中心更容易理解"
+    reason: 家長 Portal 既有進度摘要的 section semantics、觸控尺寸、鍵盤焦點與 CTA 位置改善；家長溝通另由 PARENT_UPDATES.yml 明確提供，不新增教職員操作流程或業務語意。
+
+  - id: silent-2026-09-10-parent-status-hierarchy
+    changelog_date: "2026-09-10"
+    changelog_title: "improved(parent): 需要留意事項更容易處理"
+    reason: 家長 Portal 既有待辦摘要的 section semantics、觸控尺寸、鍵盤焦點與長文字 responsive 改善；家長溝通另由 PARENT_UPDATES.yml 明確提供，不新增教職員操作流程或業務語意。
+
+  - id: silent-2026-09-10-parent-header-clarity
+    changelog_date: "2026-09-10"
+    changelog_title: "improved(parent): 家長入口標頭更容易操作"
+    reason: 家長 Portal 既有學生／分校切換與登出控制的觸控尺寸、鍵盤焦點與長文字 responsive 改善；家長溝通另由 PARENT_UPDATES.yml 明確提供，不新增教職員操作流程或業務語意。
+
+  - id: silent-2026-09-10-parent-learning-tab-focus
+    changelog_date: "2026-09-10"
+    changelog_title: "improved(parent): 家長學習分頁更容易操作"
+    reason: 家長 Portal 既有學習分頁的鍵盤／觸控焦點與 responsive 操作改善；家長溝通另由 PARENT_UPDATES.yml 明確提供，不新增教職員操作流程或業務語意。
+
   - id: silent-2026-09-09-substitute-notification-idempotency
     changelog_date: "2026-09-09"
     changelog_title: "fix(ops): 代課通知併發重試不重複"

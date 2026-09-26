@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { getDailyWorkProgress } from '../lib/dailyWorkProgress.js';
+import AtButton from './design-system/AtButton.vue';
 
 const props = defineProps({
   completed: { type: Number, default: 0 },
@@ -63,15 +64,16 @@ const titleId = 'today-progress-card-title';
             <span>{{ nextTask.title }}</span>
           </span>
         </div>
-        <button
-          type="button"
+        <AtButton
           class="today-progress-card__next-action"
+          variant="secondary"
+          shape="rect"
+          icon="arrow_forward"
           :aria-label="`接著處理：${nextTask.actionLabel}，${nextTask.title}`"
           @click="$emit('next', nextTask)"
         >
           {{ nextTask.actionLabel }}
-          <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
-        </button>
+        </AtButton>
       </div>
       <p v-else-if="progress.isComplete" class="today-progress-card__complete" role="status">
         <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
@@ -103,9 +105,7 @@ const titleId = 'today-progress-card-title';
 .today-progress-card__next-copy > span:last-child { display: grid; gap: 2px; min-width: 0; }
 .today-progress-card__next-copy strong { color: var(--ds-ink-mute); font-size: var(--ds-font-size-xs); }
 .today-progress-card__next-copy span:last-child span { overflow: hidden; color: var(--ds-ink); font-size: var(--ds-font-size-sm); font-weight: var(--ds-font-weight-semibold); text-overflow: ellipsis; white-space: nowrap; }
-.today-progress-card__next-action { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; min-height: var(--ds-control-height-md); padding: 6px 10px; border: 1px solid var(--ds-cta); border-radius: var(--ds-radius-pill); background: var(--ds-canvas); color: var(--ds-cta); cursor: pointer; font-size: var(--ds-font-size-sm); font-weight: var(--ds-font-weight-semibold); }
-.today-progress-card__next-action:hover, .today-progress-card__next-action:focus-visible { background: var(--ds-primary-wash); }
-.today-progress-card__next-action .material-symbols-outlined { font-size: 16px; }
+.today-progress-card__next-action { flex-shrink: 0; min-height: 44px; }
 .today-progress-card__complete { display: flex; align-items: center; gap: 6px; margin: 18px 0 0; }
 .today-progress-card__complete .material-symbols-outlined { color: var(--ds-success); font-size: 18px; }
 .today-progress-card__loading { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin-top: 18px; color: var(--ds-ink-mute); font-size: var(--ds-font-size-sm); }
@@ -113,6 +113,6 @@ const titleId = 'today-progress-card-title';
 .today-progress-card__skeleton--value { width: 96px; height: 22px; }
 .today-progress-card__skeleton--copy { grid-column: 1 / -1; width: 65%; }
 @keyframes today-progress-pulse { 50% { opacity: .45; } }
-@media (max-width: 560px) { .today-progress-card { padding: 16px; } .today-progress-card__next { align-items: flex-start; flex-direction: column; } .today-progress-card__next-action { width: 100%; justify-content: center; } }
+@media (max-width: 560px) { .today-progress-card { padding: 16px; } .today-progress-card__next { align-items: flex-start; flex-direction: column; } .today-progress-card__next-action { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .today-progress-card__fill, .today-progress-card__skeleton { animation: none; transition: none; } }
 </style>

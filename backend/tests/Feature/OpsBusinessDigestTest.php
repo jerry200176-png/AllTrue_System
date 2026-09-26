@@ -110,6 +110,53 @@ class OpsBusinessDigestTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $m['retention']['no_upcoming_students']);
     }
 
+    public function test_unpaid_active_courses_excludes_tutoring_but_keeps_regular_control(): void
+    {
+        $studentId = 95011;
+        DB::table('Student')->insert([
+            'id' => $studentId, 'name' => 'Digest Billing Control', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+
+        $base = [
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 8800, 'Pay' => 0,
+            'Paid' => 0, 'Rate' => 1100, 'StartDate' => now()->subDays(30)->toDateTimeString(),
+            'SessionCount' => 8, 'SessionDuration' => 60, 'RemainingSessions' => 8,
+            'UsedSessions' => 0, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ];
+        DB::table('StudentClass')->insert($base + ['ClassType' => '  TUTORING  ']);
+        DB::table('StudentClass')->insert($base + ['ClassType' => 'one_on_one']);
+
+        $metrics = app(BusinessDigestService::class)->metrics(1);
+
+        $this->assertSame(1, $metrics['revenue']['unpaid_active_courses']);
+    }
+
+    public function test_stranded_projection_excludes_tutoring_but_keeps_regular_paid_control(): void
+    {
+        $studentId = 95012;
+        DB::table('Student')->insert([
+            'id' => $studentId, 'name' => 'Digest Stranded Control', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $base = [
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'StartDate' => now()->subDays(30)->toDateTimeString(),
+            'SessionCount' => 8, 'SessionDuration' => 60, 'RemainingSessions' => 3,
+            'UsedSessions' => 5, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ];
+        DB::table('StudentClass')->insert($base + [
+            'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 0, 'ClassType' => ' TuToRiNg ',
+        ]);
+        DB::table('StudentClass')->insert($base + [
+            'Charge' => 1500, 'Pay' => 1500, 'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_one',
+        ]);
+
+        $metrics = app(BusinessDigestService::class)->metrics(1);
+
+        $this->assertSame(3, $metrics['revenue']['stranded_sessions']);
+        $this->assertSame(1500.0, $metrics['revenue']['stranded_amount']);
+    }
+
     public function test_counter_divergence_separates_director_review_from_legacy_and_inactive_rows(): void
     {
         $studentId = 95020;
@@ -155,6 +202,72 @@ class OpsBusinessDigestTest extends TestCase
         $this->assertNotNull($ledgerDecision);
         $this->assertSame(1, $ledgerDecision['people_total']);
         $this->assertStringContainsString('1 筆', $ledgerDecision['title']);
+    }
+
+    public function test_canonical_exhaustion_is_not_reported_as_stranded_paid(): void
+    {
+        $studentId = 95030;
+        DB::table('Student')->insert([
+            'id' => $studentId, 'name' => 'Canonical Exhaustion', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $courseId = (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_three',
+            'StartDate' => now()->subDays(60)->toDateTimeString(),
+            'SessionCount' => 4, 'SessionDuration' => 60,
+            'RemainingSessions' => 1, 'UsedSessions' => 4, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+        for ($i = 1; $i <= 4; $i++) {
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $courseId,
+                'SessionDate' => now()->subDays(20 - $i)->toDateString(),
+                'StartTime' => '18:00:00',
+                'EndTime' => '19:00:00',
+                'Status' => 'attended',
+                'Note' => '',
+            ]);
+        }
+
+        $metrics = app(BusinessDigestService::class)->metrics(9);
+        $keys = collect($metrics['decision_center']['decisions'])->pluck('key')->all();
+
+        $this->assertSame(0, $metrics['revenue']['stranded_sessions']);
+        $this->assertNotContains('stranded_paid', $keys);
+        $this->assertContains('ledger_divergent', $keys);
+        $this->assertSame(1, $metrics['data_quality']['remaining_divergent_reviewable']);
+        $this->assertSame(1, (int) DB::table('StudentClass')->where('ID', $courseId)->value('RemainingSessions'));
+    }
+
+    public function test_partial_minute_balance_is_not_removed_from_stranded_projection(): void
+    {
+        $studentId = 95031;
+        DB::table('Student')->insert([
+            'id' => $studentId, 'name' => 'Partial Minute Balance', 'CampusID' => 9, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $courseId = (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_three',
+            'StartDate' => now()->subDays(60)->toDateTimeString(),
+            'SessionCount' => 4, 'SessionDuration' => 60,
+            'RemainingSessions' => 1, 'UsedSessions' => 3, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+        DB::table('session_deduction_ledger')->insert([
+            'student_class_id' => $courseId,
+            'class_session_id' => null,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'minutes' => 230,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $service = app(BusinessDigestService::class);
+        $metrics = $service->metrics(9);
+
+        $this->assertSame(1, $metrics['revenue']['stranded_sessions']);
+        $this->assertContains($courseId, collect($service->strandedPeople(9))->pluck('student_class_id')->all());
     }
 
     public function test_command_runs_read_only(): void

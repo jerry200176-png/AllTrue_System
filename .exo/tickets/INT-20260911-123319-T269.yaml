@@ -1,0 +1,44 @@
+id: INT-20260911-123319-T269
+title: 'Deliver #2519 teachers-list recovery with verified provenance'
+intent: 'Deliver #2519 teachers-list recovery with verified provenance'
+kind: intent
+brain_dump: 'User GO authorizes #2519 integration against current main with regression,
+  mobile/desktop acceptance, and deployment through existing gates.'
+boundary: 'Only #2519 frontend loading/recovery UX and required release/provenance
+  records; no billing policy, backend, workflows, migrations, authz, data, credentials,
+  or active in-app chains.'
+success_condition: 'The #2519 diff is a session-owned commit on current main with
+  targeted and full build evidence, a compliant PR, and eligible merge/deploy evidence.'
+risk: medium
+priority: 1
+labels:
+- ux
+scope:
+  allow:
+  - frontend/**
+  - docs/**
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 15
+  max_loc_changed: 500
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-11T12:33:19+08:00'
+children:
+- TKT-20260911-123325-RHYR
+resource_profile: default

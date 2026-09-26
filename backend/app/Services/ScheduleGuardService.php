@@ -45,15 +45,33 @@ class ScheduleGuardService
         $excludeStudentClassId = isset($payload['exclude_student_class_id']) && $payload['exclude_student_class_id']
             ? (int) $payload['exclude_student_class_id']
             : null;
+        // Same-student dual-contract / self occupancy must not block course edit
+        // (in-app #311; mirrors validateScheduleOccurrence exclude_student_id).
+        $excludeStudentId = isset($payload['exclude_student_id']) && $payload['exclude_student_id']
+            ? (int) $payload['exclude_student_id']
+            : null;
         $startDate = isset($payload['start_date']) && $payload['start_date'] ? (string) $payload['start_date'] : null;
         $endDate = isset($payload['end_date']) && $payload['end_date'] ? (string) $payload['end_date'] : null;
 
-        $teacherCourses = $this->loadTeacherRecurringCourses($teacherId, $branchId, $excludeStudentClassId);
+        $teacherCourses = $this->loadTeacherRecurringCourses(
+            $teacherId,
+            $branchId,
+            $excludeStudentClassId,
+            $excludeStudentId
+        );
         $conflicts = [];
 
         foreach ($slots as $slot) {
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
-            $concreteOverlaps = $this->collectConcreteRecurringOverlaps($teacherId, $branchId, $slot, $excludeStudentClassId, $startDate, $endDate);
+            $concreteOverlaps = $this->collectConcreteRecurringOverlaps(
+                $teacherId,
+                $branchId,
+                $slot,
+                $excludeStudentClassId,
+                $startDate,
+                $endDate,
+                $excludeStudentId
+            );
             $overlaps = array_merge($recurringOverlaps, $concreteOverlaps);
 
             $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
@@ -226,8 +244,12 @@ class ScheduleGuardService
     /**
      * @return array<int, object>
      */
-    private function loadTeacherRecurringCourses(int $teacherId, int $branchId, ?int $excludeStudentClassId = null): array
-    {
+    private function loadTeacherRecurringCourses(
+        int $teacherId,
+        int $branchId,
+        ?int $excludeStudentClassId = null,
+        ?int $excludeStudentId = null
+    ): array {
         $query = DB::table('StudentClass as sc')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.TeacherID', $teacherId)
@@ -259,6 +281,9 @@ class ScheduleGuardService
 
         if ($excludeStudentClassId) {
             $query->where('sc.ID', '!=', $excludeStudentClassId);
+        }
+        if ($excludeStudentId) {
+            $query->where('sc.StudentID', '!=', $excludeStudentId);
         }
 
         return $query->get()->all();
@@ -318,7 +343,8 @@ class ScheduleGuardService
         array $slot,
         ?int $excludeStudentClassId = null,
         ?string $startDate = null,
-        ?string $endDate = null
+        ?string $endDate = null,
+        ?int $excludeStudentId = null
     ): array {
         $dow = (int) ($slot['day_of_week'] ?? 0);
         $slotStart = (string) ($slot['start_time'] ?? '');
@@ -389,6 +415,17 @@ class ScheduleGuardService
                 continue;
             }
 
+            // Same-student dual-contract / other-course occupancy: exclude.
+            // Same-course rows keep the bounded time-match exclusion below so
+            // partially overlapping exceptions still conflict (adopt-exception).
+            if (
+                $excludeStudentId
+                && (int) ($row->StudentID ?? 0) === $excludeStudentId
+                && (!$excludeStudentClassId || $courseId !== $excludeStudentClassId)
+            ) {
+                continue;
+            }
+
             $start = $this->normalizeTime($row->StartTime ?? null);
             $end = $this->normalizeTime($row->EndTime ?? null);
             if (!$start || !$end) {
@@ -441,6 +478,16 @@ class ScheduleGuardService
             $start = $this->normalizeTime($row->start_time ?? null);
             $end = $this->normalizeTime($row->end_time ?? null);
             if (!$start || !$end) {
+                continue;
+            }
+
+            // Same-student other-course (or unlinked) schedule rows: exclude.
+            // Same-course keeps bounded time-match exclusion below.
+            if (
+                $excludeStudentId
+                && (int) ($row->student_id ?? 0) === $excludeStudentId
+                && (!$excludeStudentClassId || $courseId !== $excludeStudentClassId)
+            ) {
                 continue;
             }
 
@@ -538,7 +585,7 @@ class ScheduleGuardService
             }));
             $existingTrialCount = $this->countDistinctStudents($trialOverlaps);
             if ($existingTrialCount >= 1) {
-                return [
+                return $this->finalizeCapacityConflict([
                     'type' => 'teacher_capacity',
                     'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                     'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -551,7 +598,7 @@ class ScheduleGuardService
                     ),
                     'overlap_summary' => $overlapSummary,
                     'overlap_details' => $overlapDetails,
-                ];
+                ]);
             }
             return null;
         }
@@ -564,7 +611,7 @@ class ScheduleGuardService
             }
         }
         if ($hasOneOnOne) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -574,11 +621,11 @@ class ScheduleGuardService
                 'message' => '老師此時段本分校已有一對一課程，無法再加課。',
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         if ($existingCount >= self::TEACHER_SLOT_ABSOLUTE_MAX) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -592,11 +639,11 @@ class ScheduleGuardService
                 ),
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         if ($existingCount >= $newCapacity) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'teacher_capacity',
                 'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
                 'start_time' => (string) ($slot['start_time'] ?? ''),
@@ -611,7 +658,7 @@ class ScheduleGuardService
                 ),
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         return null;
@@ -642,7 +689,7 @@ class ScheduleGuardService
         $overlapSummary = $this->buildOverlapSummary($overlapDetails);
 
         if ($currentStudents >= $studentCapacity) {
-            return [
+            return $this->finalizeCapacityConflict([
                 'type' => 'room_capacity',
                 'room_id' => $roomId,
                 'room_name' => (string) ($room->name ?? ('#' . $roomId)),
@@ -659,10 +706,36 @@ class ScheduleGuardService
                 ),
                 'overlap_summary' => $overlapSummary,
                 'overlap_details' => $overlapDetails,
-            ];
+            ]);
         }
 
         return null;
+    }
+
+    /**
+     * Make capacity conflicts actionable for directors (in-app #310):
+     * bake occupant names into message and attach short resolution steps.
+     *
+     * @param  array<string, mixed>  $conflict
+     * @return array<string, mixed>
+     */
+    private function finalizeCapacityConflict(array $conflict): array
+    {
+        $summary = trim((string) ($conflict['overlap_summary'] ?? ''));
+        $message = trim((string) ($conflict['message'] ?? ''));
+        if ($summary !== '' && $message !== '' && !str_contains($message, $summary)) {
+            $conflict['message'] = $message . ' 此時段已有：' . $summary . '。';
+        } elseif ($summary !== '' && $message === '') {
+            $conflict['message'] = '此時段已有：' . $summary . '。';
+        }
+
+        $conflict['suggested_actions'] = [
+            '在行事曆切到對應週次，並確認授課老師／分校篩選是否與衝突來源一致',
+            '到課程管理搜尋提示中的學生／科目，確認是否為舊合約未結束、代課或調課列',
+            '依情況改期、請假、結束舊合約，或改選其他時段後再排',
+        ];
+
+        return $conflict;
     }
 
     private function loadRoom(int $roomId): ?object

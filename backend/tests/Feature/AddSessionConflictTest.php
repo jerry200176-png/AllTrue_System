@@ -11,6 +11,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\CourseLeaveCascadeService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -85,6 +86,102 @@ class AddSessionConflictTest extends TestCase
         ]);
 
         $res->assertStatus(201);
+    }
+
+    /**
+     * In-app #278: cancelling a historical occurrence voids its dependent
+     * attendance/evaluation artifacts. Those audit rows remain queryable, but
+     * must not keep the cancelled slot locked against a legitimate make-up.
+     */
+    public function test_add_session_reuses_cancelled_slot_when_only_voided_artifacts_exist(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+        $session = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-03-25',
+            'StartTime' => '19:00:00',
+            'EndTime' => '21:00:00',
+            'Status' => 'cancelled',
+        ]);
+
+        StudentSignIn::create([
+            'StudentClassID' => $sc->ID,
+            'StudentID' => $student->id,
+            'ClassSessionID' => $session->id,
+            'SignInDT' => now(),
+            'MDT' => now(),
+            'Status' => 'present',
+            'CampusID' => 1,
+            'VoidedAt' => now(),
+            'VoidReason' => CourseLeaveCascadeService::VOID_REASON_CANCELLED,
+        ]);
+        LearningRecord::create([
+            'StudentClassID' => $sc->ID,
+            'ClassSessionID' => $session->id,
+            'TeacherID' => 99,
+            'Content' => 'Cancelled evaluation',
+            'Subject' => 'Math',
+            'SessionDate' => '2026-03-25',
+            'StartTime' => '19:00:00',
+            'EndTime' => '21:00:00',
+            'Status' => 'approved',
+            'ApprovedAt' => now(),
+            'VoidedAt' => now(),
+            'VoidReason' => CourseLeaveCascadeService::VOID_REASON_CANCELLED,
+        ]);
+
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+        $params = [
+            'session_date' => '2026-03-25',
+            'start_time' => '19:00',
+        ];
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", $params)
+            ->assertOk()
+            ->assertJsonPath('can_add', true)
+            ->assertJsonPath('conflict_type', 'none')
+            ->assertJsonPath('existing_session_id', $session->id);
+
+        $this->withHeaders($headers)
+            ->postJson("/api/v1/student-classes/{$sc->ID}/add-session", array_merge($params, [
+                'duration_minutes' => 120,
+                'auto_approve' => false,
+            ]))
+            ->assertCreated()
+            ->assertJsonPath('class_session_id', $session->id);
+
+        $this->assertSame('completed', (string) $session->fresh()->Status);
+        $this->assertSame(1, ClassSession::where('StudentClassID', $sc->ID)->count());
+        $this->assertNull(LearningRecord::where('ClassSessionID', $session->id)->value('VoidedAt'));
+    }
+
+    public function test_check_keeps_manually_voided_learning_record_locked(): void
+    {
+        [$token, $sc] = $this->seedCourseWithLockedSession('learning_record');
+        $session = ClassSession::where('StudentClassID', $sc->ID)->firstOrFail();
+        $session->Status = 'cancelled';
+        $session->save();
+
+        LearningRecord::where('ClassSessionID', $session->id)->update([
+            'VoidedAt' => now(),
+            'VoidReason' => 'manual director decision',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session/check", [
+            'session_date' => '2026-03-25',
+            'start_time' => '19:00',
+        ])->assertOk()
+            ->assertJsonPath('can_add', false)
+            ->assertJsonPath('conflict_type', 'locked_existing');
     }
 
     /**
@@ -472,6 +569,39 @@ class AddSessionConflictTest extends TestCase
     }
 
     /**
+     * PRODUCT_LOOP_DOGFOOD_001 Phase 1a: calendar create reuses add-session and must
+     * not mutate StudentClass Charge / Paid (or invent Invoice rows).
+     */
+    public function test_add_session_create_does_not_mutate_charge_paid_or_invoices(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createStudentClass($student->id, [
+            'SessionCount' => 4,
+            'RemainingSessions' => 4,
+            'Charge' => 2000,
+            'Paid' => 500,
+        ]);
+        $date = Carbon::today()->addDays(5)->toDateString();
+        $invoiceCountBefore = \Illuminate\Support\Facades\DB::table('Invoice')->count();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+            'session_date' => $date,
+            'start_time' => '14:00',
+            'duration_minutes' => 120,
+            'auto_approve' => false,
+        ])->assertSuccessful();
+
+        $after = $sc->fresh();
+        $this->assertSame(2000, (int) $after->Charge);
+        $this->assertSame(500, (int) ($after->Paid ?? 0));
+        $this->assertSame($invoiceCountBefore, \Illuminate\Support\Facades\DB::table('Invoice')->count());
+    }
+
+    /**
      * Regression: a count contract with seven attended sessions and one
      * remaining session must still accept its eighth occurrence. Cancelled
      * leave dates are historical exceptions, not additional active sessions.
@@ -600,6 +730,68 @@ class AddSessionConflictTest extends TestCase
         $res->assertOk()
             ->assertJsonPath('can_add', true)
             ->assertJsonPath('is_ended', true);
+    }
+
+    // In-app #330: omitting auto_approve for a historical make-up must leave
+    // the evaluation pending; approval is an explicit opt-in only.
+    public function test_add_session_defaults_to_pending_evaluation_for_ended_slot(): void
+    {
+        Carbon::setTestNow('2026-09-20 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                'session_date' => '2026-09-19',
+                'start_time' => '10:00',
+                'duration_minutes' => 120,
+                // Deliberately omit auto_approve to cover the fail-closed default.
+            ]);
+
+            $res->assertCreated()
+                ->assertJsonPath('auto_approved', false)
+                ->assertJsonPath('deducted', false);
+
+            $record = LearningRecord::where('ClassSessionID', $res->json('class_session_id'))->firstOrFail();
+            $this->assertSame('pending', (string) $record->Status);
+            $this->assertNull($record->ApprovedAt);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_add_session_explicit_auto_approve_still_approves_ended_slot(): void
+    {
+        Carbon::setTestNow('2026-09-20 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent(1);
+            $sc = $this->createStudentClass($student->id, ['SessionCount' => 4]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->postJson("/api/v1/student-classes/{$sc->ID}/add-session", [
+                'session_date' => '2026-09-19',
+                'start_time' => '10:00',
+                'duration_minutes' => 120,
+                'auto_approve' => true,
+            ]);
+
+            $res->assertCreated()
+                ->assertJsonPath('auto_approved', true)
+                ->assertJsonPath('deducted', true);
+
+            $record = LearningRecord::where('ClassSessionID', $res->json('class_session_id'))->firstOrFail();
+            $this->assertSame('approved', (string) $record->Status);
+            $this->assertNotNull($record->ApprovedAt);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     // --- check endpoint: is_ended flag for a slot still in the future ---

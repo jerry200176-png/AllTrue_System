@@ -50,6 +50,24 @@ class FeedbackPushNotifier
     public function notifyStaffReplied(LearningRecordFeedback $feedback): void
     {
         $this->safe(fn () => $this->dispatchToParent($feedback));
+        $this->safe(fn () => $this->resolveStaffNotification($feedback));
+    }
+
+    /**
+     * in-app #295 / #300 pattern: when staff finishes awaiting work, resolve the
+     * to_staff inbox card so completed threads leave the ops queue.
+     */
+    public function resolveStaffNotification(LearningRecordFeedback $feedback): void
+    {
+        $this->safe(function () use ($feedback) {
+            $campusId = (int) $feedback->getAttribute('campus_id');
+            $learningRecordId = (int) $feedback->getAttribute('learning_record_id');
+            $key = "lrfb:{$campusId}:{$learningRecordId}:to_staff";
+            DB::table('Notifications')
+                ->where('SourceKey', $key)
+                ->whereNull('ResolvedAt')
+                ->update(['ResolvedAt' => now()]);
+        });
     }
 
     private function dispatchToStaff(LearningRecordFeedback $feedback, string $event): void

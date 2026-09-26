@@ -1,0 +1,47 @@
+id: TKT-20260911-195036-O1ZB
+title: 'Add bounded in-app #278/#281 candidate probe'
+intent: 'Add bounded in-app #278/#281 candidate probe'
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: 'Only add a bounded read-only candidate probe for in-app #278/#281 inside
+  the existing bug-detail dump workflow and its focused contract test. Restrict candidates
+  to campus 9/13, 2026-07-22 and 2026-08-12, Wednesday 18:00-20:00, Physics 1-on-3
+  and four purchased/attended. Output no names/contact data; do not mutate production
+  data, attendance, deduction, billing, schedules, permissions, workflows outside
+  this probe, or deployment authority.'
+success_condition: 'A dispatch of the existing bug-detail dump for #278 or #281 returns
+  redacted candidate count and opaque candidates, is unique-or-ambiguous without guessing,
+  and the focused contract test passes.'
+priority: 1
+labels:
+- inapp
+scope:
+  allow:
+  - .github/workflows/bug-detail-dump.yml
+  - scripts/tests/test_bug_detail_dump_contract.py
+  - .agent-session/**
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 5
+  max_loc_changed: 280
+checks:
+- npm run lint:no-undef
+- npm run test:unit
+- npm run build
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-11T19:50:36+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

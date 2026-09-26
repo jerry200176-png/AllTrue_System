@@ -110,8 +110,8 @@
           </button>
         </div>
         <!-- Student Switcher (multi-child) -->
-        <div class="pp-student-switcher" v-if="students && students.length > 1">
-          <div class="pp-switcher-label">
+        <div class="pp-student-switcher" v-if="students && students.length > 1" role="group" aria-labelledby="parent-student-switcher-label">
+          <div id="parent-student-switcher-label" class="pp-switcher-label">
             <span class="material-symbols-outlined" style="font-size:16px;">people</span>
             切換學生
           </div>
@@ -128,8 +128,8 @@
           </div>
           <p class="pp-error" v-if="switchError" role="alert" style="margin-top:6px;">{{ switchError }}</p>
         </div>
-        <div class="pp-campus-switcher" v-if="(dashboard.enrollments || []).length > 1">
-          <label class="pp-switcher-label" for="parent-campus-scope">
+        <div class="pp-campus-switcher" v-if="(dashboard.enrollments || []).length > 1" role="group" aria-labelledby="parent-campus-switcher-label">
+          <label id="parent-campus-switcher-label" class="pp-switcher-label" for="parent-campus-scope">
             <span class="material-symbols-outlined" style="font-size:16px;">account_balance</span>
             分校範圍
           </label>
@@ -145,12 +145,12 @@
       </div>
 
       <!-- ═══ Progress Hub (PRD enterprise v2) ═══ -->
-      <div class="pp-card pp-hub-card enterprise-page-header" v-if="progressSummary" data-guide="parent-progress-hub">
+      <section class="pp-card pp-hub-card enterprise-page-header" v-if="progressSummary" data-guide="parent-progress-hub" aria-labelledby="parent-progress-hub-title">
         <div class="pp-hub-header">
-          <div class="pp-hub-title">
-            <span class="material-symbols-outlined">flag</span>
+          <h2 id="parent-progress-hub-title" class="pp-hub-title">
+            <span class="material-symbols-outlined" aria-hidden="true">flag</span>
             進度中心
-          </div>
+          </h2>
           <span class="pp-hub-week">本週 {{ progressSummary.week_label }}</span>
         </div>
         <div class="pp-hub-grid pp-hub-grid--home">
@@ -200,7 +200,7 @@
           </span>
           <span class="material-symbols-outlined pp-hub-feedback-cta__chev">chevron_right</span>
         </button>
-      </div>
+      </section>
 
       <!-- Parent Portal V1: answer the five parent questions using existing data only. -->
       <section class="pp-card pp-home-v1" v-if="parentHomeSummary" aria-labelledby="parent-home-v1-title">
@@ -246,16 +246,16 @@
         <button type="button" class="pp-btn pp-btn-primary" @click="retryDashboard">重新載入</button>
       </div>
 
-      <div class="pp-card pp-attention-card" v-if="progressSummary" data-guide="parent-attention-card">
+      <section class="pp-card pp-attention-card" v-if="progressSummary" data-guide="parent-attention-card" aria-labelledby="parent-attention-title">
         <div class="pp-attention-head">
           <div>
             <div class="pp-attention-title">
               <span class="material-symbols-outlined" aria-hidden="true">notifications_active</span>
-              <h3>需要留意</h3>
+              <h3 id="parent-attention-title">需要留意</h3>
             </div>
             <p class="pp-attention-subtitle">把需要你查看或回覆的事情集中在這裡。</p>
           </div>
-          <span v-if="parentActionItems.length" class="pp-attention-count">{{ parentActionItems.length }}</span>
+          <span v-if="parentActionItems.length" class="pp-attention-count" :aria-label="`${parentActionItems.length} 個待處理事項`">{{ parentActionItems.length }}</span>
         </div>
         <div v-if="parentActionItems.length" class="pp-attention-list">
           <button
@@ -274,11 +274,11 @@
             <span class="material-symbols-outlined pp-attention-item__chevron" aria-hidden="true">chevron_right</span>
           </button>
         </div>
-        <div v-else class="pp-attention-empty">
+        <div v-else class="pp-attention-empty" role="status">
           <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
           <span>目前沒有需要處理的事項。完整紀錄仍可從下方分頁查看。</span>
         </div>
-      </div>
+      </section>
 
       <div class="pp-card pp-parent-update" v-if="progressSummary && parentReleaseNotes.length">
         <button type="button" class="pp-parent-update__btn" @click="openReleaseNote(parentReleaseNotes[0])">
@@ -608,10 +608,10 @@
       </div>
 
         <!-- Attendance Timeline (FR-B-003) -->
-        <div class="pp-card" id="pp-attendance-section">
+        <section class="pp-card" id="pp-attendance-section" aria-labelledby="parent-attendance-title">
           <div class="pp-section-header">
-            <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-success);">fact_check</span>
-            <h3>出缺勤紀錄</h3>
+            <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-success);" aria-hidden="true">fact_check</span>
+            <h3 id="parent-attendance-title">出缺勤紀錄</h3>
           </div>
           <template v-if="(dashboard.attendance_history || []).length">
             <div class="pp-timeline">
@@ -620,7 +620,7 @@
                    class="pp-timeline-item"
                    :class="attendanceRowClass(a.Status)">
                 <div class="pp-timeline-dot" :class="attendanceDotClass(a.Status)">
-                  <span class="material-symbols-outlined">{{ attendanceIcon(a.Status) }}</span>
+                  <span class="material-symbols-outlined" aria-hidden="true">{{ attendanceIcon(a.Status) }}</span>
                 </div>
                 <div class="pp-timeline-content">
                   <div class="pp-timeline-head">
@@ -628,9 +628,9 @@
                     <span :class="['pp-timeline-status', attendanceStatusClass(a.Status)]">{{ a.status_label || attendanceLabel(a.Status) }}</span>
                   </div>
                   <div class="pp-timeline-sub" v-if="a.time || a.subject || a.teacher_name">
-                    <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon">schedule</span>{{ a.time }}</span>
-                    <span v-if="a.subject"><span class="material-symbols-outlined pp-mini-icon">menu_book</span>{{ a.subject }}</span>
-                    <span v-if="a.teacher_name"><span class="material-symbols-outlined pp-mini-icon">person</span>{{ a.teacher_name }}</span>
+                    <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon" aria-hidden="true">schedule</span>{{ a.time }}</span>
+                    <span v-if="a.subject"><span class="material-symbols-outlined pp-mini-icon" aria-hidden="true">menu_book</span>{{ a.subject }}</span>
+                    <span v-if="a.teacher_name"><span class="material-symbols-outlined pp-mini-icon" aria-hidden="true">person</span>{{ a.teacher_name }}</span>
                   </div>
                 </div>
               </div>
@@ -641,12 +641,12 @@
               顯示更多（共 {{ dashboard.attendance_history.length }} 筆）
             </button>
           </template>
-          <div class="pp-empty enterprise-empty" v-else>
+          <div class="pp-empty enterprise-empty" v-else role="status">
             <span class="material-symbols-outlined">event_busy</span>
             <p>目前無出缺勤記錄</p>
             <p class="pp-empty-hint">老師完成點名後將自動顯示於此</p>
           </div>
-        </div>
+        </section>
 
         <!-- 家長建議回饋卡片（Brand + Mobile-first） — 與「逐堂給老師留言」分區，避免誤以為只能填這一張 -->
         <div class="pp-card pp-voice-card">
@@ -826,7 +826,8 @@
                 <span v-if="c.campus_name" class="pp-campus-label">{{ c.campus_name }}</span>
                 <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
                 <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">共用方案</span>
-                <span v-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
+                <span v-if="c.is_tutoring || c.payment_status === 'free'" class="pp-badge pp-badge-info-soft">{{ c.payment_status_label || '免費（不適用）' }}</span>
+                <span v-else-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
                 <span v-else class="pp-badge pp-badge-warning">未繳費</span>
                 <span v-if="c.is_stopped" class="pp-badge pp-badge-neutral">{{ c.lifecycle_status_label || '課程已結束' }}</span>
               </div>
@@ -1105,13 +1106,22 @@ function formatHubDate(value) {
   return m ? `${parseInt(m[2], 10)}/${parseInt(m[3], 10)}` : value;
 }
 
-function gotoParentTarget(target, source = 'hub_card') {
+async function gotoParentTarget(target, source = 'hub_card') {
   const resolved = ['learning', 'schedule', 'billing'].includes(String(target)) ? String(target) : 'learning';
   activeTab.value = resolved;
   trackParentPortalEvent(token.value, 'parent.progress_card_clicked', {
     card: source,
     target: resolved,
   });
+  // The attention card is itself on the learning tab. Selecting its feedback
+  // action must still produce a visible transition: open the first record that
+  // can receive feedback and focus its editor instead of merely reassigning the
+  // already-selected tab.
+  if (source === 'attention_feedback' && resolved === 'learning') {
+    await nextTick();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 220));
+    await jumpToFirstFeedbackSlot(source);
+  }
 }
 
 function onParentTabKeydown(event, currentTab) {
@@ -1374,9 +1384,20 @@ const openFeedbackForRecord = async (record, source = 'card_quick') => {
 };
 
 const jumpToFirstFeedbackSlot = async (source = 'engage_strip') => {
-  const list = allLearningRecords.value || [];
-  if (!list.length) return;
-  const target = list.find((r) => !r.parent_feedback) || list[0];
+  let list = allLearningRecords.value || [];
+  let target = list.find((r) => !r.parent_feedback);
+  // The dashboard is paginated. A pending feedback count may refer to a
+  // record beyond the first page, so keep using the existing read-only
+  // pagination path until an actionable record is present.
+  while (!target && lrHasMore.value && !lrLoading.value) {
+    const previousLength = list.length;
+    await loadMoreRecords();
+    list = allLearningRecords.value || [];
+    target = list.find((r) => !r.parent_feedback);
+    if (list.length === previousLength) break;
+  }
+  if (!target) target = list[0];
+  if (!target) return;
   await openFeedbackForRecord(target, source);
 };
 
@@ -1525,6 +1546,7 @@ const hwIcon = (v) => ({ completed: 'task_alt', partial: 'pending', incomplete: 
 const hwLabel = (v) => ({ completed: '已完成', partial: '部分完成', incomplete: '未完成', missing: '未繳交' }[v] || v || '—');
 
 const courseCardClass = (c) => {
+  if (c.is_tutoring || c.payment_status === 'free') return '';
   if (c.is_stopped) return c.paid ? 'settled' : 'stopped';
   if (isMonthlyCourse(c)) {
     if (!c.paid) return 'warning';
@@ -2027,15 +2049,27 @@ onMounted(async () => {
 }
 .pp-btn-logout {
   background: none; border: 1px solid var(--ds-canvas-soft); border-radius: 8px;
-  padding: 6px; cursor: pointer; color: var(--ds-ink-mute);
-  display: flex; align-items: center;
+  min-width: 44px; min-height: 44px; padding: 6px; cursor: pointer; color: var(--ds-ink-mute);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .pp-btn-logout:hover { background: var(--ds-canvas); }
+.pp-btn-logout:focus-visible,
+.pp-chip:focus-visible,
+.pp-campus-select:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
+}
 .pp-btn-more {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; padding: 8px; margin-top: 8px;
   background: var(--ds-canvas); border: 1px solid var(--ds-canvas-soft); border-radius: 8px;
-  font-size: 0.85em; color: var(--ds-ink-mute); cursor: pointer;
+  font-size: 0.85em; color: var(--ds-ink-mute); cursor: pointer; min-height: 44px;
+}
+.pp-btn-more:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
 }
 
 /* ═══ Profile Card ═══ */
@@ -2049,7 +2083,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 .pp-profile-info { flex: 1; min-width: 0; }
-.pp-student-name { margin: 0; font-size: 1.2em; color: var(--ds-ink); }
+.pp-student-name { margin: 0; font-size: 1.2em; color: var(--ds-ink); overflow-wrap: anywhere; }
 .pp-meta-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .pp-tag {
   display: inline-block; padding: 2px 8px; border-radius: 4px;
@@ -2063,13 +2097,13 @@ onMounted(async () => {
 .pp-switcher-label { display: flex; align-items: center; gap: 4px; font-size: 0.82em; color: var(--ds-ink-mute); margin-bottom: 8px; }
 .pp-switcher-chips { display: flex; gap: 8px; flex-wrap: wrap; }
 .pp-campus-switcher { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ds-border); }
-.pp-campus-select { width: 100%; min-height: 38px; border: 1px solid var(--ds-border); border-radius: 8px; background: var(--ds-surface); color: var(--ds-ink); padding: 0 10px; }
+.pp-campus-select { width: 100%; min-height: 44px; border: 1px solid var(--ds-hairline-input); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-ink); padding: 0 10px; font-size: 1rem; }
 .pp-switcher-hint { margin: 6px 0 0; font-size: 0.78em; color: var(--ds-ink-mute); }
 .pp-campus-label { display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--ds-success-wash); color: var(--ds-success); font-size: 0.75em; white-space: nowrap; }
 .pp-chip {
-  padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--ds-canvas-soft);
-  background: var(--ds-canvas); font-size: 0.88em; cursor: pointer; transition: all 0.2s;
-  color: var(--ds-ink); font-weight: 500;
+  min-height: 44px; max-width: 100%; padding: 8px 14px; border-radius: 20px; border: 1.5px solid var(--ds-canvas-soft);
+  background: var(--ds-canvas); font-size: 0.88em; line-height: 1.25; overflow-wrap: anywhere;
+  text-align: left; cursor: pointer; transition: all 0.2s; color: var(--ds-ink); font-weight: 500;
 }
 .pp-chip:hover:not(.active):not(:disabled) { border-color: var(--ds-primary); color: var(--ds-primary); background: var(--ds-warning-wash); }
 .pp-chip.active { background: var(--ds-primary); color: var(--ds-canvas); border-color: var(--ds-primary); cursor: default; }
@@ -2114,11 +2148,12 @@ onMounted(async () => {
 /* ═══ Progress Hub (PRD enterprise v2) ═══ */
 .pp-hub-card { padding: 14px 14px 12px; }
 .pp-hub-header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-bottom: 10px;
 }
 .pp-hub-title {
   display: inline-flex; align-items: center; gap: 6px;
+  min-width: 0; margin: 0;
   font-size: 14px; font-weight: 800; color: var(--ds-ink);
 }
 .pp-hub-week { font-size: 12px; color: var(--ds-ink-mute); font-weight: 600; }
@@ -2133,7 +2168,7 @@ onMounted(async () => {
 .pp-hub-cell {
   position: relative;
   display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
-  padding: 12px 12px 14px;
+  min-height: 112px; padding: 12px 12px 14px;
   background: var(--ds-canvas);
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 14px;
@@ -2145,6 +2180,12 @@ onMounted(async () => {
   border-color: rgba(15, 23, 42, 0.32);
   transform: translateY(-1px);
   background: var(--ds-canvas-soft);
+}
+.pp-hub-cell:focus-visible {
+  z-index: 1;
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
 }
 .pp-hub-cell-label {
   font-size: 11px; font-weight: 800; color: var(--ds-ink-mute);
@@ -2163,6 +2204,7 @@ onMounted(async () => {
 .pp-hub-cell-val--small small { font-size: 12px; color: var(--ds-ink); }
 .pp-hub-cell-sub { color: var(--ds-ink-mute) !important; }
 .pp-hub-cell-cta {
+  margin-top: auto;
   font-size: 12px; font-weight: 700; color: var(--ds-ink-mute);
 }
 .pp-hub-cell--accent { border-color: rgba(245, 158, 11, 0.55); background: var(--ds-warning-wash); }
@@ -2310,9 +2352,14 @@ onMounted(async () => {
 }
 .pp-tab {
   flex: 1; display: flex; flex-direction: column; align-items: center;
-  gap: 3px; padding: 10px 4px; background: none; border: none;
+  gap: 3px; padding: 10px 8px; min-height: 52px; background: none; border: none;
   cursor: pointer; font-size: 0.8em; color: var(--ds-ink-mute); transition: color .2s, background .2s;
   position: relative;
+}
+.pp-tab:focus-visible {
+  z-index: 1;
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: -3px;
 }
 .pp-tab .material-symbols-outlined { font-size: 20px; }
 .pp-tab.active { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); font-weight: 600; }
@@ -2343,6 +2390,7 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   width: 100%;
+  min-height: 56px;
   margin-top: 12px;
   padding: 12px 14px;
   border-radius: 12px;
@@ -2357,6 +2405,11 @@ onMounted(async () => {
 }
 .pp-hub-feedback-cta:active {
   box-shadow: inset 0 1px 4px rgba(49, 27, 146, 0.08);
+}
+.pp-hub-feedback-cta:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
 }
 .pp-hub-feedback-cta__icon {
   font-size: 28px;
@@ -2419,7 +2472,8 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px 9px;
+  min-height: 52px;
+  padding: 12px 9px;
   border: 1px solid var(--ds-hairline);
   border-radius: 10px;
   background: var(--ds-canvas);
@@ -2431,7 +2485,11 @@ onMounted(async () => {
   -webkit-tap-highlight-color: transparent;
 }
 .pp-attention-item:hover { border-color: var(--ds-primary); background: var(--ds-canvas-soft); transform: translateY(-1px); }
-.pp-attention-item:focus-visible { outline: 3px solid var(--ds-primary-wash); outline-offset: 2px; }
+.pp-attention-item:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--ds-primary);
+}
 .pp-attention-item__icon { flex-shrink: 0; font-size: 22px; color: var(--ds-ink-mute); }
 .pp-attention-item--warning .pp-attention-item__icon { color: var(--ds-warning); }
 .pp-attention-item--success .pp-attention-item__icon { color: var(--ds-success); }
@@ -2439,16 +2497,18 @@ onMounted(async () => {
 .pp-attention-item--today .pp-attention-item__icon { color: var(--ds-primary-deep); }
 .pp-attention-item__main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .pp-attention-item__main strong { font-size: 13px; font-weight: 800; }
-.pp-attention-item__main small { overflow: hidden; color: var(--ds-ink-mute); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.pp-attention-item__main small { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .pp-attention-item__action { flex-shrink: 0; color: var(--ds-primary-deep); font-size: 11px; font-weight: 800; }
 .pp-attention-item__chevron { flex-shrink: 0; color: var(--ds-ink-mute); font-size: 19px; }
 .pp-attention-empty {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 10px 2px 2px;
   color: var(--ds-ink-mute);
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .pp-attention-empty .material-symbols-outlined { color: var(--ds-success); font-size: 20px; }
 
@@ -3016,16 +3076,16 @@ onMounted(async () => {
 .pp-timeline-dot.late { background: var(--ds-warning); }
 .pp-timeline-dot.absent { background: var(--ds-danger); }
 .pp-timeline-dot.leave { background: var(--ds-ink-mute); }
-.pp-timeline-content { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
-.pp-timeline-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pp-timeline-content { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pp-timeline-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
 .pp-timeline-date { font-size: 0.88em; color: var(--ds-ink); font-weight: 600; }
 .pp-timeline-status { font-size: 0.82em; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
 .pp-timeline-status.present { color: var(--ds-success); background: var(--ds-success-wash); }
 .pp-timeline-status.late { color: var(--ds-primary); background: var(--ds-warning-wash); }
 .pp-timeline-status.absent { color: var(--ds-danger); background: var(--ds-danger-wash); }
 .pp-timeline-status.leave { color: var(--ds-ink-mute); background: var(--ds-canvas-soft); }
-.pp-timeline-sub { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.8em; color: var(--ds-ink-mute); }
-.pp-timeline-sub span { display: inline-flex; align-items: center; gap: 3px; }
+.pp-timeline-sub { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.8em; color: var(--ds-ink-mute); min-width: 0; }
+.pp-timeline-sub span { display: inline-flex; align-items: center; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
 .pp-mini-icon { font-size: 13px !important; vertical-align: middle; }
 .pp-empty-hint { font-size: 0.78em !important; color: var(--ds-ink-mute); margin-top: 4px; }
 

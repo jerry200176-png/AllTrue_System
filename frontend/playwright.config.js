@@ -24,10 +24,40 @@ export default defineConfig({
     /ui-foundation-role-matrix\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
     /learning-records-preview\.spec\.js$/,
+    /release-notes-clarity\.spec\.js$/,
     /teacher-daily-workflow\.spec\.js$/,
     /teacher-calendar-ux\.spec\.js$/,
+    /calendar-split-slot-317\.spec\.js$/,
     /product-clarity-browser\.spec\.js$/,
     /admissions-workflow-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
+    /admissions-clarity\.spec\.js$/,
+    /bug-reports-clarity\.spec\.js$/,
+    /profile-controls-clarity\.spec\.js$/,
+    /question-bank-clarity\.spec\.js$/,
+    /attendance-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
+    /students-list-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
+    /subject-settings-clarity\.spec\.js$/,
+    /director-dashboard-shell-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in subject-units-playwright.config.js.
+    /subject-units-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in teacher-eligibility-playwright.config.js.
+    /teacher-eligibility-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.chat-accessibility.config.js.
+    /chat-shell-clarity\.spec\.js$/,
+    /chat-accessibility\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.tuition-collection.config.js.
+    /tuition-collection-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
+    /line-integration-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
+    /branch-management-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in the UI-foundation config.
+    /binding-health-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server and local PDF artifacts.
+    /truefit-fixture-print\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },

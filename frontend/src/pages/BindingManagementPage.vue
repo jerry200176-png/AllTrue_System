@@ -47,7 +47,7 @@
     </div>
 
     <!-- 篩選列 -->
-    <AtFilterBar label="綁定篩選">
+    <AtFilterBar class="bmp-filter-bar" label="綁定篩選">
       <div>
         <label for="bmp-search">搜尋學生姓名</label>
         <input
@@ -97,9 +97,10 @@
       description="調整搜尋或篩選條件後再試；尚未有任何學生綁定 LINE 時也會顯示此狀態。"
     />
 
-    <!-- Desktop 表格 -->
-    <div v-else class="bmp-table-wrap">
-      <table class="bmp-table" data-guide="binding-table">
+    <!-- 同一筆綁定資料：桌面保留表格，窄螢幕改為可掃讀的作業卡片。 -->
+    <div v-else>
+      <div class="bmp-table-wrap bmp-desktop-table">
+        <table class="bmp-table" data-guide="binding-table">
         <thead>
           <tr>
             <th style="width:110px">學生</th>
@@ -136,9 +137,34 @@
             </td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
 
-      <!-- 分頁 -->
+      <div class="bmp-mobile-list" aria-label="LINE 綁定清單">
+        <article v-for="row in list" :key="row.id" class="bmp-mobile-card">
+          <div class="bmp-mobile-card__head">
+            <div class="bmp-student">
+              <span class="bmp-avatar">{{ (row.student_name || '?')[0] }}</span>
+              <strong>{{ row.student_name || `#${row.student_id}` }}</strong>
+            </div>
+            <AtBadge :tone="isVerified(row) ? 'success' : 'warning'" :label="isVerified(row) ? '已驗證' : '未驗證'" />
+          </div>
+          <dl class="bmp-mobile-details">
+            <div><dt>LINE ID</dt><dd><code class="bmp-line-id">{{ row.line_user_id_masked || '—' }}</code></dd></div>
+            <div><dt>分校</dt><dd>{{ row.campus_name || `#${row.campus_id}` }}</dd></div>
+            <div><dt>綁定時間</dt><dd class="bmp-tabular">{{ formatDateTime(row.bound_at) }}</dd></div>
+          </dl>
+          <AtButton
+            class="bmp-mobile-card__action"
+            shape="rect"
+            variant="danger"
+            icon="link_off"
+            @click="openUnbindDialog(row)"
+          >解除此筆綁定</AtButton>
+        </article>
+      </div>
+
+      <!-- 分頁在兩種版面共用，避免窄螢幕遺失後續資料。 -->
       <div v-if="pagination.lastPage > 1" class="bmp-pagination">
         <AtButton shape="rect" size="sm" variant="ghost" :disabled="page <= 1" @click="changePage(page - 1)">上一頁</AtButton>
         <span class="bmp-page-info">第 {{ page }} / {{ pagination.lastPage }} 頁（共 {{ pagination.total }} 筆）</span>
@@ -206,7 +232,6 @@ const pagination = ref({ lastPage: 1, total: 0 });
 const unbindTarget = ref(null);
 const unbinding = ref(false);
 const unbindError = ref('');
-const unbindTitleId = 'bmp-unbind-title';
 
 const filters = ref({ studentName: '', campusId: '', status: '' });
 let searchTimer = null;
@@ -372,6 +397,8 @@ onMounted(() => { load(); loadStats(); });
   overflow-x: auto;
 }
 
+.bmp-mobile-list { display: none; }
+
 .bmp-table {
   width: 100%;
   border-collapse: collapse;
@@ -451,6 +478,29 @@ onMounted(() => { load(); loadStats(); });
   font-variant-numeric: tabular-nums;
 }
 
+.bmp-mobile-card {
+  padding: var(--ds-space-4);
+  border: var(--ds-border-width) solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-1);
+}
+
+.bmp-mobile-card + .bmp-mobile-card { margin-top: var(--ds-space-3); }
+.bmp-mobile-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ds-space-3); }
+.bmp-mobile-details { display: grid; gap: var(--ds-space-2); margin: var(--ds-space-4) 0; }
+.bmp-mobile-details > div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: var(--ds-space-2); align-items: start; }
+.bmp-mobile-details dt { color: var(--ds-ink-mute); font-size: var(--ds-font-size-sm); font-weight: var(--ds-font-weight-semibold); }
+.bmp-mobile-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--ds-ink-secondary); }
+.bmp-mobile-card__action { width: 100%; min-height: var(--ds-control-height-touch, 44px); }
+.bmp-page :deep(.at-btn),
+.bmp-page :deep(.at-icon-btn) { min-height: var(--ds-control-height-touch, 44px); }
+.bmp-page :deep(.at-icon-btn) { min-width: var(--ds-control-height-touch, 44px); }
+
+.bmp-filter-bar :deep(input),
+.bmp-filter-bar :deep(select),
+.bmp-pagination :deep(.at-btn),
+.bmp-dialog :deep(.at-dialog__close) { min-height: var(--ds-control-height-touch, 44px); }
+
 /* 解除綁定對話框 */
 .bmp-overlay {
   position: fixed;
@@ -499,5 +549,11 @@ onMounted(() => { load(); loadStats(); });
   .bmp-stats {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
+}
+
+@media (max-width: 640px) {
+  .bmp-desktop-table { display: none; }
+  .bmp-mobile-list { display: block; }
+  .bmp-pagination { justify-content: space-between; }
 }
 </style>

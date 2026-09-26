@@ -17,7 +17,7 @@
 |-------|-----------|
 | R0/T0 | Required checks and docs/link checks; no production behavior change |
 | R1/T1 | Required CI, regression test, review, and rollback one-liner |
-| R2/T2 | Required CI, independent review, risk/rollback/production-verification checklist, and resolved bot/reviewer threads |
+| R2/T2 | Exact-target required CI, rollback readiness, risk/production-verification checklist, and resolved bot/reviewer threads |
 | R3/T3 | Evidence package, dry-run/recovery plan, and Repair Manifest where applicable; stop before protected execution or activation for Founder approval |
 
 ## After required checks (R0–R2 only)

@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
  *           fixed-session courses; never falls back to a company-wide default.
  * @property string $deduction_basis One of DeductionBasis::all(); always reads as
  *           `fixed_session` when the column is null (see the accessor below).
+ * @property array<string, mixed>|null $pricing_snapshot Immutable transaction pricing snapshot.
  * @property \App\Models\Student|null $student
  * @property \App\Models\CoursePackage|null $coursePackage
  */
@@ -20,6 +21,10 @@ class StudentClass extends Model
     protected $table = 'StudentClass';
     protected $primaryKey = 'ID';
     public $timestamps = false;
+
+    protected $hidden = ['pricing_snapshot'];
+
+    private bool $allowPricingSnapshotInitialization = false;
 
     /** Course memo is TEXT; keep a hard cap so paste cannot unbounded-grow the row. */
     public const MEMO_MAX_LENGTH = 8000;
@@ -44,15 +49,37 @@ class StudentClass extends Model
 
     protected $casts = [
         'settlement_locked_at' => 'datetime',
+        'pricing_snapshot' => 'array',
     ];
 
     protected static function booted(): void
     {
+        static::saving(function (StudentClass $course): void {
+            if ($course->exists && $course->isDirty('pricing_snapshot') && !$course->allowPricingSnapshotInitialization) {
+                throw new \LogicException('pricing_snapshot is immutable');
+            }
+        });
         static::saved(function (StudentClass $course): void {
             if ($course->wasChanged(['settlement_locked_at', 'closed_reason'])) {
                 ClassSession::resetSettlementLockCache();
             }
         });
+    }
+
+    /** Initialize the immutable snapshot exactly once, immediately after creation. */
+    public function initializePricingSnapshot(array $snapshot): void
+    {
+        if (!$this->exists || !$this->wasRecentlyCreated || $this->getAttribute('pricing_snapshot') !== null) {
+            throw new \LogicException('pricing_snapshot may only be initialized at creation time');
+        }
+
+        $this->pricing_snapshot = $snapshot;
+        $this->allowPricingSnapshotInitialization = true;
+        try {
+            $this->saveQuietly();
+        } finally {
+            $this->allowPricingSnapshotInitialization = false;
+        }
     }
 
     public function student()
@@ -89,6 +116,11 @@ class StudentClass extends Model
     public function invoices()
     {
         return $this->hasMany(Invoice::class, 'StudentClassID', 'ID');
+    }
+
+    public function pricingAmendments()
+    {
+        return $this->hasMany(StudentClassPricingAmendment::class, 'student_class_id', 'ID');
     }
 
     public function paymentReports()

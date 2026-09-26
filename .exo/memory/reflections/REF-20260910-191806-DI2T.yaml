@@ -1,0 +1,14 @@
+id: REF-20260910-191806-DI2T
+pattern: Parent Portal action queue focus and long-copy convergence
+insight: Keep next-step action rows at the shared mobile ergonomics floor (52px here),
+  use the canonical --ds-focus-ring, expose the queue as a labelled section with a
+  status-aware empty state, and test :focus-visible after restoring keyboard modality
+  when a prior pointer click changed the browser modality.
+severity: medium
+scope: global
+actor: human
+session_id: SES-20260901045942-87630ED6
+created_at: '2026-09-10T19:18:06+08:00'
+status: active
+tags: []
+hit_count: 0

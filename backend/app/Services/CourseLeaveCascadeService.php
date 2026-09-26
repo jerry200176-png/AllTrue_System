@@ -182,8 +182,8 @@ class CourseLeaveCascadeService
 
     /**
      * Mark the target session as leave, void related records,
-     * shift subsequent scheduled sessions forward, and append one new session
-     * to keep the total count intact.
+     * keep subsequent scheduled sessions in place, and append one new session
+     * to keep the total count intact for prepaid count courses.
      *
      * Must be called inside a DB::transaction.
      *
@@ -392,20 +392,6 @@ class CourseLeaveCascadeService
             ];
         }
 
-        if ($policy === self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL) {
-            $plan = self::computeShiftPlan($sessionRows, $leaveSessionDate, $weekdays, (int) $leaveSession->id);
-            return [
-                'policy' => $policy,
-                'leave_session_date' => $leaveSessionDate,
-                'weekdays' => $weekdays,
-                'moves' => $plan['moves'],
-                'vacated' => $plan['vacated'],
-                'append' => $plan['append'],
-                'extended_end_date' => $plan['extended_end_date'],
-                'future_dates_unchanged' => false,
-                'next_billable_session' => null,
-            ];
-        }
         // Monthly/date-mode courses are bounded by their contract interval.
         // A leave reduces actual billable sessions; it never creates a tail or
         // changes EndDate. This also protects legacy rows with a positive
@@ -423,6 +409,20 @@ class CourseLeaveCascadeService
                     ? Carbon::parse($course->EndDate)->toDateString()
                     : null,
                 'future_dates_unchanged' => true,
+                'next_billable_session' => null,
+            ];
+        }
+        if ($policy === self::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL) {
+            $plan = self::computeShiftPlan($sessionRows, $leaveSessionDate, $weekdays, (int) $leaveSession->id);
+            return [
+                'policy' => $policy,
+                'leave_session_date' => $leaveSessionDate,
+                'weekdays' => $weekdays,
+                'moves' => $plan['moves'],
+                'vacated' => $plan['vacated'],
+                'append' => $plan['append'],
+                'extended_end_date' => $plan['extended_end_date'],
+                'future_dates_unchanged' => false,
                 'next_billable_session' => null,
             ];
         }
@@ -712,6 +712,11 @@ class CourseLeaveCascadeService
     public static function shiftAndAppendAfterLeave(int $courseId, string $leaveDate, ClassSession $leaveSession): array
     {
         $course = StudentClass::where('ID', $courseId)->first();
+        // Date/monthly courses are bounded by their billing interval. Never let
+        // an explicit or accidental caller move a session across EndDate.
+        if ($course && strtolower((string) ($course->ScheduleMode ?? 'count')) === 'date') {
+            return [self::fetchCourseSessionRows($courseId), null];
+        }
         if ($course && (string) ($course->scheduling_policy ?? 'auto_recurrence') === 'manual_occurrence') {
             $end = ClassSession::where('StudentClassID', $courseId)->max('SessionDate');
             return [self::fetchCourseSessionRows($courseId), $end ? Carbon::parse($end)->toDateString() : null];

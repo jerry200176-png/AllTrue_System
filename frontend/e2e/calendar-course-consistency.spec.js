@@ -12,7 +12,7 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
  */
 
 const BASE = process.env.SMOKE_BASE_URL;
-const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 16);
+const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
 const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
 const CALENDAR_NAV_LABEL = '班級行事曆';
@@ -36,6 +36,10 @@ function readSession() {
 }
 
 const SESSION = readSession();
+const AUTHORIZED_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
+  ? SESSION.user.campuses.map(Number).filter(Number.isInteger)
+  : [];
+const BRANCH_ID = REQUESTED_BRANCH_ID || AUTHORIZED_CAMPUSES[0] || 0;
 
 function listFromPayload(payload) {
   if (Array.isArray(payload)) return payload;
@@ -403,10 +407,14 @@ test.describe('production acceptance — calendar/course parity', () => {
     expect(switchedPeriod.rawDenominator).not.toBe(switchedCampus.rawDenominator);
   });
 
-  test('director: 課程付款狀態不是按鈕且帳務入口清楚', async ({ page }) => {
+  for (const viewport of [
+    { name: 'desktop', width: 1440, height: 900 },
+    { name: 'mobile', width: 390, height: 844 },
+  ]) {
+    test(`director ${viewport.name}: 課程付款狀態與帳務入口分開且可操作`, async ({ page }) => {
     test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
       'missing controlled production director session');
-    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.addInitScript(({ session, branch, releaseVersion }) => {
       localStorage.setItem('alltrue_session', JSON.stringify(session));
       localStorage.setItem('app_branch', String(branch));
@@ -418,11 +426,96 @@ test.describe('production acceptance — calendar/course parity', () => {
     await navigate(page, COURSE_NAV_LABEL);
     await expect(pageHeading(page, COURSE_NAV_LABEL)).toBeVisible({ timeout: 15_000 });
 
-    const status = page.locator('.payment-status-badge').first();
+    const paymentCell = page.locator('.payment-status-and-action').filter({
+      has: page.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true }),
+    }).first();
+    await expect(paymentCell).toBeVisible({ timeout: 15_000 });
+    const status = paymentCell.locator('.payment-status-badge');
+    const action = paymentCell.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true });
     await expect(status).toBeVisible({ timeout: 15_000 });
     await expect(status).toHaveAttribute('role', 'status');
     await expect(status).toHaveCSS('cursor', 'default');
     await expect(page.locator('.btn-status')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /登記繳費回報|查看待對帳|前往帳務中心/, exact: true }).first()).toBeVisible();
+    await expect(action).toBeVisible();
+    await action.click();
+    await expect(page.getByRole('heading', { name: '帳務中心', exact: true })).toBeVisible({ timeout: 15_000 });
   });
+  }
+
+  for (const viewport of [
+    { name: 'desktop', width: 1440, height: 900 },
+    { name: 'mobile', width: 390, height: 844 },
+  ]) {
+    test(`director ${viewport.name}: contracted four-session detail explains two unarranged sessions`, async ({ page, request }) => {
+      test.skip(!BASE || !SESSION?.access_token || !SESSION?.user?.id,
+        'missing controlled production director session');
+      test.skip(BRANCH_ID !== 9, 'the reported unarranged-session course is scoped to campus 9');
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      const token = SESSION.access_token;
+      const coursesPayload = await getJson(
+        request,
+        `/api/v1/student-classes?branch_id=${BRANCH_ID}&per_page=2000`,
+        token,
+      );
+      const matches = listFromPayload(coursesPayload).filter((course) => (
+        Number(valueOf(course, 'SessionCount', 'session_count', 'sessions_purchased')) === 4
+        && Number(valueOf(course, 'UsedSessions', 'used_sessions')) === 2
+        && Number(valueOf(course, 'RemainingSessions', 'remaining_sessions')) === 2
+        && String(valueOf(course, 'subject_name', 'subject') || '') === '數學'
+        && String(valueOf(course, 'class_type', 'ClassType') || '') === 'one_on_two'
+        && String(valueOf(course, 'start_time', 'StartTime') || '').slice(0, 5) === '17:00'
+        && String(valueOf(course, 'end_time', 'EndTime') || '').slice(0, 5) === '19:00'
+        && String(valueOf(course, 'closed_reason') || '') === 'contract_amended'
+      ));
+      expect(matches, 'the reported 4 purchased / 2 attended / 2 unarranged course must be unique').toHaveLength(1);
+      const target = matches[0];
+      const studentName = String(valueOf(target, 'student_name') || target?.student?.name || '').trim();
+      const subjectName = String(valueOf(target, 'subject_name', 'subject') || '').trim();
+      expect(studentName).not.toBe('');
+      expect(subjectName).not.toBe('');
+
+      await page.addInitScript(({ session, branch, releaseVersion }) => {
+        localStorage.setItem('alltrue_session', JSON.stringify(session));
+        localStorage.setItem('app_branch', String(branch));
+        localStorage.setItem('alltrue_release_notes_seen', releaseVersion);
+        sessionStorage.setItem('alltrue_brand_intro_seen_token', String(session.access_token || ''));
+      }, { session: SESSION, branch: BRANCH_ID, releaseVersion: CURRENT_STAFF_RELEASE });
+      await page.goto('/');
+      await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
+      await navigate(page, COURSE_NAV_LABEL);
+
+      const studentFilter = page.locator('#course-filter-student');
+      await studentFilter.fill(studentName);
+      await expect(page.locator('.course-list-skeleton')).toHaveCount(0, { timeout: 20_000 });
+      const group = page.locator('.student-group-card').filter({ hasText: studentName }).first();
+      await expect(group).toBeVisible({ timeout: 20_000 });
+      const toggle = group.locator('.student-group-toggle');
+      if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+      const row = group.locator('tr.course-row').filter({ hasText: subjectName }).first();
+      await expect(row).toBeVisible({ timeout: 15_000 });
+      await row.getByRole('button', { name: '詳情', exact: true }).click();
+
+      const detail = group.locator('.detail-panel').first();
+      const planning = detail.locator('.drift-hint-info');
+      await expect(planning).toBeVisible({ timeout: 15_000 });
+      await expect(planning).toContainText('已排 2／購買 4 堂，尚有 2 堂未安排');
+      await expect(planning).toContainText('下方日期清單只列已實際排定的堂次');
+      // Keep the count contract independent of typography, while ensuring the
+      // selected detail is the reported 2-attended / 4-purchased course.
+      await expect(detail.locator('.dates-panel-title')).toContainText(/已上\s*2\s*[／/]\s*購買\s*4\s*堂/);
+      if (viewport.name === 'desktop') {
+        await expect(row.getByRole('button', { name: '排課', exact: true })).toBeEnabled();
+      } else {
+        const isClipped = await planning.evaluate((element) => element.scrollWidth > element.clientWidth + 1);
+        expect(isClipped, 'the unarranged-session explanation must wrap rather than clip on mobile').toBeFalsy();
+        await row.getByRole('button', { name: /更多/ }).click();
+        const makeupEntry = group.getByRole('menuitem', { name: /補課 \/ 補登/ });
+        await expect(makeupEntry).toBeVisible();
+        // This exact report is an already-ended contract. Keep the existing
+        // guard: the entry remains discoverable but cannot create a new
+        // session after a contract amendment.
+        await expect(makeupEntry).toBeDisabled();
+      }
+    });
+  }
 });

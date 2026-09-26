@@ -38,8 +38,6 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
     {
       key: 'teaching-tools', title: '進階教學工具', defaultOpen: false, primary: false,
       items: [
-        { page: 'assessments', label: '學習檢測', icon: 'grading' },
-        { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
         { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
       ],
     },
@@ -90,20 +88,23 @@ function directorGroups(role, { admissionsEnabled = true } = {}) {
   return groups;
 }
 
-function teacherGroups() {
+function teacherGroups({ truefitEnabled = false } = {}) {
+  const teachingItems = [
+    { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
+    { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
+    { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
+    { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
+  ];
+  if (truefitEnabled) {
+    teachingItems.push({ page: 'truefit', label: 'TrueFit', icon: 'school' });
+  }
+
   return [{
     key: 'teaching', title: '今日教學', defaultOpen: true, primary: true,
-    items: [
-      { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
-      { page: 'calendar', label: '我的課表', icon: 'calendar_today' },
-      { page: 'attendance', label: '出缺勤', icon: 'fact_check', badgeTypes: ['attendance'] },
-      { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
-    ],
+    items: teachingItems,
   }, {
     key: 'teaching-tools', title: '教學工具', defaultOpen: false, primary: false,
     items: [
-      { page: 'assessments', label: '學習檢測', icon: 'grading' },
-      { page: 'question-banks', label: '題庫管理', icon: 'quiz' },
       { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
     ],
   }, {
@@ -128,7 +129,7 @@ function cloneGroups(groups) {
 /** Return a fresh role-scoped model for every renderer. */
 export function getNavigationGroups(role, options = {}) {
   if (DIRECTOR_ROLES.has(role)) return cloneGroups(directorGroups(role, options));
-  if (role === 'teacher') return cloneGroups(teacherGroups());
+  if (role === 'teacher') return cloneGroups(teacherGroups(options));
   return [];
 }
 

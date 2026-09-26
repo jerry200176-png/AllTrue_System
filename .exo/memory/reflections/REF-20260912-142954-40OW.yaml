@@ -1,0 +1,15 @@
+id: REF-20260912-142954-40OW
+pattern: Handed-off PR source session could not be legally reused after base drift
+  and singleton manifest conflict
+insight: Create a fresh governed integration worktree on current main, carry the source
+  product diff without its session/ticket evidence, record source head and patch comparison,
+  then generate new checks on the integration head.
+severity: medium
+scope: TKT-20260912-135926-9P4S
+actor: human
+session_id: SES-20260912135932-461EEB27
+created_at: '2026-09-12T14:29:54+08:00'
+status: active
+tags:
+- provenance
+hit_count: 0

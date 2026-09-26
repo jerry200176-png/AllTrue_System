@@ -31,6 +31,7 @@ class LearningRecordResurrectionPolicy
      * 舊列、避免被 409 永久擋住。人工作廢（其他 VoidReason）維持拒絕，不覆寫管理員決策。
      *
      *  - '一般請假'            CourseLeaveCascadeService（整門/批次請假，#125/#495）
+     *  - '課堂已取消'          取消堂次後由同堂補登／復原流程重新啟用（in-app #278）
      *  - '由已上調整狀態'      ClassSessionController attended→scheduled/cancelled（已 reverseForSession 沖回，#146）
      *  - '補請假：已上課改請假' ClassSessionController::handleRetroLeaveTransition（已沖回）
      *  - '單堂標記請假'        ClassSessionController scheduled→leave（scheduled 未扣堂）
@@ -39,6 +40,7 @@ class LearningRecordResurrectionPolicy
      */
     public const SYSTEM_RESURRECTABLE_VOID_REASONS = [
         CourseLeaveCascadeService::VOID_REASON_LEAVE,
+        CourseLeaveCascadeService::VOID_REASON_CANCELLED,
         '由已上調整狀態',
         '補請假：已上課改請假',
         '單堂標記請假',

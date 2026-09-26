@@ -1378,7 +1378,7 @@ parameters:
 			message: '#^Strict comparison using \!\=\= between mixed and null will always evaluate to true\.$#'
 			identifier: notIdentical.alwaysTrue
 			count: 5
-			path: app/Http/Controllers/ClassSessionController.php
+			path: app/Services/ClassSessionIndexReadService.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$RemainingSessions\.$#'
@@ -2115,7 +2115,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$TeacherID\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 4
 			path: app/Http/Controllers/FinanceController.php
 
 		-
@@ -2373,7 +2373,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 5
+			count: 4
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -4087,7 +4087,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 7
+			count: 6
 			path: app/Http/Controllers/StudentClassController.php
 
 		-

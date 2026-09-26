@@ -502,6 +502,89 @@ class SubstituteWithRescheduleTest extends TestCase
         );
     }
 
+    /**
+     * in-app #276: after substitute_with_reschedule (same-day time move), durable
+     * 「回復正班老師」 must clear schedules + LR even when the undo window has expired.
+     * Production logs showed restore returning success with scheduled_deleted=0 while
+     * leaving the substitute chain, which kept effective instructor on the sub teacher.
+     */
+    public function test_restore_after_combined_substitute_clears_stale_schedule_chain(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-20 08:00:00', 'Asia/Taipei'));
+        [$dirToken, $oldId, $subId, $session] = $this->seedScenarioSingleCampus();
+
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subId,
+            'reason' => '同日換時+代課',
+            'new_date' => '2026-04-19',
+            'new_start_time' => '17:00',
+            'new_end_time' => '19:00',
+        ])->assertOk();
+
+        $session->refresh();
+        $this->assertSame('17:00', substr((string) $session->StartTime, 0, 5));
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $subId,
+        ]);
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'rescheduled',
+            'teacher_id' => $oldId,
+        ]);
+
+        // Expire undo window; directors must use durable restore.
+        Carbon::setTestNow(Carbon::parse('2026-04-20 12:00:00', 'Asia/Taipei'));
+        $session->Status = 'attended';
+        $session->save();
+
+        // Simulate TIME-column style storage that previously broke SUBSTRING matching.
+        DB::table('schedules')
+            ->where('student_course_id', $session->StudentClassID)
+            ->whereDate('schedule_date', '2026-04-19')
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->update(['start_time' => '17:00:00', 'end_time' => '19:00:00']);
+
+        $restore = $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $oldId,
+            'reason' => '回復正班老師',
+        ]);
+        $restore->assertOk()
+            ->assertJsonFragment([
+                'restored_teacher_id' => $oldId,
+                'substitute_cleared' => true,
+            ]);
+        $this->assertGreaterThan(0, (int) $restore->json('deleted_scheduled_count'));
+
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $subId,
+        ]);
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'rescheduled',
+        ]);
+        $this->assertSame(
+            $oldId,
+            (int) LearningRecord::where('ClassSessionID', $session->id)->value('TeacherID')
+        );
+
+        $this->assertNull(
+            \App\Services\SubstituteScheduleService::resolveSubstituteUserId(
+                (int) $session->StudentClassID,
+                '2026-04-19',
+                '17:00'
+            )
+        );
+    }
+
     // ───────────────────────────────────────────────────────────
     // 8. 近期代課記錄 API 回傳 operation_type 欄位
     // ───────────────────────────────────────────────────────────

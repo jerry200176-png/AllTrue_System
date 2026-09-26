@@ -79,7 +79,13 @@ jobs:
       - name: Install Playwright browser (chromium)
         if: steps.detect.outputs.run == 'true'
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: |
+          # Avoid Google Chrome apt hash-mismatch flakes on apt-get update inside --with-deps.
+          sudo find /etc/apt -type f -exec grep -l 'dl.google.com/linux/chrome' {} + 2>/dev/null | sudo xargs -r rm -f || true
+          sudo rm -f /etc/apt/sources.list.d/google-chrome* /etc/apt/sources.list.d/*chrome* || true
+          sudo rm -rf /var/lib/apt/lists/partial /var/lib/apt/lists/*chrome* || true
+          sudo apt-get update -y || true
+          npx playwright install --with-deps chromium
 
       - name: Warn if smoke secrets are missing (TD-070)
         if: steps.detect.outputs.run == 'true'

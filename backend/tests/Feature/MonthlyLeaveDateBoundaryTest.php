@@ -44,6 +44,71 @@ class MonthlyLeaveDateBoundaryTest extends TestCase
         $this->assertTrue($preview['future_dates_unchanged']);
     }
 
+    public function test_monthly_preview_ignores_legacy_shift_policy_and_keeps_billing_boundary(): void
+    {
+        $course = $this->createMonthlyCourse('2026-09-01', '2026-09-30', 5);
+        $this->createSessions($course, ['2026-09-01', '2026-09-08', '2026-09-15', '2026-09-22', '2026-09-29']);
+
+        // The preview endpoint accepts a policy value for the explicit
+        // count-based course-pause workflow. It must not let that client value
+        // make a date/monthly course plan a cross-period shift or tail.
+        $preview = CourseLeaveCascadeService::previewLeaveCascadeForCourse(
+            (int) $course->ID,
+            '2026-09-29',
+            null,
+            CourseLeaveCascadeService::POLICY_SHIFT_FUTURE_DATES_APPEND_TAIL
+        );
+
+        $this->assertSame(CourseLeaveCascadeService::POLICY_KEEP_FUTURE_DATES_APPEND_TAIL, $preview['policy']);
+        $this->assertSame([], $preview['moves']);
+        $this->assertSame([], $preview['vacated']);
+        $this->assertNull($preview['append']);
+        $this->assertNull($preview['extended_end_date']);
+        $this->assertSame('2026-09-30', $preview['contract_end_date']);
+        $this->assertTrue($preview['future_dates_unchanged']);
+    }
+
+    public function test_monthly_undo_restores_only_the_leave_without_a_tail(): void
+    {
+        $course = $this->createMonthlyCourse('2026-09-01', '2026-09-30', 5);
+        $sessions = $this->createSessions($course, ['2026-09-01', '2026-09-08', '2026-09-15', '2026-09-22', '2026-09-29']);
+
+        DB::transaction(fn () => CourseLeaveCascadeService::applyLeaveCascade((int) $course->ID, '2026-09-15'));
+        $this->assertSame('leave', strtolower((string) $sessions[2]->fresh()->Status));
+
+        $result = DB::transaction(fn () => CourseLeaveCascadeService::undoLeaveCascade((int) $course->ID, '2026-09-15'));
+
+        $course->refresh();
+        $this->assertSame('scheduled', strtolower((string) $sessions[2]->fresh()->Status));
+        $this->assertSame('2026-09-30', substr((string) $course->EndDate, 0, 10));
+        $this->assertSame('2026-09-30', $result[1]);
+        $this->assertSame(5, ClassSession::where('StudentClassID', $course->ID)->count());
+        $this->assertSame(0, ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '>', '2026-09-30')->count());
+    }
+
+    public function test_explicit_shift_helper_cannot_append_or_move_a_monthly_course(): void
+    {
+        $course = $this->createMonthlyCourse('2026-09-01', '2026-09-30', 5);
+        $sessions = $this->createSessions($course, ['2026-09-01', '2026-09-08', '2026-09-15', '2026-09-22', '2026-09-29']);
+        $leaveSession = $sessions[4];
+        $leaveSession->Status = 'leave';
+        $leaveSession->save();
+
+        [$rows, $extendedEndDate] = DB::transaction(fn () => CourseLeaveCascadeService::shiftAndAppendAfterLeave(
+            (int) $course->ID,
+            '2026-09-29',
+            $leaveSession
+        ));
+
+        $this->assertNull($extendedEndDate);
+        $this->assertCount(5, $rows);
+        $this->assertSame(
+            ['2026-09-01', '2026-09-08', '2026-09-15', '2026-09-22', '2026-09-29'],
+            ClassSession::where('StudentClassID', $course->ID)->orderBy('SessionDate')->pluck('SessionDate')->map(fn ($date) => substr((string) $date, 0, 10))->all()
+        );
+        $this->assertSame(0, ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '>', '2026-09-30')->count());
+    }
+
     public function test_last_session_leave_only_changes_that_session(): void
     {
         $course = $this->createMonthlyCourse('2026-09-01', '2026-09-30', 5);

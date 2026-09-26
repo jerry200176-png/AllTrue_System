@@ -30,7 +30,12 @@
       <span class="rn-featured-label">最近一次更新</span>
     </div>
 
-    <div v-if="notes.length === 0" class="rn-empty">目前尚無可顯示的更新內容。</div>
+    <AtEmpty
+      v-if="notes.length === 0"
+      icon="new_releases"
+      title="目前尚無可顯示的更新內容"
+      description="有新的核准公告時，會在這裡顯示。"
+    />
 
     <p v-if="olderNotes.length" class="rn-compact-hint">
       顯示最近 {{ recentNotes.length + (latestNote ? 1 : 0) }} 則；點擊查看其他公告。
@@ -107,6 +112,7 @@
 import { computed } from 'vue';
 import { notesForRole } from '../lib/releaseNotes';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
 
 const props = defineProps({
   userRole: { type: String, default: '' },
@@ -179,7 +185,16 @@ function importanceLabel(importance) {
   letter-spacing: .04em;
 }
 
-.rn-changelog-link { color: var(--ds-primary-deep); font-size: 13px; font-weight: 700; }
+.rn-changelog-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-primary-deep);
+  font-size: 13px;
+  font-weight: 700;
+}
 
 .rn-effective {
   display: block;
@@ -276,10 +291,44 @@ function importanceLabel(importance) {
 
 .rn-sections-details > summary,
 .rn-older-details > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-canvas-soft);
   color: var(--ds-primary-deep);
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
+  list-style: none;
+}
+
+.rn-sections-details > summary::-webkit-details-marker,
+.rn-older-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.rn-sections-details > summary::before,
+.rn-older-details > summary::before {
+  content: 'chevron_right';
+  margin-right: 6px;
+  font-family: 'Material Symbols Outlined';
+  font-size: 18px;
+  transition: transform .15s ease;
+}
+
+.rn-sections-details[open] > summary::before,
+.rn-older-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.rn-sections-details > summary:focus-visible,
+.rn-older-details > summary:focus-visible,
+.rn-changelog-link:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: 2px;
 }
 
 .rn-sections {
@@ -310,10 +359,6 @@ function importanceLabel(importance) {
 .rn-list li {
   margin: 6px 0;
   color: var(--text);
-}
-
-.rn-empty {
-  color: var(--text-light);
 }
 
 @media (max-width: 720px) {

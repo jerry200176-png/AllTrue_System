@@ -1,0 +1,61 @@
+id: INT-20260912-080358-NX0C
+title: 'In-app #283 inactive course overlap warning alignment'
+intent: 'In-app #283 inactive course overlap warning alignment'
+kind: intent
+brain_dump: 'Prioritize latest unresolved in-app feedback. For #283, preserve existing
+  deployed assessment-save fix and repair the reproducible UI mismatch where status=inactive
+  courses participate in the course-management active slot-overlap warning even though
+  authoritative scheduling occupancy excludes Stop=1. Deliver the smallest reversible
+  batch through PR, CI, production exact-SHA verification, and original in-app follow-up;
+  do not resolve without report-specific production evidence.'
+boundary: Only align the CourseManagement overlap-warning read projection with existing
+  inactive/Stop=1 semantics. Do not change scheduling writes, ClassSession or schedules
+  data, attendance, billing, entitlement, authentication/authorization, production
+  data, workflow/control-plane files, or the meaning of active Stop=0 conflicts.
+success_condition: 'A focused regression proves inactive courses cannot make an active
+  course show the overlap warning while two active overlapping courses still do; unit,
+  no-undef, build and required CI pass; exact merged SHA deploys and production is
+  verified; #283 receives a public follow-up and stays open unless the exact report
+  is verified fixed.'
+risk: low
+priority: 1
+labels:
+- in-app
+- bug
+- course-management
+scope:
+  allow:
+  - frontend/src/lib/slotOccupancy.js
+  - frontend/src/lib/slotOccupancy.test.js
+  - frontend/src/pages/CourseManagement.vue
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/workflows/**
+budgets:
+  max_files_changed: 10
+  max_loc_changed: 240
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T08:03:58+08:00'
+children:
+- TKT-20260912-080407-23DJ
+resource_profile: default

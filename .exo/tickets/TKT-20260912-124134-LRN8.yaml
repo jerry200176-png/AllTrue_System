@@ -1,0 +1,42 @@
+id: TKT-20260912-124134-LRN8
+title: "in-app #284 \u8001\u5E2B\u8A55\u91CF\u9801\u6E1B\u566A"
+intent: "in-app #284 \u8001\u5E2B\u8A55\u91CF\u9801\u6E1B\u566A"
+kind: task
+parent_id: INT-20260912-124127-3TCY
+boundary: "\u53EA\u505A\u8001\u5E2B\u7AEF\u986F\u793A\u9810\u8A2D\u3001\u5FC5\u8981\
+  \u6587\u6848\u3001\u624B\u6A5F\u7121\u6548\u63A7\u5236\u96B1\u85CF\u3001view preference\
+  \ helper \u8207\u56DE\u6B78/\u7248\u672C\u8AAA\u660E\uFF1B\u4E3B\u4EFB\u6D41\u7A0B\
+  \u3001API\u3001\u8CC7\u6599\u3001\u6B0A\u9650\u3001\u72C0\u614B\u8A9E\u610F\u4E0D\
+  \u8B8A\u3002"
+success_condition: "\u7126\u9EDE\u8207\u5168\u5957\u6E2C\u8A66\u901A\u904E\uFF1B\u53D7\
+  \u7BA1 commit/PR required CI \u5168\u7DA0\uFF1Bproduction exact SHA\u3001health\u3001\
+  bundle\u3001\u8001\u5E2B\u767B\u5165\u8DEF\u5F91\u8207 in-app \u56DE\u5BEB\u5B8C\
+  \u6210\u3002"
+priority: 3
+labels: []
+scope:
+  allow:
+  - '**'
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 320
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T12:41:34+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

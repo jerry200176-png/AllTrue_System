@@ -245,6 +245,25 @@ export function sortSessionViewModels(rows) {
   });
 }
 
+const MATERIALIZED_STATUS_PRIORITY = new Map([
+  'completed', 'attended', 'late', 'absent', 'scheduled', 'rescheduled',
+  'excused', 'leave_adjusted', 'leave', 'cancelled',
+].map((status, index) => [status, index]));
+
+function canonicalMaterializedSession(first, second) {
+  if (first.id && second.id && first.id === second.id) {
+    return { ...first, ...second };
+  }
+
+  const firstRank = MATERIALIZED_STATUS_PRIORITY.get(String(first.status || '').toLowerCase()) ?? 99;
+  const secondRank = MATERIALIZED_STATUS_PRIORITY.get(String(second.status || '').toLowerCase()) ?? 99;
+  if (firstRank !== secondRank) return firstRank < secondRank ? first : second;
+
+  // Duplicate rows with the same semantic status are equivalent for display;
+  // use the newer immutable row id so the result is independent of fetch order.
+  return Number(first.id || 0) >= Number(second.id || 0) ? first : second;
+}
+
 /** @param {SessionViewModel[]} existing @param {SessionViewModel[]} incoming */
 export function mergeSessionViewModels(existing = [], incoming = []) {
   const bySlot = new Map();
@@ -269,7 +288,7 @@ export function mergeSessionViewModels(existing = [], incoming = []) {
       continue;
     }
     if (!prev.isProjected && !vm.isProjected) {
-      bySlot.set(key, { ...prev, ...vm });
+      bySlot.set(key, canonicalMaterializedSession(prev, vm));
       continue;
     }
     if (prev.isProjected && vm.isProjected) {

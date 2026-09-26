@@ -52,7 +52,7 @@
                   :disabled="submitting"
                   @click="emit('purchase', c)"
                 >
-                  去加購
+                  {{ c.class_type === 'tutoring' ? '延續輔導課（不收費）' : '去加購' }}
                 </button>
               </td>
             </tr>
@@ -63,8 +63,8 @@
       <div v-if="!isTrial" class="enrollment-conflict-options">
         <p class="enrollment-conflict-options-title">請選擇下一步</p>
         <ul class="enrollment-conflict-option-list">
-          <li><strong>加購既有課程</strong>：延續目前合約堂數（上方「去加購」）。</li>
-          <li><strong>建立下一期續報</strong>：開新合約；課程延續關聯後續會自動建議串接。</li>
+          <li><strong>從既有課程延續</strong>：選上方對應課程。付費課依原加購規則；輔導課建立不收費的下一期並保留關聯。</li>
+          <li v-if="!isTutoring"><strong>建立下一期續報</strong>：使用這次填寫的設定另建課程，不自動延續原課程或建立前後期關聯。</li>
           <li><strong>建立獨立課程</strong>：與既有合約平行，需填寫原因（會留下操作紀錄）。</li>
           <li><strong>取消</strong>：不建立。</li>
         </ul>
@@ -99,6 +99,7 @@
         </template>
         <template v-else>
           <button
+            v-if="!isTutoring"
             class="ghost"
             type="button"
             :disabled="submitting"
@@ -139,6 +140,7 @@ const headingId = 'enrollment-conflict-heading';
 const independentReason = ref('');
 
 const isTrial = computed(() => String(props.classType || '').toLowerCase() === 'trial');
+const isTutoring = computed(() => String(props.classType || '').toLowerCase() === 'tutoring');
 
 watch(
   () => props.show,

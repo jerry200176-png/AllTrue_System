@@ -104,19 +104,30 @@ jobs:
           $atts = $db::table("bug_report_attachments")->where("bug_report_id", $bugId)->get(["id","original_name","stored_path","mime_type","size"]);
           $comments = $db::table("bug_report_comments")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","author_user_id","is_internal_note","body","created_at"]);
           $logs = $db::table("bug_report_status_logs")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","from_status","to_status","changed_by","note","created_at"]);
+          // Keep reporter context bounded, but never present a truncated
+          // history as complete evidence for the intake SOP.
+          $reporterHistoryLimit = 250;
+          $reporterHistoryTotal = $db::table("bug_reports")
+            ->where("reporter_user_id", $bug->reporter_user_id)->count();
           $reporterBugs = $db::table("bug_reports")
             ->where("reporter_user_id", $bug->reporter_user_id)
             ->orderByDesc("id")
-            ->limit(100)
+            ->limit($reporterHistoryLimit + 1)
             ->get(["id","status","severity","CampusID","page_key","title","created_at","updated_at"]);
+          $reporterHistoryComplete = $reporterHistoryTotal <= $reporterHistoryLimit
+            && $reporterBugs->count() === $reporterHistoryTotal;
+          $reporterBugs = $reporterBugs->take($reporterHistoryLimit);
           $reporterBugIds = $reporterBugs->pluck("id")->map(fn ($id) => (int)$id)->all();
+          $reporterAttachmentIds = $db::table("bug_report_attachments")
+            ->whereIn("bug_report_id", $reporterBugIds)
+            ->get(["id","bug_report_id"])
+            ->groupBy("bug_report_id");
           $reporterHistory = [];
           foreach ($reporterBugs as $historyBug) {{
             $historyTitle = $redact($historyBug->title ?? "");
             if (mb_strlen($historyTitle) > 120) $historyTitle = mb_substr($historyTitle, 0, 120)."...";
-            $historyAttachments = $db::table("bug_report_attachments")
-              ->where("bug_report_id", (int)$historyBug->id)->pluck("id")
-              ->map(fn ($id) => (int)$id)->all();
+            $historyAttachments = ($reporterAttachmentIds->get((int)$historyBug->id) ?? collect())
+              ->pluck("id")->map(fn ($id) => (int)$id)->all();
             $reporterHistory[] = [
               "id"=>(int)$historyBug->id, "status"=>$historyBug->status,
               "severity"=>$historyBug->severity, "campus_id"=>$historyBug->CampusID,
@@ -1013,6 +1024,157 @@ jobs:
               $probe253["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+          // #278/#281 describe one historical cancelled-makeup symptom. Use
+          // only the current report's latest public reporter follow-up to
+          // resolve an explicitly named campus and student. Emit opaque course
+          // references and aggregate state only: never echo the matched names,
+          // contacts, or raw student/course/session/schedule identifiers. This
+          // remains diagnostic evidence, not permission to repair history.
+          $probe278281 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bugs 278 and 281",
+          ];
+          if (in_array($bugId, [278, 281], true)) {{
+            $probe278281["applicable"] = true;
+            $probe278281["case"] = "historical_cancelled_makeup_candidate_278_281";
+            $probe278281["target_scope"] = [
+              "identity_source" => "latest_public_reporter_followup_on_requested_bug",
+              "dates" => ["2026-07-22", "2026-08-12"],
+              "subject_name_contains" => "物理",
+            ];
+            try {{
+              $reporterFollowup = $db::table("bug_report_comments")
+                ->where("bug_report_id", $bugId)
+                ->where("author_user_id", (int)$bug->reporter_user_id)
+                ->where("is_internal_note", false)
+                ->whereRaw("TRIM(body) <> ''")
+                ->orderByDesc("id")
+                ->first(["body"]);
+              $followupBody = trim((string)($reporterFollowup->body ?? ""));
+              $campusMatches = $followupBody === "" ? collect() : $db::table("Campus")
+                ->get(["id", "name"])
+                ->filter(function ($campus) use ($followupBody) {{
+                  $name = trim((string)($campus->name ?? ""));
+                  return mb_strlen($name) >= 2 && mb_strpos($followupBody, $name) !== false;
+                }})->values();
+              $studentMatches = collect();
+              if ($campusMatches->count() === 1) {{
+                $matchedCampusId = (int)$campusMatches->first()->id;
+                $studentMatches = $db::table("Student")
+                  ->where("CampusID", $matchedCampusId)
+                  ->get(["id", "name"])
+                  ->filter(function ($student) use ($followupBody) {{
+                    $name = trim((string)($student->name ?? ""));
+                    return mb_strlen($name) >= 2 && mb_strpos($followupBody, $name) !== false;
+                  }})->values();
+              }}
+              $identityResolution = $followupBody === ""
+                ? "missing_reporter_followup"
+                : ($campusMatches->count() !== 1
+                  ? "campus_".($campusMatches->isEmpty() ? "not_found" : "ambiguous")
+                  : ($studentMatches->count() !== 1
+                    ? "student_".($studentMatches->isEmpty() ? "not_found" : "ambiguous")
+                    : "unique"));
+              $probe278281["reporter_followup_found"] = $followupBody !== "";
+              $probe278281["matched_campus_count"] = $campusMatches->count();
+              $probe278281["matched_student_count"] = $studentMatches->count();
+              $probe278281["identity_resolution"] = $identityResolution;
+
+              if ($identityResolution !== "unique") {{
+                $probe278281["candidate_count"] = 0;
+                $probe278281["candidate_resolution"] = "identity_unresolved";
+                $probe278281["candidates"] = [];
+                $probe278281["error"] = null;
+              }} else {{
+                $matchedCampusId = (int)$campusMatches->first()->id;
+                $matchedStudentId = (int)$studentMatches->first()->id;
+                $candidateBase = $db::table("StudentClass as sc")
+                ->join("Subject as sub", "sub.id", "=", "sc.SubjectID")
+                ->where("sc.StudentID", $matchedStudentId)
+                ->where("sub.Subject_Name", "like", "%物理%")
+                ->orderBy("sc.StartDate")
+                ->get([
+                  "sc.ID as class_id", "sc.ClassType as class_type",
+                  "sc.ScheduleMode as schedule_mode", "sc.SessionCount as session_count",
+                  "sc.UsedSessions as used_sessions", "sc.RemainingSessions as remaining_sessions",
+                  "sc.SessionDuration as session_duration", "sc.StartDate as start_date",
+                  "sc.EndDate as end_date", "sc.Stop as stopped",
+                  "sc.week", "sc.time", "sc.week1", "sc.time1", "sc.week2", "sc.time2",
+                  "sc.week3", "sc.time3", "sc.week4", "sc.time4", "sc.week5", "sc.time5",
+                  "sc.week6", "sc.time6",
+                  ]);
+                $candidateIds = $candidateBase->pluck("class_id")->map(fn ($id) => (int)$id)->all();
+                $targetDates = ["2026-07-22", "2026-08-12"];
+                $sessionRows = $candidateIds === [] ? collect() : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateIds)
+                ->whereIn("SessionDate", $targetDates)
+                ->get(["StudentClassID as class_id", "SessionDate as session_date", "StartTime as start_time", "EndTime as end_time", "Status as status"]);
+                $scheduleRows = $candidateIds === [] ? collect() : $db::table("schedules")
+                ->whereIn("student_course_id", $candidateIds)
+                ->whereIn("schedule_date", $targetDates)
+                ->get(["student_course_id as class_id", "schedule_date as session_date", "start_time", "end_time", "status", "type", "deduction", "original_schedule_id"]);
+                $statusCounts = $candidateIds === [] ? collect() : $db::table("ClassSession")
+                ->whereIn("StudentClassID", $candidateIds)
+                ->selectRaw("StudentClassID as class_id, LOWER(Status) as status, COUNT(*) as row_count")
+                ->groupBy("StudentClassID", $db::raw("LOWER(Status)"))
+                ->get();
+                $candidates = [];
+                foreach ($candidateBase as $row) {{
+                  $classId = (int)$row->class_id;
+                  $contractSlots = [];
+                  for ($slot = 0; $slot <= 6; $slot++) {{
+                    $suffix = $slot === 0 ? "" : (string)$slot;
+                    $day = $row->{{"week".$suffix}} ?? null;
+                    $time = $row->{{"time".$suffix}} ?? null;
+                  if ($day === null && $time === null) continue;
+                  $contractSlots[] = ["weekday" => $day === null ? null : (int)$day, "time" => $time === null ? null : substr((string)$time, 0, 5)];
+                }}
+                $targetSessions = $sessionRows->where("class_id", $classId)
+                  ->groupBy(fn ($item) => substr((string)$item->session_date, 0, 10)."|".substr((string)$item->start_time, 0, 5)."|".substr((string)$item->end_time, 0, 5)."|".strtolower((string)$item->status))
+                  ->map(function ($rows) {{
+                    $item = $rows->first();
+                    return ["date" => substr((string)$item->session_date, 0, 10), "start" => substr((string)$item->start_time, 0, 5), "end" => substr((string)$item->end_time, 0, 5), "status" => strtolower((string)$item->status), "count" => $rows->count()];
+                  }})->values()->all();
+                $targetSchedules = $scheduleRows->where("class_id", $classId)
+                  ->groupBy(fn ($item) => substr((string)$item->session_date, 0, 10)."|".substr((string)$item->start_time, 0, 5)."|".substr((string)$item->end_time, 0, 5)."|".strtolower((string)$item->status)."|".strtolower((string)$item->type)."|".(int)$item->deduction."|".($item->original_schedule_id === null ? "root" : "exception"))
+                  ->map(function ($rows) {{
+                    $item = $rows->first();
+                    return ["date" => substr((string)$item->session_date, 0, 10), "start" => substr((string)$item->start_time, 0, 5), "end" => substr((string)$item->end_time, 0, 5), "status" => strtolower((string)$item->status), "type" => strtolower((string)$item->type), "deduction" => (int)$item->deduction, "origin" => $item->original_schedule_id === null ? "root" : "exception", "count" => $rows->count()];
+                  }})->values()->all();
+                $courseStatusCounts = $statusCounts->where("class_id", $classId)
+                  ->mapWithKeys(fn ($item) => [strtolower((string)$item->status) => (int)$item->row_count])->all();
+                  $candidates[] = [
+                  "candidate_ref" => substr(hash("sha256", "inapp-278-281|".$bugId."|".$matchedCampusId."|".$matchedStudentId."|".$classId), 0, 16),
+                  "class_type" => (string)($row->class_type ?? ""),
+                  "schedule_mode" => (string)($row->schedule_mode ?? ""),
+                  "session_count" => $row->session_count === null ? null : (int)$row->session_count,
+                  "used_sessions" => $row->used_sessions === null ? null : (int)$row->used_sessions,
+                  "remaining_sessions" => $row->remaining_sessions === null ? null : (int)$row->remaining_sessions,
+                  "session_duration_minutes" => $row->session_duration === null ? null : (int)$row->session_duration,
+                  "start_date" => substr((string)$row->start_date, 0, 10),
+                  "end_date" => $row->end_date === null ? null : substr((string)$row->end_date, 0, 10),
+                  "stopped" => (bool)$row->stopped,
+                  "contract_slots" => $contractSlots,
+                  "all_session_status_counts" => $courseStatusCounts,
+                  "target_date_session_rows" => $targetSessions,
+                  "target_date_schedule_rows" => $targetSchedules,
+                  ];
+                }}
+                $probe278281["identity_ref"] = substr(hash("sha256", "inapp-278-281-identity|".$bugId."|".$matchedCampusId."|".$matchedStudentId), 0, 16);
+                $probe278281["candidate_count"] = count($candidates);
+                $probe278281["candidate_resolution"] = count($candidates) === 0 ? "none" : "matched_identity_courses";
+                $probe278281["candidates"] = $candidates;
+                $probe278281["decision_grade"] = count($candidates) > 0;
+                $probe278281["error"] = null;
+              }}
+            }} catch (\Throwable $e) {{
+              $probe278281["candidate_count"] = 0;
+              $probe278281["candidate_resolution"] = "error";
+              $probe278281["candidates"] = [];
+              $probe278281["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
+
           $probe272 = [
             "applicable" => false, "read_only" => true, "decision_grade" => false,
             "reason" => "Allowlisted only for in-app bug 272",
@@ -1177,6 +1339,399 @@ jobs:
               $probe272["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
             }}
           }}
+
+          // #315 read-only: classify target teacher 2026-09-19 10:00-12:00
+          // cross-campus busy as real occupancy vs ghost/stale busy. IDs
+          // hashed; no student/subject/room names in the evidence envelope.
+          $probe315 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 315",
+          ];
+          if ($bugId === 315) {{
+            $probe315["applicable"] = true;
+            $probe315["case"] = "cross_campus_busy_after_leave_reschedule_315";
+            $probe315["target_window"] = [
+              "date" => "2026-09-19",
+              "start" => "10:00",
+              "end" => "12:00",
+              "viewing_campus_id" => (int)$bug->CampusID,
+            ];
+            try {{
+              $viewCampus = (int)$bug->CampusID;
+              $teachers = $db::table("User")
+                ->where("Name", "like", "%芝琳%")
+                ->where("type", "T")
+                ->get(["id"]);
+              $teacherIds = $teachers->pluck("id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $students = $db::table("Student")
+                ->where("CampusID", $viewCampus)
+                ->where("name", "like", "%王俞方%")
+                ->get(["id"]);
+              $studentIds = $students->pluck("id")->map(fn ($id) => (int)$id)->unique()->values()->all();
+              $probe315["matched_teacher_count"] = count($teacherIds);
+              $probe315["matched_student_count"] = count($studentIds);
+              if (count($teacherIds) !== 1) {{
+                $probe315["identity_resolution"] = count($teacherIds) === 0 ? "teacher_not_found" : "teacher_ambiguous";
+                $probe315["decision_grade"] = false;
+                $probe315["error"] = null;
+              }} else {{
+                $teacherId = (int)$teacherIds[0];
+                $studentId = count($studentIds) === 1 ? (int)$studentIds[0] : null;
+                $probe315["identity_resolution"] = $studentId ? "teacher_and_student_unique" : "teacher_unique_student_unresolved";
+                $probe315["teacher_ref"] = substr(hash("sha256", "t|".$teacherId), 0, 12);
+                $probe315["student_ref"] = $studentId ? substr(hash("sha256", "s|".$studentId), 0, 12) : null;
+
+                $svc = app(\App\Services\SubstituteService::class);
+                $busyAll = $svc->collectTeacherBusySlotsWithCapacity($teacherId, "2026-09-19", [], null);
+                $busyExcl = $studentId
+                  ? $svc->collectTeacherBusySlotsWithCapacity($teacherId, "2026-09-19", [], $studentId)
+                  : null;
+                $summarizeBusy = function (array $slots) use ($viewCampus) {{
+                  $window = collect($slots)->filter(function ($slot) {{
+                    $start = substr((string)($slot["start_time"] ?? ""), 0, 5);
+                    $end = substr((string)($slot["end_time"] ?? ""), 0, 5);
+                    return $start < "12:00" && $end > "10:00";
+                  }})->values();
+                  $otherFull = $window->filter(function ($slot) use ($viewCampus) {{
+                    $campus = (int)($slot["campus_id"] ?? 0);
+                    $remaining = (int)($slot["remaining_capacity"] ?? 0);
+                    return $campus > 0 && $campus !== $viewCampus && $remaining <= 0;
+                  }})->values();
+                  $local = $window->filter(fn ($slot) => (int)($slot["campus_id"] ?? 0) === $viewCampus)->values();
+                  return [
+                    "total_busy_slots" => count($slots),
+                    "window_overlap_count" => $window->count(),
+                    "local_window_count" => $local->count(),
+                    "other_campus_full_window_count" => $otherFull->count(),
+                    "window_slots" => $window->map(function ($slot) {{
+                      return [
+                        "start_time" => substr((string)($slot["start_time"] ?? ""), 0, 5),
+                        "end_time" => substr((string)($slot["end_time"] ?? ""), 0, 5),
+                        "campus_id" => (int)($slot["campus_id"] ?? 0),
+                        "class_type" => (string)($slot["class_type"] ?? ""),
+                        "student_count" => (int)($slot["student_count"] ?? 0),
+                        "remaining_capacity" => (int)($slot["remaining_capacity"] ?? 0),
+                        "source_types" => $slot["source_types"] ?? [],
+                      ];
+                    }})->all(),
+                  ];
+                }};
+                $probe315["availability_all"] = $summarizeBusy($busyAll);
+                $probe315["availability_excluding_reported_student"] = $busyExcl === null ? null : $summarizeBusy($busyExcl);
+
+                // Session/schedule occupancy for the exact window - statuses only.
+                $csRows = $db::table("ClassSession as cs")
+                  ->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
+                  ->leftJoin("Student as st", "sc.StudentID", "=", "st.id")
+                  ->where("sc.TeacherID", $teacherId)
+                  ->whereDate("cs.SessionDate", "2026-09-19")
+                  ->whereRaw("SUBSTRING(cs.StartTime, 1, 5) < ?", ["12:00"])
+                  ->whereRaw("SUBSTRING(cs.EndTime, 1, 5) > ?", ["10:00"])
+                  ->orderBy("cs.id")
+                  ->get([
+                    "cs.id as class_session_id", "cs.Status as session_status",
+                    "cs.StartTime", "cs.EndTime", "sc.Stop as course_stop",
+                    "sc.ID as course_id", "st.CampusID as campus_id",
+                    "sc.StudentID as student_id",
+                  ]);
+                $sessionEvidence = [];
+                foreach ($csRows as $row) {{
+                  $csid = (int)$row->class_session_id;
+                  $hasLeaveSignIn = $db::table("StudentSingIn")
+                    ->where("ClassSessionID", $csid)
+                    ->whereIn("Status", ["leave", "excused", "leave_requested"])
+                    ->exists();
+                  $hasPresentSignIn = $db::table("StudentSingIn")
+                    ->where("ClassSessionID", $csid)
+                    ->whereIn("Status", ["present", "late", "attended"])
+                    ->exists();
+                  $sessionEvidence[] = [
+                    "session_ref" => substr(hash("sha256", "cs|".$csid), 0, 12),
+                    "course_ref" => substr(hash("sha256", "sc|".(int)$row->course_id), 0, 12),
+                    "campus_id" => (int)($row->campus_id ?? 0),
+                    "is_reported_student" => $studentId !== null && (int)$row->student_id === $studentId,
+                    "start" => substr((string)$row->StartTime, 0, 5),
+                    "end" => substr((string)$row->EndTime, 0, 5),
+                    "session_status" => strtolower(trim((string)$row->session_status)),
+                    "course_stop" => (int)($row->course_stop ?? 0),
+                    "has_leave_signin" => $hasLeaveSignIn,
+                    "has_present_signin" => $hasPresentSignIn,
+                  ];
+                }}
+                $probe315["class_sessions_in_window"] = $sessionEvidence;
+
+                $schedRows = $db::table("schedules")
+                  ->where("teacher_id", $teacherId)
+                  ->whereDate("schedule_date", "2026-09-19")
+                  ->whereRaw("SUBSTRING(start_time, 1, 5) < ?", ["12:00"])
+                  ->whereRaw("SUBSTRING(end_time, 1, 5) > ?", ["10:00"])
+                  ->orderBy("id")
+                  ->get([
+                    "id", "status", "start_time", "end_time", "branch_id",
+                    "student_course_id", "student_id", "original_schedule_id", "type",
+                  ]);
+                $scheduleEvidence = [];
+                foreach ($schedRows as $row) {{
+                  $scheduleEvidence[] = [
+                    "schedule_ref" => substr(hash("sha256", "sch|".(int)$row->id), 0, 12),
+                    "status" => (string)$row->status,
+                    "start" => substr((string)$row->start_time, 0, 5),
+                    "end" => substr((string)$row->end_time, 0, 5),
+                    "campus_id" => (int)($row->branch_id ?? 0),
+                    "is_substitute_exception" => $row->original_schedule_id !== null,
+                    "type" => (string)($row->type ?? ""),
+                    "is_reported_student" => $studentId !== null && (int)($row->student_id ?? 0) === $studentId,
+                    "course_ref" => (int)($row->student_course_id ?? 0) > 0
+                      ? substr(hash("sha256", "sc|".(int)$row->student_course_id), 0, 12)
+                      : null,
+                  ];
+                }}
+                $probe315["schedules_in_window"] = $scheduleEvidence;
+
+                $otherFull = (int)($probe315["availability_all"]["other_campus_full_window_count"] ?? 0);
+                $localCount = (int)($probe315["availability_all"]["local_window_count"] ?? 0);
+                $liveOtherSessions = collect($sessionEvidence)->filter(function ($s) use ($viewCampus) {{
+                  $status = (string)($s["session_status"] ?? "");
+                  return (int)$s["campus_id"] !== $viewCampus
+                    && !in_array($status, ["cancelled", "leave", "leave_adjusted", "excused", "voided"], true);
+                }})->count();
+                $scheduledOther = collect($scheduleEvidence)->filter(function ($s) use ($viewCampus) {{
+                  return (int)$s["campus_id"] !== $viewCampus && (string)$s["status"] === "scheduled";
+                }})->count();
+
+                if ($otherFull > 0 && ($liveOtherSessions > 0 || $scheduledOther > 0)) {{
+                  $probe315["classification"] = "REAL_CROSS_CAMPUS_BUSY";
+                }} elseif ($otherFull > 0) {{
+                  $probe315["classification"] = "GHOST_BUSY_SLOT";
+                }} elseif ($localCount > 0 || collect($sessionEvidence)->isNotEmpty() || collect($scheduleEvidence)->isNotEmpty()) {{
+                  // Local occupancy only - UI should not show cross-campus busy for same campus.
+                  $probe315["classification"] = "GHOST_BUSY_SLOT";
+                }} else {{
+                  $probe315["classification"] = "GHOST_BUSY_SLOT";
+                }}
+                $probe315["decision_grade"] = true;
+                $probe315["error"] = null;
+              }}
+            }} catch (\Throwable $e) {{
+              $probe315["decision_grade"] = false;
+              $probe315["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
+
+          // #359 read-only source check for the reported 2026-09-26 transfer.
+          // Teacher ID 29 was uniquely resolved by the existing identity
+          // diagnostic. Keep this probe confined to this bug, date and teacher;
+          // emit source statuses and opaque refs, never names or raw IDs.
+          $probe359 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 359",
+          ];
+          if ($bugId === 359) {{
+            $probe359["applicable"] = true;
+            $probe359["case"] = "cross_campus_busy_source_359";
+            $probe359["target_window"] = [
+              "date" => "2026-09-26", "start" => "10:00", "end" => "12:00",
+              "viewing_campus_id" => (int)$bug->CampusID,
+            ];
+            try {{
+              if ((int)$bug->CampusID !== 9 || !$db::table("User")->where("id", 29)->where("type", "T")->exists()) {{
+                throw new \RuntimeException("target scope mismatch");
+              }}
+              // Per-run secret prevents sequential source IDs being recovered
+              // from artifact refs; keep the key out of the evidence envelope.
+              $probeRefKey359 = random_bytes(32);
+              $teacherId359 = 29;
+              $busy359 = app(\App\Services\SubstituteService::class)
+                ->collectTeacherBusySlotsWithCapacity($teacherId359, "2026-09-26", [], null);
+              $busySlots359 = collect($busy359)->filter(function ($slot) {{
+                return substr((string)($slot["start_time"] ?? ""), 0, 5) < "12:00"
+                  && substr((string)($slot["end_time"] ?? ""), 0, 5) > "10:00";
+              }})->map(function ($slot) {{
+                return [
+                  "start" => substr((string)($slot["start_time"] ?? ""), 0, 5),
+                  "end" => substr((string)($slot["end_time"] ?? ""), 0, 5),
+                  "campus_id" => (int)($slot["campus_id"] ?? 0),
+                  "class_type" => (string)($slot["class_type"] ?? ""),
+                  "student_count" => (int)($slot["student_count"] ?? 0),
+                  "remaining_capacity" => (int)($slot["remaining_capacity"] ?? 0),
+                  "source_types" => $slot["source_types"] ?? [],
+                ];
+              }})->values()->all();
+              if (count($busySlots359) > 100) {{
+                throw new \RuntimeException("busy slot limit exceeded");
+              }}
+              $probe359["busy_slots"] = $busySlots359;
+
+              $sessions359 = $db::table("ClassSession as cs")
+                ->join("StudentClass as sc", "cs.StudentClassID", "=", "sc.ID")
+                ->leftJoin("Student as st", "sc.StudentID", "=", "st.id")
+                ->where("sc.TeacherID", $teacherId359)
+                ->whereDate("cs.SessionDate", "2026-09-26")
+                ->whereRaw("SUBSTRING(cs.StartTime, 1, 5) < ?", ["17:00"])
+                ->whereRaw("SUBSTRING(cs.EndTime, 1, 5) > ?", ["03:00"])
+                ->orderBy("cs.id")
+                ->limit(101)
+                ->get(["cs.id as session_id", "cs.Status as session_status", "cs.StartTime", "cs.EndTime",
+                  "sc.Stop as course_stop", "sc.ID as course_id", "st.CampusID as campus_id"]);
+              $schedules359 = $db::table("schedules")
+                ->where("teacher_id", $teacherId359)
+                ->whereDate("schedule_date", "2026-09-26")
+                ->whereRaw("SUBSTRING(start_time, 1, 5) < ?", ["17:00"])
+                ->whereRaw("SUBSTRING(end_time, 1, 5) > ?", ["03:00"])
+                ->orderBy("id")
+                ->limit(101)
+                ->get(["id", "status", "start_time", "end_time", "branch_id",
+                  "student_course_id", "original_schedule_id"]);
+              if ($sessions359->count() > 100 || $schedules359->count() > 100) {{
+                throw new \RuntimeException("source row limit exceeded");
+              }}
+              $probe359["class_sessions"] = $sessions359->map(function ($row) use ($probeRefKey359) {{
+                return [
+                  "session_ref" => substr(hash_hmac("sha256", "cs|".(int)$row->session_id, $probeRefKey359), 0, 12),
+                  "course_ref" => substr(hash_hmac("sha256", "sc|".(int)$row->course_id, $probeRefKey359), 0, 12),
+                  "campus_id" => (int)($row->campus_id ?? 0),
+                  "start" => substr((string)$row->StartTime, 0, 5),
+                  "end" => substr((string)$row->EndTime, 0, 5),
+                  "status" => strtolower(trim((string)$row->session_status)),
+                  "course_stop" => (int)($row->course_stop ?? 0),
+                ];
+              }})->values()->all();
+              $probe359["schedules"] = $schedules359->map(function ($row) use ($probeRefKey359) {{
+                return [
+                  "schedule_ref" => substr(hash_hmac("sha256", "sch|".(int)$row->id, $probeRefKey359), 0, 12),
+                  "course_ref" => (int)($row->student_course_id ?? 0) > 0
+                    ? substr(hash_hmac("sha256", "sc|".(int)$row->student_course_id, $probeRefKey359), 0, 12) : null,
+                  "campus_id" => (int)($row->branch_id ?? 0),
+                  "start" => substr((string)$row->start_time, 0, 5),
+                  "end" => substr((string)$row->end_time, 0, 5),
+                  "status" => (string)$row->status,
+                  "is_substitute_exception" => $row->original_schedule_id !== null,
+                ];
+              }})->values()->all();
+              $probe359["decision_grade"] = true;
+              $probe359["error"] = null;
+            }} catch (\Throwable $e) {{
+              $probe359["decision_grade"] = false;
+              $probe359["busy_slots"] = [];
+              $probe359["class_sessions"] = [];
+              $probe359["schedules"] = [];
+              $probe359["error"] = get_class($e);
+            }}
+          }}
+
+          // #338-specific bounded capacity probe. Resolve the teacher/student
+          // names from the current report at runtime (never hard-code or emit
+          // them), require unique matches, and invoke the same read-only
+          // capacity service used by the availability endpoint. The artifact
+          // contains only aggregate slot counts/capacity values, not names or
+          // row identifiers. Ambiguous identity or unparseable coordinates
+          // remains non-decision-grade.
+          $probe338 = [
+            "applicable" => false, "read_only" => true, "decision_grade" => false,
+            "reason" => "Allowlisted only for in-app bug 338",
+          ];
+          if ($bugId === 338) {{
+            $probe338["applicable"] = true;
+            $probe338["case"] = "targeted_one_on_three_capacity_338";
+            $probe338["target_scope"] = [
+              "identity_source" => "current_bug_description_runtime_match",
+              "campus_id" => (int)$bug->CampusID,
+            ];
+            try {{
+              $description338 = trim((string)($bug->description ?? ""));
+              $dateMatch338 = [];
+              $teacherMatch338 = [];
+              $studentMatch338 = [];
+              $parsedDate338 = preg_match('/(?<month>\\d{{1,2}})\\/(?<day>\\d{{1,2}})[^\\d]{{0,20}}(?<start>\\d{{1,2}})\\s*[-~～至到]\\s*(?<end>\\d{{1,2}})/u', $description338, $dateMatch338) === 1;
+              $parsedTeacher338 = preg_match('/(?:1\\s*對\\s*3|一對三)\\s*([^\\s，,]+?)\\s*(?:明明|有位置)/u', $description338, $teacherMatch338) === 1;
+              $parsedStudent338 = preg_match('/將\\s*([^\\s，,]+?)\\s*(?:早上|上午|下午|晚上)/u', $description338, $studentMatch338) === 1;
+              $reportYear338 = (int)\\Illuminate\\Support\\Carbon::parse($bug->created_at)->year;
+              $targetDate338 = $parsedDate338
+                ? sprintf('%04d-%02d-%02d', $reportYear338, (int)$dateMatch338["month"], (int)$dateMatch338["day"])
+                : null;
+              $targetStart338 = $parsedDate338 ? sprintf('%02d:00', (int)$dateMatch338["start"]) : null;
+              $targetEnd338 = $parsedDate338 ? sprintf('%02d:00', (int)$dateMatch338["end"]) : null;
+              $teacherName338 = $parsedTeacher338 ? trim((string)$teacherMatch338[1]) : null;
+              $studentName338 = $parsedStudent338 ? trim((string)$studentMatch338[1]) : null;
+              $probe338["target_window"] = [
+                "date" => $targetDate338, "start" => $targetStart338, "end" => $targetEnd338,
+              ];
+              $probe338["identity_match"] = [
+                "teacher_name_parsed" => $teacherName338 !== null,
+                "student_name_parsed" => $studentName338 !== null,
+              ];
+              if (!$parsedDate338 || !$parsedTeacher338 || !$parsedStudent338) {{
+                throw new \\RuntimeException("target coordinates or identities could not be parsed");
+              }}
+
+              $teacherRows338 = $db::table("User")
+                ->whereRaw("TRIM(Name) = ?", [$teacherName338])
+                ->whereExists(function ($q) use ($bug, $db) {{
+                  $q->select($db::raw(1))->from("UserCampus as uc")
+                    ->whereColumn("uc.UserID", "User.id")
+                    ->where("uc.CampusID", (int)$bug->CampusID);
+                }})
+                ->get(["id"]);
+              $studentRows338 = $db::table("Student")
+                ->whereRaw("TRIM(name) LIKE ?", ["%".$studentName338."%"])
+                ->get(["id", "CampusID"]);
+              $probe338["matched_teacher_count"] = $teacherRows338->count();
+              $probe338["matched_student_count"] = $studentRows338->count();
+              if ($studentRows338->count() !== 1) {{
+                throw new \\RuntimeException("target student identity match is not unique");
+              }}
+
+              $studentId338 = (int)$studentRows338->first()->id;
+              $service338 = app(\\App\\Services\\SubstituteService::class);
+              $summarize338 = function (array $slots) use ($targetStart338, $targetEnd338, $bug) {{
+                $matching = collect($slots)->filter(function ($slot) use ($targetStart338, $targetEnd338) {{
+                  return (string)($slot["start_time"] ?? "") === $targetStart338
+                    && (string)($slot["end_time"] ?? "") === $targetEnd338;
+                }})->values();
+                $local = $matching->filter(fn ($slot) => (int)($slot["campus_id"] ?? 0) === (int)$bug->CampusID);
+                $oneOnThree = $local->filter(fn ($slot) => (string)($slot["class_type"] ?? "") === "one_on_three");
+                $remaining = $oneOnThree->map(fn ($slot) => (int)($slot["remaining_capacity"] ?? 0))->values()->all();
+                sort($remaining, SORT_NUMERIC);
+                return [
+                  "exact_window_slot_count" => $matching->count(),
+                  "target_campus_slot_count" => $local->count(),
+                  "target_campus_one_on_three_count" => $oneOnThree->count(),
+                  "remaining_capacity_values" => $remaining,
+                  ];
+                }};
+              $teacherSlotMatches338 = [];
+              foreach ($teacherRows338 as $teacherCandidate338) {{
+                $candidateSlots338 = $service338->collectTeacherBusySlotsWithCapacity(
+                  (int)$teacherCandidate338->id, $targetDate338, [], null
+                );
+                $candidateSummary338 = $summarize338($candidateSlots338);
+                if ($candidateSummary338["target_campus_one_on_three_count"] > 0) {{
+                  $teacherSlotMatches338[] = $teacherCandidate338;
+                }}
+              }}
+              $probe338["matched_teacher_target_slot_count"] = count($teacherSlotMatches338);
+              if (count($teacherSlotMatches338) !== 1) {{
+                throw new \\RuntimeException("target teacher match is not unique for the reported slot");
+              }}
+              $teacherId338 = (int)$teacherSlotMatches338[0]->id;
+              $withStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], $studentId338);
+              $withoutStudent338 = $service338->collectTeacherBusySlotsWithCapacity($teacherId338, $targetDate338, [], null);
+              $probe338["with_reported_student_excluded"] = $summarize338($withStudent338);
+              $probe338["without_student_exclusion"] = $summarize338($withoutStudent338);
+              $remainingAfterExclude338 = $probe338["with_reported_student_excluded"]["remaining_capacity_values"];
+              $probe338["classification"] = $remainingAfterExclude338 !== [] && max($remainingAfterExclude338) > 0
+                ? "target_slot_has_remaining_capacity_after_excluding_student"
+                : ($probe338["with_reported_student_excluded"]["target_campus_one_on_three_count"] > 0
+                  ? "target_slot_full_after_excluding_student"
+                  : "target_one_on_three_slot_not_found");
+              $probe338["decision_grade"] = true;
+              $probe338["error"] = null;
+            }} catch (\\Throwable $e) {{
+              $probe338["decision_grade"] = false;
+              $probe338["error"] = get_class($e).": ".substr((string)$e->getMessage(), 0, 300);
+            }}
+          }}
+
           $targetProbe = match ($bugId) {{
             208 => $probe208,
             241 => $probe241,
@@ -1187,9 +1742,13 @@ jobs:
             249 => $probe249,
             253 => $probe253,
             272 => $probe272,
+            278, 281 => $probe278281,
+            315 => $probe315,
+            338 => $probe338,
+            359 => $probe359,
             default => null,
           }};
-          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272], true);
+          $decisionGradeRequired = in_array($bugId, [201, 202, 208, 241, 247, 249, 250, 251, 253, 272, 315, 338, 359], true);
           $decisionGrade = $targetProbe !== null && $targetProbe["applicable"] === true
             && $targetProbe["decision_grade"] === true;
           $decisionGradeReason = $decisionGrade
@@ -1216,6 +1775,9 @@ jobs:
             "comments" => $cmtOut,
             "status_logs" => $logs,
             "reporter_history" => $reporterHistory,
+            "reporter_history_total" => (int)$reporterHistoryTotal,
+            "reporter_history_limit" => $reporterHistoryLimit,
+            "reporter_history_complete" => $reporterHistoryComplete,
             "reporter_history_comments" => $reporterComments,
             "reporter_history_status_logs" => $reporterStatusLogs,
             "diagnostics" => [
@@ -1230,6 +1792,10 @@ jobs:
                 "probe_251_contract_session_count_payment" => $probe251,
                 "probe_253_teacher_capacity_orphan_exception" => $probe253,
                 "probe_272_teacher_same_slot" => $probe272,
+                "probe_278_281_cancelled_makeup_candidates" => $probe278281,
+                "probe_315_cross_campus_busy" => $probe315,
+                "probe_338_target_capacity" => $probe338,
+                "probe_359_cross_campus_source" => $probe359,
               ],
               "evidence_generated_at" => gmdate("c"),
               "read_only" => true,
@@ -1243,15 +1809,18 @@ jobs:
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           """)
           PY
-          # shellcheck: pass PHP source via stdin to remote tinker is hard; use base64
-          B64=$(base64 -w0 /tmp/bug207_probe.php)
+          # Upload probe via SSH stdin (avoid embedding large B64 in remote argv).
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "B64='${B64}' bash -s" <<'REMOTE' | tee out/bug-detail.log
+            'cat > /tmp/bug_detail_probe.php' < /tmp/bug207_probe.php
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            bash -s <<'REMOTE' | tee out/bug-detail.log
           set -euo pipefail
           cd /home/admin/backend
-          php -r 'file_put_contents("/tmp/bug_detail_probe.php", base64_decode(getenv("B64")));'
+          php -l /tmp/bug_detail_probe.php
           # Use artisan tinker with file include via execute
           php artisan tinker --execute='require "/tmp/bug_detail_probe.php";'
           rm -f /tmp/bug_detail_probe.php

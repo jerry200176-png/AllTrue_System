@@ -23,11 +23,14 @@ assert.equal(notesForRole('admin').length, notesForRole('super_admin').length);
 assert.ok(latestReleaseVersionForRole('super_admin'));
 
 const latest = notesForRole('director')[0];
+const latestDirectorUpdate = allStaffUpdates.find((note) => note.audiences.includes('director'));
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version));
 assert.ok(latest.id && latest.publishedAt && latest.sections?.length);
 assert.ok(['digest', 'major', 'action_required'].includes(latest.importance));
-assert.strictEqual(latest.publishedAt, '2026-09-09');
-assert.strictEqual(latest.id, 'staff-2026-09-09-tutoring-payment-policy');
+assert.strictEqual(latest.publishedAt, latestDirectorUpdate.publishedAt);
+assert.strictEqual(latest.id, latestDirectorUpdate.id);
+assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-11-course-unarranged-session-detail'));
+assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-tutoring-payment-policy'));
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-monthly-leave-invariant'));
 assert.ok(allStaffUpdates.some((note) => note.id === 'staff-2026-09-09-calendar-modal-mobile-reachability'));
   for (const id of [
@@ -123,10 +126,12 @@ assert.ok(
     .some((u) => u.id === 'parent-update-2026-07-26-leave'),
 );
 
-const currentParentNotes = listActiveParentUpdates({ now: new Date('2026-09-10T12:00:00'), limit: 2 });
-assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-09-learning-assessment');
-assert.strictEqual(currentParentNotes[0].title, '學習評量重點更清楚');
-assert.match(currentParentNotes[0].summary, /最近學了什麼/);
-assert.match(currentParentNotes[0].details, /逐堂展開查看/);
+const currentParentNotes = listActiveParentUpdates({ now: new Date('2026-09-10T12:00:00'), limit: 3 });
+const progressHubNote = currentParentNotes.find((note) => note.id === 'parent-update-2026-09-10-parent-progress-hub-clarity');
+assert.ok(progressHubNote);
+assert.strictEqual(progressHubNote.title, '進度中心更容易理解');
+assert.match(progressHubNote.summary, /本週學習/);
+assert.match(progressHubNote.details, /觸控尺寸/);
+assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-10-parent-status-hierarchy');
 
 console.log('releaseNotes.test.js: ok');

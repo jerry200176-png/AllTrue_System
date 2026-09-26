@@ -1,0 +1,44 @@
+id: TKT-20260912-130637-3WR0
+title: Document role-scoped assessment mobile controls
+intent: Document role-scoped assessment mobile controls
+kind: task
+parent_id: INT-20260912-130040-3R8A
+boundary: 'Only clarify the already-shipped #284 release note to say teacher mobile
+  hides the redundant chooser while director mobile retains it; do not change product
+  code, workflows, production, or data.'
+success_condition: Release note accurately describes role-scoped behavior, generated
+  artifacts match, checks pass, and a governed replacement PR satisfies presubmit.
+priority: 1
+labels:
+- docs
+scope:
+  allow:
+  - .agent-session/manifest.json
+  - .exo/tickets/*.yaml
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 120
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T13:06:37+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

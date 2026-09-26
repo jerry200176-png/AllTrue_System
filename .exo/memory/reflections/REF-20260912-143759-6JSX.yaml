@@ -1,0 +1,15 @@
+id: REF-20260912-143759-6JSX
+pattern: Teacher task comparator applied display time before reliable same-session
+  dependency ordering
+insight: When two ordinary tasks share a reliable ClassSession id, enforce attendance-before-learning
+  before comparing potentially stale display times; use time ordering only across
+  different sessions and cover mismatched-time payloads.
+severity: medium
+scope: TKT-20260912-135926-9P4S
+actor: human
+session_id: SES-20260912135932-461EEB27
+created_at: '2026-09-12T14:37:59+08:00'
+status: active
+tags:
+- scheduling
+hit_count: 0

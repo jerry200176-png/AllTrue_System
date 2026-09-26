@@ -14,6 +14,32 @@
     <AdmissionInquiriesPage :standalone="true" :branch-id="publicAdmissionBranchId" />
   </div>
 
+  <div v-else-if="isTrueFitEntryRequested && !isTrueFitFeatureEnabled()" class="standalone-truefit-shell">
+    <div class="standalone-truefit-disabled">
+      <h1>TrueFit</h1>
+      <p>TrueFit 尚未在此環境啟用。請聯絡主任或工程團隊確認功能旗標。</p>
+      <button type="button" class="standalone-truefit-link" @click="returnFromTrueFitEntry">返回教務系統</button>
+    </div>
+  </div>
+
+  <div v-else-if="isStandaloneTrueFit" class="standalone-truefit-shell">
+    <div v-if="loading" class="loading-screen">
+      <div class="spinner"></div>
+      <span>載入 TrueFit…</span>
+    </div>
+    <Login v-else-if="!session" @login-success="handleLoginSuccess" />
+    <div v-else-if="role !== 'teacher'" class="standalone-truefit-disabled">
+      <h1>TrueFit</h1>
+      <p>TrueFit 是教師備課工作台，目前僅開放老師帳號使用。</p>
+      <button type="button" class="standalone-truefit-link" @click="returnFromTrueFitEntry">返回教務系統</button>
+    </div>
+    <TrueFitApp
+      v-else
+      :token="session.access_token"
+      :branch-id="currentBranch"
+    />
+  </div>
+
   <div v-else-if="isStandaloneParent" class="standalone-parent-shell">
     <ParentPortal :standalone="true" />
     <button
@@ -136,6 +162,27 @@
             <div class="user-name">{{ userProfile?.username || session?.user?.name || 'User' }}</div>
             <div class="user-role">{{ roleLabel }}</div>
             <div v-if="role === 'super_admin'" class="user-role-hint">可檢視所有分校</div>
+            <div
+              v-if="showStaffModeSwitch"
+              class="staff-mode-switch"
+              data-guide="app-staff-mode-switch"
+            >
+              <div class="branch-switcher-label">工作身分</div>
+              <div class="branch-buttons">
+                <button
+                  type="button"
+                  class="branch-btn"
+                  :class="{ active: role === 'director' }"
+                  @click="switchStaffMode('director')"
+                >主任</button>
+                <button
+                  type="button"
+                  class="branch-btn"
+                  :class="{ active: role === 'teacher' }"
+                  @click="switchStaffMode('teacher')"
+                >老師</button>
+              </div>
+            </div>
           </div>
         </div>
         <div v-if="isDirector" class="branch-switcher" data-guide="app-branch-switcher">
@@ -469,14 +516,14 @@
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
-      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
+      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :allow-financial-discount="isDirector" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
       <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" />
       <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
       <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-student-name="courseMgmtFocusStudentName" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
+      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :user-role="role" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-course-id="courseMgmtFocusCourseId" :initial-student-name="courseMgmtFocusStudentName" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
       <AdmissionInquiriesPage v-if="!isPasswordChangeLocked && isDirector && active === 'admission-inquiries'" :branch-id="currentBranch" :token="session?.access_token ?? ''" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
@@ -489,6 +536,7 @@
         :user-role="role"
         :teacher-branch-ids="teacherBranches.map(b => b.id)"
         :unread-feedback-count="unreadFeedbackCount"
+        :feedback-queue-epoch="feedbackQueueEpoch"
         :initial-engagement="userProfile?.engagement ?? null"
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
@@ -501,7 +549,7 @@
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
       />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="refreshUnreadNotifications" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" />
       <AssessmentPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
       <QuestionBankPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
       <ProfileCenterPage
@@ -796,6 +844,7 @@ import Login from './pages/Login.vue';
 import ParentPortal from './pages/ParentPortal.vue';
 
 const AdmissionInquiriesPage = defineAsyncComponent(() => import('./pages/AdmissionInquiriesPage.vue'));
+const TrueFitApp = defineAsyncComponent(() => import('./pages/TrueFitApp.vue'));
 const StudentsList          = defineAsyncComponent(() => import('./pages/StudentsList.vue'));
 const LearningRecordsPage   = defineAsyncComponent(() => import('./pages/LearningRecordsPage.vue'));
 const AssessmentPage        = defineAsyncComponent(() => import('./pages/AssessmentPage.vue'));
@@ -855,6 +904,19 @@ import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
 import GlobalSearchResults from './components/GlobalSearchResults.vue';
 import { createLatestRequestGuard, fetchGlobalSearch, MIN_QUERY_LENGTH } from './lib/globalSearchApi';
+import { getSessionUserId, isCurrentAuthRevision, shouldClearLocalIdentity } from './lib/authSessionIdentity';
+import {
+  actingAsHeaders,
+  canSwitchStaffMode,
+  installActingAsFetchBridge,
+  readStoredActingAs,
+  writeStoredActingAs,
+} from './lib/staffActingContext';
+import { parseTrueFitRoute, buildTrueFitWorkspaceUrl, buildAdminReturnUrl } from './lib/truefitRoute.js';
+import { isTrueFitHost } from './lib/truefitHost.js';
+import { isTrueFitFeatureEnabled, loadTrueFitBackendFlag } from './lib/truefitFlags.js';
+
+installActingAsFetchBridge();
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -869,6 +931,34 @@ const isStandaloneAdmission = computed(() => {
   const hashPath = hash.split('?')[0];
   return hashPath === '#/admissions' || params.get('admissions') === '1';
 });
+
+const truefitRouteState = ref(typeof window !== 'undefined' ? parseTrueFitRoute() : null);
+
+function syncTrueFitRouteState() {
+  truefitRouteState.value = parseTrueFitRoute();
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('hashchange', syncTrueFitRouteState);
+}
+
+const isTrueFitEntryRequested = computed(() => {
+  if (isTrueFitHost()) return true;
+  return truefitRouteState.value !== null;
+});
+
+const isStandaloneTrueFit = computed(() => (
+  isTrueFitFeatureEnabled() && isTrueFitEntryRequested.value
+));
+
+function openTrueFitWorkspace() {
+  window.location.hash = buildTrueFitWorkspaceUrl();
+  syncTrueFitRouteState();
+}
+
+function returnFromTrueFitEntry() {
+  window.location.href = buildAdminReturnUrl();
+}
 const publicAdmissionBranchId = computed(() => {
   try {
     const hash = window.location.hash || '';
@@ -903,7 +993,28 @@ const publicAdmissionBranchId = computed(() => {
 
 const session = ref(null);
 const userProfile = ref(null);
+const staffCapabilities = ref([]);
 const loading = ref(true);
+let authRevision = 0;
+const beginAuthRevision = () => ++authRevision;
+const isCurrentAuth = (revision) => isCurrentAuthRevision(revision, authRevision);
+
+async function clearLocalIdentity(revision, { clearAuthStorage = false } = {}) {
+  if (!isCurrentAuth(revision)) return;
+  const hadInMemorySession = session.value != null;
+  session.value = null;
+  userProfile.value = null;
+  staffCapabilities.value = [];
+  localStorage.removeItem('alltrue_session');
+  writeStoredActingAs(null);
+  if (!clearAuthStorage && !hadInMemorySession) return;
+  try {
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {
+    // The in-memory identity and this app's persisted profile are already
+    // cleared. A transport failure must not revive or replace another login.
+  }
+}
 const toast = useToast();
 const guideTour = usePageGuideTour();
 const guidePopoverRef = ref(null);
@@ -1228,6 +1339,10 @@ function onWindowResizeGuideFab() {
 const active = ref('director');
 const dashboardReturnContext = ref(null);
 const currentBranch = ref(null); // Will be set after branches load
+const currentBranchName = computed(() => {
+  const branch = (branches.value || []).find((item) => Number(item?.id) === Number(currentBranch.value));
+  return branch?.name?.split('(')[0]?.trim() || '';
+});
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
 const learningFeedbackFocusToken = ref(0);
@@ -1299,6 +1414,7 @@ const tuitionInitialTab = ref('');
 const tuitionInitialStudentId = ref(null);
 const tuitionInitialCourseId = ref(null);
 const courseMgmtFocusStudentId = ref(null);
+const courseMgmtFocusCourseId = ref(null);
 const courseMgmtFocusStudentName = ref('');
 const bindingMgmtFocusStudentName = ref('');
 const unreadNotificationCount = ref(0);
@@ -1641,7 +1757,12 @@ function onNavigateFromNotifications(payload = {}) {
     return;
   }
   if (!target) return;
-  dashboardReturnContext.value = createDashboardReturnContext({ fromPage: active.value, target });
+  const nextDashboardReturnContext = createDashboardReturnContext({
+    fromPage: active.value,
+    target,
+    studentId,
+    courseId,
+  });
   if (target === 'calendar') {
     calendarResetToken.value += 1;
     initialTeacherIdForNav.value = normalizeNavigationId(teacherId);
@@ -1683,6 +1804,7 @@ function onNavigateFromNotifications(payload = {}) {
   }
   if (target === 'course-mgmt') {
     courseMgmtFocusStudentId.value = normalizeNavigationId(studentId);
+    courseMgmtFocusCourseId.value = normalizeNavigationId(courseId);
     courseMgmtFocusStudentName.value = typeof studentName === 'string' ? studentName.trim() : '';
     if (teacherId != null && teacherId !== '') {
       initialTeacherIdForNav.value = normalizeNavigationId(teacherId);
@@ -1725,6 +1847,7 @@ function onNavigateFromNotifications(payload = {}) {
     history: target === 'director' ? 'replace' : 'push',
     preserveInboxContext: target === 'director',
   });
+  dashboardReturnContext.value = nextDashboardReturnContext;
 }
 
 function onNavigateFromCourseManagement(payload) {
@@ -1743,6 +1866,7 @@ function clearStudentNavigationContext() {
 
 function clearCourseMgmtNavigationContext() {
   courseMgmtFocusStudentId.value = null;
+  courseMgmtFocusCourseId.value = null;
   courseMgmtFocusStudentName.value = '';
 }
 
@@ -1791,6 +1915,10 @@ function clearBugNavigationContext() {
 }
 
 function setActivePage(page, { history = 'push', preserveInboxContext = false } = {}) {
+  if (page === 'truefit') {
+    openTrueFitWorkspace();
+    return;
+  }
   closeSidebarMore(false);
   closeMoreMenu(false);
   dashboardReturnContext.value = null;
@@ -1853,6 +1981,15 @@ function setActivePage(page, { history = 'push', preserveInboxContext = false } 
 }
 
 function returnToDashboard() {
+  const context = dashboardReturnContext.value;
+  if (context?.page === 'course-mgmt') {
+    onNavigateFromNotifications({
+      target: 'course-mgmt',
+      studentId: context.studentId,
+      courseId: context.courseId,
+    });
+    return;
+  }
   setActivePage('director');
 }
 
@@ -1878,6 +2015,22 @@ function onUnreadChange(count) {
 const role = computed(() => session.value?.user?.role ?? userProfile.value?.role ?? 'student');
 const isDirector = computed(() => role.value === 'director' || role.value === 'admin' || role.value === 'super_admin');
 const isTeacher = computed(() => role.value === 'teacher');
+const showStaffModeSwitch = computed(() => canSwitchStaffMode(staffCapabilities.value));
+
+async function switchStaffMode(nextMode) {
+  if (!canSwitchStaffMode(staffCapabilities.value)) return;
+  const normalized = writeStoredActingAs(nextMode);
+  if (!normalized || normalized === role.value) return;
+  if (session.value?.user) {
+    session.value.user.role = normalized;
+    localStorage.setItem('alltrue_session', JSON.stringify(session.value));
+  }
+  if (userProfile.value) {
+    userProfile.value = { ...userProfile.value, role: normalized };
+  }
+  active.value = normalized === 'teacher' ? 'teacher-home' : 'director';
+  await fetchProfile(getSessionUserId(session.value));
+}
 
 const isPasswordChangeLocked = computed(() => {
   const fromSession = session.value?.user?.must_change_password;
@@ -1992,7 +2145,10 @@ const avatarLetter = computed(() => {
 const avatarUrl = computed(() => userProfile.value?.avatar_url || '');
 
 const sidebarGroupOpen = ref({});
-const sidebarNavGroups = computed(() => getNavigationGroups(role.value, { admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1 }));
+const sidebarNavGroups = computed(() => getNavigationGroups(role.value, {
+  admissionsEnabled: perfFlags.ADMISSIONS_FUNNEL_V1,
+  truefitEnabled: isTrueFitFeatureEnabled(),
+}));
 const mobileMoreFilteredGroups = computed(() => {
   const q = mobileMoreSearchQuery.value.trim().toLowerCase();
   return sidebarNavGroups.value
@@ -2299,8 +2455,9 @@ onMounted(async () => {
     // Branches and session are independent: start both so a slow public branch
     // request does not delay auth/profile initialization.
     const branchesPromise = loadBranches();
+    const bootstrapRevision = beginAuthRevision();
     const sessionPromise = supabase.auth.getSession();
-    const { data } = await sessionPromise;
+    const { data, error } = await sessionPromise;
     await branchesPromise;
 
     // Restore saved branch or use first branch as default
@@ -2315,23 +2472,31 @@ onMounted(async () => {
         currentBranch.value = getDefaultBranchId();
     }
 
-    session.value = data.session;
-
-    if (session.value) {
-        await fetchProfile(session.value.user.id);
+    if (!isCurrentAuth(bootstrapRevision)) return;
+    if (shouldClearLocalIdentity({ session: data?.session })) {
+        await clearLocalIdentity(bootstrapRevision, { clearAuthStorage: true });
+    } else if (!error && data?.session) {
+        session.value = data.session;
+        userProfile.value = null;
+        await fetchProfile(getSessionUserId(data.session), bootstrapRevision);
         await ensureDirectorBranches();
         triggerBrandIntroOncePerSessionToken();
     }
     loading.value = false;
 
-    supabase.auth.onAuthStateChange(async (_event, _session) => {
-        session.value = _session;
-        if (_session) {
-            await fetchProfile(_session.user.id);
+    supabase.auth.onAuthStateChange(async (event, nextSession) => {
+        const revision = beginAuthRevision();
+        if (shouldClearLocalIdentity({ event, session: nextSession })) {
+            await clearLocalIdentity(revision, { clearAuthStorage: event !== 'SIGNED_OUT' });
+        } else if (nextSession) {
+            session.value = nextSession;
+            userProfile.value = null;
+            await fetchProfile(getSessionUserId(nextSession), revision);
             await ensureDirectorBranches();
             triggerBrandIntroOncePerSessionToken();
         } else {
             userProfile.value = null;
+            localStorage.removeItem('alltrue_session');
         }
     });
 
@@ -2359,10 +2524,9 @@ onMounted(async () => {
     scheduleBrandIdleOverlay();
 });
 
-const fetchProfile = async (_uid) => {
+const fetchProfile = async (_uid, revision = authRevision) => {
     const token = session.value?.access_token;
     if (!token) {
-        userProfile.value = null;
         return;
     }
 
@@ -2371,23 +2535,28 @@ const fetchProfile = async (_uid) => {
             headers: {
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/json',
+                ...actingAsHeaders(readStoredActingAs()),
             },
         });
 
-        if (res.status === 401) {
-            await supabase.auth.signOut();
-            session.value = null;
-            userProfile.value = null;
+        if (!isCurrentAuth(revision)) return;
+        if (shouldClearLocalIdentity({ responseStatus: res.status, session: session.value })) {
+            await clearLocalIdentity(revision, { clearAuthStorage: true });
             return;
         }
 
         if (!res.ok) {
-            userProfile.value = null;
             return;
         }
 
         const me = await res.json();
+        if (!isCurrentAuth(revision) || getSessionUserId(session.value) !== _uid) return;
         const mustChangePassword = Boolean(me?.must_change_password);
+        const caps = Array.isArray(me?.capabilities) ? me.capabilities : [];
+        staffCapabilities.value = caps;
+        if (me?.acting_as) {
+          writeStoredActingAs(me.acting_as);
+        }
         userProfile.value = {
             id: me.id,
             username: me.name,
@@ -2398,10 +2567,15 @@ const fetchProfile = async (_uid) => {
             branch_ids: Array.isArray(me.campuses) ? me.campuses : [],
             must_change_password: mustChangePassword,
             engagement: me.engagement ?? null,
+            capabilities: caps,
+            acting_as: me.acting_as ?? null,
+            capability_campuses: me.capability_campuses ?? null,
         };
 
         if (session.value?.user) {
           session.value.user.must_change_password = mustChangePassword;
+          session.value.user.role = me.role;
+          if (Array.isArray(me.campuses)) session.value.user.campuses = me.campuses;
           localStorage.setItem('alltrue_session', JSON.stringify(session.value));
         }
 
@@ -2421,14 +2595,17 @@ const fetchProfile = async (_uid) => {
         } else if (me.role === 'director' || me.role === 'admin' || me.role === 'super_admin') {
             applyDeepLinkFromUrl();
         }
-    } catch {
-        userProfile.value = null;
-    }
+    } catch { /* Preserve the current authenticated identity on transport failure. */ }
 };
 
 const handleLoginSuccess = async ({ user, profile }) => {
     // Session is already set by supabase.auth (signInWithPassword stores it)
     const { data } = await supabase.auth.getSession();
+    const revision = beginAuthRevision();
+    if (shouldClearLocalIdentity({ session: data?.session })) {
+      await clearLocalIdentity(revision, { clearAuthStorage: true });
+      return;
+    }
     session.value = data.session;
     userProfile.value = profile ?? null;
 
@@ -2437,6 +2614,11 @@ const handleLoginSuccess = async ({ user, profile }) => {
       session.value.user.must_change_password = mustChangePassword;
       localStorage.setItem('alltrue_session', JSON.stringify(session.value));
     }
+
+    // SIGNED_IN may already have started a profile request with the previous
+    // revision. Refresh it under this revision so that dropping the stale
+    // response cannot leave a freshly signed-in user with a partial profile.
+    void fetchProfile(getSessionUserId(data.session), revision);
 
     if (mustChangePassword) active.value = 'profile';
     else if ((profile?.role ?? session.value?.user?.role) === 'teacher') {
@@ -2656,6 +2838,13 @@ async function mergeBugUnreadBadge() {
     delete next.bugs;
     badgeByType.value = next;
   }
+}
+
+const feedbackQueueEpoch = ref(0);
+
+async function onFeedbackQueueChanged() {
+  feedbackQueueEpoch.value += 1;
+  await refreshUnreadNotifications();
 }
 
 async function refreshUnreadNotifications() {
@@ -3614,6 +3803,39 @@ function formatBuildTime(rawIso) {
 
 .standalone-parent-shell {
   position: relative;
+}
+
+.standalone-truefit-shell {
+  min-height: 100dvh;
+  background: var(--ds-canvas);
+}
+
+.standalone-truefit-disabled {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: var(--ds-space-8) var(--ds-space-4);
+  text-align: center;
+}
+
+.standalone-truefit-disabled h1 {
+  margin: 0 0 var(--ds-space-2);
+  font-size: 1.5rem;
+}
+
+.standalone-truefit-disabled p {
+  margin: 0 0 var(--ds-space-4);
+  color: var(--ds-text-secondary);
+  line-height: 1.5;
+}
+
+.standalone-truefit-link {
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-surface-0);
+  color: var(--ds-text-primary);
+  border-radius: var(--ds-radius-md);
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  font: inherit;
 }
 
 .global-guide-btn {

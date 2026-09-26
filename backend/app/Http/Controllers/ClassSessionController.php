@@ -8,6 +8,7 @@ use App\Models\ClassSessionReassignment;
 use App\Models\CourseContractGroupMember;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordTeacherChange;
+use App\Models\Notification;
 use App\Models\Schedule;
 use App\Models\ScheduleAuditLog;
 use App\Models\Student;
@@ -48,6 +49,10 @@ class ClassSessionController extends Controller
 
     public function batchStore(Request $request)
     {
+        $role = (string) $request->attributes->get('auth_role');
+        if ($request->has('discount') && !in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => 'Only financial-authorized staff may set transaction discounts.'], 403);
+        }
         $data = $request->validate([
             'student_id' => 'required|integer|exists:Student,id',
             'teacher_id' => 'required|integer|exists:User,id',
@@ -80,7 +85,9 @@ class ClassSessionController extends Controller
             'standard_lesson_minutes' => 'nullable|integer|min:30|max:480|required_if:deduction_basis,actual_duration',
             'overage_confirmed' => 'nullable|boolean',
             'rate_unit' => 'nullable|in:session,hour',
-            'price_per_session' => 'required|numeric|min:0',
+            // Tutoring is free and has no receivable; paid class types retain the
+            // required amount contract. EnrollmentService is the final authority.
+            'price_per_session' => 'nullable|required_unless:class_type,tutoring|numeric|min:0',
             'payment_type' => 'required|in:session,monthly',
             'scheduling_policy' => 'nullable|in:auto_recurrence,manual_occurrence',
             'settlement_day' => 'nullable|integer|min:1|max:31',
@@ -97,6 +104,10 @@ class ClassSessionController extends Controller
             'existing_contract_ids.*' => 'integer|min:1',
             'course_start_date' => 'nullable|date',
             'end_date' => 'nullable|date',
+            'discount' => 'nullable|array',
+            'discount.type' => 'required_with:discount|in:NONE,FIXED_AMOUNT,PERCENTAGE',
+            'discount.value' => 'required_with:discount|string',
+            'discount.reason' => 'nullable|string|max:500',
         ]);
 
         return app(EnrollmentService::class)->store($request, $data);
@@ -266,206 +277,7 @@ class ClassSessionController extends Controller
 
     private function buildClassSessionIndexQuery(Request $request)
     {
-        $role = $request->attributes->get('auth_role');
-        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
-        $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
-
-        $requestedCampus = (int) ($request->input('branch_id') ?? $request->input('campus_id') ?? 0);
-        if ($requestedCampus > 0) {
-            $campusIds = [$requestedCampus];
-        }
-
-        $attendanceAsOf = Carbon::now();
-        $attendanceAsOfDate = $attendanceAsOf->toDateString();
-        $attendanceAsOfTime = $attendanceAsOf->format('H:i:s');
-
-        $query = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            // TD-058: sub_sched exposes start_time_hm (pre-normalized once per row here,
-            // over the small substitute-schedule result set) so the outer ON clause below
-            // can compare it directly to cs.StartTimeHM without wrapping either side in
-            // SUBSTRING()/DATE() — function-wrapped join columns defeat index usage.
-            // cs.SessionDate and sub_sched.schedule_date are both native DATE columns, so
-            // comparing them directly (no DATE() wrap) is behaviorally identical.
-            ->leftJoin(DB::raw('(
-                SELECT ss.*, SUBSTRING(ss.start_time, 1, 5) AS start_time_hm
-                FROM `schedules` ss
-                INNER JOIN (
-                    SELECT sub2.student_course_id,
-                           sub2.schedule_date,
-                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
-                           MAX(sub2.id) AS max_id
-                    FROM `schedules` sub2
-                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
-                    WHERE sub2.status = "scheduled"
-                      AND sub2.original_schedule_id IS NOT NULL
-                      AND sub2.teacher_id <> sc2.TeacherID
-                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
-                ) sub_latest ON ss.id = sub_latest.max_id
-            ) as sub_sched'), function ($join) {
-                $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->on('sub_sched.schedule_date', '=', 'cs.SessionDate')
-                    ->on('sub_sched.start_time_hm', '=', 'cs.StartTimeHM');
-            })
-            ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
-            ->leftJoin(DB::raw('(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id) AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
-            ->leftJoin(DB::raw('(SELECT si_inner.* FROM `StudentSingIn` si_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `StudentSingIn` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) si_latest ON si_inner.id = si_latest.max_id) AS si'), 'si.ClassSessionID', '=', 'cs.id')
-            ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
-            ->leftJoin('User as lru', 'lru.id', '=', 'lr.TeacherID')
-            ->leftJoin('User as siu', 'siu.id', '=', 'si.TeacherID')
-            ->leftJoin('User as rbu', 'rbu.id', '=', 'si.RecordedByUserID')
-            ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
-            ->select([
-                'cs.id',
-                'cs.StudentClassID',
-                'cs.SessionDate',
-                'cs.StartTime',
-                'cs.EndTime',
-                'cs.Status',
-                'cs.IsContractException',
-                'cs.Note',
-                'cs.session_charge',
-                'sc.StudentID',
-                'sc.TeacherID',
-                'sc.Stop as course_stop',
-                'sc.SessionCount as course_session_count',
-                'sc.Rate as sc_rate',
-                'sc.SessionDuration as sc_session_duration',
-                'sc.rate_unit as sc_rate_unit',
-                'sub_sched.teacher_id as substitute_teacher_id',
-                's.CampusID',
-                's.name as student_name',
-                DB::raw('COALESCE(subu.Name, u.Name, lru.Name, "") as teacher_name'),
-                DB::raw('COALESCE(sub.Subject_Name, "") as subject_name'),
-                'lr.id as learning_record_id',
-                'lr.Status as learning_record_status',
-                'lr.TeacherID as learning_record_teacher_id',
-                'lr.Progress as learning_record_progress',
-                'si.SignInDT as attendance_sign_in_at',
-                'si.Memo as attendance_memo',
-                DB::raw('COALESCE(rbu.Name, siu.Name, "") as recorded_by_name'),
-                DB::raw('EXISTS (SELECT 1 FROM LearningRecord lr_history WHERE lr_history.ClassSessionID = cs.id) as learning_record_history'),
-                DB::raw('EXISTS (SELECT 1 FROM StudentSingIn si_history WHERE si_history.ClassSessionID = cs.id) as attendance_history'),
-            ]);
-
-        // Use the application's Taipei clock rather than the DB server clock.
-        // Production DBs may run in UTC; CURRENT_DATE/CURRENT_TIME therefore
-        // made a Taiwan "today" session look like a future reservation. Future
-        // scheduled rows still remain scheduled until their slot has ended.
-        $query->selectRaw(
-            "CASE
-                WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent')
-                    AND (
-                        cs.SessionDate < ?
-                        OR (cs.SessionDate = ? AND cs.EndTime <= ?)
-                        OR COALESCE(si.SessionDeducted, 0) = 0
-                    )
-                THEN CASE
-                    WHEN LOWER(si.Status) = 'present' THEN 'attended'
-                    WHEN LOWER(si.Status) = 'late' THEN 'late'
-                    WHEN LOWER(si.Status) IN ('leave','excused') THEN 'leave'
-                    ELSE cs.Status
-                END
-                ELSE cs.Status
-            END AS effective_status",
-            [$attendanceAsOfDate, $attendanceAsOfDate, $attendanceAsOfTime]
-        );
-
-        if ($role === 'teacher') {
-            $query->where(function ($q) use ($teacherId) {
-                $q->where(function ($inner) use ($teacherId) {
-                    $inner->whereNull('sub_sched.teacher_id')
-                        ->where('sc.TeacherID', $teacherId);
-                })->orWhere('sub_sched.teacher_id', $teacherId);
-            });
-        }
-
-        if (!empty($campusIds)) {
-            $this->applyClassSessionCampusBranchFilter($query, $campusIds);
-        }
-
-        if ($request->filled('teacher_id')) {
-            $filterTid = (int) $request->input('teacher_id');
-            $query->where(function ($q) use ($filterTid) {
-                $q->where(function ($inner) use ($filterTid) {
-                    $inner->whereNull('sub_sched.teacher_id')
-                        ->where('sc.TeacherID', $filterTid);
-                })->orWhere('sub_sched.teacher_id', $filterTid);
-            });
-        }
-
-        if ($request->filled('student_id')) {
-            $query->where('sc.StudentID', (int) $request->input('student_id'));
-        }
-
-        if ($request->filled('student_class_id')) {
-            $query->where('sc.ID', (int) $request->input('student_class_id'));
-        }
-
-        if ($request->filled('student_class_ids')) {
-            $ids = $this->normalizeIds($request->input('student_class_ids'));
-            if (!empty($ids)) {
-                $query->whereIn('sc.ID', $ids);
-            }
-        }
-
-        if ($request->filled('status')) {
-            $statuses = $this->normalizeStringList($request->input('status'));
-            if (!empty($statuses)) {
-                $query->whereIn('cs.Status', $statuses);
-            }
-        }
-
-        if ($request->filled('learning_record_status')) {
-            $lrStatuses = $this->normalizeStringList($request->input('learning_record_status'));
-            if (!empty($lrStatuses)) {
-                $query->whereIn('lr.Status', $lrStatuses);
-            }
-        }
-
-        if ($request->filled('start')) {
-            $query->where('cs.SessionDate', '>=', $request->input('start'));
-        }
-
-        if ($request->filled('end')) {
-            $query->where('cs.SessionDate', '<=', $request->input('end'));
-        }
-
-        if (!$request->boolean('include_internal_placeholder')) {
-            $query->where(function ($q) {
-                $q->where('cs.Status', '<>', 'cancelled')
-                    ->orWhere(function ($inner) {
-                        $inner->where('cs.Note', 'NOT LIKE', '%cancelled-duplicate-reschedule-placeholder%')
-                            ->orWhereNull('cs.Note');
-                    });
-            });
-        }
-
-        // R20 / 2026-07-18：Stop=1 課程殘留的 scheduled 會讓出缺勤「今日待點名」出現雙列。
-        // 預設隱藏；稽核可用 include_stopped_scheduled=1 帶回。
-        if (!$request->boolean('include_stopped_scheduled')) {
-            $query->whereRaw("NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')");
-        }
-
-        if ($request->boolean('exclude_history_future')) {
-            $query->whereRaw(
-                "NOT (
-                    ((COALESCE(sc.Stop, 0) = 1 OR LOWER(COALESCE(sc.closed_reason, '')) IN ('settled', 'completed', 'usage_settled'))
-                        AND cs.SessionDate > ? AND LOWER(cs.Status) IN ('scheduled', 'rescheduled'))
-                    OR (LOWER(COALESCE(sc.ScheduleMode, 'count')) = 'count'
-                        AND COALESCE(sc.SessionCount, 0) > 0
-                        AND cs.SessionDate > ?
-                        AND LOWER(cs.Status) IN ('scheduled', 'rescheduled')
-                        AND (SELECT COUNT(*) FROM ClassSession AS used_cs
-                             WHERE used_cs.StudentClassID = cs.StudentClassID
-                               AND LOWER(used_cs.Status) IN ('completed', 'attended', 'late')) >= sc.SessionCount)
-                )",
-                [Carbon::today()->toDateString(), Carbon::today()->toDateString()]
-            );
-        }
-
-        return $query;
+        return app(\App\Services\ClassSessionIndexReadService::class)->buildQuery($request);
     }
 
     private function fetchAllClassSessionIndexRows($query): array
@@ -484,6 +296,51 @@ class ClassSessionController extends Controller
         return $items;
     }
 
+    /**
+     * Calendar projection must use the same count-contract boundary as course
+     * management. A materialized future reservation is not actionable once
+     * attendance/ledger evidence has consumed the full contract (in-app #289).
+     *
+     * @param list<object> $items
+     * @return list<object>
+     */
+    private function withoutContractCappedFutureReservations(array $items): array
+    {
+        $classIds = array_values(array_unique(array_filter(array_map(
+            fn ($item) => (int) ($item->student_class_id ?? 0),
+            $items
+        ), fn (int $id) => $id > 0)));
+        if ($classIds === []) {
+            return $items;
+        }
+
+        $diagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics($classIds);
+        $today = Carbon::today()->toDateString();
+
+        return array_values(array_filter($items, function ($item) use ($diagnostics, $today): bool {
+            $classId = (int) ($item->student_class_id ?? 0);
+            if (!$this->isCountContractCapped($diagnostics[$classId] ?? null)) {
+                return true;
+            }
+
+            $status = strtolower((string) ($item->status ?? ''));
+            $date = substr((string) ($item->session_date ?? ''), 0, 10);
+
+            return $date === ''
+                || $date <= $today
+                || !in_array($status, ['scheduled', 'rescheduled'], true);
+        }));
+    }
+
+    /** @param array<string, mixed>|null $diagnostic */
+    private function isCountContractCapped(?array $diagnostic): bool
+    {
+        return $diagnostic !== null
+            && !empty($diagnostic['is_session_mode'])
+            && (int) ($diagnostic['session_count'] ?? 0) > 0
+            && (int) ($diagnostic['expected_used'] ?? 0) >= (int) ($diagnostic['session_count'] ?? 0);
+    }
+
     private function buildByClassMapFromItems(iterable $items): array
     {
         $byClass = [];
@@ -500,62 +357,7 @@ class ClassSessionController extends Controller
 
     private function transformClassSessionIndexRow($row)
     {
-        $row->id = (int) $row->id;
-        $row->student_class_id = (int) $row->StudentClassID;
-        $row->student_id = (int) $row->StudentID;
-        $row->course_stop = (int) ($row->course_stop ?? 0) === 1 ? 1 : 0;
-        $row->course_session_count = (int) ($row->course_session_count ?? 0);
-        $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
-            ? (int) $row->substitute_teacher_id : 0;
-        $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;
-        $row->teacher_id = $subTid > 0 ? $subTid : (int) ($row->TeacherID ?? 0);
-        $row->branch_id = (int) ($row->CampusID ?? 0);
-        $row->session_date = $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null;
-        $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
-        $row->end_time = $row->EndTime ? substr((string) $row->EndTime, 0, 5) : null;
-        $row->status = (string) ($row->effective_status ?? $row->Status ?? '');
-        $row->is_contract_exception = (bool) ($row->IsContractException ?? false);
-        $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
-        $row->learning_record_status = $row->learning_record_status ?? 'missing';
-        $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
-        $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
-        $row->has_learning_record_history = (bool) ($row->learning_record_history ?? false);
-        $row->has_attendance_history = (bool) ($row->attendance_history ?? false);
-        $row->recoverable_cancelled = strtolower((string) ($row->Status ?? '')) === 'cancelled'
-            && ($row->has_learning_record_history || $row->has_attendance_history);
-        unset($row->learning_record_progress);
-        $row->attendance_sign_in_at = $row->attendance_sign_in_at ?: null;
-        $row->attendance_memo = $row->attendance_memo ?: '';
-        $row->recorded_by_name = (string) ($row->recorded_by_name ?? '');
-        $row->note = $row->Note !== null ? (string) $row->Note : null;
-        $row->session_charge = isset($row->session_charge) && $row->session_charge !== null
-            ? (int) $row->session_charge : null;
-        $row->contract_rate = isset($row->sc_rate) && $row->sc_rate !== null
-            ? (float) $row->sc_rate : null;
-        $row->contract_session_duration = isset($row->sc_session_duration) && $row->sc_session_duration !== null
-            ? (int) $row->sc_session_duration : null;
-        $row->contract_rate_unit = isset($row->sc_rate_unit) && $row->sc_rate_unit !== null
-            ? (string) $row->sc_rate_unit : null;
-        unset(
-            $row->StudentClassID,
-            $row->StudentID,
-            $row->TeacherID,
-            $row->CampusID,
-            $row->SessionDate,
-            $row->StartTime,
-            $row->EndTime,
-            $row->Status,
-            $row->IsContractException,
-            $row->effective_status,
-            $row->learning_record_history,
-            $row->attendance_history,
-            $row->Note,
-            $row->sc_rate,
-            $row->sc_session_duration,
-            $row->sc_rate_unit
-        );
-
-        return $row;
+        return app(\App\Services\ClassSessionIndexReadService::class)->transformRow($row);
     }
 
     /**
@@ -589,6 +391,7 @@ class ClassSessionController extends Controller
 
         $query = $this->buildClassSessionIndexQuery($request);
         $items = $this->fetchAllClassSessionIndexRows($query);
+        $items = $this->withoutContractCappedFutureReservations($items);
 
         if (count($items) > self::PROJECTION_MAX_ROWS) {
             return response()->json([
@@ -611,7 +414,7 @@ class ClassSessionController extends Controller
             'api_kind' => 'projection',
             'completeness' => 'full',
             'total' => count($items),
-            'data' => array_values($items),
+            'data' => $items,
             'by_class' => $byClass,
             'projected' => ['by_class' => $projectedByClass],
         ]);
@@ -636,179 +439,14 @@ class ClassSessionController extends Controller
         bool $includeTeacherCandidates = false
     ): array
     {
-        if (!$rangeStart || !$rangeEnd) {
-            return [];
-        }
-
-        $classIds = array_values(array_unique(array_filter(array_merge(
-            array_map('intval', array_keys($materializedByClass)),
-            array_map('intval', $requestedClassIds)
-        ), fn ($id) => $id > 0)));
-
-        // A complete teacher projection must include active contracts that have
-        // no ClassSession row in the requested range yet. The LIST endpoint keeps
-        // its historical materialized-row candidate behavior; only the explicit
-        // projection path opts into this wider, read-only contract scope.
-        if ($includeTeacherCandidates && (string) request()->attributes->get('auth_role') === 'teacher') {
-            $teacherId = (int) request()->attributes->get('auth_teacher_id');
-            $campusIds = request()->attributes->get('auth_campus_ids', []);
-            $requestedCampus = (int) (request()->input('branch_id') ?? request()->input('campus_id') ?? 0);
-            if ($requestedCampus > 0) {
-                $campusIds = [$requestedCampus];
-            }
-
-            $candidateQuery = StudentClass::query()
-                ->where('TeacherID', $teacherId)
-                ->where(function ($q) {
-                    $q->where('Stop', 0)->orWhereNull('Stop');
-                })
-                ->where(function ($q) use ($rangeStart, $rangeEnd) {
-                    $q->where(function ($dates) use ($rangeEnd) {
-                        $dates->whereNull('StartDate')->orWhereDate('StartDate', '<=', $rangeEnd);
-                    })->where(function ($dates) use ($rangeStart) {
-                        $dates->whereNull('EndDate')->orWhereDate('EndDate', '>=', $rangeStart);
-                    });
-                });
-            if (!empty($campusIds)) {
-                $candidateQuery->where(function ($q) use ($campusIds) {
-                    $q->whereHas('room', fn ($room) => $room->whereIn('campus_id', $campusIds))
-                        ->orWhere(function ($noRoom) use ($campusIds) {
-                            $noRoom->whereNull('room_id')
-                                ->whereHas('student', fn ($student) => $student->whereIn('CampusID', $campusIds));
-                        });
-                });
-            }
-            $classIds = array_values(array_unique(array_merge(
-                $classIds,
-                $candidateQuery->pluck('ID')->map(fn ($id) => (int) $id)->all()
-            )));
-        }
-        if ($classIds === []) {
-            return [];
-        }
-
-        // Eager-load student: buildProjectedFromEffectiveDates() reads
-        // $class->student->CampusID per class for projected-slot branch_id
-        // (in-app #235) -- without this it's an N+1, one query per class.
-        $classesQuery = StudentClass::query()->with(['student', 'teacher', 'subjectRecord', 'room']);
-        $classesQuery->whereIn('ID', $classIds);
-        $classes = $classesQuery->get()->keyBy('ID');
-        $scheduleSince = $classes->pluck('StartDate')->filter()->map(function ($date) use ($rangeStart) {
-            try {
-                return Carbon::parse((string) $date)->toDateString();
-            } catch (\Throwable $e) {
-                return $rangeStart;
-            }
-        })->min() ?: $rangeStart;
-        $schedules = Schedule::query()
-            ->whereIn('student_course_id', $classIds)
-            ->whereDate('schedule_date', '>=', $scheduleSince)
-            ->whereDate('schedule_date', '<=', $rangeEnd)
-            ->select('student_course_id', 'schedule_date', 'status')
-            ->get();
-
-        $leaveByClass = [];
-        $scheduledByClass = [];
-        foreach ($schedules as $row) {
-            $id = (int) $row->student_course_id;
-            $d = $row->schedule_date ? Carbon::parse($row->schedule_date)->toDateString() : null;
-            if (!$d) {
-                continue;
-            }
-            if ($row->status === 'scheduled') {
-                $scheduledByClass[$id][$d] = true;
-            } else {
-                $leaveByClass[$id][$d] = true;
-            }
-        }
-
-        $reader = app(SessionProjectionReadService::class);
-        $studentClassController = app(StudentClassController::class);
-        /** @var array<string, list<array<string, mixed>>> $projectedByClass */
-        $projectedByClass = [];
-
-        /** @var array<int, list<object>> $rowsByClassId */
-        $rowsByClassId = [];
-        foreach ($materializedByClass as $classKey => $classRows) {
-            $rowsByClassId[(int) $classKey] = $classRows;
-        }
-
-        foreach ($classIds as $classId) {
-            $class = $classes->get($classId);
-            if (!$class) {
-                continue;
-            }
-            $rows = $rowsByClassId[$classId] ?? [];
-
-            $materialized = [];
-            foreach ($rows as $row) {
-                $materialized[] = $reader->materializedSlot(
-                    (int) $row->id,
-                    $classId,
-                    (string) ($row->session_date ?? ''),
-                    (string) ($row->start_time ?? ''),
-                    (string) ($row->end_time ?? ''),
-                    (string) ($row->status ?? 'scheduled')
-                );
-            }
-
-            $existingSet = [];
-            foreach ($materialized as $slot) {
-                $existingSet[$slot['session_date']] = true;
-            }
-
-            $effectiveDates = [];
-            if ((string) ($class->ScheduleMode ?? '') === 'date') {
-                $effectiveDates = $studentClassController->computeMonthlyEffectiveSessionDates(
-                    $class,
-                    $rangeStart,
-                    $rangeEnd,
-                    $leaveByClass[$classId] ?? [],
-                    $scheduledByClass[$classId] ?? [],
-                    $existingSet
-                );
-            } elseif (
-                $includeTeacherCandidates
-                && (string) ($class->ScheduleMode ?? 'count') === 'count'
-                && (int) ($class->SessionCount ?? 0) > 0
-                && (string) ($class->scheduling_policy ?? 'auto_recurrence') !== 'manual_occurrence'
-                && (int) ($class->PackageID ?? 0) <= 0
-                && $class->StartDate
-            ) {
-                $daysOfWeek = [];
-                foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $field) {
-                    $day = (int) ($class->{$field} ?? 0);
-                    if ($day >= 1 && $day <= 7 && !in_array($day, $daysOfWeek, true)) {
-                        $daysOfWeek[] = $day;
-                    }
-                }
-                if ($daysOfWeek !== []) {
-                    $contractDates = StudentClassController::computeEffectiveSessionDates(
-                        Carbon::parse($class->StartDate)->toDateString(),
-                        (int) $class->SessionCount,
-                        $daysOfWeek,
-                        $leaveByClass[$classId] ?? [],
-                        $scheduledByClass[$classId] ?? []
-                    );
-                    $effectiveDates = array_values(array_filter(
-                        $contractDates,
-                        fn ($date) => $date >= $rangeStart && $date <= $rangeEnd
-                    ));
-                }
-            }
-
-            $projected = $reader->buildProjectedFromEffectiveDates(
-                $classId,
-                $effectiveDates,
-                $materialized,
-                $class
-            );
-            if (!empty($projected)) {
-                $projectedByClass[(string) $classId] = $projected;
-            }
-        }
-
-        return $projectedByClass;
+        return app(\App\Services\ClassSessionIndexProjectionService::class)->buildProjectedByClassForIndex(
+            request(),
+            $materializedByClass,
+            $rangeStart,
+            $rangeEnd,
+            $requestedClassIds,
+            $includeTeacherCandidates
+        );
     }
 
     /**
@@ -2157,28 +1795,6 @@ class ClassSessionController extends Controller
     }
 
     /**
-     * Align branch filter with StudentClassController::index — room campus when set,
-     * otherwise student CampusID. ClassSession is the calendar projection; eligibility
-     * follows contract room attribution, not attendance snapshots.
-     *
-     * @param  \Illuminate\Database\Query\Builder  $query
-     * @param  array<int>  $campusIds
-     */
-    private function applyClassSessionCampusBranchFilter($query, array $campusIds): void
-    {
-        $query->leftJoin('rooms as cs_branch_room', 'cs_branch_room.id', '=', 'sc.room_id');
-        $query->where(function ($q) use ($campusIds) {
-            $q->where(function ($inner) use ($campusIds) {
-                $inner->whereNotNull('sc.room_id')
-                    ->whereIn('cs_branch_room.campus_id', $campusIds);
-            })->orWhere(function ($inner) use ($campusIds) {
-                $inner->whereNull('sc.room_id')
-                    ->whereIn('s.CampusID', $campusIds);
-            });
-        });
-    }
-
-    /**
      * @return array<int>
      */
     private function normalizeIds($raw): array
@@ -2190,20 +1806,6 @@ class ClassSessionController extends Controller
             return [];
         }
         return array_values(array_filter(array_map('intval', explode(',', $raw)), fn ($v) => $v > 0));
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function normalizeStringList($raw): array
-    {
-        if (is_array($raw)) {
-            return array_values(array_filter(array_map(fn ($v) => trim((string) $v), $raw), fn ($v) => $v !== ''));
-        }
-        if (!is_string($raw)) {
-            return [];
-        }
-        return array_values(array_filter(array_map('trim', explode(',', $raw)), fn ($v) => $v !== ''));
     }
 
     /**
@@ -2811,7 +2413,8 @@ class ClassSessionController extends Controller
             if (!empty($conflicts)) {
                 $conflictMessage = $conflicts[0]['message'] ?? '代課老師此時段與既有課程衝突';
                 $overlapSummary = $conflicts[0]['overlap_summary'] ?? '';
-                if ($overlapSummary !== '') {
+                // ScheduleGuard now bakes overlap_summary into message; only append if missing.
+                if ($overlapSummary !== '' && !str_contains($conflictMessage, $overlapSummary)) {
                     $conflictMessage .= '（' . $overlapSummary . '）';
                 }
 
@@ -3366,59 +2969,45 @@ class ClassSessionController extends Controller
             $authUser = $request->attributes->get('auth_user');
             $changedBy = (int) ($authUser->id ?? 0);
 
-            $rescheduled = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'rescheduled')
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->first();
+            // in-app #276: durable restore must clear substitute_with_reschedule chains even when
+            // notification payload times / TIME-column formatting diverge from ClassSession HH:mm.
+            $matchDates = $this->substituteRestoreMatchDates($session, $sessionDate);
+            $matchTimes = $this->substituteRestoreMatchTimes($session, $startTime);
 
-            $scheduled = $existingScheduled;
-            if (!$scheduled && $rescheduled) {
-                $scheduled = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', (int) $rescheduled->id)
-                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                    ->first();
-            }
-
-            $scheduledDeleted = 0;
+            $scheduledRows = $this->findSubstituteScheduledRowsForRestore(
+                $courseId,
+                $originalTeacherId,
+                $matchDates,
+                $matchTimes,
+                $existingScheduled
+            );
             $anchorIds = [];
-            if ($rescheduled) {
-                $anchorIds[] = (int) $rescheduled->id;
+            foreach ($scheduledRows as $row) {
+                $anchor = (int) ($row->original_schedule_id ?? 0);
+                if ($anchor > 0) {
+                    $anchorIds[] = $anchor;
+                }
             }
-            if ($scheduled && (int) ($scheduled->original_schedule_id ?? 0) > 0) {
-                $anchorIds[] = (int) $scheduled->original_schedule_id;
+            if ($existingRescheduled) {
+                $anchorIds[] = (int) $existingRescheduled->id;
             }
-            // Defensive recovery for historical data: contract teacher may already change,
-            // but stale substitute rows (teacher_id != current contract teacher) still remain.
-            $fallbackAnchors = Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'scheduled')
-                ->whereNotNull('original_schedule_id')
-                ->where('teacher_id', '!=', $originalTeacherId)
-                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                ->pluck('original_schedule_id')
-                ->filter(fn ($id) => (int) $id > 0)
-                ->map(fn ($id) => (int) $id)
-                ->all();
-            $anchorIds = array_values(array_unique(array_merge($anchorIds, $fallbackAnchors)));
+            $anchorIds = array_values(array_unique(array_filter($anchorIds)));
 
-            if (!empty($anchorIds)) {
-                $scheduledDeleted += Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->whereIn('original_schedule_id', $anchorIds)
-                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
-                    ->delete();
-            } elseif ($scheduled) {
-                $scheduledDeleted += Schedule::where('id', (int) $scheduled->id)->delete();
+            // Prefer delete-by-id so TIME/varchar formatting cannot strand the chain.
+            $scheduledIds = array_values(array_unique(array_filter(array_map(
+                static fn ($row) => (int) ($row->id ?? 0),
+                $scheduledRows
+            ))));
+            $scheduledDeleted = 0;
+            if (!empty($scheduledIds)) {
+                $scheduledDeleted = Schedule::query()->whereIn('id', $scheduledIds)->delete();
             }
 
             $rescheduledDeleted = 0;
             if (!empty($anchorIds)) {
                 // MySQL/MariaDB reject DELETE with subquery on same table (error 1093).
                 $stillLinked = DB::table('schedules')
+                    ->where('student_course_id', $courseId)
                     ->where('status', 'scheduled')
                     ->whereIn('original_schedule_id', $anchorIds)
                     ->pluck('original_schedule_id')
@@ -3427,13 +3016,87 @@ class ClassSessionController extends Controller
                 $safeAnchorIds = array_values(array_diff($anchorIds, $stillLinked));
                 if (!empty($safeAnchorIds)) {
                     $rescheduledDeleted = Schedule::where('student_course_id', $courseId)
-                        ->whereDate('schedule_date', $sessionDate)
                         ->where('status', 'rescheduled')
                         ->whereIn('id', $safeAnchorIds)
                         ->delete();
                 }
-            } elseif ($rescheduled) {
-                $rescheduledDeleted = Schedule::where('id', (int) $rescheduled->id)->delete();
+            }
+
+            $remainingSubstitute = Schedule::where('student_course_id', $courseId)
+                ->whereIn('schedule_date', $matchDates)
+                ->where('status', 'scheduled')
+                ->whereNotNull('original_schedule_id')
+                ->where('teacher_id', '!=', $originalTeacherId)
+                ->where(function ($q) use ($matchTimes) {
+                    $this->constrainScheduleStartTimes($q, $matchTimes);
+                })
+                ->count();
+            // Same-course same-date single-session fallback (production #276 shape).
+            if ($remainingSubstitute > 0) {
+                $sessionsThatDay = ClassSession::query()->where('StudentClassID', $courseId)
+                    ->whereDate('SessionDate', $sessionDate)
+                    ->where('Status', '!=', 'cancelled')
+                    ->count();
+                if ($sessionsThatDay <= 1) {
+                    $leftoverIds = Schedule::where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $sessionDate)
+                        ->where('status', 'scheduled')
+                        ->whereNotNull('original_schedule_id')
+                        ->where('teacher_id', '!=', $originalTeacherId)
+                        ->pluck('id')
+                        ->map(fn ($id) => (int) $id)
+                        ->all();
+                    $leftoverAnchors = Schedule::where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $sessionDate)
+                        ->where('status', 'scheduled')
+                        ->whereNotNull('original_schedule_id')
+                        ->where('teacher_id', '!=', $originalTeacherId)
+                        ->pluck('original_schedule_id')
+                        ->map(fn ($id) => (int) $id)
+                        ->filter(fn ($id) => $id > 0)
+                        ->unique()
+                        ->values()
+                        ->all();
+                    if (!empty($leftoverIds)) {
+                        $scheduledDeleted += Schedule::query()->whereIn('id', $leftoverIds)->delete();
+                    }
+                    if (!empty($leftoverAnchors)) {
+                        $stillLinked = DB::table('schedules')
+                            ->where('student_course_id', $courseId)
+                            ->where('status', 'scheduled')
+                            ->whereIn('original_schedule_id', $leftoverAnchors)
+                            ->pluck('original_schedule_id')
+                            ->map(fn ($id) => (int) $id)
+                            ->all();
+                        $safe = array_values(array_diff($leftoverAnchors, $stillLinked));
+                        if (!empty($safe)) {
+                            $rescheduledDeleted += Schedule::where('student_course_id', $courseId)
+                                ->where('status', 'rescheduled')
+                                ->whereIn('id', $safe)
+                                ->delete();
+                        }
+                    }
+                    $remainingSubstitute = Schedule::where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $sessionDate)
+                        ->where('status', 'scheduled')
+                        ->whereNotNull('original_schedule_id')
+                        ->where('teacher_id', '!=', $originalTeacherId)
+                        ->count();
+                }
+            }
+
+            if ($remainingSubstitute > 0) {
+                Log::warning('[substitute_restore_original] aborted_stale_rows_remain', [
+                    'class_session_id' => $session->id,
+                    'student_class_id' => $courseId,
+                    'remaining_substitute' => $remainingSubstitute,
+                    'scheduled_deleted' => $scheduledDeleted,
+                    'rescheduled_deleted' => $rescheduledDeleted,
+                    'operator_id' => $changedBy ?: null,
+                ]);
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'substitute_teacher_id' => ['無法清除此堂代課排程，請稍後再試或聯絡系統管理員。'],
+                ]);
             }
 
             $lrId = null;
@@ -3488,6 +3151,7 @@ class ClassSessionController extends Controller
                 }
             }
 
+            // Only resolve after schedules are confirmed cleared (in-app #276).
             if (Schema::hasTable('Notifications') && Schema::hasColumn('Notifications', 'ResolvedAt')) {
                 DB::table('Notifications')
                     ->where('Type', 'substitute')
@@ -3497,12 +3161,14 @@ class ClassSessionController extends Controller
                     ->update(['ResolvedAt' => now()]);
             }
 
+            $cleared = ($scheduledDeleted + $rescheduledDeleted) > 0;
             Log::info('[substitute_restore_original]', [
                 'class_session_id' => $session->id,
                 'student_class_id' => $courseId,
                 'restored_teacher_id' => $originalTeacherId,
                 'scheduled_deleted' => $scheduledDeleted,
                 'rescheduled_deleted' => $rescheduledDeleted,
+                'substitute_cleared' => $cleared,
                 'operator_id' => $changedBy ?: null,
             ]);
 
@@ -3510,12 +3176,122 @@ class ClassSessionController extends Controller
                 'message' => '已回復正班老師',
                 'class_session_id' => (int) $session->id,
                 'restored_teacher_id' => $originalTeacherId,
-                'substitute_cleared' => ($scheduledDeleted + $rescheduledDeleted) > 0,
+                'substitute_cleared' => $cleared,
                 'deleted_scheduled_count' => $scheduledDeleted,
                 'deleted_rescheduled_count' => $rescheduledDeleted,
                 'learning_record_id' => $lrId,
             ]);
         });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function substituteRestoreMatchDates(ClassSession $session, string $sessionDate): array
+    {
+        $dates = [$sessionDate];
+        try {
+            $dates[] = Carbon::parse($session->SessionDate)->toDateString();
+        } catch (\Throwable) {
+        }
+        $notif = Notification::query()->where('Type', 'substitute')
+            ->where('SourceType', 'ClassSession')
+            ->where('SourceID', $session->id)
+            ->orderByDesc('id')
+            ->first();
+        $payload = is_array($notif?->Payload) ? $notif->Payload : [];
+        foreach (['session_date', 'original_session_date'] as $key) {
+            $raw = trim((string) ($payload[$key] ?? ''));
+            if ($raw === '') {
+                continue;
+            }
+            try {
+                $dates[] = Carbon::parse($raw)->toDateString();
+            } catch (\Throwable) {
+            }
+        }
+
+        return array_values(array_unique(array_filter($dates)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function substituteRestoreMatchTimes(ClassSession $session, string $startTime): array
+    {
+        $times = [
+            $this->normalizeSessionTimeForSchedule($startTime),
+            $this->normalizeSessionTimeForSchedule($session->StartTime ?? ''),
+        ];
+        $notif = Notification::query()->where('Type', 'substitute')
+            ->where('SourceType', 'ClassSession')
+            ->where('SourceID', $session->id)
+            ->orderByDesc('id')
+            ->first();
+        $payload = is_array($notif?->Payload) ? $notif->Payload : [];
+        foreach (['start_time', 'original_start_time'] as $key) {
+            $times[] = $this->normalizeSessionTimeForSchedule($payload[$key] ?? '');
+        }
+
+        return array_values(array_unique(array_filter($times)));
+    }
+
+    /**
+     * @param  list<string>  $matchDates
+     * @param  list<string>  $matchTimes
+     * @return list<object>
+     */
+    private function findSubstituteScheduledRowsForRestore(
+        int $courseId,
+        int $originalTeacherId,
+        array $matchDates,
+        array $matchTimes,
+        $existingScheduled
+    ): array {
+        $rows = [];
+        if ($existingScheduled) {
+            $rows[] = $existingScheduled;
+        }
+        if ($courseId <= 0 || $matchDates === []) {
+            return $rows;
+        }
+
+        $query = Schedule::where('student_course_id', $courseId)
+            ->whereIn('schedule_date', $matchDates)
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->where('teacher_id', '!=', $originalTeacherId);
+        if ($matchTimes !== []) {
+            $query->where(function ($q) use ($matchTimes) {
+                $this->constrainScheduleStartTimes($q, $matchTimes);
+            });
+        }
+        foreach ($query->get() as $row) {
+            $rows[] = $row;
+        }
+
+        // Deduplicate by id.
+        $byId = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row->id ?? 0);
+            if ($id > 0) {
+                $byId[$id] = $row;
+            }
+        }
+
+        return array_values($byId);
+    }
+
+    /**
+     * @param  list<string>  $matchTimes  HH:mm
+     */
+    private function constrainScheduleStartTimes($query, array $matchTimes): void
+    {
+        foreach ($matchTimes as $hhmm) {
+            $query->orWhereRaw('SUBSTRING(CAST(start_time AS CHAR), 1, 5) = ?', [$hhmm])
+                ->orWhere('start_time', $hhmm)
+                ->orWhere('start_time', $hhmm.':00');
+        }
     }
 
     /**

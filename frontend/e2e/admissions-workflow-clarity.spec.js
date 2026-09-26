@@ -73,7 +73,7 @@ test.describe('Admissions Workflow Clarity Browser Verification', () => {
       await page.goto('http://127.0.0.1:5177/pilot-mount.html?page=admissions&mode=empty');
       await page.waitForSelector('.admission-empty');
 
-      await expect(page.locator('h1')).toHaveText('新生問班');
+      await expect(page.getByRole('heading', { name: '新生問班', exact: true })).toBeVisible();
       await expect(page.locator('.admission-empty h2')).toHaveText('目前沒有新詢問');
       await expect(page.locator('.admission-empty-flow')).toBeVisible();
       await expect(page.locator('.admission-flow-step').nth(0)).toContainText('家長送出需求');

@@ -1,0 +1,53 @@
+id: TKT-20260912-040210-7WBX
+title: 'Integrate responsive AtPageHeader improvement from draft PR #2641'
+intent: 'Integrate responsive AtPageHeader improvement from draft PR #2641'
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: 'Only integrate the responsive, wrapping, touch-target behavior of AtPageHeader
+  and deterministic UI-foundation coverage from draft PR #2641, plus required release
+  evidence. Do not change page actions, routing, APIs, auth, permissions, business
+  rules, dependencies, CI, production data, or production directly.'
+success_condition: AtPageHeader actions remain reachable and keyboard-focusable with
+  long Chinese labels at 390/412/768/1280/1440 without document overflow; focused
+  and full frontend checks plus required PR CI pass; original draft branch is preserved
+  and superseded with exact SHA evidence; deploy and production identity are verified
+  after merge.
+priority: 2
+labels:
+- area:ui
+scope:
+  allow:
+  - frontend/src/components/design-system/AtPageHeader.vue
+  - frontend/src/styles.css
+  - frontend/e2e/ui-foundation-pages.spec.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/generated/**
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/**
+  - frontend/package*.json
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 260
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T04:02:10+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

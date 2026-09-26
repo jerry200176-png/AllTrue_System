@@ -1,0 +1,43 @@
+id: TKT-20260912-021403-FPLD
+title: Ignore voided artifacts when checking cancelled-session reuse
+intent: Ignore voided artifacts when checking cancelled-session reuse
+kind: task
+parent_id: INT-20260911-004629-TYP8
+boundary: Only make quick-add conflict locking ignore voided attendance and learning
+  records, with regression coverage. Do not alter active-record locks, authorization,
+  attendance/deduction semantics, production data, billing, migrations, or deployment
+  governance.
+success_condition: Cancelled occurrences with only voided artifacts are reusable while
+  active attendance or approved learning records still block; focused PHPUnit, lint,
+  CI, exact-SHA deployment, and production smoke pass.
+priority: 1
+labels:
+- in-app-feedback
+scope:
+  allow:
+  - backend/app/Http/Controllers/StudentClassController.php
+  - backend/app/Services/LearningRecordResurrectionPolicy.php
+  - backend/tests/Feature/AddSessionConflictTest.php
+  - backend/phpstan-baseline.neon
+  - .agent-session/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 220
+checks:
+- npm run lint:no-undef
+type: feature
+status: review
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T02:14:03+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

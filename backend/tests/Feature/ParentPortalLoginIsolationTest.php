@@ -379,6 +379,37 @@ class ParentPortalLoginIsolationTest extends TestCase
         $this->assertContains($unpaidCourse->ID, $alertClassIds);
     }
 
+    public function test_tutoring_course_is_not_parent_payment_alert_but_unpaid_paid_course_control_is(): void
+    {
+        $student = $this->createStudent(1, '輔導課付款提醒學生', '0912888111');
+        $tutoringCourse = $this->createStudentClass($student->id, [
+            'ClassType' => ' TuToRiNg ',
+            'Charge' => 8800,
+            'Paid' => 0,
+            'Stop' => 0,
+        ]);
+        $unpaidCourse = $this->createStudentClass($student->id, [
+            'ClassType' => 'one_on_one',
+            'Paid' => 0,
+            'Stop' => 0,
+        ]);
+
+        $token = $this->parentLogin('輔導課付款提醒學生', '0912888111');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $courseCards = collect($res->json('classes'));
+        $tutoringCard = $courseCards->firstWhere('id', $tutoringCourse->ID);
+        $this->assertSame('free', $tutoringCard['payment_status']);
+        $this->assertSame('免費（不適用）', $tutoringCard['payment_status_label']);
+        $this->assertTrue($tutoringCard['is_tutoring']);
+        $alertClassIds = collect($res->json('payment_alerts'))->pluck('class_id')->all();
+        $this->assertNotContains($tutoringCourse->ID, $alertClassIds);
+        $this->assertContains($unpaidCourse->ID, $alertClassIds);
+    }
+
     public function test_invoice_payment_counts_as_paid_for_parent_payment_alerts(): void
     {
         $student = $this->createStudent(1, '帳單已繳學生', '0912999000');

@@ -1,0 +1,113 @@
+name: In-app #289 backup candidate inventory (read-only)
+
+# Narrow incident evidence only. This workflow never restores a dump, creates a
+# database, or changes production data. It has no inputs so it cannot be reused
+# to browse arbitrary backup files or cases.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inapp-289-backup-candidate-read
+  cancel-in-progress: false
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout pinned production SSH trust helper
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Install SSH key
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Inventory only the #289 pre-incident backup candidates
+        env:
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+
+          # 2026-09-13 14:17 Asia/Taipei, the first reported whole-course
+          # deletion. Work with snapshot metadata only; no dump is restored.
+          cutoff_epoch=1789280220
+          backup_dir=/home/admin/backups/sixhour
+          test -d "$backup_dir"
+
+          mapfile -t snapshots < <(
+            find "$backup_dir" -maxdepth 1 -type f -name 'alltrue_6h_*.sql.gz' \
+              -printf '%T@\t%f\t%s\n' | sort -n
+          )
+          test "${#snapshots[@]}" -gt 0
+
+          before=''
+          after=''
+          for row in "${snapshots[@]}"; do
+            epoch=${row%%$'\t'*}
+            integer_epoch=${epoch%%.*}
+            if [ "$integer_epoch" -le "$cutoff_epoch" ]; then
+              before=$row
+            elif [ -z "$after" ]; then
+              after=$row
+            fi
+          done
+
+          test -n "$before"
+          printf 'case=in-app-289\n'
+          printf 'incident_cutoff_utc=2026-09-13T06:17:00Z\n'
+          for relation in before after; do
+            row=${!relation:-}
+            if [ -z "$row" ]; then
+              printf '%s_candidate=none\n' "$relation"
+              continue
+            fi
+            epoch=${row%%$'\t'*}
+            rest=${row#*$'\t'}
+            filename=${rest%%$'\t'*}
+            bytes=${rest##*$'\t'}
+            file="$backup_dir/$filename"
+            gzip -t "$file"
+            student_class_table=false
+            class_session_table=false
+            zgrep -a -m1 -q 'CREATE TABLE.*`StudentClass`' "$file" && student_class_table=true
+            zgrep -a -m1 -q 'CREATE TABLE.*`ClassSession`' "$file" && class_session_table=true
+            printf '%s_candidate_filename=%s\n' "$relation" "$filename"
+            printf '%s_candidate_epoch=%s\n' "$relation" "${epoch%%.*}"
+            printf '%s_candidate_bytes=%s\n' "$relation" "$bytes"
+            printf '%s_candidate_gzip_integrity=ok\n' "$relation"
+            printf '%s_candidate_student_class_table=%s\n' "$relation" "$student_class_table"
+            printf '%s_candidate_class_session_table=%s\n' "$relation" "$class_session_table"
+          done
+          REMOTE
+
+      - name: Record read-only boundary
+        if: always()
+        run: |
+          {
+            echo '### In-app #289 backup candidate inventory'
+            echo ''
+            echo 'Read-only metadata and gzip-integrity evidence only.'
+            echo 'No dump restore, database creation, SQL write, course reconstruction, or production-data mutation occurred.'
+          } >> "$GITHUB_STEP_SUMMARY"

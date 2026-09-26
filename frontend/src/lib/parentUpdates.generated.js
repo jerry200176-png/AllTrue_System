@@ -4,6 +4,72 @@
  */
 export const parentUpdates = [
   {
+    "id": "parent-2026-09-21-attention-feedback-jump-323",
+    "kind": "improvement",
+    "title": "「前往留言」會直接帶您到可留言的評量",
+    "summary": "從首頁需要留意事項進入留言時，會自動展開第一筆可留言課程並定位輸入框。",
+    "details": "即使目前已在學習分頁，點擊「前往留言」也會有明確的畫面轉移；系統不會自動送出內容，仍由家長確認後自行輸入與送出。",
+    "publishedAt": "2026-09-21",
+    "expiresAt": "2026-10-21",
+    "date": "2026-09-21",
+    "version": "2026.09.21"
+  },
+  {
+    "id": "parent-update-2026-09-10-parent-status-hierarchy",
+    "kind": "improvement",
+    "title": "需要留意事項更清楚",
+    "summary": "家長入口會把需要查看或回覆的事情整理成更容易點選的下一步。",
+    "details": "長說明在手機上會完整換行；沒有待辦時會清楚顯示目前沒有需要處理的事項，原有導頁與資料範圍不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
+    "id": "parent-update-2026-09-10-parent-progress-hub-clarity",
+    "kind": "improvement",
+    "title": "進度中心更容易理解",
+    "summary": "本週學習、下次課程與繳費狀態的下一步更容易看見與操作。",
+    "details": "每個項目在手機、平板與桌面都有一致的觸控尺寸與鍵盤焦點；原有資料、導頁與操作方式不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
+    "id": "parent-update-2026-09-10-parent-header-clarity",
+    "kind": "improvement",
+    "title": "家長入口更容易操作",
+    "summary": "登出、切換學生與分校範圍在手機上更容易看見、點選與使用鍵盤操作。",
+    "details": "長學生姓名會保持可讀並正常換行；學生切換、跨分校查看、請假、回饋與帳務的原有操作方式不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
+    "id": "parent-update-2026-09-10-parent-attendance-clarity",
+    "kind": "improvement",
+    "title": "出缺勤紀錄更容易閱讀",
+    "summary": "出席、遲到、缺席與請假紀錄在手機上更清楚，也更容易查看完整內容。",
+    "details": "長課程與老師名稱會正常換行；顯示更多的操作有一致的觸控尺寸與鍵盤焦點，原有紀錄與顯示順序不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
+    "id": "parent-update-2026-09-10-learning-tab-focus",
+    "kind": "improvement",
+    "title": "學習分頁更容易操作",
+    "summary": "切換家長入口的學習內容時，現在更容易看出目前所在的分頁。",
+    "details": "手機、平板與桌面都支援清楚的鍵盤與觸控焦點；學習內容、可查看範圍與原有操作方式不變。",
+    "publishedAt": "2026-09-10",
+    "expiresAt": "2026-10-10",
+    "date": "2026-09-10",
+    "version": "2026.09.10"
+  },
+  {
     "id": "parent-update-2026-09-09-learning-assessment",
     "kind": "improvement",
     "title": "學習評量重點更清楚",

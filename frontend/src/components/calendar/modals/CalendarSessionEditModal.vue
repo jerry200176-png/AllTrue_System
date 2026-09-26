@@ -216,7 +216,6 @@
         <template v-if="!session.isTeacher">
           <button v-if="session.editingException && session.editingExceptionIsExtra" class="danger" @click="$emit('cancel-makeup')">取消補課</button>
           <button v-if="session.editingException && !session.editingExceptionIsExtra" class="danger" @click="$emit('delete-exception')">刪除此調課</button>
-          <button v-if="!session.editingException" class="danger" @click="$emit('delete-course')">刪除整門課</button>
         </template>
         <div style="flex:1"></div>
         <button class="ghost" @click="$emit('close')">關閉</button>
@@ -269,7 +268,7 @@ defineEmits([
   'close', 'leave', 'reschedule', 'substitute', 'substitute-v2', 'goto-attendance', 'goto-learning',
   'show-cancel-confirm', 'dismiss-cancel-confirm', 'confirm-cancel',
   'restore-session',
-  'delete-exception', 'delete-course', 'cancel-makeup', 'teacher-change',
+  'delete-exception', 'cancel-makeup', 'teacher-change',
 ]);
 </script>
 

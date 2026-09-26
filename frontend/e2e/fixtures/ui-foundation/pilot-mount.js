@@ -30,6 +30,7 @@ const [{ createApp, h }, styles] = await Promise.all([
 ]);
 
 const pageModules = {
+  app: () => import('../../../src/App.vue'),
   inbox: () => import('../../../src/pages/NotificationsCenter.vue'),
   students: () => import('../../../src/pages/StudentsList.vue'),
   director: () => import('../../../src/pages/DirectorDashboard.vue'),
@@ -42,8 +43,18 @@ const pageModules = {
   teacher: () => import('../../../src/pages/TeacherHomePage.vue'),
   teachers: () => import('../../../src/pages/TeachersList.vue'),
   attendance: () => import('../../../src/pages/AttendancePage.vue'),
+  classroom: () => import('../../../src/pages/ClassroomManagement.vue'),
+  'course-edit': () => import('../../../src/components/CourseEditForm.vue'),
   parent: () => import('../../../src/pages/ParentPortal.vue'),
   admissions: () => import('../../../src/pages/AdmissionInquiriesPage.vue'),
+  profile: () => import('../../../src/pages/ProfileCenterPage.vue'),
+  'question-bank': () => import('../../../src/pages/QuestionBankPage.vue'),
+  chat: () => import('../../../src/pages/ChatPage.vue'),
+  'line-integration': () => import('../../../src/pages/LineIntegration.vue'),
+  'subject-settings': () => import('../../../src/pages/SubjectSettingsPage.vue'),
+  'branch-management': () => import('../../../src/pages/BranchManagementPage.vue'),
+  'truefit-fixture': () => import('../../../src/pages/TrueFitPaperFixturePage.vue'),
+  'truefit-app': () => import('../../../src/pages/TrueFitApp.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -53,6 +64,19 @@ void styles;
 createApp({
   name: 'UiFoundationPilotMount',
   setup() {
+    if (page === 'app') {
+      return () => h(PageComponent);
+    }
+    if (page === 'truefit-app') {
+      return () => h(PageComponent, { token: 'e2e-foundation-token', branchId: 1 });
+    }
+    if (page === 'course-edit') {
+      return () => h(PageComponent, {
+        modelValue: { class_type: mode === 'paid' ? 'one_on_one' : 'tutoring', rate_per_30min: 1500, rate_unit: 'session', sessions_purchased: 8 },
+        subjects: [{ value: 'Math', label: '數學' }],
+        teachers: [],
+      });
+    }
     if (page === 'students') {
       return () => h(PageComponent, { branchId: 1 });
     }
@@ -101,14 +125,35 @@ createApp({
         userRole: role,
       });
     }
+    if (page === 'classroom') {
+      return () => h(PageComponent, { branchId: 1 });
+    }
     if (page === 'parent') {
       return () => h(PageComponent, { standalone: true });
+    }
+    if (page === 'profile') {
+      return () => h(PageComponent, {
+        token: 'e2e-foundation-token',
+        initialTab: mode === 'security' ? 'security' : 'profile',
+      });
+    }
+    if (page === 'question-bank') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
     }
     if (page === 'admissions') {
       const searchParams = new URLSearchParams(window.location.search);
       const branchIdParam = searchParams.get('branch');
       const branchId = branchIdParam ? Number(branchIdParam) : 1;
       return () => h(PageComponent, { branchId, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
+    }
+    if (page === 'subject-settings') {
+      return () => h(PageComponent, { branchId: 1, userRole: role });
+    }
+    if (page === 'branch-management') {
+      return () => h(PageComponent, { branchId: 1, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
+    }
+    if (page === 'chat') {
+      return () => h(PageComponent, { branchId: 1, userId: 9001, userRole: 'director' });
     }
     return () => h(PageComponent, { branchId: 1 });
   },

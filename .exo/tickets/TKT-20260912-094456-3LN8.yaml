@@ -1,0 +1,52 @@
+id: TKT-20260912-094456-3LN8
+title: 'Fix in-app #280 learning-record status clarity'
+intent: 'Fix in-app #280 learning-record status clarity'
+kind: task
+parent_id: INT-20260912-094448-TCNA
+boundary: No business status semantics, leave filtering, backend, persistence, attendance,
+  deductions, billing, auth, workflow, or production-data changes.
+success_condition: 'Card labels and text size clearly distinguish assessment-content
+  completion and director-review status; targeted tests are revert-proof; full governed
+  checks, CI, deploy, production desktop/mobile smoke, and in-app #280 writeback succeed.'
+priority: 1
+labels:
+- in-app
+- learning-records
+scope:
+  allow:
+  - frontend/src/pages/LearningRecordsPage.vue
+  - frontend/src/components/__tests__/LearningRecordsQueueAccessibility.test.js
+  - frontend/e2e/learning-records-polish.spec.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - .github/workflows/**
+  - database/**
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 260
+checks:
+- npm run test:unit
+- npm run lint:no-undef
+- npm run build
+- bash scripts/phpunit-isolated.sh
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-12T09:44:56+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

@@ -1,0 +1,54 @@
+{
+  "kind": "founder_student9_attendance_repair_manifest",
+  "decision_reference": "founder-student9-attendance-20260921",
+  "student_id": 9,
+  "campus_id": 15,
+  "approved_session_ids": [28451, 30367],
+  "approved_operations": [
+    {
+      "operation": "restore",
+      "student_class_id": 2819,
+      "session_id": 28451,
+      "date": "2026-08-03",
+      "start": "10:00",
+      "end": "12:00",
+      "teacher_id": 67,
+      "status": "attended"
+    },
+    {
+      "operation": "create",
+      "student_class_id": 2812,
+      "session_id": null,
+      "date": "2026-07-28",
+      "start": "13:00",
+      "end": "15:00",
+      "teacher_id": 49,
+      "status": "attended",
+      "rate": 2750
+    },
+    {
+      "operation": "create_with_pricing_amendment",
+      "student_class_id": 316,
+      "session_id": null,
+      "date": "2026-08-05",
+      "start": "13:00",
+      "end": "15:00",
+      "teacher_id": 261,
+      "teacher_name": "楊墨",
+      "subject_id": 64,
+      "status": "attended",
+      "rate": 2750,
+      "pricing_effective_from": "2026-08-05",
+      "pricing_followup_session_id": 30367,
+      "pricing_followup_date": "2026-08-12"
+    }
+  ],
+  "financial_exclusions": [
+    "Invoice",
+    "PaymentReport",
+    "Payment",
+    "StudentClass.Rate",
+    "StudentClass.Charge",
+    "StudentClassPricingAmendment historical rows outside the approved effective date"
+  ]
+}

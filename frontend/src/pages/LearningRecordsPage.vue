@@ -2,8 +2,8 @@
   <div :class="['lr-page', { 'lr-page--teacher': isTeacher }]">
     <!-- Page Header -->
     <AtPageHeader
-      :title="pageMode === 'parent_messages' ? '家長留言' : (isTeacher ? '我的課表 & 評量' : '學習評量表')"
-      :description="pageMode === 'parent_messages' ? (isTeacher ? '查看範圍：我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理本週未填與需修改的評量；已核准僅供檢視' : '先處理待審與需修改的評量；已核准僅供查閱')"
+      :title="pageMode === 'parent_messages' ? (isTeacher ? '家長回覆' : '家長留言') : (isTeacher ? '評量待辦' : '學習評量表')"
+      :description="pageMode === 'parent_messages' ? (isTeacher ? '先看新留言與尚未回覆；範圍為我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理未填與需修改；完整評量需要時再展開' : '先處理待審與需修改的評量；已核准僅供查閱')"
       icon="fact_check"
       data-guide="learning-header"
     >
@@ -23,9 +23,9 @@
       </template>
     </AtPageHeader>
 
-    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" aria-label="學習評量與家長留言">
-      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">學習評量</button>
-      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">家長留言</button>
+    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" :aria-label="isTeacher ? '評量待辦與家長回覆' : '學習評量與家長留言'">
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">{{ isTeacher ? '評量待辦' : '學習評量' }}</button>
+      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">{{ isTeacher ? '家長回覆' : '家長留言' }}</button>
     </div>
 
     <!-- Teacher quick-filter tabs -->
@@ -76,7 +76,6 @@
           已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
         </button>
       </div>
-      <div class="lr-tab-hint">從課表點擊堂次 → 填寫或編輯評量。已核准的評量僅供檢視。</div>
     </div>
 
     <!-- Director review queue tabs -->
@@ -169,8 +168,8 @@
 
       <div v-if="isDirectorRole" class="lr-status-explainer" role="note">
         <strong>{{ directorReviewHint }}</strong>
-        <span>填寫：未填／已填</span>
-        <span>審核：待核准／需修改／已核准／已退回</span>
+        <span>評量內容：未填／已填</span>
+        <span>審核：待主任核准／老師需修改／已核准／已退回</span>
       </div>
 
       <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
@@ -588,11 +587,10 @@
 
     <!-- ===== Records Grouped By Student ===== -->
       <div class="lr-view-toolbar" aria-label="評量顯示模式">
-        <div class="lr-view-toolbar__label">顯示模式</div>
-        <div class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
+        <div v-if="!isNarrowViewport || !isTeacher" class="lr-view-toolbar__label">顯示模式</div>
+        <div v-if="!isNarrowViewport || !isTeacher" class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
         <button
           type="button"
-          v-if="!isNarrowViewport"
           :class="['lr-view-btn', { active: effectiveViewMode === 'table' }]"
           :aria-pressed="effectiveViewMode === 'table' ? 'true' : 'false'"
           @click="viewMode = 'table'"
@@ -617,9 +615,8 @@
           @click="showContentPreview = !showContentPreview"
         >
           <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
-          {{ showContentPreview ? '隱藏內容預覽' : '預覽內容' }}
+          {{ showContentPreview ? '收合完整評量' : '顯示完整評量' }}
         </button>
-        <span v-if="isNarrowViewport" class="lr-mobile-view-hint">手機版自動使用卡片</span>
       </div>
 
     <div
@@ -723,7 +720,7 @@
                     </div>
                   </div>
                 </div>
-                <span :class="statusTagClass(record.Status)" class="status-tag">{{ statusLabel(record.Status) }}</span>
+                <span :class="statusTagClass(record.Status)" class="status-tag">{{ cardReviewStatusLabel(record.Status) }}</span>
               </div>
               <div class="lr-record-card__time">
                 <span class="material-symbols-outlined" aria-hidden="true">event</span>
@@ -749,7 +746,7 @@
                 >
                   📝 {{ teacherCommentUnread(record) ? '新主任評語' : '主任評語' }}
                 </span>
-                <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                <span v-if="cardFillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ cardFillLabel(record) }}</span>
                 <span v-if="!isTeacher" class="lr-record-card__teacher">{{ record.teacher_name || '未指派' }}</span>
               </div>
               <FeedbackInlinePreview
@@ -914,12 +911,12 @@
                       </td>
                       <td v-if="!isTeacher">{{ record.teacher_name }}</td>
                       <td>
-                        <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                        <span v-if="cardFillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ cardFillLabel(record) }}</span>
                         <span v-else class="fill-badge-na">—</span>
                       </td>
                       <td>
                         <span :class="statusTagClass(record.Status)" class="status-tag">
-                          {{ statusLabel(record.Status) }}
+                          {{ cardReviewStatusLabel(record.Status) }}
                         </span>
                       </td>
                       <td class="lr-actions" @click.stop>
@@ -1307,7 +1304,15 @@
                 ></textarea>
                 <div class="lr-teacher-comment-actions">
                   <span v-if="feedbackReplyError" class="lr-teacher-comment-error">{{ feedbackReplyError }}</span>
-                  <button type="button" class="primary small" :disabled="feedbackReplySaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
+                  <button
+                    type="button"
+                    class="ghost small"
+                    :disabled="feedbackReplySaving || feedbackDismissSaving"
+                    @click="dismissFeedbackAwaiting"
+                  >
+                    {{ feedbackDismissSaving ? '處理中...' : '標記不需回覆' }}
+                  </button>
+                  <button type="button" class="primary small" :disabled="feedbackReplySaving || feedbackDismissSaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
                     {{ feedbackReplySaving ? '送出中...' : '送出回覆' }}
                   </button>
                 </div>
@@ -1363,9 +1368,10 @@
           <!-- Actions: fixed footer inside modal (mobile-safe; avoids overlap with sticky/chrome) -->
           <div class="lr-form-actions lr-form-actions--modal-footer">
             <button type="button" class="ghost" @click="closeModal">關閉</button>
-            <button v-if="!isReadOnly" type="submit" class="primary">
-              {{ isEditing ? '儲存變更' : '提交評量' }}
+            <button v-if="!isReadOnly" type="submit" class="primary" :disabled="submitInFlight">
+              {{ submitInFlight ? '儲存中…' : (isEditing ? '儲存變更' : '提交評量') }}
             </button>
+            <p v-if="submitError" class="lr-time-lock-note" role="alert">{{ submitError }}</p>
           </div>
         </form>
       </div>
@@ -1464,12 +1470,14 @@
     </div>
 
     <!-- Director: quick internal note to teacher (no full edit flow) -->
-    <div v-if="showDirectorNoteModal" class="modal-overlay lr-modal-overlay" @click.self="closeDirectorNoteModal">
-      <div class="lr-modal lr-director-note-modal" style="max-width: 440px" @click.stop>
-        <div class="lr-modal-header">
-          <h3>主任給老師評語</h3>
-          <button type="button" class="lr-modal-close" @click="closeDirectorNoteModal">&times;</button>
-        </div>
+    <AtDialog
+      :open="showDirectorNoteModal"
+      title="主任給老師評語"
+      size="sm"
+      panel-class="lr-director-note-dialog"
+      close-label="關閉主任評語"
+      @close="closeDirectorNoteModal"
+    >
         <div class="lr-director-note-body">
           <p v-if="directorNoteTarget" class="lr-director-note-meta">
             {{ directorNoteTarget.student_name }} · {{ directorNoteTarget.SessionDate }} {{ directorNoteTarget.StartTime || '' }}
@@ -1484,15 +1492,18 @@
             placeholder="例：請補上週考錯題類型、或提醒下堂帶課本…"
           ></textarea>
           <div v-if="directorNoteError" class="lr-teacher-comment-error">{{ directorNoteError }}</div>
-          <div class="lr-form-actions lr-director-note-actions">
-            <button type="button" class="ghost" @click="closeDirectorNoteModal">取消</button>
-            <button type="button" class="primary" :disabled="directorNoteSaving" @click="submitDirectorNoteModal">
-              {{ directorNoteSaving ? '儲存中…' : '儲存' }}
-            </button>
-          </div>
         </div>
-      </div>
-    </div>
+      <template #actions>
+        <AtButton variant="ghost" shape="rect" @click="closeDirectorNoteModal">取消</AtButton>
+        <AtButton
+          variant="primary"
+          shape="rect"
+          :loading="directorNoteSaving"
+          :disabled="directorNoteSaving"
+          @click="submitDirectorNoteModal"
+        >儲存</AtButton>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
@@ -1502,6 +1513,7 @@ import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import FeedbackInlinePreview from '../components/learning-records/FeedbackInlinePreview.vue';
 import LearningRecordPreview from '../components/learning-records/LearningRecordPreview.vue';
@@ -1526,6 +1538,14 @@ import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusS
 import { compareLearningRecords } from '../lib/learningRecordSort';
 import { deduplicateLearningRecordSessions } from '../lib/learningRecordSessionPolicy';
 import {
+  resolveLearningRecordViewDefaults,
+  resolveLearningRecordViewMode,
+} from '../lib/learningRecordViewPreferences';
+import {
+  fillStatusLabel,
+  reviewStatusLabel,
+} from '../lib/learningRecordStatusLabels';
+import {
   addMinutesToTime,
   dayOfWeekFromYmd,
   formatLocalDate,
@@ -1539,8 +1559,8 @@ import {
   listDrafts as _listDraftsFromStorage,
   removeDraftByKey,
   pruneOldDrafts,
-  migrateLegacyDrafts,
 } from '../lib/learningRecordDrafts';
+import { createLearningRecordSaver } from '../composables/useLearningRecordSave';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read']);
@@ -1562,15 +1582,22 @@ const perf = createPerfTracker('LearningRecordsPage');
 
 const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].includes(String(props.userRole || '')));
-const showContentPreview = ref(isTeacher.value);
+const initialViewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
+const initialViewDefaults = resolveLearningRecordViewDefaults({
+  viewportWidth: initialViewportWidth,
+  savedViewMode: typeof window !== 'undefined' ? window.localStorage.getItem('lr_view_mode') : null,
+});
+const showContentPreview = ref(initialViewDefaults.showContentPreview);
 
 const records = ref([]);
 const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
-const defaultViewMode = typeof window !== 'undefined' && window.innerWidth < 760 ? 'card' : 'table';
-const viewMode = ref(localStorage.getItem('lr_view_mode') || defaultViewMode);
-watch(viewMode, (mode) => localStorage.setItem('lr_view_mode', mode));
-const isNarrowViewport = ref(typeof window !== 'undefined' && window.innerWidth <= 640);
-const effectiveViewMode = computed(() => (isNarrowViewport.value ? 'card' : viewMode.value));
+const viewMode = ref(initialViewDefaults.viewMode);
+watch(viewMode, (mode) => window.localStorage.setItem('lr_view_mode', mode));
+const isNarrowViewport = ref(initialViewportWidth <= 640);
+const effectiveViewMode = computed(() => resolveLearningRecordViewMode({
+  viewportWidth: isNarrowViewport.value ? 640 : 641,
+  viewMode: viewMode.value,
+}));
 const updateViewportMode = () => {
   isNarrowViewport.value = window.innerWidth <= 640;
 };
@@ -1586,6 +1613,11 @@ const showDraftPanel = ref(false);
 const draftList = ref([]);
 const draftStatusText = ref('');
 const draftSaveError = ref(false);
+const submitInFlight = ref(false);
+const submitError = ref('');
+const contextEpoch = ref(0);
+const draftScope = ref(null);
+const saveLearningRecord = createLearningRecordSaver();
 const _draftThrottleTimer = ref(null);
 const teacherChangeSubmitting = ref(false);
 const teacherList = ref([]);
@@ -2174,6 +2206,7 @@ const submitFeedbackReply = async () => {
     _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
     records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
     feedbackReplyDraft.value = '';
+    emit('feedback-read');
     if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
       await fetchRecords();
     }
@@ -2181,6 +2214,35 @@ const submitFeedbackReply = async () => {
     feedbackReplyError.value = e?.message || '回覆失敗';
   } finally {
     feedbackReplySaving.value = false;
+  }
+};
+
+const dismissFeedbackAwaiting = async () => {
+  const fb = _activeRecordRef.value?.parent_feedback;
+  if (!fb?.id || feedbackDismissSaving.value || feedbackReplySaving.value) return;
+  feedbackDismissSaving.value = true;
+  feedbackReplyError.value = '';
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('請重新登入');
+    const res = await fetch(`/api/v1/learning-record-feedbacks/${fb.id}/dismiss-awaiting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '標記失敗');
+    const rid = Number(_activeRecordRef.value?.id || 0);
+    const newFb = { ...fb, awaiting_staff_reply: false };
+    _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
+    records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
+    emit('feedback-read');
+    if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
+      await fetchRecords();
+    }
+  } catch (e) {
+    feedbackReplyError.value = e?.message || '標記失敗';
+  } finally {
+    feedbackDismissSaving.value = false;
   }
 };
 
@@ -2367,6 +2429,7 @@ const teacherCommentSaving = ref(false);
 const teacherCommentError = ref('');
 const feedbackReplyDraft = ref('');
 const feedbackReplySaving = ref(false);
+const feedbackDismissSaving = ref(false);
 const feedbackReplyError = ref('');
 
 /** 主任從列表／卡片直接開「給老師評語」，不必先進完整編輯 */
@@ -3381,9 +3444,11 @@ const fetchStatusCounts = async () => {
 };
 
 const fetchRecords = async () => {
+  const owner = [props.userId, props.branchId].map(String).join(':');
+  const ownerIsCurrent = () => owner === [props.userId, props.branchId].map(String).join(':');
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token || !ownerIsCurrent()) return;
     recordsLoadError.value = '';
     recordsPagination.value = { ...recordsPagination.value, loading: true };
 
@@ -3395,6 +3460,7 @@ const fetchRecords = async () => {
     if (!res.ok) throw new Error('Fetch failed');
 
     const data = await res.json();
+    if (!ownerIsCurrent()) return;
     records.value = data.data || [];
     recordsPagination.value = {
       currentPage: data.current_page || 1,
@@ -3403,6 +3469,7 @@ const fetchRecords = async () => {
       loading: false,
     };
   } catch (e) {
+    if (!ownerIsCurrent()) return;
     console.error(e);
     recordsLoadError.value = '請檢查網路連線後再試一次。原有資料仍會保留。';
     recordsPagination.value = { ...recordsPagination.value, loading: false };
@@ -3544,6 +3611,7 @@ const loadAllRecords = async () => {
 
 // ── Modal ──
 const _fillForm = (record) => {
+  if (showModal.value) closeModal();
   isEditing.value = true;
   formTimesFromBinding.value = false;
   _activeRecordRef.value = record;
@@ -3579,6 +3647,7 @@ const _fillForm = (record) => {
 };
 
 const _clearForm = () => {
+  if (showModal.value) closeModal();
   isEditing.value = false;
   formTimesFromBinding.value = false;
   _activeRecordRef.value = null;
@@ -3676,12 +3745,13 @@ const editRecord = (record) => {
   _attachTextareaResize();
 };
 
-const closeModal = () => {
+const closeModal = ({ preserveDraft = true } = {}) => {
+  contextEpoch.value += 1;
   if (_draftThrottleTimer.value) {
     clearTimeout(_draftThrottleTimer.value);
     _draftThrottleTimer.value = null;
-    saveDraft();
   }
+  if (preserveDraft) saveDraft();
   draftStatusText.value = '';
   draftSaveError.value = false;
   showAllCommentPhrases.value = false;
@@ -3704,7 +3774,8 @@ const downloadSingleRecord = async () => {
     if (!rec) throw new Error('無評量記錄');
 
     const studentName = currentStudentName.value || rec.student_name || '未命名學生';
-    const teacherName = currentTeacherName.value || rec.teacher_name || '未指派';
+    // Backend is the single source for effective instructor; export must not re-infer.
+    const teacherName = rec.teacher_name || '未指派';
     const sessionDate = form.SessionDate || rec.SessionDate || '';
     const branchNames = { 1: '興隆校', 2: '新店校', 3: '大安校', 4: '木柵校' };
     const branchName = branchNames[Number(props.branchId)] || '台北全真一對一補習班';
@@ -3767,39 +3838,6 @@ const switchToTeacherLogin = async () => {
   window.location.reload();
 };
 
-/** 409 後精準拉取該堂次評量（含作廢列），避開清單分頁漏載 */
-const fetchLearningRecordsForConflictLookup = async (classSessionId, preferredId = null) => {
-  try {
-    const cs = Number(classSessionId || 0);
-    if (cs <= 0) return null;
-    const token = await getToken();
-    if (!token) return null;
-    const params = new URLSearchParams({
-      for_conflict_lookup: '1',
-      class_session_id: String(cs),
-      per_page: '5',
-    });
-    const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-    });
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({}));
-    const rows = data.data || [];
-    for (const r of rows) {
-      upsertRecordInList(r);
-    }
-    const want = preferredId != null && Number(preferredId) > 0 ? Number(preferredId) : null;
-    if (want) {
-      const byId = records.value.find((rec) => Number(rec.id) === want);
-      if (byId) return byId;
-    }
-    return records.value.find((rec) => Number(rec.ClassSessionID) === cs) || rows[0] || null;
-  } catch (e) {
-    console.error('[LR] conflict lookup failed', e);
-    return null;
-  }
-};
-
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
@@ -3809,87 +3847,55 @@ const submitForm = async () => {
     alert('請從課表點選該堂課進入評量，系統會自動帶入並鎖定上課時間。');
     return;
   }
-
-  const token = await getToken();
-  const url = isEditing.value ? `/api/v1/learning-records/${form.id}` : '/api/v1/learning-records';
-  // Some deployments reject PUT at the web server layer; use POST for edits too.
-  const method = 'POST';
-
-  if (!form.ClassSessionID) form.ClassSessionID = 0;
-
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify(form)
-  });
-
-  if (res.ok) {
-    const savedRecord = await res.json().catch(() => null);
+  if (submitInFlight.value) return;
+  submitInFlight.value = true;
+  submitError.value = '';
+  const submissionSnapshot = JSON.parse(JSON.stringify(form));
+  if (!submissionSnapshot.ClassSessionID) submissionSnapshot.ClassSessionID = 0;
+  const submissionEpoch = contextEpoch.value;
+  const submissionScope = { ..._draftKeyParams() };
+  const ownerIsCurrent = () => String(props.userId) === String(submissionScope.teacherId)
+    && String(props.branchId) === String(submissionScope.branchId);
+  const isCurrent = () => submissionEpoch === contextEpoch.value && showModal.value && ownerIsCurrent();
+  const editing = isEditing.value;
+  const url = editing ? `/api/v1/learning-records/${submissionSnapshot.id}` : '/api/v1/learning-records';
+  try {
+    const token = await getToken();
+    if (!isCurrent()) return;
+    if (!token) throw new Error('登入狀態無法確認');
+    const result = await saveLearningRecord({ fetchImpl: fetch, url, token, snapshot: submissionSnapshot });
+    if (!isCurrent()) return;
+    if (!result.ok) { submitError.value = result.message; return; }
+    const savedRecord = result.record;
+    if (JSON.stringify(form) !== JSON.stringify(submissionSnapshot)) {
+      form.id = savedRecord.id;
+      isEditing.value = true;
+      saveDraft();
+      submitError.value = '送出時的內容已儲存；送出後的新修改仍保留，尚未儲存。';
+      return;
+    }
     const localRecord = buildLocalRecordFromForm(savedRecord);
-    clearDraft();
+    _clearDraftFromStorage(submissionScope);
+    closeModal({ preserveDraft: false });
     // (#105) 若剛存的評量日期早於預設「近 N 天」視窗，自動解除視窗，
     // 否則 fetchRecords 會把它濾掉 → 老師誤以為「新增評量後列表卻看不到」。
-    const savedDate = String(localRecord?.SessionDate || form.SessionDate || '').slice(0, 10);
+    const savedDate = String(localRecord?.SessionDate || submissionSnapshot.SessionDate || '').slice(0, 10);
     if (shouldLiftDefaultWindowForDate({ savedDate, windowStart: resolvedDefaultWindowStart.value })) {
       defaultWindowDisabled.value = true;
     }
     await fetchRecords();
+    if (!ownerIsCurrent()) return;
     if (localRecord?.id) {
       upsertRecordInList(localRecord);
     }
     if (isTeacher.value) {
       await fetchTeacherClasses();
     }
-    trackAdoptionEvent('learning_saved', props.branchId, { role: props.userRole });
-    closeModal();
-  } else if (res.status === 409) {
-    const errBody = await res.json().catch(() => ({}));
-    clearDraft();
-    if (errBody.voided) {
-      closeModal();
-      alert(errBody.message || '此堂評量已作廢，請聯絡分校主任協助處理。');
-      await fetchRecords();
-      if (isTeacher.value) {
-        await fetchTeacherClasses();
-      }
-      return;
-    }
-    const csId = Number(form.ClassSessionID || 0);
-    const existingId = errBody?.existing_id ?? errBody?.existing_record_id;
-    let conflicting = existingId
-      ? records.value.find((r) => Number(r.id) === Number(existingId))
-      : null;
-    if (!conflicting && csId > 0) {
-      conflicting = records.value.find((r) => Number(r.ClassSessionID) === csId);
-    }
-    if (!conflicting && csId > 0) {
-      conflicting = await fetchLearningRecordsForConflictLookup(csId, existingId);
-    }
-    if (!conflicting) {
-      await fetchRecords();
-      conflicting = existingId
-        ? records.value.find((r) => Number(r.id) === Number(existingId))
-        : null;
-      if (!conflicting && csId > 0) {
-        conflicting = records.value.find((r) => Number(r.ClassSessionID) === csId);
-      }
-    }
-    closeModal();
-    if (conflicting) {
-      openRecordAction(conflicting);
-    } else {
-      alert(errBody?.message || '此堂評量已存在，請重新整理後查看。');
-    }
-    if (isTeacher.value) {
-      await fetchTeacherClasses();
-    }
-    await fetchRecords();
-  } else {
-    const err = await res.json().catch(() => ({}));
-    alert('儲存失敗: ' + (err.message || `${res.status} ${res.statusText}` || '未知錯誤'));
+    if (ownerIsCurrent()) trackAdoptionEvent('learning_saved', props.branchId, { role: props.userRole });
+  } catch (error) {
+    if (isCurrent()) submitError.value = `儲存失敗：${error?.message || '請稍後再試'}；輸入內容已保留。`;
+  } finally {
+    submitInFlight.value = false;
   }
 };
 
@@ -4045,14 +4051,15 @@ const isUrgentTeacherRecord = (record) => (
     || ((String(record.Status || '').toLowerCase() === 'changes_requested') && !hasLearningRecordBody(record)))
 );
 
-const fillLabel = (record) => (hasLearningRecordBody(record) ? '已填' : '未填');
+const cardFillLabel = (record) => fillStatusLabel(hasLearningRecordBody(record), {
+  director: isDirectorRole.value,
+});
 
 const fillLabelClass = (record) => (hasLearningRecordBody(record) ? 'fill-done' : 'fill-missing');
 
-const statusLabel = (status) => {
-  const map = { pending: '待審核', approved: '已核准', rejected: '已退回', changes_requested: '需修改' };
-  return map[status] || status;
-};
+const cardReviewStatusLabel = (status) => reviewStatusLabel(status, {
+  director: isDirectorRole.value,
+});
 
 const statusTagClass = (status) => {
   const map = {
@@ -4262,11 +4269,14 @@ const insertPhrase = (field, phrase) => {
   form[field] = current ? `${current}\n${phrase}` : phrase;
 };
 
-const _draftKeyParams = () => ({
-  teacherId: props.userId,
-  classSessionId: form.ClassSessionID,
-  fallback: { studentClassId: form.StudentID, sessionDate: form.SessionDate },
-});
+const _draftKeyParams = () => draftScope.value || {};
+
+watch(showModal, (visible) => {
+  if (!visible) return;
+  contextEpoch.value += 1;
+  draftScope.value = { teacherId: props.userId, branchId: props.branchId, classSessionId: form.ClassSessionID };
+  submitError.value = '';
+}, { flush: 'sync' });
 
 const _draftMeta = () => ({
   studentName: currentStudentName.value,
@@ -4278,6 +4288,7 @@ const _draftMeta = () => ({
 
 const saveDraft = () => {
   if (!showModal.value || forceReadOnly.value) return;
+  if (Number(draftScope.value?.classSessionId || 0) !== Number(form.ClassSessionID || 0)) return;
   if (isEditing.value && form.Status === 'approved') return;
   const result = _saveDraftToStorage({
     ..._draftKeyParams(),
@@ -4291,10 +4302,14 @@ const saveDraft = () => {
   } else if (result.error === 'quota_exceeded') {
     draftStatusText.value = '儲存空間不足，草稿無法保存';
     draftSaveError.value = true;
+  } else if (result.error === 'no_key') {
+    draftStatusText.value = '尚未綁定分校與堂次，輸入僅保留在此視窗；請勿切頁。';
+    draftSaveError.value = true;
   }
 };
 
 const saveDraftThrottled = () => {
+  if (!showModal.value || submitInFlight.value) return;
   if (_draftThrottleTimer.value) clearTimeout(_draftThrottleTimer.value);
   _draftThrottleTimer.value = setTimeout(() => {
     saveDraft();
@@ -4303,6 +4318,7 @@ const saveDraftThrottled = () => {
 };
 
 const loadDraft = () => {
+  if (Number(_draftKeyParams().classSessionId || 0) !== Number(form.ClassSessionID || 0)) return false;
   const { draft } = _loadDraftFromStorage(_draftKeyParams());
   if (!draft) return false;
   applyDraftToForm(draft, form);
@@ -4320,7 +4336,7 @@ const clearDraft = () => {
 
 const refreshDraftList = () => {
   if (!props.userId) { draftList.value = []; return; }
-  draftList.value = _listDraftsFromStorage(props.userId);
+  draftList.value = _listDraftsFromStorage(props.userId, props.branchId);
 };
 
 const openDraftPanel = () => {
@@ -4334,7 +4350,7 @@ const closeDraftPanel = () => {
 
 const deleteDraftFromList = (draftItem) => {
   if (!confirm(`確定清除「${draftItem.studentName} — ${draftItem.sessionDate}」的草稿嗎？`)) return;
-  removeDraftByKey(draftItem.key);
+  removeDraftByKey(draftItem.key, { teacherId: props.userId, branchId: props.branchId });
   refreshDraftList();
 };
 
@@ -4880,8 +4896,7 @@ onMounted(async () => {
   window.addEventListener('resize', updateViewportMode);
   if (window.innerWidth <= 640) scheduleView.value = 'today';
   if (hasActiveFilters.value) showAdvancedFilters.value = true;
-  migrateLegacyDrafts();
-  if (props.userId) pruneOldDrafts(props.userId);
+  if (props.userId && props.branchId) pruneOldDrafts(props.userId, props.branchId);
 
   // Pull backend perf_flags (lr_default_window_days 等) before first fetch so that
   // _buildRecordsParams injects the authoritative window in the initial request.
@@ -4933,10 +4948,15 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  closeModal();
   window.removeEventListener('resize', updateViewportMode);
 });
 
-watch(() => props.branchId, () => {
+watch(() => [props.userId, props.branchId], () => {
+  closeModal();
+  _clearForm();
+  showDraftPanel.value = false;
+  refreshDraftList();
   fetchRecords();
   fetchTeachers();
   fetchSubjects();
@@ -6057,11 +6077,6 @@ select.lr-input {
   font-size: 16px;
 }
 
-.lr-mobile-view-hint {
-  color: var(--ds-ink-mute);
-  font-size: 12px;
-}
-
 .lr-error-state {
   display: grid;
   justify-items: center;
@@ -6235,6 +6250,14 @@ select.lr-input {
   align-items: center;
   gap: 8px;
   margin-top: 12px;
+}
+
+.lr-page:not(.lr-page--teacher) .lr-record-card .status-tag,
+.lr-page:not(.lr-page--teacher) .lr-record-card .fill-badge,
+.lr-page:not(.lr-page--teacher) .lr-table-scroll .status-tag,
+.lr-page:not(.lr-page--teacher) .lr-table-scroll .fill-badge {
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .lr-record-card__actions {
@@ -7226,7 +7249,8 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 }
 
 .lr-director-note-body {
-  padding: 0 20px 20px;
+  display: grid;
+  gap: var(--ds-space-3);
 }
 .lr-director-note-meta {
   font-size: 13px;
@@ -7250,11 +7274,17 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   min-height: 120px;
   resize: vertical;
 }
-.lr-director-note-actions {
-  margin-top: 14px;
-  padding-top: 0;
-  border-top: none;
-  justify-content: flex-end;
+:global(.at-dialog__panel.lr-director-note-dialog) {
+  max-width: 440px;
+  animation: none;
+}
+
+:global(.at-dialog__panel.lr-director-note-dialog) .lr-director-note-textarea {
+  min-height: 120px;
+}
+
+:global(.at-dialog__panel.lr-director-note-dialog) .at-btn {
+  min-height: 44px;
 }
 
 .lr-modal-header {

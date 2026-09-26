@@ -1,0 +1,471 @@
+name: In-app #289 Course 2817 bounded historical restore
+
+# Founder-approved one-off historical restore.  The allowlisted identifiers
+# below are intentionally immutable; no caller supplied row scope is accepted.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run or execute
+        required: true
+        type: choice
+        options: [dry-run, diagnostic, execute]
+        default: dry-run
+      confirm_phrase:
+        description: Exact Founder confirmation for execute
+        required: true
+        type: string
+      backup_sha256:
+        description: Approved pre-incident snapshot fingerprint
+        required: true
+        type: string
+        default: 66007292e0226dca9606c2d08be4b0d8f58de3861d70e3b9afa74717d63d7325
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alltrue-production-side-effects-v2
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production-activation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+
+      - name: Install pinned SSH key
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$PI_SSH_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+
+      - name: Validate exact Founder gate
+        env:
+          MODE: ${{ inputs.mode }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+          BACKUP_SHA: ${{ inputs.backup_sha256 }}
+        run: |
+          set -euo pipefail
+          MODE_CLEAN="$(printf '%s' "$MODE" | tr -d '\r\n')"
+          PHRASE_CLEAN="$(printf '%s' "$PHRASE" | tr -d '\r\n')"
+          BACKUP_SHA_CLEAN="$(printf '%s' "$BACKUP_SHA" | tr -d '\r\n')"
+          [[ "$MODE_CLEAN" == dry-run || "$MODE_CLEAN" == diagnostic || "$MODE_CLEAN" == execute ]]
+          [[ "$BACKUP_SHA_CLEAN" == 66007292e0226dca9606c2d08be4b0d8f58de3861d70e3b9afa74717d63d7325 ]]
+          if [[ "$MODE_CLEAN" == execute ]]; then
+            [[ "$PHRASE_CLEAN" == I_APPROVE_2817_HISTORICAL_RESTORE ]]
+          elif [[ "$MODE_CLEAN" == diagnostic ]]; then
+            [[ "$PHRASE_CLEAN" == VERIFY_FIXTURE_2817_RESTORE ]]
+          else
+            [[ "$PHRASE_CLEAN" == DRY_RUN_2817_HISTORICAL_RESTORE ]]
+          fi
+          echo "founder_gate=passed mode=$MODE_CLEAN scope=course_2817 approved_inserts=19 dependent_writes=0"
+
+      - name: Run bounded server-side restore and read-back
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          trap 'rc=$?; echo "::error::preflight_command_failed line=$LINENO status=$rc"' ERR
+          mkdir -p out
+          ssh -i "$HOME/.ssh/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "MODE=$MODE bash -s" <<'REMOTE' | tee out/course-2817-restore.log
+          set -euo pipefail
+          umask 077
+          cd /home/admin/backend
+          db_value() { sed -n "s/^$1=//p" .env | head -n 1; }
+          DB_USER="$(db_value DB_USERNAME)"; DB_PASS="$(db_value DB_PASSWORD)"; PROD_DB="$(db_value DB_DATABASE)"
+          test -n "$DB_USER"; test -n "$DB_PASS"; test -n "$PROD_DB"
+          REAL_PROD_DB="$PROD_DB"; FIXTURE_DB=''
+          APPROVED_SHA=66007292e0226dca9606c2d08be4b0d8f58de3861d70e3b9afa74717d63d7325
+          PARENT_HASH=feed665f143f27792b9ac5acfee79336352cdc6b556ef67788383000e097d9cd
+          SESSION_AGG_HASH=fcb3721981ca560dd77a2c03be67c85a5bff1d5dcb852972d592a6bee8179a22
+          LR_AGG_HASH=ac8b1873e5746416ced4833dcbceed9e84d530d0329ff7322afb71ac2e3b20db
+          SESSIONS='25919,25920,25921,25922,27641,25923,25926,25924,25925'
+          LEARNING_RECORDS='14596,15597,16286,17518,17803,17861,17902,18413,19053'
+          RUN_ID="2817-restore-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+          mysqlq() { mysql --batch --skip-column-names -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$1" -e "$2"; }
+          scalar() { mysqlq "$1" "$2" | tr -d '\r\n'; }
+          quote_cols() {
+            mysqlq "$1" "SELECT GROUP_CONCAT(CONCAT(CHAR(96),p.COLUMN_NAME,CHAR(96)) ORDER BY p.ORDINAL_POSITION SEPARATOR ',')
+              FROM information_schema.COLUMNS p JOIN information_schema.COLUMNS b
+                ON b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$2' AND b.COLUMN_NAME=p.COLUMN_NAME
+              WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$2' AND p.EXTRA NOT LIKE '%GENERATED%';"
+          }
+          hash_expr() {
+            mysqlq "$1" "SELECT GROUP_CONCAT(CONCAT('COALESCE(CAST(',CHAR(96),p.COLUMN_NAME,CHAR(96),' AS CHAR),''<NULL>'')') ORDER BY p.ORDINAL_POSITION SEPARATOR ',CHAR(31),')
+              FROM information_schema.COLUMNS p JOIN information_schema.COLUMNS b
+                ON b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$2' AND b.COLUMN_NAME=p.COLUMN_NAME
+              WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$2';" || true
+          }
+          schema_report() {
+            local table="$1"
+            echo "schema_table=$table"
+            mysqlq "$PROD_DB" "SELECT CONCAT(p.COLUMN_NAME,'|',p.COLUMN_TYPE,'|',p.IS_NULLABLE,'|',IFNULL(p.COLUMN_DEFAULT,'<NULL>'),'|',p.EXTRA,'|',IF(b.COLUMN_NAME IS NULL,'backup_only','common'))
+              FROM information_schema.COLUMNS p LEFT JOIN information_schema.COLUMNS b
+                ON b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$table' AND b.COLUMN_NAME=p.COLUMN_NAME
+              WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$table' ORDER BY p.ORDINAL_POSITION;" | sed 's/^/schema_column=/'
+            mysqlq "$TMP_DB" "SELECT CONCAT(b.COLUMN_NAME,'|',b.COLUMN_TYPE,'|',b.IS_NULLABLE,'|',IFNULL(b.COLUMN_DEFAULT,'<NULL>'),'|',b.EXTRA)
+              FROM information_schema.COLUMNS b WHERE b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$table'
+              AND NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS p WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$table' AND p.COLUMN_NAME=b.COLUMN_NAME)
+              ORDER BY b.ORDINAL_POSITION;" | sed 's/^/schema_backup_only=/'
+            local blocking
+            blocking="$(mysqlq "$PROD_DB" "SELECT p.COLUMN_NAME FROM information_schema.COLUMNS p LEFT JOIN information_schema.COLUMNS b
+              ON b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$table' AND b.COLUMN_NAME=p.COLUMN_NAME
+              WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$table' AND b.COLUMN_NAME IS NULL
+                AND p.IS_NULLABLE='NO' AND p.COLUMN_DEFAULT IS NULL AND p.EXTRA NOT LIKE '%GENERATED%';")"
+            if [ -n "$blocking" ]; then echo "::error::blocking_production_only_${table}=$blocking"; exit 1; fi
+            mysqlq "$PROD_DB" "SELECT CONCAT(p.COLUMN_NAME,'|',CASE WHEN p.EXTRA LIKE '%GENERATED%' THEN 'generated' WHEN p.IS_NULLABLE='YES' THEN 'nullable' WHEN p.COLUMN_DEFAULT IS NOT NULL THEN 'deterministic_default' ELSE 'blocking' END)
+              FROM information_schema.COLUMNS p LEFT JOIN information_schema.COLUMNS b
+                ON b.TABLE_SCHEMA='$TMP_DB' AND b.TABLE_NAME='$table' AND b.COLUMN_NAME=p.COLUMN_NAME
+              WHERE p.TABLE_SCHEMA='$PROD_DB' AND p.TABLE_NAME='$table' AND b.COLUMN_NAME IS NULL ORDER BY p.ORDINAL_POSITION;" | sed 's/^/production_only=/'
+          }
+
+          backup_dir=/home/admin/backups/sixhour
+          SNAPSHOT=''
+          while IFS= read -r candidate; do
+            [ "$(sha256sum "$candidate" | awk '{print $1}')" = "$APPROVED_SHA" ] && SNAPSHOT="$candidate" && break
+          done < <(find "$backup_dir" -maxdepth 1 -type f -name 'alltrue_6h_*.sql.gz' -print | sort)
+          test -n "$SNAPSHOT"; gzip -t "$SNAPSHOT"
+          echo "repair_run_id=$RUN_ID"
+          echo "backup_fingerprint=$APPROVED_SHA"
+          echo "backup_snapshot_source=validated_server_side"
+          TMP_DB="alltrue_2817_restore_${RANDOM}_$$"
+          cleanup() { mysqlq "$REAL_PROD_DB" "DROP DATABASE IF EXISTS \`$TMP_DB\`; ${FIXTURE_DB:+DROP DATABASE IF EXISTS \`$FIXTURE_DB\`; } SELECT RELEASE_LOCK('alltrue:course2817:historical-restore');" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          mysqlq "$PROD_DB" "CREATE DATABASE \`$TMP_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          zcat "$SNAPSHOT" | mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$TMP_DB"
+          if [ "$MODE" = diagnostic ]; then
+            FIXTURE_DB="alltrue_2817_verifier_fixture_${RANDOM}_$$"
+            mysqlq "$REAL_PROD_DB" "CREATE DATABASE \`$FIXTURE_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            mysqldump --single-transaction --quick -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$TMP_DB" | mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$FIXTURE_DB"
+            mysqlq "$FIXTURE_DB" "SET FOREIGN_KEY_CHECKS=0; DELETE FROM LearningRecord WHERE id IN ($LEARNING_RECORDS); DELETE FROM ClassSession WHERE id IN ($SESSIONS,30444); DELETE FROM StudentClass WHERE ID=2817; SET FOREIGN_KEY_CHECKS=1;"
+            PROD_DB="$FIXTURE_DB"
+            echo 'diagnostic_fixture=isolated_source_clone target_rows_removed production_write=0'
+          fi
+          for table in StudentClass ClassSession LearningRecord; do
+            schema_report "$table"
+            engine="$(scalar "$PROD_DB" "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA='$PROD_DB' AND TABLE_NAME='$table';")"
+            [ "$engine" = InnoDB ] || { echo "::error::non_innodb_table=$table engine=$engine"; exit 1; }
+          done
+          PARENT_COLS="$(quote_cols "$PROD_DB" StudentClass)" || { echo '::error::studentclass_column_query_failed'; exit 1; }
+          SESSION_COLS="$(quote_cols "$PROD_DB" ClassSession)" || { echo '::error::classsession_column_query_failed'; exit 1; }
+          LR_COLS="$(quote_cols "$PROD_DB" LearningRecord)" || { echo '::error::learningrecord_column_query_failed'; exit 1; }
+          [ -n "$PARENT_COLS" ] || { echo '::error::studentclass_common_columns_empty'; exit 1; }
+          [ -n "$SESSION_COLS" ] || { echo '::error::classsession_common_columns_empty'; exit 1; }
+          [ -n "$LR_COLS" ] || { echo '::error::learningrecord_common_columns_empty'; exit 1; }
+          echo "schema_common_column_counts student_class=$(printf '%s' "$PARENT_COLS" | awk -F',' '{print NF}') class_session=$(printf '%s' "$SESSION_COLS" | awk -F',' '{print NF}') learning_record=$(printf '%s' "$LR_COLS" | awk -F',' '{print NF}')"
+          echo 'hash_capture=begin'
+          PARENT_HASH_ERR="$(mktemp /tmp/course2817-parent-hash-error.XXXXXX)"
+          SESSION_HASH_ERR="$(mktemp /tmp/course2817-session-hash-error.XXXXXX)"
+          LR_HASH_ERR="$(mktemp /tmp/course2817-lr-hash-error.XXXXXX)"
+          PARENT_HASH_OUT="$(mktemp /tmp/course2817-parent-hash-out.XXXXXX)"
+          SESSION_HASH_OUT="$(mktemp /tmp/course2817-session-hash-out.XXXXXX)"
+          LR_HASH_OUT="$(mktemp /tmp/course2817-lr-hash-out.XXXXXX)"
+          echo 'hash_capture=temp_files_ready'
+          set +e
+          hash_expr "$PROD_DB" StudentClass >"$PARENT_HASH_OUT" 2>"$PARENT_HASH_ERR"; parent_expr_status=$?
+          hash_expr "$PROD_DB" ClassSession >"$SESSION_HASH_OUT" 2>"$SESSION_HASH_ERR"; session_expr_status=$?
+          hash_expr "$PROD_DB" LearningRecord >"$LR_HASH_OUT" 2>"$LR_HASH_ERR"; lr_expr_status=$?
+          set -e
+          echo "hash_capture=statuses parent=$parent_expr_status session=$session_expr_status learning_record=$lr_expr_status"
+          PARENT_EXPR="$(tr -d '\r\n' < "$PARENT_HASH_OUT")"
+          SESSION_EXPR="$(tr -d '\r\n' < "$SESSION_HASH_OUT")"
+          LR_EXPR="$(tr -d '\r\n' < "$LR_HASH_OUT")"
+          [ "$parent_expr_status" -eq 0 ] || { echo '::error::studentclass_hash_expression_failed'; sed -n '1,4p' "$PARENT_HASH_ERR"; exit 1; }
+          [ "$session_expr_status" -eq 0 ] || { echo '::error::classsession_hash_expression_failed'; sed -n '1,4p' "$SESSION_HASH_ERR"; exit 1; }
+          [ "$lr_expr_status" -eq 0 ] || { echo '::error::learningrecord_hash_expression_failed'; sed -n '1,4p' "$LR_HASH_ERR"; exit 1; }
+          if [ -z "$PARENT_EXPR" ]; then
+            echo '::error::studentclass_hash_expression_empty'
+            echo 'studentclass_hash_expression_stderr:'
+            sed -n '1,8p' "$PARENT_HASH_ERR"
+            exit 1
+          fi
+          if [ -z "$SESSION_EXPR" ]; then
+            echo '::error::classsession_hash_expression_empty'
+            echo 'classsession_hash_expression_stderr:'
+            sed -n '1,8p' "$SESSION_HASH_ERR"
+            exit 1
+          fi
+          if [ -z "$LR_EXPR" ]; then
+            echo '::error::learningrecord_hash_expression_empty'
+            echo 'learningrecord_hash_expression_stderr:'
+            sed -n '1,8p' "$LR_HASH_ERR"
+            exit 1
+          fi
+          echo 'hash_capture=expressions_ready'
+          canonical_session_agg() {
+            local input="$1"
+            local expected=$'25919\tb46083eee3959d9c1eaa32351c6347d92f33cfa9e4c2c90ec5e590754e391fe8\n25920\t4cb4c7b69a87b66588045d9cbe7b5f7a40297c4d2bb23fce67bcbc5c92ac0bfc\n25921\t478fb8fa808b08b985ebe7392a4796417ab094d38c77d5fd5974c6d6b8a798db\n25922\td1ea7d69d619577c90309f047c239c4b2d4f12d4fa6192f6c8412d0708c4ebfe\n27641\t91d4e50ab3f1f5b236ebf7f88af927bbd159cb3a6871ba18968798edd522136d\n25923\tccb1e8efc1a747126179206b23b860e6f949c7d9f8c8e66c3afaf7d58d4da27b\n25926\te60060d3c20acbf62673aafa3b1880e6b67ce355825e5d714d8985c5b373d39a\n25924\t031f39e1226fd68ea93addbe469a5e1220283a1efa9514e49055bcea58d9e513\n25925\t79a54fd26cccda7886eb9766d81090afbff37dd6f8e38fb0743b38d393adc7b1'
+            # Exact ID/hash membership is enforced by the SQL session_hash_guard
+            # immediately below.  Keep this helper limited to a transport-safe
+            # non-empty row-count check; avoid a duplicate shell byte comparison
+            # that can misread client-normalized separators.
+            local row_count
+            row_count="$(printf '%s\n' "$input" | awk 'NF { n++ } END { print n+0 }')"
+            [ "$row_count" -eq 9 ] || return 1
+            printf '%s' "$SESSION_AGG_HASH"
+          }
+          session_hash_guard=''
+          while IFS=: read -r session_id expected_hash; do
+            session_hash_guard+=" AND (SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=$session_id)='$expected_hash'"
+          done <<'SESSION_HASHES'
+          25919:b46083eee3959d9c1eaa32351c6347d92f33cfa9e4c2c90ec5e590754e391fe8
+          25920:4cb4c7b69a87b66588045d9cbe7b5f7a40297c4d2bb23fce67bcbc5c92ac0bfc
+          25921:478fb8fa808b08b985ebe7392a4796417ab094d38c77d5fd5974c6d6b8a798db
+          25922:d1ea7d69d619577c90309f047c239c4b2d4f12d4fa6192f6c8412d0708c4ebfe
+          27641:91d4e50ab3f1f5b236ebf7f88af927bbd159cb3a6871ba18968798edd522136d
+          25923:ccb1e8efc1a747126179206b23b860e6f949c7d9f8c8e66c3afaf7d58d4da27b
+          25926:e60060d3c20acbf62673aafa3b1880e6b67ce355825e5d714d8985c5b373d39a
+          25924:031f39e1226fd68ea93addbe469a5e1220283a1efa9514e49055bcea58d9e513
+          25925:79a54fd26cccda7886eb9766d81090afbff37dd6f8e38fb0743b38d393adc7b1
+          SESSION_HASHES
+          parent_count="$(scalar "$TMP_DB" 'SELECT COUNT(*) FROM StudentClass WHERE ID=2817;')"
+          session_count="$(scalar "$TMP_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")"
+          lr_count="$(scalar "$TMP_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
+          excluded_count="$(scalar "$TMP_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444 AND StudentClassID=2817;')"
+          echo "source_counts_read parent=$parent_count sessions=$session_count learning_records=$lr_count excluded=$excluded_count"
+          [ "$parent_count" = 1 ] && [ "$session_count" = 9 ] && [ "$lr_count" = 9 ] && [ "$excluded_count" = 1 ] || { echo '::error::source_row_count_mismatch'; exit 1; }
+          echo 'source_hashes=parent_begin'
+          parent_hash="$(scalar "$TMP_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
+          echo 'source_hashes=parent_done'
+          session_lines="$(mysqlq "$TMP_DB" "SELECT id,SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id IN ($SESSIONS) ORDER BY FIELD(id,$SESSIONS);")"
+          echo "source_hashes=session_lines_read count=$(printf '%s\n' "$session_lines" | awk 'NF {n++} END {print n+0}')"
+          if ! session_agg="$(canonical_session_agg "$session_lines")"; then
+            echo '::error::source_session_canonicalization_failed'
+            echo "source_session_lines=$(printf '%s' "$session_lines" | tr '\n' ';')"
+            exit 1
+          fi
+          echo 'source_hashes=session_done'
+          lr_lines="$(mysqlq "$TMP_DB" "SELECT id,SHA2(CONCAT($LR_EXPR),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS) ORDER BY FIELD(id,$LEARNING_RECORDS);")"
+          lr_agg="$(scalar "$TMP_DB" "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
+          echo "source_parent_count=$parent_count source_parent_hash=$parent_hash"
+          echo "source_session_count=$session_count source_session_set_hash=$session_agg"
+          echo "source_learning_record_count=$lr_count source_learning_record_set_hash=$lr_agg"
+          echo "source_session_hashes=$(printf '%s' "$session_lines" | tr '\n' ';')"
+          echo "source_learning_record_hashes=$(printf '%s' "$lr_lines" | tr '\n' ';')"
+          [ "$parent_hash" = "$PARENT_HASH" ] || { echo '::error::parent_source_hash_mismatch'; exit 1; }
+          [ "$session_agg" = "$SESSION_AGG_HASH" ] || { echo '::error::session_source_aggregate_mismatch'; exit 1; }
+          [ "$lr_agg" = "$LR_AGG_HASH" ] || { echo '::error::learning_record_source_aggregate_mismatch'; exit 1; }
+
+          # The following are the approved fresh baseline invariants.  They are
+          # captured before the write and compared after it; no dependent table
+          # is ever part of an INSERT/UPDATE/DELETE statement.
+          pre_sc="$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM StudentClass WHERE ID=2817;')"
+          pre_sessions="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")"
+          pre_lrs="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
+          pre_30444="$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM ClassSession WHERE id=30444;')"
+          pre_phantom="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE StudentClassID=2817 AND SessionDate='2026-09-17';")"
+          [ "$pre_sc" = 0 ] && [ "$pre_sessions" = 0 ] && [ "$pre_lrs" = 0 ] && [ "$pre_30444" = 0 ] && [ "$pre_phantom" = 0 ] || { echo '::error::target_precondition_failed'; exit 1; }
+          attendance="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM StudentSingIn WHERE StudentClassID=2817 OR ClassSessionID IN ($SESSIONS);")"
+          ledger="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM session_deduction_ledger WHERE student_class_id=2817 OR class_session_id IN ($SESSIONS);")"
+          invoice="$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM Invoice WHERE StudentClassID=2817;')"
+          schedules="$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM schedules WHERE id IN (6906,8890,8891);')"
+          audit="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM schedule_audit_logs WHERE session_id IN ($SESSIONS);")"
+          feedback="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS);")"
+          replies="$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM learning_record_feedback_replies WHERE feedback_id IN (SELECT id FROM learning_record_feedbacks WHERE learning_record_id IN (14596,15597,16286,17518,17803,17861,17902,18413,19053));')"
+          xp="$(scalar "$PROD_DB" "SELECT COUNT(*) FROM user_engagement_xp_events WHERE learning_record_id IN ($LEARNING_RECORDS);")"
+          echo "baseline attendance=$attendance ledger=$ledger paid_invoice=$invoice schedules=$schedules schedule_audit=$audit feedback=$feedback replies=$replies xp=$xp"
+          fk="$(scalar "$PROD_DB" 'SELECT (SELECT COUNT(*) FROM Student WHERE id=2222)+(SELECT COUNT(*) FROM Subject WHERE id=69)+(SELECT COUNT(*) FROM User WHERE id=67);')"
+          [ "$fk" = 3 ] || { echo '::error::referenced_identity_missing'; exit 1; }
+          auto_sc="$(scalar "$PROD_DB" "SELECT COALESCE(AUTO_INCREMENT,0) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$PROD_DB' AND TABLE_NAME='StudentClass';")"
+          auto_session="$(scalar "$PROD_DB" "SELECT COALESCE(AUTO_INCREMENT,0) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$PROD_DB' AND TABLE_NAME='ClassSession';")"
+          auto_lr="$(scalar "$PROD_DB" "SELECT COALESCE(AUTO_INCREMENT,0) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$PROD_DB' AND TABLE_NAME='LearningRecord';")"
+          echo "auto_increment student_class=$auto_sc class_session=$auto_session learning_record=$auto_lr"
+          echo "preconditions=passed expected_inserts=19 dependent_writes=0 excluded_ids=30444,2026-09-17"
+          if [ "$MODE" = dry-run ]; then echo 'production_write=0'; exit 0; fi
+
+          tx_sql="$(mktemp /tmp/course2817-tx.XXXXXX)"
+          cat > "$tx_sql" <<SQL
+          SET @target_lock = GET_LOCK('alltrue:course2817:historical-restore',30);
+          SET @guard_sql = IF(@target_lock=1, 'SELECT 1', 'SELECT * FROM __course2817_lock_abort__');
+          PREPARE guard_stmt FROM @guard_sql; EXECUTE guard_stmt; DEALLOCATE PREPARE guard_stmt;
+          START TRANSACTION;
+          SET @pre_ok = ((SELECT COUNT(*) FROM StudentClass WHERE ID=2817)=0
+            AND (SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS))=0
+            AND (SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS))=0
+            AND (SELECT COUNT(*) FROM ClassSession WHERE id=30444)=0
+            AND (SELECT COUNT(*) FROM ClassSession WHERE StudentClassID=2817 AND SessionDate='2026-09-17')=0);
+          SET @guard_sql = IF(@pre_ok, 'SELECT 1', 'SELECT * FROM __course2817_precondition_abort__');
+          PREPARE guard_stmt FROM @guard_sql; EXECUTE guard_stmt; DEALLOCATE PREPARE guard_stmt;
+          INSERT INTO StudentClass ($PARENT_COLS) SELECT $PARENT_COLS FROM \`$TMP_DB\`.StudentClass WHERE ID=2817;
+          INSERT INTO ClassSession ($SESSION_COLS) SELECT $SESSION_COLS FROM \`$TMP_DB\`.ClassSession WHERE id IN ($SESSIONS);
+          INSERT INTO LearningRecord ($LR_COLS) SELECT $LR_COLS FROM \`$TMP_DB\`.LearningRecord WHERE id IN ($LEARNING_RECORDS);
+          SET @parent_count_actual=(SELECT COUNT(*) FROM StudentClass WHERE ID=2817),
+              @parent_hash_actual=(SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817),
+              @session_count_actual=(SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS)),
+              @learning_record_count_actual=(SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS)),
+              @learning_record_fk_count_actual=(SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN ($SESSIONS)),
+              @forbidden_30444_actual=(SELECT COUNT(*) FROM ClassSession WHERE id=30444),
+              @forbidden_20260917_actual=(SELECT COUNT(*) FROM ClassSession WHERE StudentClassID=2817 AND SessionDate='2026-09-17'),
+              @attendance_actual=(SELECT COUNT(*) FROM StudentSingIn WHERE StudentClassID=2817 OR ClassSessionID IN ($SESSIONS)),
+              @ledger_actual=(SELECT COUNT(*) FROM session_deduction_ledger WHERE student_class_id=2817 OR class_session_id IN ($SESSIONS)),
+              @invoice_actual=(SELECT COUNT(*) FROM Invoice WHERE StudentClassID=2817),
+              @schedules_actual=(SELECT COUNT(*) FROM schedules WHERE id IN (6906,8890,8891)),
+              @schedule_audit_actual=(SELECT COUNT(*) FROM schedule_audit_logs WHERE session_id IN ($SESSIONS)),
+              @feedback_actual=(SELECT COUNT(*) FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS)),
+              @replies_actual=(SELECT COUNT(*) FROM learning_record_feedback_replies WHERE feedback_id IN (SELECT id FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS))),
+              @xp_actual=(SELECT COUNT(*) FROM user_engagement_xp_events WHERE learning_record_id IN ($LEARNING_RECORDS)),
+              @learning_record_set_hash_actual=(SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS));
+          SET @parent_count_ok=(@parent_count_actual=1),
+              @session_count_ok=(@session_count_actual=9),
+              @learning_record_count_ok=(@learning_record_count_actual=9),
+              @parent_hash_ok=(@parent_hash_actual='$parent_hash'),
+              @learning_record_set_hash_ok=(@learning_record_set_hash_actual='$lr_agg'),
+              @learning_record_fk_count_ok=(@learning_record_fk_count_actual=9),
+              @forbidden_30444_ok=(@forbidden_30444_actual=0),
+              @forbidden_20260917_ok=(@forbidden_20260917_actual=0),
+              @attendance_unchanged=(@attendance_actual=$attendance),
+              @ledger_unchanged=(@ledger_actual=$ledger),
+              @invoice_unchanged=(@invoice_actual=$invoice),
+              @schedules_unchanged=(@schedules_actual=$schedules),
+              @schedule_audit_unchanged=(@schedule_audit_actual=$audit),
+              @feedback_unchanged=(@feedback_actual=$feedback),
+              @replies_unchanged=(@replies_actual=$replies),
+              @xp_unchanged=(@xp_actual=$xp);
+          SET @session_25919_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25919),
+              @session_25920_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25920),
+              @session_25921_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25921),
+              @session_25922_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25922),
+              @session_27641_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=27641),
+              @session_25923_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25923),
+              @session_25926_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25926),
+              @session_25924_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25924),
+              @session_25925_actual=(SELECT SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id=25925);
+          SET @session_25919_ok=(@session_25919_actual='b46083eee3959d9c1eaa32351c6347d92f33cfa9e4c2c90ec5e590754e391fe8'),
+              @session_25920_ok=(@session_25920_actual='4cb4c7b69a87b66588045d9cbe7b5f7a40297c4d2bb23fce67bcbc5c92ac0bfc'),
+              @session_25921_ok=(@session_25921_actual='478fb8fa808b08b985ebe7392a4796417ab094d38c77d5fd5974c6d6b8a798db'),
+              @session_25922_ok=(@session_25922_actual='d1ea7d69d619577c90309f047c239c4b2d4f12d4fa6192f6c8412d0708c4ebfe'),
+              @session_27641_ok=(@session_27641_actual='91d4e50ab3f1f5b236ebf7f88af927bbd159cb3a6871ba18968798edd522136d'),
+              @session_25923_ok=(@session_25923_actual='ccb1e8efc1a747126179206b23b860e6f949c7d9f8c8e66c3afaf7d58d4da27b'),
+              @session_25926_ok=(@session_25926_actual='e60060d3c20acbf62673aafa3b1880e6b67ce355825e5d714d8985c5b373d39a'),
+              @session_25924_ok=(@session_25924_actual='031f39e1226fd68ea93addbe469a5e1220283a1efa9514e49055bcea58d9e513'),
+              @session_25925_ok=(@session_25925_actual='79a54fd26cccda7886eb9766d81090afbff37dd6f8e38fb0743b38d393adc7b1');
+          SELECT CONCAT('predicate=parent_count_ok expected=1 actual=',@parent_count_actual,' result=',IF(@parent_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_count_ok expected=9 actual=',@session_count_actual,' result=',IF(@session_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=learning_record_count_ok expected=9 actual=',@learning_record_count_actual,' result=',IF(@learning_record_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=parent_hash_ok expected=$parent_hash actual=',COALESCE(@parent_hash_actual,'<NULL>'),' result=',IF(@parent_hash_ok,'PASS','FAIL')),
+            CONCAT('predicate=learning_record_set_hash_ok expected=$lr_agg actual=',COALESCE(@learning_record_set_hash_actual,'<NULL>'),' result=',IF(@learning_record_set_hash_ok,'PASS','FAIL')),
+            CONCAT('predicate=learning_record_fk_count_ok expected=9 actual=',@learning_record_fk_count_actual,' result=',IF(@learning_record_fk_count_ok,'PASS','FAIL')),
+            CONCAT('predicate=forbidden_30444_ok expected=0 actual=',@forbidden_30444_actual,' result=',IF(@forbidden_30444_ok,'PASS','FAIL')),
+            CONCAT('predicate=forbidden_2026_09_17_ok expected=0 actual=',@forbidden_20260917_actual,' result=',IF(@forbidden_20260917_ok,'PASS','FAIL')),
+            CONCAT('predicate=attendance_unchanged expected=$attendance actual=',@attendance_actual,' result=',IF(@attendance_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=ledger_unchanged expected=$ledger actual=',@ledger_actual,' result=',IF(@ledger_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=invoice_unchanged expected=$invoice actual=',@invoice_actual,' result=',IF(@invoice_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=schedules_unchanged expected=$schedules actual=',@schedules_actual,' result=',IF(@schedules_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=schedule_audit_unchanged expected=$audit actual=',@schedule_audit_actual,' result=',IF(@schedule_audit_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=feedback_unchanged expected=$feedback actual=',@feedback_actual,' result=',IF(@feedback_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=replies_unchanged expected=$replies actual=',@replies_actual,' result=',IF(@replies_unchanged,'PASS','FAIL')),
+            CONCAT('predicate=xp_unchanged expected=$xp actual=',@xp_actual,' result=',IF(@xp_unchanged,'PASS','FAIL'));
+            SELECT CONCAT('predicate=session_25919_hash_ok expected=b46083eee3959d9c1eaa32351c6347d92f33cfa9e4c2c90ec5e590754e391fe8 actual=',COALESCE(@session_25919_actual,'<NULL>'),' result=',IF(@session_25919_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25920_hash_ok expected=4cb4c7b69a87b66588045d9cbe7b5f7a40297c4d2bb23fce67bcbc5c92ac0bfc actual=',COALESCE(@session_25920_actual,'<NULL>'),' result=',IF(@session_25920_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25921_hash_ok expected=478fb8fa808b08b985ebe7392a4796417ab094d38c77d5fd5974c6d6b8a798db actual=',COALESCE(@session_25921_actual,'<NULL>'),' result=',IF(@session_25921_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25922_hash_ok expected=d1ea7d69d619577c90309f047c239c4b2d4f12d4fa6192f6c8412d0708c4ebfe actual=',COALESCE(@session_25922_actual,'<NULL>'),' result=',IF(@session_25922_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_27641_hash_ok expected=91d4e50ab3f1f5b236ebf7f88af927bbd159cb3a6871ba18968798edd522136d actual=',COALESCE(@session_27641_actual,'<NULL>'),' result=',IF(@session_27641_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25923_hash_ok expected=ccb1e8efc1a747126179206b23b860e6f949c7d9f8c8e66c3afaf7d58d4da27b actual=',COALESCE(@session_25923_actual,'<NULL>'),' result=',IF(@session_25923_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25926_hash_ok expected=e60060d3c20acbf62673aafa3b1880e6b67ce355825e5d714d8985c5b373d39a actual=',COALESCE(@session_25926_actual,'<NULL>'),' result=',IF(@session_25926_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25924_hash_ok expected=031f39e1226fd68ea93addbe469a5e1220283a1efa9514e49055bcea58d9e513 actual=',COALESCE(@session_25924_actual,'<NULL>'),' result=',IF(@session_25924_ok,'PASS','FAIL')),
+            CONCAT('predicate=session_25925_hash_ok expected=79a54fd26cccda7886eb9766d81090afbff37dd6f8e38fb0743b38d393adc7b1 actual=',COALESCE(@session_25925_actual,'<NULL>'),' result=',IF(@session_25925_ok,'PASS','FAIL'));
+          SET @verification_ok=(@parent_count_ok AND @session_count_ok AND @learning_record_count_ok AND @parent_hash_ok
+            AND @session_25919_ok AND @session_25920_ok AND @session_25921_ok AND @session_25922_ok AND @session_27641_ok
+            AND @session_25923_ok AND @session_25926_ok AND @session_25924_ok AND @session_25925_ok
+            AND @learning_record_set_hash_ok AND @learning_record_fk_count_ok AND @forbidden_30444_ok AND @forbidden_20260917_ok
+            AND @attendance_unchanged AND @ledger_unchanged AND @invoice_unchanged AND @schedules_unchanged
+            AND @schedule_audit_unchanged AND @feedback_unchanged AND @replies_unchanged AND @xp_unchanged);
+          SELECT CONCAT('verification_boolean expected=1 actual=',@verification_ok,' result=',IF(@verification_ok,'PASS','FAIL'));
+          SET @rollback_sql=IF(@verification_ok AND '$MODE' <> 'diagnostic','SELECT 1','ROLLBACK');
+          PREPARE rollback_stmt FROM @rollback_sql; EXECUTE rollback_stmt; DEALLOCATE PREPARE rollback_stmt;
+          SET @rollback_parent=(SELECT COUNT(*) FROM StudentClass WHERE ID=2817),
+              @rollback_sessions=(SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS)),
+              @rollback_learning_records=(SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS));
+          SELECT CONCAT('rollback_proof expected=0,0,0 actual=',@rollback_parent,',',@rollback_sessions,',',@rollback_learning_records,' result=',IF(@verification_ok AND '$MODE' <> 'diagnostic','NOT_REQUIRED',IF(@rollback_parent=0 AND @rollback_sessions=0 AND @rollback_learning_records=0,'PASS','FAIL')));
+          SET @finish_sql=IF(@verification_ok AND '$MODE' <> 'diagnostic','COMMIT',IF(@verification_ok,'SELECT 1','SELECT * FROM __course2817_verification_abort__'));
+          PREPARE finish_stmt FROM @finish_sql; EXECUTE finish_stmt; DEALLOCATE PREPARE finish_stmt;
+          SELECT RELEASE_LOCK('alltrue:course2817:historical-restore') AS lock_released;
+          SQL
+          mysql --batch --skip-column-names -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$PROD_DB" < "$tx_sql"
+          rm -f "$tx_sql"
+          if [ "$MODE" = diagnostic ]; then
+            echo 'diagnostic_verifier=complete production_write=0 fixture_transaction=rolled_back'
+            exit 0
+          fi
+          if false; then
+          : <<'DISABLED_OLD_TX'
+          rollback_needed=1
+          fail() { echo "::error::$1"; mysqlq "$PROD_DB" 'ROLLBACK;' || true; exit 1; }
+          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM StudentClass WHERE ID=2817;')" = 0 ] || fail 'parent_appeared_during_lock'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")" = 0 ] || fail 'session_appeared_during_lock'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")" = 0 ] || fail 'learning_record_appeared_during_lock'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17');")" = 0 ] || fail 'forbidden_target_present'
+          mysqlq "$PROD_DB" "INSERT INTO StudentClass ($PARENT_COLS) SELECT $PARENT_COLS FROM \`$TMP_DB\`.StudentClass WHERE ID=2817;"
+          [ "$(scalar "$PROD_DB" 'SELECT ROW_COUNT();')" = 1 ] || fail 'parent_insert_count'
+          mysqlq "$PROD_DB" "INSERT INTO ClassSession ($SESSION_COLS) SELECT $SESSION_COLS FROM \`$TMP_DB\`.ClassSession WHERE id IN ($SESSIONS);"
+          [ "$(scalar "$PROD_DB" 'SELECT ROW_COUNT();')" = 9 ] || fail 'session_insert_count'
+          mysqlq "$PROD_DB" "INSERT INTO LearningRecord ($LR_COLS) SELECT $LR_COLS FROM \`$TMP_DB\`.LearningRecord WHERE id IN ($LEARNING_RECORDS);"
+          [ "$(scalar "$PROD_DB" 'SELECT ROW_COUNT();')" = 9 ] || fail 'learning_record_insert_count'
+          [ "$(scalar "$PROD_DB" 'SELECT 19;")" = 19 ] || fail 'affected_insert_count'
+          restored_parent="$(scalar "$PROD_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
+          restored_session_lines="$(mysqlq "$PROD_DB" "SELECT id,SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id IN ($SESSIONS) ORDER BY FIELD(id,$SESSIONS);")"
+          restored_lr_lines="$(mysqlq "$PROD_DB" "SELECT id,SHA2(CONCAT($LR_EXPR),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS) ORDER BY FIELD(id,$LEARNING_RECORDS);")"
+          [ "$restored_parent" = "$parent_hash" ] || fail 'restored_parent_hash_mismatch'
+          [ "$(printf '%s\n' "$restored_session_lines" | sha256sum | awk '{print $1}')" = "$session_agg" ] || fail 'restored_session_hash_mismatch'
+          [ "$(printf '%s\n' "$restored_lr_lines" | sha256sum | awk '{print $1}')" = "$lr_agg" ] || fail 'restored_learning_record_hash_mismatch'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE ClassSessionID IN ($SESSIONS);")" = 9 ] || fail 'learning_record_fk_mismatch'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17');")" = 0 ] || fail 'forbidden_row_created'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM StudentSingIn WHERE StudentClassID=2817 OR ClassSessionID IN ($SESSIONS);")" = "$attendance" ] || fail 'attendance_changed'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM session_deduction_ledger WHERE student_class_id=2817 OR class_session_id IN ($SESSIONS);")" = "$ledger" ] || fail 'ledger_changed'
+          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM Invoice WHERE StudentClassID=2817;')" = "$invoice" ] || fail 'invoice_changed'
+          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM schedules WHERE id IN (6906,8890,8891);')" = "$schedules" ] || fail 'schedules_changed'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM schedule_audit_logs WHERE session_id IN ($SESSIONS);")" = "$audit" ] || fail 'schedule_audit_changed'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM learning_record_feedbacks WHERE learning_record_id IN ($LEARNING_RECORDS);")" = "$feedback" ] || fail 'feedback_changed'
+          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM learning_record_feedback_replies WHERE feedback_id IN (SELECT id FROM learning_record_feedbacks WHERE learning_record_id IN (14596,15597,16286,17518,17803,17861,17902,18413,17902,18413,19053));')" = "$replies" ] || fail 'feedback_replies_changed'
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM user_engagement_xp_events WHERE learning_record_id IN ($LEARNING_RECORDS);")" = "$xp" ] || fail 'xp_changed'
+          mysqlq "$PROD_DB" 'COMMIT;'; rollback_needed=0
+          DISABLED_OLD_TX
+          fi
+          echo 'transaction=committed inserted_student_class=1 inserted_class_sessions=9 inserted_learning_records=9 dependent_writes=0'
+          # Independent fresh read-back through new mysql client invocations;
+          # the mutation itself ran in one mysql connection/transaction above.
+          [ "$(scalar "$PROD_DB" 'SELECT COUNT(*) FROM StudentClass WHERE ID=2817;')" = 1 ]
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id IN ($SESSIONS);")" = 9 ]
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")" = 9 ]
+          [ "$(scalar "$PROD_DB" "SELECT COUNT(*) FROM ClassSession WHERE id=30444 OR (StudentClassID=2817 AND SessionDate='2026-09-17');")" = 0 ]
+          post_parent_hash="$(scalar "$PROD_DB" "SELECT SHA2(CONCAT($PARENT_EXPR),256) FROM StudentClass WHERE ID=2817;")"
+          post_session_lines="$(mysqlq "$PROD_DB" "SELECT id,SHA2(CONCAT($SESSION_EXPR),256) FROM ClassSession WHERE id IN ($SESSIONS) ORDER BY FIELD(id,$SESSIONS);")"
+          post_session_agg="$(canonical_session_agg "$post_session_lines")"
+          post_lr_agg="$(scalar "$PROD_DB" "SELECT SHA2(GROUP_CONCAT(CONCAT(id,':',SHA2(CONCAT($LR_EXPR),256)) ORDER BY FIELD(id,$LEARNING_RECORDS) SEPARATOR '|'),256) FROM LearningRecord WHERE id IN ($LEARNING_RECORDS);")"
+          [ "$post_parent_hash" = "$parent_hash" ] || { echo '::error::post_commit_parent_hash_mismatch'; exit 1; }
+          [ "$post_session_agg" = "$session_agg" ] || { echo '::error::post_commit_session_hash_mismatch'; exit 1; }
+          [ "$post_lr_agg" = "$lr_agg" ] || { echo '::error::post_commit_learning_record_hash_mismatch'; exit 1; }
+          echo "post_commit=verified parent=1 sessions=9 learning_records=9 forbidden_30444=0 phantom_2026-09-17=0"
+          echo "post_commit_hashes=verified parent=$post_parent_hash session_set=$post_session_agg learning_record_set=$post_lr_agg"
+          echo 'production_write=19_inserts_only'
+          echo 'rollback_boundary=delete_only_if_all_19_rows_still_match_approved_hashes_and_no_legitimate_dependents'
+          REMOTE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inapp-289-course-2817-restore
+          path: out/course-2817-restore.log
+          retention-days: 90

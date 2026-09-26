@@ -1,15 +1,15 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
 **Founder Decision:** 2026-07-18 — risk-tiered approvals; **not** universal Founder rubber-stamp  
-**Founder Decision:** 2026-08-29 — T0/T1 work is autonomous after required gates; T2 requires independent review, CI, and rollback evidence; T3/protected work may be prepared autonomously but stops before protected execution or activation for Founder approval. This decision supersedes the prior solo-mode R2/R3 merge wording. Fleet policy remains the general capability table; this AllTrue overlay retains stricter product safety boundaries.
+**Founder Decision:** 2026-08-29 — T0/T1 work is autonomous after required gates; reversible T2 may auto-deploy after exact-target CI, rollback readiness, and deterministic scope checks; T3/protected work may be prepared autonomously but stops before protected execution or activation for Founder approval. This decision supersedes the prior solo-mode R2/R3 merge wording. Fleet policy remains the general capability table; this AllTrue overlay retains stricter product safety boundaries.
 
 ## Purpose
 
-Preserve autonomous delivery for low-risk changes while requiring independent review for T2 work and a Founder gate at the T3 protected boundary.
+Preserve autonomous delivery for reversible changes while keeping a Founder gate at the T3 protected boundary.
 **Forbidden:** inventing a second Agent identity to approve your own PR.
 
 ## Risk classes
@@ -18,22 +18,24 @@ Preserve autonomous delivery for low-risk changes while requiring independent re
 |-------|----------|-------------------|
 | **R0 / T0** | Docs, generated evidence, radar run artifacts, INDEX links — **no** production behavior, permissions, workflow execution, dependencies, or data | Required checks and docs/link checks; Agent may merge and close evidence-backed issues. |
 | **R1 / T1** | Display-only UX; isolated bugfix; no migration; no authz/billing/deploy change | Required CI, regression test, review, and rollback statement; Agent may merge and close when evidence is sufficient. |
-| **R2 / T2** | Scheduling domain; billing/sessions/payment; authz; cron/jobs; production-side-effect workflow; dependency major; schema migration; cross-campus data | Required CI, independent review, documented risk/rollback/production-verification plan, and resolved bot/reviewer threads; Agent may merge only when no protected Founder decision is involved. |
+| **R2 / T2** | Reversible scheduling/runtime changes without a protected boundary | Exact-target required CI, rollback readiness, documented risk/production-verification plan, and resolved bot/reviewer threads; Agent may merge/deploy automatically when deterministic classification stays non-protected. |
 | **R3 / T3** | Production data repair; destructive migration; privilege expansion; financial correction; security boundary; backup/restore; mass recalculation; protected product direction | Agent may prepare implementation, tests, dry-run, Repair Manifest, recovery plan, and evidence package. Stop for Founder approval before production activation, mutation/repair, migration/schema cutover, billing/entitlement semantics, identity/authz, destructive action, backup restore, security-sensitive credential change, or major product/brand direction. |
 
 ## How to classify (PR author)
 
 1. Pick the **highest** class that applies to any file or behavior in the PR.  
-2. Declare in PR body: `Risk-Class: R0|R1|R2|R3` and `Autonomy-Tier: T0|T1|T2|T3` (see PR template).
+2. Generate the declaration from the actual branch diff with
+   `scripts/governance/pr_declaration.py`, then put the resulting
+   `Risk-Class: R0|R1|R2|R3` and `Autonomy-Tier: T0|T1|T2|T3` in the PR body.
 3. If unsure between R1/R2, choose **R2/T2**. If any protected boundary applies, choose **R3/T3**.
 
 ## Enforcement (current + target)
 
 | Mechanism | Role |
 |-----------|------|
-| PR template `Risk-Class` | Declaration (CI warns if missing) |
+| PR template + machine declaration gate | Generated declaration; missing, malformed, or understated values fail before merge |
 | Required status checks on `main` | Always on (existing branch protection) |
-| CODEOWNERS | Review routing for high-risk paths; T2 requires independent review |
+| CODEOWNERS | Review routing for high-risk paths; not a blanket T2 executor gate |
 | Data Repair Gate / Repair Manifest | **R3/T3** preparation and protected execution evidence |
 | Capability Registry | Who may merge / dispatch |
 | This policy + Merge SOP | Human/Agent behavior contract |
@@ -42,7 +44,8 @@ Preserve autonomous delivery for low-risk changes while requiring independent re
 
 ## Autonomous delivery path
 
-For same-repository, non-draft PRs, `.github/workflows/auto-merge-safe.yml` evaluates
+For same-repository, non-draft PRs, `.github/workflows/presubmit.yml` and
+`.github/workflows/auto-merge-safe.yml` independently evaluate
 the diff from the base revision using `scripts/governance/autonomy_gate.py`.
 Only an exact, declared, machine-validated T0/T1 result can enable GitHub
 server-side squash auto-merge. GitHub still waits for every required status
@@ -56,35 +59,72 @@ preflight/classification runs do not occupy that side-effect queue. The deploy
 workflow compares the exact production manifest SHA to current `main` and uses
 `classify_activation_scope`: tests, docs, Exo metadata, and the read-only
 convergence scheduler do not turn an ordinary runtime release into a manual
-activation. T0/T1 deploys do not reference the protected
+activation. T0/T1/T2 deploys do not reference the protected
 `production-activation` environment; exact-SHA, required CI, preflight,
 health/smoke, rollback, and fail-closed behavior remain mandatory.
 
-T2/T3, unknown classifications, production executor changes, security/data
-boundaries, and irreversible operations stay held for risk-appropriate review
-or the protected Founder boundary. The Environment remains attached to that
-protected path, but solo mode removes its unsatisfiable required-reviewer rule;
-the exact workflow-dispatch confirmation is the Founder decision. No fake
-reviewer, self-review exception, or admin bypass is introduced.
+Control-plane-only changes are reported as `control-plane-verified` once merged
+to `main`; they do not require an application runtime deployment and are never
+reported as `production-verified`. A mixed control-plane/application change
+remains an application release and is classified from its full effect.
+
+Reversible T2 changes with successful exact-target CI, rollback readiness, and
+non-protected scope may auto-deploy. Missing or contradictory deterministic
+evidence is ambiguous and stays held. T3, unknown classifications, production executor
+changes, security/data boundaries, and irreversible operations stay held for
+risk-appropriate review or the protected Founder boundary. Only
+Founder-required/T3 activation references `production-activation`; all supported events use the same
+static policy: Founder required reviewer, self-review allowed, administrator
+bypass disabled, and main-only deployment branch policy. Workflow-dispatch typed
+confirmation remains only for exceptional manual phases; it is not a second
+normal approval path. No fake reviewer or admin bypass is introduced.
 
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.
 
+### Activation classification by effect
+
+For production activation, a sensitive path is a signal for inspection, not an
+automatic T3 decision. The deterministic classifier uses three outcomes:
+
+| Activation class | Machine rule | Result |
+|---|---|---|
+| `routine` | T0/T1/T2 behavior remains unchanged; no protected effect is found | Existing automatic path, with T2 exact-target CI and rollback evidence |
+| `guarded-sensitive` | Sensitive runtime path, inspectable read-only diff, at most 3 sensitive files and 240 changed code lines, and no protected effect | Machine minimum T2; existing exact-SHA, rollback, health, critical-smoke, production-verification and automatic abort/rollback path |
+| `founder-required` | Control plane, migration/repair, entitlement/deduction, auth trust boundary, billing/ledger semantics, privilege/credential/privacy boundary, uninspectable diff, or boundedness failure | T3/protected; hold for Founder approval |
+
+Generated historical release-note bundles are excluded from current-effect
+marker scanning. This removes false T3 classifications caused by old words in a
+generated asset while preserving the real business/security operation when the
+changed code expresses it. Unknown or missing evidence fails closed.
+
 ## Review checklist (R2/T2)
 
-R2/T2 requires an independent review context, required CI, a documented risk/rollback/production-verification checklist, and resolved bot/reviewer threads. The implementing Agent remains responsible for the final evidence and may merge autonomously when no T3/protected action is involved.
+R2/T2 requires exact-target required CI, rollback readiness, a documented
+risk/production-verification checklist, and resolved bot/reviewer threads. A
+second human or AI verifier is not a prerequisite in the single-Founder model.
+The implementing Agent remains responsible for the final evidence and may
+merge autonomously when no T3/protected action is involved.
 
 ## T3/protected boundary
 
-Independent review and required checks do not authorize protected execution. The Agent may prepare the complete evidence package, but must stop before the protected action and request Founder approval with the exact action, worst credible downside, rollback/reversibility, and post-action verification.
+Required checks do not authorize protected execution. The Agent may prepare the
+complete evidence package, but must stop before the protected action and request
+Founder approval with the exact action, worst credible downside,
+rollback/reversibility, and post-action verification.
 
 ## Rollback
+
+Workflow/control-plane changes require the Founder decision at merge
+authorization. Once merged, the workflow revision is effective; the
+production Environment gate protects only later production side effects and
+cannot make a merged control-plane change pending.
 
 Every R1+ PR must state rollback in one of: revert commit, feature flag off, prior deploy SHA, or data rollback command (R3).
 
 ## Review topology (#876)
 
-This repo currently has **one** human maintainer (Jerry), who is not a universal approval queue. GitHub-level `required_approving_review_count` stays at **0**. T0/T1 use required checks and risk-appropriate review; T2 requires independent review; T3 requires a Founder decision at the protected action boundary.
+This repo currently has **one** human maintainer (Jerry), who is not a universal approval queue. GitHub-level `required_approving_review_count` stays at **0**. T0–T2 use deterministic required checks and risk-appropriate review; T3 requires a Founder decision at the protected action boundary.
 
 **What changes when a second maintainer joins** (do this switch explicitly, not implicitly):
 
@@ -92,7 +132,7 @@ This repo currently has **one** human maintainer (Jerry), who is not a universal
 |---|---|---|
 | `required_approving_review_count` (ruleset `main-protection`) | `0` | `1` |
 | `require_code_owner_review` | `false` | `true` — CODEOWNERS becomes a real blocking gate, not just a review request |
-| T2 review | Independent review context plus implementing Agent evidence | A human second maintainer or separately-launched verifier Agent, plus implementing Agent evidence |
+| T2 review | Risk-appropriate review is advisory; no second identity is required for automatic delivery | A human second maintainer may add review assurance, but is not required by the executor contract |
 | T3 boundary | Founder decision before protected action; review does not replace the gate | Same protected boundary, with the additional human review if ruleset policy later requires it |
 | `dismiss_stale_reviews_on_push` | `false` | `true` — a stale approval shouldn't survive a force-push-equivalent re-push |
 

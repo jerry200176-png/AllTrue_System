@@ -54,5 +54,16 @@ describe('Product clarity UX improvements', () => {
       expect(tuitionReportSource).toContain('class="tr-retry-btn" @click="loadData"');
       expect(tuitionReportSource).toContain('再試一次');
     });
+
+    it('keeps report requests and export contracts while making controls accessible', () => {
+      expect(tuitionReportSource).toContain('/api/v1/finance/branch-monthly-tuition?${params}');
+      expect(tuitionReportSource).toContain('/api/v1/finance/branch-monthly-tuition/export?${params}');
+      expect(tuitionReportSource).toContain('AtIconButton icon="chevron_left" label="上一月"');
+      expect(tuitionReportSource).toContain('AtIconButton icon="chevron_right" label="下一月"');
+      expect(tuitionReportSource).toContain('class="tr-loading" role="status" aria-live="polite"');
+      expect(tuitionReportSource).toContain('class="tr-empty" role="status"');
+      expect(tuitionReportSource).toContain('aria-label="學收報表分頁"');
+      expect(tuitionReportSource).toContain('--ds-control-height-touch, 44px');
+    });
   });
 });
