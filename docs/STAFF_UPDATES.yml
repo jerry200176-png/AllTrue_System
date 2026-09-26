@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-26-calendar-request-safety
+    published_at: "2026-09-26"
+    audiences:
+      - director
+    importance: digest
+    title: 行事曆請假與加課送出保護
+    summary: 送出前確認本次影響，避免重複送出與舊回應影響其他目標。
+    items:
+      - category: fixed
+        text: 加課檢查保留來源課程並綁定日期、時段與時長；堂數制與月結規則不變。
+    source_refs:
+      - "github:pr#2677"
+      - "changelog:2026-09-26:calendar-request-safety"
+
   - id: staff-2026-09-26-director-dialog-safety
     published_at: "2026-09-26"
     audiences:

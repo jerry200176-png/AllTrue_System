@@ -1,3 +1,7 @@
+## 2026-09-26 — fix(calendar): guard leave and extra request ownership (PR #2677)
+<!-- release-notes: staff_update=staff-2026-09-26-calendar-request-safety -->
+- 行事曆請假先核對本次影響；加課檢查與送出綁定同一課程、日期及時段。送出期間避免重複操作，舊回應不覆蓋新目標，既有堂數制與月結處理規則不變。
+
 ## 2026-09-26 — fix(accounts): preserve campus editor target during save (PR #2646)
 <!-- release-notes: staff_update=staff-2026-09-26-director-dialog-safety -->
 - 主任帳號管理的手機操作與錯誤提示更清楚；儲存分校期間保留原主任的視窗，避免切換目標或重複送出，原有權限與帳號操作不變。

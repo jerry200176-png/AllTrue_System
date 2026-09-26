@@ -193,6 +193,37 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-calendar-request-safety",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "行事曆請假與加課送出保護",
+    "summary": "送出前確認本次影響，避免重複送出與舊回應影響其他目標。",
+    "items": [
+      "加課檢查保留來源課程並綁定日期、時段與時長；堂數制與月結規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "加課檢查保留來源課程並綁定日期、時段與時長；堂數制與月結規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2677",
+      "changelog:2026-09-26:calendar-request-safety"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-26-binding-confirmation-close",
     "publishedAt": "2026-09-26",
     "effectiveAt": null,
