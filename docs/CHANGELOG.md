@@ -1,3 +1,39 @@
+## 2026-09-26 — fix(calendar): guard leave and extra request ownership (PR #2677)
+<!-- release-notes: staff_update=staff-2026-09-26-calendar-request-safety -->
+- 行事曆請假先核對本次影響；加課檢查與送出綁定同一課程、日期及時段。送出期間避免重複操作，舊回應不覆蓋新目標，既有堂數制與月結處理規則不變。
+
+## 2026-09-26 — fix(accounts): preserve campus editor target during save (PR #2646)
+<!-- release-notes: staff_update=staff-2026-09-26-director-dialog-safety -->
+- 主任帳號管理的手機操作與錯誤提示更清楚；儲存分校期間保留原主任的視窗，避免切換目標或重複送出，原有權限與帳號操作不變。
+
+## 2026-09-26 — improve(payroll): keyboard review and reachable controls (PR #2679)
+<!-- release-notes: staff_update=staff-2026-09-26-payroll-review-controls -->
+- 兼職薪資查閱的排序與老師明細可用鍵盤操作，載入、重試與空白狀態更清楚，手機按鈕更容易點選；計薪、鎖帳、費率及原有權限不變。
+
+## 2026-09-26 — improve(diagnostics): keyboard sorting and reachable report controls (PR #2656)
+<!-- release-notes: staff_update=staff-2026-09-26-nightly-diagnostic-controls -->
+- 夜間堂數診斷的排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷，不改堂數或帳務。
+
+## 2026-09-26 — fix(binding): close successful unlink confirmation (PR #3280)
+<!-- release-notes: staff_update=staff-2026-09-26-binding-confirmation-close -->
+- 綁定管理在解除成功後會關閉確認視窗並更新清單；失敗時仍顯示錯誤並可重試，解除流程與權限不變。
+
+## 2026-09-26 — improve(assessment): existing page clarity on mobile (PR #2661)
+<!-- release-notes: staff_update=staff-2026-09-26-assessment-page-clarity -->
+- 學習檢測頁面在手機上以卡片呈現範圍、日期、狀態及原有操作；建立與結果視窗沿用共用對話框，檢測處理流程與入口設定維持既有行為。
+
+## 2026-09-26 — fix(students): shared balance belongs to package (in-app #367)
+<!-- release-notes: staff_update=staff-2026-09-26-shared-pool-367 -->
+- 學生管理將共用方案的總堂數、已使用與剩餘堂數集中在方案摘要；成員課程顯示自己的上課日期，不再重複顯示方案池進度。
+
+## 2026-09-26 — fix(tuition): explain existing settled-course labels (in-app #348)
+<!-- release-notes: staff_update=staff-2026-09-26-settled-label-help-348 -->
+- 已結清課程彙總補上「舊制無帳單」與「例外待處理」的既有狀態說明，並提示從原有繳費明細核對紀錄；不改款項、標籤分類或帳務操作。
+
+## 2026-09-26 — fix(tuition): bound existing desktop action area (in-app #339)
+<!-- release-notes: staff_update=staff-2026-09-26-tuition-action-width-339 -->
+- 帳務中心桌面待處理表格的操作區限制寬度並自動換行，減少固定操作欄遮住金額；原有按鈕、順序、付款流程及手機卡片版維持既有行為。
+
 ## 2026-09-25 — fix(students): 課程保留已設定的科目名稱（in-app #366）
 <!-- release-notes: staff_update=staff-2026-09-25-student-subject-label-366 -->
 - 學生管理的課程列、課程卡片與後續操作會優先顯示 API 提供的原始科目名稱；標準科目維持既有標籤，不改課程資料、排課或帳務語意。

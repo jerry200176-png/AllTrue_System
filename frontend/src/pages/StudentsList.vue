@@ -256,6 +256,14 @@
                         <span>歷史</span>
                       </div>
                     </div>
+                    <section v-for="pool in sharedPackageSummaries(getActiveStudentCourses(student.id))" :key="`pool-${pool.id}`" class="student-package-summary" :aria-label="`${pool.name}共用堂數`">
+                      <div class="student-course-overview__header"><strong>{{ pool.name }}</strong><span class="student-course-overview__hint">成員課程共用同一堂數池</span></div>
+                      <dl class="student-course-card__meta">
+                        <div><dt>方案總堂數</dt><dd data-testid="package-total">{{ pool.total ?? '待確認' }}</dd></div>
+                        <div><dt>方案已使用</dt><dd data-testid="package-used">{{ pool.used ?? '待確認' }}</dd></div>
+                        <div><dt>方案剩餘堂數</dt><dd data-testid="package-remaining">{{ pool.remaining ?? '待確認' }}</dd></div>
+                      </dl>
+                    </section>
                     <div class="student-course-picker" role="list" aria-label="進行中的課程">
                       <div
                         v-for="course in getActiveStudentCourses(student.id)"
@@ -391,6 +399,9 @@
                       </div>
                       <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="course.PackageID"> · 方案共用堂數</span></span>
                     </section>
+                    <div v-else-if="isPackageMember(course)" class="student-course-card__progress-empty" role="note">
+                      本課程使用共用方案；堂數請見上方方案摘要，上課日期見本課程明細。
+                    </div>
                     <div v-else-if="String(course.payment_type || '').toLowerCase() === 'session'" class="student-course-card__progress-empty" role="status">
                       堂數未設定，請編輯課程確認。
                     </div>
@@ -1023,7 +1034,7 @@ import {
   gradePromotionSuccessMessage,
   toggleGradePromotionExclude,
 } from '../lib/gradePromotionUi.js';
-import { courseBadgeSessionLabel } from '../lib/courseBadgeDisplay.js';
+import { courseBadgeSessionLabel, sharedPackageSummaries } from '../lib/courseBadgeDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { fetchClassSessions } from '../lib/classSessionsApi.js';
 import {
@@ -1377,6 +1388,7 @@ const getCourseRemainingSessions = (course) => (
 );
 /** 堂數制才顯示可驗證的進度；月結制不把月份或剩餘欄位誤換算成百分比。 */
 const courseProgress = (course) => {
+  if (isPackageMember(course)) return null;
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') return null;
 
   const total = parseCourseNumber(
@@ -1508,7 +1520,9 @@ const getCoursePrimaryAction = (course) => {
       icon: 'add_circle',
       label: isTutoringCourse(course) ? '延續輔導課' : '續報加購',
       title: '先處理課程續報',
-      description: `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
+      description: isPackageMember(course)
+        ? '請核對上方共用方案摘要，再處理方案續報。'
+        : `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
       tone: 'warning',
     };
   }
@@ -1559,6 +1573,7 @@ const openCoursePrimaryAction = (course, studentName = '') => {
   return editCourse(course);
 };
 const getCourseProgressSummary = (course) => {
+  if (isPackageMember(course)) return '共用方案 · 上課日期見明細';
   const progress = courseProgress(course);
   if (progress) return `剩餘 ${progress.remaining} / ${progress.total} 堂`;
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
