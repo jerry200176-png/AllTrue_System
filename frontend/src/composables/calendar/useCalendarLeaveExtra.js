@@ -413,8 +413,8 @@ export function useCalendarLeaveExtra({
         duration_minutes: tuple.duration_minutes,
         teacher_id: tuple.teacher_id,
         note: 'Calendar 加課／補登',
-        // The backend defaults past sessions to auto-approve when omitted.
-        // Always send the operator's explicit choice after /check has returned.
+        // Preserve the backend's false default and send only the operator's
+        // explicit choice after the matching /check has returned.
         auto_approve: tuple.auto_approve,
       }),
     });
