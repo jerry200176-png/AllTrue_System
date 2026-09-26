@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-27-assessment-diagnostic-scope
+    published_at: "2026-09-27"
+    audiences:
+      - director
+    importance: digest
+    title: 缺少評量提示範圍更準確
+    summary: 依既有需填評量的上課狀態檢查，減少缺席造成的誤報。
+    items:
+      - category: fixed
+        text: 排除缺席並涵蓋已完成、試聽與輔導有到；不改點名、扣堂或評量資料。
+    source_refs:
+      - "github:issue#1078"
+      - "changelog:2026-09-27:assessment-diagnostic-scope"
+
   - id: staff-2026-09-26-calendar-request-safety
     published_at: "2026-09-26"
     audiences:
