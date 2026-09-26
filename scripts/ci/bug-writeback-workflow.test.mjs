@@ -141,9 +141,29 @@ assert.ok(
 );
 assert.match(
   phaseCSource,
-  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
+  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+if \(\$reuseNotice\) \\Illuminate\\Support\\Facades\\DB::rollBack\(\);\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
   'Phase-C must skip every already-resolved or closed report',
 );
+
+// Execute the actual PHP predicate against fresh notice/reopen fixtures.
+const guard = phaseCSource.match(/\$canReuseNotice = static function \([\s\S]*?\n          \};/)[0];
+const notice = { id: 808, body: 'already public', is_internal_note: false };
+const cfg = { reply: notice.body, existing_notice_id: notice.id, expected_log_ids: [1094] };
+const cases = [
+  ['triaged', [1094], [notice], cfg, true],
+  ['in_progress', [1094], [notice], cfg, false],
+  ['triaged', [1094, 1200, 1201], [notice], cfg, false],
+  ['triaged', [1094], [notice, { ...notice, id: 809 }], cfg, false],
+  ['triaged', [1094], [{ ...notice, body: 'different' }], cfg, false],
+  ['triaged', [1094], [{ ...notice, is_internal_note: true }], cfg, false],
+  ['triaged', [1094], [], cfg, false],
+];
+const phpCases = Buffer.from(JSON.stringify(cases)).toString('base64');
+const phpGuardTest = `${guard}\n$cases = json_decode(base64_decode("${phpCases}"), true);\nforeach ($cases as $case) { $expected = array_pop($case); if ($canReuseNotice(...$case) !== $expected) { exit(1); } }`;
+execFileSync('php', ['-r', phpGuardTest]);
+assert.match(phaseCSource, /lockForUpdate\(\)->first\(\)/, 'notice reconciliation must lock the report across writes');
+assert.match(phaseCSource, /if \(!\$reuseNotice\) \$svc::addComment/, 'existing notice must not be duplicated');
+assert.match(phaseCSource, /if \(\$ok\).*DB::commit\(\);\s+else .*DB::rollBack\(\);/, 'failed reconciliation must rollback');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-bug-reply-'));
 const marker = path.join(tempDir, 'executed');
