@@ -1,3 +1,7 @@
+## 2026-09-26 — fix(tuition): explain existing settled-course labels (in-app #348)
+<!-- release-notes: staff_update=staff-2026-09-26-settled-label-help-348 -->
+- 已結清課程彙總補上「舊制無帳單」與「例外待處理」的既有狀態說明，並提示從原有繳費明細核對紀錄；不改款項、標籤分類或帳務操作。
+
 ## 2026-09-26 — fix(tuition): bound existing desktop action area (in-app #339)
 <!-- release-notes: staff_update=staff-2026-09-26-tuition-action-width-339 -->
 - 帳務中心桌面待處理表格的操作區限制寬度並自動換行，減少固定操作欄遮住金額；原有按鈕、順序、付款流程及手機卡片版維持既有行為。
