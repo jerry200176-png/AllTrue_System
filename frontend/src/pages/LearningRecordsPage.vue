@@ -1231,7 +1231,7 @@
             </div>
             <div class="form-group">
               <label>本次作業範圍</label>
-              <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定下次作業..."></textarea>
+              <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定本次作業範圍..."></textarea>
               <div v-if="!isReadOnly" class="lr-phrase-row lr-phrase-row--hscroll">
                 <button v-for="p in templatePhrases.NextHomework" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('NextHomework', p)">{{ p }}</button>
               </div>
