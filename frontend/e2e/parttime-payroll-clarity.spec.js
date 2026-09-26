@@ -80,6 +80,13 @@ async function installMock(page) {
 }
 
 async function expectNoOverflowAndReachableControls(page) {
+  // Translation during finite expand motion can round a 44px DOM rect below 44.
+  // Measure the settled rendered controls; retain the exact minimum assertion.
+  await page.evaluate(async () => {
+    const finite = document.getAnimations().filter((animation) =>
+      Number.isFinite(animation.effect?.getComputedTiming().iterations));
+    await Promise.all(finite.map((animation) => animation.finished.catch(() => undefined)));
+  });
   const controls = await page.locator('button, input, textarea').evaluateAll((nodes) => nodes.filter((node) => {
     const rect = node.getBoundingClientRect();
     const style = getComputedStyle(node);
@@ -206,4 +213,17 @@ test('#2679 nested session loading and empty preserve readonly request contract'
  await expect(page.locator('.session-detail [data-testid="at-skeleton"]')).toBeVisible();release();
  await expect(page.locator('.session-detail')).toContainText('本月無堂次紀錄');
  await expect(page.locator('.session-detail .session-row')).toHaveCount(0);expect(methods.every(m=>m==='GET')).toBe(true);
+});
+test('#2679 samples controls after finite expansion motion completes without relaxing 44px', async ({ page }) => {
+  await installMock(page);
+  await page.goto('/parttime-payroll-pilot-mount.html');
+  await page.locator('.teacher-row').click();
+  await expect(page.locator('.session-detail .session-row')).toBeVisible();
+  await page.evaluate(() => {
+    window.__payrollFiniteMotion = document.querySelector('.session-detail').animate(
+      [{ transform: 'translateY(-0.123px)' }, { transform: 'translateY(0)' }], { duration: 250 },
+    );
+  });
+  await expectNoOverflowAndReachableControls(page);
+  expect(await page.evaluate(() => window.__payrollFiniteMotion.playState)).toBe('finished');
 });
