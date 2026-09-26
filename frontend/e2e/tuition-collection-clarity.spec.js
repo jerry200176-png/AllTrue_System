@@ -110,8 +110,8 @@ test('In-App348: settled labels explain existing meaning without adding payment 
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
     await expect(page.locator('.acct-table--settled:visible tbody tr')).toHaveCount(2);
-    await expect(page.locator('.tc-summary')).toContainText('1 舊制無帳單');
-    await expect(page.locator('.tc-summary')).toContainText('1 例外待處理');
+    await expect(page.locator('.tc-card').filter({ has: page.getByText('舊制無帳單', { exact: true }) }).locator('.tc-card-num')).toHaveText('1');
+    await expect(page.locator('.tc-card').filter({ has: page.getByText('例外待處理', { exact: true }) }).locator('.tc-card-num')).toHaveText('1');
     await expect(page.locator('.acct-table--settled:visible tbody tr').first()).toContainText('舊制無帳單');
     await expect(page.locator('.acct-table--settled:visible tbody tr').last()).toContainText('例外待處理');
     await expect(page.locator('.acct-table--settled:visible tbody tr').first()).toContainText('4,200');
