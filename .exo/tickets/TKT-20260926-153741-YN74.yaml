@@ -1,0 +1,37 @@
+id: TKT-20260926-153741-YN74
+title: Generate scoped binding confirmation release copy
+intent: Generate scoped binding confirmation release copy
+kind: task
+parent_id: INT-20260926-153733-MG7Z
+boundary: ''
+success_condition: ''
+priority: 3
+labels: []
+scope:
+  allow:
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 240
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-26T15:37:41+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default
