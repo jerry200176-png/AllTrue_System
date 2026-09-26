@@ -4,6 +4,70 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-26-tuition-action-width-339",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務操作欄減少遮住金額",
+    "summary": "桌面待處理表格的操作按鈕會換行，減少固定操作欄占用的寬度。",
+    "items": [
+      "原有操作按鈕與順序維持不變；金額欄仍可透過表格橫向捲動查看。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "原有操作按鈕與順序維持不變；金額欄仍可透過表格橫向捲動查看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3268",
+      "in-app:#339",
+      "changelog:2026-09-26:tuition-action-width-339"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-settled-label-help-348",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "已結清課程標籤補上說明",
+    "summary": "「舊制無帳單」與「例外待處理」旁提供既有狀態的解釋。",
+    "items": [
+      "可從同一列的繳費明細查看原有紀錄，與帳務負責人核對；款項與帳務操作不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "可從同一列的繳費明細查看原有紀錄，與帳務負責人核對；款項與帳務操作不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3213",
+      "in-app:#348",
+      "changelog:2026-09-26:settled-label-help-348"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-25-tuition-remaining-lessons-362",
     "publishedAt": "2026-09-25",
     "effectiveAt": null,

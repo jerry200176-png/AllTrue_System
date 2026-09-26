@@ -747,6 +747,10 @@
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
         <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
+          舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
+          請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+        </p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
           <AtSkeleton :rows="4" height="28px" />
@@ -2876,6 +2880,13 @@ loadAlerts();
   .tc-table tbody tr:hover td:last-child { background: var(--ds-canvas-soft); }
   .tc-table tbody tr.tc-row--focused td:last-child,
   .tc-table tbody tr.acct-row-selected td:last-child { background: var(--ds-primary-wash); }
+  /* In-App 339: retain every action in its existing order without letting the
+   * sticky receivables cell cover most of the readable data area. */
+  .tc-table:not(.acct-table) .tc-actions {
+    flex-wrap: wrap;
+    width: max-content;
+    max-width: min(18rem, 32vw);
+  }
 }
 
 .tc-th-sort {

@@ -5,6 +5,30 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.26",
+    "date": "2026-09-26",
+    "title": "2026.09.26 草稿（未發布）",
+    "summary": "existing settled-course labels；主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "existing settled-course labels",
+          "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
+        ]
+      }
+    ],
+    "items": [
+      "existing settled-course labels",
+      "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
+    ]
+  },
+  {
     "version": "2026.09.25",
     "date": "2026-09-25",
     "title": "2026.09.25 草稿（未發布）",
@@ -646,35 +670,6 @@ export const changelogDraftNotes = [
       "手機更多功能可搜尋",
       "跨頁工作可接續",
       "側欄更多功能漸進搜尋與快捷鍵"
-    ]
-  },
-  {
-    "version": "2026.09.06",
-    "date": "2026-09-06",
-    "title": "2026.09.06 草稿（未發布）",
-    "summary": "修正共用方案付款狀態與排課繳費日期更正安全機制；統一主任與老師新手教學並清理重複入口",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "修正共用方案付款狀態與排課繳費日期更正安全機制"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "統一主任與老師新手教學並清理重複入口"
-        ]
-      }
-    ],
-    "items": [
-      "修正共用方案付款狀態與排課繳費日期更正安全機制",
-      "統一主任與老師新手教學並清理重複入口"
     ]
   }
 ];
