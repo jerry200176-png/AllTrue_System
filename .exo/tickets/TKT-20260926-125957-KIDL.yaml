@@ -1,0 +1,33 @@
+id: TKT-20260926-125957-KIDL
+title: Verify exact shipped329 and prepare scoped Phase-C
+intent: Verify exact shipped329 and prepare scoped Phase-C
+kind: task
+parent_id: INT-20260926-125943-59Z2
+boundary: ''
+success_condition: ''
+priority: 3
+labels: []
+scope:
+  allow:
+  - '**'
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 250
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-26T12:59:57+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

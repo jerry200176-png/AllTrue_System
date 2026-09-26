@@ -198,3 +198,7 @@ for (const [id, revision, issue] of [
 }
 
 console.log('bug-writeback-workflow.test.mjs: ok');
+
+assert.match(phaseCSource,
+  /329 => \[[\s\S]*?"rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",[\s\S]*?"deploy" => "36218370051",/,
+  'in-app329 closeout requires its exact confirmed containing revision and successful deployment');
