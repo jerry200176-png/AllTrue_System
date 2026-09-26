@@ -27,6 +27,7 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "sorting and reachable report controls",
           "page clarity on mobile"
         ]
       }
@@ -36,6 +37,7 @@ export const changelogDraftNotes = [
       "balance belongs to package",
       "existing settled-course labels",
       "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑",
+      "sorting and reachable report controls",
       "page clarity on mobile"
     ]
   },
