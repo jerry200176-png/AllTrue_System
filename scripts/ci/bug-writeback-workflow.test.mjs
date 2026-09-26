@@ -184,4 +184,17 @@ try {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
+// This closeout batch adds only two immutable per-report metadata records.
+for (const [id, revision, issue] of [
+  [339, '345b0f4cbf2cbdd23d76ecb350f96c1a7096aafc', 3268],
+  [348, 'ad2f90260d4914611ce24f4778aafd8f4742b101', 3213],
+]) {
+  const entry = phaseCSource.match(new RegExp(`\\n            ${id} => \\[([\\s\\S]*?)\\n            \\],`));
+  assert.ok(entry, `scoped Phase-C entry ${id} must exist`);
+  assert.ok(entry[1].includes(`"rev" => "${revision}"`), `${id} requires the exact containing product merge`);
+  assert.match(entry[1], /"deploy" => "[0-9]+"/, `${id} requires a concrete successful deploy run`);
+  assert.ok(entry[1].includes(`issues/${issue}`), `${id} must notify its canonical issue`);
+  assert.ok(entry[1].includes('仍等待您實際確認'), `${id} must not claim reporter acceptance`);
+}
+
 console.log('bug-writeback-workflow.test.mjs: ok');
