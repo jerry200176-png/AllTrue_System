@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-26-tuition-action-width-339
+    published_at: "2026-09-26"
+    audiences:
+      - director
+    importance: digest
+    title: 帳務操作欄減少遮住金額
+    summary: 桌面待處理表格的操作按鈕會換行，減少固定操作欄占用的寬度。
+    items:
+      - category: improved
+        text: 原有操作按鈕與順序維持不變；金額欄仍可透過表格橫向捲動查看。
+    source_refs:
+      - "github:#3268"
+      - "in-app:#339"
+      - "changelog:2026-09-26:tuition-action-width-339"
+
   - id: staff-2026-09-25-student-subject-label-366
     published_at: "2026-09-25"
     audiences:

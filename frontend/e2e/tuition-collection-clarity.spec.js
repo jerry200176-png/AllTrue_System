@@ -15,20 +15,74 @@ const viewports = [
 const rows = [
   {
     id: 101, student_name: '林宥辰', subject: '國中數學', schedule_mode: 'date', payment_status: 'unpaid',
-    charge: 4200, paid_amount: 0, outstanding: 4200, due_date: '2026-09-12', days_until_settlement: 2,
-    course_start_date: '2026-09-01', course_end_date: '2026-09-30', invoice_id: 501,
+    charge: 4200, paid_amount: 0, outstanding: 4200, payable_amount: 4200, payable_outstanding: 4200, due_date: '2026-09-12', days_until_settlement: 2,
+    course_start_date: '2026-09-01', course_end_date: '2026-09-30', invoice_id: 501, payable_status: 'invoiced',
   },
   {
     id: 102, student_name: '陳品妤', subject: '高中英文', schedule_mode: 'count', payment_status: 'pending_report',
-    charge: 5600, paid_amount: 5600, outstanding: 0, last_paid_at: '2026-09-08',
-    remaining_sessions: 4, sessions_purchased: 16, latest_payment_report_id: 601, invoice_id: 502,
+    charge: 5600, paid_amount: 5600, outstanding: 0, payable_amount: 5600, payable_outstanding: 0, last_paid_at: '2026-09-08',
+    remaining_sessions: 4, sessions_purchased: 16, latest_payment_report_id: 601, invoice_id: 502, payable_status: 'invoiced',
   },
   {
     id: 103, student_name: '王子謙', subject: '國小自然', schedule_mode: 'date', payment_status: 'renew_needed',
-    charge: 3800, paid_amount: 3800, outstanding: 0, last_paid_at: '2026-09-02', due_date: '2026-09-01',
-    days_until_settlement: -9, course_start_date: '2026-09-01', course_end_date: '2026-09-30', invoice_id: 503,
+    charge: 3800, paid_amount: 3800, outstanding: 0, payable_amount: 3800, payable_outstanding: 0, last_paid_at: '2026-09-02', due_date: '2026-09-01',
+    days_until_settlement: -9, course_start_date: '2026-09-01', course_end_date: '2026-09-30', invoice_id: 503, payable_status: 'invoiced',
   },
 ];
+
+test('In-App #339: dense receivable actions leave readable space for amounts without removing controls', async ({ page }) => {
+  await installMock(page);
+  await page.route('**/api/v1/alerts/tuition**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(rows.map((row) => ({
+      ...row, invoice_amount_discrepancy: true, invoice_period_sessions: 2,
+      invoice_stored_amount: 6000, invoice_computed_amount: 4200,
+    }))),
+  }));
+  for (const width of [900, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/tuition-collection-pilot-mount.html?mode=normal');
+    const row = page.locator('.tc-table:not(.acct-table):visible tbody tr').first();
+    const actions = row.locator('td:last-child');
+    await expect(row.locator('td').nth(6)).toContainText('4,200');
+    await expect(row.locator('td').nth(8)).toContainText('4,200');
+    await expect(actions.locator('button')).toHaveText(['account_balance 繳費明細', 'receipt_long 繳費單', 'check_circle 登記已回報']);
+    const box = await actions.boundingBox();
+    expect(box.width).toBeLessThanOrEqual(width * 0.35);
+    await expect(actions).toHaveCSS('position', 'sticky');
+    for (const button of await actions.locator('button').all()) {
+      await expect(button).toBeVisible();
+      const buttonBox = await button.boundingBox();
+      expect(buttonBox.x).toBeGreaterThanOrEqual(box.x);
+      expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(box.x + box.width + 1);
+      expect(buttonBox.height).toBeGreaterThanOrEqual(44);
+    }
+    await actions.locator('button').first().focus();
+    await page.keyboard.press('Tab');
+    await expect(actions.locator('button').nth(1)).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(actions.locator('button').nth(2)).toBeFocused();
+    // Amounts may require table scrolling, but the sticky action region must
+    // leave enough visible width to read each amount in full.
+    for (const index of [6, 7, 8]) {
+      const amount = row.locator('td').nth(index);
+      await amount.evaluate((element) => {
+        const wrap = element.closest('.tc-table-wrap');
+        const action = element.parentElement.lastElementChild.getBoundingClientRect();
+        const cell = element.getBoundingClientRect();
+        const desired = (wrap.getBoundingClientRect().left + action.left) / 2;
+        wrap.scrollLeft += cell.left + cell.width / 2 - desired;
+      });
+      const visible = await amount.evaluate((element) => {
+        const cell = element.getBoundingClientRect();
+        const action = element.parentElement.lastElementChild.getBoundingClientRect();
+        const wrap = element.closest('.tc-table-wrap').getBoundingClientRect();
+        return cell.left >= wrap.left - 1 && cell.right <= action.left + 1;
+      });
+      expect(visible).toBe(true);
+    }
+    await page.screenshot({ path: path.join(outDir, `inapp339-dense-actions-${width}.png`), fullPage: true });
+  }
+});
 
 const accountingRows = [
   { report_id: 701, payment_date: '2026-09-08', receipt_no: 'AT-260908-0001', student_name: '林宥辰', subject: '國中數學', cash_amount: 0, transfer_amount: 4200, total_amount: 4200, confirmed_by_name: 'E2E 主任' },
