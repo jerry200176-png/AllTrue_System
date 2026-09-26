@@ -588,10 +588,54 @@ jobs:
               "rev" => "64cc175e48c962be82d4347601ebe53dfc75d9e4",
               "deploy" => "35621758599",
             ],
+            326 => [
+              "reply" => "我們已更新帳務中心在平板與桌面窄視窗的顯示方式，右側常用操作會留在畫面可見區域；手機卡片版與既有帳務資料、權限及流程維持不變。這次已完成版本更新與系統健康檢查，但仍需要實際主任帳號在正式環境確認畫面，確認後再結案。進度連結：https://github.com/jerry200176-png/AllTrue_System/issues/3083",
+              "rev" => "449931d6bf82d8b77f2a944a9a9fc58ed69e9e9a",
+              "deploy" => "35539903948",
+              "existing_notice_id" => 791,
+              "expected_log_ids" => [1108],
+            ],
+            335 => [
+              "reply" => "已修正並上線：列印課表的每日明細現在換日時會另起一頁，頁面標題不會再寫 09/02 卻列出 09/03 的堂次。同一天若堂次較多，仍會正常續頁。我們已通過列印回歸測試並核對正式版本。請重新整理後再列印確認；若仍看到日期不一致，請回覆選的是「本週」或「當月」及不一致的日期，我們會重新調查。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3140",
+              "rev" => "a265831e26cb03e0451a5626f440d3dc17d4bc51",
+              "deploy" => "35951902774",
+              "existing_notice_id" => 808,
+              "expected_log_ids" => [1094],
+            ],
             336 => [
               "reply" => "已修好並上線：列印課表時，班型會顯示「一對一／一對二／一對三／輔導／試聽」等中文，不再顯示 one_on_three 等系統代碼。週／月範圍、老師／教室／學生篩選與主任人工核對用的內容維持不變。請重新整理課表，按「列印課表」確認；若仍看到英文代碼，請回覆這則訊息。這次先完成 #336 的班型顯示，#335 的日期範圍問題仍另行處理。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3140",
               "rev" => "5408348866f491646bdf732c79a46d04a9635873",
               "deploy" => "35524903138",
+            ],
+            329 => [
+              "reply" => "意見與建議的回報入口已更新上線：現在可直接選擇「使用上有問題／希望更好用／想要新功能」，手機與電腦版都可操作，原本的回報資料仍照常送出。請重新整理後再開啟回報入口確認；若仍看不到選項或無法選取，請按「問題仍存在」並回覆畫面與操作步驟，我們會重新調查。這次工程與正式環境版本檢查已完成，仍等待您實際確認。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3100",
+              "rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",
+              "deploy" => "36218370051",
+            ],
+            339 => [
+              "reply" => "已修正並上線：帳務中心桌面待處理表格的固定操作欄會限制寬度並將按鈕換行，減少遮住鄰近金額；原有按鈕、順序、帳務數值與處理流程不變，金額欄仍可透過表格橫向捲動查看。這次只處理畫面中的操作欄擁擠，沒有宣稱其他外觀問題已解決。工程回歸測試與正式版本檢查已完成，仍等待您實際確認。請重新整理後重試；若仍被遮住，請按「問題仍存在」並回覆畫面寬度與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3268",
+              "rev" => "345b0f4cbf2cbdd23d76ecb350f96c1a7096aafc",
+              "deploy" => "36217751197",
+            ],
+            348 => [
+              "reply" => "已補上說明並上線：已結清課程彙總現在解釋「舊制無帳單」是課程已標記繳費、但沒有有效帳單；「例外待處理」是至少一張有效帳單的淨收款超過帳單金額。可從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對。這次只補說明，沒有變更款項、標籤分類或帳務操作，也未代為核實或修復個別帳務。工程回歸測試與正式版本檢查已完成，仍等待您實際確認。請重新整理後查看；若仍不清楚，請按「問題仍存在」並回覆畫面與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3213",
+              "rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",
+              "deploy" => "36218370051",
+            ],
+            367 => [
+              "reply" => "已修正並上線：共用堂數集中顯示在套組摘要，成員課程不再把套組餘額顯示成自己的進度；可在原課程明細查看各自的上課日期。這次只調整畫面，沒有更改堂數、扣堂或帳務資料。工程回歸測試與正式版本檢查已完成，仍等待您實際確認。請重新整理學生管理後重試；若仍不一致，請按「問題仍存在」並回覆畫面與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3267",
+              "rev" => "44662351fa33c2052900781f674737f74ef00402",
+              "deploy" => "36223439164",
+            ],
+            362 => [
+              "reply" => "已調整並上線：帳務中心待處理清單的「剩餘堂數」現在放在學生姓名旁，手機卡片也會在科目上方顯示，不必再捲到表格最右側找。這次只調整呈現位置，堂數與帳務數值、排序及上課明細入口沿用原本流程。請重新整理帳務中心，再查看原本的學生；若仍看不到或標示不清楚，請按「問題仍存在」並回覆畫面寬度與操作步驟。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3205",
+              "rev" => "8f69c5019b75393c6dd6ab55b8f33b72b5ad26a8",
+              "deploy" => "36120867844",
+            ],
+            366 => [
+              "reply" => "已修正並上線：學生管理的課程科目會保留原先設定的「自然」，不再把這筆回報中的自然顯示成「理化」；標準科目標籤與課程資料都沒有變更。請重新整理學生管理，再查看原本的課程科目；若仍顯示「理化」，請按「問題仍存在」並回覆此單，我們會再調查。這次修正的驗證範圍是本回報中的自然科目顯示，不代表所有自訂科目名稱都已完整支援。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3265",
+              "rev" => "8f69c5019b75393c6dd6ab55b8f33b72b5ad26a8",
+              "deploy" => "36120867844",
             ],
             315 => [
               "reply" => "已用正式環境唯讀資料核對 9/19 10:00–12:00：王俞方在本校的原時段已因請假後調課成功改為「已調課」，本校空位有放出。同時間芝琳老師在另一分校仍有一堂一對一且已滿席的排程，所以行事曆顯示「跨校忙碌」是正確提示（方便辨識老師已被其他分校占滿），不是殘留的幽靈忙碌。這次沒有改排課規則或資料。若您希望跨校滿席改成不顯示或只作弱提示，請回覆說明期望，我們另開產品決策；否則請重新整理行事曆確認。證據：dump run 35298862865。",
@@ -615,17 +659,41 @@ jobs:
             throw new \RuntimeException("required revision is not in production");
           }
           $items = [$targetBugId => $target];
+          // BEGIN existing-notice guard: pure predicate covered by executable regression.
+          $canReuseNotice = static function ($status, $logs, $comments, $cfg) {
+            return $status === "triaged"
+              && $logs === $cfg["expected_log_ids"]
+              && count($comments) > 0
+              && (int)end($comments)["id"] === $cfg["existing_notice_id"]
+              && end($comments)["body"] === $cfg["reply"]
+              && !end($comments)["is_internal_note"];
+          };
+          // END existing-notice guard
           $results = [];
           foreach ($items as $bugId => $cfg) {
-            $bug = \App\Models\BugReport::find($bugId);
+            $reuseNotice = isset($cfg["existing_notice_id"]);
+            if ($reuseNotice) \Illuminate\Support\Facades\DB::beginTransaction();
+            $bug = $reuseNotice
+              ? \App\Models\BugReport::where("id", $bugId)->lockForUpdate()->first()
+              : \App\Models\BugReport::find($bugId);
             if (!$bug) {
+              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "missing"];
               continue;
             }
             $status = (string)$bug->status;
             if (in_array($status, ["resolved", "closed"], true)) {
+              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
               continue;
+            }
+            if ($reuseNotice) {
+              $logs = $bug->statusLogs()->orderBy("id")->pluck("id")->map(fn($id) => (int)$id)->all();
+              $comments = $bug->comments()->orderBy("id")->get(["id", "body", "is_internal_note"])->toArray();
+              if (!$canReuseNotice($status, $logs, $comments, $cfg)) {
+                \Illuminate\Support\Facades\DB::rollBack();
+                throw new \RuntimeException("existing notice or status history changed; no closeout writes");
+              }
             }
             // Walk legal transitions toward resolved
             $path = [];
@@ -641,7 +709,7 @@ jobs:
             foreach ($path as $st) {
               if ($st === "resolved") {
                 // Public reply before resolve (Evidence Contract)
-                $svc::addComment($bugId, $actor, $cfg["reply"], false);
+                if (!$reuseNotice) $svc::addComment($bugId, $actor, $cfg["reply"], false);
                 $opts = ["production_revision" => $cfg["rev"]];
                 if ($cfg["deploy"] !== "") $opts["deploy_run_id"] = $cfg["deploy"];
                 $last = $svc::changeStatus($bugId, $actor, "resolved", "phase-c allowlist; prod_head=".$prodHead, $opts);
@@ -649,6 +717,10 @@ jobs:
                 $last = $svc::changeStatus($bugId, $actor, $st, "phase-c allowlist triage");
               }
               if (!($last["ok"] ?? false)) { $ok = false; break; }
+            }
+            if ($reuseNotice) {
+              if ($ok) \Illuminate\Support\Facades\DB::commit();
+              else \Illuminate\Support\Facades\DB::rollBack();
             }
             $fresh = \App\Models\BugReport::find($bugId);
             $results[] = [

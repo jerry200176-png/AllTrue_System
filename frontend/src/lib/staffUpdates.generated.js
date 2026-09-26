@@ -4,6 +4,290 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-26-tuition-action-width-339",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "帳務操作欄減少遮住金額",
+    "summary": "桌面待處理表格的操作按鈕會換行，減少固定操作欄占用的寬度。",
+    "items": [
+      "原有操作按鈕與順序維持不變；金額欄仍可透過表格橫向捲動查看。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "原有操作按鈕與順序維持不變；金額欄仍可透過表格橫向捲動查看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3268",
+      "in-app:#339",
+      "changelog:2026-09-26:tuition-action-width-339"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-shared-pool-367",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "共用堂數集中在方案摘要",
+    "summary": "共用方案的總堂數、已使用與剩餘堂數集中顯示一次。",
+    "items": [
+      "成員課程保留自己的上課日期，共用堂數不拆成各科餘額。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "成員課程保留自己的上課日期，共用堂數不拆成各科餘額。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3267",
+      "in-app:#367",
+      "changelog:2026-09-26:shared-pool-367"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-settled-label-help-348",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "已結清課程標籤補上說明",
+    "summary": "「舊制無帳單」與「例外待處理」旁提供既有狀態的解釋。",
+    "items": [
+      "可從同一列的繳費明細查看原有紀錄，與帳務負責人核對；款項與帳務操作不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "可從同一列的繳費明細查看原有紀錄，與帳務負責人核對；款項與帳務操作不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:#3213",
+      "in-app:#348",
+      "changelog:2026-09-26:settled-label-help-348"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-payroll-review-controls",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "兼職薪資查閱操作調整",
+    "summary": "排序與老師明細可用鍵盤操作，手機按鈕更容易點選。",
+    "items": [
+      "載入、重試與空白狀態更清楚；計薪、鎖帳、費率及原有權限不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "載入、重試與空白狀態更清楚；計薪、鎖帳、費率及原有權限不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2679",
+      "changelog:2026-09-26:payroll-review-controls"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-nightly-diagnostic-controls",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "堂數診斷可用鍵盤排序",
+    "summary": "夜間堂數診斷的排序與篩選操作更容易使用。",
+    "items": [
+      "排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2656",
+      "changelog:2026-09-26:nightly-diagnostic-controls"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-director-dialog-safety",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "主任帳號管理的操作提示改善",
+    "summary": "手機操作與錯誤提示更清楚，儲存時保留原主任的視窗。",
+    "items": [
+      "儲存分校期間避免切換目標或重複送出，失敗時可在原視窗重試；權限不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "儲存分校期間避免切換目標或重複送出，失敗時可在原視窗重試；權限不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2646",
+      "changelog:2026-09-26:director-dialog-safety"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-calendar-request-safety",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "行事曆請假與加課送出保護",
+    "summary": "送出前確認本次影響，避免重複送出與舊回應影響其他目標。",
+    "items": [
+      "加課檢查保留來源課程並綁定日期、時段與時長；堂數制與月結規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "加課檢查保留來源課程並綁定日期、時段與時長；堂數制與月結規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2677",
+      "changelog:2026-09-26:calendar-request-safety"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-binding-confirmation-close",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "解除成功後關閉確認視窗",
+    "summary": "綁定管理在解除成功後會關閉確認視窗並更新清單。",
+    "items": [
+      "失敗時仍顯示錯誤並可重試；解除流程與權限不變。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "失敗時仍顯示錯誤並可重試；解除流程與權限不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#3280",
+      "changelog:2026-09-26:binding-confirmation-close"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
+    "id": "staff-2026-09-26-assessment-page-clarity",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "學習檢測頁面的手機呈現調整",
+    "summary": "手機卡片集中顯示檢測範圍、日期與狀態。",
+    "items": [
+      "建立與結果視窗調整為共用對話框；檢測處理流程與入口設定維持既有行為。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "建立與結果視窗調整為共用對話框；檢測處理流程與入口設定維持既有行為。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2661",
+      "changelog:2026-09-26:assessment-page-clarity"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-25-tuition-remaining-lessons-362",
     "publishedAt": "2026-09-25",
     "effectiveAt": null,

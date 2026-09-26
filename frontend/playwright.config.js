@@ -20,6 +20,8 @@ export default defineConfig({
   testDir: './e2e',
   // Foundation page evidence uses playwright.ui-foundation.config.js + dedicated Vite mount.
   testIgnore: [
+    // Executed by the required foundation suite against the dedicated Vue fixture server.
+    /assessment-clarity\.spec\.js$/,
     /ui-foundation-pages\.spec\.js$/,
     /ui-foundation-role-matrix\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
@@ -56,6 +58,7 @@ export default defineConfig({
     /branch-management-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in the UI-foundation config.
     /binding-health-clarity\.spec\.js$/,
+    /binding-management-clarity|nightly-reconcile-clarity|director-accounts-clarity|parttime-payroll-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server and local PDF artifacts.
     /truefit-fixture-print\.spec\.js$/,
   ],

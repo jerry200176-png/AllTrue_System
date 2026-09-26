@@ -472,8 +472,11 @@
       :student-name="leaveDisplay.studentName"
       :subject-label="leaveDisplay.subjectLabel"
       :original-slot-label="leaveDisplay.originalSlot"
-      @close="showLeaveModal = false"
-      @submit="submitLeave"
+      :impact-preview="leaveImpactPreview" :preview-ready="leavePreviewReady"
+      :preview-loading="leaveCascadePlanLoading" :preview-error="leavePreviewError"
+      :error="leaveSubmitError" :submitting="leaveSubmitting"
+      @close="closeLeaveModal"
+      @submit="submitLeave" @retry-preview="refreshLeaveCascadePreview"
     />
 
     <!-- ===== PRD 9c058f19：代課 V2 Modal + Toast + 批次請假 ===== -->
@@ -520,8 +523,10 @@
       :teachers="teachers || []"
       :new-end-time="computedExtraEndTime"
       :is-monthly="extraParentPaymentType === 'monthly'"
-      @close="showExtraModal = false"
-      @submit="submitExtraLesson"
+      :check="extraSessionCheck" :checking="extraSessionChecking" :check-error="extraSessionCheckError"
+      :ready="extraSessionReady" :submitting="extraSubmitting"
+      @close="closeExtraModal"
+      @submit="submitExtraLesson" @check="refreshExtraSessionCheck"
       @duration-change="onExtraFormTimeChange"
       @start-time-change="onExtraFormStartTimeChange"
     />
@@ -1048,8 +1053,10 @@ const {
 });
 
 const {
-  showLeaveModal, leaveForm, leaveDisplay, openLeaveModal, submitLeave, onContextLeave,
-  showExtraModal, extraForm, computedExtraEndTime, extraParentPaymentType,
+  showLeaveModal, closeLeaveModal, leaveForm, leaveDisplay, openLeaveModal, submitLeave, onContextLeave,
+  leaveImpactPreview, leavePreviewReady, leaveCascadePlanLoading, leavePreviewError, leaveSubmitError, leaveSubmitting, refreshLeaveCascadePreview,
+  showExtraModal, closeExtraModal, extraForm, computedExtraEndTime, extraParentPaymentType,
+  extraSessionCheck, extraSessionChecking, extraSessionCheckError, extraSessionReady, extraSubmitting, refreshExtraSessionCheck,
   onExtraFormStartTimeChange, onExtraFormTimeChange, openExtraLesson, submitExtraLesson,
 } = useCalendarLeaveExtra({
   supabase,

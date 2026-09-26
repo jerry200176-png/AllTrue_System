@@ -141,9 +141,52 @@ assert.ok(
 );
 assert.match(
   phaseCSource,
-  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
+  /if \(in_array\(\$status, \["resolved", "closed"\], true\)\) \{\s+if \(\$reuseNotice\) \\Illuminate\\Support\\Facades\\DB::rollBack\(\);\s+\$results\[\] = \["id" => \$bugId, "action" => "skip_already", "status" => \$status\];\s+continue;/,
   'Phase-C must skip every already-resolved or closed report',
 );
+
+// Execute the actual PHP predicate against fresh notice/reopen fixtures.
+const guard = phaseCSource.match(/\$canReuseNotice = static function \([\s\S]*?\n          \};/)[0];
+const notice = { id: 808, body: 'already public', is_internal_note: false };
+const cfg = { reply: notice.body, existing_notice_id: notice.id, expected_log_ids: [1094] };
+const cases = [
+  ['triaged', [1094], [notice], cfg, true],
+  ['in_progress', [1094], [notice], cfg, false],
+  ['triaged', [1094, 1200, 1201], [notice], cfg, false],
+  ['triaged', [1094], [notice, { ...notice, id: 809 }], cfg, false],
+  ['triaged', [1094], [{ ...notice, body: 'different' }], cfg, false],
+  ['triaged', [1094], [{ ...notice, is_internal_note: true }], cfg, false],
+  ['triaged', [1094], [], cfg, false],
+];
+const phpCases = Buffer.from(JSON.stringify(cases)).toString('base64');
+const phpGuardTest = `${guard}\n$cases = json_decode(base64_decode("${phpCases}"), true);\nforeach ($cases as $case) { $expected = array_pop($case); if ($canReuseNotice(...$case) !== $expected) { exit(1); } }`;
+execFileSync('php', ['-r', phpGuardTest]);
+// #326 reuses its existing public deployment notice without sending it again.
+const entry326 = phaseCSource.match(/\n            326 => \[([\s\S]*?)\n            \],/);
+assert.ok(entry326, 'single-target #326 closeout metadata must exist');
+const cfg326 = JSON.parse(execFileSync('php', ['-r', `echo json_encode([${entry326[1]}]);`], { encoding: 'utf8' }));
+assert.deepEqual(Object.keys(cfg326).sort(), ['deploy', 'existing_notice_id', 'expected_log_ids', 'reply', 'rev']);
+assert.equal(cfg326.rev, '449931d6bf82d8b77f2a944a9a9fc58ed69e9e9a');
+assert.equal(cfg326.deploy, '35539903948');
+assert.equal(cfg326.existing_notice_id, 791);
+assert.deepEqual(cfg326.expected_log_ids, [1108]);
+assert.ok(cfg326.reply.includes('https://github.com/jerry200176-png/AllTrue_System/issues/3083'));
+const notice326 = { id: 791, body: cfg326.reply, is_internal_note: false };
+const history326 = [{ id: 790, body: 'existing intake', is_internal_note: false }, notice326];
+const cases326 = [
+  ['triaged', [1108], history326, cfg326, true],
+  ['in_progress', [1108], history326, cfg326, false],
+  ['triaged', [1108, 1109], history326, cfg326, false],
+  ['triaged', [1108], [...history326, { id: 792, body: 'still broken', is_internal_note: false }], cfg326, false],
+  ['triaged', [1108], [{ ...notice326, body: 'changed' }], cfg326, false],
+  ['triaged', [1108], [{ ...notice326, is_internal_note: true }], cfg326, false],
+  ['triaged', [1108], [], cfg326, false],
+];
+const encoded326 = Buffer.from(JSON.stringify(cases326)).toString('base64');
+execFileSync('php', ['-r', `${guard}\n$cases = json_decode(base64_decode("${encoded326}"), true);\nforeach ($cases as $case) { $expected = array_pop($case); if ($canReuseNotice(...$case) !== $expected) { exit(1); } }`]);
+assert.match(phaseCSource, /lockForUpdate\(\)->first\(\)/, 'notice reconciliation must lock the report across writes');
+assert.match(phaseCSource, /if \(!\$reuseNotice\) \$svc::addComment/, 'existing notice must not be duplicated');
+assert.match(phaseCSource, /if \(\$ok\).*DB::commit\(\);\s+else .*DB::rollBack\(\);/, 'failed reconciliation must rollback');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alltrue-bug-reply-'));
 const marker = path.join(tempDir, 'executed');
@@ -164,4 +207,22 @@ try {
   fs.rmSync(tempDir, { recursive: true, force: true });
 }
 
+// Immutable per-report closeout metadata must retain exact evidence and bounded claims.
+for (const [id, revision, issue] of [
+  [339, '345b0f4cbf2cbdd23d76ecb350f96c1a7096aafc', 3268],
+  [348, 'ad2f90260d4914611ce24f4778aafd8f4742b101', 3213],
+  [367, '44662351fa33c2052900781f674737f74ef00402', 3267],
+]) {
+  const entry = phaseCSource.match(new RegExp(`\\n            ${id} => \\[([\\s\\S]*?)\\n            \\],`));
+  assert.ok(entry, `scoped Phase-C entry ${id} must exist`);
+  assert.ok(entry[1].includes(`"rev" => "${revision}"`), `${id} requires the exact containing product merge`);
+  assert.match(entry[1], /"deploy" => "[0-9]+"/, `${id} requires a concrete successful deploy run`);
+  assert.ok(entry[1].includes(`issues/${issue}`), `${id} must notify its canonical issue`);
+  assert.ok(entry[1].includes('仍等待您實際確認'), `${id} must not claim reporter acceptance`);
+}
+
 console.log('bug-writeback-workflow.test.mjs: ok');
+
+assert.match(phaseCSource,
+  /329 => \[[\s\S]*?"rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",[\s\S]*?"deploy" => "36218370051",/,
+  'in-app329 closeout requires its exact confirmed containing revision and successful deployment');
