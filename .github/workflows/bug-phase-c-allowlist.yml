@@ -588,6 +588,13 @@ jobs:
               "rev" => "64cc175e48c962be82d4347601ebe53dfc75d9e4",
               "deploy" => "35621758599",
             ],
+            335 => [
+              "reply" => "已修正並上線：列印課表的每日明細現在換日時會另起一頁，頁面標題不會再寫 09/02 卻列出 09/03 的堂次。同一天若堂次較多，仍會正常續頁。我們已通過列印回歸測試並核對正式版本。請重新整理後再列印確認；若仍看到日期不一致，請回覆選的是「本週」或「當月」及不一致的日期，我們會重新調查。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3140",
+              "rev" => "a265831e26cb03e0451a5626f440d3dc17d4bc51",
+              "deploy" => "35951902774",
+              "existing_notice_id" => 808,
+              "expected_log_ids" => [1094],
+            ],
             336 => [
               "reply" => "已修好並上線：列印課表時，班型會顯示「一對一／一對二／一對三／輔導／試聽」等中文，不再顯示 one_on_three 等系統代碼。週／月範圍、老師／教室／學生篩選與主任人工核對用的內容維持不變。請重新整理課表，按「列印課表」確認；若仍看到英文代碼，請回覆這則訊息。這次先完成 #336 的班型顯示，#335 的日期範圍問題仍另行處理。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3140",
               "rev" => "5408348866f491646bdf732c79a46d04a9635873",
@@ -625,17 +632,41 @@ jobs:
             throw new \RuntimeException("required revision is not in production");
           }
           $items = [$targetBugId => $target];
+          // BEGIN existing-notice guard: pure predicate covered by executable regression.
+          $canReuseNotice = static function ($status, $logs, $comments, $cfg) {
+            return $status === "triaged"
+              && $logs === $cfg["expected_log_ids"]
+              && count($comments) > 0
+              && (int)end($comments)["id"] === $cfg["existing_notice_id"]
+              && end($comments)["body"] === $cfg["reply"]
+              && !end($comments)["is_internal_note"];
+          };
+          // END existing-notice guard
           $results = [];
           foreach ($items as $bugId => $cfg) {
-            $bug = \App\Models\BugReport::find($bugId);
+            $reuseNotice = isset($cfg["existing_notice_id"]);
+            if ($reuseNotice) \Illuminate\Support\Facades\DB::beginTransaction();
+            $bug = $reuseNotice
+              ? \App\Models\BugReport::where("id", $bugId)->lockForUpdate()->first()
+              : \App\Models\BugReport::find($bugId);
             if (!$bug) {
+              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "missing"];
               continue;
             }
             $status = (string)$bug->status;
             if (in_array($status, ["resolved", "closed"], true)) {
+              if ($reuseNotice) \Illuminate\Support\Facades\DB::rollBack();
               $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
               continue;
+            }
+            if ($reuseNotice) {
+              $logs = $bug->statusLogs()->orderBy("id")->pluck("id")->map(fn($id) => (int)$id)->all();
+              $comments = $bug->comments()->orderBy("id")->get(["id", "body", "is_internal_note"])->toArray();
+              if (!$canReuseNotice($status, $logs, $comments, $cfg)) {
+                \Illuminate\Support\Facades\DB::rollBack();
+                throw new \RuntimeException("existing notice or status history changed; no closeout writes");
+              }
             }
             // Walk legal transitions toward resolved
             $path = [];
@@ -651,7 +682,7 @@ jobs:
             foreach ($path as $st) {
               if ($st === "resolved") {
                 // Public reply before resolve (Evidence Contract)
-                $svc::addComment($bugId, $actor, $cfg["reply"], false);
+                if (!$reuseNotice) $svc::addComment($bugId, $actor, $cfg["reply"], false);
                 $opts = ["production_revision" => $cfg["rev"]];
                 if ($cfg["deploy"] !== "") $opts["deploy_run_id"] = $cfg["deploy"];
                 $last = $svc::changeStatus($bugId, $actor, "resolved", "phase-c allowlist; prod_head=".$prodHead, $opts);
@@ -659,6 +690,10 @@ jobs:
                 $last = $svc::changeStatus($bugId, $actor, $st, "phase-c allowlist triage");
               }
               if (!($last["ok"] ?? false)) { $ok = false; break; }
+            }
+            if ($reuseNotice) {
+              if ($ok) \Illuminate\Support\Facades\DB::commit();
+              else \Illuminate\Support\Facades\DB::rollBack();
             }
             $fresh = \App\Models\BugReport::find($bugId);
             $results[] = [
