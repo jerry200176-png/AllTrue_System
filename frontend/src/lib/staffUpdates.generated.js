@@ -100,6 +100,37 @@ export const staffUpdates = [
     "version": "2026.09.26"
   },
   {
+    "id": "staff-2026-09-26-payroll-review-controls",
+    "publishedAt": "2026-09-26",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "兼職薪資查閱操作調整",
+    "summary": "排序與老師明細可用鍵盤操作，手機按鈕更容易點選。",
+    "items": [
+      "載入、重試與空白狀態更清楚；計薪、鎖帳、費率及原有權限不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "載入、重試與空白狀態更清楚；計薪、鎖帳、費率及原有權限不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:pr#2679",
+      "changelog:2026-09-26:payroll-review-controls"
+    ],
+    "date": "2026-09-26",
+    "version": "2026.09.26"
+  },
+  {
     "id": "staff-2026-09-26-nightly-diagnostic-controls",
     "publishedAt": "2026-09-26",
     "effectiveAt": null,

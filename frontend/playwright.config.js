@@ -58,7 +58,7 @@ export default defineConfig({
     /branch-management-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in the UI-foundation config.
     /binding-health-clarity\.spec\.js$/,
-    /binding-management-clarity|nightly-reconcile-clarity\.spec\.js$/,
+    /binding-management-clarity|nightly-reconcile-clarity|parttime-payroll-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server and local PDF artifacts.
     /truefit-fixture-print\.spec\.js$/,
   ],
