@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.26",
     "date": "2026-09-26",
     "title": "2026.09.26 草稿（未發布）",
-    "summary": "campus editor target during save；successful unlink confirmation",
+    "summary": "leave and extra request ownership；campus editor target during save",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "leave and extra request ownership",
           "campus editor target during save",
           "successful unlink confirmation",
           "balance belongs to package",
@@ -35,14 +36,14 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "leave and extra request ownership",
       "campus editor target during save",
       "successful unlink confirmation",
       "balance belongs to package",
       "existing settled-course labels",
       "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑",
       "review and reachable controls",
-      "sorting and reachable report controls",
-      "page clarity on mobile"
+      "sorting and reachable report controls"
     ]
   },
   {
