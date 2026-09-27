@@ -9,3 +9,5 @@ parameters:
     # 以便穩定全綠後可從 advisory 升為 backend PR required gate。
 includes:
     - phpstan-baseline.neon
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
