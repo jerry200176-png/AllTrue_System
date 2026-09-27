@@ -21,7 +21,8 @@ class PayrollRun extends Model
         'anomalies' => 'array',
     ];
 
-    public function lines()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\PayrollRunLine, $this> */
+    public function lines(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(PayrollRunLine::class, 'run_id');
     }

@@ -31,7 +31,8 @@ class LearningRecordFeedback extends Model
         'awaiting_dismissed_at' => 'datetime',
     ];
 
-    public function learningRecord()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\LearningRecord, $this> */
+    public function learningRecord(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(LearningRecord::class, 'learning_record_id', 'id');
     }

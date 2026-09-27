@@ -31,7 +31,8 @@ class StudentLineBinding extends Model
         return $query->whereNotNull('verified_at');
     }
 
-    public function student()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Student, $this> */
+    public function student(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Student::class, 'student_id');
     }
