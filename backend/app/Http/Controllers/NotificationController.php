@@ -439,8 +439,8 @@ class NotificationController extends Controller
         $result = [];
         foreach ($query->get() as $row) {
             $result[$row->Type] = [
-                'total'  => (int) $row->total,
-                'urgent' => (int) $row->urgent,
+                'total'  => (int) $row->getAttribute('total'),
+                'urgent' => (int) $row->getAttribute('urgent'),
             ];
         }
         return $result;

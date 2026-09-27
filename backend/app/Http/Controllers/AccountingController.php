@@ -741,10 +741,10 @@ class AccountingController extends Controller
 
         $map = [];
         foreach ($rows as $row) {
-            $id = (int) $row->sid;
+            $id = (int) $row->getAttribute('sid');
             $map[$id] = [
-                'first_live' => $row->first_live ? substr((string) $row->first_live, 0, 10) : null,
-                'first_any' => $row->first_any ? substr((string) $row->first_any, 0, 10) : null,
+                'first_live' => $row->getAttribute('first_live') ? substr((string) $row->getAttribute('first_live'), 0, 10) : null,
+                'first_any' => $row->getAttribute('first_any') ? substr((string) $row->getAttribute('first_any'), 0, 10) : null,
             ];
         }
 

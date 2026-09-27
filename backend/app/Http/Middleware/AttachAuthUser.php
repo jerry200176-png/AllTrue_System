@@ -31,7 +31,7 @@ class AttachAuthUser
                 $authToken = $bearer ? AuthToken::where('token', $bearer)->first() : null;
                 if ($authToken) {
                     // Check token expiration
-                    if ($authToken->expires_at && Carbon::parse($authToken->expires_at)->isPast()) {
+                    if ($authToken->getAttribute('expires_at') && Carbon::parse($authToken->getAttribute('expires_at'))->isPast()) {
                         $authToken->delete();
                         return response()->json(['message' => 'Token expired'], 401);
                     }

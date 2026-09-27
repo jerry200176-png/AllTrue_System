@@ -2410,7 +2410,7 @@ class FinanceController extends Controller
                     'class_type' => $sc->ClassType ?? 'one_on_one',
                     'teacher_id' => (int) $sc->TeacherID,
                     'paid' => (int) ($sc->Paid ?? 0),
-                    'created_at' => $sc->created_at ? $sc->created_at->toDateTimeString() : null,
+                    'created_at' => $sc->getAttribute('created_at') ? $sc->getAttribute('created_at')->toDateTimeString() : null,
                 ];
             })->values();
 
