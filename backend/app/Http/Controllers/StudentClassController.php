@@ -5657,7 +5657,7 @@ class StudentClassController extends Controller
         // Both values are intentionally fresh on each calculation; including
         // either would make an unchanged preview fail confirmation.
         $stateBilling = $billing;
-        if (isset($stateBilling['discount']) && is_array($stateBilling['discount'])) {
+        if (isset($stateBilling['discount'])) {
             unset($stateBilling['discount']['created_at'], $stateBilling['discount']['transaction_id']);
         }
 

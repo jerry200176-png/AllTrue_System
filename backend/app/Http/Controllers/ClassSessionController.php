@@ -830,9 +830,6 @@ class ClassSessionController extends Controller
         }
 
         $schedule = $schedules->first();
-        if (!$schedule instanceof Schedule) {
-            return null;
-        }
 
         return $this->scheduleExceptionSlot($schedule);
     }

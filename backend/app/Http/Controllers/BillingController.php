@@ -381,7 +381,7 @@ class BillingController extends Controller
         $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
         $campus = null;
-        if ($invoice->student && $invoice->student->CampusID) {
+        if ($invoice->student->CampusID) {
             $campus = Campus::find($invoice->student->CampusID);
         }
 
