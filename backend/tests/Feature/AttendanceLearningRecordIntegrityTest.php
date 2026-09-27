@@ -163,11 +163,12 @@ class AttendanceLearningRecordIntegrityTest extends TestCase
         // definitions/indexes; only the temporary legacy fixture omits FKs.
         $lines = array_values(array_filter(explode("\n", $temporaryDefinition),
             static fn (string $line): bool => !str_starts_with(ltrim($line), 'CONSTRAINT ')
+                && !str_starts_with(ltrim($line), 'UNIQUE KEY `learningrecord_classsessionid_unique`')
         ));
         $lines[count($lines) - 2] = rtrim($lines[count($lines) - 2], ',');
+        $this->assertTrue(DB::connection()->getPdo()->inTransaction());
         DB::statement(implode("\n", $lines));
         try {
-            DB::statement('ALTER TABLE LearningRecord DROP INDEX learningrecord_classsessionid_unique');
             foreach ([[$classA, 2], [$classA, 3], [$classB, 4], [$classA, 1]] as $index => [$classId, $activeCount]) {
                 $sessionId = DB::table('ClassSession')->insertGetId([
                     'StudentClassID' => $classId, 'SessionDate' => '2026-08-28',
@@ -195,6 +196,7 @@ class AttendanceLearningRecordIntegrityTest extends TestCase
         } finally {
             DB::statement('DROP TEMPORARY TABLE LearningRecord');
         }
+        $this->assertTrue(DB::connection()->getPdo()->inTransaction());
         $this->assertSame(0, DB::table('LearningRecord')->count());
         $index = DB::selectOne("SHOW INDEX FROM LearningRecord WHERE Key_name = 'learningrecord_classsessionid_unique'");
         $this->assertSame(0, (int) $index->Non_unique);
