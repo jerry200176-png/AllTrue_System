@@ -60,6 +60,7 @@ class AttendanceAdHocSessionTest extends TestCase
         $this->assertDatabaseHas('StudentSingIn', [
             'StudentClassID' => $courseId,
             'StudentID' => $student->id,
+            'Hours' => 2,
         ]);
     }
 

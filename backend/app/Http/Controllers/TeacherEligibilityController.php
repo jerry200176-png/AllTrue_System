@@ -747,7 +747,7 @@ class TeacherEligibilityController extends Controller
             ->map(function ($row) {
                 $hours = null;
                 try {
-                    $hours = Carbon::parse((string) $row->start_time)->diffInMinutes(Carbon::parse((string) $row->end_time)) / 60;
+                    $hours = (int) Carbon::parse((string) $row->start_time)->diffInMinutes(Carbon::parse((string) $row->end_time), true) / 60;
                 } catch (\Throwable) {
                     // Keep null: missing duration must remain reviewable.
                 }
@@ -913,7 +913,7 @@ class TeacherEligibilityController extends Controller
                 $start = Carbon::parse((string) $row->start_time);
                 $end = Carbon::parse((string) $row->end_time);
                 if ($end->gt($start)) {
-                    return $start->diffInMinutes($end) / 60;
+                    return (int) $start->diffInMinutes($end, true) / 60;
                 }
             } catch (\Throwable) {
                 // Fall through to the same documented default as FinanceController.
@@ -1057,7 +1057,7 @@ class TeacherEligibilityController extends Controller
     {
         if (property_exists($row, 'duration_hours') && $row->duration_hours !== null && (float) $row->duration_hours > 0) return (float) $row->duration_hours;
         try {
-            return Carbon::parse((string) $row->start_time)->diffInMinutes(Carbon::parse((string) $row->end_time)) / 60;
+            return (int) Carbon::parse((string) $row->start_time)->diffInMinutes(Carbon::parse((string) $row->end_time), true) / 60;
         } catch (\Throwable) {
             return 0;
         }
@@ -1072,7 +1072,7 @@ class TeacherEligibilityController extends Controller
                 return null;
             }
 
-            return round($start->diffInMinutes($end) / 60, 2);
+            return round((int) $start->diffInMinutes($end, true) / 60, 2);
         } catch (\Throwable) {
             return null;
         }
@@ -1085,7 +1085,7 @@ class TeacherEligibilityController extends Controller
                 $start = Carbon::parse((string) $row->student_sign_in_at);
                 $end = Carbon::parse((string) $row->student_sign_out_at);
                 if ($end->gt($start)) {
-                    return round($start->diffInMinutes($end) / 60, 2);
+                    return round((int) $start->diffInMinutes($end, true) / 60, 2);
                 }
             } catch (\Throwable) {
                 // Fall back to the persisted ClassSession duration below.
