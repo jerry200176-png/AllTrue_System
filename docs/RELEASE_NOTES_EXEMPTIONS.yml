@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-27-outstanding-subject-compatibility
+    changelog_date: "2026-09-27"
+    changelog_title: "fix(finance): restore canonical outstanding subject labels (GitHub #977 / #2833)"
+    reason: 既有財務唯讀 API 的相容修正與框架回歸前置；現行前端未找到該 API 呼叫，且未部署或觀察受影響 production 路徑，不宣布教職員畫面已改善。後續依實際使用與驗證證據評估公告。
+
   - id: silent-2026-09-27-frontend-dependencies-3188
     changelog_date: "2026-09-27"
     changelog_title: "chore(deps): maintain frontend runtime dependencies (PR #3188)"

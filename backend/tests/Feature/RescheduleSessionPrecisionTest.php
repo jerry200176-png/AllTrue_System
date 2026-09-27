@@ -58,6 +58,25 @@ class RescheduleSessionPrecisionTest extends TestCase
         $this->assertSame('17:00', substr((string) $afternoonDestination->start_time, 0, 5));
     }
 
+    public function test_reschedule_preserves_whole_minute_duration_with_seconds(): void
+    {
+        [$token, $courseId, , $afternoon] = $this->seedTwoSameDaySessions();
+        [, $destination] = $this->seedSchedulePair($courseId, '2026-06-01', '14:00', '16:00');
+        $this->postReschedule($token, [
+            'student_class_id' => $courseId,
+            'ensure_schedule_exception' => true,
+            'old_date' => '2026-06-01',
+            'old_start_time' => '14:00',
+            'new_date' => '2026-06-02',
+            'start_time' => '17:00:00',
+            'end_time' => '19:00:45',
+        ])->assertOk();
+        $destination->refresh();
+        $afternoon->refresh();
+        $this->assertSame('19:00:45', (string) $afternoon->EndTime);
+        $this->assertSame(2.0, (float) $destination->duration_hours);
+    }
+
     public function test_old_start_time_mismatch_returns_422(): void
     {
         // FR-004: when old_start_time is provided but doesn't match any session, return 422.
