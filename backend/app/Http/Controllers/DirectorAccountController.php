@@ -57,7 +57,7 @@ class DirectorAccountController extends Controller
         $user->Name = $data['name'];
         $user->PSW = Hash::make($data['password']);
         $user->type = 'U'; // pending until approved
-        $user->phone = null;
+        $user->setAttribute('phone', null);
         $user->save();
 
         UserCampus::create([
