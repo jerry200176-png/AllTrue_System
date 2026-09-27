@@ -27,9 +27,9 @@ class SecurityHeaders
         $response->headers->set('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
 
         // CSP Report-Only：不擋截、僅透過 Sentry 記錄違規（需觀察數週再收緊）
-        $sentryKey    = config('sentry.csp_report_key', env('SENTRY_CSP_REPORT_KEY'));
-        $sentryOrg    = config('sentry.csp_report_org', env('SENTRY_CSP_REPORT_ORG'));
-        $sentryProjId = config('sentry.csp_report_project_id', env('SENTRY_CSP_REPORT_PROJECT_ID'));
+        $sentryKey    = config('sentry.csp_report_key');
+        $sentryOrg    = config('sentry.csp_report_org');
+        $sentryProjId = config('sentry.csp_report_project_id');
         if ($sentryKey && $sentryOrg && $sentryProjId) {
             $reportUri = "https://{$sentryOrg}.ingest.us.sentry.io/api/{$sentryProjId}/security/?sentry_key={$sentryKey}";
             $response->headers->set('Content-Security-Policy-Report-Only',
