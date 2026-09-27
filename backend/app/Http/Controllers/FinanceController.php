@@ -142,12 +142,23 @@ class FinanceController extends Controller
             $query->whereIn('StudentID', $studentIds);
         }
 
-        $classes = $query->with('student')->get()->map(function ($c) {
+        $rows = $query->with('student')->get();
+        $subjectIds = $rows->filter(fn ($course) => $course->getAttribute('Subject') === null || $course->getAttribute('Subject') === '')
+            ->pluck('SubjectID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
+        $subjectNames = empty($subjectIds) ? [] : DB::table('Subject')->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')->all();
+        $missingIds = array_values(array_filter($subjectIds, fn ($id) => !isset($subjectNames[$id])));
+        if (!empty($missingIds)) {
+            $legacyNames = DB::table('BaseData')->where('Name', '課程')->whereIn('id', $missingIds)->pluck('Val', 'id')->all();
+            foreach ($legacyNames as $id => $name) {
+                $subjectNames[$id] = $name;
+            }
+        }
+        $classes = $rows->map(function ($c) use ($subjectNames) {
             return [
                 'student_id'         => $c->StudentID,
                 'student_name'       => $c->student->name ?? 'Unknown',
                 'class_id'           => $c->ID,
-                'subject'            => $c->Subject,
+                'subject'            => $c->displaySubjectName($subjectNames),
                 'remaining_sessions' => (int) ($c->RemainingSessions ?? 0),
                 'paid'               => (bool) $c->Paid,
             ];
@@ -183,6 +194,7 @@ class FinanceController extends Controller
         $teacherNames = TeacherProfileDirectory::names();
 
         $payroll = $records->map(function ($r) use ($teacherNames) {
+            /** @var LearningRecord&object{session_count: int} $r */
             return [
                 'teacher_id'    => $r->TeacherID,
                 'teacher_name'  => $teacherNames[$r->TeacherID] ?? 'Unknown',
@@ -379,7 +391,7 @@ class FinanceController extends Controller
 
         // Fill share_pct = this teacher's weighted hours / month total weighted (same ratio as 科目數含輔導)
         foreach ($result as &$t) {
-            $w = (float) ($t['_weighted_with'] ?? 0);
+            $w = (float) $t['_weighted_with'];
             unset($t['_weighted_with']);
             $t['share_pct'] = $grandWeightedWith > 0
                 ? round(($w / $grandWeightedWith) * 100, 1)
@@ -499,7 +511,7 @@ class FinanceController extends Controller
                 'share_pct',
             ];
             $response['teachers'] = array_values(array_filter(array_map(function ($t) use ($authTeacherId, $redactedFields) {
-                $isSelf = $authTeacherId > 0 && (int) ($t['teacher_id'] ?? 0) === $authTeacherId;
+                $isSelf = $authTeacherId > 0 && (int) $t['teacher_id'] === $authTeacherId;
                 $t['is_self'] = $isSelf;
                 if (!$isSelf) {
                     foreach ($redactedFields as $f) {
@@ -649,7 +661,8 @@ class FinanceController extends Controller
                     $s = \Carbon\Carbon::createFromFormat($fmt, substr($startTime, 0, $subLen));
                     $e = \Carbon\Carbon::createFromFormat($fmt, substr($endTime,   0, $subLen));
                     if ($e > $s) {
-                        return $e->diffInMinutes($s) / 60.0;
+                        // Preserve Carbon 2 absolute, whole-minute duration semantics.
+                        return (int) $e->diffInMinutes($s, true) / 60.0;
                     }
                 } catch (\Exception $ignored) {}
             }
@@ -769,6 +782,7 @@ class FinanceController extends Controller
             + array_sum($pkgSessionTotals);
 
         $totalTuition = $regularRows->sum(function ($c) {
+            /** @var StudentClass&object{monthly_session_count:int|numeric-string} $c */
             $rate = $this->resolveRate($c);
             return $c->monthly_session_count * $rate;
         }) + $monthlyPkgs->sum(function ($pkg) use ($pkgSessionTotals) {
@@ -790,6 +804,7 @@ class FinanceController extends Controller
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($pagedClassIds);
 
         $data = $paged->map(function ($c) use ($paidAtMap) {
+            /** @var StudentClass&object{monthly_session_count:int|numeric-string} $c */
             $rate = $this->resolveRate($c);
             $sessions = (int) $c->monthly_session_count;
             return [
@@ -904,6 +919,7 @@ class FinanceController extends Controller
             // FR-003: Added 課程狀態 column to distinguish active vs stopped courses.
             fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態']);
             foreach ($allRows as $c) {
+                /** @var StudentClass&object{monthly_session_count:int|numeric-string} $c */
                 $rate = $this->resolveRate($c);
                 $sessions = (int) $c->monthly_session_count;
                 $classTypeLabels = [
@@ -1408,7 +1424,7 @@ class FinanceController extends Controller
         return (int) ($record->studentClass->TeacherID ?? 0);
     }
 
-    /** @return \Illuminate\Support\Collection<int, ClassSession> */
+    /** @return \Illuminate\Support\Collection<int, ClassSession&object{TeacherID:int,StudentSignInID:int|numeric-string,AttendanceStatus:string}> */
     private function parttimePayrollRecords(array $campusIds, string $startDate, string $endDate)
     {
         $partTimeTeacherIds = array_flip($this->partTimeTeacherUserIds());
@@ -1663,6 +1679,7 @@ class FinanceController extends Controller
         return array_values($buckets);
     }
 
+    /** @param ClassSession&object{TeacherID:int} $r Payroll projection after teacher resolution. */
     private function buildSessionRow(ClassSession $r, array $ruleCtx = [], array $bonusMap = []): array
     {
         $sc        = $r->studentClass;

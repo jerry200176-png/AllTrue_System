@@ -838,7 +838,7 @@ class BugReportService
                 'bug_id' => $bugId,
                 'resolved_at' => $resolveLog->created_at->toIso8601String(),
                 'retest_requested_at' => $retestRequest->created_at->toIso8601String(),
-                'days_resolved' => $resolveLog->created_at->diffInDays($now),
+                'days_resolved' => (int) $resolveLog->created_at->diffInDays($now, true),
             ];
         }
 

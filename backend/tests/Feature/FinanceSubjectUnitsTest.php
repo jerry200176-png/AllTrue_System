@@ -442,6 +442,45 @@ class FinanceSubjectUnitsTest extends TestCase
         $this->assertSame(2.0, (float) ($teachers[0]['one_on_one_hours'] ?? 0));
     }
 
+    public function test_carbon_upgrade_preserves_positive_fallback_minutes_and_contract_priority(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00', 'Asia/Taipei'));
+        try {
+            $director = $this->createDirector('carbon-hours-director@example.com', [1]);
+            $teacherId = $this->createTeacher(1, 'carbon-hours-teacher@example.com', '相容性老師');
+            $student = $this->createStudent(1, '相容性學生');
+            foreach ([
+                ['2026-07-10', 0, 0, 0, '16:00:00', '18:30:00', 2.5],
+                ['2026-07-11', 90, 0, 0, '16:00:00', '18:30:00', 1.5],
+                ['2026-07-12', 90, 7, 120, '16:00:00', '18:30:00', 2.0],
+                ['2026-07-13', 0, 0, 0, '16:00:00', '18:30:45', 2.5],
+                ['2026-07-14', 0, 0, 0, null, null, 2.0],
+            ] as [$date, $duration, $weekday, $weekdayDuration, $start, $end, $expected]) {
+                $course = $this->createSubjectUnitCourse($student, $teacherId, 'one_on_one');
+                $course->update(['SessionDuration' => $duration, 'week1' => $weekday, 'duration1' => $weekdayDuration]);
+                $session = ClassSession::create([
+                    'StudentClassID' => $course->ID, 'SessionDate' => $date,
+                    'StartTime' => $start ?? '16:00:00', 'EndTime' => $end ?? '18:00:00', 'Status' => 'completed', 'Note' => '',
+                ]);
+                LearningRecord::create([
+                    'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+                    'TeacherID' => $teacherId, 'Content' => '相容性評量', 'Subject' => 'Math',
+                    'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+                    'SessionDate' => $date, 'StartTime' => $start, 'EndTime' => $end,
+                    'SessionDeducted' => true, 'ExcludeFromSubjectCount' => 0,
+                ]);
+                $response = $this->withHeaders([
+                    'Authorization' => 'Bearer '.$director['token'], 'Accept' => 'application/json',
+                ])->getJson("/api/v1/finance/subject-units?branch_id=1&start={$date}&end={$date}")->assertOk();
+                $this->assertCount(1, $response->json('teachers'), $date);
+                $this->assertEqualsWithDelta($expected, (float) $response->json('teachers.0.one_on_one_hours'), 0.0001, $date);
+                $this->assertEqualsWithDelta($expected, (float) $response->json('totals.total_hours'), 0.0001, $date);
+            }
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     /**
      * @param  array<int>  $campusIds
      * @return array{token: string, user_id: int}
