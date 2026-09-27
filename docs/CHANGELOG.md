@@ -1,3 +1,7 @@
+## 2026-09-27 — fix(finance): restore canonical outstanding subject labels (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-27-outstanding-subject-compatibility -->
+- 財務 outstanding 查詢沿用課程的科目名稱與既有備援名稱，避免科目空白，並合併重複科目查詢；名單條件、分校範圍與帳務資料處理不變。
+
 ## 2026-09-27 — chore(deps): maintain frontend runtime dependencies (PR #3188)
 <!-- release-notes: silent_ship=silent-2026-09-27-frontend-dependencies-3188 -->
 - 更新 Vue、Sentry 與既有前端測試／建置套件的相容小版本，維護既有功能；教職員無需額外操作，不新增使用流程。
