@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-27-frontend-dependencies-3188
+    changelog_date: "2026-09-27"
+    changelog_title: "chore(deps): maintain frontend runtime dependencies (PR #3188)"
+    reason: 相容的前端依賴維護，不新增教職員功能、操作或產品語意，無需教職員公告；不宣稱修復尚未驗證的 browser Sentry 問題。
+
   - id: staff-2026-09-21-transaction-discount-322-b-evidence
     changelog_date: "2026-09-21"
     changelog_title: "feat(billing): transaction-level discounts snapshot at creation (in-app #322 / GitHub #3072)"
