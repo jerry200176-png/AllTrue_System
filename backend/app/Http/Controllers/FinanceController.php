@@ -2551,7 +2551,7 @@ class FinanceController extends Controller
             $startDate = $course->StartDate
                 ? \Carbon\Carbon::parse($course->StartDate)
                 : $asOf;
-            $daysOverdue = max(0, $startDate->diffInDays($asOf));
+            $daysOverdue = max(0, (int) $startDate->diffInDays($asOf, true));
 
             if (!isset($students[$studentId])) {
                 $students[$studentId] = [

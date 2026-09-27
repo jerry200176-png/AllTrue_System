@@ -936,7 +936,7 @@ class AttendanceController extends Controller
 
         foreach ($sessions as $session) {
             $startTime = Carbon::parse($session->SessionDate . ' ' . $session->StartTime);
-            $diff = abs($startTime->diffInMinutes($swipeAt));
+            $diff = (int) $startTime->diffInMinutes($swipeAt, true);
 
             if ($diff > $windowMinutes) {
                 continue;
