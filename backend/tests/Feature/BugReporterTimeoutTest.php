@@ -192,6 +192,29 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_timeout_age_keeps_whole_day_contract_and_exact_threshold(): void
+    {
+        $now = Carbon::parse('2026-07-18 12:00:00');
+        [$admin, $reporter] = $this->seedUsers();
+        foreach ([
+            ['future', $now->copy()->addDay(), null],
+            ['under', $now->copy()->subDays(7)->addSecond(), null],
+            ['exact', $now->copy()->subDays(7), 7],
+            ['fraction', $now->copy()->subDays(7)->subHours(12), 7],
+            ['older', $now->copy()->subDays(17)->subHours(12), 17],
+        ] as [$label, $resolvedAt, $expectedDays]) {
+            $bug = $this->makeResolvedBug($admin->id, $reporter->id, $resolvedAt, true);
+            $eligible = collect(BugReportService::listEligibleForReporterTimeout(7, $now))->keyBy('bug_id');
+            if ($expectedDays === null) {
+                $this->assertFalse($eligible->has($bug->id), $label);
+            } else {
+                $this->assertTrue($eligible->has($bug->id), $label);
+                $this->assertSame($expectedDays, $eligible->get($bug->id)['days_resolved'], $label);
+            }
+            $this->assertSame('resolved', $bug->fresh()->status, $label);
+        }
+    }
+
     private function seedUsers(): array
     {
         $user = User::create([

@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\Campus;
+use App\Models\Room;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -124,6 +126,80 @@ class StudentClassResponseContractTest extends TestCase
         $foreignScope->assertOk()
             ->assertJsonPath('total', 0)
             ->assertJsonPath('data', []);
+    }
+
+    public function test_show_projects_room_fields_without_persisting_them_and_rejects_foreign_campus(): void
+    {
+        $campus = Campus::factory()->create(['name' => '課程詳情測試分校']);
+        $foreignCampus = Campus::factory()->create(['name' => '其他測試分校']);
+        [$token] = $this->makeUserToken($campus->id, 'course-show-director@test.com', 'A');
+        [, $teacher] = $this->makeUserToken($campus->id, 'course-show-teacher@test.com', 'T');
+        $room = Room::create(['campus_id' => $campus->id, 'name' => '測試教室', 'capacity' => 3, 'is_active' => true]);
+        $course = $this->makeCourse($teacher, $campus->id, ['room_id' => $room->id]);
+        $before = $course->fresh()->getAttributes();
+
+        $this->authJson('GET', "/api/v1/student-classes/{$course->ID}", $token)
+            ->assertOk()
+            ->assertJsonPath('branch_id', $campus->id)
+            ->assertJsonPath('branch_name', $campus->name)
+            ->assertJsonPath('room_name', $room->name);
+        $this->assertSame($before, $course->fresh()->getAttributes());
+
+        $withoutRoom = $this->makeCourse($teacher, $campus->id);
+        $this->authJson('GET', "/api/v1/student-classes/{$withoutRoom->ID}", $token)
+            ->assertOk()
+            ->assertJsonPath('branch_id', null)
+            ->assertJsonPath('branch_name', null)
+            ->assertJsonPath('room_name', null);
+
+        $foreign = $this->makeCourse($teacher, $foreignCampus->id);
+        $this->authJson('GET', "/api/v1/student-classes/{$foreign->ID}", $token)->assertForbidden();
+    }
+
+    public function test_teacher_show_hides_pricing_snapshot_and_rejects_another_teachers_course(): void
+    {
+        $campus = Campus::factory()->create();
+        [$token, $teacher] = $this->makeUserToken($campus->id, 'course-show-own-teacher@test.com', 'T');
+        [, $otherTeacher] = $this->makeUserToken($campus->id, 'course-show-other-teacher@test.com', 'T');
+        $course = $this->makeCourse($teacher, $campus->id);
+        $snapshot = ['type' => 'NONE', 'discount_amount' => 0];
+        $course->initializePricingSnapshot($snapshot);
+
+        $response = $this->authJson('GET', "/api/v1/student-classes/{$course->ID}", $token)
+            ->assertOk()
+            ->assertJsonPath('ID', $course->ID);
+        $this->assertArrayNotHasKey('pricing_snapshot', $response->json());
+        $this->assertSame($snapshot, $course->fresh()->pricing_snapshot);
+
+        $foreign = $this->makeCourse($otherTeacher, $campus->id);
+        $this->authJson('GET', "/api/v1/student-classes/{$foreign->ID}", $token)->assertForbidden();
+    }
+
+    /** @dataProvider memoPayloadShapes */
+    #[\PHPUnit\Framework\Attributes\DataProvider('memoPayloadShapes')]
+    public function test_memo_update_preserves_object_and_legacy_single_row_json_payloads(bool $wrapped): void
+    {
+        $campus = Campus::factory()->create();
+        [$token] = $this->makeUserToken($campus->id, 'course-json-director@test.com', 'A');
+        [, $teacher] = $this->makeUserToken($campus->id, 'course-json-teacher@test.com', 'T');
+        $course = $this->makeCourse($teacher, $campus->id);
+        $memo = "📅 課程備註\n保持學生與教師不變";
+        $payload = ['StudentID' => $course->StudentID, 'Memo' => $memo];
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", $wrapped ? [$payload] : $payload)
+            ->assertOk()
+            ->assertJsonPath('Memo', $memo);
+
+        $course->refresh();
+        $this->assertSame($memo, $course->Memo);
+        $this->assertSame($teacher->id, (int) $course->TeacherID);
+        $this->assertSame($campus->id, (int) $course->student->CampusID);
+    }
+
+    public static function memoPayloadShapes(): array
+    {
+        return ['object' => [false], 'legacy single row' => [true]];
     }
 
     private function authJson(string $method, string $url, string $token)

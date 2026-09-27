@@ -337,7 +337,8 @@ class StudentClass extends Model
     }
 
     /** Human-readable subject for UI / slips (Subject 欄位或 SubjectID 對照). */
-    public function displaySubjectName(): string
+    /** @param array<int, string|null>|null $subjectNames Optional request-scoped lookup, including legacy BaseData fallback. */
+    public function displaySubjectName(?array $subjectNames = null): string
     {
         $subject = $this->getAttribute('Subject');
         if ($subject !== null && $subject !== '') {
@@ -346,6 +347,10 @@ class StudentClass extends Model
         $id = (int) ($this->SubjectID ?? 0);
         if ($id <= 0) {
             return '課程';
+        }
+
+        if ($subjectNames !== null) {
+            return (string) ($subjectNames[$id] ?? '課程');
         }
 
         return (string) (DB::table('Subject')->where('id', $id)->value('Subject_Name')
