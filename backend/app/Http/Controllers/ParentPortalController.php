@@ -955,9 +955,7 @@ class ParentPortalController extends Controller
                     ? ($workflow->payload['rejection_reason'] ?? null)
                     : null);
 
-                $dateStr = is_string($session->SessionDate)
-                    ? substr($session->SessionDate, 0, 10)
-                    : (is_object($session->SessionDate) ? $session->SessionDate->format('Y-m-d') : '');
+                $dateStr = Carbon::make($session->SessionDate)?->format('Y-m-d') ?? '';
                 $timeStr = $session->StartTime ?: '00:00';
                 $tz = config('app.timezone', 'Asia/Taipei');
                 $sessionStart = Carbon::parse("{$dateStr} {$timeStr}", $tz);
