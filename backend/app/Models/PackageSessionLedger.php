@@ -44,6 +44,6 @@ class PackageSessionLedger extends Model
      */
     public static function netDelta(int $packageId): int
     {
-        return (int) (self::where('package_id', $packageId)->sum('delta') ?? 0);
+        return (int) self::where('package_id', $packageId)->sum('delta');
     }
 }

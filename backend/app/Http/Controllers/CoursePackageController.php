@@ -895,7 +895,7 @@ class CoursePackageController extends Controller
             if ((int) ($sc->Stop ?? 0) !== 0) {
                 $reasons[] = 'course_inactive';
             }
-            if (!empty($currentPackage) && (int) $currentPackage > 0 && (int) $currentPackage !== (int) $pkg->id) {
+            if ((int) ($currentPackage ?? 0) > 0 && (int) $currentPackage !== (int) $pkg->id) {
                 $reasons[] = 'different_package';
             }
 
@@ -916,7 +916,7 @@ class CoursePackageController extends Controller
                 'student_class_id'    => $sc->ID,
                 'subject'             => $sc->displaySubjectName(),
                 'current_package_id'  => $currentPackage,
-                'will_bind'           => empty($reasons) && (empty($currentPackage) || (int) $currentPackage === 0),
+                'will_bind'           => empty($reasons) && ((int) ($currentPackage ?? 0) === 0),
                 'current_remaining'   => (int) ($sc->RemainingSessions ?? 0),
                 'reasons'             => $reasons,
             ];
