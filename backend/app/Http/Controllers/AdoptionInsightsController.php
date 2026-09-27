@@ -140,8 +140,8 @@ class AdoptionInsightsController extends Controller
         usort($tasks, static function (array $a, array $b): int {
             $slaPriority = ['breached' => 0, 'warning' => 1, 'normal' => 2];
             $priority = ['pending' => 0, 'changes_requested' => 1, 'open' => 2, 'acknowledged' => 3, 'candidate_ready' => 4];
-            $sa = $slaPriority[$a['sla_level'] ?? 'normal'] ?? 9;
-            $sb = $slaPriority[$b['sla_level'] ?? 'normal'] ?? 9;
+            $sa = $slaPriority[$a['sla_level']] ?? 9;
+            $sb = $slaPriority[$b['sla_level']] ?? 9;
             if ($sa !== $sb) {
                 return $sa <=> $sb;
             }
