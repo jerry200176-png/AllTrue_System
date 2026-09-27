@@ -161,7 +161,7 @@ class BugReportService
             'author_name' => $c->author?->Name ?? '',
             'body' => $c->body,
             'is_internal_note' => $c->is_internal_note,
-            'created_at' => $c->created_at?->toIso8601String(),
+            'created_at' => $c->created_at->toIso8601String(),
         ])->all();
 
         $statusLogModels = $bug->statusLogs()->orderBy('created_at')->get();

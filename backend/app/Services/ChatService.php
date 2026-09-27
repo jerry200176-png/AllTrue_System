@@ -69,7 +69,7 @@ class ChatService
             'read_count'           => $readCount,
             'is_deleted'           => $isDeleted,
             'deleted_at'           => $m->deleted_at?->toIso8601String(),
-            'created_at'           => $m->created_at?->toIso8601String(),
+            'created_at'           => $m->created_at->toIso8601String(),
         ];
     }
 
@@ -208,7 +208,7 @@ class ChatService
                     'id'          => $lastMsg->id,
                     'body'        => $body,
                     'sender_name' => $lastMsg->sender_name_snapshot,
-                    'created_at'  => $lastMsg->created_at?->toIso8601String(),
+                    'created_at'  => $lastMsg->created_at->toIso8601String(),
                 ];
             }
 
@@ -457,7 +457,7 @@ class ChatService
                 'name'       => $m->user->Name ?? '',
                 'avatar_url' => self::publicAvatarUrl($m->user->AvatarUrl ?? null),
                 'role'       => $m->role,
-                'joined_at'  => $m->joined_at?->toIso8601String(),
+                'joined_at'  => $m->joined_at->toIso8601String(),
             ])
             ->values()
             ->all();
