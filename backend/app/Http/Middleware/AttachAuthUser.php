@@ -49,7 +49,7 @@ class AttachAuthUser
                 if ($user->type !== 'S' && $authorizer->enabled()) {
                     $actingHeader = $request->header((string) config('staff_capabilities.acting_as_header', 'X-Acting-As'));
                     $resolved = $authorizer->resolve($user, is_string($actingHeader) ? $actingHeader : null);
-                    if (($resolved['context_denied'] ?? false) === true) {
+                    if ($resolved['context_denied'] === true) {
                         return response()->json(['message' => 'Forbidden'], 403);
                     }
                     $role = $resolved['role'];

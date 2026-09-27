@@ -31,7 +31,7 @@ class TeacherBranchController extends Controller
     public function store(Request $request)
     {
         $raw = $request->getContent();
-        $data = $raw !== '' && $raw !== null ? json_decode($raw, true) : null;
+        $data = $raw !== '' ? json_decode($raw, true) : null;
         if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
             return response()->json(['message' => 'Invalid JSON'], 400);
         }
