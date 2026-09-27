@@ -62,10 +62,15 @@ class LearningRecordFeedbackController extends Controller
             'content' => $content,
         ]);
 
-        // 家長追問 → touch updated_at 觸發員工未讀；家長自己視為已讀。
+        // 家長追問 → touch updated_at 觸發員工未讀；家長自己視為已讀；清掉先前「不需回覆」標記。
         DB::table($feedback->getTable())
             ->where('id', $feedback->id)
-            ->update(['updated_at' => now(), 'last_read_by_parent_at' => now()]);
+            ->update([
+                'updated_at' => now(),
+                'last_read_by_parent_at' => now(),
+                'awaiting_dismissed_at' => null,
+                'awaiting_dismissed_by' => null,
+            ]);
 
         app(FeedbackPushNotifier::class)->notifyParentReplied($feedback);
 
@@ -109,6 +114,38 @@ class LearningRecordFeedbackController extends Controller
         return response()->json([
             'reply' => $this->formatReply($reply),
             'message' => '已回覆家長',
+        ]);
+    }
+
+    /**
+     * in-app #295: mark "no reply needed" without a public parent-visible reply.
+     * Does not change mark-read semantics (E6); parent follow-up reopens awaiting.
+     */
+    public function dismissAwaiting(Request $request, LearningRecordFeedback $feedback)
+    {
+        $auth = $this->authorizeStaffFeedback($request, $feedback);
+        if ($auth !== true) {
+            return $auth;
+        }
+
+        $authUser = $request->attributes->get('auth_user');
+        $role = (string) $request->attributes->get('auth_role');
+        $readCol = $role === 'teacher' ? 'last_read_by_teacher_at' : 'last_read_by_director_at';
+
+        $feedbackId = (int) $feedback->getKey();
+        DB::table($feedback->getTable())->where('id', $feedbackId)->update([
+            'awaiting_dismissed_at' => now(),
+            'awaiting_dismissed_by' => $authUser ? (int) $authUser->id : null,
+            $readCol => now(),
+        ]);
+
+        $feedback = $feedback->fresh();
+        app(FeedbackPushNotifier::class)->resolveStaffNotification($feedback);
+
+        return response()->json([
+            'message' => '已標記不需回覆',
+            'awaiting_staff_reply' => false,
+            'feedback_id' => $feedbackId,
         ]);
     }
 
@@ -173,6 +210,8 @@ class LearningRecordFeedbackController extends Controller
                 'parent_session_id' => $session->id,
                 'last_read_by_teacher_at' => null,
                 'last_read_by_director_at' => null,
+                'awaiting_dismissed_at' => null,
+                'awaiting_dismissed_by' => null,
                 'updated_at' => now(),
             ]);
             LearningRecordFeedbackReply::create([

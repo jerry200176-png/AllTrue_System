@@ -210,6 +210,8 @@ class ManualSessionBookingService
             'schedule_date' => $date,
             'start_time' => $startHm,
             'end_time' => $end->format('H:i'),
+            'exclude_course_id' => (int) ($course->ID ?? 0) ?: null,
+            'exclude_student_id' => (int) ($course->StudentID ?? 0) ?: null,
         ]);
         if (!empty($scheduleConflicts)) {
             $first = $scheduleConflicts[0];

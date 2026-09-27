@@ -1,35 +1,35 @@
 ╔══════════════════════════════════════════════════════╗
 ║  >>> EXO GOVERNED SESSION                            ║
 ║  protocol: ExoProtocol v1 | mode: work               ║
-║  ticket: TKT-20260908-010013-U115 | actor: agent:codex║
-║  model: gpt-5                                        ║
-║  branch: exo/TKT-20260908-010013-U115                ║
+║  ticket: TKT-20260830-172428-ZZYG | actor: agent:codex║
+║  model: gpt-5.6-sol                                  ║
+║  branch: exo/TKT-20260830-172428-ZZYG                ║
 ╚══════════════════════════════════════════════════════╝
 
 # Exo Agent Session Bootstrap
 
-session_id: SES-20260908010046-424D9861
+session_id: SES-20260920201133-E0A13805
 actor: agent:codex
-vendor: openai
-model: gpt-5
+vendor: codex
+model: gpt-5.6-sol
 mode: work
 context_window_tokens: unknown
-ticket_id: TKT-20260908-010013-U115
-ticket_title: Audit and bounded UX improvements
+ticket_id: TKT-20260830-172428-ZZYG
+ticket_title: Implement undeployed-range queue and risk-based activation
 ticket_status: todo
 ticket_priority: 1
 topic_id: repo:default
 lock_owner: agent:codex
-git_branch: exo/TKT-20260908-010013-U115
-lock_branch: codex/TKT-20260908-010013-U115
-lock_expires_at: 2026-09-08T09:00:46+08:00
+git_branch: exo/TKT-20260830-172428-ZZYG
+lock_branch: exo/TKT-20260830-172428-ZZYG
+lock_expires_at: 2026-09-20T22:11:33+08:00
 
 ## Scope
-- allow: ["docs/research/**", "frontend/**", "frontend/tests/**", "backend/tests/**", ".agent-session/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
+- allow: [".github/workflows/deploy.yml", "scripts/governance/autonomy_gate.py", "scripts/tests/test_deploy_activation_state.py", "docs/governance/RISK_BASED_MERGE_POLICY.md", "docs/OPERATIONS_RUNBOOK.md", "docs/governance/GOVERNANCE_CHANGELOG.md", ".agent-session/manifest.json", ".exo/**", ".exo/cache/**", ".exo/memory/**", ".exo/locks/**", ".exo/tickets/**", ".exo/logs/**"]
 - deny: []
 
 ## Checks
-- ["npm run test:unit", "npm run lint:no-undef", "npm run build", "vendor/bin/phpunit"]
+- ["npm run test:unit", "npm run lint:no-undef", "npm run build"]
 
 ## Git Workflow
 - Before pushing, rebase on base branch: `git pull --rebase origin main`
@@ -38,36 +38,19 @@ lock_expires_at: 2026-09-08T09:00:46+08:00
 
 ## Machine Context
 - cpu_cores: 12
-- load_avg_1m: 1.2
-- ram: 6.1GB available / 7.8GB total
+- load_avg_1m: 0.1
+- ram: 6.8GB available / 7.8GB total
 
 ## Sibling Sessions (other agents working concurrently)
-- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=164.0h)
+- human: ticket=TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ (session=SES-20260901045942-87630ED6, age=471.2h)
 
 ## Start Advisories
-- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: docs/**, frontend/**, .agent-session/**, .exo/cache/**, .exo/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
-- [INFO] Unmerged work on branch exo/TKT-20260907-095040-GNDS (ticket=TKT-20260907-095040-GNDS, actor=human) — Added a director-authenticated, read-only production classroom-management smoke
+- [WARNING] human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ — overlapping scope: docs/**, .agent-session/manifest.json, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**
+- [INFO] Unmerged work on branch exo/TKT-20260912-135926-9P4S (ticket=TKT-20260912-135926-9P4S, actor=human) — Integrated PR #2757 source head 458b6417 onto current main in a fresh governed s
+- [INFO] Unmerged work on branch exo/TKT-20260907-095040-GNDS (ticket=TKT-20260907-095040-GNDS, actor=human) — Added a director-authenticated, read-only production classroom-management smoke 
 - [INFO] Unmerged work on branch exo/INT-20260907-074745-682Y (ticket=INT-20260907-074745-682Y, actor=agent:codex) — Resumed the existing classroom UX delivery, reconciled the latest origin/main wi
 - [INFO] Unmerged work on branch exo/INT-20260907-071544-9K2N (ticket=INT-20260907-071544-9K2N, actor=agent:codex) — Implemented mobile More navigation search, role-scoped filtering, empty-state re
 - [INFO] Unmerged work on branch exo/INT-20260907-063735-M93H (ticket=INT-20260907-063735-M93H, actor=agent:codex) — Implemented role-authorized SPA page history with preserved notification deep-li
-- [INFO] Unmerged work on branch chore/task-onboarding-v1-convergence-20260905 (ticket=TKT-20260905-214801-DDDN, actor=agent:codex) — Implemented and locally verified role onboarding UI journeys; PR 2485 open, remo
-- [INFO] Unmerged work on branch chore/task-transfer-contract-integrity-20260903 (ticket=TKT-20260903-165120-IGVX, actor=agent:codex) — Implemented canonical transfer capacity preflight, orphan schedule exclusion, co
-- [INFO] Unmerged work on branch chore/task-contract-session-date-overlap-20260903-final (ticket=TKT-20260903-155417-MUVF, actor=agent:codex) — Fixed student slot conflict queries to ignore ClassSession and schedule residue 
-- [INFO] Unmerged work on branch chore/task-bug247-dump-refresh-20260831 (ticket=TKT-20260831-080838-ENZB, actor=human) — Refresh paired read-only evidence requests for in-app bug 247 after restoring ma
-- [INFO] Unmerged work on branch chore/task-bug247-evidence-refresh-20260831 (ticket=TKT-20260831-073322-7VYG, actor=human) — Refreshed the paired read-only bug dump requests for in-app bug 247, corrected t
-- [INFO] Unmerged work on branch chore/task-smart-calendar-room-form-a11y-20260831 (ticket=TKT-20260831-015607-L7IS, actor=human) — Added explicit accessible names to the SmartCalendar director room-manager name 
-- [INFO] Unmerged work on branch chore/task-learning-record-selection-a11y-20260831 (ticket=TKT-20260831-013757-EJR0, actor=human) — Added contextual aria-labels to Learning Records director batch-selection contro
-- [INFO] Unmerged work on branch chore/task-attendance-checkbox-a11y-20260831 (ticket=TKT-20260831-012049-ELLK, actor=human) — Named AttendancePage pending-session selection checkboxes with visible student, 
-- [INFO] Unmerged work on branch chore/task-students-import-button-a11y-20260831 (ticket=TKT-20260831-010101-YH5H, actor=agent:codex) — Replaced the non-focusable StudentsList import label with a native labelled butt
-- [INFO] Unmerged work on branch chore/task-subject-units-disclosure-a11y-20260831 (ticket=TKT-20260831-004116-P8Z9, actor=agent:codex) — Split Subject Units disclosure controls into separate native toggles; focused ac
-- [INFO] Unmerged work on branch chore/task-learning-filters-clear-action-a11y-20260830 (ticket=TKT-20260830-204105-QKZI, actor=human) — Split Learning Records filter controls into independent native buttons; focused 
-- [INFO] Unmerged work on branch chore/task-director-makeup-candidate-tabs-a11y-20260830 (ticket=TKT-20260830-202351-RQ41, actor=human) — Connected director parent-leave makeup candidate date tabs to their active label
-- [INFO] Unmerged work on branch chore/task-learning-feedback-preview-a11y-20260830 (ticket=TKT-20260830-200621-56BV, actor=human) — Converted both Learning Records parent-feedback preview chips from non-focusable
-- [INFO] Unmerged work on branch chore/task-calendar-teacher-list-a11y-20260830 (ticket=TKT-20260830-193601-RIQ2, actor=agent:codex) — Clarified SmartCalendar view tabs and panels, calendar filter/date semantics, an
-- [INFO] Unmerged work on branch chore/task-attendance-controls-a11y-20260830 (ticket=TKT-20260830-064903-SYI5, actor=human) — Added explicit accessible names to attendance teacher date, attendance record da
-- [INFO] Unmerged work on branch chore/task-class-session-response-envelope-20260830 (ticket=TKT-20260830-062342-OROW, actor=agent:codex) — Added class-sessions response envelope, pagination, aliases, stable row keys/typ
-- [INFO] Unmerged work on branch chore/task-calendar-247-regression-20260830 (ticket=TKT-20260830-061056-4LIH, actor=agent:codex) — Added exact #247 production-payload regression coverage for mixed-capacity subst
-- [INFO] Unmerged work on branch chore/task-teacher-overdue-partial-failure-20260830 (ticket=TKT-20260830-055433-A4MH, actor=agent:codex) — Fixed TeacherHome partial-failure classification: attendance and weekly projecti
 
 ## Prior Session Memento
 (none)
@@ -133,10 +116,10 @@ After building a reusable utility, REGISTER it:
 - `scripts.check-eslint-unused-baseline.mjs:main`: Run the frontend no-unused-vars per-file baseline ratchet and fail only on newly added debt
 
 ## Current Task
-AllTrue product experience audit; bounded low-risk UX improvements only
+Bounded follow-up: converge stale production approval waits and bound deploy execution without weakening protected activation
 
 ## Lifecycle Commands
-- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260908-010013-U115 --owner agent:codex
+- heartbeat: EXO_ACTOR=agent:codex python3 -m exo.cli lease-heartbeat --ticket-id TKT-20260830-172428-ZZYG --owner agent:codex
 - run worker once: EXO_ACTOR=agent:codex python3 -m exo.cli worker-poll --require-session --limit 50
 - suspend: EXO_ACTOR=agent:codex python3 -m exo.cli session-suspend --reason "<why pausing>"
-- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260908-010013-U115
+- finish: EXO_ACTOR=agent:codex python3 -m exo.cli session-finish --summary "<what changed>" --set-status review --ticket-id TKT-20260830-172428-ZZYG

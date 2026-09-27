@@ -188,6 +188,22 @@ class FeedbackPushNotifierTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_staff_reply_resolves_to_staff_notification(): void
+    {
+        config(['perfflags.feedback_push_enabled' => true]);
+        $campus = $this->campusWithToken();
+        $fb = $this->makeFeedback((int) $campus->id);
+        $this->notifier()->notifyParentSubmitted($fb);
+        $key = "lrfb:{$fb->campus_id}:{$fb->learning_record_id}:to_staff";
+        $this->assertNotNull(Notification::where('SourceKey', $key)->whereNull('ResolvedAt')->first());
+
+        $this->notifier()->notifyStaffReplied($fb);
+
+        $row = Notification::where('SourceKey', $key)->first();
+        $this->assertNotNull($row);
+        $this->assertNotNull($row->ResolvedAt);
+    }
+
     public function test_push_failure_does_not_throw_and_does_not_record(): void
     {
         config(['perfflags.feedback_push_enabled' => true]);

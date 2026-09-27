@@ -7,12 +7,15 @@
       data-guide="branch-management-header"
     >
       <template #actions>
-        <AtButton shape="rect" variant="primary" icon="add" @click="openCreate">新增分校</AtButton>
+        <AtButton shape="rect" variant="primary" icon="add" @click="openCreate($event)">新增分校</AtButton>
       </template>
     </AtPageHeader>
 
-    <div v-if="loading" class="branch-mgmt__loading">載入中…</div>
-    <div v-else-if="error" class="branch-mgmt__error">{{ error }}</div>
+    <div v-if="loading" class="branch-mgmt__loading" role="status" aria-live="polite">載入中…</div>
+    <div v-else-if="error" class="branch-mgmt__error" role="alert" aria-live="assertive">
+      <span>{{ error }}</span>
+      <AtButton shape="rect" variant="secondary" @click="load">重新載入</AtButton>
+    </div>
 
     <div v-else class="branch-table-wrap">
       <table class="branch-table">
@@ -27,20 +30,20 @@
         </thead>
         <tbody>
           <tr v-if="campuses.length === 0">
-            <td colspan="5" class="branch-table__empty">尚無分校資料</td>
+            <td colspan="5" class="branch-table__empty" role="status">尚無分校資料</td>
           </tr>
           <tr v-for="c in campuses" :key="c.id" :class="{ 'branch-table__row--inactive': !c.active }">
-            <td class="branch-table__name">{{ c.name }}</td>
-            <td><code class="branch-code">{{ c.code }}</code></td>
-            <td>{{ c.SwipeWindowMinutes }} 分鐘</td>
-            <td>
+            <td class="branch-table__name" data-label="分校名稱">{{ c.name }}</td>
+            <td data-label="代碼"><code class="branch-code">{{ c.code }}</code></td>
+            <td data-label="刷卡窗口">{{ c.SwipeWindowMinutes }} 分鐘</td>
+            <td data-label="狀態">
               <span :class="['branch-status', c.active ? 'branch-status--active' : 'branch-status--inactive']">
                 {{ c.active ? '啟用' : '停用' }}
               </span>
             </td>
-            <td class="branch-table__actions">
-              <button class="btn-sm btn-edit" @click="openEdit(c)">編輯</button>
-              <button class="btn-sm btn-danger" @click="confirmDelete(c)">刪除</button>
+            <td class="branch-table__actions" data-label="操作">
+              <AtButton shape="rect" size="sm" variant="secondary" @click="openEdit(c, $event)">編輯</AtButton>
+              <AtButton shape="rect" size="sm" variant="danger" @click="confirmDelete(c, $event)">刪除</AtButton>
             </td>
           </tr>
         </tbody>
@@ -48,11 +51,11 @@
     </div>
 
     <!-- Add / Edit Modal -->
-    <div v-if="showModal" class="modal-backdrop" @click.self="closeModal">
-      <div class="modal">
+    <div v-if="showModal" class="modal-backdrop" @click.self="closeModal" @keydown.esc="closeModal">
+      <div ref="modalCard" class="modal" role="dialog" aria-modal="true" aria-labelledby="branch-editor-dialog-title" tabindex="-1">
         <div class="modal__header">
-          <h2 class="modal__title">{{ editTarget ? '編輯分校' : '新增分校' }}</h2>
-          <button class="modal__close" @click="closeModal">✕</button>
+          <h2 id="branch-editor-dialog-title" class="modal__title">{{ editTarget ? '編輯分校' : '新增分校' }}</h2>
+          <AtIconButton icon="close" label="關閉" @click="closeModal" />
         </div>
         <div class="modal__body">
           <form @submit.prevent="submitForm" novalidate>
@@ -94,9 +97,9 @@
                     placeholder="留空則自動產生"
                     autocomplete="off"
                   />
-                  <button type="button" class="btn-token-toggle" @click="showToken = !showToken">
+                  <AtButton type="button" shape="rect" size="sm" variant="ghost" class="btn-token-toggle" @click="showToken = !showToken">
                     {{ showToken ? '隱藏' : '顯示' }}
-                  </button>
+                  </AtButton>
                 </div>
                 <span class="form-hint">刷卡機連線用的授權碼，請妥善保管</span>
               </label>
@@ -123,10 +126,10 @@
             <div v-if="formError" class="form-error">{{ formError }}</div>
 
             <div class="modal__footer">
-              <button type="button" class="btn-ghost" @click="closeModal" :disabled="submitting">取消</button>
-              <button type="submit" class="btn-primary" :disabled="submitting">
+              <AtButton type="button" shape="rect" variant="ghost" @click="closeModal" :disabled="submitting">取消</AtButton>
+              <AtButton type="submit" shape="rect" variant="primary" :loading="submitting">
                 {{ submitting ? '儲存中…' : (editTarget ? '儲存變更' : '建立分校') }}
-              </button>
+              </AtButton>
             </div>
           </form>
         </div>
@@ -134,21 +137,21 @@
     </div>
 
     <!-- Delete Confirm -->
-    <div v-if="deleteTarget" class="modal-backdrop" @click.self="deleteTarget = null">
-      <div class="modal modal--sm">
+    <div v-if="deleteTarget" class="modal-backdrop" @click.self="closeDeleteModal" @keydown.esc="closeDeleteModal">
+      <div ref="deleteModalCard" class="modal modal--sm" role="dialog" aria-modal="true" aria-labelledby="branch-delete-dialog-title" aria-describedby="branch-delete-dialog-warning" tabindex="-1">
         <div class="modal__header">
-          <h2 class="modal__title">確認刪除</h2>
+          <h2 id="branch-delete-dialog-title" class="modal__title">確認刪除</h2>
         </div>
         <div class="modal__body">
           <p>確定要刪除「<strong>{{ deleteTarget.name }}</strong>」嗎？</p>
-          <p class="modal__warning">此操作無法復原。若分校仍有使用者，系統將拒絕刪除。</p>
+          <p id="branch-delete-dialog-warning" class="modal__warning">此操作無法復原。若分校仍有使用者，系統將拒絕刪除。</p>
           <div v-if="deleteError" class="form-error">{{ deleteError }}</div>
         </div>
         <div class="modal__footer">
-          <button class="btn-ghost" @click="deleteTarget = null" :disabled="deleting">取消</button>
-          <button class="btn-danger" @click="executeDelete" :disabled="deleting">
+          <AtButton shape="rect" variant="ghost" @click="closeDeleteModal" :disabled="deleting">取消</AtButton>
+          <AtButton shape="rect" variant="danger" :loading="deleting" @click="executeDelete">
             {{ deleting ? '刪除中…' : '確認刪除' }}
-          </button>
+          </AtButton>
         </div>
       </div>
     </div>
@@ -158,7 +161,8 @@
 <script setup>
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
-import { ref, onMounted } from 'vue';
+import AtIconButton from '../components/design-system/AtIconButton.vue';
+import { ref, nextTick, onMounted } from 'vue';
 
 const props = defineProps({ token: String });
 
@@ -175,6 +179,10 @@ const formError  = ref('');
 const deleteTarget = ref(null);
 const deleting     = ref(false);
 const deleteError  = ref('');
+const modalCard = ref(null);
+const modalTrigger = ref(null);
+const deleteModalCard = ref(null);
+const deleteModalTrigger = ref(null);
 
 const emptyForm = () => ({
   name: '', code: '', active: true,
@@ -194,24 +202,28 @@ const load = async () => {
   error.value   = '';
   try {
     const res = await api('/admin/campuses');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    campuses.value = await res.json();
+    const body = await res.json().catch(() => []);
+    if (!res.ok) throw new Error(body?.message || '分校資料暫時無法載入');
+    campuses.value = Array.isArray(body) ? body : [];
   } catch (e) {
-    error.value = '載入分校清單失敗，請重新整理頁面';
+    campuses.value = [];
+    error.value = e?.message || '分校資料暫時無法載入';
   } finally {
     loading.value = false;
   }
 };
 
-const openCreate = () => {
+const openCreate = (event) => {
   editTarget.value = null;
   form.value       = emptyForm();
   showToken.value  = false;
   formError.value  = '';
+  modalTrigger.value = event?.currentTarget || null;
   showModal.value  = true;
+  nextTick(() => modalCard.value?.focus());
 };
 
-const openEdit = (c) => {
+const openEdit = (c, event) => {
   editTarget.value = c;
   form.value = {
     name: c.name, code: c.code, active: c.active,
@@ -220,12 +232,15 @@ const openEdit = (c) => {
   };
   showToken.value = false;
   formError.value = '';
+  modalTrigger.value = event?.currentTarget || null;
   showModal.value = true;
+  nextTick(() => modalCard.value?.focus());
 };
 
 const closeModal = () => {
   if (submitting.value) return;
   showModal.value = false;
+  nextTick(() => modalTrigger.value?.focus());
 };
 
 const submitForm = async () => {
@@ -242,6 +257,7 @@ const submitForm = async () => {
     const json = await res.json();
     if (!res.ok) { formError.value = json.message || '操作失敗，請再試'; return; }
     showModal.value = false;
+    nextTick(() => modalTrigger.value?.focus());
     await load();
   } catch {
     formError.value = '網路錯誤，請重試';
@@ -250,9 +266,17 @@ const submitForm = async () => {
   }
 };
 
-const confirmDelete = (c) => {
+const confirmDelete = (c, event) => {
   deleteTarget.value = c;
   deleteError.value  = '';
+  deleteModalTrigger.value = event?.currentTarget || null;
+  nextTick(() => deleteModalCard.value?.focus());
+};
+
+const closeDeleteModal = () => {
+  if (deleting.value) return;
+  deleteTarget.value = null;
+  nextTick(() => deleteModalTrigger.value?.focus());
 };
 
 const executeDelete = async () => {
@@ -263,6 +287,7 @@ const executeDelete = async () => {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) { deleteError.value = json.message || '刪除失敗'; return; }
     deleteTarget.value = null;
+    nextTick(() => deleteModalTrigger.value?.focus());
     await load();
   } catch {
     deleteError.value = '網路錯誤';
@@ -486,4 +511,93 @@ onMounted(load);
 }
 .form-advanced__toggle:hover { background: var(--ds-canvas-soft); }
 .form-advanced__body { padding: 12px 14px; }
+.branch-mgmt .at-btn,
+.branch-mgmt .at-icon-btn {
+  min-height: var(--ds-control-height-touch, 44px);
+}
+.branch-mgmt__loading,
+.branch-mgmt__error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-height: 88px;
+}
+.branch-table td { overflow-wrap: anywhere; }
+.branch-table__actions { min-width: 160px; }
+.branch-table__actions .at-btn { flex: 0 0 auto; }
+.branch-mgmt .form-input,
+.branch-mgmt .btn-token-toggle {
+  min-height: var(--ds-control-height-touch, 44px);
+  box-sizing: border-box;
+}
+.branch-mgmt .toggle-wrap,
+.branch-mgmt .toggle-label { min-height: var(--ds-control-height-touch, 44px); }
+.branch-mgmt .btn-token-toggle {
+  border-color: var(--ds-hairline);
+  background: transparent;
+  color: var(--ds-ink);
+}
+.branch-mgmt .modal {
+  max-height: min(90vh, calc(100dvh - 32px));
+}
+.branch-mgmt .modal__footer .at-btn { min-width: 104px; }
+
+@media (max-width: 720px) {
+  .branch-mgmt { padding: 16px; }
+  .branch-mgmt__error { align-items: stretch; flex-direction: column; }
+  .branch-mgmt__error .at-btn { width: 100%; }
+  .branch-table-wrap { overflow: visible; border: 0; }
+  .branch-table,
+  .branch-table tbody,
+  .branch-table tr,
+  .branch-table td { display: block; width: auto; }
+  .branch-table { border: 0; }
+  .branch-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .branch-table tbody tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--ds-hairline);
+    border-radius: var(--ds-radius-lg, 12px);
+    background: var(--ds-canvas);
+    box-shadow: var(--ds-shadow-level-1, 0 2px 8px rgba(0,0,0,.06));
+  }
+  .branch-table td {
+    display: grid;
+    grid-template-columns: 5.25rem minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--ds-hairline);
+  }
+  .branch-table td::before {
+    content: attr(data-label);
+    color: var(--ds-ink-mute);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .branch-table td:last-child { border-bottom: 0; }
+  .branch-table__empty {
+    display: block !important;
+    border-bottom: 0 !important;
+  }
+  .branch-table__empty::before { display: none; }
+  .branch-table__actions {
+    display: grid;
+    grid-template-columns: 5.25rem minmax(0, 1fr);
+    min-width: 0;
+    align-items: center;
+  }
+  .branch-table__actions .at-btn { grid-column: 2; width: 100%; }
+  .branch-mgmt .modal__footer { flex-direction: column-reverse; }
+  .branch-mgmt .modal__footer .at-btn { width: 100%; }
+}
 </style>

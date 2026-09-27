@@ -1,0 +1,41 @@
+id: INT-20260926-142448-FLGS
+title: Run assessment fixture assertions in maintained foundation CI suite
+intent: Run assessment fixture assertions in maintained foundation CI suite
+kind: intent
+brain_dump: UI Smoke36223103563 failed because new assessment-pilot tests ran against
+  live app without dedicated fixture; required foundation CI currently does not collect
+  them. Fix routing, preserve every assertion and keep real smoke coverage.
+boundary: Two Playwright test configs only. No production source/API/data/auth, workflow
+  permissions, gate allowlist, skipped assertions or fixture identity changes.
+success_condition: All three assessment tests collected and executed by existing required
+  foundation suite; default live-smoke excludes only this dedicated fixture in same
+  established pattern; unchanged other smoke coverage.
+risk: medium
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/playwright.config.js
+  - frontend/playwright.ui-foundation.config.js
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 4
+  max_loc_changed: 120
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-26T14:24:48+08:00'
+children:
+- TKT-20260926-142448-H6P9
+resource_profile: default

@@ -71,6 +71,33 @@ class FinanceArAgingTest extends TestCase
         $this->assertEquals(0, $r->json('totals.grand_total'));
     }
 
+    public function test_ar_aging_excludes_tutoring_but_keeps_regular_control(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $student = Student::create([
+            'name' => 'Tutoring AR Control', 'CampusID' => $campus->id, 'ClassID' => 0,
+            'SchoolName' => 'Test School',
+        ]);
+        $base = [
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(45)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+            'RemainingSessions' => 5, 'UsedSessions' => 0, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count',
+        ];
+        StudentClass::create($base + [
+            'ClassType' => '  TUTORING  ', 'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100,
+        ]);
+        StudentClass::create($base + [
+            'ClassType' => 'one_on_one', 'Charge' => 3000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100,
+        ]);
+
+        $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
+        $r->assertOk();
+        $this->assertEquals(3000, $r->json('totals.grand_total'));
+        $this->assertEquals(3000, $r->json('students.0.total'));
+    }
+
     /** @return array{string, Campus} */
     private function seedDirector(): array
     {

@@ -777,8 +777,9 @@ class ParentPortalController extends Controller
             ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap, $packageMap, $studentCampusMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
+                $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
-                $monthlyFee     = $isMonthly ? $this->resolveMonthlyFee($c) : 0;
+                $monthlyFee     = $isMonthly && !$isTutoring ? $this->resolveMonthlyFee($c) : 0;
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
                 $paid           = $this->isClassPaid($c, $paidAtMap);
                 $stopped        = (bool) $c->Stop;
@@ -802,8 +803,9 @@ class ParentPortalController extends Controller
                     'used_sessions'        => $metrics['used'],
                     'is_stopped'           => $stopped,
                     'paid'                 => $paid,
-                    'payment_status'       => $paid ? 'paid' : 'unpaid',
-                    'payment_status_label' => $paid ? '已繳費' : '未繳費',
+                    'is_tutoring'          => $isTutoring,
+                    'payment_status'       => $isTutoring ? 'free' : ($paid ? 'paid' : 'unpaid'),
+                    'payment_status_label' => $isTutoring ? '免費（不適用）' : ($paid ? '已繳費' : '未繳費'),
                     'lifecycle_status'     => $stopped ? 'closed' : 'active',
                     'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
                     // 共用方案池（堂數制）：null 代表非共用方案，前端維持原本 per-course 顯示。
@@ -873,6 +875,13 @@ class ParentPortalController extends Controller
         // Payment alerts — only show courses that still require parent action
         $paymentAlerts = $classes
             ->filter(function ($c) use ($paidAtMap) {
+                // Tutoring is a free, non-receivable course. Keep the course
+                // visible in the portal, but never turn it into a parent
+                // payment action (including legacy casing/NULL rows).
+                if (strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring') {
+                    return false;
+                }
+
                 if ($c->ScheduleMode !== 'count' && ($c->SessionCount ?? 0) <= 0) {
                     return false;
                 }
@@ -1351,8 +1360,12 @@ class ParentPortalController extends Controller
 
         $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
         $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
-        $paidCount = max(0, $totalCourses - $unpaidCount);
-        $paymentStatus = $unpaidCount === 0 ? 'all_clear' : ($unpaidCount >= $totalCourses ? 'all_pending' : 'partial');
+        $freeCount = $perCourse->filter(fn ($course) => (bool) ($course['is_tutoring'] ?? false))->count();
+        $payableCourses = max(0, $totalCourses - $freeCount);
+        $paidCount = max(0, $payableCourses - $unpaidCount);
+        $paymentStatus = $unpaidCount === 0
+            ? 'all_clear'
+            : ($payableCourses > 0 && $unpaidCount >= $payableCourses ? 'all_pending' : 'partial');
         $feedbackProgram = $this->buildParentFeedbackProgramSummary($student);
 
         return [
@@ -1371,6 +1384,7 @@ class ParentPortalController extends Controller
                 'status' => $paymentStatus,
                 'paid_courses' => $paidCount,
                 'unpaid_courses' => $unpaidCount,
+                'free_courses' => $freeCount,
                 'total_courses' => $totalCourses,
             ],
             'feedback_program' => $feedbackProgram,

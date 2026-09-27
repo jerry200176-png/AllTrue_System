@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -213,6 +214,145 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $this->assertStringStartsWith('17:00', (string) $session->StartTime);
             $this->assertStringStartsWith('19:00', (string) $session->EndTime);
         }
+    }
+
+    /**
+     * In-app #324 / GitHub #3074: editing one subject in a shared package must
+     * not require historical pre-scheduling.  A legacy edit payload may omit
+     * first_class_date; that must not make the update rebuild past sessions or
+     * delete an existing future exception belonging to the same subject.
+     */
+    public function test_shared_package_slot_edit_without_first_class_date_keeps_past_and_future_boundaries(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '共用方案改時段測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $package = CoursePackage::create([
+            'student_id' => $student->id,
+            'campus_id' => 1,
+            'name' => '多科共用方案 #324',
+            'billing_mode' => 'count',
+            'total_sessions' => 8,
+            'remaining_sessions' => 8,
+            'used_sessions' => 0,
+            'rate' => 500,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_one',
+            'paid' => false,
+            'stop' => false,
+            'enabled' => true,
+        ]);
+
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 99,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 16,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'ClassType' => 'one_on_one',
+            'week' => 7,
+            'time' => '15:00:00',
+            'PackageID' => $package->id,
+            'PackageTotalSessions' => 8,
+            'PackageName' => $package->name,
+        ]);
+        $sibling = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 2,
+            'TeacherID' => 98,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-03-01',
+            'TotalHours' => 16,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'ClassType' => 'one_on_one',
+            'week' => 1,
+            'time' => '15:00:00',
+            'PackageID' => $package->id,
+            'PackageTotalSessions' => 8,
+            'PackageName' => $package->name,
+        ]);
+
+        $futureRegular = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-04-19',
+            'StartTime' => '15:00:00',
+            'EndTime' => '17:00:00',
+            'Status' => 'scheduled',
+            'IsContractException' => 0,
+        ]);
+        $futureException = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-04-26',
+            'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00',
+            'Status' => 'scheduled',
+            'IsContractException' => 1,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'duration_hours' => 2,
+            'days_of_week' => [7],
+            'start_time' => '13:00',
+            'day_time_slots' => [['day' => 7, 'start_time' => '13:00']],
+            'sessions_purchased' => 8,
+            'payment_type' => 'session',
+            // Deliberately omitted: first_class_date.
+        ]);
+
+        $res->assertOk();
+
+        $this->assertSame(0, ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '<', '2026-04-12')
+            ->count(), 'Editing the slot must not materialize sessions before today');
+        $this->assertDatabaseHas('ClassSession', ['id' => $futureRegular->id]);
+        $this->assertDatabaseHas('ClassSession', [
+            'id' => $futureException->id,
+            'IsContractException' => 1,
+        ]);
+        $this->assertSame('13:00:00', (string) $futureRegular->fresh()->StartTime);
+        $this->assertSame('2026-04-26', (string) $futureException->fresh()->SessionDate);
+        $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->count(),
+            'The edit must update existing future rows without duplicating or rebuilding them');
+        $this->assertSame('13:00:00', (string) $course->fresh()->time);
+        $this->assertSame('15:00:00', (string) $sibling->fresh()->time,
+            'Editing one shared-package subject must not mutate its sibling');
+        $this->assertSame(8, (int) $package->fresh()->remaining_sessions);
+        $this->assertSame(0, (int) $package->fresh()->used_sessions);
     }
 
     /**

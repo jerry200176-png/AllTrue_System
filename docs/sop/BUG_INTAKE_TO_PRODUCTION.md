@@ -8,7 +8,10 @@ for 15 minutes and must be paired with the detail dump for the same bug ID.
 Required sequence:
 
 1. Run `bug-queue-dump.yml` (prefer `-f target_bug_id=<id>`) and download
-   `meta.json` plus `open-bugs.json`.
+   `meta.json` plus `open-bugs.json`. For a full unclosed inventory, also read
+   `resolved-bugs.json`: these rows are engineering-resolved, not necessarily
+   reporter-accepted. Check `meta.counts` against both file lengths; the open
+   file remains capped at 50 and is partial whenever the count exceeds 50.
 2. Confirm the target ID is present exactly once with status `new`, `triaged`,
    or `in_progress`; do not infer the target from `max_id` or an old report.
 3. Run `bug-detail-dump.yml` with that exact `bug_id`.

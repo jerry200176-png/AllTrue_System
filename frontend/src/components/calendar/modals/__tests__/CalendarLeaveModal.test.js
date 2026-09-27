@@ -20,10 +20,24 @@ describe('CalendarLeaveModal', () => {
   });
 
   it('emits close and submit', async () => {
-    const w = mount(CalendarLeaveModal, { props: { show: true, form } });
+    const w = mount(CalendarLeaveModal, { props: { show: true, form, previewReady: true, impactPreview: { title: 'preview', items: ['No mutation before confirmation'] } } });
+    await w.find('input[type=checkbox]').setValue(true);
     await w.find('.ghost').trigger('click');
     expect(w.emitted('close')).toHaveLength(1);
     await w.find('.primary').trigger('click');
     expect(w.emitted('submit')).toHaveLength(1);
+  });
+  it('#2677 pending DOM blocks cancellation, submit and date editing', async () => {
+    const w = mount(CalendarLeaveModal, { props: { show: true, form: { ...form }, submitting: true, previewReady: true, impactPreview: { title: 'preview', summary: 'Synthetic', items: ['No business data'] } } });
+    expect(w.find('input[type=date]').element.disabled).toBe(true);
+    await w.find('.ghost').trigger('click'); await w.find('.primary').trigger('click'); await w.find('.modal-overlay').trigger('click');
+    expect(w.emitted('close')).toBeUndefined(); expect(w.emitted('submit')).toBeUndefined();
+  });
+  it('#2677 confirmation resets when full target or preview readiness changes', async () => {
+    const w = mount(CalendarLeaveModal, { props: { show: true, form: { ...form }, previewReady: true, impactPreview: { title: 'preview', summary: 'Synthetic', items: ['No business data'] } } });
+    await w.find('input[type=checkbox]').setValue(true); expect(w.find('.primary').element.disabled).toBe(false);
+    await w.setProps({ form: { ...form, teacher_id: 6 } }); expect(w.find('.primary').element.disabled).toBe(true);
+    await w.find('input[type=checkbox]').setValue(true); await w.setProps({ previewReady: false }); expect(w.find('.primary').element.disabled).toBe(true);
+    await w.setProps({ previewReady: true }); expect(w.find('input[type=checkbox]').element.checked).toBe(false);
   });
 });

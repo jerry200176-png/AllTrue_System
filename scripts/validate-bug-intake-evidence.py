@@ -14,6 +14,7 @@ OPEN_STATUSES = {"new", "triaged", "in_progress"}
 REQUIRED_DETAIL_KEYS = {
     "attachments", "comments", "status_logs", "reporter_history",
     "reporter_history_comments", "reporter_history_status_logs",
+    "reporter_history_total", "reporter_history_limit", "reporter_history_complete",
 }
 
 
@@ -64,9 +65,20 @@ def main() -> int:
     missing = sorted(REQUIRED_DETAIL_KEYS - detail.keys())
     if missing:
         raise SystemExit(f"detail evidence is missing SOP fields: {', '.join(missing)}")
-    if not any(isinstance(row, dict) and int(row.get("id", -1)) == args.bug_id for row in detail.get("reporter_history") or []):
+    history = detail["reporter_history"]
+    total = detail["reporter_history_total"]
+    limit = detail["reporter_history_limit"]
+    complete = detail["reporter_history_complete"]
+    if not isinstance(history, list) or not isinstance(total, int) or isinstance(total, bool) or total < 1 or not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise SystemExit("reporter history coverage fields are invalid")
+    if complete is not True or total > limit or len(history) != total:
+        raise SystemExit(f"reporter history is incomplete: returned={len(history)} total={total} limit={limit}")
+    history_ids = [row.get("id") for row in history if isinstance(row, dict)]
+    if len(history_ids) != total or any(not isinstance(row_id, int) or isinstance(row_id, bool) for row_id in history_ids) or len(set(history_ids)) != total:
+        raise SystemExit("reporter history contains missing or duplicate rows")
+    if args.bug_id not in history_ids:
         raise SystemExit("reporter history does not include the target bug")
-    print(json.dumps({"ok": True, "bug_id": args.bug_id, "queue_dump_run_id": meta["queue_dump_run_id"], "queue_age_minutes": round(age_minutes, 1), "status": matching_rows[0].get("status"), "attachment_count": len(detail.get("attachments", [])), "reporter_history_count": len(detail.get("reporter_history", []))}, ensure_ascii=False, indent=2))
+    print(json.dumps({"ok": True, "bug_id": args.bug_id, "queue_dump_run_id": meta["queue_dump_run_id"], "queue_age_minutes": round(age_minutes, 1), "status": matching_rows[0].get("status"), "attachment_count": len(detail.get("attachments", [])), "reporter_history_count": total, "reporter_history_complete": True}, ensure_ascii=False, indent=2))
     return 0
 
 

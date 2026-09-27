@@ -1,0 +1,18 @@
+# Used when building infra/daan-staging (context = repo root).
+# Keep backend + staging infra; exclude heavy unrelated trees.
+.git
+frontend
+docs
+operations
+scripts
+playwright-report
+test-results
+**/.venv
+**/node_modules
+**/.agent-session
+infra/daan-staging/runtime
+infra/daan-staging/.env
+backend/vendor
+backend/storage
+backend/bootstrap/cache/*
+!backend/bootstrap/cache/.gitignore

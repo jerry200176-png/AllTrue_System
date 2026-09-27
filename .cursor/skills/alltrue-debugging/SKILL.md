@@ -22,7 +22,7 @@ description: >-
 1. **讀 INDEX** → 定位模組章節 + `AI_REGRESSION_LESSONS` 文末索引表
 2. **認領復發家族**（F1–F6）— `bug-fix-plan.mdc` §B0
 3. **蒐證**（至少 2 個獨立來源）：
-   - production **唯讀** tinker / SQL（⛔ 禁 `php artisan test` on Pi）
+   - 公開 production identity／health，或**已授權**的 dump／probe workflow 輸出（⛔ **禁止 Pi SSH**；禁在 Pi 跑 `php artisan test` / phpunit）
    - GitHub issue / in-app 附件
    - 相關程式路徑 grep
 4. **列 2–3 個根因候選** → 用證據排除至 1 個

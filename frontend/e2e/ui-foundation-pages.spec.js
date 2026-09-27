@@ -65,7 +65,7 @@ function fakeStudents(count, { longName = false } = {}) {
   }));
 }
 
-async function installApiMocks(page, mode, pageName = '') {
+async function installApiMocks(page, mode, pageName = '', authProfile = null, onAuthRequest = null) {
   const hang = mode === 'loading';
   let manualBookingCheckCount = 0;
   let releaseHang;
@@ -78,6 +78,26 @@ async function installApiMocks(page, mode, pageName = '') {
     const p = url.pathname;
     const method = route.request().method();
     const requestedPage = Number(url.searchParams.get('page') || 1);
+
+    if (authProfile && p.endsWith('/me')) {
+      const headers = route.request().headers();
+      const actingAs = headers['x-acting-as'] === 'teacher' ? 'teacher' : 'director';
+      onAuthRequest?.({ actingAs, userId: authProfile.userId });
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: authProfile.userId,
+          name: 'E2E Dual Staff',
+          role: actingAs,
+          acting_as: actingAs,
+          campuses: actingAs === 'teacher' ? [1] : [1, 2],
+          capability_campuses: { director: [1, 2], teacher: [1] },
+          capabilities: authProfile.capabilities,
+          must_change_password: false,
+        }),
+      });
+    }
 
     if (pageName === 'course' && mode === 'booking-race' && method === 'POST' && p.includes('/manual-sessions/check')) {
       manualBookingCheckCount += 1;
@@ -451,6 +471,40 @@ async function installApiMocks(page, mode, pageName = '') {
       });
     }
 
+    if (pageName === 'students' && p.includes('/class-sessions')) {
+      if (mode === 'error') {
+        return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '上課日期暫時無法載入' }) });
+      }
+      if (mode === 'sessions-empty') {
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: [], projected: { by_class: {} } }) });
+      }
+      const materialized = [
+        ...Array.from({ length: 7 }, (_, index) => ({
+          id: 6100 + index,
+          student_class_id: 5001,
+          session_date: `2026-09-${String(index + 1).padStart(2, '0')}`,
+          start_time: '16:00',
+          end_time: '18:00',
+          status: index === 0 ? 'attended' : 'scheduled',
+        })),
+        ...Array.from({ length: 4 }, (_, index) => ({
+          id: 6200 + index,
+          student_class_id: 5002,
+          session_date: `2026-10-${String(index + 1).padStart(2, '0')}`,
+          start_time: '17:00',
+          end_time: '19:00',
+          status: index === 0 ? 'attended' : 'scheduled',
+        })),
+      ];
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: materialized, projected: { by_class: {
+          5003: [{ date: '2026-08-01', start_time: '15:00', end_time: '17:00' }],
+        } } }),
+      });
+    }
+
     if (p.includes('/teachers') || p.includes('/subjects') || p.includes('/rooms') || p.includes('/temp-rfid')) {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
     }
@@ -461,9 +515,14 @@ async function installApiMocks(page, mode, pageName = '') {
   return { releaseHang: () => releaseHang?.() };
 }
 
-async function openPilot(page, { pageName, mode, viewport }) {
+async function openPilot(page, { pageName, mode, viewport, authProfile = null }) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  const mocks = await installApiMocks(page, mode, pageName);
+  const mocks = await installApiMocks(page, mode, pageName, authProfile, authProfile?.onAuthRequest);
+  if (authProfile?.initialActingAs) {
+    await page.addInitScript((actingAs) => {
+      localStorage.setItem('alltrue_acting_as', actingAs);
+    }, authProfile.initialActingAs);
+  }
   await page.goto(`/pilot-mount.html?page=${pageName}&mode=${mode}`);
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1', { timeout: 15_000 });
   return mocks;
@@ -716,6 +775,11 @@ test.describe('UI foundation — real Vue page evidence', () => {
     { name: '1440', width: 1440, height: 900 },
   ]) {
     test(`students course overview selects the next action @${vp.name}`, async ({ page }) => {
+      const sessionRequests = [];
+      page.on('request', (request) => {
+        const url = new URL(request.url());
+        if (url.pathname.endsWith('/class-sessions')) sessionRequests.push(request);
+      });
       fs.mkdirSync(outDir, { recursive: true });
       await openPilot(page, { pageName: 'students', mode: 'normal', viewport: vp });
 
@@ -732,7 +796,9 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(workspace).toBeVisible({ timeout: 10_000 });
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
       await expect(workspace.getByText('先看需要處理的課程')).toBeVisible();
-      await expect(workspace.getByRole('heading', { name: '查看選定課程的完整資料' })).toBeVisible();
+      await expect(workspace.getByRole('heading', { name: '逐筆核對合約與上課日期' })).toBeVisible();
+      await expect.poll(() => sessionRequests.length).toBe(1);
+      expect(new URL(sessionRequests[0].url()).searchParams.get('student_class_ids')).toBe('5001,5002,5003');
       await expect(workspace.locator('.student-course-overview__metric')).toHaveCount(3);
       await expect(workspace.locator('.student-course-overview__metric:nth-child(3) strong')).toHaveText('1');
 
@@ -741,21 +807,29 @@ test.describe('UI foundation — real Vue page evidence', () => {
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toBeVisible();
-      await expect(workspace.locator('.student-course-card__next-step')).toContainText('先處理課程續報');
-      await expect(workspace.getByRole('button', { name: '續報加購' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]')).toContainText('7 堂');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '再顯示 4 堂' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]')).toContainText('4 堂');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '再顯示 1 堂' })).toBeVisible();
+      await workspace.getByRole('button', { name: '全部展開上課日期' }).click();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '收合日期' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '收合日期' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"] .student-course-card__next-step')).toContainText('先處理課程續報');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5002"]').getByRole('button', { name: '續報加購' })).toBeVisible();
 
       const historyToggle = page.locator('tr.course-detail-row').first().locator('.sl-history-toggle');
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'false');
       await historyToggle.click();
       await expect(historyToggle).toHaveAttribute('aria-expanded', 'true');
       await expect(page.locator('tr.course-detail-row').first().locator('.sl-history-body')).toBeVisible();
+      await expect(page.locator('tr.course-detail-row').first().locator('.student-course-dates--history')).toContainText('2026-08-01（週六） 15:00–17:00');
 
       await math.locator('button').click();
       await expect(math.locator('button')).toHaveAttribute('aria-pressed', 'true');
       await expect(english.locator('button')).toHaveAttribute('aria-pressed', 'false');
       await expect(workspace.locator('article.student-course-card[data-course-id="5001"]')).toBeVisible();
-      await expect(workspace.locator('.student-course-card__next-step')).toContainText('課程資料已齊全');
-      await expect(workspace.getByRole('button', { name: '編輯課程' })).toBeVisible();
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"] .student-course-card__next-step')).toContainText('課程資料已齊全');
+      await expect(workspace.locator('article.student-course-card[data-course-id="5001"]').getByRole('button', { name: '編輯課程' })).toBeVisible();
       await expect.poll(() => tableWrap.evaluate((el) => el.scrollLeft)).toBeLessThan(initialScrollLeft + 8);
 
       await page.locator('.students-page').screenshot({
@@ -763,6 +837,28 @@ test.describe('UI foundation — real Vue page evidence', () => {
       });
     });
   }
+
+  test('student active and history dates distinguish load failure from real empty data', async ({ page, context }) => {
+    const openStudentWorkspace = async (targetPage, mode) => {
+      await openPilot(targetPage, { pageName: 'students', mode, viewport: { width: 1440, height: 900 } });
+      await targetPage.locator('tr.student-row').first().press('Enter');
+      const workspace = targetPage.getByTestId('student-course-workspace');
+      await expect(workspace).toBeVisible();
+      await targetPage.locator('.sl-history-toggle').click();
+      await expect(targetPage.locator('.sl-history-body')).toBeVisible();
+      return targetPage;
+    };
+
+    const failedPage = await openStudentWorkspace(page, 'error');
+    await expect(failedPage.locator('.student-course-dates__state--error')).toHaveCount(3);
+    await expect(failedPage.getByText('上課日期暫時無法載入。')).toHaveCount(3);
+    await expect(failedPage.getByText('目前沒有可顯示的上課日期。')).toHaveCount(0);
+
+    const emptyPage = await context.newPage();
+    const emptyResultPage = await openStudentWorkspace(emptyPage, 'sessions-empty');
+    await expect(emptyResultPage.locator('.student-course-dates__state--error')).toHaveCount(0);
+    await expect(emptyResultPage.getByText('目前沒有可顯示的上課日期。')).toHaveCount(3);
+  });
 
   for (const vp of [
     { name: '390', width: 390, height: 844 },
@@ -1147,5 +1243,38 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.getByText('課表異常待處理', { exact: true })).toBeVisible();
     await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary')).toHaveCount(2);
     await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary').first()).not.toHaveAttribute('open', '');
+  });
+
+  test('dual-capability staff keeps one identity while switching scoped work context', async ({ page }) => {
+    const meRequests = [];
+    await openPilot(page, {
+      pageName: 'app',
+      mode: 'normal',
+      viewport: { width: 1440, height: 900 },
+      authProfile: {
+        userId: 9901,
+        capabilities: ['director', 'teacher'],
+        initialActingAs: 'director',
+        onAuthRequest: (request) => meRequests.push(request),
+      },
+    });
+
+    const modeSwitch = page.locator('[data-guide="app-staff-mode-switch"]');
+    await expect(modeSwitch).toBeVisible({ timeout: 15_000 });
+    await expect(modeSwitch.locator('button')).toHaveCount(2);
+    await expect(modeSwitch.locator('button').filter({ hasText: '主任' })).toHaveClass(/active/);
+    expect(meRequests[0]).toEqual({ actingAs: 'director', userId: 9901 });
+
+    await modeSwitch.locator('button').filter({ hasText: '老師' }).click();
+    await expect(page.locator('.user-role').first()).toContainText('老師');
+    await expect.poll(() => meRequests.at(-1)?.actingAs).toBe('teacher');
+    expect(meRequests.every((request) => request.userId === 9901)).toBe(true);
+    await expect(modeSwitch.locator('button').filter({ hasText: '老師' })).toHaveClass(/active/);
+
+    await modeSwitch.locator('button').filter({ hasText: '主任' }).click();
+    await expect(page.locator('.user-role').first()).toContainText('主任');
+    await expect.poll(() => meRequests.at(-1)?.actingAs).toBe('director');
+    expect(meRequests.every((request) => request.userId === 9901)).toBe(true);
+    await expect(modeSwitch.locator('button').filter({ hasText: '主任' })).toHaveClass(/active/);
   });
 });

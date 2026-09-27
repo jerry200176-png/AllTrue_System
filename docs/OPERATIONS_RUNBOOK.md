@@ -46,6 +46,9 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
    ```
 5. **PR merge 後**：`deploy.yml` 依風險分類自動部署，或在同一 run 的
    `production-activation` Environment 等 Founder approval；無需第二次 dispatch。
+   同一個 protected activation queue 只保留最新 exact-main target，較舊的等待 run
+   會自動取消；這不會略過 Founder reviewer。唯一 production executor 另有
+   30 分鐘 runner deadline 與 SSH keepalive，避免斷線造成無界等待。
 6. **驗證**：只以 deploy workflow 的 exact target SHA、`deployment.json`、health、
    critical smoke 與 rollback evidence 判定 `production-verified`；單獨 health
    curl 或 workflow success 均不足。

@@ -106,6 +106,82 @@ class ContractAmendmentTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_partial_amendment_keeps_remaining_sessions_and_active_contract(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $student = $this->student();
+            $course = $this->course($student->id, [
+                'SessionCount' => 4,
+                'RemainingSessions' => 2,
+                'UsedSessions' => 2,
+            ]);
+            for ($i = 1; $i <= 2; $i++) {
+                $this->createClassSession($course->ID, "2026-09-0{$i}", 'attended');
+            }
+            $keepFuture = $this->createClassSession($course->ID, '2026-09-20', 'scheduled');
+            $cancelFuture = $this->createClassSession($course->ID, '2026-09-27', 'scheduled');
+
+            $this->withToken($token)->postJson(
+                "/api/v1/student-classes/{$course->ID}/contract-amendment/preview",
+                ['new_session_count' => 3]
+            )->assertOk()
+                ->assertJsonPath('new_remaining_sessions', 1)
+                ->assertJsonPath('closes_contract', false)
+                ->assertJsonPath('affected_future_scheduled_count', 1);
+
+            $this->withToken($token)->postJson(
+                "/api/v1/student-classes/{$course->ID}/contract-amendment",
+                ['new_session_count' => 3, 'reason' => '調整本期合約總堂數']
+            )->assertOk()
+                ->assertJsonPath('after.SessionCount', 3)
+                ->assertJsonPath('after.RemainingSessions', 1)
+                ->assertJsonPath('after.Stop', 0)
+                ->assertJsonPath('after.closed_reason', null);
+
+            $course->refresh();
+            $this->assertSame(1, (int) $course->RemainingSessions);
+            $this->assertSame(0, (int) $course->Stop);
+            $this->assertNull($course->closed_reason);
+            $this->assertSame('scheduled', ClassSession::find($keepFuture->id)->Status);
+            $this->assertSame('cancelled', ClassSession::find($cancelFuture->id)->Status);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_full_early_close_sets_contract_amended_when_no_remaining(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $student = $this->student();
+            $course = $this->course($student->id, [
+                'SessionCount' => 4,
+                'RemainingSessions' => 2,
+                'UsedSessions' => 2,
+            ]);
+            for ($i = 1; $i <= 2; $i++) {
+                $this->createClassSession($course->ID, "2026-09-0{$i}", 'attended');
+            }
+            $future = $this->createClassSession($course->ID, '2026-09-20', 'scheduled');
+
+            $this->withToken($token)->postJson(
+                "/api/v1/student-classes/{$course->ID}/contract-amendment",
+                ['new_session_count' => 2, 'reason' => '確認提前結束']
+            )->assertOk()
+                ->assertJsonPath('after.RemainingSessions', 0)
+                ->assertJsonPath('after.Stop', 1)
+                ->assertJsonPath('after.closed_reason', 'contract_amended');
+
+            $course->refresh();
+            $this->assertSame('cancelled', ClassSession::find($future->id)->Status);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_cannot_reduce_below_completed_usage_and_does_not_require_target(): void
     {
         [$token] = $this->director();

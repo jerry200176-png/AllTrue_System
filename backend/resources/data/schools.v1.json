@@ -1,0 +1,122 @@
+[
+  {
+    "id": "tpe-daan-jh",
+    "canonical_name": "臺北市立大安國民中學",
+    "municipality": "臺北市",
+    "district": "大安區",
+    "school_code": "313501",
+    "aliases": ["大安國中", "台北市大安國中", "臺北市大安國中"]
+  },
+  {
+    "id": "tpe-renai-jh",
+    "canonical_name": "臺北市立仁愛國民中學",
+    "municipality": "臺北市",
+    "district": "大安區",
+    "school_code": "313503",
+    "aliases": ["仁愛國中", "台北市仁愛國中"]
+  },
+  {
+    "id": "tpe-longmen-jh",
+    "canonical_name": "臺北市立龍門國民中學",
+    "municipality": "臺北市",
+    "district": "大安區",
+    "school_code": "313505",
+    "aliases": ["龍門國中"]
+  },
+  {
+    "id": "tpe-neihu-jh",
+    "canonical_name": "臺北市立內湖國民中學",
+    "municipality": "臺北市",
+    "district": "內湖區",
+    "school_code": "403501",
+    "aliases": ["內湖國中"]
+  },
+  {
+    "id": "tpe-sanmin-jh",
+    "canonical_name": "臺北市立三民國民中學",
+    "municipality": "臺北市",
+    "district": "松山區",
+    "school_code": "403503",
+    "aliases": ["三民國中"]
+  },
+  {
+    "id": "tpe-zhongzheng-jh",
+    "canonical_name": "臺北市立中正國民中學",
+    "municipality": "臺北市",
+    "district": "中正區",
+    "school_code": "350501",
+    "aliases": ["中正國中", "台北市中正國中"]
+  },
+  {
+    "id": "ntp-banqiao-jh",
+    "canonical_name": "新北市立板橋國民中學",
+    "municipality": "新北市",
+    "district": "板橋區",
+    "school_code": "011301",
+    "aliases": ["板橋國中", "新北板橋國中"]
+  },
+  {
+    "id": "ntp-jiangcui-jh",
+    "canonical_name": "新北市立江翠國民中學",
+    "municipality": "新北市",
+    "district": "板橋區",
+    "school_code": "011303",
+    "aliases": ["江翠國中"]
+  },
+  {
+    "id": "tpe-jianguo-sh",
+    "canonical_name": "臺北市立建國高級中學",
+    "municipality": "臺北市",
+    "district": "中正區",
+    "school_code": "330301",
+    "aliases": ["建中", "建國中學", "台北市建國高中"]
+  },
+  {
+    "id": "tpe-zhongshan-girls-sh",
+    "canonical_name": "臺北市立中山女子高級中學",
+    "municipality": "臺北市",
+    "district": "中山區",
+    "school_code": "330302",
+    "aliases": ["中山女高", "中山女中"]
+  },
+  {
+    "id": "tpe-chenggong-sh",
+    "canonical_name": "臺北市立成功高級中學",
+    "municipality": "臺北市",
+    "district": "中正區",
+    "school_code": "330303",
+    "aliases": ["成功高中"]
+  },
+  {
+    "id": "tpe-songshan-sh",
+    "canonical_name": "臺北市立松山高級中學",
+    "municipality": "臺北市",
+    "district": "信義區",
+    "school_code": "330305",
+    "aliases": ["松山高中"]
+  },
+  {
+    "id": "tpe-taida-affiliated-sh",
+    "canonical_name": "國立臺灣大學附屬高級中學",
+    "municipality": "臺北市",
+    "district": "大安區",
+    "school_code": "000301",
+    "aliases": ["台大附中", "臺大附中"]
+  },
+  {
+    "id": "tpe-shilin-es",
+    "canonical_name": "臺北市士林區士林國民小學",
+    "municipality": "臺北市",
+    "district": "士林區",
+    "school_code": "401601",
+    "aliases": ["士林國小"]
+  },
+  {
+    "id": "tpe-daan-es",
+    "canonical_name": "臺北市大安區大安國民小學",
+    "municipality": "臺北市",
+    "district": "大安區",
+    "school_code": "353601",
+    "aliases": ["大安國小"]
+  }
+]

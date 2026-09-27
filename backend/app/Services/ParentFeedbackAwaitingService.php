@@ -52,15 +52,30 @@ class ParentFeedbackAwaitingService
             }
         }
 
+        $awaiting = false;
         if ($parentLatest === null) {
-            return $staffLatest === null;
+            $awaiting = $staffLatest === null;
+        } elseif ($staffLatest === null) {
+            $awaiting = true;
+        } else {
+            $awaiting = $this->compareSortKeys($parentLatest, $staffLatest) > 0;
         }
 
-        if ($staffLatest === null) {
+        if (!$awaiting) {
+            return false;
+        }
+
+        // Explicit staff dismiss (in-app #295) suppresses awaiting until the next parent event.
+        $dismissedAt = $feedback->awaiting_dismissed_at ?? null;
+        if ($dismissedAt === null || $dismissedAt === '') {
             return true;
         }
+        $dismissKey = $this->eventSortKey($dismissedAt, 0);
+        if ($parentLatest === null) {
+            return false;
+        }
 
-        return $this->compareSortKeys($parentLatest, $staffLatest) > 0;
+        return $this->compareSortKeys($parentLatest, $dismissKey) > 0;
     }
 
     /**
@@ -120,6 +135,7 @@ class ParentFeedbackAwaitingService
             throw new \InvalidArgumentException('Invalid feedback id column');
         }
 
+        $tableAlias = $feedbackIdColumn === 'lrf_await.id' ? 'lrf_await' : 'lrf';
         $query->where(function ($outer) use ($feedbackIdColumn) {
             $outer->whereNotExists(function ($noStaff) use ($feedbackIdColumn) {
                 $noStaff->select(DB::raw(1))
@@ -155,6 +171,16 @@ class ParentFeedbackAwaitingService
                         )"
                     );
             });
+        })->where(function ($dismiss) use ($feedbackIdColumn, $tableAlias) {
+            // Dismissed threads stay out of the queue until a newer parent reply.
+            $dismiss->whereNull("{$tableAlias}.awaiting_dismissed_at")
+                ->orWhereExists(function ($newerParent) use ($feedbackIdColumn, $tableAlias) {
+                    $newerParent->select(DB::raw(1))
+                        ->from('learning_record_feedback_replies as r_after_dismiss')
+                        ->whereColumn('r_after_dismiss.feedback_id', $feedbackIdColumn)
+                        ->where('r_after_dismiss.author_role', 'parent')
+                        ->whereColumn('r_after_dismiss.created_at', '>', "{$tableAlias}.awaiting_dismissed_at");
+                });
         });
     }
 

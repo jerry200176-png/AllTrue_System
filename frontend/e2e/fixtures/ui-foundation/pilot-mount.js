@@ -30,6 +30,7 @@ const [{ createApp, h }, styles] = await Promise.all([
 ]);
 
 const pageModules = {
+  app: () => import('../../../src/App.vue'),
   inbox: () => import('../../../src/pages/NotificationsCenter.vue'),
   students: () => import('../../../src/pages/StudentsList.vue'),
   director: () => import('../../../src/pages/DirectorDashboard.vue'),
@@ -51,6 +52,9 @@ const pageModules = {
   chat: () => import('../../../src/pages/ChatPage.vue'),
   'line-integration': () => import('../../../src/pages/LineIntegration.vue'),
   'subject-settings': () => import('../../../src/pages/SubjectSettingsPage.vue'),
+  'branch-management': () => import('../../../src/pages/BranchManagementPage.vue'),
+  'truefit-fixture': () => import('../../../src/pages/TrueFitPaperFixturePage.vue'),
+  'truefit-app': () => import('../../../src/pages/TrueFitApp.vue'),
 };
 const loadPage = pageModules[page] || pageModules.inbox;
 const PageComponent = (await loadPage()).default;
@@ -60,6 +64,12 @@ void styles;
 createApp({
   name: 'UiFoundationPilotMount',
   setup() {
+    if (page === 'app') {
+      return () => h(PageComponent);
+    }
+    if (page === 'truefit-app') {
+      return () => h(PageComponent, { token: 'e2e-foundation-token', branchId: 1 });
+    }
     if (page === 'course-edit') {
       return () => h(PageComponent, {
         modelValue: { class_type: mode === 'paid' ? 'one_on_one' : 'tutoring', rate_per_30min: 1500, rate_unit: 'session', sessions_purchased: 8 },
@@ -138,6 +148,9 @@ createApp({
     }
     if (page === 'subject-settings') {
       return () => h(PageComponent, { branchId: 1, userRole: role });
+    }
+    if (page === 'branch-management') {
+      return () => h(PageComponent, { branchId: 1, token: 'e2e-foundation-token', standalone: mode === 'public', enabled: true });
     }
     if (page === 'chat') {
       return () => h(PageComponent, { branchId: 1, userId: 9001, userRole: 'director' });

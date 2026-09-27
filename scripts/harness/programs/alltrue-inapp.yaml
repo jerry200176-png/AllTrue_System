@@ -1,0 +1,48 @@
+program:
+  program_id: alltrue-inapp
+  name: AllTrue In-app
+  owner: inapp-workstream
+  repository: jerry200176-png/AllTrue_System
+  goal: "Clear bounded in-app bug queue with Phase A/C writeback evidence"
+  canonical_status_source: docs/CHAT_BUG_SYSTEM.md
+  allowed_scope:
+    - frontend/src/**
+    - backend/app/Http/Controllers/**
+    - operations/closeout/**
+    - docs/CHAT_BUG_SYSTEM.md
+  protected_scope:
+    - backend/app/Http/Controllers/Billing*
+    - backend/app/Http/Controllers/Auth*
+    - backend/app/Services/SessionDeduction*
+  current_milestone: "bounded-t0-t1-queue"
+  blockers: []
+  dependencies: []
+  stop_conditions:
+    - cross_campus_leak
+    - production_db_write_from_agent
+    - missing_phase_c_writeback
+  acceptance_contract:
+    - issue_triaged
+    - tests_or_smoke
+    - pr_ci_green
+    - inapp_phase_c_when_required
+
+candidate_tasks:
+  - task_id: INAPP-DOCS-RECONCILE
+    outcome: "Docs/status reconciliation for open in-app queue (low-risk dogfood)"
+    scope:
+      - docs/CHAT_BUG_SYSTEM.md
+      - docs/harness/**
+    non_scope:
+      - production mutation
+      - billing
+    dependencies: []
+    risk_declaration: R0
+    affected_contracts: []
+    affected_paths:
+      - docs/harness/HARNESS_STATUS.md
+    status: READY
+    business_value: 70
+    reversible: true
+    designed_slice: true
+    next_action: "dispatch_when_h7"

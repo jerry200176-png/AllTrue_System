@@ -38,6 +38,7 @@ docs/（權威業務規則）
 
 | 技能 | 檔案 | 優先級 |
 |------|------|--------|
+| **In-app 產品閉環入口** | [`.agents/skills/alltrue-inapp-product-loop/SKILL.md`](../.agents/skills/alltrue-inapp-product-loop/SKILL.md)（`.cursor/skills/alltrue-inapp-product-loop` symlink） | **P0 —「處理意見與建議」** |
 | 除錯分診 | [`.cursor/skills/alltrue-debugging/SKILL.md`](../.cursor/skills/alltrue-debugging/SKILL.md) | P0 |
 | 回歸測試 | [`.cursor/skills/alltrue-testing/SKILL.md`](../.cursor/skills/alltrue-testing/SKILL.md) | P0 |
 | 上線發布 | [`.cursor/skills/alltrue-release/SKILL.md`](../.cursor/skills/alltrue-release/SKILL.md) | P0 |
@@ -61,9 +62,10 @@ docs/（權威業務規則）
 
 | 使用者意圖 | 啟動技能 | 必讀文件 |
 |-----------|---------|---------|
-| Bug 回報 / 行為異常 | `alltrue-debugging` | `AI_REGRESSION_LESSONS` 模組索引 |
+| **處理 in-app 意見與建議** | `alltrue-inapp-product-loop` | `INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1` + `CHAT_BUG_SYSTEM` §3.6–§3.7 |
+| Bug 回報 / 行為異常 | `alltrue-debugging`（或先走 product-loop） | `AI_REGRESSION_LESSONS` 模組索引 |
 | 要改 `backend/` 既有檔 | `alltrue-testing` → DEV | `module-test.mdc`、P0 R1 |
-| PR merge / 上線 | `alltrue-release` | `auto-frontend-deploy.mdc` |
+| PR merge / 上線 | `alltrue-release` | 公開 `version.json`／`deployment.json`；禁 Pi SSH |
 | auth / PII / RFID | `alltrue-security` | `module-security.mdc` |
 | PR 準備 merge | `alltrue-code-review` | FR 對照 + 多校區隔離 |
 | 網站變好看／UI 打磨 | `redesign-existing-projects`（± `design-taste-frontend`） | `RULE_DESIGN_SYSTEM.md`；一次一頁 |
@@ -75,7 +77,7 @@ docs/（權威業務規則）
 | 藉口 | 反駁 |
 |------|------|
 | 「先改一下再補測試」 | P0 R1：CI 未綠禁止改既有 production 檔 |
-| 「deploy 應該成功了」 | 必須 `git rev-parse` + health + version.json |
+| 「deploy 應該成功了」 | 必須公開 `version.json`／`deployment.json` + health（禁 Pi SSH） |
 | 「in-app 先不留言」 | §R53：上線後必回公開留言 |
 | 「production 跑一下 phpunit」 | 事故 C：RefreshDatabase 會清空 DB |
 | 「直接 push main 比較快」 | 事故 A：force push 曾全站 15 分鐘 |

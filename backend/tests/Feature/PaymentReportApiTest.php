@@ -2068,6 +2068,20 @@ class PaymentReportApiTest extends TestCase
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-03-05',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-03-01',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
         $invoice = Invoice::create([
             'StudentID' => $student->id,
             'StudentClassID' => $sc->ID,
@@ -2140,6 +2154,8 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('summary.anomaly_count', 0)
             ->assertJsonPath('invoices.0.id', $invoice->id)
             ->assertJsonPath('invoices.0.invoice_no', 'INV-202604-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.first_session_date', '2026-03-01')
+            ->assertJsonPath('courses.0.first_session_date', '2026-03-01')
             ->assertJsonPath('invoices.0.calculated_applied_amount', 8800)
             ->assertJsonPath('invoices.0.overpaid_amount', 0)
             ->assertJsonPath('invoices.0.payments.0.receipt_no', 'RCPT-202604-' . str_pad((string) $reportA->id, 6, '0', STR_PAD_LEFT))

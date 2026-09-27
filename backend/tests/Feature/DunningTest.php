@@ -15,6 +15,29 @@ class DunningTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_tutoring_courses_never_create_dunning_events(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $student = Student::create([
+            'name' => '免費輔導不催繳', 'CampusID' => $campus->id, 'ClassID' => 0, 'SchoolName' => 'T',
+        ]);
+        foreach (['count', 'date'] as $mode) {
+            StudentClass::create([
+                'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+                'TeacherID' => 1, 'ClassType' => 'tutoring', 'by1' => 1, 'Period' => 4,
+                'StartDate' => now()->subDays(10)->toDateString(), 'TotalHours' => 10,
+                'SessionCount' => 5, 'SessionDuration' => 120, 'RemainingSessions' => 0,
+                'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 0, 'Stop' => 0,
+                'MDate' => now(), 'ScheduleMode' => $mode, 'settlement_day' => $mode === 'date' ? 1 : null,
+            ]);
+        }
+
+        $response = $this->postJson('/api/v1/dunning/trigger', ['campus_id' => $campus->id], $this->bearer($token));
+        $response->assertOk();
+        $events = collect($response->json('events'));
+        $this->assertTrue($events->whereIn('student_class_id', StudentClass::where('StudentID', $student->id)->pluck('ID'))->isEmpty());
+    }
+
     public function test_dunning_rules_returns_all_defined_rules(): void
     {
         [$token] = $this->seedDirector();

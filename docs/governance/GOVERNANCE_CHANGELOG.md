@@ -1,5 +1,11 @@
 # Governance changelog
 
+## 2026-09-21 — Machine-generated PR risk declarations
+
+- Added a pre-merge declaration gate that independently classifies the PR
+  diff, rejects missing/malformed/understated `Risk-Class` or `Autonomy-Tier`,
+  and keeps deploy-time classification independent.
+
 ## 2026-09-10 — Attribute activation effects per merged PR
 
 - Control-plane-only PRs are treated as effective when merged and no longer

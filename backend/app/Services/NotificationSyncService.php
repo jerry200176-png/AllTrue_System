@@ -148,6 +148,9 @@ class NotificationSyncService
             ->with(['student', 'subjectRecord', 'coursePackage'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
+            ->where(function ($q) {
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
+            })
             // Keep tuition notifications focused on unpaid classes only.
             ->where(fn ($q) => $q->effectivelyUnpaid());
 
@@ -212,6 +215,9 @@ class NotificationSyncService
             ->with(['student', 'subjectRecord', 'coursePackage'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
+            ->where(function ($q) {
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
+            })
             ->where(fn ($q) => $q->effectivelyPaid())
             ->where('RemainingSessions', '<=', 2)
             ->where('RemainingSessions', '>', 0); // 僅提醒 1–2 堂（0 堂不列入低堂數推播）

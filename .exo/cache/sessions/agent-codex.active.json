@@ -1,0 +1,167 @@
+{
+  "actor": "agent:codex",
+  "bootstrap_path": ".exo/cache/sessions/agent-codex.bootstrap.md",
+  "concurrent": false,
+  "context_window_tokens": null,
+  "git_branch": "exo/TKT-20260830-172428-ZZYG",
+  "git_head_sha": "231f0db3282cc79142e3b4c1a3a43cb472e25150",
+  "handoff_from": null,
+  "lock": {
+    "created_at": "2026-09-20T20:11:33+08:00",
+    "expires_at": "2026-09-20T22:11:33+08:00",
+    "fencing_token": 12,
+    "heartbeat_at": "2026-09-20T20:11:33+08:00",
+    "lease_expires_at": "2026-09-20T22:11:33+08:00",
+    "owner": "agent:codex",
+    "role": "operator",
+    "ticket_id": "TKT-20260830-172428-ZZYG",
+    "updated_at": "2026-09-20T20:11:33+08:00",
+    "workspace": {
+      "base": "main",
+      "branch": "exo/TKT-20260830-172428-ZZYG"
+    }
+  },
+  "machine_snapshot": {
+    "cpu_count": 12,
+    "load_avg_1m": 0.1,
+    "ram_available_gb": 6.8,
+    "ram_total_gb": 7.8
+  },
+  "mode": "work",
+  "model": "gpt-5.6-sol",
+  "pid": 977625,
+  "pr_check": null,
+  "role": "operator",
+  "session_id": "SES-20260920201133-E0A13805",
+  "start_advisories": [
+    {
+      "detail": {
+        "overlapping_patterns": [
+          "docs/**",
+          ".agent-session/manifest.json",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "sibling_actor": "human",
+        "sibling_branch": "feat/TKT-20260901-045848-UJSJ",
+        "sibling_ticket": "TKT-20260901-045848-UJSJ"
+      },
+      "kind": "scope_conflict",
+      "message": "human working on TKT-20260901-045848-UJSJ on feat/TKT-20260901-045848-UJSJ \u2014 overlapping scope: docs/**, .agent-session/manifest.json, .exo/**, .exo/cache/**, .exo/memory/**, .exo/locks/**, .exo/tickets/**, .exo/logs/**",
+      "severity": "warning"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "exo/TKT-20260912-135926-9P4S",
+        "overlapping_patterns": [
+          "docs/**",
+          ".agent-session/manifest.json",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260912135932-461EEB27",
+        "ticket_id": "TKT-20260912-135926-9P4S"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/TKT-20260912-135926-9P4S (ticket=TKT-20260912-135926-9P4S, actor=human) \u2014 Integrated PR #2757 source head 458b6417 onto current main in a fresh governed s",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "human",
+        "branch": "exo/TKT-20260907-095040-GNDS",
+        "overlapping_patterns": [
+          ".github/workflows/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907095046-E50BB912",
+        "ticket_id": "TKT-20260907-095040-GNDS"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/TKT-20260907-095040-GNDS (ticket=TKT-20260907-095040-GNDS, actor=human) \u2014 Added a director-authenticated, read-only production classroom-management smoke ",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "exo/INT-20260907-074745-682Y",
+        "overlapping_patterns": [
+          "docs/**",
+          ".agent-session/manifest.json",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907090908-213D7FBF",
+        "ticket_id": "INT-20260907-074745-682Y"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/INT-20260907-074745-682Y (ticket=INT-20260907-074745-682Y, actor=agent:codex) \u2014 Resumed the existing classroom UX delivery, reconciled the latest origin/main wi",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "exo/INT-20260907-071544-9K2N",
+        "overlapping_patterns": [
+          "docs/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907071549-7D208BD9",
+        "ticket_id": "INT-20260907-071544-9K2N"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/INT-20260907-071544-9K2N (ticket=INT-20260907-071544-9K2N, actor=agent:codex) \u2014 Implemented mobile More navigation search, role-scoped filtering, empty-state re",
+      "severity": "info"
+    },
+    {
+      "detail": {
+        "actor": "agent:codex",
+        "branch": "exo/INT-20260907-063735-M93H",
+        "overlapping_patterns": [
+          "docs/**",
+          ".exo/**",
+          ".exo/cache/**",
+          ".exo/memory/**",
+          ".exo/locks/**",
+          ".exo/tickets/**",
+          ".exo/logs/**"
+        ],
+        "session_id": "SES-20260907063741-C315A7A5",
+        "ticket_id": "INT-20260907-063735-M93H"
+      },
+      "kind": "unmerged_work",
+      "message": "Unmerged work on branch exo/INT-20260907-063735-M93H (ticket=INT-20260907-063735-M93H, actor=agent:codex) \u2014 Implemented role-authorized SPA page history with preserved notification deep-li",
+      "severity": "info"
+    }
+  ],
+  "started_at": "2026-09-20T20:11:33+08:00",
+  "status": "active",
+  "task": "Bounded follow-up: converge stale production approval waits and bound deploy execution without weakening protected activation",
+  "ticket_id": "TKT-20260830-172428-ZZYG",
+  "topic_id": "repo:default",
+  "vendor": "codex",
+  "writing_session": null
+}

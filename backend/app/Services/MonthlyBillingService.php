@@ -20,6 +20,10 @@ class MonthlyBillingService
     /** @var list<string> */
     private const BILLABLE_STATUSES = ['attended', 'completed', 'late'];
 
+    public function __construct(private StudentClassPricingService $pricing)
+    {
+    }
+
     /**
      * @return array{
      *   charge:int,
@@ -84,8 +88,10 @@ class MonthlyBillingService
             ];
         }
 
-        $rate = (float) ($course->getAttribute('Rate') ?? 0);
-        if ($rate <= 0) {
+        $pricingRows = $sessions->mapWithKeys(function (ClassSession $session) use ($course): array {
+            return [$session->getKey() => $this->pricing->forDate($course, (string) $session->SessionDate)];
+        });
+        if ($pricingRows->every(fn (array $pricing): bool => $pricing['rate'] <= 0)) {
             return [
                 'charge' => $storedCharge,
                 'period_sessions' => $sessions->count(),
@@ -95,26 +101,24 @@ class MonthlyBillingService
             ];
         }
 
-        $rateUnit = strtolower(trim((string) ($course->getAttribute('rate_unit') ?? 'session')));
-        if (!in_array($rateUnit, ['session', 'hour'], true)) {
-            $rateUnit = 'session';
-        }
+        $rateUnits = $pricingRows->pluck('rate_unit')->unique()->values();
+        $rateUnit = $rateUnits->count() === 1 ? (string) $rateUnits->first() : 'session';
 
         if ($rateUnit === 'session') {
-            $charge = (int) round($rate * $sessions->count());
+            $charge = (int) $sessions->sum(function (ClassSession $session) use ($pricingRows): int {
+                return (int) $pricingRows->get($session->getKey())['rate'];
+            });
         } else {
-            $totalHours = 0.0;
-            foreach ($sessions as $session) {
-                if ($session->session_charge !== null) {
-                    $totalHours += (float) $session->session_charge / $rate;
-                    continue;
+            $charge = (int) round($sessions->sum(function (ClassSession $session) use ($pricingRows): float {
+                $pricing = $pricingRows->get($session->getKey());
+                if ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null) {
+                    return (float) $session->session_charge;
                 }
 
                 $start = self::minutes((string) ($session->StartTime ?? ''));
                 $end = self::minutes((string) ($session->EndTime ?? ''));
-                $totalHours += max(0, $end - $start) / 60.0;
-            }
-            $charge = (int) round($rate * $totalHours);
+                return (max(0, $end - $start) / 60.0) * (float) $pricing['rate'];
+            }));
         }
 
         return [

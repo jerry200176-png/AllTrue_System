@@ -26,12 +26,16 @@
           <h3>檢測清單</h3>
           <p class="muted">目前分校：{{ branchId }}</p>
         </div>
-        <button class="ghost" type="button" :disabled="loading" @click="loadAll">重新整理</button>
+        <AtButton shape="rect" variant="ghost" icon="refresh" :loading="loading" @click="loadAll">重新整理</AtButton>
       </div>
-      <div v-if="loading" class="assessment-empty">載入中…</div>
-      <div v-else-if="error" class="assessment-error" role="alert">{{ error }} <button type="button" class="ghost small" @click="loadAll">重試</button></div>
-      <div v-else-if="!assessments.length" class="assessment-empty">目前還沒有檢測。先建立一份基準檢測。</div>
-      <div v-else class="assessment-table-wrap">
+      <AtSkeleton v-if="loading" rows="4" />
+      <AtInlineAlert v-else-if="error" tone="danger" title="無法載入檢測">
+        <p>{{ error }}</p>
+        <template #action><AtButton shape="rect" size="sm" variant="ghost" @click="loadAll">重試</AtButton></template>
+      </AtInlineAlert>
+      <AtEmpty v-else-if="!assessments.length" icon="fact_check" title="目前還沒有檢測" description="先建立一份基準檢測，再發布後登錄學生結果。" />
+      <template v-else>
+      <div class="assessment-table-wrap assessment-desktop-table">
         <table class="assessment-table">
           <thead><tr><th>檢測</th><th>範圍</th><th>日期</th><th>狀態</th><th>結果</th><th>操作</th></tr></thead>
           <tbody>
@@ -42,24 +46,42 @@
               <td><span :class="['status-pill', `status-${assessment.status}`]">{{ statusLabel(assessment.status) }}</span></td>
               <td>{{ assessment.result_count || 0 }}</td>
               <td class="assessment-actions">
-                <button class="ghost small" type="button" @click="openAssessment(assessment)">結果</button>
-                <button v-if="assessment.status === 'draft'" class="primary small" type="button" @click="publish(assessment)">發布</button>
-                <button v-if="assessment.status === 'published' && isDirector" class="ghost small" type="button" @click="closeAssessment(assessment)">關閉</button>
+                <AtButton shape="rect" size="sm" variant="ghost" @click="openAssessment(assessment)">結果</AtButton>
+                <AtButton v-if="assessment.status === 'draft'" shape="rect" size="sm" variant="primary" @click="publish(assessment)">發布</AtButton>
+                <AtButton v-if="assessment.status === 'published' && isDirector" shape="rect" size="sm" variant="ghost" @click="closeAssessment(assessment)">關閉</AtButton>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+      <div class="assessment-mobile-list" aria-label="檢測清單">
+        <article v-for="assessment in assessments" :key="assessment.id" class="assessment-mobile-card">
+          <div class="assessment-mobile-card__head">
+            <div><strong>{{ assessment.title }}</strong><small>{{ assessment.assessment_type }}</small></div>
+            <span :class="['status-pill', `status-${assessment.status}`]">{{ statusLabel(assessment.status) }}</span>
+          </div>
+          <dl class="assessment-mobile-details">
+            <div><dt>範圍</dt><dd>{{ assessment.student_name || '分校共用' }}</dd></div>
+            <div><dt>日期</dt><dd>{{ assessment.scheduled_for || '未設定' }}</dd></div>
+            <div><dt>結果</dt><dd>{{ assessment.result_count || 0 }} 筆</dd></div>
+          </dl>
+          <div class="assessment-mobile-actions">
+            <AtButton block shape="rect" variant="ghost" @click="openAssessment(assessment)">查看結果</AtButton>
+            <AtButton v-if="assessment.status === 'draft'" block shape="rect" variant="primary" @click="publish(assessment)">發布</AtButton>
+            <AtButton v-if="assessment.status === 'published' && isDirector" block shape="rect" variant="ghost" @click="closeAssessment(assessment)">關閉</AtButton>
+          </div>
+        </article>
+      </div>
+      </template>
     </div>
 
-    <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
-      <div
-        class="modal assessment-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="assessment-create-title"
-      >
-        <h3 id="assessment-create-title">建立學習檢測</h3>
+    <AtDialog
+      :open="showCreate"
+      title="建立學習檢測"
+      title-id="assessment-create-title"
+      panel-class="assessment-dialog"
+      @close="showCreate = false"
+    >
         <p class="muted">先建立檢測定義，再發布後登錄學生結果。</p>
         <label>檢測名稱<input v-model.trim="createForm.title" maxlength="120" placeholder="例如：英文單字基準檢測" /></label>
         <label>課程範圍
@@ -75,43 +97,46 @@
         </div>
         <label>說明<textarea v-model.trim="createForm.description" maxlength="10000" rows="3" placeholder="記錄檢測範圍或教學目的（選填）" /></label>
         <p v-if="formError" class="assessment-error">{{ formError }}</p>
-        <div class="modal-actions"><button type="button" class="ghost" @click="showCreate = false">取消</button><button type="button" class="primary" :disabled="saving || !createForm.title" @click="createAssessment">{{ saving ? '建立中…' : '建立' }}</button></div>
-      </div>
-    </div>
+        <template #actions>
+          <AtButton shape="rect" variant="ghost" :disabled="saving" @click="showCreate = false">取消</AtButton>
+          <AtButton shape="rect" variant="primary" :loading="saving" :disabled="!createForm.title" @click="createAssessment">建立</AtButton>
+        </template>
+    </AtDialog>
 
-    <div v-if="selectedAssessment" class="modal-overlay" @click.self="selectedAssessment = null">
-      <div
-        class="modal assessment-modal assessment-result-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="assessment-result-title"
-      >
-        <div class="assessment-modal-head"><div><h3 id="assessment-result-title">{{ selectedAssessment.title }}</h3><p class="muted">滿分 {{ selectedAssessment.max_score }} · {{ statusLabel(selectedAssessment.status) }}</p></div><button type="button" class="ghost" @click="selectedAssessment = null">關閉</button></div>
+    <AtDialog
+      :open="Boolean(selectedAssessment)"
+      :title="selectedAssessment?.title || '檢測結果'"
+      title-id="assessment-result-title"
+      size="xl"
+      panel-class="assessment-dialog assessment-result-dialog"
+      @close="selectedAssessment = null"
+    >
+        <p v-if="selectedAssessment" class="muted assessment-result-meta">滿分 {{ selectedAssessment.max_score }} · {{ statusLabel(selectedAssessment.status) }}</p>
         <div v-if="resultsLoading" class="assessment-empty">結果載入中…</div>
         <template v-else>
           <section v-if="selectedAssessment.status === 'draft'" class="question-builder">
-            <div class="assessment-modal-head"><div><h4>配置檢測題目</h4><p class="muted">只可選擇已核准題目；發布後會固定題目版本。</p></div><button type="button" class="ghost small" :disabled="questionLoading" @click="loadQuestionCatalog">重新載入題庫</button></div>
+            <div class="assessment-modal-head"><div><h4>配置檢測題目</h4><p class="muted">只可選擇已核准題目；發布後會固定題目版本。</p></div><AtButton shape="rect" size="sm" variant="ghost" :loading="questionLoading" @click="loadQuestionCatalog">重新載入題庫</AtButton></div>
             <p v-if="questionError" class="assessment-error">{{ questionError }}</p>
             <div v-if="questionLoading" class="assessment-empty compact-empty">題庫載入中…</div>
             <div v-else-if="!questionCatalog.length" class="assessment-empty compact-empty">目前沒有可用的已核准題目，請先到題庫完成核准。</div>
             <div v-else class="question-picker">
               <label v-for="question in questionCatalog" :key="question.id" class="question-picker-row"><input v-model="selectedQuestionIds" type="checkbox" :value="Number(question.id)" /><span><strong>{{ question.prompt }}</strong><small>{{ question.bank_name }} · {{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></span></label>
             </div>
-            <button type="button" class="primary" :disabled="savingQuestions || !selectedQuestionIds.length || questionRows.length" @click="configureQuestions">{{ questionRows.length ? `已配置 ${questionRows.length} 題` : (savingQuestions ? '配置中…' : `配置 ${selectedQuestionIds.length} 題`) }}</button>
+            <AtButton shape="rect" variant="primary" :loading="savingQuestions" :disabled="!selectedQuestionIds.length || questionRows.length" @click="configureQuestions">{{ questionRows.length ? `已配置 ${questionRows.length} 題` : `配置 ${selectedQuestionIds.length} 題` }}</AtButton>
           </section>
           <div v-if="!results.length" class="assessment-empty">尚未登錄結果。</div>
-          <table v-else class="assessment-table compact"><thead><tr><th>學生</th><th>次數</th><th>分數</th><th>狀態</th><th>補強</th><th>操作</th></tr></thead><tbody><tr v-for="result in results" :key="result.id"><td>{{ result.student_name || result.student_id }}</td><td>第 {{ result.attempt_no }} 次</td><td>{{ result.score }}/{{ result.max_score }}（{{ result.percent }}%）</td><td>{{ result.status === 'reviewed' ? '已審核' : '待審' }}</td><td><button type="button" class="ghost small" @click="openRemediation(result)">{{ result.remediation_count || 0 }} 筆</button></td><td><button v-if="isDirector && result.status === 'submitted'" type="button" class="primary small" @click="reviewResult(result)">審核</button></td></tr></tbody></table>
+          <table v-else class="assessment-table compact"><thead><tr><th>學生</th><th>次數</th><th>分數</th><th>狀態</th><th>補強</th><th>操作</th></tr></thead><tbody><tr v-for="result in results" :key="result.id"><td>{{ result.student_name || result.student_id }}</td><td>第 {{ result.attempt_no }} 次</td><td>{{ result.score }}/{{ result.max_score }}（{{ result.percent }}%）</td><td>{{ result.status === 'reviewed' ? '已審核' : '待審' }}</td><td><AtButton shape="rect" size="sm" variant="ghost" @click="openRemediation(result)">{{ result.remediation_count || 0 }} 筆</AtButton></td><td><AtButton v-if="isDirector && result.status === 'submitted'" shape="rect" size="sm" variant="primary" @click="reviewResult(result)">審核</AtButton></td></tr></tbody></table>
           <section v-if="selectedAssessment.status === 'published' && questionRows.length" class="attempt-panel">
             <div class="assessment-modal-head"><div><h4>數位作答</h4><p class="muted">教職員代學生開啟作答；客觀題自動評分，簡答題送主任複核。</p></div><span class="status-pill status-published">{{ questionRows.length }} 題</span></div>
-            <div class="assessment-form-grid attempt-start"><label>學生／課程<select v-model="attemptForm.student_class_id" @change="syncAttemptStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><button type="button" class="primary" :disabled="attemptSaving || !attemptForm.student_class_id" @click="startAttempt">{{ attemptSaving ? '建立中…' : '開始一次作答' }}</button></div>
+            <div class="assessment-form-grid attempt-start"><label>學生／課程<select v-model="attemptForm.student_class_id" @change="syncAttemptStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><AtButton shape="rect" variant="primary" :loading="attemptSaving" :disabled="!attemptForm.student_class_id" @click="startAttempt">開始一次作答</AtButton></div>
             <p v-if="attemptError" class="assessment-error">{{ attemptError }}</p>
-            <div v-if="attempts.length" class="attempt-list"><div v-for="attempt in attempts" :key="attempt.id" class="attempt-row"><div><strong>{{ attempt.student_name || attempt.student_id }}</strong><small>第 {{ attempt.attempt_no }} 次 · {{ attemptStatusLabel(attempt.status) }}</small></div><span>{{ attempt.score == null ? '尚未計分' : `${attempt.score}/${attempt.max_score}（${attempt.percent}%）` }}</span><button type="button" class="ghost small" @click="openAttempt(attempt.id)">{{ attempt.status === 'submitted' && isDirector ? '複核' : '檢視' }}</button></div></div>
+            <div v-if="attempts.length" class="attempt-list"><div v-for="attempt in attempts" :key="attempt.id" class="attempt-row"><div><strong>{{ attempt.student_name || attempt.student_id }}</strong><small>第 {{ attempt.attempt_no }} 次 · {{ attemptStatusLabel(attempt.status) }}</small></div><span>{{ attempt.score == null ? '尚未計分' : `${attempt.score}/${attempt.max_score}（${attempt.percent}%）` }}</span><AtButton shape="rect" size="sm" variant="ghost" @click="openAttempt(attempt.id)">{{ attempt.status === 'submitted' && isDirector ? '複核' : '檢視' }}</AtButton></div></div>
             <div v-if="attemptLoading" class="assessment-empty compact-empty">作答資料載入中…</div>
-            <div v-if="activeAttempt" class="attempt-editor"><div class="assessment-modal-head"><h4>{{ activeAttempt.student_name || activeAttempt.student_id }} · 第 {{ activeAttempt.attempt_no }} 次</h4><span class="status-pill" :class="'status-' + activeAttempt.status">{{ attemptStatusLabel(activeAttempt.status) }}</span></div><div v-for="question in activeAttempt.questions" :key="question.id" class="attempt-question"><p><strong>{{ question.position }}. {{ question.prompt }}</strong><small>{{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></p><div v-if="question.question_type === 'single_choice' || question.question_type === 'true_false'" class="choice-list"><label v-for="choice in (question.choices || (question.question_type === 'true_false' ? ['true', 'false'] : []))" :key="choice"><input v-model="answerDraft[String(question.id)]" type="radio" :name="'q-' + question.id" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><div v-else-if="question.question_type === 'multiple_choice'" class="choice-list"><label v-for="choice in (question.choices || [])" :key="choice"><input v-model="answerDraft[String(question.id)]" type="checkbox" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><textarea v-else v-model="answerDraft[String(question.id)]" rows="2" :disabled="activeAttempt.status !== 'in_progress'" placeholder="填寫學生答案" /></div><div v-if="activeAttempt.status === 'in_progress'" class="modal-actions"><button type="button" class="ghost" :disabled="attemptSaving" @click="saveAttempt(false)">儲存草稿</button><button type="button" class="primary" :disabled="attemptSaving" @click="saveAttempt(true)">{{ attemptSaving ? '送出中…' : '送出作答' }}</button></div><div v-if="isDirector && activeAttempt.status === 'submitted'" class="review-editor"><h4>簡答人工複核</h4><div v-for="answer in activeAttempt.answers.filter((row) => row.status === 'needs_review')" :key="answer.id" class="review-row"><div><strong>{{ answer.position }}. {{ answer.prompt }}</strong><small>學生答案：{{ answer.answer || '未作答' }}</small></div><input v-model.number="reviewScores[answer.id]" type="number" min="0" :max="answer.max_score" step="0.01" placeholder="分數" /></div><button type="button" class="primary" :disabled="attemptSaving" @click="reviewAttempt">{{ attemptSaving ? '送出中…' : '完成人工複核' }}</button></div></div>
+            <div v-if="activeAttempt" class="attempt-editor"><div class="assessment-modal-head"><h4>{{ activeAttempt.student_name || activeAttempt.student_id }} · 第 {{ activeAttempt.attempt_no }} 次</h4><span class="status-pill" :class="'status-' + activeAttempt.status">{{ attemptStatusLabel(activeAttempt.status) }}</span></div><div v-for="question in activeAttempt.questions" :key="question.id" class="attempt-question"><p><strong>{{ question.position }}. {{ question.prompt }}</strong><small>{{ question.knowledge_tag }} · 難度 {{ question.difficulty }}</small></p><div v-if="question.question_type === 'single_choice' || question.question_type === 'true_false'" class="choice-list"><label v-for="choice in (question.choices || (question.question_type === 'true_false' ? ['true', 'false'] : []))" :key="choice"><input v-model="answerDraft[String(question.id)]" type="radio" :name="'q-' + question.id" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><div v-else-if="question.question_type === 'multiple_choice'" class="choice-list"><label v-for="choice in (question.choices || [])" :key="choice"><input v-model="answerDraft[String(question.id)]" type="checkbox" :value="choice" :disabled="activeAttempt.status !== 'in_progress'" />{{ choice }}</label></div><textarea v-else v-model="answerDraft[String(question.id)]" rows="2" :disabled="activeAttempt.status !== 'in_progress'" placeholder="填寫學生答案" /></div><div v-if="activeAttempt.status === 'in_progress'" class="modal-actions"><AtButton shape="rect" variant="ghost" :disabled="attemptSaving" @click="saveAttempt(false)">儲存草稿</AtButton><AtButton shape="rect" variant="primary" :loading="attemptSaving" @click="saveAttempt(true)">送出作答</AtButton></div><div v-if="isDirector && activeAttempt.status === 'submitted'" class="review-editor"><h4>簡答人工複核</h4><div v-for="answer in activeAttempt.answers.filter((row) => row.status === 'needs_review')" :key="answer.id" class="review-row"><div><strong>{{ answer.position }}. {{ answer.prompt }}</strong><small>學生答案：{{ answer.answer || '未作答' }}</small></div><input v-model.number="reviewScores[answer.id]" type="number" min="0" :max="answer.max_score" step="0.01" placeholder="分數" /></div><AtButton shape="rect" variant="primary" :loading="attemptSaving" @click="reviewAttempt">完成人工複核</AtButton></div></div>
           </section>
           <div v-else-if="selectedAssessment.status === 'published'" class="assessment-empty compact-empty">尚未配置題目；此檢測仍可使用下方的紙本結果登錄。</div>
           <div v-if="selectedResult" class="remediation-panel">
-            <div class="assessment-modal-head"><div><h4>補強追蹤：{{ selectedResult.student_name || selectedResult.student_id }}</h4><p class="muted">從檢測結果建立知識缺口與後續行動。</p></div><button type="button" class="ghost small" @click="selectedResult = null">收合</button></div>
+            <div class="assessment-modal-head"><div><h4>補強追蹤：{{ selectedResult.student_name || selectedResult.student_id }}</h4><p class="muted">從檢測結果建立知識缺口與後續行動。</p></div><AtButton shape="rect" size="sm" variant="ghost" @click="selectedResult = null">收合</AtButton></div>
             <div v-if="remediationLoading" class="assessment-empty">補強資料載入中…</div>
             <template v-else>
               <p v-if="remediationError" class="assessment-error">{{ remediationError }}</p>
@@ -119,13 +144,13 @@
               <div v-for="action in remediationActions" :key="action.id" class="remediation-row">
                 <div><strong>{{ action.knowledge_tag }}</strong><small>{{ action.plan || '未填寫計畫' }}<span v-if="action.due_date"> · 到期 {{ action.due_date }}</span></small></div>
                 <span :class="['status-pill', 'status-' + action.status]">{{ remediationStatusLabel(action.status) }}</span>
-                <button v-if="action.status === 'open'" type="button" class="ghost small" @click="updateRemediation(action, 'in_progress')">開始</button>
-                <button v-if="action.status === 'in_progress'" type="button" class="primary small" @click="updateRemediation(action, 'completed')">完成</button>
+                <AtButton v-if="action.status === 'open'" shape="rect" size="sm" variant="ghost" @click="updateRemediation(action, 'in_progress')">開始</AtButton>
+                <AtButton v-if="action.status === 'in_progress'" shape="rect" size="sm" variant="primary" @click="updateRemediation(action, 'completed')">完成</AtButton>
               </div>
               <div class="remediation-form">
                 <div class="assessment-form-grid"><label>知識缺口<input v-model.trim="remediationForm.knowledge_tag" maxlength="120" placeholder="例如：英文／過去式" /></label><label>行動類型<select v-model="remediationForm.action_type"><option value="practice">練習</option><option value="retake">重測</option><option value="teacher_followup">老師追蹤</option><option value="other">其他</option></select></label><label>預計完成<input v-model="remediationForm.due_date" type="date" /></label></div>
                 <label>補強計畫<textarea v-model.trim="remediationForm.plan" rows="2" maxlength="10000" placeholder="描述學生下一步要完成的練習或教學安排" /></label>
-                <button type="button" class="primary" :disabled="savingRemediation || !remediationForm.knowledge_tag" @click="createRemediation">{{ savingRemediation ? '建立中…' : '建立補強行動' }}</button>
+                <AtButton shape="rect" variant="primary" :loading="savingRemediation" :disabled="!remediationForm.knowledge_tag" @click="createRemediation">建立補強行動</AtButton>
               </div>
             </template>
           </div>
@@ -134,11 +159,10 @@
             <div class="assessment-form-grid"><label>學生／課程<select v-model="resultForm.student_class_id" @change="syncStudent"><option value="">請選擇</option><option v-for="item in assessmentStudents" :key="item.student_class_id" :value="String(item.student_class_id)">{{ item.name }}</option></select></label><label>分數<input v-model.number="resultForm.score" type="number" min="0" :max="selectedAssessment.max_score" step="0.01" /></label></div>
             <label>備註<textarea v-model.trim="resultForm.notes" rows="2" maxlength="10000" /></label>
             <p v-if="resultError" class="assessment-error">{{ resultError }}</p>
-            <button type="button" class="primary" :disabled="savingResult || !resultForm.student_id || resultForm.score === ''" @click="saveResult">{{ savingResult ? '儲存中…' : '儲存結果' }}</button>
+            <AtButton shape="rect" variant="primary" :loading="savingResult" :disabled="!resultForm.student_id || resultForm.score === ''" @click="saveResult">儲存結果</AtButton>
           </div>
         </template>
-      </div>
-    </div>
+    </AtDialog>
   </section>
 </template>
 
@@ -146,8 +170,12 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { answerMapFromAttempt, attemptStatusLabel, buildAnswerPayload } from '../lib/assessmentRunner.js';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
+import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 
 const props = defineProps({ branchId: [String, Number], userRole: String });
 const base = `${import.meta.env.VITE_API_BASE || '/api'}/v1`;
@@ -343,6 +371,7 @@ onMounted(loadAll);
 .assessment-list-card { padding: 18px; }
 .assessment-list-head { margin-bottom: 12px; }
 .assessment-table-wrap { overflow-x: auto; }
+.assessment-mobile-list { display: none; }
 .assessment-table { width: 100%; border-collapse: collapse; min-width: 760px; }
 .assessment-table th, .assessment-table td { padding: 12px 10px; border-bottom: 1px solid var(--ds-hairline); text-align: left; vertical-align: middle; }
 .assessment-table td strong, .assessment-table td small { display: block; }
@@ -352,9 +381,6 @@ onMounted(loadAll);
 .status-published, .status-completed, .status-reviewed { background: var(--ds-success-wash); color: var(--ds-success); }.status-draft, .status-open, .status-submitted { color: var(--ds-warning); background: var(--ds-warning-wash); }.status-closed, .status-cancelled { background: var(--ds-surface-2); color: var(--ds-text-tertiary); }.status-in_progress { background: var(--ds-info-wash); color: var(--ds-info); }
 .assessment-empty { padding: 36px 12px; text-align: center; color: var(--ds-text-tertiary); }
 .assessment-error { color: var(--ds-danger); background: var(--ds-danger-wash); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
-.assessment-modal { max-width: 720px; width: calc(100vw - 32px); max-height: min(850px, calc(100vh - 32px)); overflow: auto; }
-.assessment-modal label { display: block; margin: 14px 0; font-size: 13px; font-weight: 600; }
-.assessment-modal input, .assessment-modal select, .assessment-modal textarea { display: block; width: 100%; margin-top: 6px; border: 1px solid var(--ds-hairline-input); border-radius: 7px; padding: 9px 10px; background: var(--ds-canvas); color: inherit; }
 .assessment-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .compact { min-width: 0; }
@@ -370,13 +396,34 @@ onMounted(loadAll);
 .question-picker-row input { width: auto !important; margin: 2px 0 0 !important; }
 .question-picker-row strong, .question-picker-row small, .attempt-row strong, .attempt-row small, .attempt-question small, .review-row strong, .review-row small { display: block; }
 .question-picker-row small, .attempt-row small, .attempt-question small, .review-row small { margin-top: 3px; color: var(--ds-text-tertiary); font-weight: 400; }
-.attempt-start { align-items: end; }.attempt-start .primary { margin-bottom: 14px; }
+.attempt-start { align-items: end; }.attempt-start :deep(.at-btn) { margin-bottom: 14px; }
 .attempt-list { display: grid; gap: 8px; margin: 14px 0; }
 .attempt-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; }
 .attempt-editor { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--ds-hairline); }
 .attempt-question { padding: 12px 0; border-bottom: 1px solid var(--ds-hairline); }.attempt-question p { margin: 0 0 8px; }
 .choice-list { display: grid; gap: 7px; }.choice-list label { display: flex !important; align-items: center; gap: 7px; margin: 0 !important; font-weight: 400 !important; cursor: pointer; }.choice-list input { width: auto !important; margin: 0 !important; }
 .review-editor { margin-top: 16px; padding: 12px; border: 1px solid var(--ds-warning); border-radius: 8px; background: var(--ds-warning-wash); }.review-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--ds-hairline); }.review-row input { margin-top: 0; }
+.assessment-page :deep(.at-btn) { min-height: 44px; }
+.assessment-page input, .assessment-page select, .assessment-page textarea { min-height: 44px; }
+.assessment-page :deep(.at-inline-alert) { margin: 10px 0; }
+.assessment-mobile-card { padding: 16px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-canvas); }
+.assessment-mobile-card + .assessment-mobile-card { margin-top: 12px; }
+.assessment-mobile-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.assessment-mobile-card__head strong, .assessment-mobile-card__head small { display: block; }
+.assessment-mobile-card__head small { margin-top: 4px; color: var(--ds-text-tertiary); }
+.assessment-mobile-details { display: grid; gap: 8px; margin: 16px 0; }
+.assessment-mobile-details > div { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: start; }
+.assessment-mobile-details dt { color: var(--ds-text-tertiary); font-size: 13px; font-weight: 600; }
+.assessment-mobile-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--ds-text-secondary); }
+.assessment-mobile-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+:global(.assessment-dialog label) { display: block; margin: 14px 0; font-size: 13px; font-weight: 600; }
+:global(.assessment-dialog input), :global(.assessment-dialog select), :global(.assessment-dialog textarea) { display: block; width: 100%; margin-top: 6px; border: 1px solid var(--ds-hairline-input); border-radius: 7px; padding: 9px 10px; background: var(--ds-canvas); color: inherit; font: inherit; }
+:global(.assessment-dialog input), :global(.assessment-dialog select) { min-height: 44px; }
+:global(.assessment-dialog textarea) { min-height: 96px; }
+:global(.assessment-dialog .at-dialog__close) { width: 44px; height: 44px; }
+:global(.assessment-dialog .at-btn) { min-height: 44px; }
+:global(.assessment-result-meta) { margin: 0 0 14px; }
 @media (max-width: 1100px) { .assessment-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 720px) { .assessment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .assessment-header { align-items: flex-start; } .assessment-form-grid { grid-template-columns: 1fr; } .result-entry .assessment-form-grid { grid-template-columns: 1fr; } .remediation-row { grid-template-columns: minmax(0, 1fr) auto; }.remediation-row button { grid-column: 2; } .attempt-row { grid-template-columns: minmax(0, 1fr) auto; }.attempt-row button { grid-column: 2; grid-row: 1 / span 2; }.review-row { grid-template-columns: 1fr; } .attempt-start .primary { margin-bottom: 0; } }
+@media (max-width: 720px) { .assessment-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .assessment-form-grid { grid-template-columns: 1fr; } .result-entry .assessment-form-grid { grid-template-columns: 1fr; } .remediation-row { grid-template-columns: minmax(0, 1fr) auto; }.remediation-row button { grid-column: 2; } .attempt-row { grid-template-columns: minmax(0, 1fr) auto; }.attempt-row button { grid-column: 2; grid-row: 1 / span 2; }.review-row { grid-template-columns: 1fr; } .attempt-start :deep(.at-btn) { margin-bottom: 0; } }
+@media (max-width: 640px) { .assessment-desktop-table { display: none; } .assessment-mobile-list { display: block; } }
 </style>

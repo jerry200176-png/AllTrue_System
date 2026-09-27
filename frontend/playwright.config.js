@@ -20,6 +20,8 @@ export default defineConfig({
   testDir: './e2e',
   // Foundation page evidence uses playwright.ui-foundation.config.js + dedicated Vite mount.
   testIgnore: [
+    // Executed by the required foundation suite against the dedicated Vue fixture server.
+    /assessment-clarity\.spec\.js$/,
     /ui-foundation-pages\.spec\.js$/,
     /ui-foundation-role-matrix\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
@@ -27,6 +29,7 @@ export default defineConfig({
     /release-notes-clarity\.spec\.js$/,
     /teacher-daily-workflow\.spec\.js$/,
     /teacher-calendar-ux\.spec\.js$/,
+    /calendar-split-slot-317\.spec\.js$/,
     /product-clarity-browser\.spec\.js$/,
     /admissions-workflow-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
@@ -42,12 +45,22 @@ export default defineConfig({
     /director-dashboard-shell-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in subject-units-playwright.config.js.
     /subject-units-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in teacher-eligibility-playwright.config.js.
+    /teacher-eligibility-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.chat-accessibility.config.js.
+    /chat-shell-clarity\.spec\.js$/,
     /chat-accessibility\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.tuition-collection.config.js.
     /tuition-collection-clarity\.spec\.js$/,
     // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
     /line-integration-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in playwright.ui-foundation.config.js.
+    /branch-management-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server in the UI-foundation config.
+    /binding-health-clarity\.spec\.js$/,
+    /binding-management-clarity|nightly-reconcile-clarity|director-accounts-clarity|parttime-payroll-clarity\.spec\.js$/,
+    // Uses the dedicated Vite fixture server and local PDF artifacts.
+    /truefit-fixture-print\.spec\.js$/,
   ],
   timeout: 45_000,
   expect: { timeout: 10_000 },

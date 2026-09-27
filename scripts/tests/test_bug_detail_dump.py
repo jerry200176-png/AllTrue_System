@@ -50,6 +50,70 @@ class BugDetailDumpContractTest(unittest.TestCase):
         self.assertIn('"decision_grade_required" => $decisionGradeRequired', source)
         self.assertIn('target-correct probe is required; evidence is not decision-grade', source)
 
+    def test_bug_338_probe_is_targeted_and_redacted(self):
+        source = self.source
+        gate = source.index('if ($bugId === 338) {{')
+        target_end = source.index('$targetProbe = match ($bugId)', gate)
+        block = source[gate:target_end]
+        for marker in (
+            'current_bug_description_runtime_match',
+            'collectTeacherBusySlotsWithCapacity',
+            'with_reported_student_excluded',
+            'without_student_exclusion',
+            'matched_teacher_target_slot_count',
+            'TRIM(name) LIKE ?',
+            'target_slot_has_remaining_capacity_after_excluding_student',
+            'target_slot_full_after_excluding_student',
+            'target_one_on_three_slot_not_found',
+            '"probe_338_target_capacity" => $probe338',
+        ):
+            self.assertIn(marker, source)
+        self.assertNotIn('"teacher_name" =>', block)
+        self.assertNotIn('"student_name" =>', block)
+        self.assertNotIn('teacher_id" =>', block)
+        self.assertNotIn('student_id" =>', block)
+        self.assertRegex(source, r'338(?:,\s*\d+)*\], true\)')
+
+    def test_bug_359_source_probe_is_bounded_and_redacted(self):
+        source = self.source
+        gate = source.index('if ($bugId === 359) {{')
+        end = source.index('// #338-specific bounded capacity probe', gate)
+        block = source[gate:end]
+        for marker in (
+            '"date" => "2026-09-26"',
+            '"viewing_campus_id" => (int)$bug->CampusID',
+            'where("id", 29)->where("type", "T")',
+            'collectTeacherBusySlotsWithCapacity',
+            '->limit(101)',
+            'source row limit exceeded',
+            '"probe_359_cross_campus_source" => $probe359',
+        ):
+            self.assertIn(marker, source)
+        self.assertIn('$probeRefKey359 = random_bytes(32);', block)
+        self.assertEqual(2, block.count('->map(function ($row) use ($probeRefKey359) {{'))
+        self.assertEqual(4, block.count('hash_hmac("sha256",'))
+        self.assertNotIn('hash("sha256",', block)
+        self.assertNotIn('"probe_ref_key"', block)
+        for field in ('"teacher_name" =>', '"student_name" =>', '"teacher_id" =>', '"student_id" =>'):
+            self.assertNotIn(field, block)
+        for write in ('->insert(', '->update(', '->delete(', '->save('):
+            self.assertNotIn(write, block)
+        self.assertIn('359], true)', source)
+
+    def test_bug_359_discards_partial_evidence_on_source_overflow(self):
+        source = self.source
+        gate = source.index('if ($bugId === 359) {{')
+        end = source.index('// #338-specific bounded capacity probe', gate)
+        block = source[gate:end]
+        busy_map = block.index('$busySlots359 = collect($busy359)')
+        busy_limit = block.index('if (count($busySlots359) > 100)')
+        busy_output = block.index('$probe359["busy_slots"] = $busySlots359;')
+        self.assertLess(busy_map, busy_limit)
+        self.assertLess(busy_limit, busy_output)
+        catch = block[block.index('catch (\\Throwable $e) {{'):]
+        for field in ('busy_slots', 'class_sessions', 'schedules'):
+            self.assertIn(f'$probe359["{field}"] = [];', catch)
+
     def test_parser_rejects_ambiguous_or_mismatched_output(self):
         source = self.source
         self.assertIn('expected exactly one JSON evidence envelope', source)

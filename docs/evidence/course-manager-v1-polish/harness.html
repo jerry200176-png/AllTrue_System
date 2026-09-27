@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-TW"><head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Course Manager polish harness</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<style>
+:root{--ds-ink:#0d253d;--ds-ink-mute:#64748d;--ds-ink-secondary:#273951;--ds-canvas:#fff;--ds-canvas-soft:#f6f9fc;--ds-hairline:#e3e8ee;--ds-success:#1a8245;--ds-success-wash:#e7f0e8;--ds-warning:#b54708;--ds-warning-wash:#fff7ed;--ds-primary:#EF6C00;--ds-danger:#e11d48;--ds-info:#533afd;--ds-info-wash:#eef2ff}
+body{margin:0;font-family:system-ui,sans-serif;background:#cbd5e1}
+.cmw{position:fixed;inset:0;display:flex;justify-content:flex-end}
+.cmw__panel{width:min(1120px,100vw);height:100%;background:var(--ds-canvas-soft);color:var(--ds-ink);display:flex;flex-direction:column}
+.cmw__head{padding:10px 18px;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas)}
+.cmw__title{margin:6px 0;font-size:1.2rem;font-weight:650;display:flex;gap:8px;align-items:center}
+.cmw__badge{font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--ds-success-wash);color:var(--ds-success)}
+.cmw__meta{margin:0;color:var(--ds-ink-mute);font-size:.875rem}
+.cmw__kpis{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.cmw__kpi{font-size:.78rem;border:1px solid var(--ds-hairline);border-radius:999px;padding:2px 8px;background:var(--ds-canvas-soft)}
+.cmw__tabs{display:flex;border-bottom:1px solid var(--ds-hairline);background:var(--ds-canvas)}
+.cmw__tab{border:0;background:transparent;padding:11px 12px;color:var(--ds-ink-mute)}
+.cmw__tab.on{color:var(--ds-ink);border-bottom:2px solid var(--ds-primary);font-weight:600}
+.cmw__body{padding:14px 18px;overflow:auto;flex:1}
+.cmw__metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:960px;margin:0 auto}
+.cmw__metric{background:var(--ds-canvas);border:1px solid var(--ds-hairline);border-radius:10px;padding:12px}
+.cmw__metric span{display:block;font-size:.72rem;color:var(--ds-ink-mute)}
+.toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.view{display:inline-flex;gap:4px;padding:3px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas)}
+.btn{border:1px solid var(--ds-hairline);background:var(--ds-canvas);border-radius:6px;padding:6px 10px;font-size:.85rem}
+.btn.primary{background:var(--ds-primary);color:#fff;border-color:transparent}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cell{min-height:52px;border:1px solid var(--ds-hairline);border-radius:8px;padding:6px;background:var(--ds-canvas);font-size:.82rem}
+.cell.mat{background:var(--ds-success-wash)}
+.cell.proj{background:var(--ds-info-wash)}
+.cell.add{border-style:dashed}
+.list{display:grid;gap:6px}
+.row{display:grid;grid-template-columns:4.5rem 1fr auto;gap:12px;padding:10px 12px;border:1px solid var(--ds-hairline);border-radius:8px;background:var(--ds-canvas)}
+@media(max-width:420px){.cmw__metrics{grid-template-columns:1fr 1fr}.cmw__panel{width:100vw}}
+</style></head><body>
+<div class="cmw"><div class="cmw__panel" id="panel">
+<header class="cmw__head">
+  <div style="display:flex;justify-content:space-between"><span>← 課程管理</span><span>✕</span></div>
+  <h2 class="cmw__title">陳湘甯 · 高中數學 <span class="cmw__badge">進行中</span></h2>
+  <p class="cmw__meta">王老師 · 一對一 · A</p>
+  <div class="cmw__kpis"><span class="cmw__kpi">剩餘 5 / 12 堂</span><span class="cmw__kpi">下堂 9/23</span><span class="cmw__kpi">已繳</span></div>
+</header>
+<nav class="cmw__tabs"><button class="cmw__tab on">總覽</button><button class="cmw__tab">排課與堂次</button><button class="cmw__tab">課程設定</button><button class="cmw__tab">帳務與合約</button></nav>
+<div class="cmw__body" id="body">
+  <div class="cmw__metrics">
+    <div class="cmw__metric"><span>堂次</span><strong>剩餘 5 / 12 堂</strong></div>
+    <div class="cmw__metric"><span>下一堂</span><strong>9/23</strong></div>
+    <div class="cmw__metric"><span>付款</span><strong>已繳</strong></div>
+    <div class="cmw__metric"><span>固定時段</span><strong>週三 18:30</strong></div>
+  </div>
+</div>
+</div></div>
+<script>
+const body=document.getBody=document.getElementById('body');
+const views={
+overview: body.innerHTML,
+sessionsCal: `<div class="toolbar"><div><button class="btn primary">排課</button> <button class="btn">補課／補登</button></div><div class="view"><button class="btn primary">月曆</button><button class="btn">列表</button></div></div><p style="color:#64748d;font-size:.82rem">點空白的未來日期可新增堂次；已排與預排堂次會顯示在月曆中。</p><div class="cal">${Array.from({length:35},(_,i)=>`<div class="cell ${i===10?'mat':i===17?'proj':i===24?'add':''}">${i+1}<br><small>${i===10?'已排':i===17?'預排':i===24?'＋':''}</small></div>`).join('')}</div>`,
+sessionsList: `<div class="toolbar"><div><button class="btn primary">排課</button></div><div class="view"><button class="btn">月曆</button><button class="btn primary">列表</button></div></div><div class="list"><div class="row"><span>第8堂</span><span>2026-09-23</span><span>已建立</span></div><div class="row"><span>—</span><span>2026-09-30</span><span>預排</span></div></div>`,
+settings: `<div style="max-width:720px"><div style="height:180px;border:1px dashed #a8c3de;border-radius:8px;padding:12px">CourseEditForm</div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px"><button class="btn">返回總覽</button><button class="btn primary">儲存課程設定</button></div><details style="margin-top:10px;border:1px solid #e3e8ee;padding:8px;border-radius:8px"><summary>其他操作</summary><button class="btn" style="margin-top:8px">複製為新課程並更換老師</button></details><details style="margin-top:8px;border:1px solid #f5c2c7;padding:8px;border-radius:8px"><summary style="color:#e11d48">危險操作</summary><button class="btn" style="margin-top:8px;color:#e11d48">刪除課程</button></details></div>`,
+billing: `<div style="max-width:960px;margin:0 auto;display:grid;gap:12px"><div style="background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:12px"><h3>帳務摘要</h3><button class="btn">查看帳單</button> <button class="btn">前往帳務中心</button></div><div style="background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:12px"><h3>合約</h3><button class="btn primary">續報 / 加購</button> <button class="btn">合約／堂次調整</button></div><div style="background:#fff;border:1px solid #e3e8ee;border-radius:10px;padding:12px"><h3>收款</h3><button class="btn">產生繳費通知</button></div></div>`
+};
+const tabs=[...document.querySelectorAll('.cmw__tab')];
+function show(name){body.innerHTML=views[name];tabs.forEach((t,i)=>t.classList.toggle('on',[0,1,1,2,3][ /*noop*/ i]===i));}
+window.snap=async (name,w,h)=>{document.documentElement.style.width=w+'px';document.body.style.width=w+'px';document.getElementById('panel').style.width=Math.min(1120,w)+'px'; if(name==='overview'){tabs.forEach((t,i)=>t.classList.toggle('on',i===0));body.innerHTML=views.overview} if(name==='sessions-cal'){tabs.forEach((t,i)=>t.classList.toggle('on',i===1));body.innerHTML=views.sessionsCal} if(name==='sessions-list'){tabs.forEach((t,i)=>t.classList.toggle('on',i===1));body.innerHTML=views.sessionsList} if(name==='settings'){tabs.forEach((t,i)=>t.classList.toggle('on',i===2));body.innerHTML=views.settings} if(name==='billing'){tabs.forEach((t,i)=>t.classList.toggle('on',i===3));body.innerHTML=views.billing}}
+</script></body></html>

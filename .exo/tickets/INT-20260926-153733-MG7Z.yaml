@@ -1,0 +1,38 @@
+id: INT-20260926-153733-MG7Z
+title: Binding confirmation release notes
+intent: Binding confirmation release notes
+kind: intent
+brain_dump: Required release copy for PR3280 existing successful-unbind dialog cleanup.
+boundary: Only existing release notes; no API, identity, billing or runtime changes
+success_condition: Generated release notes consistent and validated
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - frontend/src/lib/changelogDraft.generated.js
+  - frontend/src/lib/staffUpdates.generated.js
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 240
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-26T15:37:33+08:00'
+children:
+- TKT-20260926-153741-YN74
+resource_profile: default

@@ -23,6 +23,14 @@
       </AtInlineAlert>
     </div>
 
+    <div v-else-if="!hasMetricsData" class="bhd-state">
+      <AtEmpty
+        icon="monitor_heart"
+        title="目前沒有可顯示的綁定健康度資料"
+        description="資料準備好後會顯示在這裡。請使用右上角重新整理。"
+      />
+    </div>
+
     <template v-else>
       <!-- 每週摘要卡 -->
       <div class="bhd-stats">
@@ -72,16 +80,18 @@
       <AtSection title="綁定趨勢">
         <template #actions>
           <div class="bhd-gran">
-            <button
+            <AtButton
               v-for="g in ['day', 'week']"
               :key="g"
-              type="button"
-              :class="['bhd-gran-btn', { active: granularity === g }]"
+              shape="rect"
+              size="md"
+              :variant="granularity === g ? 'secondary' : 'ghost'"
+              :aria-pressed="granularity === g ? 'true' : 'false'"
               @click="setGranularity(g)"
-            >{{ g === 'day' ? '日' : '週' }}</button>
+            >{{ g === 'day' ? '日' : '週' }}</AtButton>
           </div>
         </template>
-        <div class="bhd-line-wrap">
+        <div v-if="trendSeries.length" class="bhd-line-wrap">
           <svg :viewBox="`0 0 ${CHART_W} ${CHART_H}`" class="bhd-line" role="img" aria-label="綁定趨勢折線圖">
             <polyline class="bhd-line-grid" :points="gridPoints" fill="none" />
             <polyline class="bhd-line-path" :points="linePoints" fill="none" />
@@ -92,6 +102,12 @@
             />
           </svg>
         </div>
+        <AtEmpty
+          v-else
+          icon="show_chart"
+          title="目前沒有趨勢資料"
+          description="選擇其他期間或稍後重新整理，查看最新綁定變化。"
+        />
       </AtSection>
 
       <div class="bhd-grid bhd-grid--lower">
@@ -164,6 +180,17 @@ const weekly = computed(() => data.value?.weekly_summary || {});
 const campusRates = computed(() => Array.isArray(data.value?.by_campus) ? data.value.by_campus : []);
 const unboundActive = computed(() => Array.isArray(data.value?.unbound_active) ? data.value.unbound_active : []);
 const anomalies = computed(() => Array.isArray(data.value?.anomalies) ? data.value.anomalies : []);
+const hasMetricsData = computed(() => {
+  const d = data.value || {};
+  return Object.keys(d.overall || {}).length > 0
+    || Object.keys(d.weekly_summary || {}).length > 0
+    || campusRates.value.length > 0
+    || Array.isArray(d.trend?.points) && d.trend.points.length > 0
+    || Array.isArray(d.trend?.day) && d.trend.day.length > 0
+    || Array.isArray(d.trend?.week) && d.trend.week.length > 0
+    || unboundActive.value.length > 0
+    || anomalies.value.length > 0;
+});
 
 const overallRateLabel = computed(() => {
   const o = overall.value;
@@ -256,6 +283,7 @@ onMounted(load);
 
 <style scoped>
 .bhd-page { max-width: 1180px; margin: 0 auto; }
+.bhd-page :deep(.at-btn) { min-height: 44px; }
 .bhd-state { padding: var(--ds-space-4) 0; }
 
 .bhd-stats {
@@ -293,13 +321,8 @@ onMounted(load);
 .bhd-bar-fill { height: 100%; border-radius: var(--ds-radius-pill); background: var(--ds-primary); transition: width var(--ds-motion-slow) var(--ds-ease-standard); }
 
 /* 折線圖 */
-.bhd-gran { display: inline-flex; gap: 4px; }
-.bhd-gran-btn {
-  border: var(--ds-border-width) solid var(--ds-hairline); background: var(--ds-canvas);
-  color: var(--ds-ink-mute); border-radius: var(--ds-radius-md); padding: 4px 12px;
-  font-size: var(--ds-font-size-sm); cursor: pointer; font-weight: var(--ds-font-weight-semibold);
-}
-.bhd-gran-btn.active { background: var(--ds-primary-wash); color: var(--ds-primary-deep); border-color: var(--ds-primary); }
+.bhd-gran { display: inline-flex; gap: var(--ds-space-1); }
+.bhd-gran :deep(.at-btn) { min-width: 44px; min-height: 44px; }
 .bhd-line-wrap { overflow-x: auto; }
 .bhd-line { width: 100%; min-width: 320px; height: auto; }
 .bhd-line-grid { stroke: var(--ds-hairline); stroke-width: 1; stroke-dasharray: 4 4; }

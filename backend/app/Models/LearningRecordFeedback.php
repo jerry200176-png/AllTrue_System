@@ -20,12 +20,15 @@ class LearningRecordFeedback extends Model
         'last_read_by_teacher_at',
         'last_read_by_director_at',
         'last_read_by_parent_at',
+        'awaiting_dismissed_at',
+        'awaiting_dismissed_by',
     ];
 
     protected $casts = [
         'last_read_by_teacher_at' => 'datetime',
         'last_read_by_director_at' => 'datetime',
         'last_read_by_parent_at' => 'datetime',
+        'awaiting_dismissed_at' => 'datetime',
     ];
 
     public function learningRecord()

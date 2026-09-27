@@ -29,6 +29,25 @@ class StudentController extends Controller
         return $map[$classId] ?? '';
     }
 
+    private function applyCombinedSearch($query, ?string $term): void
+    {
+        if (trim((string) ($term ?? '')) === '') {
+            return;
+        }
+
+        $sanitized = Utf8mb3SearchSanitizer::forLike($term);
+        if ($sanitized === '') {
+            $query->whereRaw('1 = 0');
+            return;
+        }
+
+        $pattern = '%' . $sanitized . '%';
+        $query->where(function ($group) use ($pattern) {
+            $group->where('name', 'like', $pattern)
+                ->orWhere('SchoolName', 'like', $pattern);
+        });
+    }
+
     private function transformStudent($s, $boundIds = null): array
     {
         $lineBound = $boundIds !== null
@@ -87,6 +106,9 @@ class StudentController extends Controller
         }
         if ($request->filled('name__ilike')) {
             Utf8mb3SearchSanitizer::applyLike($query, 'name', $request->input('name__ilike'));
+        }
+        if ($request->filled('search')) {
+            $this->applyCombinedSearch($query, $request->input('search'));
         }
 
         if ($request->filled('class_id')) {

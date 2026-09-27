@@ -211,4 +211,68 @@ describe('useCourseSessionsDisplay', () => {
       className: 'scheduled-capacity-full',
     });
   });
+
+  it('projects only upcoming effective sessions with bounded overflow and stable cache', () => {
+    const course = { id: 91 };
+    const rows = [
+      { id: 1, student_class_id: 91, session_date: '2026-09-18', start_time: '10:00', end_time: '11:00', status: 'scheduled' },
+      { id: 2, student_class_id: 91, session_date: '2026-09-19', start_time: '09:00', end_time: '10:00', status: 'scheduled' },
+      { id: 3, student_class_id: 91, session_date: '2026-09-19', start_time: '14:00', end_time: '15:00', status: 'scheduled' },
+      { id: 4, student_class_id: 91, session_date: '2026-09-20', start_time: '09:00', end_time: '10:00', status: 'scheduled' },
+      { id: 5, student_class_id: 91, session_date: '2026-09-21', start_time: '09:00', end_time: '10:00', status: 'leave' },
+      { id: 6, student_class_id: 91, session_date: '2026-09-22', start_time: '09:00', end_time: '10:00', status: 'leave_adjusted' },
+      { id: 7, student_class_id: 91, session_date: '2026-09-23', start_time: '09:00', end_time: '10:00', status: 'excused' },
+      { id: 8, student_class_id: 91, session_date: '2026-09-24', start_time: '09:00', end_time: '10:00', status: 'cancelled', note: 'cancelled-duplicate-reschedule-placeholder' },
+    ];
+    const sessionsByCourse = ref({ 91: rows.map(sessionViewModelFromClassSessionsRow) });
+    const before = JSON.stringify(sessionsByCourse.value);
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse,
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+    const preview = display.upcomingSessionPreview(course, { todayYmd: '2026-09-19', limit: 3 });
+    expect(preview.visible.map((unit) => unit.id)).toEqual([2, 3, 4]);
+    expect(preview.total).toBe(3);
+    expect(preview.overflow).toBe(0);
+    expect(JSON.stringify(sessionsByCourse.value)).toBe(before);
+    expect(display.upcomingSessionPreview(course, { todayYmd: 'bad', limit: 3 })).toEqual({ visible: [], total: 0, overflow: 0 });
+  });
+
+  it('keeps same-day rows and reports overflow beyond the requested limit', () => {
+    const course = { id: 92 };
+    const sessionsByCourse = ref({ 92: [
+      { id: 21, studentClassId: 92, date: '2026-09-19', startTime: '09:00', endTime: '10:00', status: 'scheduled' },
+      { id: 22, studentClassId: 92, date: '2026-09-19', startTime: '14:00', endTime: '15:00', status: 'scheduled' },
+      { id: 23, studentClassId: 92, date: '2026-09-20', startTime: '09:00', endTime: '10:00', status: 'scheduled' },
+    ] });
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse,
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+    const preview = display.upcomingSessionPreview(course, { todayYmd: '2026-09-19', limit: 2 });
+    expect(preview.visible.map((unit) => unit.id)).toEqual([21, 22]);
+    expect(preview.total).toBe(3);
+    expect(preview.overflow).toBe(1);
+  });
+
+  it('reports effective-date fetch success and failure explicitly', async () => {
+    const fetchSessionDatesFn = vi.fn().mockResolvedValueOnce({ byClass: {} }).mockRejectedValueOnce(new Error('offline'));
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({}),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      fetchSessionDatesFn,
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+    const course = { id: 1, first_class_date: '2026-09-01', sessions_purchased: 4, days_of_week: [1] };
+    expect(await display.loadEffectiveSessionDates([course], 'token')).toBe(true);
+    expect(await display.loadEffectiveSessionDates([course], 'token')).toBe(false);
+  });
 });

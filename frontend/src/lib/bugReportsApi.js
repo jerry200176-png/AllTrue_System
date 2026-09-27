@@ -106,6 +106,12 @@ export async function updateBugStatus(bugId, status, note = null, evidence = {})
       production_revision: evidence.production_revision || undefined,
       deploy_run_id: evidence.deploy_run_id || undefined,
       evidence_exception_reason: evidence.evidence_exception_reason || undefined,
+      disposition: evidence.disposition || undefined,
+      github_issue_url: evidence.github_issue_url || undefined,
+      github_pr_url: evidence.github_pr_url || undefined,
+      engineering_required: typeof evidence.engineering_required === 'boolean'
+        ? evidence.engineering_required
+        : undefined,
     }),
   });
   return json(res);

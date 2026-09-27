@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\AttendanceStatus;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -374,6 +375,7 @@ class BusinessDigestService
         $q = DB::table('StudentClass as sc')
             ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
             ->where('sc.ScheduleMode', 'count')
+            ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> ?", ['tutoring'])
             ->where('sc.RemainingSessions', '>', 0)
             ->whereNotExists(function ($e) {
                 $e->select(DB::raw(1))->from('ClassSession as cs')
@@ -459,6 +461,7 @@ class BusinessDigestService
     {
         $q = DB::table('StudentClass as sc')
             ->where('sc.Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> ?", ['tutoring'])
             ->where(fn ($w) => $w->where('sc.Paid', 0)->orWhereNull('sc.Paid')->orWhere('sc.RemainingSessions', '<=', 2));
         if ($campusId !== null && $campusId > 0) {
             $q->join('Student as s', 's.id', '=', 'sc.StudentID')->where('s.CampusID', $campusId);
@@ -512,7 +515,7 @@ class BusinessDigestService
     {
         $q = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->whereRaw("LOWER(cs.Status) IN ('attended','late','absent')")
+            ->whereIn(DB::raw('LOWER(cs.Status)'), AttendanceStatus::requiresLogSessionStatuses())
             ->whereRaw("CONCAT(cs.SessionDate, ' ', COALESCE(cs.StartTime, '00:00:00')) <= NOW()")
             ->whereNotExists(function ($e) {
                 $e->select(DB::raw(1))->from('LearningRecord as lr')

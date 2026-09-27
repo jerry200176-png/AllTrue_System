@@ -12,6 +12,7 @@ vi.mock('../../lib/coursePackagesApi', () => ({
 }));
 
 import perfFlags from '../../lib/perfFlags';
+import { createMultiSubjectPackage } from '../../lib/coursePackagesApi';
 import {
   buildScheduleCandidates,
   mergeRecurringScheduleCandidates,
@@ -91,6 +92,52 @@ describe('UniversalClassScheduler — 依實際時長扣堂', () => {
     ]);
     expect(vm.monthlyPreviewText).toContain('含開課日首堂');
     expect(vm.monthlyPreviewText).toContain('共 5 堂');
+
+    wrapper.unmount();
+  });
+
+  it('in-app #320 / GitHub #3070: package session subjects preserve fixed-vs-flexible pre-schedule choice in payload', async () => {
+    const wrapper = await mountScheduler();
+    const vm = wrapper.vm;
+    vm.packageMode = true;
+    await flushPromises();
+    expect(wrapper.text()).toContain('固定星期／時間預排');
+    vm.pkgForm.student_id = 1;
+    vm.pkgForm.name = '多科共用方案 #320';
+    vm.pkgForm.payment_type = 'session';
+    vm.pkgForm.total_sessions = 8;
+    vm.pkgForm.rate = 500;
+    vm.pkgForm.subjects = [
+      {
+        subject: 'Math',
+        teacher_id: 2,
+        duration_hours: 2,
+        start_date: '2026-09-21',
+        fixed_schedule: true,
+        days_of_week: [2],
+        start_time: '17:00',
+        confirmed_dates: [],
+      },
+      {
+        subject: 'English',
+        teacher_id: 2,
+        duration_hours: 2,
+        start_date: '2026-09-21',
+        fixed_schedule: false,
+        days_of_week: [5],
+        start_time: '18:00',
+        confirmed_dates: [],
+      },
+    ];
+
+    await vm.submitPackage();
+
+    expect(createMultiSubjectPackage).toHaveBeenCalledWith(expect.objectContaining({
+      subjects: [
+        expect.objectContaining({ days_of_week: [2], start_time: '17:00' }),
+        expect.not.objectContaining({ days_of_week: expect.anything(), start_time: expect.anything() }),
+      ],
+    }));
 
     wrapper.unmount();
   });

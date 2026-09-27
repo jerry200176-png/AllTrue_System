@@ -15,6 +15,7 @@ import {
   formatDuplicatePurchaseHint,
   formatLedgerCourseLabel,
   formatLedgerInvoiceLabel,
+  formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
   humanizeDocumentRef,
@@ -170,6 +171,15 @@ assert.equal(formatLedgerCourseLabel({ course_ref: '高中英文｜王老師' })
 assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-1' }), '帳單-1');
 assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-LEGACY-000009' }), '帳單-舊資料-000009');
 assert.equal(formatLedgerInvoiceLabel({ id: 9 }), '帳單');
+assert.equal(
+  formatAccountingLedgerInvoiceLabel({ subject: '英文', first_session_date: '2026-08-05', invoice_no: 'INV-202608-1' }),
+  '英文 · 上課 8/5',
+);
+assert.equal(
+  formatAccountingLedgerInvoiceLabel({ subject: '英文', start_date: '2026-08-05', invoice_no: 'INV-202608-1' }),
+  '英文 · 上課 8/5',
+);
+assert.equal(formatAccountingLedgerInvoiceLabel({ invoice_no: 'INV-202608-1' }), '帳單');
 assert.equal(humanizeDocumentRef('RCPT-LEGACY-000123'), '收據-舊資料-000123');
 assert.equal(humanizeDocumentRef('PAY-202508-1'), '收款-202508-1');
 assert.equal(formatLedgerReceiptBillLine({ invoice_id: 1, course_ref: 'COURSE-1' }), '已對應帳單 · 本課程');

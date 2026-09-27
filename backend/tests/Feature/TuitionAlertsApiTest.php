@@ -19,6 +19,28 @@ class TuitionAlertsApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_tutoring_courses_are_not_tuition_alert_candidates(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-tuition-tutoring@example.com');
+        $student = Student::create([
+            'name' => '免費輔導提醒排除', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $count = $this->createCountModeClass($student->id, [
+            'ClassType' => 'tutoring', 'Rate' => 0, 'Charge' => 0, 'RemainingSessions' => 0,
+        ]);
+        $date = $this->createMonthlyClass($student->id, [
+            'ClassType' => 'tutoring', 'Rate' => 0, 'Charge' => 0,
+        ]);
+
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1');
+        $response->assertOk();
+        $ids = collect($response->json())->pluck('id')->map(fn ($id) => (int) $id);
+        $this->assertFalse($ids->contains((int) $count->ID));
+        $this->assertFalse($ids->contains((int) $date->ID));
+    }
+
     protected function tearDown(): void
     {
         Carbon::setTestNow();
@@ -412,6 +434,9 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(8800, $row['charge']);
         $this->assertSame(0, $row['paid_amount']);
         $this->assertSame(8800, $row['outstanding']);
+        $this->assertSame('unbilled', $row['payable_status']);
+        $this->assertNull($row['payable_amount']);
+        $this->assertSame(8800, $row['estimated_amount']);
         $this->assertNull($row['latest_payment_report_id']);
     }
 
@@ -444,6 +469,10 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(10000, $row['charge']);
         $this->assertSame(3000, $row['paid_amount']);
         $this->assertSame(7000, $row['outstanding']);
+        $this->assertSame('invoiced', $row['payable_status']);
+        $this->assertSame(10000, $row['payable_amount']);
+        $this->assertSame(7000, $row['payable_outstanding']);
+        $this->assertSame('2026-04', $row['billing_period']);
     }
 
     /**

@@ -3,6 +3,14 @@
 本文件描述 AllTrue 補習班管理系統中，供讀卡機／樹莓派等裝置呼叫的 **RFID 刷卡 API**。內容依後端實作：`POST /api/v1/swipe-rfid`（`SwipeRfidController::swipe`）。
 
 > **交叉索引**：架構脈絡亦見 [`SYSTEM_TECH_GUIDE.md`](SYSTEM_TECH_GUIDE.md) §RFID／出缺勤；**行為不一致時以 Controller／路由為準**。
+>
+> **Product intent (#2809):** v1 door RFID = **campus presence only** (no direct
+> course attendance / deduction). Canonical policy:
+> [`architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md`](architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md).
+> This file documents **device request/response contracts** and **current runtime**
+> until `FEATURE_RFID_PRESENCE_ONLY` re-boundaries the controller. Some narrative
+> below (identity order, teacher storage) may lag code — prefer
+> `SwipeRfidController` + `SYSTEM_TECH_GUIDE` §4 when they disagree.
 
 ---
 

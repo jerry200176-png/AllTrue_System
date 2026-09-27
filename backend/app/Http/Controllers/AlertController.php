@@ -11,6 +11,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
+use App\Services\BillingPayableResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,8 @@ class AlertController extends Controller
 {
     public function __construct(
         private MonthlyBillingService $monthlyBilling,
-        private InvoiceAmountReconciliationService $invoiceAmounts
+        private InvoiceAmountReconciliationService $invoiceAmounts,
+        private BillingPayableResolver $payableResolver
     )
     {
     }
@@ -74,6 +76,9 @@ class AlertController extends Controller
         $countQuery = StudentClass::query()
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
+            ->where(function ($q) {
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
+            })
             ->where(function ($q) use ($pendingReportClassIds) {
                 $q->where('Paid', 0)
                   ->orWhereNull('Paid')
@@ -89,6 +94,9 @@ class AlertController extends Controller
         $dateQuery = StudentClass::query()
             ->where('Stop', 0)
             ->where('ScheduleMode', 'date')
+            ->where(function ($q) {
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
+            })
             ->whereNotNull('settlement_day')
             ->whereBetween('settlement_day', [1, 31]);
         if ($studentIds !== null) {
@@ -102,6 +110,9 @@ class AlertController extends Controller
         // (in-app #251 / GH #2461 — amended unpaid rows previously vanished from tuition).
         $pendingSettlementResults = StudentClass::query()
             ->where('Stop', 1)
+            ->where(function ($q) {
+                $q->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
+            })
             ->where(function ($q) {
                 $q->where('closed_reason', 'settled_pending')
                     ->orWhere(function ($q2) {
@@ -157,12 +168,12 @@ class AlertController extends Controller
             ->all();
         $paidAtMap = self::lastPaidAtByStudentClassIds($allClassIds);
         $invoiceAggMap = self::invoiceAggregateByStudentClassIds($allClassIds);
+        $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
+        $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
         $subjectNameMap = $this->subjectNameMapForCourses($countResults->merge($dateResults)->merge($pendingSettlementResults));
-
-        $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
 
         // ── Monthly billing package members: used to filter out member courses from individual alerts ──
         $monthlyPkgMemberIds = collect();
@@ -226,6 +237,14 @@ class AlertController extends Controller
                     'monthly_sessions' => $monthlySessions,
                     'rate'             => round($rate, 2),
                     'charge'           => $charge,
+                    'estimated_amount' => $charge,
+                    'charge_semantics' => 'estimate_only',
+                    'payable_amount'   => null,
+                    'payable_outstanding' => null,
+                    'payable_status'    => 'unbilled',
+                    'payable_source'    => null,
+                    'payable_invoice_id' => null,
+                    'billing_period'    => null,
                     'outstanding'      => (bool) $pkg->paid ? 0 : $charge,
                     'paid'             => (bool) $pkg->paid,
                     'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
@@ -246,7 +265,8 @@ class AlertController extends Controller
             $countPkgMembersByPkgId,
             $paidAtMap,
             $invoiceAggMap,
-            $pendingReportMap
+            $pendingReportMap,
+            $payableMap
         ) {
             $anchor = $countPkgAnchorById->get($pkg->id);
             if (!$anchor) {
@@ -255,6 +275,7 @@ class AlertController extends Controller
             $anchorId = (int) $anchor->ID;
             $charge = $this->packageCountModeCharge($pkg);
             $invoiceAgg = $invoiceAggMap[$anchorId] ?? null;
+            $payable = $payableMap[$anchorId] ?? $this->payableResolver->unbilled();
             $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
             $isPaid = $this->isFullyPaid((bool) $pkg->paid, $paidAmount, $charge);
 
@@ -289,6 +310,14 @@ class AlertController extends Controller
                 'paid_at'            => $pkg->paid_at ? substr((string) $pkg->paid_at, 0, 10) : null,
                 'last_paid_at'       => ($pkg->paid_at ? substr((string) $pkg->paid_at, 0, 10) : null) ?? ($paidAtMap[$anchorId] ?? null),
                 'charge'             => $charge,
+                'estimated_amount'   => $charge,
+                'charge_semantics'   => 'estimate_only',
+                'payable_amount'     => $payable['payable_amount'],
+                'payable_outstanding' => $payable['payable_outstanding'],
+                'payable_status'     => $payable['payable_status'],
+                'payable_source'     => $payable['payable_source'],
+                'payable_invoice_id' => $payable['payable_invoice_id'],
+                'billing_period'    => $payable['payable_billing_period'],
                 'paid_amount'        => $paidAmount,
                 'outstanding'        => $isPaid ? 0 : max(0, $charge - $paidAmount),
                 'payment_status'     => $this->computePackageCountPaymentStatus($pkg, $paidAmount, $charge, $pendingReportId !== null),
@@ -314,7 +343,7 @@ class AlertController extends Controller
             ->merge(
                 $pendingSettlementResults->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
-            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap) {
+            ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap) {
                 $classId = (int) $row['id'];
                 $sc = $allResults->get($classId);
                 $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
@@ -330,6 +359,7 @@ class AlertController extends Controller
                         : (int) $this->monthlyBilling->summarize($sc, $today)['charge'])
                     : $this->countModeCharge($sc);
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
+                $payable = $payableMap[$classId] ?? $this->payableResolver->unbilled();
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
                 $rawPaid = (int) ($sc->Paid ?? 0) === 1;
                 $scIsPaid = $this->isFullyPaid($rawPaid || ($sc ? $sc->isEffectivelyPaid() : false), $paidAmount, $charge);
@@ -355,6 +385,15 @@ class AlertController extends Controller
                     'paid_at'                  => $directPaidAt,
                     'last_paid_at'             => $directPaidAt ?? $invoicePaidAt,
                     'charge'                   => $charge,
+                    'estimated_amount'         => $charge,
+                    'charge_semantics'         => 'estimate_only',
+                    'payable_amount'           => $payable['payable_amount'],
+                    'payable_outstanding'      => $payable['payable_outstanding'],
+                    'payable_status'           => $payable['payable_status'],
+                    'payable_source'           => $payable['payable_source'],
+                    'payable_invoice_id'       => $payable['payable_invoice_id'],
+                    'billing_period'           => $payable['payable_billing_period'],
+                    'payable_amount_source'    => $payable['payable_amount_source'],
                     'paid_amount'              => $paidAmount,
                     'outstanding'              => $outstanding,
                     'payment_status'           => $paymentStatus,
@@ -684,6 +723,8 @@ class AlertController extends Controller
                 'source' => 'stored_charge_count_mode',
             ];
         $charge = (int) $billing['charge'];
+        $payable = $this->payableResolver->byStudentClassIds([$studentClassId], [$sc])[$studentClassId]
+            ?? $this->payableResolver->unbilled();
 
         $dueDate = null;
         $daysUntilSettlement = null;
@@ -721,6 +762,13 @@ class AlertController extends Controller
             'billing_period_start' => $billing['period_start'],
             'billing_period_end' => $billing['period_end'],
             'charge'           => $charge,
+            'estimated_amount' => $charge,
+            'charge_semantics' => 'estimate_only',
+            'payable_amount'   => $payable['payable_amount'],
+            'payable_status'   => $payable['payable_status'],
+            'payable_source'   => $payable['payable_source'],
+            'payable_invoice_id' => $payable['payable_invoice_id'],
+            'payable_billing_period' => $payable['payable_billing_period'],
             'billing_period'   => $billingPeriod,
             'due_date'         => $dueDate,
             'days_until_settlement' => $daysUntilSettlement,

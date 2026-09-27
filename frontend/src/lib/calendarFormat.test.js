@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   classTypeLabel,
+  classTypeShortLabel,
   dayLabel,
   dayOfWeekFromDate,
   getWeekLabel,
@@ -29,6 +30,10 @@ test('classTypeLabel：已知型別中譯', () => {
 });
 test('classTypeLabel：未知型別原樣回傳', () => {
   assert.equal(classTypeLabel('zzz'), 'zzz');
+});
+test('classTypeShortLabel：多學生班型短標', () => {
+  assert.equal(classTypeShortLabel('one_on_two'), '1:2');
+  assert.equal(classTypeShortLabel('one_on_three'), '1:3');
 });
 
 // ── dayLabel ──────────────────────────────────────────────────────

@@ -1,0 +1,42 @@
+id: INT-20260926-134101-3IDH
+title: Apply ADR006 pool/member presentation367
+intent: Apply ADR006 pool/member presentation367
+kind: intent
+brain_dump: 'User directs existing pool meaning: pool summary once, no member pool
+  balances, preserve authoritative dates and ordinary course progress'
+boundary: Display only; no quota division, source/ledger/calculation/billing/data/API/identity/schema
+  or production activation change
+success_condition: Real desktop/mobile render regression and review-ready exact-head
+  candidate
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/src/**
+  - frontend/e2e/students-list-clarity.spec.js
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-26T13:41:01+08:00'
+children:
+- TKT-20260926-134117-Q0C6
+resource_profile: default

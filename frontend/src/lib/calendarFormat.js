@@ -4,6 +4,15 @@
 
 export const classTypeLabel = (type) => ({ one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' }[type] || type);
 
+/** Compact calendar split cells: keep type readable without vertical clip (#317). */
+export const classTypeShortLabel = (type) => ({
+  one_on_one: '1:1',
+  one_on_two: '1:2',
+  one_on_three: '1:3',
+  tutoring: '輔',
+  trial: '試',
+}[type] || classTypeLabel(type));
+
 export const dayLabel = (d) => ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'][d] || '';
 
 /** 從 YYYY-MM-DD 得到星期幾，1=週一 … 7=週日 */

@@ -40,11 +40,13 @@ describe('director payment shortcuts', () => {
 
   it('exposes notification and payment-detail actions from each alert', () => {
     expect(dashboard).toContain('PaymentSlipModal');
-    expect(dashboard).toContain('AccountingLedgerModal');
+    expect(dashboard).not.toContain('AccountingLedgerModal');
     expect(dashboard).toContain('繳費通知');
-    expect(dashboard).toContain('繳費明細');
+    expect(dashboard).toContain('前往帳務中心');
     expect(dashboard).toContain('openPaymentSlip(student)');
-    expect(dashboard).toContain('openPaymentLedger(student)');
+    expect(dashboard).toContain('openPaymentCenter(student)');
+    expect(dashboard).toContain("target: 'tuition-collect'");
+    expect(dashboard).toContain('paymentCenterIntent(student)');
   });
 
   it('keeps notice generation limited to outstanding payment states', () => {
@@ -62,6 +64,13 @@ describe('director payment shortcuts', () => {
   it('keeps payment shortcuts visible for contextual workflow entry', () => {
     expect(dashboard).toContain('複製通知');
     expect(dashboard).toContain('student_class_id: c.student_class_id || c.id || c.class_id || null');
+  });
+
+  it('keeps dashboard payment actions on the Billing Center authority', () => {
+    expect(dashboard).toContain("if (status === 'pending_report') return 'pending_report';");
+    expect(dashboard).toContain("if (status === 'pending_reconciliation') return 'pending_reconciliation';");
+    expect(dashboard).toContain("if (status === 'unpaid' || status === 'partial'");
+    expect(tuition).toContain("activeTab.value = 'pending_reconciliation';");
   });
 
   it('carries notification context into the existing billing and calendar pages', () => {

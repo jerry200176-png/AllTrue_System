@@ -33,7 +33,12 @@
           <span>會取消的排程投影</span><strong>{{ preview.affected_future_schedules_count ?? 0 }}</strong>
         </div>
         <p v-if="preview.affected_future_scheduled?.length" class="preview-list">
-          未來堂次：{{ preview.affected_future_scheduled.map((row) => `${row.date} ${row.start_time}-${row.end_time}`).join('、') }}
+          會取消的未來堂次：{{ preview.affected_future_scheduled.map((row) => `${row.date} ${row.start_time}-${row.end_time}`).join('、') }}
+        </p>
+        <p v-if="Number(preview.forfeited_sessions) > 0" class="amendment-warning" role="alert">
+          調整後將放棄 {{ preview.forfeited_sessions }} 堂未使用額度。
+          <span v-if="preview.closes_contract">合約會提前結束，之後無法再排新堂次。</span>
+          <span v-else>合約仍可使用，剩餘 {{ preview.new_remaining_sessions }} 堂可繼續排課。</span>
         </p>
         <p class="financial-note">帳務摘要：Invoice {{ preview.financial?.invoice_count ?? 0 }} 筆／Payment {{ preview.financial?.payment_count ?? 0 }} 筆／PaymentReport {{ preview.financial?.payment_report_count ?? 0 }} 筆。{{ preview.financial_note }}</p>
       </div>
@@ -73,12 +78,18 @@ const currentCount = computed(() => Number(props.course?.sessions_purchased ?? p
 const currentRemaining = computed(() => Number(props.course?.remaining_sessions ?? props.course?.RemainingSessions ?? 0));
 const validCount = computed(() => Number.isInteger(newSessionCount.value) && newSessionCount.value >= 1 && newSessionCount.value < currentCount.value);
 
-watch(() => [props.show, props.course?.id ?? props.course?.ID], ([isShown]) => {
-  if (isShown) {
-    newSessionCount.value = Math.max(1, currentCount.value);
+watch(
+  () => [props.show, props.course?.id ?? props.course?.ID, currentCount.value, currentRemaining.value],
+  ([isShown]) => {
+    if (!isShown) return;
+    const used = Math.max(0, currentCount.value - currentRemaining.value);
+    const maxAllowed = Math.max(1, currentCount.value - 1);
+    // Default to one session above completed usage when possible so directors see a partial reduction first.
+    newSessionCount.value = Math.min(maxAllowed, Math.max(used + 1, used || 1));
     reason.value = '';
-  }
-});
+  },
+  { immediate: true },
+);
 
 function onSubmit() {
   if (!props.preview || !validCount.value || !reason.value) return;
@@ -94,6 +105,9 @@ function onSubmit() {
 .form-label { display: block; font-size: 13px; font-weight: 700; color: var(--text); margin: 10px 0 6px; } .count-row { display: flex; gap: 8px; } .form-input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 8px; font-size: 14px; } .count-row .form-input { max-width: 150px; }
 .secondary { border: 1px solid var(--ds-primary); border-radius: 8px; background: var(--ds-canvas); color: var(--ds-primary-deep); padding: 8px 12px; cursor: pointer; }
 .form-hint, .preview-list, .financial-note { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.5; } .amendment-preview { margin: 14px 0; background: var(--ds-canvas-soft); border: 1px solid var(--ds-hairline); } .preview-line { display: flex; justify-content: center; gap: 12px; font-size: 18px; margin-bottom: 10px; } .preview-grid { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 8px; } .preview-grid strong { text-align: right; }
-.amendment-error { margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: var(--ds-danger-wash); color: var(--ds-danger); font-size: 13px; } .financial-note { margin: 8px 0 0; }
+.amendment-error, .amendment-warning { margin: 10px 0; padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.5; }
+.amendment-error { background: var(--ds-danger-wash); color: var(--ds-danger); }
+.amendment-warning { background: var(--ds-warning-wash); color: var(--ds-warning-ink); border: 1px solid var(--ds-hairline); }
+.financial-note { margin: 8px 0 0; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 </style>

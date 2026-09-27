@@ -23,4 +23,10 @@ export default defineConfig({
     port: 5177,
     strictPort: true,
   },
+  build: {
+    target: 'esnext',
+    rollupOptions: {
+      input: path.resolve(__dirname, 'e2e/fixtures/ui-foundation/pilot-mount.html'),
+    },
+  },
 });

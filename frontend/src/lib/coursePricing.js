@@ -3,6 +3,34 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
+export const normalizeTransactionDiscount = (discount = {}) => {
+  const type = ['NONE', 'FIXED_AMOUNT', 'PERCENTAGE'].includes(String(discount?.type || '').toUpperCase())
+    ? String(discount.type).toUpperCase()
+    : 'NONE';
+  const value = typeof discount?.value === 'string' ? discount.value.trim() : '0';
+  return { type, value: type === 'NONE' ? '0' : value, reason: String(discount?.reason || '').trim() };
+};
+
+export const calculateTransactionDiscountPreview = (originalAmount, discount = {}) => {
+  const original = Math.max(0, Math.round(Number(originalAmount) || 0));
+  const normalized = normalizeTransactionDiscount(discount);
+  let discountAmount = 0;
+  if (normalized.type === 'FIXED_AMOUNT' && /^\d+$/.test(normalized.value)) {
+    discountAmount = Math.min(original, Number(normalized.value));
+  } else if (normalized.type === 'PERCENTAGE' && /^(?:\d+)(?:\.\d{1,2})?$/.test(normalized.value)) {
+    const [whole, fraction = ''] = normalized.value.split('.');
+    const basisPoints = (Number(whole) * 100) + Number((fraction + '00').slice(0, 2));
+    discountAmount = Math.min(original, Math.floor((original * basisPoints + 5000) / 10000));
+  }
+  return {
+    ...normalized,
+    originalAmount: original,
+    discountAmount,
+    finalAmount: original - discountAmount,
+    requiresReason: discountAmount > 0,
+  };
+};
+
 export const calcSessionFeeFromRate = (ratePer30Min, durationHours) => {
   const rate = toNumber(ratePer30Min);
   if (rate == null) return 0;
@@ -97,6 +125,55 @@ export const estimateCreateCharge = ({ pricePerSession, rateUnit, sessions, avgS
   }
   return { charge: Math.round(price * n), totalHours: 0 };
 };
+
+const courseSessionMinutes = (course) => {
+  const fallback = Number(course?.SessionDuration ?? course?.duration_minutes)
+    || (Number(course?.duration_hours) > 0 ? Number(course.duration_hours) * 60 : 120);
+  const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
+  if (!slots.length) return Math.max(0, fallback);
+  const total = slots.reduce((sum, slot) => {
+    const minutes = Number(slot?.duration_minutes)
+      || (Number(slot?.duration_hours) > 0 ? Number(slot.duration_hours) * 60 : fallback);
+    return sum + Math.max(0, minutes);
+  }, 0);
+  return total / slots.length;
+};
+
+/** Mirror StudentClassController::purchaseBatch's canonical charge calculation. */
+export const estimatePurchaseBatchCharge = (course, sessions) => {
+  const rate = Math.max(0, toNumber(course?.rate_per_30min ?? course?.Rate ?? course?.rate) ?? 0);
+  const count = Math.max(0, Math.round(toNumber(sessions) ?? 0));
+  if (rate <= 0 || count <= 0) return 0;
+  if (getRateUnit(course) === 'hour') {
+    // StudentClassController rounds total hours before multiplying the hourly rate.
+    const totalHours = Math.round((count * courseSessionMinutes(course)) / 60);
+    return Math.round(rate * totalHours);
+  }
+  return Math.round(rate * count);
+};
+
+/** Estimate a new monthly period from its contract rate, never the old source Charge. */
+export const estimateMonthlyRenewalCharge = (course) => {
+  const sessions = Number(course?.monthly_sessions ?? course?.MonthlySessions ?? 0);
+  return estimatePurchaseBatchCharge(course, sessions);
+};
+
+/** Read the server's date-specific renewal-preview total; never substitute source Charge. */
+export const getRenewalPreviewAmount = (preview, fallback = null) => {
+  const amount = Number(preview?.billing?.amount_due ?? preview?.proposed_course?.charge);
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount) : fallback;
+};
+
+export const canApplyRenewalPreview = ({
+  requestId,
+  currentRequestId,
+  courseId,
+  currentCourseId,
+  requestedEndDate,
+  currentEndDate,
+}) => String(requestId) === String(currentRequestId)
+  && String(courseId) === String(currentCourseId)
+  && String(requestedEndDate || '') === String(currentEndDate || '');
 
 export const getCourseTotalFee = (course) => {
   if (!course) return 0;

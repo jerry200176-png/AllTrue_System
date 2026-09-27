@@ -25,6 +25,8 @@ class ParentFeedbackAwaitingReplyTest extends TestCase
 {
     use RefreshDatabase;
 
+
+
     public function test_e1_initial_parent_message_is_awaiting(): void
     {
         $s = $this->seedRecord();
@@ -135,6 +137,30 @@ class ParentFeedbackAwaitingReplyTest extends TestCase
         $this->getJson('/api/v1/me/unread-feedback-count', $this->bearer($teacherToken))
             ->assertOk()
             ->assertJsonPath('count', 0);
+        $this->getJson('/api/v1/me/awaiting-reply-count', $this->bearer($teacherToken))
+            ->assertOk()
+            ->assertJsonPath('awaiting_reply_count', 1);
+    }
+
+    public function test_dismiss_awaiting_clears_queue_without_public_reply_and_parent_followup_reopens(): void
+    {
+        $s = $this->seedRecord();
+        $parentToken = $this->parentToken($s['student_id']);
+        $this->putJson($this->parentUrl($s), ['content' => '先看過即可'], $this->bearer($parentToken))->assertOk();
+        $fb = LearningRecordFeedback::where('learning_record_id', $s['record_id'])->first();
+        $teacherToken = $this->staffToken($s['teacher'], [$s['campus_id']]);
+
+        $this->postJson("/api/v1/learning-record-feedbacks/{$fb->id}/dismiss-awaiting", [], $this->bearer($teacherToken))
+            ->assertOk()
+            ->assertJsonPath('awaiting_staff_reply', false);
+
+        $this->getJson('/api/v1/me/awaiting-reply-count', $this->bearer($teacherToken))
+            ->assertOk()
+            ->assertJsonPath('awaiting_reply_count', 0);
+        $this->assertSame(0, LearningRecordFeedbackReply::where('feedback_id', $fb->id)->whereIn('author_role', ['teacher', 'director'])->count());
+
+        $this->postJson("/api/v1/parent/learning-records/{$s['record_id']}/feedback/reply", ['content' => '再請問一次'], $this->bearer($parentToken))
+            ->assertOk();
         $this->getJson('/api/v1/me/awaiting-reply-count', $this->bearer($teacherToken))
             ->assertOk()
             ->assertJsonPath('awaiting_reply_count', 1);

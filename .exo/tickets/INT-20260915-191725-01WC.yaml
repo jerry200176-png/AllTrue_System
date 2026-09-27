@@ -1,0 +1,46 @@
+id: INT-20260915-191725-01WC
+title: 'Phase-C writeback for in-app #291'
+intent: 'Phase-C writeback for in-app #291'
+kind: intent
+brain_dump: 'In-app #291 is a resolved UI fix already merged and deployed. Add only
+  the existing Phase-C allowlist entry, focused assertion, and auditable request record;
+  no application behavior or production data changes.'
+boundary: Only update existing Phase-C allowlist, its focused contract test, and request
+  record plus Exo metadata. Do not modify frontend/backend behavior, APIs, permissions,
+  billing, identity, or production data.
+success_condition: 'Allowlist resolves only in-app #291 against verified current production
+  b4a5f64 and deploy run 34954544684, with one idempotent public reply and fresh detail
+  evidence.'
+risk: low
+priority: 1
+labels: []
+scope:
+  allow:
+  - .github/workflows/bug-phase-c-allowlist.yml
+  - scripts/ci/bug-writeback-workflow.test.mjs
+  - operations/closeout/bug-phase-c-allowlist.request.md
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny:
+  - backend/**
+  - frontend/**
+budgets:
+  max_files_changed: 6
+  max_loc_changed: 180
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-15T19:17:25+08:00'
+children:
+- TKT-20260915-191736-U305
+resource_profile: default

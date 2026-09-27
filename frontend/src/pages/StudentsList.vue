@@ -13,6 +13,7 @@
         </template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">匯入名單</AtButton>
+          <AtButton shape="rect" variant="ghost" icon="download" aria-label="下載學生名單匯入範例" @click="downloadImportTemplate">下載範例</AtButton>
           <input
             ref="importInput"
             class="student-import-input"
@@ -41,10 +42,10 @@
 
       <AtFilterBar label="學生篩選" data-guide="students-filters">
         <div class="filter-search">
-          <label for="students-name-filter">搜尋姓名</label>
+          <label for="students-name-filter">搜尋姓名或就讀學校</label>
           <div class="search-input-wrap">
             <span class="material-symbols-outlined search-icon" aria-hidden="true">search</span>
-            <input id="students-name-filter" v-model="filters.name" placeholder="輸入姓名…" @input="debouncedLoad" />
+            <input id="students-name-filter" v-model="filters.search" placeholder="輸入姓名或學校…" @input="debouncedLoad" />
           </div>
         </div>
         <div>
@@ -65,7 +66,7 @@
           </select>
         </div>
         <div class="filter-toggles">
-          <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="showGradePromotion = true">年級升級</AtButton>
+          <AtButton shape="rect" size="sm" variant="ghost" icon="school" @click="openGradePromotion">年級升級</AtButton>
           <AtButton
             shape="rect"
             size="sm"
@@ -180,7 +181,7 @@
                   :key="course.id"
                   :class="['subject-pill', { low: isSessionPaymentLowRemaining(course) }]"
                 >
-                  {{ getSubjectLabel(course.subject).split('(')[0].trim() }}
+                  {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
                 </span>
               </div>
@@ -239,7 +240,7 @@
                         <span class="student-course-overview__eyebrow">課程總覽</span>
                         <h5 id="student-course-overview-title">先看需要處理的課程</h5>
                       </div>
-                      <span class="student-course-overview__hint">選一門查看完整資料</span>
+                      <span class="student-course-overview__hint">快速定位合約，逐筆核對日期</span>
                     </div>
                     <div class="student-course-overview__metrics" role="list" aria-label="課程摘要">
                       <div role="listitem" class="student-course-overview__metric">
@@ -255,6 +256,14 @@
                         <span>歷史</span>
                       </div>
                     </div>
+                    <section v-for="pool in sharedPackageSummaries(getActiveStudentCourses(student.id))" :key="`pool-${pool.id}`" class="student-package-summary" :aria-label="`${pool.name}共用堂數`">
+                      <div class="student-course-overview__header"><strong>{{ pool.name }}</strong><span class="student-course-overview__hint">成員課程共用同一堂數池</span></div>
+                      <dl class="student-course-card__meta">
+                        <div><dt>方案總堂數</dt><dd data-testid="package-total">{{ pool.total ?? '待確認' }}</dd></div>
+                        <div><dt>方案已使用</dt><dd data-testid="package-used">{{ pool.used ?? '待確認' }}</dd></div>
+                        <div><dt>方案剩餘堂數</dt><dd data-testid="package-remaining">{{ pool.remaining ?? '待確認' }}</dd></div>
+                      </dl>
+                    </section>
                     <div class="student-course-picker" role="list" aria-label="進行中的課程">
                       <div
                         v-for="course in getActiveStudentCourses(student.id)"
@@ -270,7 +279,7 @@
                           :aria-pressed="getFocusedStudentCourse(student.id)?.id === course.id"
                           @click.stop="selectStudentCourse(student.id, course.id, $event)"
                         >
-                          <span class="student-course-picker__subject">{{ getSubjectLabel(course.subject) }}</span>
+                          <span class="student-course-picker__subject">{{ getStudentCourseSubjectDisplayLabel(course) }}</span>
                           <span class="student-course-picker__status">{{ getCourseAttentionLabel(course) }}</span>
                           <span class="student-course-picker__detail">{{ getCourseProgressSummary(course) }}</span>
                           <span class="student-course-picker__chevron material-symbols-outlined" aria-hidden="true">chevron_right</span>
@@ -285,14 +294,25 @@
                     <div class="student-course-detail__heading">
                       <div>
                         <span class="student-course-detail__eyebrow">目前課程工作區</span>
-                        <h5 id="student-course-detail-title">查看選定課程的完整資料</h5>
+                        <h5 id="student-course-detail-title">逐筆核對合約與上課日期</h5>
                       </div>
-                      <span class="student-course-detail__hint">下一步與更多操作都在這裡</span>
+                      <div class="student-course-detail__tools">
+                        <span class="student-course-detail__hint">每筆合約獨立列示，堂次不混合</span>
+                        <button
+                          v-if="hasExpandableStudentCourseDates(student.id)"
+                          type="button"
+                          class="small ghost student-course-detail__bulk-toggle"
+                          :aria-label="areAllStudentCourseDatesExpanded(student.id) ? '全部收合上課日期' : '全部展開上課日期'"
+                          @click.stop="toggleAllStudentCourseDates(student.id)"
+                        >
+                          <span class="material-symbols-outlined" aria-hidden="true">{{ areAllStudentCourseDatesExpanded(student.id) ? 'unfold_less' : 'unfold_more' }}</span>
+                          {{ areAllStudentCourseDatesExpanded(student.id) ? '全部收合上課日期' : '全部展開上課日期' }}
+                        </button>
+                      </div>
                     </div>
                     <div class="student-course-cards" data-testid="student-course-cards">
                   <template v-for="course in getActiveStudentCourses(student.id)" :key="course.id">
                   <article
-                    v-if="getFocusedStudentCourse(student.id)?.id === course.id"
                     class="student-course-card student-course-card--focused"
                     :class="{ 'student-course-card--attention': isCourseNeedsAttention(course) }"
                     :data-course-id="course.id"
@@ -300,7 +320,7 @@
                     <header class="student-course-card__header">
                       <div class="student-course-card__identity">
                         <span class="student-course-card__eyebrow">學生課程</span>
-                        <h5>{{ getSubjectLabel(course.subject) }}</h5>
+                        <h5>{{ getStudentCourseSubjectDisplayLabel(course) }}</h5>
                         <div class="student-course-card__badges">
                           <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
                           <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
@@ -317,6 +337,37 @@
                         {{ getCoursePrimaryAction(course).label }}
                       </button>
                     </header>
+
+                    <section class="student-course-dates" :aria-labelledby="`student-course-dates-${student.id}-${course.id}`">
+                      <div class="student-course-dates__header">
+                        <div>
+                          <span class="student-course-dates__eyebrow">上課日期</span>
+                          <strong :id="`student-course-dates-${student.id}-${course.id}`">{{ studentCourseDateSummary(course) }}</strong>
+                        </div>
+                        <button
+                          v-if="studentCourseSessionPreview(student.id, course).overflow > 0"
+                          type="button"
+                          class="student-course-dates__toggle"
+                          :aria-expanded="isStudentCourseDatesExpanded(student.id, course)"
+                          @click.stop="toggleStudentCourseDates(student.id, course)"
+                        >
+                          <span class="material-symbols-outlined" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, course) ? 'expand_less' : 'expand_more' }}</span>
+                          {{ isStudentCourseDatesExpanded(student.id, course) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, course).overflow} 堂` }}
+                        </button>
+                      </div>
+                      <div v-if="isStudentCourseSessionsLoading(student.id)" class="student-course-dates__state" role="status">上課日期載入中…</div>
+                      <div v-else-if="studentCourseSessionsLoadError(student.id)" class="student-course-dates__state student-course-dates__state--error" role="alert">
+                        <span>上課日期暫時無法載入。</span>
+                        <button type="button" class="small ghost" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
+                      </div>
+                      <ol v-else-if="studentCourseSessionPreview(student.id, course).total > 0" class="student-course-dates__list">
+                        <li v-for="session in studentCourseSessionPreview(student.id, course).visible" :key="studentCourseSessionRowKey(session, course)">
+                          <span class="student-course-dates__date">{{ formatStudentCourseSessionDate(session) }}</span>
+                          <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status">{{ studentCourseSessionStatus(session) }}</span>
+                        </li>
+                      </ol>
+                      <div v-else class="student-course-dates__state">目前沒有可顯示的上課日期。</div>
+                    </section>
 
                     <div
                       class="student-course-card__next-step"
@@ -348,6 +399,9 @@
                       </div>
                       <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="course.PackageID"> · 方案共用堂數</span></span>
                     </section>
+                    <div v-else-if="isPackageMember(course)" class="student-course-card__progress-empty" role="note">
+                      本課程使用共用方案；堂數請見上方方案摘要，上課日期見本課程明細。
+                    </div>
                     <div v-else-if="String(course.payment_type || '').toLowerCase() === 'session'" class="student-course-card__progress-empty" role="status">
                       堂數未設定，請編輯課程確認。
                     </div>
@@ -439,7 +493,7 @@
                   >
                     <div v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card">
                       <div class="sl-history-card__header">
-                        <span class="tag sl-history-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
+                        <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                         <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
@@ -452,6 +506,36 @@
                         <span v-if="hc.payment_type === 'session'"><span class="sl-history-card__label">堂數</span>{{ hc.used_sessions || 0 }} / {{ hc.sessions_purchased || 0 }}</span>
                         <span v-if="hc.last_paid_at"><span class="sl-history-card__label">繳費</span>{{ hc.last_paid_at }}</span>
                       </div>
+                      <section class="student-course-dates student-course-dates--history" :aria-labelledby="`student-history-dates-${student.id}-${hc.id}`">
+                        <div class="student-course-dates__header">
+                          <div>
+                            <span class="student-course-dates__eyebrow">完整上課日期</span>
+                            <strong :id="`student-history-dates-${student.id}-${hc.id}`">{{ studentCourseDateSummary(hc) }}</strong>
+                          </div>
+                          <button
+                            v-if="studentCourseSessionPreview(student.id, hc).overflow > 0"
+                            type="button"
+                            class="student-course-dates__toggle"
+                            :aria-expanded="isStudentCourseDatesExpanded(student.id, hc)"
+                            @click.stop="toggleStudentCourseDates(student.id, hc)"
+                          >
+                            <span class="material-symbols-outlined" aria-hidden="true">{{ isStudentCourseDatesExpanded(student.id, hc) ? 'expand_less' : 'expand_more' }}</span>
+                            {{ isStudentCourseDatesExpanded(student.id, hc) ? '收合日期' : `再顯示 ${studentCourseSessionPreview(student.id, hc).overflow} 堂` }}
+                          </button>
+                        </div>
+                        <div v-if="isStudentCourseSessionsLoading(student.id)" class="student-course-dates__state" role="status">上課日期載入中…</div>
+                        <div v-else-if="studentCourseSessionsLoadError(student.id)" class="student-course-dates__state student-course-dates__state--error" role="alert">
+                          <span>上課日期暫時無法載入。</span>
+                          <button type="button" class="small ghost" @click.stop="retryLoadStudentCourseSessions(student.id)">重試</button>
+                        </div>
+                        <ol v-else-if="studentCourseSessionPreview(student.id, hc).total > 0" class="student-course-dates__list">
+                          <li v-for="session in studentCourseSessionPreview(student.id, hc).visible" :key="studentCourseSessionRowKey(session, hc)">
+                            <span class="student-course-dates__date">{{ formatStudentCourseSessionDate(session) }}</span>
+                            <span v-if="studentCourseSessionStatus(session)" class="student-course-dates__status">{{ studentCourseSessionStatus(session) }}</span>
+                          </li>
+                        </ol>
+                        <div v-else class="student-course-dates__state">目前沒有可顯示的上課日期。</div>
+                      </section>
                       <div class="sl-history-card__actions">
                         <button type="button" class="small ghost" @click="editCourse(hc)">編輯</button>
                         <button type="button" class="small danger" @click="deleteCourse(hc)">刪除</button>
@@ -512,8 +596,13 @@
             </select>
           </div>
           <div class="form-group">
-            <label>就讀學校</label>
-            <input v-model="studentForm.school" placeholder="例：大安國中" />
+            <label for="student-school">就讀學校</label>
+            <SchoolNameInput
+              input-id="student-school"
+              v-model="studentForm.school"
+              :auth-token="schoolAuthToken"
+              placeholder="例：大安國中"
+            />
           </div>
         </div>
 
@@ -664,6 +753,7 @@
       :rooms="rooms"
       :initial-student-id="selectedStudentSchedulerId"
       :allow-package-mode="true"
+      :allow-financial-discount="props.allowFinancialDiscount"
       mode="create"
       @cancel="closeCourseModal"
       @success="handleUniversalSchedulerSuccess"
@@ -673,7 +763,8 @@
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
-      @close="showRenewMonthlyModal = false"
+      @close="closeRenewMonthlyModal"
+      @preview-change="loadRenewMonthlyPreview"
       @submit="submitRenewMonthly"
     />
 
@@ -728,7 +819,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
-        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -759,6 +850,13 @@
         <div v-if="isTutoringCourse(selectedCourse) && selectedCourse?.payment_type === 'monthly'" class="form-group">
           <label>下一期結束日期</label>
           <input v-model="tutoringEndDate" type="date" :min="addSessionStartDate" />
+        </div>
+        <div v-if="selectedCourse && !isTutoringCourse(selectedCourse) && !selectedCourse?.PackageID" class="form-group" data-testid="purchase-transaction-discount">
+          <label>交易折扣</label>
+          <select v-model="purchaseDiscount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
+          <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.value" type="text" inputmode="decimal" placeholder="折扣值" />
+          <input v-if="purchaseDiscount.type !== 'NONE'" v-model="purchaseDiscount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
+          <span class="hint">原始 {{ purchaseDiscountPreview.originalAmount.toLocaleString() }} · 折扣 {{ purchaseDiscountPreview.discountAmount.toLocaleString() }} · 實收 {{ purchaseDiscountPreview.finalAmount.toLocaleString() }}</span>
         </div>
         <p class="hint" v-if="addSessionCount > 0">
           <template v-if="isTutoringCourse(selectedCourse)">下一期費用：<strong>0 元，無須繳費</strong></template>
@@ -791,37 +889,62 @@
       @purchase="interceptGoToPurchase"
       @decision="onEnrollmentConflictDecision"
     />
-    <!-- Grade Promotion Modal -->
-    <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="showGradePromotion = false">
-      <div class="modal" style="width: 500px;">
+    <!-- Grade Promotion Modal — server preview/confirm (#297 Phase A); no course Stop. -->
+    <div v-if="showGradePromotion" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grade-promotion-modal-title" @click.self="closeGradePromotion">
+      <div class="modal" style="width: 560px;">
         <h3 id="grade-promotion-modal-title">年級升級</h3>
-        <p class="hint">一鍵將所有在學中的學生年級 +1（例如 J1 → J2）。H3 學生會被標記為已畢業。</p>
-        <div v-if="promotionPreview.length > 0" style="max-height: 300px; overflow-y: auto; margin: 16px 0;">
+        <p class="hint">
+          行政預設日 {{ gradePromotionAdminDate || '8/1' }}；確認後寫入伺服器批次紀錄。
+          H3 僅標記畢業（不自動停課）。已於此學年升級者不可再執行。
+        </p>
+        <div v-if="gradePromotionLoading" class="empty-text">載入預覽中…</div>
+        <div v-else-if="gradePromotionError" class="empty-text text-red">{{ gradePromotionError }}</div>
+        <div v-else-if="promotionPreview.length > 0" style="max-height: 300px; overflow-y: auto; margin: 16px 0;">
           <table class="course-inner-table">
             <thead>
               <tr>
+                <th></th>
                 <th>姓名</th>
                 <th>目前年級</th>
                 <th>升級後</th>
+                <th>狀態</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="p in promotionPreview" :key="p.id">
+              <tr v-for="p in promotionPreview" :key="p.student_id" :class="{ muted: !p.actionable }">
+                <td>
+                  <input
+                    v-if="p.actionable"
+                    type="checkbox"
+                    :checked="!gradePromotionExcluded.has(p.student_id)"
+                    @change="onGradePromotionExcludeChange(p.student_id, $event.target.checked)"
+                  />
+                </td>
                 <td>{{ p.name }}</td>
-                <td>{{ getGradeLabel(p.from) }}</td>
+                <td>{{ getGradeLabel(p.from_grade) || '—' }}</td>
                 <td>
                   <strong :class="{ 'text-red': p.graduated }">
-                    {{ p.graduated ? '畢業' : getGradeLabel(p.to) }}
+                    {{ p.graduated ? '畢業' : (getGradeLabel(p.to_grade) || '—') }}
                   </strong>
+                </td>
+                <td>
+                  <span v-if="p.already_promoted">本季已升級</span>
+                  <span v-else-if="!p.actionable">略過</span>
+                  <span v-else>待確認</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <div v-else class="empty-text">沒有在學中的學生</div>
+        <div v-else class="empty-text">沒有可預覽的在學學生</div>
         <div class="actions">
-          <button type="button" class="ghost" @click="showGradePromotion = false">取消</button>
-          <button type="button" class="primary" @click="executeGradePromotion" :disabled="promotionPreview.length === 0">確認升級</button>
+          <button type="button" class="ghost" @click="closeGradePromotion">取消</button>
+          <button
+            type="button"
+            class="primary"
+            @click="executeGradePromotion"
+            :disabled="gradePromotionConfirming || gradePromotionActionableSelectedCount === 0"
+          >確認升級（{{ gradePromotionActionableSelectedCount }}）</button>
         </div>
       </div>
     </div>
@@ -889,14 +1012,38 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed, nextTick } from 'vue';
+import { ref, onMounted, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
+import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
-import { getPerSessionFee } from '../lib/coursePricing';
+import {
+  calculateTransactionDiscountPreview,
+  canApplyRenewalPreview,
+  estimateMonthlyRenewalCharge,
+  estimatePurchaseBatchCharge,
+  getRenewalPreviewAmount,
+  getPerSessionFee,
+} from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
-import { courseBadgeSessionLabel } from '../lib/courseBadgeDisplay.js';
+import {
+  buildGradePromotionConfirmPayload,
+  countActionableSelected,
+  createGradePromotionIdempotencyKey,
+  gradePromotionSuccessMessage,
+  toggleGradePromotionExclude,
+} from '../lib/gradePromotionUi.js';
+import { courseBadgeSessionLabel, sharedPackageSummaries } from '../lib/courseBadgeDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
+import { fetchClassSessions } from '../lib/classSessionsApi.js';
+import {
+  buildStudentCourseSessionPreview,
+  formatStudentCourseSessionDate,
+  sessionDateKey,
+  studentCourseSessionRowKey as buildStudentCourseSessionRowKey,
+  studentCourseSessionStatusLabel,
+} from '../lib/studentCourseSessionDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
@@ -921,9 +1068,11 @@ import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
+import SchoolNameInput from '../components/SchoolNameInput.vue';
 
 const props = defineProps({
   branchId: [String, Number],
+  allowFinancialDiscount: { type: Boolean, default: false },
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentIntent: String,
@@ -959,9 +1108,13 @@ const studentsLoadError = ref('');
 let studentsRequestSequence = 0;
 const branchStudentTotal = ref(0);
 const studentCourses = ref({}); // { studentId: [courses] }
+const studentCourseSessions = ref({}); // { studentClassId: SessionViewModel[] }
+const studentCourseSessionsLoading = ref({}); // { studentId: boolean }
+const studentCourseSessionsError = ref({}); // { studentId: string }
 const teachers = ref([]);
 const expandedId = ref(null);
-const filters = ref({ name: '', grade: '', status: 'active' });
+const GRADE_TO_CLASS_ID = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
+const filters = ref({ search: '', grade: '', status: 'active' });
 const selectedStudentIds = ref([]);
 const showHistoricalCourses = ref(false);
 const importInput = ref(null);
@@ -980,6 +1133,16 @@ const identityError = ref('');
 // Student modal
 const showStudentModal = ref(false);
 const editingStudentId = ref(null);
+const schoolAuthToken = ref('');
+
+const refreshSchoolAuthToken = async () => {
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    schoolAuthToken.value = sess?.access_token || '';
+  } catch {
+    schoolAuthToken.value = '';
+  }
+};
 const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '' });
 
 // LINE bindings (in edit modal)
@@ -1092,17 +1255,22 @@ const tutoringEndDate = ref('');
 const addSessionsSubmitting = ref(false);
 const addSessionsError = ref('');
 const addSessionCount = ref(8);
+const selectedCourse = ref(null);
+const purchaseDiscount = reactive({ type: 'NONE', value: '0', reason: '' });
+const purchaseDiscountPreview = computed(() => calculateTransactionDiscountPreview(
+  estimatePurchaseBatchCharge(selectedCourse.value, addSessionCount.value), purchaseDiscount,
+));
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
+const renewMonthlyPreviewRequestId = ref(0);
 
 // --- Monthly Invoice Modal ---
 const showInvoiceModal = ref(false);
 const invoiceModalCourse = ref(null);
 const invoiceModalList = ref([]);
 const invoiceModalLoading = ref(false);
-const selectedCourse = ref(null);
 
 // Duplicate course intercept modal
 const showDuplicateInterceptModal = ref(false);
@@ -1220,6 +1388,7 @@ const getCourseRemainingSessions = (course) => (
 );
 /** 堂數制才顯示可驗證的進度；月結制不把月份或剩餘欄位誤換算成百分比。 */
 const courseProgress = (course) => {
+  if (isPackageMember(course)) return null;
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') return null;
 
   const total = parseCourseNumber(
@@ -1351,7 +1520,9 @@ const getCoursePrimaryAction = (course) => {
       icon: 'add_circle',
       label: isTutoringCourse(course) ? '延續輔導課' : '續報加購',
       title: '先處理課程續報',
-      description: `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
+      description: isPackageMember(course)
+        ? '請核對上方共用方案摘要，再處理方案續報。'
+        : `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
       tone: 'warning',
     };
   }
@@ -1402,6 +1573,7 @@ const openCoursePrimaryAction = (course, studentName = '') => {
   return editCourse(course);
 };
 const getCourseProgressSummary = (course) => {
+  if (isPackageMember(course)) return '共用方案 · 上課日期見明細';
   const progress = courseProgress(course);
   if (progress) return `剩餘 ${progress.remaining} / ${progress.total} 堂`;
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
@@ -1453,42 +1625,61 @@ const canCloseCourse = (course) => {
 };
 
 async function closeCourseNoRenew(course, studentName) {
-  const courseId = Number(course?.id ?? course?.ID ?? 0);
-  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
-  const subject = getSubjectLabel(course?.subject);
-  const remaining = Math.max(0, Number(getCourseRemainingSessions(course) ?? 0));
-  const paymentWarning = isCourseSettled(course)
-    ? ''
-    : '\n\n目前尚未完成繳費；結案後會標記「待對帳」，不會視為已繳費。';
-  const balanceWarning = remaining > 0
-    ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
-    : '';
-  if (!confirm(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「結案待對帳」佇列。已繳費與已上課紀錄仍會保留。`)) return;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入'); return; }
-    const res = await fetch(`/api/v1/student-classes/${courseId}/pause`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({
-        action: 'pause',
-        reason: 'settled',
-        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) { alert('結案失敗：' + (json.message || res.statusText)); return; }
-    alert(json.pending_reconciliation
-      ? '已結案，課程保留在帳務中心的「結案待對帳」佇列，尚未視為已繳費。'
-      : '已結案，此課程不再出現在繳費／續課提醒中。');
-    await loadAllStudentCourses();
-  } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
-  }
+  return runCloseCourseNoRenew({
+    course, studentName, getRemainingSessions: getCourseRemainingSessions,
+    getSubjectLabel, isCourseSettled, supabase, reloadCourses: loadAllStudentCourses,
+  });
 }
 
 const getStudentAllCourses = (id) => studentCourses.value[id] || [];
+const getStudentCourseSessions = (course) => (
+  studentCourseSessions.value[String(course?.id ?? '')] || []
+);
+const isStudentCourseSessionsLoading = (studentId) => Boolean(studentCourseSessionsLoading.value[String(studentId)]);
+const studentCourseSessionsLoadError = (studentId) => studentCourseSessionsError.value[String(studentId)] || '';
+const studentCourseDateKey = (studentId, course) => sessionDateKey(studentId, course?.id);
+const isStudentCourseDatesExpanded = (studentId, course) => expandedCourseDateKeys.value.has(studentCourseDateKey(studentId, course));
+const studentCourseSessionPreview = (studentId, course) => buildStudentCourseSessionPreview(
+  getStudentCourseSessions(course),
+  isStudentCourseDatesExpanded(studentId, course),
+);
+const studentCourseSessionRowKey = (session, course) => buildStudentCourseSessionRowKey(session, course?.id);
+const studentCourseSessionStatus = (session) => studentCourseSessionStatusLabel(session);
+const studentCourseDateSummary = (course) => {
+  const total = getStudentCourseSessions(course).length;
+  return total > 0 ? `${total} 堂` : '尚無已載入堂次';
+};
+const getStudentCourseDateContracts = (studentId) => [
+  ...getActiveStudentCourses(studentId),
+  ...getHistoryStudentCourses(studentId),
+];
+const hasExpandableStudentCourseDates = (studentId) => getStudentCourseDateContracts(studentId)
+  .some((course) => studentCourseSessionPreview(studentId, course).overflow > 0);
+const areAllStudentCourseDatesExpanded = (studentId) => {
+  const expandable = getStudentCourseDateContracts(studentId)
+    .filter((course) => getStudentCourseSessions(course).length > 3);
+  return expandable.length > 0 && expandable.every((course) => isStudentCourseDatesExpanded(studentId, course));
+};
+const toggleStudentCourseDates = (studentId, course) => {
+  const key = studentCourseDateKey(studentId, course);
+  const next = new Set(expandedCourseDateKeys.value);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  expandedCourseDateKeys.value = next;
+};
+const toggleAllStudentCourseDates = (studentId) => {
+  const contracts = getStudentCourseDateContracts(studentId);
+  const shouldExpand = !areAllStudentCourseDatesExpanded(studentId);
+  const next = new Set(expandedCourseDateKeys.value);
+  contracts.forEach((course) => {
+    if (getStudentCourseSessions(course).length <= 3) return;
+    const key = studentCourseDateKey(studentId, course);
+    if (shouldExpand) next.add(key);
+    else next.delete(key);
+  });
+  expandedCourseDateKeys.value = next;
+};
+const expandedCourseDateKeys = ref(new Set());
 const getStudentCourses = (id) => {
   const all = getStudentAllCourses(id);
   if (showHistoricalCourses.value) return all;
@@ -1503,7 +1694,7 @@ const getLaravelStudentId = (student) => {
 const displayStudents = computed(() => students.value);
 const hasStudentBranch = computed(() => Number(props.branchId) > 0);
 const hasStudentFilters = computed(() => Boolean(
-  String(filters.value.name || '').trim()
+  String(filters.value.search || '').trim()
   || filters.value.grade
   || filters.value.status !== 'active'
 ));
@@ -1539,7 +1730,7 @@ const toggleHistoricalCourses = () => {
   showHistoricalCourses.value = !showHistoricalCourses.value;
 };
 const clearStudentFilters = () => {
-  filters.value = { name: '', grade: '', status: 'active' };
+  filters.value = { search: '', grade: '', status: 'active' };
   loadStudents();
 };
 const syncSelectedStudentIdsWithCurrentList = () => {
@@ -1547,38 +1738,112 @@ const syncSelectedStudentIdsWithCurrentList = () => {
   selectedStudentIds.value = selectedStudentIds.value.filter(id => visible.has(id));
 };
 
-// Grade promotion logic
-const GRADE_ORDER = ['P1','P2','P3','P4','P5','P6','J1','J2','J3','H1','H2','H3'];
-const nextGrade = (g) => {
-  const idx = GRADE_ORDER.indexOf(g);
-  if (idx < 0 || idx >= GRADE_ORDER.length - 1) return null;
-  return GRADE_ORDER[idx + 1];
-};
+// Grade promotion — canonical API (in-app #297 Phase A); no browser Supabase mutate / no course Stop.
+const gradePromotionRows = ref([]);
+const gradePromotionLoading = ref(false);
+const gradePromotionConfirming = ref(false);
+const gradePromotionError = ref('');
+const gradePromotionAdminDate = ref('');
+const gradePromotionSeasonYear = ref(null);
+const gradePromotionExcluded = ref(new Set());
+const gradePromotionIdempotencyKey = ref('');
 
-const promotionPreview = computed(() => {
-  return students.value
-    .filter(s => s.status === 'active' || !s.status)
-    .map(s => {
-      const ng = nextGrade(s.grade);
-      return { id: s.id, name: s.name, from: s.grade, to: ng, graduated: !ng };
+const promotionPreview = computed(() => gradePromotionRows.value);
+
+const gradePromotionActionableSelectedCount = computed(() => countActionableSelected(
+  promotionPreview.value,
+  gradePromotionExcluded.value
+));
+
+function closeGradePromotion() {
+  showGradePromotion.value = false;
+  gradePromotionError.value = '';
+}
+
+function onGradePromotionExcludeChange(studentId, checked) {
+  gradePromotionExcluded.value = toggleGradePromotionExclude(
+    gradePromotionExcluded.value,
+    studentId,
+    checked
+  );
+}
+
+async function openGradePromotion() {
+  showGradePromotion.value = true;
+  gradePromotionLoading.value = true;
+  gradePromotionError.value = '';
+  gradePromotionRows.value = [];
+  gradePromotionExcluded.value = new Set();
+  gradePromotionIdempotencyKey.value = createGradePromotionIdempotencyKey();
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token || !props.branchId) {
+      gradePromotionError.value = '無法取得登入或分校';
+      return;
+    }
+    const params = new URLSearchParams({ branch_id: String(props.branchId) });
+    const res = await fetch(`/api/v1/grade-promotions/preview?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
-});
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      gradePromotionError.value = json?.message || '預覽載入失敗';
+      return;
+    }
+    gradePromotionAdminDate.value = json.admin_date || '';
+    gradePromotionSeasonYear.value = json.season_year ?? null;
+    gradePromotionRows.value = Array.isArray(json.data) ? json.data : [];
+  } catch {
+    gradePromotionError.value = '預覽載入失敗';
+  } finally {
+    gradePromotionLoading.value = false;
+  }
+}
 
 const executeGradePromotion = async () => {
-  if (!confirm(`確定將 ${promotionPreview.value.length} 位學生年級升級？`)) return;
-  for (const p of promotionPreview.value) {
-    if (p.graduated) {
-      // H3 -> graduated
-      await supabase.from('students').update({ status: 'graduated' }).eq('id', p.id);
-      // Deactivate their courses
-      await supabase.from('student-classes').update({ status: 'inactive' }).eq('student_id', p.id);
-    } else {
-      await supabase.from('students').update({ grade: p.to }).eq('id', p.id);
+  const count = gradePromotionActionableSelectedCount.value;
+  if (count <= 0) return;
+  if (!confirm(`確定將 ${count} 位學生年級升級？此操作會寫入伺服器批次紀錄。`)) return;
+  gradePromotionConfirming.value = true;
+  gradePromotionError.value = '';
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      gradePromotionError.value = '未登入';
+      return;
     }
+    const res = await fetch('/api/v1/grade-promotions/confirm', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildGradePromotionConfirmPayload({
+        branchId: props.branchId,
+        seasonYear: gradePromotionSeasonYear.value,
+        idempotencyKey: gradePromotionIdempotencyKey.value,
+        excludeStudentIds: gradePromotionExcluded.value,
+      })),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = json?.message
+        || Object.values(json?.errors || {}).flat()?.[0]
+        || '升級失敗';
+      gradePromotionError.value = String(msg);
+      return;
+    }
+    showGradePromotion.value = false;
+    alert(gradePromotionSuccessMessage(json, count));
+    loadStudents();
+  } catch {
+    gradePromotionError.value = '升級失敗';
+  } finally {
+    gradePromotionConfirming.value = false;
   }
-  showGradePromotion.value = false;
-  alert('升級完成！');
-  loadStudents();
 };
 
 // --- Data Loading ---
@@ -1640,10 +1905,9 @@ const loadStudents = async () => {
           branch_id: String(props.branchId),
           per_page: '500'
         });
-        if (filters.value.name) params.set('name', filters.value.name);
+        if (filters.value.search?.trim()) params.set('search', filters.value.search);
         if (filters.value.status) params.set('status', filters.value.status || '');
-        const gradeToClassId = { P1:1,P2:2,P3:3,P4:4,P5:5,P6:6,J1:7,J2:8,J3:9,H1:10,H2:11,H3:12 };
-        if (filters.value.grade && gradeToClassId[filters.value.grade]) params.set('class_id', gradeToClassId[filters.value.grade]);
+        if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) params.set('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
         const res = await fetch(`/api/v1/students?${params}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -1665,10 +1929,11 @@ const loadStudents = async () => {
     } catch (_) {}
 
     // Fallback: Supabase list + merge Laravel RFID / _laravelId
-    let query = supabase.from('students').select('*').eq('branch_id', props.branchId).order('name');
-    if (filters.value.name) query = query.ilike('name', `%${filters.value.name}%`);
-    if (filters.value.grade) query = query.eq('grade', filters.value.grade);
+    let query = supabase.from('students').select('*').eq('branch_id', props.branchId);
+    if (filters.value.search?.trim()) query = query.eq('search', filters.value.search);
+    if (filters.value.grade && GRADE_TO_CLASS_ID[filters.value.grade]) query = query.eq('class_id', GRADE_TO_CLASS_ID[filters.value.grade]);
     if (filters.value.status) query = query.eq('status', filters.value.status);
+    query = query.order('name');
     const { data, error } = await query;
     if (error) throw error;
     let list = data || [];
@@ -1763,6 +2028,53 @@ const loadTeachers = async () => {
   }
 };
 
+const loadStudentCourseSessions = async (studentId, courses = getStudentAllCourses(studentId)) => {
+  const ids = courses
+    .map((course) => Number(course?.id ?? course?.ID ?? 0))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+  const studentKey = String(studentId);
+  if (!ids.length) {
+    studentCourseSessionsLoading.value = { ...studentCourseSessionsLoading.value, [studentKey]: false };
+    return;
+  }
+
+  studentCourseSessionsLoading.value = { ...studentCourseSessionsLoading.value, [studentKey]: true };
+  studentCourseSessionsError.value = { ...studentCourseSessionsError.value, [studentKey]: '' };
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('登入狀態已過期，請重新登入');
+
+    // One batched canonical read for the expanded student's contracts. The
+    // response is keyed by StudentClassID so same-subject contracts never mix.
+    const response = await fetchClassSessions({
+      token,
+      branchId: props.branchId,
+      studentClassIds: ids,
+      perPage: 2000,
+    });
+    const next = { ...studentCourseSessions.value };
+    ids.forEach((id) => {
+      next[String(id)] = Array.isArray(response?.byClass?.[String(id)])
+        ? response.byClass[String(id)]
+        : [];
+    });
+    studentCourseSessions.value = next;
+  } catch (error) {
+    studentCourseSessionsError.value = {
+      ...studentCourseSessionsError.value,
+      [studentKey]: error?.message || '上課日期暫時無法載入',
+    };
+  } finally {
+    studentCourseSessionsLoading.value = { ...studentCourseSessionsLoading.value, [studentKey]: false };
+  }
+};
+
+const retryLoadStudentCourseSessions = (studentId) => loadStudentCourseSessions(
+  studentId,
+  getStudentAllCourses(studentId),
+);
+
 const loadStudentCourses = async (studentId) => {
   const student = students.value.find(s => s.id === studentId);
   const laravelId = student?._laravelId ?? studentId;
@@ -1782,6 +2094,7 @@ const loadStudentCourses = async (studentId) => {
           id: c.id,
           student_id: studentId,
           subject: c.subject,
+          subject_name: c.subject_name ?? null,
           teacher_id: c.teacher_id,
           teacher_name: c.teacher_name,
           class_type: c.class_type,
@@ -1825,6 +2138,7 @@ const loadStudentCourses = async (studentId) => {
           data_source: 'laravel'
         }));
         studentCourses.value = { ...studentCourses.value, [studentId]: courses };
+        await loadStudentCourseSessions(studentId, courses);
         return;
       }
     }
@@ -1841,6 +2155,7 @@ const loadStudentCourses = async (studentId) => {
     data_source: 'supabase'
   }));
   studentCourses.value = { ...studentCourses.value, [studentId]: courses };
+  await loadStudentCourseSessions(studentId, courses);
 };
 
 const loadAllStudentCourses = async () => {
@@ -1865,6 +2180,7 @@ const loadAllStudentCourses = async () => {
             id: c.id,
             student_id: sid,
             subject: c.subject,
+            subject_name: c.subject_name ?? null,
             teacher_id: c.teacher_id,
             teacher_name: c.teacher_name || '',
             class_type: c.class_type,
@@ -1984,6 +2300,7 @@ const openAddStudent = () => {
   editingStudentId.value = null;
   studentForm.value = { name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '', latest_payment_note: '', rfid: '' };
   showStudentModal.value = true;
+  refreshSchoolAuthToken();
 };
 
 const editStudent = (student) => {
@@ -2001,6 +2318,7 @@ const editStudent = (student) => {
     rfid: student.rfid || ''
   };
   showStudentModal.value = true;
+  refreshSchoolAuthToken();
   const laravelId = student._laravelId ?? student.id;
   if (laravelId) {
     fetchLineBindings(laravelId);
@@ -2722,30 +3040,47 @@ const handleSchedulerDuplicate = (evt) => {
 
 const parseApiErrorMessage = (err, fallback = '操作失敗') => {
   const firstConflict = Array.isArray(err?.conflicts) ? err.conflicts[0] : null;
+  const serverMessage = String(err?.message || firstConflict?.message || '').trim();
+  const actions = Array.isArray(err?.suggested_actions)
+    ? err.suggested_actions
+    : (Array.isArray(firstConflict?.suggested_actions) ? firstConflict.suggested_actions : []);
+  const actionLine = actions.length
+    ? `\n下一步：${actions.slice(0, 3).join('；')}`
+    : '';
+
+  // Prefer the server message when it already names occupants (in-app #310).
+  if (serverMessage && (serverMessage.includes('此時段已有') || serverMessage.includes('overlap') || firstConflict?.overlap_summary)) {
+    return `${serverMessage}${actionLine}`;
+  }
+
   if (firstConflict?.type === 'teacher_capacity') {
+    const summary = String(firstConflict.overlap_summary || '').trim();
     const current = Number(firstConflict.current_students ?? 0);
     const allowed = Number(firstConflict.allowed_students ?? 0);
     const start = String(firstConflict.start_time || '');
     const end = String(firstConflict.end_time || '');
     const timeLabel = start && end ? `（${start}~${end}）` : '';
-    return `老師在此時段${timeLabel}已達可排學生上限（目前 ${current} 位／上限 ${allowed} 位），請改時段、老師或課型。`;
+    const who = summary ? ` 此時段已有：${summary}。` : '';
+    return `老師在此時段${timeLabel}已達可排學生上限（目前 ${current} 位／上限 ${allowed} 位），請改時段、老師或課型。${who}${actionLine}`;
   }
   if (firstConflict?.type === 'room_capacity') {
+    const summary = String(firstConflict.overlap_summary || '').trim();
     const roomName = firstConflict.room_name || `#${firstConflict.room_id || ''}`;
     const current = Number(firstConflict.current_students ?? 0);
     const allowed = Number(firstConflict.allowed_students ?? 0);
     const start = String(firstConflict.start_time || '');
     const end = String(firstConflict.end_time || '');
     const timeLabel = start && end ? `（${start}~${end}）` : '';
-    return `教室「${roomName}」在此時段${timeLabel}已滿（可容納學生 ${allowed} 位、目前 ${current} 位），請換教室或時段。`;
+    const who = summary ? ` 此時段已有：${summary}。` : '';
+    return `教室「${roomName}」在此時段${timeLabel}已滿（可容納學生 ${allowed} 位、目前 ${current} 位），請換教室或時段。${who}${actionLine}`;
   }
 
   const details = err?.errors ? Object.values(err.errors || {}).flat().join(' ') : '';
-  const generic = String(err?.message || '').trim();
+  const generic = serverMessage;
   if (details && (!generic || generic === 'The given data was invalid.' || generic === 'The given data was invalid')) {
     return details;
   }
-  return generic || details || fallback;
+  return (generic || details || fallback) + actionLine;
 };
 
 const submitCourse = async () => {
@@ -2979,14 +3314,21 @@ const openAddSessionsForCourse = (course) => {
       current_end_date: course?.end_date || course?.EndDate || null,
       months: 1,
       end_date: '',
+      discount: { type: 'NONE', value: '0', reason: '' },
+      original_amount: estimateMonthlyRenewalCharge(course),
+      preview_end_date: '',
     };
     showRenewMonthlyModal.value = true;
+    loadRenewMonthlyPreview();
     return;
   }
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
   selectedCourse.value = course;
   addSessionsError.value = '';
-  addSessionCount.value = 8;
+    addSessionCount.value = 8;
+    purchaseDiscount.type = 'NONE';
+    purchaseDiscount.value = '0';
+    purchaseDiscount.reason = '';
   addSessionStartDate.value = new Date().toISOString().slice(0, 10);
   tutoringEndDate.value = '';
   if (isTutoringCourse(course)) {
@@ -3000,6 +3342,51 @@ const openAddSessionsForCourse = (course) => {
   }
   showSessionsModal.value = true;
 };
+
+const closeRenewMonthlyModal = () => {
+  renewMonthlyPreviewRequestId.value += 1;
+  showRenewMonthlyModal.value = false;
+  renewMonthlyTargetCourse.value = null;
+};
+
+async function loadRenewMonthlyPreview(endDate = '') {
+  const course = renewMonthlyTargetCourse.value;
+  if (!course?.id) return;
+  const requestId = ++renewMonthlyPreviewRequestId.value;
+  const courseId = course.id;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) return;
+    const currentEnd = course?.end_date || course?.EndDate || null;
+    let targetEnd = endDate;
+    if (!targetEnd) {
+      const d = currentEnd ? new Date(currentEnd) : new Date();
+      d.setMonth(d.getMonth() + 1);
+      targetEnd = d.toISOString().slice(0, 10);
+    }
+    renewMonthlyForm.value.preview_end_date = targetEnd;
+    const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ mode: 'renew_monthly', end_date: targetEnd }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!showRenewMonthlyModal.value || !canApplyRenewalPreview({
+      requestId,
+      currentRequestId: renewMonthlyPreviewRequestId.value,
+      courseId,
+      currentCourseId: renewMonthlyTargetCourse.value?.id,
+      requestedEndDate: targetEnd,
+      currentEndDate: renewMonthlyForm.value.preview_end_date,
+    })) return;
+    const amount = getRenewalPreviewAmount(json);
+    if (amount != null) renewMonthlyForm.value.original_amount = amount;
+  } catch {
+    /* preview is advisory only */
+  }
+}
 
 const submitAddSessions = async () => {
   if (addSessionsSubmitting.value) return;
@@ -3074,7 +3461,14 @@ const submitAddSessions = async () => {
         start_date: submittedStart,
         ...(tutoring
           ? (course.payment_type === 'monthly' ? { end_date: submittedEnd } : {})
-          : { mode: 'new_purchase' })
+          : {
+            mode: 'new_purchase',
+            ...(typeof purchaseDiscount !== 'undefined'
+              && purchaseDiscount?.type
+              && purchaseDiscount.type !== 'NONE'
+              ? { discount: { ...purchaseDiscount } }
+              : {}),
+          })
       })
     });
 
@@ -3170,7 +3564,7 @@ const submitRenewMonthly = async (endDate) => {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ end_date: endDate }),
+      body: JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -3193,6 +3587,19 @@ const submitRenewMonthly = async (endDate) => {
 // --- CSV Import ---
 const openImportDialog = () => {
   importInput.value?.click();
+};
+
+// Header-only template: it documents the accepted import shape without
+// shipping placeholder student data that could be accidentally imported.
+const downloadImportTemplate = () => {
+  const csv = '\uFEFF學生姓名,年級,學校,手機\r\n';
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '學生名單匯入範例.csv';
+  link.click();
+  URL.revokeObjectURL(url);
 };
 
 const importStudents = async (event) => {
@@ -4011,26 +4418,115 @@ table th { font-size: 12.5px; }
   line-height: 1.5;
   text-align: right;
 }
+.student-course-detail__tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: flex-end;
+}
+.student-course-detail__bulk-toggle,
+.student-course-dates__toggle {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  min-height: 36px;
+  white-space: nowrap;
+}
+.student-course-detail__bulk-toggle .material-symbols-outlined,
+.student-course-dates__toggle .material-symbols-outlined {
+  font-size: 17px;
+}
 .student-course-cards {
+  border-top: 1px solid var(--ds-hairline);
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 .student-course-card {
   background: var(--ds-canvas);
-  border: 1px solid var(--ds-hairline);
-  border-radius: 12px;
-  box-shadow: var(--ds-shadow-1);
+  border: 0 solid var(--ds-hairline);
+  border-bottom-width: 1px;
+  border-radius: 0;
+  box-shadow: none;
   padding: 16px;
 }
 .student-course-card--attention {
   border-color: var(--ds-warning);
-  box-shadow: 0 0 0 1px var(--ds-warning-wash), var(--ds-shadow-1);
+  box-shadow: none;
 }
 .student-course-card--focused {
-  box-shadow: 0 0 0 2px var(--ds-primary-wash), var(--ds-shadow-1);
+  box-shadow: inset 3px 0 0 var(--ds-primary);
 }
 .student-course-card--focused.student-course-card--attention {
-  box-shadow: 0 0 0 2px var(--ds-warning-wash), var(--ds-shadow-1);
+  box-shadow: inset 3px 0 0 var(--ds-warning);
+}
+.student-course-dates {
+  border-top: 1px solid var(--ds-hairline);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.student-course-dates--history {
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.student-course-dates__header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.student-course-dates__eyebrow {
+  color: var(--ds-ink-mute);
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+.student-course-dates__header strong {
+  color: var(--ds-ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.student-course-dates__list {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.student-course-dates__list li {
+  align-items: center;
+  background: var(--ds-canvas-soft);
+  border-left: 2px solid var(--ds-primary);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 6px 9px;
+}
+.student-course-dates__date {
+  color: var(--ds-ink-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.student-course-dates__status {
+  color: var(--ds-ink-mute);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.student-course-dates__state {
+  align-items: center;
+  color: var(--ds-ink-mute);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  line-height: 1.5;
+  margin-top: 10px;
+}
+.student-course-dates__state--error {
+  color: var(--ds-danger);
 }
 .student-course-card__header {
   display: flex;
@@ -4457,6 +4953,13 @@ table th { font-size: 12.5px; }
     display: block;
     margin-top: 4px;
     text-align: left;
+  }
+  .student-course-detail__tools {
+    align-items: flex-start;
+    display: block;
+  }
+  .student-course-detail__bulk-toggle {
+    margin-top: 8px;
   }
   .student-course-overview__metrics {
     gap: 4px;

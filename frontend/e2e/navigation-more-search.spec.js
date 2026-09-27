@@ -28,22 +28,28 @@ test('teacher can search and recover in the mobile More sheet', async ({ page })
   const moreTrigger = page.locator('#mobile-more-trigger');
   await moreTrigger.click();
   const sheet = page.locator('#mobile-more-sheet');
-  const search = sheet.getByRole('searchbox', { name: '搜尋更多功能' });
+  const search = sheet.getByRole('searchbox');
   await expect(sheet).toBeVisible();
+  await expect(search).toHaveAttribute('placeholder', /搜尋學生、老師、課程或功能/);
   await expect(search).toBeFocused();
 
+  await search.fill('學習檢測');
+  await expect(sheet.locator('.global-search-item')).toHaveCount(0);
+  await search.fill('題庫管理');
+  await expect(sheet.locator('.global-search-item')).toHaveCount(0);
+
   await search.fill('科目數統計');
-  await expect(sheet.locator('.more-item')).toHaveText([/科目數統計/]);
+  await expect(sheet.locator('.global-search-item')).toHaveText([/科目數統計/]);
   await expect(sheet.getByRole('button', { name: '內部聊天', exact: true })).toHaveCount(0);
-  await sheet.locator('.more-item').filter({ hasText: '科目數統計' }).click();
+  await sheet.locator('.global-search-item').filter({ hasText: '科目數統計' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.locator('[data-guide="subject-units-header"]')).toBeVisible();
 
   await moreTrigger.click();
   await search.fill('不存在的功能');
-  await expect(sheet.locator('.sidebar-more-empty')).toContainText('找不到符合');
-  await sheet.locator('.sidebar-more-empty-reset').click();
-  await expect(sheet.locator('.more-item').filter({ hasText: '科目數統計' })).toBeVisible();
+  await expect(sheet.locator('.global-search-empty')).toContainText('找不到符合');
+  await search.fill('');
+  await expect(sheet.locator('.global-search-item').filter({ hasText: '科目數統計' })).toBeVisible();
 
   await search.fill('科目數統計');
   await search.press('Escape');

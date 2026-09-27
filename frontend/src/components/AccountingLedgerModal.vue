@@ -101,8 +101,8 @@
                         </button>
                       </td>
                       <td>
-                        <strong>{{ formatLedgerInvoiceLabel(inv) }}</strong>
-                        <small>{{ formatLedgerCourseLabel(inv) }} · {{ formatPeriod(inv.billing_period) }}</small>
+                        <strong>{{ formatAccountingLedgerInvoiceLabel(inv) }}</strong>
+                        <small>{{ formatPeriod(inv.billing_period) }}</small>
                         <small v-if="(inv.overpaid_amount || 0) > 0" class="ledger-overpay-hint">多收 {{ formatCurrency(inv.overpaid_amount) }}</small>
                       </td>
                       <td>{{ inv.due_date || '—' }}</td>
@@ -192,8 +192,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import {
-  formatLedgerCourseLabel,
-  formatLedgerInvoiceLabel,
+  formatAccountingLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
   humanizeDocumentRef,
@@ -303,7 +302,7 @@ const ledgerExceptions = computed(() => {
         key: `p-${p.id}`,
         title: '多收，疑似重複收款',
         message: `${humanizeDocumentRef(p.receipt_no || p.payment_no) || '未編號收款'} 有 ${formatCurrency(p.unapplied_amount)} 尚未記入帳單`,
-        detail: `${formatLedgerInvoiceLabel(inv)} · ${p.paid_at || '未記錄日期'}`,
+        detail: `${formatAccountingLedgerInvoiceLabel(inv)} · ${p.paid_at || '未記錄日期'}`,
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
         severity: 1,

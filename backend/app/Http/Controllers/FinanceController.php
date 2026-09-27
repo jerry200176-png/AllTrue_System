@@ -16,6 +16,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Services\SubjectUnitsTimelineService;
+use App\Services\SubstituteScheduleService;
 use App\Support\TeacherProfileDirectory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,7 +65,10 @@ class FinanceController extends Controller
 
         $totalClasses = $classQuery->count();
         $paidClasses = (clone $classQuery)->where('Paid', 1)->count();
-        $unpaidClasses = $totalClasses - $paidClasses;
+        $unpaidClasses = (clone $classQuery)
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
+            ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))
+            ->count();
 
         $classIds = (clone $classQuery)->pluck('ID')->all();
 
@@ -131,7 +135,8 @@ class FinanceController extends Controller
         $query = StudentClass::where(function ($q) {
             $q->where('Paid', 0)
               ->orWhere('RemainingSessions', '<=', 2);
-        })->where('Stop', 0);
+        })->where('Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring']);
 
         if (!empty($studentIds)) {
             $query->whereIn('StudentID', $studentIds);
@@ -1061,23 +1066,19 @@ class FinanceController extends Controller
             return $this->parttimePayrollSnapshotSessions($lockedRun, $teacherId, $perPage, $page);
         }
 
-        $query = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
-            ->where('StudentSingIn.TeacherID', $teacherId);
+        $allTeacherRecords = $this->parttimePayrollRecords($campusIds, $startDate, $endDate)
+            ->filter(fn ($r) => (int) $r->TeacherID === $teacherId)
+            ->sortBy(fn ($r) => (string) $r->SessionDate)
+            ->values();
 
-        $total    = (clone $query)->count();
+        $total    = $allTeacherRecords->count();
         $lastPage = max(1, (int) ceil($total / $perPage));
 
-        $allTeacherRecords = (clone $this->parttimeBaseQuery($campusIds, $startDate, $endDate))
-            ->where('StudentSingIn.TeacherID', $teacherId)
-            ->get();
         $rateMap  = $this->buildRateMap($allTeacherRecords, $ruleCtx);
         $segmentsMap = [];
         $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords, $rateMap, $ruleCtx, $segmentsMap);
 
-        $records = $query->orderBy('ClassSession.SessionDate')
-            ->offset(($page - 1) * $perPage)
-            ->limit($perPage)
-            ->get();
+        $records = $allTeacherRecords->slice(($page - 1) * $perPage, $perPage)->values();
 
         $teacherName = TeacherProfileDirectory::nameFor((int) $teacherId, 'Unknown');
 
@@ -1148,21 +1149,20 @@ class FinanceController extends Controller
             return $this->exportPayrollSnapshot($lockedRun, $branchName, $month);
         }
 
-        $totalRows = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->count();
+        $allRecords = $this->parttimePayrollRecords($campusIds, $startDate, $endDate);
+        $totalRows = $allRecords->count();
         $maxExport = config('payroll.max_export_rows', 5000);
         if ($totalRows > $maxExport) {
             abort(422, "Too many rows ({$totalRows}). Max export is {$maxExport}. Please narrow your scope.");
         }
 
         $teacherRows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
-
-        $allRecords = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
         $rateMap  = $this->buildRateMap($allRecords, $ruleCtx);
         $bonusMap = $this->buildConcurrencyBonusMap($allRecords, $rateMap, $ruleCtx);
 
         $filename = "兼職薪資_{$branchName}_{$month}.csv";
 
-        return response()->streamDownload(function () use ($teacherRows, $campusIds, $startDate, $endDate, $ruleCtx, $bonusMap) {
+        return response()->streamDownload(function () use ($teacherRows, $allRecords, $ruleCtx, $bonusMap) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
@@ -1179,20 +1179,16 @@ class FinanceController extends Controller
             fputcsv($out, []);
             fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
 
-            $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
-                ->orderBy('ClassSession.id')
-                ->chunk(200, function ($records) use ($out, $ruleCtx, $bonusMap) {
-                    foreach ($records as $r) {
-                        $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
-                        fputcsv($out, [
-                            $row['session_date'], $row['teacher_name'] ?? '', $row['student_name'],
-                            $row['subject'], $row['level_label'], $row['class_type'],
-                            $row['hours'], $row['base_rate'], $row['headcount_bonus'],
-                            $row['concurrency_bonus_amount'], $row['effective_rate'], $row['session_salary'],
-                            ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
-                        ]);
-                    }
-                });
+            foreach ($allRecords->sortBy('id') as $r) {
+                $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
+                fputcsv($out, [
+                    $row['session_date'], $row['teacher_name'] ?? '', $row['student_name'],
+                    $row['subject'], $row['level_label'], $row['class_type'],
+                    $row['hours'], $row['base_rate'], $row['headcount_bonus'],
+                    $row['concurrency_bonus_amount'], $row['effective_rate'], $row['session_salary'],
+                    ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
+                ]);
+            }
 
             fclose($out);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
@@ -1244,7 +1240,7 @@ class FinanceController extends Controller
             }
 
             $ruleCtx = $this->resolvePayrollRule($branchId, $row, $month);
-            $records = $this->parttimeBaseQuery($campusIds, $month . '-01', $asOfDate)->get();
+            $records = $this->parttimePayrollRecords($campusIds, $month . '-01', $asOfDate);
             $rateMap = $this->buildRateMap($records, $ruleCtx);
             $segments = [];
             $bonusMap = $this->buildConcurrencyBonusMap($records, $rateMap, $ruleCtx, $segments);
@@ -1355,13 +1351,9 @@ class FinanceController extends Controller
         $studentIds = $branchFiltered ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all() : [];
         $classIds   = !empty($studentIds) ? StudentClass::whereIn('StudentID', $studentIds)->pluck('ID')->all() : [];
 
-        $partTimeTeacherIds = DB::table('User')
-            ->where('employment_type', 'part_time')
-            ->whereIn('type', ['T', 'D'])
-            ->pluck('id')->all();
-
         // 薪資以「有效到班點名」為準，不再依賴評量表是否填寫或核准。
         // StudentSingIn 對 ClassSession 有唯一約束，因此每個已點名堂次只會計一次。
+        // 兼職歸屬老師於 parttimePayrollRecords() 依代課課表解析，不在 SQL 層過濾 TeacherID。
         $query = ClassSession::query()
             ->select('ClassSession.*', 'StudentSingIn.id as StudentSignInID', 'StudentSingIn.Status as AttendanceStatus', 'StudentSingIn.TeacherID as TeacherID')
             ->join('StudentSingIn', 'StudentSingIn.ClassSessionID', '=', 'ClassSession.id')
@@ -1369,7 +1361,6 @@ class FinanceController extends Controller
             ->whereIn('StudentSingIn.Status', AttendanceStatus::payableCodes())
             ->where('ClassSession.Status', '!=', 'cancelled')
             ->whereBetween('ClassSession.SessionDate', [$startDate, $endDate])
-            ->whereIn('StudentSingIn.TeacherID', $partTimeTeacherIds)
             ->with('studentClass');
 
         if ($branchFiltered && empty($classIds)) {
@@ -1385,6 +1376,52 @@ class FinanceController extends Controller
         });
 
         return $query;
+    }
+
+    /** @return array<int, int> */
+    private function partTimeTeacherUserIds(): array
+    {
+        return DB::table('User')
+            ->where('employment_type', 'part_time')
+            ->whereIn('type', ['T', 'D'])
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    private function resolveParttimePayrollTeacherId(object $record): int
+    {
+        $sub = SubstituteScheduleService::resolveSubstituteUserId(
+            (int) $record->StudentClassID,
+            $record->SessionDate,
+            $record->StartTime
+        );
+        if ($sub !== null) {
+            return $sub;
+        }
+
+        $signInTeacherId = (int) ($record->TeacherID ?? 0);
+        if ($signInTeacherId > 0) {
+            return $signInTeacherId;
+        }
+
+        return (int) ($record->studentClass->TeacherID ?? 0);
+    }
+
+    /** @return \Illuminate\Support\Collection<int, ClassSession> */
+    private function parttimePayrollRecords(array $campusIds, string $startDate, string $endDate)
+    {
+        $partTimeTeacherIds = array_flip($this->partTimeTeacherUserIds());
+
+        return $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
+            ->get()
+            ->map(function ($record) {
+                $record->TeacherID = $this->resolveParttimePayrollTeacherId($record);
+
+                return $record;
+            })
+            ->filter(fn ($record) => isset($partTimeTeacherIds[(int) $record->TeacherID]))
+            ->values();
     }
 
     private function lockedPayrollRun(?PayrollMonthStatus $status): ?PayrollRun
@@ -1406,23 +1443,22 @@ class FinanceController extends Controller
             ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all()
             : [];
 
-        $partTimeIds = DB::table('User')->where('employment_type', 'part_time')->whereIn('type', ['T', 'D'])->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $partTimeIdSet = array_flip($this->partTimeTeacherUserIds());
         $query = DB::table('ClassSession as cs')
             ->join('StudentSingIn as si', 'si.ClassSessionID', '=', 'cs.id')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->whereNull('si.VoidedAt')
+            ->whereIn('si.Status', AttendanceStatus::payableCodes())
+            ->where('cs.Status', '!=', 'cancelled')
             ->whereBetween('cs.SessionDate', [$startDate, $endDate])
             ->select([
-                'cs.id as class_session_id', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status as session_status',
-                'si.id as student_sign_in_id', 'si.Status as attendance_status', 'si.TeacherID', 'sc.StudentID', 'sc.ClassType',
+                'cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status as session_status',
+                'si.id as student_sign_in_id', 'si.Status as attendance_status', 'si.TeacherID', 'sc.StudentID', 'sc.ClassType', 'sc.TeacherID as ContractTeacherID',
             ]);
 
         if (!empty($studentIds)) {
             $query->whereIn('sc.StudentID', $studentIds);
         }
-        $query->where(function ($q) use ($partTimeIds) {
-            $q->whereNull('si.TeacherID')->orWhereIn('si.TeacherID', $partTimeIds);
-        });
 
         $rows = $query->get();
         $anomalies = [];
@@ -1430,6 +1466,17 @@ class FinanceController extends Controller
 
         foreach ($rows as $row) {
             if (($row->ClassType ?? null) === 'trial') {
+                continue;
+            }
+
+            $effectiveTeacherId = $this->resolveParttimePayrollTeacherId((object) [
+                'StudentClassID' => (int) ($row->StudentClassID ?? 0),
+                'SessionDate' => $row->SessionDate,
+                'StartTime' => $row->StartTime,
+                'TeacherID' => $row->TeacherID,
+                'studentClass' => (object) ['TeacherID' => $row->ContractTeacherID ?? 0],
+            ]);
+            if ($effectiveTeacherId <= 0 || !isset($partTimeIdSet[$effectiveTeacherId])) {
                 continue;
             }
 
@@ -1445,9 +1492,6 @@ class FinanceController extends Controller
                 ];
             };
 
-            if (!$row->TeacherID) {
-                $add('teacher_missing', '點名沒有有效的兼職老師');
-            }
             if (!$row->StartTime || !$row->EndTime) {
                 $add('missing_time', '堂次缺少開始或結束時間');
             }
@@ -1562,7 +1606,7 @@ class FinanceController extends Controller
         $startDate = $month . '-01';
         $endDate   = date('Y-m-t', strtotime($startDate));
 
-        $records = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
+        $records = $this->parttimePayrollRecords($campusIds, $startDate, $endDate);
         $rateMap  = $this->buildRateMap($records, $ruleCtx);
         $bonusMap = $this->buildConcurrencyBonusMap($records, $rateMap, $ruleCtx);
 
@@ -2468,6 +2512,7 @@ class FinanceController extends Controller
 
         $query = StudentClass::with('student')
             ->where('Stop', 0)
+            ->whereRaw("LOWER(TRIM(COALESCE(ClassType, ''))) <> ?", ['tutoring'])
             ->whereRaw('CAST(Charge AS SIGNED) > CAST(COALESCE(Pay, 0) AS SIGNED)');
 
         if (!empty($campusIds)) {

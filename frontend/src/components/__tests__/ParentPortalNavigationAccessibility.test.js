@@ -43,6 +43,13 @@ describe('parent portal navigation accessibility contract', () => {
     expect(source).toContain('重試載入');
   });
 
+  it('renders tutoring cards as free and never as unpaid', () => {
+    expect(source).toContain("c.is_tutoring || c.payment_status === 'free'");
+    expect(source).toContain('免費（不適用）');
+    expect(source).toContain("const courseCardClass = (c) => {\n  if (c.is_tutoring || c.payment_status === 'free') return '';");
+    expect(source).toContain("<span v-else class=\"pp-badge pp-badge-warning\">未繳費</span>");
+  });
+
   it('exposes the existing-data V1 home questions without adding a new data contract', () => {
     for (const label of ['最近學了什麼', '本週重點', '老師建議／處理', '回家要做什麼', '下一步／目前待辦']) {
       expect(source).toContain(label);
@@ -58,5 +65,11 @@ describe('parent portal navigation accessibility contract', () => {
     expect(source).toContain('v-if="!lrError && !allLearningRecords.length"');
     expect(source).toContain('老師完成複核後，這裡會顯示每堂課的進度、作業與建議。');
     expect(source).toContain("@click=\"gotoParentTarget('schedule', 'learning_empty')\"");
+  });
+
+  it('makes the attention-card feedback action visibly open a feedback editor', () => {
+    expect(source).toContain('async function gotoParentTarget(target, source = \'hub_card\')');
+    expect(source).toContain("source === 'attention_feedback' && resolved === 'learning'");
+    expect(source).toContain("await jumpToFirstFeedbackSlot(source)");
   });
 });

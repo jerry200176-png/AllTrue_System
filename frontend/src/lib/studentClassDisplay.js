@@ -263,6 +263,20 @@ export function formatLedgerInvoiceLabel(inv) {
   return '帳單';
 }
 
+/**
+ * Student accounting ledger label — identify an invoice by human context,
+ * never by its internal invoice number. The API keeps the invoice number for
+ * machine/audit use; this display is subject + first class date only.
+ */
+export function formatAccountingLedgerInvoiceLabel(inv) {
+  const subject = trimStr(inv?.subject_name || inv?.subject || inv?.Subject);
+  const date = formatStudentClassOpenDate(inv?.first_session_date || inv?.start_date);
+  const parts = [];
+  if (subject) parts.push(subject);
+  if (date) parts.push(`上課 ${date}`);
+  return parts.length ? parts.join(' · ') : '帳單';
+}
+
 /** Receipt row secondary line. */
 export function formatLedgerReceiptBillLine(r) {
   const bill = r?.invoice_id ? '已對應帳單' : '尚未對應帳單';
@@ -386,4 +400,3 @@ export function buildAccountingCsvRows(rows) {
     r.confirmed_by_name || '',
   ]);
 }
-

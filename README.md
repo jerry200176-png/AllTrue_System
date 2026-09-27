@@ -4,6 +4,12 @@ AllTrue 是專為多校區補習班與教育機構設計的現代化營運管理
 
 AllTrue is a production tutoring-center operations platform designed for multi-branch educational organizations. It unifies scheduling, attendance, learning records, billing, teacher workflows, and parent communication into a resilient, evidence-driven system.
 
+### TrueFit 學習工作台
+
+同一儲存庫亦包含仍在受控開發中的 **TrueFit Learning Workspace**：AllTrue 管理人員、學生、課程與營運事實；TrueFit 以這些 canonical ID 串起備課、實體授課後的學習證據、老師確認的診斷、補救講義與後續驗證。兩者預計共用伺服器、Laravel API 與資料庫，但維持不同產品介面與資料責任；不複製學生／老師主檔，也不讓 TrueFit 改寫點名、帳務或學籍。
+
+目前 TrueFit 功能旗標仍關閉，尚未完成 runtime verification 或 operational acceptance。紙本考卷上傳、OCR／題目切分、AI 診斷與可列印錯題講義是規劃中的新 evidence adapter，**尚未實作**；其輸出必須先由老師確認，才可進入學生學習狀態。產品邊界見 [`docs/truefit/PRODUCT_ARCHITECTURE_BRIEF.md`](docs/truefit/PRODUCT_ARCHITECTURE_BRIEF.md)，紙本證據／AI／30 天原始檔保留／免重登提案見 [`docs/truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md`](docs/truefit/PAPER_EVIDENCE_AI_SSO_PROPOSAL.md)，實際交付狀態以 [`docs/truefit/PROGRAM_STATUS.md`](docs/truefit/PROGRAM_STATUS.md) 為準。
+
 > **儲存庫公開說明**：本儲存庫曾進行歷史物件機敏資訊脫敏與隱私防護處理。所有正式環境憑證、金鑰與真實學童個資均不存放於本儲存庫中。
 
 ---

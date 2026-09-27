@@ -12,7 +12,7 @@ import { dismissOverlays } from './fixtures/dismissOverlays.js';
  */
 
 const BASE = process.env.SMOKE_BASE_URL;
-const BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 16);
+const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
 const START = process.env.SMOKE_START_DATE || '2026-08-05';
 const END = process.env.SMOKE_END_DATE || '2026-08-07';
 const CALENDAR_NAV_LABEL = '班級行事曆';
@@ -36,6 +36,10 @@ function readSession() {
 }
 
 const SESSION = readSession();
+const AUTHORIZED_CAMPUSES = Array.isArray(SESSION?.user?.campuses)
+  ? SESSION.user.campuses.map(Number).filter(Number.isInteger)
+  : [];
+const BRANCH_ID = REQUESTED_BRANCH_ID || AUTHORIZED_CAMPUSES[0] || 0;
 
 function listFromPayload(payload) {
   if (Array.isArray(payload)) return payload;

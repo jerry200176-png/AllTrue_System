@@ -826,7 +826,8 @@
                 <span v-if="c.campus_name" class="pp-campus-label">{{ c.campus_name }}</span>
                 <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
                 <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">共用方案</span>
-                <span v-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
+                <span v-if="c.is_tutoring || c.payment_status === 'free'" class="pp-badge pp-badge-info-soft">{{ c.payment_status_label || '免費（不適用）' }}</span>
+                <span v-else-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
                 <span v-else class="pp-badge pp-badge-warning">未繳費</span>
                 <span v-if="c.is_stopped" class="pp-badge pp-badge-neutral">{{ c.lifecycle_status_label || '課程已結束' }}</span>
               </div>
@@ -1105,13 +1106,22 @@ function formatHubDate(value) {
   return m ? `${parseInt(m[2], 10)}/${parseInt(m[3], 10)}` : value;
 }
 
-function gotoParentTarget(target, source = 'hub_card') {
+async function gotoParentTarget(target, source = 'hub_card') {
   const resolved = ['learning', 'schedule', 'billing'].includes(String(target)) ? String(target) : 'learning';
   activeTab.value = resolved;
   trackParentPortalEvent(token.value, 'parent.progress_card_clicked', {
     card: source,
     target: resolved,
   });
+  // The attention card is itself on the learning tab. Selecting its feedback
+  // action must still produce a visible transition: open the first record that
+  // can receive feedback and focus its editor instead of merely reassigning the
+  // already-selected tab.
+  if (source === 'attention_feedback' && resolved === 'learning') {
+    await nextTick();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 220));
+    await jumpToFirstFeedbackSlot(source);
+  }
 }
 
 function onParentTabKeydown(event, currentTab) {
@@ -1374,9 +1384,20 @@ const openFeedbackForRecord = async (record, source = 'card_quick') => {
 };
 
 const jumpToFirstFeedbackSlot = async (source = 'engage_strip') => {
-  const list = allLearningRecords.value || [];
-  if (!list.length) return;
-  const target = list.find((r) => !r.parent_feedback) || list[0];
+  let list = allLearningRecords.value || [];
+  let target = list.find((r) => !r.parent_feedback);
+  // The dashboard is paginated. A pending feedback count may refer to a
+  // record beyond the first page, so keep using the existing read-only
+  // pagination path until an actionable record is present.
+  while (!target && lrHasMore.value && !lrLoading.value) {
+    const previousLength = list.length;
+    await loadMoreRecords();
+    list = allLearningRecords.value || [];
+    target = list.find((r) => !r.parent_feedback);
+    if (list.length === previousLength) break;
+  }
+  if (!target) target = list[0];
+  if (!target) return;
   await openFeedbackForRecord(target, source);
 };
 
@@ -1525,6 +1546,7 @@ const hwIcon = (v) => ({ completed: 'task_alt', partial: 'pending', incomplete: 
 const hwLabel = (v) => ({ completed: '已完成', partial: '部分完成', incomplete: '未完成', missing: '未繳交' }[v] || v || '—');
 
 const courseCardClass = (c) => {
+  if (c.is_tutoring || c.payment_status === 'free') return '';
   if (c.is_stopped) return c.paid ? 'settled' : 'stopped';
   if (isMonthlyCourse(c)) {
     if (!c.paid) return 'warning';

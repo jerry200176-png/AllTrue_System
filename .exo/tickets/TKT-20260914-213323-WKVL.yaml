@@ -1,0 +1,37 @@
+id: TKT-20260914-213323-WKVL
+title: Enumerate LearningRecord reference columns safely
+intent: Enumerate LearningRecord reference columns safely
+kind: task
+parent_id: INT-20260914-211716-ESFD
+boundary: Read-only workflow reference-column handling only; no production writes
+  or raw sensitive values.
+success_condition: Every LearningRecord reference column is checked without assuming
+  exact column names.
+priority: 3
+labels:
+- inapp
+scope:
+  allow:
+  - .github/workflows/inapp-289-learningrecord-preflight.yml
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 1
+  max_loc_changed: 80
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-14T21:33:23+08:00'
+brain_dump: ''
+risk: medium
+children: []
+resource_profile: default

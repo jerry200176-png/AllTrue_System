@@ -168,8 +168,8 @@
 
       <div v-if="isDirectorRole" class="lr-status-explainer" role="note">
         <strong>{{ directorReviewHint }}</strong>
-        <span>填寫：未填／已填</span>
-        <span>審核：待核准／需修改／已核准／已退回</span>
+        <span>評量內容：未填／已填</span>
+        <span>審核：待主任核准／老師需修改／已核准／已退回</span>
       </div>
 
       <!-- Selection toolbar: select-all + batch actions, only visible in selection mode.
@@ -911,12 +911,12 @@
                       </td>
                       <td v-if="!isTeacher">{{ record.teacher_name }}</td>
                       <td>
-                        <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                        <span v-if="cardFillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ cardFillLabel(record) }}</span>
                         <span v-else class="fill-badge-na">—</span>
                       </td>
                       <td>
                         <span :class="statusTagClass(record.Status)" class="status-tag">
-                          {{ statusLabel(record.Status) }}
+                          {{ cardReviewStatusLabel(record.Status) }}
                         </span>
                       </td>
                       <td class="lr-actions" @click.stop>
@@ -1231,7 +1231,7 @@
             </div>
             <div class="form-group">
               <label>本次作業範圍</label>
-              <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定下次作業..."></textarea>
+              <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定本次作業範圍..."></textarea>
               <div v-if="!isReadOnly" class="lr-phrase-row lr-phrase-row--hscroll">
                 <button v-for="p in templatePhrases.NextHomework" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('NextHomework', p)">{{ p }}</button>
               </div>
@@ -1304,7 +1304,15 @@
                 ></textarea>
                 <div class="lr-teacher-comment-actions">
                   <span v-if="feedbackReplyError" class="lr-teacher-comment-error">{{ feedbackReplyError }}</span>
-                  <button type="button" class="primary small" :disabled="feedbackReplySaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
+                  <button
+                    type="button"
+                    class="ghost small"
+                    :disabled="feedbackReplySaving || feedbackDismissSaving"
+                    @click="dismissFeedbackAwaiting"
+                  >
+                    {{ feedbackDismissSaving ? '處理中...' : '標記不需回覆' }}
+                  </button>
+                  <button type="button" class="primary small" :disabled="feedbackReplySaving || feedbackDismissSaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
                     {{ feedbackReplySaving ? '送出中...' : '送出回覆' }}
                   </button>
                 </div>
@@ -1533,6 +1541,10 @@ import {
   resolveLearningRecordViewDefaults,
   resolveLearningRecordViewMode,
 } from '../lib/learningRecordViewPreferences';
+import {
+  fillStatusLabel,
+  reviewStatusLabel,
+} from '../lib/learningRecordStatusLabels';
 import {
   addMinutesToTime,
   dayOfWeekFromYmd,
@@ -2194,6 +2206,7 @@ const submitFeedbackReply = async () => {
     _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
     records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
     feedbackReplyDraft.value = '';
+    emit('feedback-read');
     if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
       await fetchRecords();
     }
@@ -2201,6 +2214,35 @@ const submitFeedbackReply = async () => {
     feedbackReplyError.value = e?.message || '回覆失敗';
   } finally {
     feedbackReplySaving.value = false;
+  }
+};
+
+const dismissFeedbackAwaiting = async () => {
+  const fb = _activeRecordRef.value?.parent_feedback;
+  if (!fb?.id || feedbackDismissSaving.value || feedbackReplySaving.value) return;
+  feedbackDismissSaving.value = true;
+  feedbackReplyError.value = '';
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('請重新登入');
+    const res = await fetch(`/api/v1/learning-record-feedbacks/${fb.id}/dismiss-awaiting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '標記失敗');
+    const rid = Number(_activeRecordRef.value?.id || 0);
+    const newFb = { ...fb, awaiting_staff_reply: false };
+    _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
+    records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
+    emit('feedback-read');
+    if (pageMode.value === 'parent_messages' && feedbackFilter.value === 'awaiting_reply') {
+      await fetchRecords();
+    }
+  } catch (e) {
+    feedbackReplyError.value = e?.message || '標記失敗';
+  } finally {
+    feedbackDismissSaving.value = false;
   }
 };
 
@@ -2387,6 +2429,7 @@ const teacherCommentSaving = ref(false);
 const teacherCommentError = ref('');
 const feedbackReplyDraft = ref('');
 const feedbackReplySaving = ref(false);
+const feedbackDismissSaving = ref(false);
 const feedbackReplyError = ref('');
 
 /** 主任從列表／卡片直接開「給老師評語」，不必先進完整編輯 */
@@ -4008,31 +4051,15 @@ const isUrgentTeacherRecord = (record) => (
     || ((String(record.Status || '').toLowerCase() === 'changes_requested') && !hasLearningRecordBody(record)))
 );
 
-const fillLabel = (record) => (hasLearningRecordBody(record) ? '已填' : '未填');
-
-const cardFillLabel = (record) => (
-  isDirectorRole.value
-    ? (hasLearningRecordBody(record) ? '評量內容已填' : '評量內容未填')
-    : fillLabel(record)
-);
+const cardFillLabel = (record) => fillStatusLabel(hasLearningRecordBody(record), {
+  director: isDirectorRole.value,
+});
 
 const fillLabelClass = (record) => (hasLearningRecordBody(record) ? 'fill-done' : 'fill-missing');
 
-const statusLabel = (status) => {
-  const map = { pending: '待審核', approved: '已核准', rejected: '已退回', changes_requested: '需修改' };
-  return map[status] || status;
-};
-
-const cardReviewStatusLabel = (status) => {
-  if (!isDirectorRole.value) return statusLabel(status);
-  const map = {
-    pending: '審核：待主任核准',
-    approved: '審核：已核准',
-    rejected: '審核：已退回',
-    changes_requested: '審核：老師需修改',
-  };
-  return map[status] || status;
-};
+const cardReviewStatusLabel = (status) => reviewStatusLabel(status, {
+  director: isDirectorRole.value,
+});
 
 const statusTagClass = (status) => {
   const map = {
@@ -6226,7 +6253,9 @@ select.lr-input {
 }
 
 .lr-page:not(.lr-page--teacher) .lr-record-card .status-tag,
-.lr-page:not(.lr-page--teacher) .lr-record-card .fill-badge {
+.lr-page:not(.lr-page--teacher) .lr-record-card .fill-badge,
+.lr-page:not(.lr-page--teacher) .lr-table-scroll .status-tag,
+.lr-page:not(.lr-page--teacher) .lr-table-scroll .fill-badge {
   font-size: 13px;
   font-weight: 700;
 }

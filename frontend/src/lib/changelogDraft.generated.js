@@ -5,6 +5,423 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.27",
+    "date": "2026-09-27",
+    "title": "2026.09.27 草稿（未發布）",
+    "summary": "homework hint with current-assignment label；missing-record diagnostics with attendance rules",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "homework hint with current-assignment label",
+          "missing-record diagnostics with attendance rules"
+        ]
+      }
+    ],
+    "items": [
+      "homework hint with current-assignment label",
+      "missing-record diagnostics with attendance rules"
+    ]
+  },
+  {
+    "version": "2026.09.26",
+    "date": "2026-09-26",
+    "title": "2026.09.26 草稿（未發布）",
+    "summary": "leave and extra request ownership；campus editor target during save",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "leave and extra request ownership",
+          "campus editor target during save",
+          "successful unlink confirmation",
+          "balance belongs to package",
+          "existing settled-course labels",
+          "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "review and reachable controls",
+          "sorting and reachable report controls",
+          "page clarity on mobile"
+        ]
+      }
+    ],
+    "items": [
+      "leave and extra request ownership",
+      "campus editor target during save",
+      "successful unlink confirmation",
+      "balance belongs to package",
+      "existing settled-course labels",
+      "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑",
+      "review and reachable controls",
+      "sorting and reachable report controls"
+    ]
+  },
+  {
+    "version": "2026.09.25",
+    "date": "2026-09-25",
+    "title": "2026.09.25 草稿（未發布）",
+    "summary": "課程保留已設定的科目名稱；帳務中心剩餘堂數更易查看",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "課程保留已設定的科目名稱",
+          "帳務中心剩餘堂數更易查看",
+          "課程查找就地結束課程"
+        ]
+      }
+    ],
+    "items": [
+      "課程保留已設定的科目名稱",
+      "帳務中心剩餘堂數更易查看",
+      "課程查找就地結束課程"
+    ]
+  },
+  {
+    "version": "2026.09.24",
+    "date": "2026-09-24",
+    "title": "2026.09.24 草稿（未發布）",
+    "summary": "printed detail pages within their titled date",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "printed detail pages within their titled date"
+        ]
+      }
+    ],
+    "items": [
+      "printed detail pages within their titled date"
+    ]
+  },
+  {
+    "version": "2026.09.21",
+    "date": "2026-09-21",
+    "title": "2026.09.21 草稿（未發布）",
+    "summary": "level discounts snapshot at creation；invoice payable, not course charge",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "level discounts snapshot at creation"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "invoice payable, not course charge",
+          "Course/Student Management ownership",
+          "feedback shortcut opens the editor",
+          "sessions keep assessments pending by default"
+        ]
+      }
+    ],
+    "items": [
+      "level discounts snapshot at creation",
+      "invoice payable, not course charge",
+      "Course/Student Management ownership",
+      "feedback shortcut opens the editor",
+      "sessions keep assessments pending by default"
+    ]
+  },
+  {
+    "version": "2026.09.20",
+    "date": "2026-09-20",
+    "title": "2026.09.20 草稿（未發布）",
+    "summary": "timetable uses Chinese class-type labels；課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "timetable uses Chinese class-type labels",
+          "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。"
+        ]
+      }
+    ],
+    "items": [
+      "timetable uses Chinese class-type labels",
+      "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。"
+    ]
+  },
+  {
+    "version": "2026.09.19",
+    "date": "2026-09-19",
+    "title": "2026.09.19 草稿（未發布）",
+    "summary": "plan fixed or flexible pre-schedule choice；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "plan fixed or flexible pre-schedule choice",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "plan slot edit preserves past/future boundaries",
+          "slot wrap spacing polish",
+          "1：2/1：3 split-slot text readability",
+          "courses are free and non-collectible"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "搜尋姓名或就讀學校"
+        ]
+      }
+    ],
+    "items": [
+      "plan fixed or flexible pre-schedule choice",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+      "plan slot edit preserves past/future boundaries",
+      "slot wrap spacing polish",
+      "1：2/1：3 split-slot text readability",
+      "courses are free and non-collectible",
+      "搜尋姓名或就讀學校"
+    ]
+  },
+  {
+    "version": "2026.09.18",
+    "date": "2026-09-18",
+    "title": "2026.09.18 草稿（未發布）",
+    "summary": "closed-loop product projection；Course Manager V1 for staff",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "closed-loop product projection",
+          "Course Manager V1 for staff",
+          "Manager V1 consolidates Edit/More/Details"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "link-only issue URL onto prior disposition",
+          "disposition when resolving with -only link",
+          "LR ownership follows course teacher"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "Manager IA dedupe and layout"
+        ]
+      }
+    ],
+    "items": [
+      "closed-loop product projection",
+      "Course Manager V1 for staff",
+      "Manager V1 consolidates Edit/More/Details",
+      "link-only issue URL onto prior disposition",
+      "disposition when resolving with -only link",
+      "LR ownership follows course teacher",
+      "Manager IA dedupe and layout"
+    ]
+  },
+  {
+    "version": "2026.09.17",
+    "date": "2026-09-17",
+    "title": "2026.09.17 草稿（未發布）",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+          "promotion Phase-B.1 scheduled preview",
+          "promotion staff UI",
+          "4b WorkerRun start/attach + durable session bind",
+          "S6-01 workspace progress + continuum edge helpers"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "course session calendar flag activation",
+          "assessment fill vs review label regression"
+        ]
+      }
+    ],
+    "items": [
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+      "promotion Phase-B.1 scheduled preview",
+      "promotion staff UI",
+      "4b WorkerRun start/attach + durable session bind",
+      "S6-01 workspace progress + continuum edge helpers",
+      "course session calendar flag activation",
+      "assessment fill vs review label regression"
+    ]
+  },
+  {
+    "version": "2026.09.16",
+    "date": "2026-09-16",
+    "title": "2026.09.16 草稿（未發布）",
+    "summary": "列表檢視也清楚區分填寫與審核；家長回饋可標記不需回覆並離開待辦",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "列表檢視也清楚區分填寫與審核",
+          "家長回饋可標記不需回覆並離開待辦",
+          "改師後未上課的過去堂次不再卡舊老師",
+          "處理完成後收件匣同步解除待辦",
+          "編輯課表不再把自己判成衝堂",
+          "排課衝突顯示卡住的學生與排除指引"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "帳務中心可依剩餘堂數排序"
+        ]
+      }
+    ],
+    "items": [
+      "列表檢視也清楚區分填寫與審核",
+      "家長回饋可標記不需回覆並離開待辦",
+      "改師後未上課的過去堂次不再卡舊老師",
+      "處理完成後收件匣同步解除待辦",
+      "編輯課表不再把自己判成衝堂",
+      "排課衝突顯示卡住的學生與排除指引",
+      "帳務中心可依剩餘堂數排序"
+    ]
+  },
+  {
+    "version": "2026.09.15",
+    "date": "2026-09-15",
+    "title": "2026.09.15 草稿（未發布）",
+    "summary": "帳務中心窄視窗操作不再被裁切；堂數待對帳提供處理入口",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "體驗調整",
+        "items": [
+          "帳務中心窄視窗操作不再被裁切"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "堂數待對帳提供處理入口",
+          "對帳帳單改以科目與上課日期辨識",
+          "跨校滿席時段提示更清楚",
+          "綁定健康狀態與控制項更清楚",
+          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+          "堂數待對帳提示提供處理入口"
+        ]
+      }
+    ],
+    "items": [
+      "帳務中心窄視窗操作不再被裁切",
+      "堂數待對帳提供處理入口",
+      "對帳帳單改以科目與上課日期辨識",
+      "跨校滿席時段提示更清楚",
+      "綁定健康狀態與控制項更清楚",
+      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+      "堂數待對帳提示提供處理入口"
+    ]
+  },
+  {
+    "version": "2026.09.14",
+    "date": "2026-09-14",
+    "title": "2026.09.14 草稿（未發布）",
+    "summary": "主任繳費入口回到帳務中心；已完成堂數的未來預排不再誤顯示",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "主任繳費入口回到帳務中心",
+          "已完成堂數的未來預排不再誤顯示"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "課表回報狀態提示更容易被讀取",
+          "重複課程審核的狀態與重試更清楚",
+          "綁定清單在手機更容易查看",
+          "分校管理在手機更容易操作"
+        ]
+      }
+    ],
+    "items": [
+      "主任繳費入口回到帳務中心",
+      "已完成堂數的未來預排不再誤顯示",
+      "課表回報狀態提示更容易被讀取",
+      "重複課程審核的狀態與重試更清楚",
+      "綁定清單在手機更容易查看",
+      "分校管理在手機更容易操作"
+    ]
+  },
+  {
     "version": "2026.09.13",
     "date": "2026-09-13",
     "title": "2026.09.13 草稿（未發布）",
@@ -33,12 +450,12 @@ export const changelogDraftNotes = [
       {
         "title": "其他改善",
         "items": [
+          "正職薪資要件的提示更清楚",
           "分校健康看板在手機更容易查看",
           "教室管理在手機更容易操作",
           "科目設定在手機上更容易操作",
           "主任總覽的常用操作更容易辨識",
-          "招生問班操作在手機更容易辨識",
-          "對話操作提示與手機觸控更清楚"
+          "招生問班操作在手機更容易辨識"
         ]
       }
     ],
@@ -48,9 +465,9 @@ export const changelogDraftNotes = [
       "已完課歷史可直接續報加購",
       "多校老師登入後補填提醒會同步完整校區",
       "學收佇列在手機上更容易查看",
+      "正職薪資要件的提示更清楚",
       "分校健康看板在手機更容易查看",
-      "教室管理在手機更容易操作",
-      "科目設定在手機上更容易操作"
+      "教室管理在手機更容易操作"
     ]
   },
   {
@@ -263,461 +680,6 @@ export const changelogDraftNotes = [
       "科目數完整加總後才除以 8",
       "Cmd-K 可搜尋授權的學生、老師與課程",
       "意見與建議入口更容易使用"
-    ]
-  },
-  {
-    "version": "2026.09.07",
-    "date": "2026-09-07",
-    "title": "2026.09.07 草稿（未發布）",
-    "summary": "老師管理載入與篩選回復更清楚；學生管理載入與搜尋回復更清楚",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "其他改善",
-        "items": [
-          "老師管理載入與篩選回復更清楚",
-          "學生管理載入與搜尋回復更清楚",
-          "教室管理錯誤回復更清楚",
-          "手機更多功能可搜尋",
-          "跨頁工作可接續",
-          "側欄更多功能漸進搜尋與快捷鍵"
-        ]
-      }
-    ],
-    "items": [
-      "老師管理載入與篩選回復更清楚",
-      "學生管理載入與搜尋回復更清楚",
-      "教室管理錯誤回復更清楚",
-      "手機更多功能可搜尋",
-      "跨頁工作可接續",
-      "側欄更多功能漸進搜尋與快捷鍵"
-    ]
-  },
-  {
-    "version": "2026.09.06",
-    "date": "2026-09-06",
-    "title": "2026.09.06 草稿（未發布）",
-    "summary": "修正共用方案付款狀態與排課繳費日期更正安全機制；統一主任與老師新手教學並清理重複入口",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "修正共用方案付款狀態與排課繳費日期更正安全機制"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "統一主任與老師新手教學並清理重複入口"
-        ]
-      }
-    ],
-    "items": [
-      "修正共用方案付款狀態與排課繳費日期更正安全機制",
-      "統一主任與老師新手教學並清理重複入口"
-    ]
-  },
-  {
-    "version": "2026.09.05",
-    "date": "2026-09-05",
-    "title": "2026.09.05 草稿（未發布）",
-    "summary": "補齊負責人、追蹤與詢問歷程；科目數改為日粒度明細",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "補齊負責人、追蹤與詢問歷程",
-          "科目數改為日粒度明細"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-          "phone binding classifier parity"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-          "高頻核心頁面降低切換與認知負擔"
-        ]
-      }
-    ],
-    "items": [
-      "補齊負責人、追蹤與詢問歷程",
-      "科目數改為日粒度明細",
-      "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-      "phone binding classifier parity",
-      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-      "高頻核心頁面降低切換與認知負擔"
-    ]
-  },
-  {
-    "version": "2026.09.04",
-    "date": "2026-09-04",
-    "title": "2026.09.04 草稿（未發布）",
-    "summary": "dark-launch acceptance for 新生問班；新生問班招生閉環 V1",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "dark-launch acceptance for 新生問班",
-          "新生問班招生閉環 V1",
-          "主任與老師角色新手教學"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "新手教學標註錨點補齊",
-          "合約提前結束未繳費可回帳務中心對帳",
-          "多科共用方案分離購買、已用與未來預排堂數",
-          "月結請假維持合約日期邊界",
-          "activate admissions flags"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "主任與老師新手任務 V1.1"
-        ]
-      }
-    ],
-    "items": [
-      "dark-launch acceptance for 新生問班",
-      "新生問班招生閉環 V1",
-      "主任與老師角色新手教學",
-      "新手教學標註錨點補齊",
-      "合約提前結束未繳費可回帳務中心對帳",
-      "多科共用方案分離購買、已用與未來預排堂數",
-      "月結請假維持合約日期邊界",
-      "activate admissions flags"
-    ]
-  },
-  {
-    "version": "2026.09.03",
-    "date": "2026-09-03",
-    "title": "2026.09.03 草稿（未發布）",
-    "summary": "Guardian canonical Portal cutover；Portal multi-guardian dual-read authZ",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "Guardian canonical Portal cutover",
-          "Portal multi-guardian dual-read authZ",
-          "學生管理多家長 CRUD（flag 閘控）",
-          "多 Guardian 加法模型與雙寫雙讀（dark launch）"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "學生頁家長欄與監護人 SSOT（去重）",
-          "失敗 dry-run 支援受控重試並保留歷史 attempt",
-          "多家長 LINE 綁定通知與偏好一致性"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
-        ]
-      }
-    ],
-    "items": [
-      "Guardian canonical Portal cutover",
-      "Portal multi-guardian dual-read authZ",
-      "學生管理多家長 CRUD（flag 閘控）",
-      "多 Guardian 加法模型與雙寫雙讀（dark launch）",
-      "學生頁家長欄與監護人 SSOT（去重）",
-      "失敗 dry-run 支援受控重試並保留歷史 attempt",
-      "多家長 LINE 綁定通知與偏好一致性",
-      "Guardian 正式版（Staff CRUD + Portal authZ + cutover）"
-    ]
-  },
-  {
-    "version": "2026.09.02",
-    "date": "2026-09-02",
-    "title": "2026.09.02 草稿（未發布）",
-    "summary": "課程查找同步按堂／按時計費單位；移除固定時段不再誤判自己衝堂",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "課程查找同步按堂／按時計費單位",
-          "移除固定時段不再誤判自己衝堂",
-          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
-        ]
-      }
-    ],
-    "items": [
-      "課程查找同步按堂／按時計費單位",
-      "移除固定時段不再誤判自己衝堂",
-      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
-    ]
-  },
-  {
-    "version": "2026.09.01",
-    "date": "2026-09-01",
-    "title": "2026.09.01 草稿（未發布）",
-    "summary": "行事曆調課不再被不完整預判誤擋；歷史課程顯示堂數待對帳",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "行事曆調課不再被不完整預判誤擋",
-          "歷史課程顯示堂數待對帳",
-          "調課預覽優先採用當日請假狀態",
-          "未繳課程可結案但保留待對帳狀態"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "新建與編輯課程共用老師空檔查詢",
-          "新增排課可先找可行時段",
-          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-          "回報提交後保留追蹤入口",
-          "老師首頁先看今天的課表"
-        ]
-      }
-    ],
-    "items": [
-      "行事曆調課不再被不完整預判誤擋",
-      "歷史課程顯示堂數待對帳",
-      "調課預覽優先採用當日請假狀態",
-      "未繳課程可結案但保留待對帳狀態",
-      "新建與編輯課程共用老師空檔查詢",
-      "新增排課可先找可行時段",
-      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-      "回報提交後保留追蹤入口"
-    ]
-  },
-  {
-    "version": "2026.08.31",
-    "date": "2026-08-31",
-    "title": "2026.08.31 草稿（未發布）",
-    "summary": "主任可查看每週16段課達標與課程構成；月結開課日跨固定星期仍建立首堂",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "主任可查看每週16段課達標與課程構成"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "月結開課日跨固定星期仍建立首堂",
-          "調課預覽正確排除請假與取消課程"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "課程查找明確顯示堂數待對帳"
-        ]
-      }
-    ],
-    "items": [
-      "主任可查看每週16段課達標與課程構成",
-      "月結開課日跨固定星期仍建立首堂",
-      "調課預覽正確排除請假與取消課程",
-      "課程查找明確顯示堂數待對帳"
-    ]
-  },
-  {
-    "version": "2026.08.30",
-    "date": "2026-08-30",
-    "title": "2026.08.30 草稿（未發布）",
-    "summary": "回報視窗不殘留上一筆提交提示；學生管理操作按鈕語意更穩定",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "回報視窗不殘留上一筆提交提示"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "學生管理操作按鈕語意更穩定",
-          "出缺勤操作按鈕語意更穩定",
-          "老師工作台聚焦今天與本週"
-        ]
-      }
-    ],
-    "items": [
-      "回報視窗不殘留上一筆提交提示",
-      "學生管理操作按鈕語意更穩定",
-      "出缺勤操作按鈕語意更穩定",
-      "老師工作台聚焦今天與本週"
-    ]
-  },
-  {
-    "version": "2026.08.29",
-    "date": "2026-08-29",
-    "title": "2026.08.29 草稿（未發布）",
-    "summary": "不再建立沒有原堂次的調課目標；重複補排目標改回可理解錯誤",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "不再建立沒有原堂次的調課目標",
-          "重複補排目標改回可理解錯誤",
-          "主任可以更快確認補課候選時段",
-          "新增課程「去加購」不再沒反應",
-          "登入後點側欄不再被拉回首頁",
-          "帳務分頁只顯示目前工作區"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "回報工作區頁籤更容易辨識",
-          "學生管理視窗更容易辨識",
-          "老師工作台捷徑會帶入目前工作區",
-          "課程查找的學生分頁更適合鍵盤操作",
-          "工作台不被單一回覆來源卡住",
-          "老師今日佇列只保留一顆主行動"
-        ]
-      }
-    ],
-    "items": [
-      "不再建立沒有原堂次的調課目標",
-      "重複補排目標改回可理解錯誤",
-      "主任可以更快確認補課候選時段",
-      "新增課程「去加購」不再沒反應",
-      "登入後點側欄不再被拉回首頁",
-      "帳務分頁只顯示目前工作區",
-      "回報工作區頁籤更容易辨識",
-      "學生管理視窗更容易辨識"
-    ]
-  },
-  {
-    "version": "2026.08.28",
-    "date": "2026-08-28",
-    "title": "2026.08.28 草稿（未發布）",
-    "summary": "請假安全撤銷與試聽轉正式；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "請假安全撤銷與試聽轉正式",
-          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
-          "科目數統計摘要不再誤顯示 0"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "學生課程資訊更清楚",
-          "側欄常用功能更聚焦",
-          "評量審核佇列分工更清楚",
-          "問題回報更穩定",
-          "出缺勤工作區先處理異常",
-          "排課操作提供安全復原"
-        ]
-      }
-    ],
-    "items": [
-      "請假安全撤銷與試聽轉正式",
-      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
-      "科目數統計摘要不再誤顯示 0",
-      "學生課程資訊更清楚",
-      "側欄常用功能更聚焦",
-      "評量審核佇列分工更清楚",
-      "問題回報更穩定",
-      "出缺勤工作區先處理異常"
-    ]
-  },
-  {
-    "version": "2026.08.27",
-    "date": "2026-08-27",
-    "title": "2026.08.27 草稿（未發布）",
-    "summary": "堂次轉移同步扣堂台帳；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "堂次轉移同步扣堂台帳",
-          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "課程查找同頁編輯與新增堂次",
-          "課程管理可直接開繳費通知"
-        ]
-      }
-    ],
-    "items": [
-      "堂次轉移同步扣堂台帳",
-      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
-      "課程查找同頁編輯與新增堂次",
-      "課程管理可直接開繳費通知"
     ]
   }
 ];

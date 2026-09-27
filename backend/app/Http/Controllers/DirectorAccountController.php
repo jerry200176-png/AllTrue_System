@@ -69,6 +69,11 @@ class DirectorAccountController extends Controller
 
         return response()->json([
             'message' => '已送出申請，請等候超級管理員審核 (Application submitted, pending approval)',
+            // Return only the non-sensitive receipt identifier.  The caller
+            // needs this to resume the bounded approval flow without using an
+            // administrator session or searching by account name.  Passwords
+            // and other user fields are intentionally never returned here.
+            'pending_application_id' => (int) $user->getKey(),
         ], 201);
     }
 

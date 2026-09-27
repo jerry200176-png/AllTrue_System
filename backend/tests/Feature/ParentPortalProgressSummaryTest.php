@@ -63,7 +63,7 @@ class ParentPortalProgressSummaryTest extends TestCase
                 'interaction_statuses',
                 'notifications',
                 'pending_total',
-                'payment' => ['status', 'paid_courses', 'unpaid_courses', 'total_courses'],
+                'payment' => ['status', 'paid_courses', 'unpaid_courses', 'free_courses', 'total_courses'],
                 'feedback_program' => [
                     'version',
                     'window' => ['start', 'end', 'days'],
@@ -82,6 +82,7 @@ class ParentPortalProgressSummaryTest extends TestCase
         $this->assertGreaterThanOrEqual(2, (int) $payload['week_progress']['scheduled']);
         $this->assertNotNull($payload['next_session']);
         $this->assertSame(1, (int) $payload['payment']['unpaid_courses']);
+        $this->assertSame(0, (int) $payload['payment']['free_courses']);
         $this->assertSame(1, (int) $payload['payment']['total_courses']);
         $this->assertContains($payload['payment']['status'], ['all_pending', 'partial', 'all_clear']);
         $this->assertSame('v1', (string) $payload['feedback_program']['version']);
@@ -90,6 +91,33 @@ class ParentPortalProgressSummaryTest extends TestCase
         $this->assertArrayHasKey('daily_cap', $payload['feedback_program']['reminder_policy']['throttle']);
         $this->assertIsArray($payload['interaction_statuses']);
         $this->assertIsArray($payload['notifications']);
+    }
+
+    public function test_payment_summary_separates_free_tutoring_from_paid_and_unpaid_courses(): void
+    {
+        $student = $this->createStudent(1, '免費輔導進度學生', '0913000333');
+        $this->createStudentClass($student->id, [
+            'ClassType' => ' TuToRiNg ', 'Charge' => 0, 'Paid' => 0, 'Rate' => 0,
+        ]);
+        $this->createStudentClass($student->id, [
+            'ClassType' => 'one_on_one', 'Charge' => 8800, 'Paid' => 1,
+        ]);
+        $this->createStudentClass($student->id, [
+            'ClassType' => 'one_on_one', 'Charge' => 8800, 'Paid' => 0,
+        ]);
+
+        $token = $this->parentLogin('免費輔導進度學生', '0913000333');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $payment = $res->json('progress_summary.payment');
+        $this->assertSame(1, (int) $payment['free_courses']);
+        $this->assertSame(1, (int) $payment['paid_courses']);
+        $this->assertSame(1, (int) $payment['unpaid_courses']);
+        $this->assertSame(3, (int) $payment['total_courses']);
+        $this->assertSame('partial', $payment['status']);
     }
 
     public function test_parent_event_endpoint_requires_session_and_accepts_parent_events(): void

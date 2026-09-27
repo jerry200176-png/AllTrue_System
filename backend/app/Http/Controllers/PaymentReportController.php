@@ -12,6 +12,8 @@ use App\Models\Subject;
 use App\Support\AccountingCourseClarity;
 use App\Services\MonthlyBillingService;
 use App\Services\PaymentReportTokenService;
+use App\Services\BillingPayableResolver;
+use App\Services\InvoiceAmountReconciliationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -224,7 +226,9 @@ class PaymentReportController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
 
-        $query = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser']);
+        $query = PaymentReport::with([
+            'student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice.payments',
+        ]);
 
         if ($request->filled('branch_id')) {
             $bid = (int) $request->input('branch_id');
@@ -257,8 +261,26 @@ class PaymentReportController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(30);
 
-        $reports->getCollection()->transform(function ($r) {
+        $invoiceAmounts = app(InvoiceAmountReconciliationService::class);
+        $payableResolver = app(BillingPayableResolver::class);
+        $reports->getCollection()->transform(function ($r) use ($invoiceAmounts, $payableResolver) {
             $subjectName = $r->studentClass?->subjectRecord?->Subject_Name ?? '課程';
+            $estimatedAmount = $r->studentClass?->Charge ?? 0;
+            $payable = $r->invoice
+                ? (function () use ($r, $invoiceAmounts) {
+                    $projection = $invoiceAmounts->resolve($r->invoice, $r->studentClass);
+                    $amount = max(0, (int) $projection['total_amount']);
+                    $applied = min($amount, max(0, (int) $projection['net_applied']));
+                    return [
+                        'payable_amount' => $amount,
+                        'payable_outstanding' => max(0, $amount - $applied),
+                        'payable_status' => 'invoiced',
+                        'payable_source' => 'invoice',
+                        'payable_invoice_id' => (int) $r->invoice->id,
+                        'billing_period' => $projection['billing_period'],
+                    ];
+                })()
+                : $payableResolver->unbilled();
             return [
                 'id'               => $r->id,
                 'student_name'     => $r->student?->name ?? $r->reported_by_name,
@@ -274,7 +296,10 @@ class PaymentReportController extends Controller
                 'confirmed_by_name' => $r->confirmedByUser?->Name ?? null,
                 'confirmed_at'     => $r->confirmed_at?->toIso8601String(),
                 'rejection_note'   => $r->rejection_note,
-                'charge'           => $r->studentClass?->Charge ?? 0,
+                'charge'           => $estimatedAmount,
+                'estimated_amount' => $estimatedAmount,
+                'charge_semantics' => 'estimate_only',
+                ...$payable,
                 'created_at'       => $r->created_at?->toIso8601String(),
             ];
         });

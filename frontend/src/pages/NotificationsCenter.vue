@@ -798,7 +798,7 @@ const loadCaseItems = async () => {
     if (json?.summary?.cases_candidate_ready != null) {
       casesCandidateReadyCount.value = Number(json.summary.cases_candidate_ready);
     }
-  } catch (err) {
+  } catch {
     caseLaneError.value = true;
     if (caseItemsScopeKey.value !== requestScope) { caseItems.value = []; caseItemsScopeKey.value = ''; }
     if (laneFilter.value === 'case') {
@@ -1016,7 +1016,17 @@ watch(urgentNotifications, async () => {
 let refreshTimer = null;
 
 onMounted(async () => {
-  await loadNotifications(1);
+  // in-app #300: reconcile ops cards before first paint so completed work
+  // (e.g. approved learning reviews) leaves the inbox without a manual sync.
+  if (props.branchId) {
+    try {
+      await syncNotifications(false);
+    } catch {
+      await loadNotifications(1);
+    }
+  } else {
+    await loadNotifications(1);
+  }
   refreshTimer = window.setInterval(() => {
     loadNotifications(laneFilter.value === 'case' ? casesPage.value : currentPage.value);
   }, 60000);

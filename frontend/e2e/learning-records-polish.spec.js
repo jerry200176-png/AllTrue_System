@@ -44,6 +44,22 @@ async function openLearningPilot(page, viewport) {
   await expect(page.locator('html')).toHaveAttribute('data-pilot-ready', '1');
 }
 
+async function assertDirectorStatusTypography(locator) {
+  const statusTypography = await locator.locator('.status-tag, .fill-badge').evaluateAll((elements) => (
+    elements.map((element) => ({
+      fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+      fontWeight: Number.parseInt(getComputedStyle(element).fontWeight, 10),
+      text: (element.textContent || '').trim(),
+    }))
+  ));
+  expect(statusTypography.length).toBeGreaterThanOrEqual(2);
+  for (const typography of statusTypography) {
+    expect(typography.fontSize).toBeGreaterThanOrEqual(13);
+    expect(typography.fontWeight).toBeGreaterThanOrEqual(700);
+    expect(['未填', '已填', '待審核']).not.toContain(typography.text);
+  }
+}
+
 for (const viewport of viewports) {
   test(`learning records director polish @${viewport.name}`, async ({ page }) => {
     await openLearningPilot(page, viewport);
@@ -54,17 +70,7 @@ for (const viewport of viewports) {
     const pendingCard = page.locator('.lr-record-card').filter({ hasText: '測試學生甲' }).first();
     await expect(pendingCard.getByText('審核：待主任核准', { exact: true })).toBeVisible();
     await expect(pendingCard.getByText('評量內容未填', { exact: true })).toBeVisible();
-    const statusTypography = await pendingCard.locator('.status-tag, .fill-badge').evaluateAll((elements) => (
-      elements.map((element) => ({
-        fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
-        fontWeight: Number.parseInt(getComputedStyle(element).fontWeight, 10),
-      }))
-    ));
-    expect(statusTypography).toHaveLength(2);
-    for (const typography of statusTypography) {
-      expect(typography.fontSize).toBeGreaterThanOrEqual(13);
-      expect(typography.fontWeight).toBeGreaterThanOrEqual(700);
-    }
+    await assertDirectorStatusTypography(pendingCard);
     const layout = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
@@ -74,6 +80,28 @@ for (const viewport of viewports) {
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.clientWidth);
     expect(layout.records).toBeGreaterThan(0);
     expect(layout.activePills).toBe(1);
+
+    // Desktop default is list/table; lock the same fill vs review nouns there (#2715 / #2983).
+    // Director "pending" queue also includes changes_requested rows client-side.
+    if (viewport.width >= 760) {
+      await page.getByRole('button', { name: '列表', exact: true }).click();
+      await expect(page.locator('.lr-table-scroll').first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('.lr-table-scroll .fill-badge').filter({ hasText: '評量內容未填' }).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('.lr-table-scroll .status-tag').filter({ hasText: /^審核：/ }).first()).toBeVisible();
+
+      const pendingGroup = page.locator('details.lr-group').filter({ hasText: '測試學生甲' });
+      await pendingGroup.locator('summary .lr-group-hint').click();
+      await expect(pendingGroup.locator('.fill-badge').filter({ hasText: '評量內容未填' })).toBeVisible({ timeout: 15_000 });
+      await expect(pendingGroup.locator('.status-tag').filter({ hasText: '審核：待主任核准' })).toBeVisible();
+      await assertDirectorStatusTypography(pendingGroup);
+
+      const tableLayout = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(tableLayout.scrollWidth).toBeLessThanOrEqual(tableLayout.clientWidth);
+    }
+
     await page.locator('.lr-page').screenshot({ path: `/tmp/learning-records-polish-${viewport.name}.png` });
   });
 }
