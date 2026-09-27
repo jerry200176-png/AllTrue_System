@@ -1,3 +1,7 @@
+## 2026-09-27 — chore(framework): prepare Laravel 12 compatibility (PR #2833)
+<!-- release-notes: silent_ship=silent-2026-09-27-laravel12-2833 -->
+- 維護後端框架相容性，保留既有點名、調課、家長及帳務契約；補正家長月份與未收款科目名稱的回應。尚待部署與受影響路徑驗收，不宣告已上線。
+
 ## 2026-09-27 — chore(deps): maintain frontend runtime dependencies (PR #3188)
 <!-- release-notes: silent_ship=silent-2026-09-27-frontend-dependencies-3188 -->
 - 更新 Vue、Sentry 與既有前端測試／建置套件的相容小版本，維護既有功能；教職員無需額外操作，不新增使用流程。
