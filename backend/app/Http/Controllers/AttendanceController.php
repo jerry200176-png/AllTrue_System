@@ -851,7 +851,8 @@ class AttendanceController extends Controller
             $signOut = Carbon::parse($classSession->SessionDate . ' ' . $classSession->EndTime);
         }
 
-        $minutes = $signOut ? max($signOut->diffInMinutes($signIn), 0) : 0;
+        // Preserve Carbon 2 absolute, whole-minute duration semantics.
+        $minutes = $signOut ? max((int) $signOut->diffInMinutes($signIn, true), 0) : 0;
         $hours = $minutes > 0 ? (int) ceil($minutes / 60) : null;
 
         return [$signIn, $signOut, $hours];
@@ -935,7 +936,7 @@ class AttendanceController extends Controller
 
         foreach ($sessions as $session) {
             $startTime = Carbon::parse($session->SessionDate . ' ' . $session->StartTime);
-            $diff = abs($startTime->diffInMinutes($swipeAt));
+            $diff = (int) $startTime->diffInMinutes($swipeAt, true);
 
             if ($diff > $windowMinutes) {
                 continue;

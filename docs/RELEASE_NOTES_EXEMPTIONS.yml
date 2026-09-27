@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-27-attendance-carbon-compatibility
+    changelog_date: "2026-09-27"
+    changelog_title: "chore(attendance): preserve minute precision across Carbon versions (GitHub #977)"
+    reason: 維持現行 Carbon 2 的分鐘精度與帳齡語意，僅準備後續升級相容性；不新增產品功能、操作或政策，不宣稱框架已升級或 production 已驗收。
+
   - id: silent-2026-09-27-frontend-dependencies-3188
     changelog_date: "2026-09-27"
     changelog_title: "chore(deps): maintain frontend runtime dependencies (PR #3188)"
