@@ -871,7 +871,7 @@ class PaymentReportController extends Controller
         $userId = $request->attributes->get('auth_user_id');
 
         return DB::transaction(function () use ($report, $userId, $data) {
-            $originalAmount = (int) abs($report->reported_amount);
+            $originalAmount = (int) abs((float) $report->reported_amount);
 
             $invoice = $report->InvoiceID ? Invoice::find($report->InvoiceID) : null;
 
@@ -1101,7 +1101,7 @@ class PaymentReportController extends Controller
         $amount = (float) $report->reported_amount;
 
         return response()->json([
-            'receipt_no'       => 'R-' . str_pad($report->id, 6, '0', STR_PAD_LEFT),
+            'receipt_no'       => 'R-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT),
             'student_name'     => $report->student?->name ?? $report->reported_by_name,
             'campus_name'      => $campusName,
             'subject'          => $receiptSubject,
