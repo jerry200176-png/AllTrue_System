@@ -2374,7 +2374,7 @@ class ClassSessionController extends Controller
             );
             $crossConflicts = array_values(array_filter(
                 $allBusy,
-                static fn ($c) => (int) ($c['campus_id'] ?? 0) > 0 && (int) $c['campus_id'] !== (int) $campusId
+                static fn ($c) => (int) ($c['campus_id']) > 0 && (int) $c['campus_id'] !== (int) $campusId
             ));
             if (!empty($crossConflicts)) {
                 Log::info('[substitute] cross_campus_conflict', [
@@ -2383,7 +2383,7 @@ class ClassSessionController extends Controller
                     'session_date' => $sessionDate,
                     'conflict_count' => count($crossConflicts),
                     'conflict_campus_ids' => array_values(array_unique(array_filter(array_map(
-                        static fn ($conflict) => (int) ($conflict['campus_id'] ?? 0),
+                        static fn ($conflict) => (int) ($conflict['campus_id']),
                         $crossConflicts
                     )))),
                 ]);

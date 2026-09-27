@@ -830,7 +830,7 @@ class ParentPortalController extends Controller
         $nonPackageRemaining = $perCourse
             ->filter(fn ($row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
             ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) <= 0)
-            ->sum(fn ($row) => (int) ($row['remaining_sessions'] ?? 0));
+            ->sum(fn ($row) => (int) ($row['remaining_sessions']));
         $visiblePackageIds = $perCourse
             ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) > 0)
             ->pluck('package_id')->unique()->values();
@@ -848,7 +848,7 @@ class ParentPortalController extends Controller
             if ((int) ($row['package_id'] ?? 0) > 0) {
                 continue;
             }
-            $rem = (int) ($row['remaining_sessions'] ?? 0);
+            $rem = (int) ($row['remaining_sessions']);
             if ($rem <= 0) {
                 continue;
             }
