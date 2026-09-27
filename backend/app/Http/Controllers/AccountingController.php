@@ -336,7 +336,7 @@ class AccountingController extends Controller
                     'note' => (string) ($payment->Note ?? ''),
                     'is_void' => $isVoid,
                     'report_id' => $report ? (int) $report->id : null,
-                    'receipt_no' => $report ? $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null) : null,
+                    'receipt_no' => $report ? $this->receiptNo((int) $report->id, Carbon::make($report->payment_date)?->toDateString()) : null,
                     'report_status' => $report ? (string) $report->status : null,
                 ];
             })->values();
@@ -680,12 +680,12 @@ class AccountingController extends Controller
     {
         return [
             'report_id' => (int) $report->id,
-            'receipt_no' => $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null),
+            'receipt_no' => $this->receiptNo((int) $report->id, Carbon::make($report->payment_date)?->toDateString()),
             'student_class_id' => (int) $report->StudentClassID,
             'course_ref' => $this->courseRef((int) $report->StudentClassID),
             'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
             'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
-            'payment_date' => $report->payment_date ? $report->payment_date->toDateString() : null,
+            'payment_date' => Carbon::make($report->payment_date)?->toDateString(),
             'payment_method' => (string) ($report->payment_method ?? ''),
             'note' => (string) ($report->note ?? ''),
             'amount' => (int) round((float) $report->reported_amount),
@@ -755,7 +755,7 @@ class AccountingController extends Controller
     {
         $method = (string) ($report->payment_method ?? 'cash');
         $amount = (int) round((float) $report->reported_amount);
-        $paymentDate = $report->payment_date ? $report->payment_date->toDateString() : null;
+        $paymentDate = Carbon::make($report->payment_date)?->toDateString();
         $sc = $report->getRelationValue('studentClass');
         $sc = $sc instanceof StudentClass ? $sc : null;
         $meta = $firstSessionMap[(int) $report->StudentClassID] ?? ['first_live' => null, 'first_any' => null];
