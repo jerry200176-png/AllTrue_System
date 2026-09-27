@@ -7601,10 +7601,10 @@ class StudentClassController extends Controller
                 $sessionEndHm = substr($this->normalizeSessionTime($session->EndTime), 0, 5);
                 $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
                 $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
-                $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($sessionStartHm, $sessionEndHm, $durationMinutes) {
-                    $slotStartFull = $this->normalizeSessionTime($s['time'] ?? '', '16:00:00');
+                $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($sessionStartHm, $sessionEndHm) {
+                    $slotStartFull = $this->normalizeSessionTime($s['time'], '16:00:00');
                     $slotStartHm = substr($slotStartFull, 0, 5);
-                    $dur = max(30, (int) ($s['dur'] ?? $durationMinutes));
+                    $dur = max(30, (int) ($s['dur']));
                     $expectedEndHm = Carbon::createFromFormat('H:i:s', $slotStartFull)->addMinutes($dur)->format('H:i');
                     return $sessionStartHm === $slotStartHm && $sessionEndHm === $expectedEndHm;
                 });

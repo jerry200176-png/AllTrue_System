@@ -19,9 +19,9 @@ final class ForwardSessionGeneratorBridge
             ->planCourse($studentClassId, 4, $today);
 
         return [
-            'status' => (string) ($plan['status'] ?? 'skip'),
+            'status' => (string) ($plan['status']),
             'reason' => (string) ($plan['reason'] ?? ''),
-            'slots' => $plan['slots'] ?? [],
+            'slots' => $plan['slots'],
         ];
     }
 }
