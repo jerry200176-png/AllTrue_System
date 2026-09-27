@@ -105,7 +105,7 @@ class AttendanceLearningRecordIntegrityService
                 $query->selectRaw('1')->from('LearningRecord as lr')
                     ->whereColumn('lr.ClassSessionID', 'cs.id')->whereNull('lr.VoidedAt');
             }));
-        $duplicateCount = (int) DB::table('LearningRecord as lr')
+        $duplicateGroups = DB::table('LearningRecord as lr')
             ->join('ClassSession as cs', 'cs.id', '=', 'lr.ClassSessionID')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
@@ -113,8 +113,8 @@ class AttendanceLearningRecordIntegrityService
             ->when($campusId !== null && $campusId > 0, fn ($query) => $query->where('st.CampusID', $campusId))
             ->groupBy('lr.ClassSessionID')
             ->havingRaw('COUNT(lr.id) > 1')
-            ->get(['lr.ClassSessionID'])
-            ->count();
+            ->select('lr.ClassSessionID');
+        $duplicateCount = (int) DB::query()->fromSub($duplicateGroups, 'duplicate_groups')->count();
 
         return [
             'generated_at' => now()->toIso8601String(),
