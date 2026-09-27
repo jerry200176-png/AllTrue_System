@@ -137,11 +137,21 @@ commit_all "$d" human
 result "7b human-authored claim with secret-like text fails" fail "$(check "$d")"
 d=$(task UNREAD); echo change >>"$d/product.txt"; commit_all "$d" change
 result "7c base unreadable, own local manifest valid" pass "$(check "$d" origin/no-such-base)"
-# Info only: a CI-style fresh checkout of a branch that never wrote its own
-# manifest, with the base unreadable. Differs by design between tracked and
-# untracked layouts; reported, not asserted.
-d="$TMP/CIFRESH"; git clone -q -b chore/task-INHERIT "$TMP/INHERIT" "$d"
-echo "info 7d base unreadable, fresh CI checkout without own claim: $(check "$d" origin/no-such-base) ($(tail -1 "$d.log"))"
+# CI-style fresh checkout (no git-ignored local file), base unreadable: the
+# required-file fallback must still validate human-authored.json, not skip it.
+fresh() { git clone -q -b "chore/task-$2" "$TMP/$2" "$TMP/$1"; echo "$TMP/$1"; }
+d=$(fresh CIFRESH INHERIT)
+r=$(check "$d" origin/no-such-base)
+[ -f "$d/.agent-session/manifest.json" ] || { grep -q "human-authored-ok" "$d.log" || r="$r-unvalidated"; }
+result "7d base unreadable, no agent file: human-authored.json validated" pass "$r"
+d=$(task HUMANSECRET); rm -f "$d/.agent-session/manifest.json"
+git -C "$d" rm -q --cached --ignore-unmatch .agent-session/manifest.json
+python3 - "$d/.agent-session/human-authored.json" <<'PY2'
+import json,sys; p=sys.argv[1]; m=json.load(open(p)); m["note"]="api_key=fixture"; json.dump(m,open(p,"w"),indent=2)
+PY2
+commit_all "$d" human
+d=$(fresh CIFRESHBAD HUMANSECRET)
+result "7e base unreadable, no agent file, invalid human-authored.json fails" fail "$(check "$d" origin/no-such-base)"
 
 echo "passed=$pass failed=$failed"
 [ "$failed" -eq 0 ]
