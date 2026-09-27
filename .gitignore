@@ -205,3 +205,6 @@ ops-review-key-map.json
 # ExoProtocol: audit logs excluded (privacy.commit_logs=false)
 .exo/logs/
 tmp-cutover/
+
+# Local agent-start session manifest: read in the worktree, never committed.
+/.agent-session/manifest.json

@@ -12,7 +12,7 @@
 **Tasks:** `/home/jerry/workspace/tasks/alltrue/<task-id>/`
 **Forbidden checkouts:** `/home/jerry/alltrue`, `/home/jerry/workspace/AllTrue_System`, `/home/jerry/workspace/AllTrue_System-clean`
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
-**Provenance:** commit `.agent-session/manifest.json` (or human-authored.json).
+**Provenance:** `.agent-session/manifest.json` is the local agent-start session file (git-ignored, not committed); a PR that claims a session force-adds it or updates `human-authored.json` — see WORKTREE_POLICY.
 
 
 ## 開工前 First-read 順序
