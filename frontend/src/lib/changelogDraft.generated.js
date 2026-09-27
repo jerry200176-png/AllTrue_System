@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.27",
     "date": "2026-09-27",
     "title": "2026.09.27 草稿（未發布）",
-    "summary": "homework hint with current-assignment label；missing-record diagnostics with attendance rules",
+    "summary": "canonical outstanding subject labels；homework hint with current-assignment label",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "canonical outstanding subject labels",
           "homework hint with current-assignment label",
           "missing-record diagnostics with attendance rules"
         ]
       }
     ],
     "items": [
+      "canonical outstanding subject labels",
       "homework hint with current-assignment label",
       "missing-record diagnostics with attendance rules"
     ]
