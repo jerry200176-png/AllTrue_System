@@ -1,3 +1,7 @@
+## 2026-09-27 — chore(deps): maintain frontend runtime dependencies (PR #3188)
+<!-- release-notes: silent_ship=silent-2026-09-27-frontend-dependencies-3188 -->
+- 更新 Vue、Sentry 與既有前端測試／建置套件的相容小版本，維護既有功能；教職員無需額外操作，不新增使用流程。
+
 ## 2026-09-27 — fix(learning): align homework hint with current-assignment label (in-app #43)
 <!-- release-notes: staff_update=staff-2026-09-27-homework-hint -->
 - 學習評量「本次作業範圍」的輸入提示使用相同用語，避免誤解為下堂課才要寫的作業。
