@@ -203,6 +203,41 @@ class AttendanceBatchMarkTest extends TestCase
 
     // ── Helpers ──
 
+    public function test_manual_attendance_preserves_carbon2_hours_and_single_deduction(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $teacherId = $this->createTeacher(1);
+        foreach ([
+            ['default', [], 2],
+            ['explicit', ['SignInDT' => '16:00:00', 'SignOutDT' => '18:30:00'], 3],
+            ['seconds', ['SignInDT' => '16:00:00', 'SignOutDT' => '17:00:45'], 1],
+            ['arrival', ['mark_mode' => 'arrival', 'SignInDT' => '16:00:00'], null],
+            ['override', ['Hours' => 4], 4],
+        ] as [$label, $extras, $expectedHours]) {
+            $student = $this->createStudent(1, '時數相容性-'.$label);
+            $courseId = $this->bootstrapCourse($student->id, $teacherId, 10);
+            $session = $this->pastClassSession($courseId, '16:00', '18:00');
+            foreach (['SignInDT', 'SignOutDT'] as $field) {
+                if (isset($extras[$field])) {
+                    $extras[$field] = substr((string) $session->SessionDate, 0, 10).' '.$extras[$field];
+                }
+            }
+            $body = array_merge([
+                'ClassSessionID' => $session->id, 'StudentID' => $student->id,
+                'StudentClassID' => $courseId, 'TeacherID' => $teacherId, 'Status' => 'present',
+            ], $extras);
+            $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+            $this->withHeaders($headers)->postJson('/api/v1/attendance', $body)->assertSuccessful();
+            $record = StudentSignIn::query()->where('ClassSessionID', $session->id)->firstOrFail();
+            $this->assertSame($expectedHours, $record->Hours === null ? null : (int) $record->Hours, $label);
+            $this->assertSame('attended', $session->fresh()->Status, $label);
+            $this->assertSame(9, (int) StudentClass::findOrFail($courseId)->RemainingSessions, $label);
+            $this->withHeaders($headers)->postJson('/api/v1/attendance', $body)->assertStatus(409);
+            $this->assertSame(1, StudentSignIn::query()->where('ClassSessionID', $session->id)->whereNull('VoidedAt')->count(), $label);
+            $this->assertSame(9, (int) StudentClass::findOrFail($courseId)->RemainingSessions, $label);
+        }
+    }
+
     private function bootstrapCourse(int $studentId, int $teacherId, int $remaining): int
     {
         $course = StudentClass::create([

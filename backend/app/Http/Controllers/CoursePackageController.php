@@ -74,7 +74,7 @@ class CoursePackageController extends Controller
                 ->groupBy('StudentClassID')
                 ->get();
             foreach ($rows as $r) {
-                $scheduledCountMap[(int) $r->StudentClassID] = (int) $r->cnt;
+                $scheduledCountMap[(int) $r->StudentClassID] = (int) $r->getAttribute('cnt');
             }
         }
 

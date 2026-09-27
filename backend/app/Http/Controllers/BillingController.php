@@ -67,7 +67,6 @@ class BillingController extends Controller
             ->orderBy('id', 'desc')
             ->paginate(20);
 
-        /** @var \Illuminate\Pagination\LengthAwarePaginator $invoices */
         $invoices->getCollection()->transform(function (Invoice $invoice) {
             $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
             $invoice->setAttribute('TotalAmount', $projection['total_amount']);

@@ -1090,8 +1090,8 @@ class PaymentReportController extends Controller
                 ->where('StudentClassID', $sc->ID)
                 ->first();
             $sessionMeta = [
-                'first_live' => $sessionMetaRow?->first_live ? substr((string) $sessionMetaRow->first_live, 0, 10) : null,
-                'first_any' => $sessionMetaRow?->first_any ? substr((string) $sessionMetaRow->first_any, 0, 10) : null,
+                'first_live' => $sessionMetaRow?->getAttribute('first_live') ? substr((string) $sessionMetaRow->getAttribute('first_live'), 0, 10) : null,
+                'first_any' => $sessionMetaRow?->getAttribute('first_any') ? substr((string) $sessionMetaRow->getAttribute('first_any'), 0, 10) : null,
             ];
         }
         $course = $sc instanceof StudentClass ? $sc : null;

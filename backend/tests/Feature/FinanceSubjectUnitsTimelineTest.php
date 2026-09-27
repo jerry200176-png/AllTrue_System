@@ -317,6 +317,30 @@ class FinanceSubjectUnitsTimelineTest extends TestCase
         return ['user_id' => (int) $user->id, 'token' => $token];
     }
 
+    public function test_timeline_preserves_carbon2_whole_minute_fallback(): void
+    {
+        $campus = Campus::factory()->create(['name' => '分鐘相容性分校']);
+        $director = $this->createUser('director-minute-compat@example.com', 'A', [$campus->id]);
+        $teacher = $this->createUser('teacher-minute-compat@example.com', 'T', [$campus->id]);
+        $course = $this->course($campus->id, $teacher['user_id'], 'one_on_one', 1);
+        $course->update(['SessionDuration' => 0]);
+        $session = $this->makeSession($course, '2026-08-10', '16:00:00', '18:00:45', 'completed');
+        LearningRecord::create([
+            'StudentClassID' => $course->ID, 'ClassSessionID' => $session->id,
+            'TeacherID' => $teacher['user_id'], 'Content' => '分鐘相容性', 'Subject' => 'Math',
+            'Status' => 'approved', 'ApprovedBy' => $director['user_id'], 'ApprovedAt' => now(),
+            'SessionDate' => '2026-08-10', 'StartTime' => '16:00:00', 'EndTime' => '18:00:45',
+            'SessionDeducted' => true,
+        ]);
+        $response = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/finance/subject-units/timeline?start=2026-08-10&end=2026-08-10')
+            ->assertOk();
+        $this->assertEqualsWithDelta(2.0, $response->json('entries.0.regular_hours'), 0.000001);
+        $this->assertEqualsWithDelta(2.0, $response->json('totals.regular_hours'), 0.000001);
+        $this->assertEqualsWithDelta(3.0, $response->json('totals.regular_subject_count'), 0.000001);
+        $this->assertSame(1, $response->json('entries.0.regular_session_count'));
+    }
+
     private function course(int $campusId, int $teacherId, string $type, int $subjectId): StudentClass
     {
         $student = Student::create([
