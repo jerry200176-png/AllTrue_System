@@ -306,7 +306,7 @@ class BugReportService
             return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
         }
 
-        $fromStatus = $bug->status;
+        $fromStatus = (string) $bug->getRawOriginal('status');
         $allowed = self::VALID_TRANSITIONS[$fromStatus] ?? [];
         if (!in_array($newStatus, $allowed, true)) {
             return ['ok' => false, 'code' => 'invalid_transition', 'message' => 'Invalid status transition'];
@@ -798,15 +798,16 @@ class BugReportService
                 ->where('to_status', 'resolved')
                 ->orderByDesc('id')
                 ->first();
-            if (!$resolveLog || !$resolveLog->created_at) {
+            $resolvedAt = Carbon::make($resolveLog?->created_at);
+            if (!$resolveLog || $resolvedAt === null) {
                 continue;
             }
-            if ($resolveLog->created_at->gt($cutoff)) {
+            if ($resolvedAt->gt($cutoff)) {
                 continue;
             }
             $note = (string) ($resolveLog->note ?? '');
             $hasLegacyEvidence = str_contains($note, self::RESOLUTION_EVIDENCE_MARKER);
-            $hasAppendOnlyEvidence = self::hasValidAppendOnlyResolutionEvidence($bugId, $resolveLog->created_at);
+            $hasAppendOnlyEvidence = self::hasValidAppendOnlyResolutionEvidence($bugId, $resolvedAt);
             if (!$hasLegacyEvidence && !$hasAppendOnlyEvidence) {
                 // Exclusion: production-unverified resolve (legacy / pre-enforcement)
                 continue;
@@ -814,7 +815,7 @@ class BugReportService
             if (BugReportComment::query()
                 ->where('bug_report_id', $bugId)
                 ->where('author_user_id', (int) $rawReporterId)
-                ->where('created_at', '>=', $resolveLog->created_at)
+                ->where('created_at', '>=', $resolvedAt)
                 ->exists()) {
                 continue;
             }
@@ -825,7 +826,7 @@ class BugReportService
                 ->where('bug_report_id', $bugId)
                 ->where('is_internal_note', false)
                 ->where('author_user_id', '!=', (int) $rawReporterId)
-                ->where('created_at', '>=', $resolveLog->created_at->copy()->subDay())
+                ->where('created_at', '>=', $resolvedAt->copy()->subDay())
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')
                 ->get()
@@ -836,9 +837,9 @@ class BugReportService
 
             $out[] = [
                 'bug_id' => $bugId,
-                'resolved_at' => $resolveLog->created_at->toIso8601String(),
+                'resolved_at' => $resolvedAt->toIso8601String(),
                 'retest_requested_at' => $retestRequest->created_at->toIso8601String(),
-                'days_resolved' => (int) $resolveLog->created_at->diffInDays($now, true),
+                'days_resolved' => (int) $resolvedAt->diffInDays($now, true),
             ];
         }
 

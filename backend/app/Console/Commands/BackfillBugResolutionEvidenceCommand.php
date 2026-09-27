@@ -263,7 +263,8 @@ class BackfillBugResolutionEvidenceCommand extends Command
             ->where('to_status', 'resolved')
             ->orderByDesc('id')
             ->first();
-        if (!$resolveLog || !$resolveLog->created_at) {
+        $resolvedAt = Carbon::make($resolveLog?->created_at);
+        if (!$resolveLog || $resolvedAt === null) {
             throw new RuntimeException("bug #{$bugId}: latest resolved status log is missing");
         }
 
@@ -272,7 +273,7 @@ class BackfillBugResolutionEvidenceCommand extends Command
             ->where('id', $commentId)
             ->where('bug_report_id', $bugId)
             ->where('is_internal_note', false)
-            ->where('created_at', '>=', $resolveLog->created_at)
+            ->where('created_at', '>=', $resolvedAt)
             ->first();
         if (!$comment) {
             throw new RuntimeException("bug #{$bugId}: public resolution context is missing or predates the latest resolve");
