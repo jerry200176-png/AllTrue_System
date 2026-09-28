@@ -105,6 +105,7 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
         putenv('FEATURE_SCHEDULE_OCCURRENCE_V2=' . $value);
         $_ENV['FEATURE_SCHEDULE_OCCURRENCE_V2'] = $value;
         $_SERVER['FEATURE_SCHEDULE_OCCURRENCE_V2'] = $value;
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $on]);
     }
 
     /** @return array<string, mixed> */

@@ -24,6 +24,7 @@ class EnsureSessionHorizonTest extends TestCase
         putenv('FEATURE_ENSURE_SESSION_HORIZON=false');
         $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'false';
         $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'false';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => false]);
     }
 
     public function test_dry_run_does_not_write_and_lists_candidates(): void
@@ -115,6 +116,7 @@ class EnsureSessionHorizonTest extends TestCase
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
         $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
         $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
 
         $sc = $this->explicitCourse(remaining: 8);
         $before = DB::table('ClassSession')->count();
@@ -146,6 +148,7 @@ class EnsureSessionHorizonTest extends TestCase
         putenv('FEATURE_ENSURE_SESSION_HORIZON=true');
         $_ENV['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
         $_SERVER['FEATURE_ENSURE_SESSION_HORIZON'] = 'true';
+        config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => true]);
 
         $owner = 98222;
         DB::table('Student')->insert([
