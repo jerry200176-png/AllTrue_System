@@ -1,3 +1,15 @@
+## 2026-09-28 — chore(framework): preserve native operational value projections (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-28-native-value-contracts -->
+- 為框架升級保留學生課程回應、既有必要時段及營運資料投影，維持原有分校、角色、日期與帳務契約。不改正式資料，尚待部署與受影響路徑驗收。
+
+## 2026-09-28 — chore(config): preserve cache-consistent rollout flag reads (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-28-rollout-flag-cache -->
+- 既有排課旗標在設定載入與快取重建時保持一致，保留缺省關閉及分校覆寫；維護核准與授權開關仍即時讀取。不啟用功能或變更正式旗標，尚待部署與受影響路徑驗收。
+
+## 2026-09-28 — fix(ops): restore locked dependencies before rollback runtime (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-28-rollback-locked-dependencies -->
+- 部署失敗回復在確認舊來源與鎖定依賴還原後才繼續執行，還原失敗明確停止；不更動上線批准或產品功能，尚待受保護整合與正式驗收。
+
 ## 2026-09-27 — chore(framework): prepare Laravel 12 compatibility (PR #2833)
 <!-- release-notes: silent_ship=silent-2026-09-27-laravel12-2833 -->
 - 維護後端框架相容性，保留既有點名、調課、家長及帳務契約；補正家長月份與未收款科目名稱的回應。尚待部署與受影響路徑驗收，不宣告已上線。

@@ -96,7 +96,7 @@ class PayrollTeacherBranchRule extends Model
             'base_rates'       => $rule->base_rates,
             'headcount_bonus'  => $rule->headcount_bonus,
             'rule_id'          => $rule->id,
-            'effective_from'   => optional($rule->effective_from)->toDateString(),
+            'effective_from'   => optional($rule->getAttribute('effective_from'))->toDateString(),
         ];
     }
 }

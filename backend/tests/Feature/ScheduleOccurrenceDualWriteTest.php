@@ -28,6 +28,7 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
         parent::tearDown();
     }
 
+    /** @dataProvider cachedOccurrenceCases */
     #[\PHPUnit\Framework\Attributes\DataProvider('cachedOccurrenceCases')]
     public function test_2833_actual_cached_config_drives_dual_write(?string $global, ?string $campus, bool $enabled): void
     {
@@ -55,7 +56,8 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
             \Illuminate\Database\Eloquent\Model::setEventDispatcher($this->app['events']);
             (new \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables())->bootstrap($this->app);
             (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($this->app);
-            $this->assertTrue($this->app['config_loaded_from_cache']);
+            $this->assertTrue($this->app->configurationIsCached());
+            $this->assertSame(require $cache, config()->all());
             [$token, $courseId] = $this->seedPlainSession();
             $this->postReschedule($token, $this->firstMovePayload($courseId))->assertOk();
             $destination = Schedule::where('student_course_id', $courseId)->where('status', 'scheduled')->first();

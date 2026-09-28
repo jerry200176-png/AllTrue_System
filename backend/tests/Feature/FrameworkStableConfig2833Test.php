@@ -170,7 +170,8 @@ class FrameworkStableConfig2833Test extends TestCase
             \Illuminate\Database\Eloquent\Model::setEventDispatcher($this->app['events']);
             (new \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables())->bootstrap($this->app);
             (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($this->app);
-            $this->assertTrue($this->app['config_loaded_from_cache']);
+            $this->assertTrue($this->app->configurationIsCached());
+            $this->assertSame(require $cache, config()->all());
             $this->assertFalse(config()->has('services.github.token'));
             $this->assertFalse(config()->has('sentry.csp_report_key'));
             $this->assertStringNotContainsString('fixture-cache-token', file_get_contents($cache));

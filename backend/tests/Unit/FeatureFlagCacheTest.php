@@ -14,6 +14,9 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 
+/** @runTestsInSeparateProcesses
+ * @preserveGlobalState disabled
+ */
 #[RunTestsInSeparateProcesses]
 #[PreserveGlobalState(false)]
 class FeatureFlagCacheTest extends TestCase
@@ -44,6 +47,7 @@ class FeatureFlagCacheTest extends TestCase
         parent::tearDown();
     }
 
+    /** @dataProvider flagCases */
     #[DataProvider('flagCases')]
     public function test_configured_values_survive_fresh_cached_bootstrap(?string $global, ?string $override, int $campus, bool $expected): void
     {
@@ -62,7 +66,8 @@ class FeatureFlagCacheTest extends TestCase
         $app = new Application($this->cacheRoot);
         (new LoadEnvironmentVariables())->bootstrap($app);
         (new LoadConfiguration())->bootstrap($app);
-        self::assertTrue($app['config_loaded_from_cache']);
+        self::assertTrue($app->configurationIsCached());
+        self::assertSame($config, $app['config']->all());
         self::assertSame($expected, FeatureFlag::enabled(self::KEY, $campus));
         self::assertSame(!$expected, FeatureFlag::disabled(self::KEY, $campus));
         self::assertFalse(FeatureFlag::enabled('missing-key', $campus));

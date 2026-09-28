@@ -49,7 +49,8 @@ class EnsureSessionHorizonTest extends TestCase
             $this->assertFileExists($cache);
             (new \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables())->bootstrap($this->app);
             (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($this->app);
-            $this->assertTrue($this->app['config_loaded_from_cache']);
+            $this->assertTrue($this->app->configurationIsCached());
+            $this->assertSame(require $cache, config()->all());
             $sc = $this->explicitCourse(remaining: 8);
             $service = app(EnsureSessionHorizonService::class);
             $before = DB::table('ClassSession')->count();
