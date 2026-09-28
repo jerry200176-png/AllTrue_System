@@ -146,6 +146,62 @@ class AttendanceLearningRecordIntegrityTest extends TestCase
             \App\Models\ClassSession::findOrFail($sessionId)
         );
     }
+    public function test_duplicate_count_counts_groups_and_preserves_campus_and_void_filters(): void
+    {
+        [$studentA, $classA] = $this->studentAndClass();
+        [, $classB] = $this->studentAndClass();
+        $campusA = (int) DB::table('Student')->where('id', $studentA)->value('CampusID');
+        $this->assertStringStartsWith('AllTrue_test', DB::connection()->getDatabaseName());
+        // Legacy duplicate rows predate the current unique index. Shadow only
+        // this nonce-database connection; the real table/index stay intact.
+        $definition = array_values((array) DB::selectOne('SHOW CREATE TABLE LearningRecord'))[1];
+        $temporaryDefinition = str_replace(
+            'CREATE TABLE `LearningRecord`', 'CREATE TEMPORARY TABLE `LearningRecord`', $definition
+        );
+        $this->assertNotSame($definition, $temporaryDefinition);
+        // MariaDB temporary tables cannot carry foreign keys. Keep column
+        // definitions/indexes; only the temporary legacy fixture omits FKs.
+        $lines = array_values(array_filter(explode("\n", $temporaryDefinition),
+            static fn (string $line): bool => !str_starts_with(ltrim($line), 'CONSTRAINT ')
+                && !str_starts_with(ltrim($line), 'UNIQUE KEY `learningrecord_classsessionid_unique`')
+        ));
+        $lines[count($lines) - 2] = rtrim($lines[count($lines) - 2], ',');
+        $this->assertTrue(DB::connection()->getPdo()->inTransaction());
+        DB::statement(implode("\n", $lines));
+        try {
+            foreach ([[$classA, 2], [$classA, 3], [$classB, 4], [$classA, 1]] as $index => [$classId, $activeCount]) {
+                $sessionId = DB::table('ClassSession')->insertGetId([
+                    'StudentClassID' => $classId, 'SessionDate' => '2026-08-28',
+                    'StartTime' => sprintf('%02d:00', 10 + $index),
+                    'EndTime' => sprintf('%02d:00', 11 + $index), 'Status' => 'attended',
+                ]);
+                for ($i = 0; $i < $activeCount + 1; $i++) {
+                    DB::table('LearningRecord')->insert([
+                        'StudentClassID' => $classId, 'ClassSessionID' => $sessionId,
+                        'TeacherID' => 1, 'Content' => '', 'Subject' => '數學',
+                        'SessionDate' => '2026-08-28', 'StartTime' => '10:00',
+                        'EndTime' => '11:00', 'Status' => 'pending',
+                        'VoidedAt' => $i === $activeCount ? now() : null,
+                        'created_at' => now(), 'updated_at' => now(),
+                    ]);
+                }
+            }
+            $service = app(AttendanceLearningRecordIntegrityService::class);
+            $all = $service->scan(null, 1);
+            $this->assertSame(3, $all['counts']['duplicate_active_learning_records']);
+            $this->assertCount(1, $all['duplicate_active_learning_records']);
+            $campus = $service->scan($campusA, 1);
+            $this->assertSame(2, $campus['counts']['duplicate_active_learning_records']);
+            $this->assertCount(1, $campus['duplicate_active_learning_records']);
+        } finally {
+            DB::statement('DROP TEMPORARY TABLE LearningRecord');
+        }
+        $this->assertTrue(DB::connection()->getPdo()->inTransaction());
+        $this->assertSame(0, DB::table('LearningRecord')->count());
+        $index = DB::selectOne("SHOW INDEX FROM LearningRecord WHERE Key_name = 'learningrecord_classsessionid_unique'");
+        $this->assertSame(0, (int) $index->Non_unique);
+    }
+
     /** @return array{0:int,1:int} */
     private function studentAndClass(): array
     {
