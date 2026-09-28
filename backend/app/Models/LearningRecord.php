@@ -138,20 +138,17 @@ class LearningRecord extends Model
         return $this->VoidedAt !== null;
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
-    public function studentClass(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<ClassSession, $this> */
-    public function classSession(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function classSession()
     {
         return $this->belongsTo(ClassSession::class, 'ClassSessionID', 'id');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
-    public function teacher(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function teacher()
     {
         return $this->belongsTo(User::class, 'TeacherID', 'id');
     }
