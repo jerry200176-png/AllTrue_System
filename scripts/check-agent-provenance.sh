@@ -54,7 +54,9 @@ elif [ "$agent_rc" -eq 2 ]; then
   if [ ! -f "$AGENT_FILE" ] && [ ! -f "$HUMAN_FILE" ]; then
     fail "missing $AGENT_FILE or $HUMAN_FILE (base $BASE unreadable)"
   fi
-  AGENT_CLAIMED=1
+  # Validate whichever file exists (same as ci-preflight.mjs); the agent file
+  # is git-ignored, so a CI checkout usually only has human-authored.json.
+  if [ -f "$AGENT_FILE" ]; then AGENT_CLAIMED=1; else HUMAN_CLAIMED=1; fi
 fi
 human_rc=0
 file_in_diff "$BASE" "$HUMAN_FILE" || human_rc=$?

@@ -7,6 +7,16 @@ exemptions:
     changelog_title: "chore(framework): prepare Laravel 12 compatibility (PR #2833)"
     reason: 框架相容與安全維護準備，尚未部署或通過 production 受影響路徑驗收；不新增教職員操作、不發布未驗證的改善公告。
 
+  - id: silent-2026-09-27-attendance-carbon-compatibility
+    changelog_date: "2026-09-27"
+    changelog_title: "chore(attendance): preserve minute precision across Carbon versions (GitHub #977)"
+    reason: 維持現行 Carbon 2 的分鐘精度與帳齡語意，僅準備後續升級相容性；不新增產品功能、操作或政策，不宣稱框架已升級或 production 已驗收。
+
+  - id: silent-2026-09-27-outstanding-subject-compatibility
+    changelog_date: "2026-09-27"
+    changelog_title: "fix(finance): restore canonical outstanding subject labels (GitHub #977 / #2833)"
+    reason: 既有財務唯讀 API 的相容修正與框架回歸前置；現行前端未找到該 API 呼叫，且未部署或觀察受影響 production 路徑，不宣布教職員畫面已改善。後續依實際使用與驗證證據評估公告。
+
   - id: silent-2026-09-27-frontend-dependencies-3188
     changelog_date: "2026-09-27"
     changelog_title: "chore(deps): maintain frontend runtime dependencies (PR #3188)"

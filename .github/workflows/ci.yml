@@ -61,6 +61,7 @@ jobs:
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
+          bash scripts/tests/agent-session-manifest-untracked.test.sh
 
       - name: Test control plane lint catches violations
         run: |

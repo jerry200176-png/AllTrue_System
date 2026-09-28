@@ -659,4 +659,3 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Console/Commands/CleanupOrphanBindings.php
-

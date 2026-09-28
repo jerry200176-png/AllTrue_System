@@ -165,10 +165,10 @@ class StudentClassResponseContractTest extends TestCase
         $snapshot = ['type' => 'NONE', 'discount_amount' => 0];
         $course->initializePricingSnapshot($snapshot);
 
-        $this->authJson('GET', "/api/v1/student-classes/{$course->ID}", $token)
+        $response = $this->authJson('GET', "/api/v1/student-classes/{$course->ID}", $token)
             ->assertOk()
-            ->assertJsonPath('ID', $course->ID)
-            ->assertJsonMissingPath('pricing_snapshot');
+            ->assertJsonPath('ID', $course->ID);
+        $this->assertArrayNotHasKey('pricing_snapshot', $response->json());
         $this->assertSame($snapshot, $course->fresh()->pricing_snapshot);
 
         $foreign = $this->makeCourse($otherTeacher, $campus->id);
