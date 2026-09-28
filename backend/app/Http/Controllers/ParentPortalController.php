@@ -45,13 +45,11 @@ class ParentPortalController extends Controller
 {
     private function portalStudents()
     {
-        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
         return Student::withoutGlobalScope(OperationalTenantScope::class);
     }
 
     private function portalCampuses()
     {
-        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
         return \App\Models\Campus::withoutGlobalScope(OperationalTenantScope::class);
     }
 
@@ -652,11 +650,11 @@ class ParentPortalController extends Controller
                 : collect();
 
             $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks, $repliesByFeedback, $replyAuthorNames, $recordTeacherNames, $studentCampusMap) {
-                    $rec->teacher_name = $rec->TeacherID ? ($recordTeacherNames[$rec->TeacherID] ?? null) : null;
+                    $rec->setAttribute('teacher_name', $rec->TeacherID ? ($recordTeacherNames[$rec->TeacherID] ?? null) : null);
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
                     $campus = $sc ? $studentCampusMap->get((int) $sc->StudentID, []) : [];
-                    $rec->campus_id = $campus['campus_id'] ?? null;
-                    $rec->campus_name = $campus['campus_name'] ?? null;
+                    $rec->setAttribute('campus_id', $campus['campus_id'] ?? null);
+                    $rec->setAttribute('campus_name', $campus['campus_name'] ?? null);
                     $fromCourse = $sc ? $this->resolveSubjectName($sc) : null;
                     $rawSubject = trim((string) ($rec->Subject ?? ''));
                     // Prefer a meaningful course-level subject name (not the generic fallback '課程').
@@ -670,7 +668,7 @@ class ParentPortalController extends Controller
                     } else {
                         $rec->Subject = $fromCourse ?: '課程';
                     }
-                    $rec->session_number = $sessionNumbers[(int) $rec->id] ?? null;
+                    $rec->setAttribute('session_number', $sessionNumbers[(int) $rec->id] ?? null);
                     $fb = $feedbacks->get((int) $rec->id);
                     $fbReplies = $fb ? ($repliesByFeedback->get((int) $fb->id) ?? collect()) : collect();
                     $lastParentRead = $fb && $fb->last_read_by_parent_at ? $fb->last_read_by_parent_at : null;
@@ -678,7 +676,7 @@ class ParentPortalController extends Controller
                         if ((string) $r->author_role === 'parent' || !$r->created_at) return false;
                         return !$lastParentRead || $r->created_at->gt($lastParentRead);
                     });
-                    $rec->parent_feedback = $fb ? [
+                    $rec->setAttribute('parent_feedback', $fb ? [
                         'id' => (int) $fb->id,
                         'content' => $fb->content,
                         'updated_at' => optional($fb->updated_at)->toIso8601String(),
@@ -691,7 +689,7 @@ class ParentPortalController extends Controller
                             'content' => $r->content,
                             'created_at' => optional($r->created_at)->toIso8601String(),
                         ])->values()->all(),
-                    ] : null;
+                    ] : null);
                     return $rec;
                 });
             $lrHasMore = ($lrPage * $lrPerPage) < $lrTotal;
@@ -713,14 +711,14 @@ class ParentPortalController extends Controller
             : collect();
         $attendance = $signIns->map(function ($row) use ($classes, $sessionsById, $courseTeacherNames, $studentCampusMap) {
             $status = (string) ($row->Status ?? '');
-            $row->status_label = match ($status) {
+            $row->setAttribute('status_label', match ($status) {
                 'present' => '到班',
                 'late' => '遲到',
                 'absent' => '缺席',
                 'leave', 'excused' => '請假',
                 default => $status,
-            };
-            $row->is_late = $status === 'late';
+            });
+            $row->setAttribute('is_late', $status === 'late');
 
             $session = $row->ClassSessionID ? $sessionsById->get($row->ClassSessionID) : null;
             $studentClass = $session ? $classes->firstWhere('ID', $session->StudentClassID) : null;
@@ -740,16 +738,16 @@ class ParentPortalController extends Controller
                 } catch (\Throwable $e) {
                 }
             }
-            $row->date = $date;
-            $row->time = $time;
-            $row->subject = $studentClass ? $this->resolveSubjectName($studentClass) : null;
+            $row->setAttribute('date', $date);
+            $row->setAttribute('time', $time);
+            $row->setAttribute('subject', $studentClass ? $this->resolveSubjectName($studentClass) : null);
             $campus = $studentClass ? $studentCampusMap->get((int) $studentClass->StudentID, []) : [];
-            $row->campus_id = $campus['campus_id'] ?? null;
-            $row->campus_name = $campus['campus_name'] ?? null;
+            $row->setAttribute('campus_id', $campus['campus_id'] ?? null);
+            $row->setAttribute('campus_name', $campus['campus_name'] ?? null);
 
-            $row->teacher_name = ($studentClass && !empty($studentClass->TeacherID))
+            $row->setAttribute('teacher_name', ($studentClass && !empty($studentClass->TeacherID))
                 ? ($courseTeacherNames[$studentClass->TeacherID] ?? null)
-                : null;
+                : null);
 
             return $row;
         });
@@ -774,7 +772,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap, $packageMap, $studentCampusMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $currentMonthLabel, $paidAtMap, $packageMap, $studentCampusMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $isTutoring = strtolower(trim((string) ($c->ClassType ?? ''))) === 'tutoring';
@@ -830,7 +828,7 @@ class ParentPortalController extends Controller
         $nonPackageRemaining = $perCourse
             ->filter(fn ($row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
             ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) <= 0)
-            ->sum(fn ($row) => (int) ($row['remaining_sessions'] ?? 0));
+            ->sum(fn ($row) => (int) ($row['remaining_sessions']));
         $visiblePackageIds = $perCourse
             ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) > 0)
             ->pluck('package_id')->unique()->values();
@@ -848,7 +846,7 @@ class ParentPortalController extends Controller
             if ((int) ($row['package_id'] ?? 0) > 0) {
                 continue;
             }
-            $rem = (int) ($row['remaining_sessions'] ?? 0);
+            $rem = (int) ($row['remaining_sessions']);
             if ($rem <= 0) {
                 continue;
             }
@@ -943,31 +941,29 @@ class ParentPortalController extends Controller
                 ->keyBy('class_session_id');
             $upcomingSessions = $upcomingSessions->map(function ($session) use ($classes, $leaveWorkflows, $studentCampusMap) {
                 $c = $classes->firstWhere('ID', $session->StudentClassID);
-                $session->Subject = $c ? $this->resolveSubjectName($c) : null;
+                $session->setAttribute('Subject', $c ? $this->resolveSubjectName($c) : null);
                 $campus = $c ? $studentCampusMap->get((int) $c->StudentID, []) : [];
-                $session->campus_id = $campus['campus_id'] ?? null;
-                $session->campus_name = $campus['campus_name'] ?? null;
+                $session->setAttribute('campus_id', $campus['campus_id'] ?? null);
+                $session->setAttribute('campus_name', $campus['campus_name'] ?? null);
                 $session->StartTime = $this->trimToHM($session->StartTime);
                 $session->EndTime   = $this->trimToHM($session->EndTime);
                 $workflow = $leaveWorkflows->get($session->id);
-                $session->LeaveWorkflowStatus = $workflow?->status;
-                $session->LeaveWorkflowReason = is_array($workflow?->payload)
+                $session->setAttribute('LeaveWorkflowStatus', $workflow?->status);
+                $session->setAttribute('LeaveWorkflowReason', is_array($workflow?->payload)
                     ? ($workflow->payload['rejection_reason'] ?? null)
-                    : null;
+                    : null);
 
-                $dateStr = is_string($session->SessionDate)
-                    ? substr($session->SessionDate, 0, 10)
-                    : (is_object($session->SessionDate) ? $session->SessionDate->format('Y-m-d') : '');
+                $dateStr = Carbon::make($session->SessionDate)?->format('Y-m-d') ?? '';
                 $timeStr = $session->StartTime ?: '00:00';
                 $tz = config('app.timezone', 'Asia/Taipei');
                 $sessionStart = Carbon::parse("{$dateStr} {$timeStr}", $tz);
                 $now = Carbon::now($tz);
                 $cutoff = $sessionStart->copy()->subHours(24);
 
-                $session->is_past_or_started = $now->greaterThanOrEqualTo($sessionStart);
-                $session->is_late_leave = !$session->is_past_or_started && $now->greaterThanOrEqualTo($cutoff);
-                $session->leave_cutoff_at = $cutoff->toIso8601String();
-                $session->session_start_at = $sessionStart->toIso8601String();
+                $session->setAttribute('is_past_or_started', $now->greaterThanOrEqualTo($sessionStart));
+                $session->setAttribute('is_late_leave', !$session->getAttribute('is_past_or_started') && $now->greaterThanOrEqualTo($cutoff));
+                $session->setAttribute('leave_cutoff_at', $cutoff->toIso8601String());
+                $session->setAttribute('session_start_at', $sessionStart->toIso8601String());
 
                 return $session;
             });
@@ -984,8 +980,8 @@ class ParentPortalController extends Controller
                     ->get()
                     ->map(function ($invoice) use ($studentCampusMap) {
                         $campus = $studentCampusMap->get((int) $invoice->StudentID, []);
-                        $invoice->campus_id = $campus['campus_id'] ?? null;
-                        $invoice->campus_name = $campus['campus_name'] ?? null;
+                        $invoice->setAttribute('campus_id', $campus['campus_id'] ?? null);
+                        $invoice->setAttribute('campus_name', $campus['campus_name'] ?? null);
                         return $invoice;
                     })
                 : collect();
@@ -1005,8 +1001,8 @@ class ParentPortalController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($ann) use ($campusMap) {
-                    $ann->campus_id = $ann->BranchID ? (int) $ann->BranchID : null;
-                    $ann->campus_name = $ann->BranchID ? optional($campusMap->get((int) $ann->BranchID))->name : null;
+                    $ann->setAttribute('campus_id', $ann->BranchID ? (int) $ann->BranchID : null);
+                    $ann->setAttribute('campus_name', $ann->BranchID ? optional($campusMap->get((int) $ann->BranchID))->name : null);
                     return $ann;
                 });
         } catch (\Exception $e) {}
@@ -1427,9 +1423,9 @@ class ParentPortalController extends Controller
                 'u.Name as teacher_name',
             ])
             ->map(function ($row) {
-                $approvedAt = $row->approved_at ? Carbon::parse($row->approved_at) : null;
+                $approvedAt = $row->getAttribute('approved_at') ? Carbon::parse($row->getAttribute('approved_at')) : null;
                 return [
-                    'learning_record_id' => (int) $row->learning_record_id,
+                    'learning_record_id' => (int) $row->getAttribute('learning_record_id'),
                     'session_date' => (string) ($row->session_date ?? ''),
                     'subject' => (string) ($row->subject ?? ''),
                     'teacher_name' => (string) ($row->teacher_name ?? ''),

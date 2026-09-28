@@ -388,7 +388,7 @@ class NotificationController extends Controller
         // trusting the header here would keep the impersonation bypass alive on
         // notification routes even after AttachAuthUser is hardened.
         if (app()->environment(['local', 'testing'])) {
-            $headerId = (int) $request->header('X-User-Id', 0);
+            $headerId = (int) $request->header('X-User-Id', '0');
             return $headerId > 0 ? $headerId : null;
         }
 
@@ -439,8 +439,8 @@ class NotificationController extends Controller
         $result = [];
         foreach ($query->get() as $row) {
             $result[$row->Type] = [
-                'total'  => (int) $row->total,
-                'urgent' => (int) $row->urgent,
+                'total'  => (int) $row->getAttribute('total'),
+                'urgent' => (int) $row->getAttribute('urgent'),
             ];
         }
         return $result;
