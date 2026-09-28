@@ -74,7 +74,7 @@ class CoursePackageController extends Controller
                 ->groupBy('StudentClassID')
                 ->get();
             foreach ($rows as $r) {
-                $scheduledCountMap[(int) $r->StudentClassID] = (int) $r->cnt;
+                $scheduledCountMap[(int) $r->StudentClassID] = (int) $r->getAttribute('cnt');
             }
         }
 
@@ -683,7 +683,6 @@ class CoursePackageController extends Controller
             'additional_subject.teacher_id' => 'required|integer|exists:User,id',
         ]);
 
-        // @phpstan-ignore-next-line
         $campusId = (int) Student::where('id', (int) $studentClass->getAttribute('StudentID'))->value('CampusID');
         $campusIds = $role === 'super_admin' ? [] : (array) $request->attributes->get('auth_campus_ids', []);
         if ($campusId <= 0 || (!empty($campusIds) && !in_array($campusId, array_map('intval', $campusIds), true))) {
@@ -701,7 +700,6 @@ class CoursePackageController extends Controller
         if ($subjectId === (int) $studentClass->getAttribute('SubjectID')) {
             return response()->json(['message' => '第二科目不可與原課程相同'], 422);
         }
-        // @phpstan-ignore-next-line
         if (!UserCampus::where('UserID', (int) $additional['teacher_id'])
             ->where('CampusID', $campusId)->where('Approved', 1)->exists()) {
             return response()->json(['message' => '第二科目老師尚未指派至學生所在分校'], 422);
@@ -709,10 +707,8 @@ class CoursePackageController extends Controller
 
         try {
             $result = DB::transaction(function () use ($request, $studentClass, $data, $additional, $subjectId, $campusId) {
-                // @phpstan-ignore-next-line
                 $source = StudentClass::where('ID', (int) $studentClass->getAttribute('ID'))->lockForUpdate()->firstOrFail();
                 if ((int) ($source->PackageID ?? 0) > 0) {
-                    // @phpstan-ignore-next-line
                     $package = CoursePackage::find((int) $source->getAttribute('PackageID'));
                     if ($package) return ['package' => $package, 'member' => $source, 'idempotent' => true];
                     throw new \RuntimeException('來源課程的共用方案不存在，請聯絡管理員檢查。');
@@ -733,7 +729,6 @@ class CoursePackageController extends Controller
                     throw new \InvalidArgumentException('此合約沒有可轉入共用池的剩餘堂數');
                 }
 
-                // @phpstan-ignore-next-line
                 $package = CoursePackage::create([
                     'student_id' => (int) $source->getAttribute('StudentID'),
                     'campus_id' => $campusId,
@@ -755,7 +750,6 @@ class CoursePackageController extends Controller
                 $operatorId = is_object($operator) ? (int) ($operator->id ?? 0) : null;
                 $requestId = (string) ($request->header('Idempotency-Key') ?: ('course-conversion-' . $sourceId . '-' . $package->id));
                 $note = '單科轉多科共用；保留原合約及帳務；方案 #' . $package->id;
-                // @phpstan-ignore-next-line
                 $sessions = ClassSession::where('StudentClassID', $sourceId)
                     ->whereIn('Status', ['attended', 'completed', 'late'])
                     ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')->get(['id']);
@@ -779,7 +773,6 @@ class CoursePackageController extends Controller
                 $source->save();
                 $package->recomputeCounters();
 
-                // @phpstan-ignore-next-line
                 $member = StudentClass::create([
                     'StudentID' => (int) $source->getAttribute('StudentID'),
                     'GradeID' => (int) ($source->GradeID ?: 1),
@@ -895,7 +888,7 @@ class CoursePackageController extends Controller
             if ((int) ($sc->Stop ?? 0) !== 0) {
                 $reasons[] = 'course_inactive';
             }
-            if (!empty($currentPackage) && (int) $currentPackage > 0 && (int) $currentPackage !== (int) $pkg->id) {
+            if ((int) ($currentPackage ?? 0) > 0 && (int) $currentPackage !== (int) $pkg->id) {
                 $reasons[] = 'different_package';
             }
 
@@ -916,7 +909,7 @@ class CoursePackageController extends Controller
                 'student_class_id'    => $sc->ID,
                 'subject'             => $sc->displaySubjectName(),
                 'current_package_id'  => $currentPackage,
-                'will_bind'           => empty($reasons) && (empty($currentPackage) || (int) $currentPackage === 0),
+                'will_bind'           => empty($reasons) && ((int) ($currentPackage ?? 0) === 0),
                 'current_remaining'   => (int) ($sc->RemainingSessions ?? 0),
                 'reasons'             => $reasons,
             ];
