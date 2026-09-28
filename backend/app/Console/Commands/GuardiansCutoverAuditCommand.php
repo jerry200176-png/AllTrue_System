@@ -138,7 +138,7 @@ class GuardiansCutoverAuditCommand extends Command
             $this->error('--force required outside local/testing');
             return false;
         }
-        if ((string) env('ALLOW_PROD_REPAIR', '') !== '1') {
+        if ((string) \Illuminate\Support\Env::get('ALLOW_PROD_REPAIR', '') !== '1') {
             $this->error('ALLOW_PROD_REPAIR=1 required for production repair');
             return false;
         }

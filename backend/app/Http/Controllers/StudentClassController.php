@@ -6399,9 +6399,9 @@ class StudentClassController extends Controller
         for ($i = 1; $i < count($slots); $i++) {
             $prev = $out[count($out) - 1];
             $cur = $slots[$i];
-            if ((int) ($prev['day'] ?? 0) === (int) ($cur['day'] ?? 0)
-                && (string) ($prev['start_time'] ?? '') === (string) ($cur['start_time'] ?? '')
-                && (string) ($prev['duration_hours'] ?? '') === (string) ($cur['duration_hours'] ?? '')
+            if ((int) $prev['day'] === (int) $cur['day']
+                && (string) $prev['start_time'] === (string) $cur['start_time']
+                && (string) $prev['duration_hours'] === (string) $cur['duration_hours']
             ) {
                 continue;
             }

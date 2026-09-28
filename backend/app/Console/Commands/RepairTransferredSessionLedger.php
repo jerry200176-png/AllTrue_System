@@ -45,7 +45,7 @@ class RepairTransferredSessionLedger extends Command
             $this->info('Dry-run complete; no production data changed.');
             return self::SUCCESS;
         }
-        if (!app()->environment('production') || ($this->option('force') && env('ALLOW_PROD_REPAIR') === '1')) {
+        if (!app()->environment('production') || ($this->option('force') && \Illuminate\Support\Env::get('ALLOW_PROD_REPAIR') === '1')) {
             // The production workflow supplies both gates; local tests may execute directly.
         } else {
             $this->error('Production requires --force and ALLOW_PROD_REPAIR=1');
