@@ -1,4 +1,4 @@
-## 2026-09-28 — fix(release): restore locked dependencies before rollback runtime (GitHub #977 / #2833)
+## 2026-09-28 — fix(ops): restore locked dependencies before rollback runtime (GitHub #977 / #2833)
 <!-- release-notes: silent_ship=silent-2026-09-28-rollback-locked-dependencies -->
 - 部署失敗回復在確認舊來源與鎖定依賴還原後才繼續執行，還原失敗明確停止；不更動上線批准或產品功能，尚待受保護整合與正式驗收。
 

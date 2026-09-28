@@ -4,7 +4,7 @@
 exemptions:
   - id: silent-2026-09-28-rollback-locked-dependencies
     changelog_date: "2026-09-28"
-    changelog_title: "fix(release): restore locked dependencies before rollback runtime (GitHub #977 / #2833)"
+    changelog_title: "fix(ops): restore locked dependencies before rollback runtime (GitHub #977 / #2833)"
     reason: 既有部署回復可靠度修正，不新增教職員功能或操作；未合併或部署，不發布未驗證公告。
 
   - id: silent-2026-09-27-attendance-carbon-compatibility
