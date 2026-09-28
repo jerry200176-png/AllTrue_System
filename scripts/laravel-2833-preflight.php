@@ -18,6 +18,16 @@ final class Laravel2833Preflight
         }
     }
 
+    public static function assertApplicationPaths($app, string $root): void
+    {
+        $root = realpath($root);
+        if ($root === false || realpath($app->basePath()) !== $root || realpath($app->environmentPath()) !== $root
+            || realpath($app->configPath()) !== realpath($root . '/config')
+            || $app->getCachedConfigPath() !== $root . '/bootstrap/cache/config.php') {
+            throw new RuntimeException('unapproved_application_paths');
+        }
+    }
+
     public static function classify($value): array
     {
         if ($value === null || in_array(strtolower((string) $value), ['null', '(null)'], true)) {
@@ -83,7 +93,7 @@ final class Laravel2833Preflight
     {
         $flags = $request['flags'];
         $fileValues = self::readFlagFile($flagPath, $flags);
-        $names = array_unique(array_merge($flags, array_keys($fileValues), array_keys($_SERVER), array_keys($_ENV), array_keys(getenv())));
+        $names = array_unique(array_merge($flags, array_keys($fileValues), array_keys($app['config']->get('feature_flags.values', [])), array_keys($_SERVER), array_keys($_ENV), array_keys(getenv())));
         $report = [];
         foreach ($flags as $flag) {
             $key = strtolower(substr($flag, strlen('FEATURE_')));
@@ -137,6 +147,7 @@ final class Laravel2833Preflight
             $stage = 'configuration_boot';
             require getcwd() . '/vendor/autoload.php';
             $app = require getcwd() . '/bootstrap/app.php';
+            self::assertApplicationPaths($app, getcwd());
             if ($app->environmentFile() !== '.env') {
                 throw new RuntimeException('unapproved_environment_source');
             }

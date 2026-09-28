@@ -25,6 +25,34 @@ class Laravel2833PreflightTest extends TestCase
         \Laravel2833Preflight::assertRevision(str_repeat('a', 40), '');
     }
 
+    public function test_application_paths_are_bound_before_configuration_loading(): void
+    {
+        $root = base_path();
+        $cache = $_ENV['APP_CONFIG_CACHE'] ?? null;
+        try {
+            $app = new \Illuminate\Foundation\Application($root);
+            \Laravel2833Preflight::assertApplicationPaths($app, $root);
+            foreach (['base', 'environment', 'cache'] as $override) {
+                $app->setBasePath($override === 'base' ? sys_get_temp_dir() : $root);
+                $app->useEnvironmentPath($override === 'environment' ? sys_get_temp_dir() : $root);
+                $_ENV['APP_CONFIG_CACHE'] = $override === 'cache' ? '/nonexistent/foreign-config.php' : 'bootstrap/cache/config.php';
+                try {
+                    \Laravel2833Preflight::assertApplicationPaths($app, $root);
+                    $this->fail('An application path override was accepted: ' . $override);
+                } catch (\RuntimeException $error) {
+                    $this->assertSame('unapproved_application_paths', $error->getMessage());
+                }
+            }
+        } finally {
+            if ($cache === null) {
+                unset($_ENV['APP_CONFIG_CACHE']);
+            } else {
+                $_ENV['APP_CONFIG_CACHE'] = $cache;
+            }
+            \Illuminate\Container\Container::setInstance($this->app);
+        }
+    }
+
     public function test_selected_dotenv_values_are_classified_without_exporting_other_values(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'framework-flags-');
@@ -115,6 +143,7 @@ class Laravel2833PreflightTest extends TestCase
             $pdo->prepare('INSERT INTO framework_preflight_migrations VALUES (?)')->execute([$migration]);
             config(['database.migrations' => 'framework_preflight_migrations', 'feature_flags.values' => [
                 'FEATURE_SCHEDULE_OCCURRENCE_V2' => false, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_2' => true,
+                'FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_987654' => true, 'FEATURE_UNRELATED_CAMPUS_987654' => true,
             ]]);
             file_put_contents($path, "FEATURE_SCHEDULE_OCCURRENCE_V2=true\nFEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_2=false\n");
             $report = \Laravel2833Preflight::collect($this->app, $request, $path);
@@ -126,6 +155,9 @@ class Laravel2833PreflightTest extends TestCase
             $this->assertFalse($report['flags']['FEATURE_SCHEDULE_OCCURRENCE_V2']['fresh_current_revision_enabled']);
             $this->assertFalse($report['flags']['FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_2']['file']['enabled']);
             $this->assertTrue($report['flags']['FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_2']['fresh_current_revision_enabled']);
+            $this->assertSame(['kind' => 'missing', 'enabled' => false], $report['flags']['FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_987654']['file']);
+            $this->assertTrue($report['flags']['FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_987654']['fresh_current_revision_enabled']);
+            $this->assertArrayNotHasKey('FEATURE_UNRELATED_CAMPUS_987654', $report['flags']);
             $this->assertFalse($pdo->inTransaction());
             $this->assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM framework_preflight_migrations')->fetchColumn());
         } finally {
