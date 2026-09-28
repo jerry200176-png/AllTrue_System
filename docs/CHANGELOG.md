@@ -1,3 +1,7 @@
+## 2026-09-28 — chore(framework): preserve native operational value projections (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-28-native-value-contracts -->
+- 為框架升級保留學生課程回應、既有必要時段及營運資料投影，維持原有分校、角色、日期與帳務契約。不改正式資料，尚待部署與受影響路徑驗收。
+
 ## 2026-09-27 — chore(attendance): preserve minute precision across Carbon versions (GitHub #977)
 <!-- release-notes: silent_ship=silent-2026-09-27-attendance-carbon-compatibility -->
 - 保留現行出勤配對的整分鐘邊界、同距離處理、工時計算及歷史帳齡分類，為後續框架升級準備相容修復；不變更教職員流程或計薪政策。
