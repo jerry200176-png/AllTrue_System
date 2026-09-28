@@ -33,6 +33,9 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
     public function test_2833_actual_cached_config_drives_dual_write(?string $global, ?string $campus, bool $enabled): void
     {
         $cache = sys_get_temp_dir() . '/alltrue-2833-occurrence-' . bin2hex(random_bytes(8)) . '.php';
+        $repositoryProperty = new \ReflectionProperty(\Illuminate\Support\Env::class, 'repository');
+        $repositoryProperty->setAccessible(true);
+        $originalRepository = $repositoryProperty->getValue();
         $names = ['APP_CONFIG_CACHE', 'FEATURE_SCHEDULE_OCCURRENCE_V2', 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1'];
         $saved = [];
         foreach ($names as $name) $saved[$name] = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
@@ -42,6 +45,9 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
                 unset($_ENV[$name], $_SERVER[$name]);
                 if ($value !== null) $_ENV[$name] = $_SERVER[$name] = $value;
             }
+            // A real config:cache CLI starts with a fresh dotenv repository. Reusing
+            // a test boot's loaded-variable ownership lets dotenv overwrite overrides.
+            $repositoryProperty->setValue(null, null);
             $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('config:cache'));
             \Illuminate\Container\Container::setInstance($this->app);
             \Illuminate\Support\Facades\Facade::clearResolvedInstances();
@@ -64,6 +70,7 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
                 $this->assertNull($destination->original_start_time);
             }
         } finally {
+            $repositoryProperty->setValue(null, $originalRepository);
             foreach ($saved as $name => [$process, $environment, $server]) {
                 $process === false ? putenv($name) : putenv($name . '=' . $process);
                 unset($_ENV[$name], $_SERVER[$name]);
