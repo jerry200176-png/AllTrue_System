@@ -1,3 +1,7 @@
+## 2026-09-29 — chore(ops): prepare bounded Laravel readiness metadata (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-29-laravel-readonly-preflight -->
+- 準備單一版本的唯讀切換前檢查，核對排課旗標、PHP 平台及 migration 紀錄，避免把未知條件當成可上線。未執行正式查詢、未部署或啟用功能，無教職員新操作。
+
 ## 2026-09-28 — chore(framework): preserve native operational value projections (GitHub #977 / #2833)
 <!-- release-notes: silent_ship=silent-2026-09-28-native-value-contracts -->
 - 為框架升級保留學生課程回應、既有必要時段及營運資料投影，維持原有分校、角色、日期與帳務契約。不改正式資料，尚待部署與受影響路徑驗收。
