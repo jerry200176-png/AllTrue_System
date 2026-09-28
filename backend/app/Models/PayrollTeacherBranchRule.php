@@ -34,7 +34,7 @@ class PayrollTeacherBranchRule extends Model
             if (empty($model->effective_from)) {
                 // Backward compatibility: legacy rows without effective date should
                 // apply to all historical months until users start managing date cards.
-                $model->effective_from = '1970-01-01';
+                $model->setAttribute('effective_from', '1970-01-01');
             }
         });
     }

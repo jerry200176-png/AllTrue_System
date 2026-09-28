@@ -22,7 +22,8 @@ class QuestionBank extends Model
         'campus_id', 'subject_id', 'name', 'description', 'status', 'created_by_user_id',
     ];
 
-    public function items()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\QuestionBankItem, $this> */
+    public function items(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(QuestionBankItem::class, 'question_bank_id');
     }
