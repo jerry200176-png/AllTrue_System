@@ -80,6 +80,7 @@ class AdmissionInquiryController extends Controller
             $query->where('status', $status);
         }
         $perPage = min((int) $request->query('per_page', '50'), 50);
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $page */
         $page = $query->paginate($perPage);
         $ownerNames = User::query()
             ->whereIn('id', $page->getCollection()->pluck('assigned_to')->filter()->map(fn ($id) => (int) $id)->unique()->all())

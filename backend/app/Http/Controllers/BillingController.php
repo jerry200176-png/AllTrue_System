@@ -67,6 +67,7 @@ class BillingController extends Controller
             ->orderBy('id', 'desc')
             ->paginate(20);
 
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $invoices */
         $invoices->getCollection()->transform(function (Invoice $invoice) {
             $projection = $this->invoiceAmounts->resolve($invoice, $invoice->getRelationValue('studentClass'));
             $invoice->setAttribute('TotalAmount', $projection['total_amount']);
@@ -381,7 +382,7 @@ class BillingController extends Controller
         $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
 
         $campus = null;
-        if ($invoice->student->CampusID) {
+        if ($invoice->student && $invoice->student->CampusID) {
             $campus = Campus::find($invoice->student->CampusID);
         }
 
