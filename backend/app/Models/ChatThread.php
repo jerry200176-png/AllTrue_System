@@ -22,8 +22,7 @@ class ChatThread extends Model
         return $this->hasMany(ChatThreadMember::class, 'thread_id');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\ChatThreadMember, $this> */
-    public function activeMembers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function activeMembers()
     {
         return $this->hasMany(ChatThreadMember::class, 'thread_id')
             ->whereNull('left_at');

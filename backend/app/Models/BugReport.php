@@ -24,8 +24,7 @@ class BugReport extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\BugReportComment, $this> */
-    public function comments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function comments()
     {
         return $this->hasMany(BugReportComment::class, 'bug_report_id');
     }
@@ -40,8 +39,7 @@ class BugReport extends Model
         return $this->hasMany(BugReportEvidence::class, 'bug_report_id');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\BugReportAttachment, $this> */
-    public function attachments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function attachments()
     {
         return $this->hasMany(BugReportAttachment::class, 'bug_report_id');
     }

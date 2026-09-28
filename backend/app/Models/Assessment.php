@@ -42,14 +42,12 @@ class Assessment extends Model
         'passing_score' => 'decimal:2',
     ];
 
-    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\AssessmentResult, $this> */
-    public function results(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function results()
     {
         return $this->hasMany(AssessmentResult::class, 'assessment_id');
     }
 
-    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\StudentClass, $this> */
-    public function studentClass(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function studentClass()
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
     }
