@@ -31,7 +31,7 @@ class AttachAuthUser
                 $authToken = $bearer ? AuthToken::where('token', $bearer)->first() : null;
                 if ($authToken) {
                     // Check token expiration
-                    if ($authToken->expires_at && Carbon::parse($authToken->expires_at)->isPast()) {
+                    if ($authToken->getAttribute('expires_at') && Carbon::parse($authToken->getAttribute('expires_at'))->isPast()) {
                         $authToken->delete();
                         return response()->json(['message' => 'Token expired'], 401);
                     }
@@ -49,7 +49,7 @@ class AttachAuthUser
                 if ($user->type !== 'S' && $authorizer->enabled()) {
                     $actingHeader = $request->header((string) config('staff_capabilities.acting_as_header', 'X-Acting-As'));
                     $resolved = $authorizer->resolve($user, is_string($actingHeader) ? $actingHeader : null);
-                    if (($resolved['context_denied'] ?? false) === true) {
+                    if ($resolved['context_denied'] === true) {
                         return response()->json(['message' => 'Forbidden'], 403);
                     }
                     $role = $resolved['role'];

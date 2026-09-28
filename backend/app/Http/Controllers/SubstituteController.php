@@ -100,8 +100,8 @@ class SubstituteController extends Controller
             'start_time'         => $s['start_time'],
             'end_time'           => $s['end_time'],
             'campus_id'          => (int) $s['campus_id'],
-            'class_type'         => (string) ($s['class_type'] ?? 'one_on_one'),
-            'remaining_capacity' => (int) ($s['remaining_capacity'] ?? 0),
+            'class_type'         => (string) ($s['class_type']),
+            'remaining_capacity' => (int) ($s['remaining_capacity']),
         ], $busy);
 
         // #265: preserve enough decision context to reconstruct a future
@@ -111,14 +111,14 @@ class SubstituteController extends Controller
             'start_time'          => $s['start_time'],
             'end_time'            => $s['end_time'],
             'campus_id'           => (int) $s['campus_id'],
-            'class_type'          => (string) ($s['class_type'] ?? 'one_on_one'),
-            'configured_capacity' => (int) ($s['configured_capacity'] ?? 0),
-            'occupied_capacity'   => (int) ($s['occupied_capacity'] ?? $s['student_count'] ?? 0),
-            'remaining_capacity'  => (int) ($s['remaining_capacity'] ?? 0),
-            'course_ids'          => array_values(array_map('intval', $s['course_ids'] ?? [])),
-            'class_session_ids'   => array_values(array_map('intval', $s['class_session_ids'] ?? [])),
-            'schedule_ids'        => array_values(array_map('intval', $s['schedule_ids'] ?? [])),
-            'source_types'        => array_values(array_map('strval', $s['source_types'] ?? [])),
+            'class_type'          => (string) ($s['class_type']),
+            'configured_capacity' => (int) ($s['configured_capacity']),
+            'occupied_capacity'   => (int) ($s['occupied_capacity']),
+            'remaining_capacity'  => (int) ($s['remaining_capacity']),
+            'course_ids'          => array_values(array_map('intval', $s['course_ids'])),
+            'class_session_ids'   => array_values(array_map('intval', $s['class_session_ids'])),
+            'schedule_ids'        => array_values(array_map('intval', $s['schedule_ids'])),
+            'source_types'        => array_values(array_map('strval', $s['source_types'])),
         ], $busy);
         $campusIds = array_values(array_unique(array_map(
             static fn (array $slot): int => (int) $slot['campus_id'],

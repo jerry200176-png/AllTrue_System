@@ -43,7 +43,7 @@ class TelegramWebhookController extends Controller
         }
 
         $update = $request->json()->all();
-        if (!is_array($update) || !isset($update['message']['chat']['id'])) {
+        if (!isset($update['message']['chat']['id'])) {
             return response('ok', 200);
         }
 
