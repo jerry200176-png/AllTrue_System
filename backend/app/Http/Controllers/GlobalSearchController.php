@@ -238,26 +238,26 @@ class GlobalSearchController extends Controller
             $teacher = trim((string) ($course->teacher_name ?? ''));
             $subtitle = implode(' · ', array_filter([$subject, $teacher]));
             $metaParts = array_filter([
-                $this->campusLabel($course->campus_name),
-                $this->gradeLabel((int) ($course->GradeID ?: $course->StudentGradeID)),
+                $this->campusLabel($course->getAttribute('campus_name')),
+                $this->gradeLabel((int) ($course->GradeID ?: $course->getAttribute('StudentGradeID'))),
                 $session ? trim((string) $session->SessionDate) . ' ' . substr((string) $session->StartTime, 0, 5) : null,
             ]);
 
             return [
                 'id' => (int) $course->ID,
                 'type' => 'course',
-                'title' => (string) $course->student_name,
+                'title' => (string) $course->getAttribute('student_name'),
                 'subtitle' => $subtitle !== '' ? $subtitle : '課程',
                 'meta' => implode(' · ', $metaParts),
                 'course_id' => (int) $course->ID,
                 'student_id' => (int) $course->StudentID,
-                'student_name' => (string) $course->student_name,
+                'student_name' => (string) $course->getAttribute('student_name'),
                 'teacher_id' => (int) ($course->TeacherID ?? 0),
                 'teacher_name' => $teacher,
                 'session_id' => $session ? (int) $session->id : null,
                 'session_date' => $session?->SessionDate,
                 'session_start_time' => $session?->StartTime,
-                'campus_id' => (int) $course->CampusID,
+                'campus_id' => (int) $course->getAttribute('CampusID'),
             ];
         })->values()->all();
     }

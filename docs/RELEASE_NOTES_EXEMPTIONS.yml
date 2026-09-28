@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-28-native-value-contracts
+    changelog_date: "2026-09-28"
+    changelog_title: "chore(framework): preserve native operational value projections (GitHub #977 / #2833)"
+    reason: 既有資料投影與框架相容前置，不新增產品操作或改變權限帳務語意；未部署或觀察正式受影響路徑，不宣布已上線。
+
   - id: silent-2026-09-28-rollout-flag-cache
     changelog_date: "2026-09-28"
     changelog_title: "chore(config): preserve cache-consistent rollout flag reads (GitHub #977 / #2833)"

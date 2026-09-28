@@ -287,7 +287,7 @@ class PaymentReportController extends Controller
                 'student_id'       => $r->StudentID,
                 'student_class_id' => $r->StudentClassID,
                 'subject'          => $subjectName,
-                'payment_date'     => $r->payment_date?->format('Y-m-d'),
+                'payment_date'     => $r->payment_date->format('Y-m-d'),
                 'payment_method'   => $r->payment_method,
                 'reported_amount'  => (float) $r->reported_amount,
                 'account_last5'    => $r->account_last5,
@@ -398,8 +398,8 @@ class PaymentReportController extends Controller
                     'Status'         => 'unpaid',
                     'ScheduleModeAtIssue' => $sc->ScheduleMode ?? null,
                     'Note'           => '',
-                    'billing_period' => $sc?->ScheduleMode === 'date' && $report->payment_date
-                        ? Carbon::parse($report->payment_date)->format('Y-m')
+                    'billing_period' => $sc?->ScheduleMode === 'date'
+                        ? Carbon::make($report->payment_date)?->format('Y-m')
                         : null,
                 ]);
             }
@@ -463,9 +463,8 @@ class PaymentReportController extends Controller
                 ]);
             }
             if ($package && $status === 'paid') {
-                $paidAt = $report->payment_date
-                    ? Carbon::parse($report->payment_date)->toDateString()
-                    : Carbon::today()->toDateString();
+                $paidAt = Carbon::make($report->payment_date)?->toDateString()
+                    ?? Carbon::today()->toDateString();
                 $this->markPackagePaid($package, $paidAt);
             }
 
@@ -871,7 +870,7 @@ class PaymentReportController extends Controller
         $userId = $request->attributes->get('auth_user_id');
 
         return DB::transaction(function () use ($report, $userId, $data) {
-            $originalAmount = (int) abs($report->reported_amount);
+            $originalAmount = (int) abs((float) $report->reported_amount);
 
             $invoice = $report->InvoiceID ? Invoice::find($report->InvoiceID) : null;
 
@@ -1002,9 +1001,10 @@ class PaymentReportController extends Controller
                 $sessionDates
             ));
         } elseif ($sc) {
+            $reportedDate = $sc->ScheduleMode === 'date' ? Carbon::make($report->payment_date) : null;
             if ($sc->ScheduleMode === 'date') {
-                $periodStart = $report->payment_date ? Carbon::parse($report->payment_date)->startOfMonth()->format('Y/m/d') : null;
-                $periodEnd = $report->payment_date ? Carbon::parse($report->payment_date)->endOfMonth()->format('Y/m/d') : null;
+                $periodStart = $reportedDate?->copy()->startOfMonth()->format('Y/m/d');
+                $periodEnd = $reportedDate?->copy()->endOfMonth()->format('Y/m/d');
             } else {
                 $periodStart = $sc->StartDate ? Carbon::parse($sc->StartDate)->format('Y/m/d') : null;
                 $periodEnd = $sc->EndDate ? Carbon::parse($sc->EndDate)->format('Y/m/d') : null;
@@ -1014,9 +1014,9 @@ class PaymentReportController extends Controller
                 ->whereIn('Status', ['attended', 'completed', 'late'])
                 ->orderBy('SessionDate');
 
-            if ($sc->ScheduleMode === 'date' && $report->payment_date) {
-                $monthStart = Carbon::parse($report->payment_date)->startOfMonth()->toDateString();
-                $monthEnd   = Carbon::parse($report->payment_date)->endOfMonth()->toDateString();
+            if ($reportedDate !== null) {
+                $monthStart = $reportedDate->copy()->startOfMonth()->toDateString();
+                $monthEnd   = $reportedDate->copy()->endOfMonth()->toDateString();
                 $sessionQuery->whereDate('SessionDate', '>=', $monthStart)
                              ->whereDate('SessionDate', '<=', $monthEnd);
             }
@@ -1090,8 +1090,8 @@ class PaymentReportController extends Controller
                 ->where('StudentClassID', $sc->ID)
                 ->first();
             $sessionMeta = [
-                'first_live' => $sessionMetaRow?->first_live ? substr((string) $sessionMetaRow->first_live, 0, 10) : null,
-                'first_any' => $sessionMetaRow?->first_any ? substr((string) $sessionMetaRow->first_any, 0, 10) : null,
+                'first_live' => $sessionMetaRow?->getAttribute('first_live') ? substr((string) $sessionMetaRow->getAttribute('first_live'), 0, 10) : null,
+                'first_any' => $sessionMetaRow?->getAttribute('first_any') ? substr((string) $sessionMetaRow->getAttribute('first_any'), 0, 10) : null,
             ];
         }
         $course = $sc instanceof StudentClass ? $sc : null;
@@ -1101,7 +1101,7 @@ class PaymentReportController extends Controller
         $amount = (float) $report->reported_amount;
 
         return response()->json([
-            'receipt_no'       => 'R-' . str_pad($report->id, 6, '0', STR_PAD_LEFT),
+            'receipt_no'       => 'R-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT),
             'student_name'     => $report->student?->name ?? $report->reported_by_name,
             'campus_name'      => $campusName,
             'subject'          => $receiptSubject,
@@ -1112,7 +1112,7 @@ class PaymentReportController extends Controller
             'period_end'       => $periodEnd,
             'attended_dates'   => $attendedDates,
             'session_dates'    => $sessionDates,
-            'payment_date'     => $report->payment_date?->format('Y/m/d'),
+            'payment_date'     => $report->payment_date->format('Y/m/d'),
             'payment_method'   => $report->payment_method,
             'note'             => (string) ($report->note ?? ''),
             'amount'           => $amount,

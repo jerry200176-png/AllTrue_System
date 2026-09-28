@@ -491,7 +491,7 @@ class SessionDeductionService
             } else {
                 $sc->UsedSessions      = $usedByAttendance;
                 $sc->RemainingSessions  = 0;
-                $sc->Stop               = 0;
+                $sc->setAttribute('Stop', 0);
                 $sc->RemainingMinutes  = 0;
                 $sc->PurchasedMinutes  = null;
             }

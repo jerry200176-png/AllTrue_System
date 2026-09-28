@@ -80,7 +80,7 @@ final class BindingConflictService
                     'campus_id'           => $b->campus_id,
                     'campus_name'         => $campusNameMap->get((int) $b->campus_id),
                     'line_user_id_masked' => $this->maskLineUserId($b->line_user_id),
-                    'bound_at'            => $b->bound_at?->toIso8601String(),
+                    'bound_at'            => $b->bound_at->toIso8601String(),
                     'verified_at'         => $b->verified_at?->toIso8601String(),
                     'verification_method' => $b->verification_method,
                 ])->values()->all(),

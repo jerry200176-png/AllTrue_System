@@ -24,7 +24,7 @@ final class BindingService
 
     // ── Query ──────────────────────────────────────────────
 
-    /** @return Collection<int, object> */
+    /** @return Collection<int, \stdClass> */
     public function listBindings(?int $campusId = null, ?int $studentId = null, ?string $lineUserId = null, int $limit = 100, ?array $allowedCampusIds = null): Collection
     {
         $q = DB::table('student_line_bindings')
@@ -76,13 +76,13 @@ final class BindingService
             ->first();
     }
 
-    /** @return Collection<int, object> */
+    /** @return Collection<int, \stdClass> */
     public function bindingsForStudent(int $studentId): Collection
     {
         return $this->listBindings(studentId: $studentId, limit: 500);
     }
 
-    /** @return Collection<int, object> */
+    /** @return Collection<int, \stdClass> */
     public function bindingsForLineUser(string $lineUserId): Collection
     {
         return $this->listBindings(lineUserId: $lineUserId, limit: 500);
@@ -195,7 +195,7 @@ final class BindingService
 
     // ── Orphan Detection (P1-3) ────────────────────────────
 
-    /** @return Collection<int, object> */
+    /** @return Collection<int, \stdClass> */
     public function findOrphanBindings(?array $allowedCampusIds = null): Collection
     {
         // Orphans: bindings where student no longer exists or is disabled
@@ -239,7 +239,7 @@ final class BindingService
 
     // ── Cross-Campus Conflict Detection (P2-1) ─────────────
 
-    /** @return Collection<int, object> */
+    /** @return Collection<int, \stdClass> */
     public function findCrossCampusConflicts(?array $allowedCampusIds = null): Collection
     {
         // Find line_user_ids with bindings in multiple campuses
