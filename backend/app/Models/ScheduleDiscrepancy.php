@@ -59,4 +59,9 @@ class ScheduleDiscrepancy extends Model
         'missing_session'    => '此課不在系統中',
         'other'              => '其他',
     ];
+
+    public static function typeLabel(?string $type): ?string
+    {
+        return self::TYPE_LABELS[$type] ?? $type;
+    }
 }
