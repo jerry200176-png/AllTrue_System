@@ -480,7 +480,7 @@ class LearningRecordFeedbackController extends Controller
         $repliedTotal = $repliedIds->count();
         $unrepliedSet = array_fill_keys(array_diff($approvedIds, $repliedIds->all()), true);
         $unrepliedTotal = count($unrepliedSet);
-        $replyRate = $approvedTotal > 0 ? round(($repliedTotal / $approvedTotal) * 100, 1) : 0.0;
+        $replyRate = round(($repliedTotal / $approvedTotal) * 100, 1);
 
         $unreadNew = $feedbackRows->filter(function ($row) use ($role) {
             if ($role === 'teacher') {

@@ -60,7 +60,7 @@ class DunningController extends Controller
                 'campus_id' => (int) $e->campus_id,
                 'rule_key' => $e->rule_key,
                 'channel' => $e->channel,
-                'sent_at' => $e->sent_at?->toIso8601String(),
+                'sent_at' => $e->sent_at->toIso8601String(),
             ])->values(),
             'summary' => $summary,
         ]);

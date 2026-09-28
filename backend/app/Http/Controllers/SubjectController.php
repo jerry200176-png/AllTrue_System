@@ -134,7 +134,7 @@ class SubjectController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $subject = DB::table('Subject')->find((int) $id);
+        $subject = DB::table('Subject')->where('id', '=', (int) $id)->first();
         if (!$subject) {
             return response()->json(['message' => '科目不存在'], 404);
         }
@@ -182,7 +182,7 @@ class SubjectController extends Controller
      */
     public function destroy(Request $request, $id)
     {
-        $subject = DB::table('Subject')->find((int) $id);
+        $subject = DB::table('Subject')->where('id', '=', (int) $id)->first();
         if (!$subject) {
             return response()->json(['message' => '科目不存在'], 404);
         }

@@ -121,7 +121,7 @@ class ExceptionWorkflowController extends Controller
             ->where('id', (int) $data['candidate_id'])
             ->firstOrFail();
 
-        if ($candidate->expires_at && Carbon::parse($candidate->expires_at)->isPast() && $workflow->status !== 'confirmed') {
+        if (Carbon::make($candidate->expires_at)?->isPast() && $workflow->status !== 'confirmed') {
             return response()->json(['message' => 'Candidate expired. Please regenerate candidates.'], 422);
         }
 

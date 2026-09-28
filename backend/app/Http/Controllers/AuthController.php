@@ -743,7 +743,7 @@ class AuthController extends Controller
                     'token_id' => (int) $token->id,
                     'device_label' => $deviceLabel ?: 'Unknown Device',
                     'created_at' => $token->created_at ? Carbon::parse($token->created_at)->toIso8601String() : null,
-                    'expires_at' => $token->expires_at ? Carbon::parse($token->expires_at)->toIso8601String() : null,
+                    'expires_at' => $token->getAttribute('expires_at') ? Carbon::parse($token->getAttribute('expires_at'))->toIso8601String() : null,
                     'is_current' => $currentTokenId ? ((int) $token->id === (int) $currentTokenId) : false,
                 ];
             })->values()->all();

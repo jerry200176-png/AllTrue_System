@@ -486,7 +486,7 @@ class ProfileController extends Controller
             TeacherScopeService::replaceScopes((int) $user->id, (array) ($data['subject_level_scopes'] ?? []));
         }
 
-        $user->username = $user->Name;
+        $user->setAttribute('username', $user->Name);
         return response()->json($user, 201);
     }
 
