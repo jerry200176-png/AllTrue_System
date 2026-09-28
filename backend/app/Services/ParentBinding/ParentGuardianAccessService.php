@@ -247,8 +247,8 @@ final class ParentGuardianAccessService
         foreach ($dupPhones as $row) {
             $phoneAmbiguity[] = [
                 'phone_normalized_suffix' => substr((string) $row->phone_normalized, -4),
-                'guardian_count' => (int) $row->c,
-                'guardian_ids' => array_map('intval', explode(',', (string) $row->ids)),
+                'guardian_count' => (int) $row->getAttribute('c'),
+                'guardian_ids' => array_map('intval', explode(',', (string) $row->getAttribute('ids'))),
             ];
         }
 

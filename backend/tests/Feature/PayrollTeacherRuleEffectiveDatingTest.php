@@ -34,6 +34,25 @@ class PayrollTeacherRuleEffectiveDatingTest extends TestCase
         ]);
     }
 
+    public function test_undated_legacy_rule_applies_to_historical_payroll_until_a_dated_override(): void
+    {
+        $legacy = PayrollTeacherBranchRule::create([
+            'teacher_user_id' => self::TEACHER,
+            'branch_id' => self::BRANCH,
+            'base_rates' => ['junior' => 400],
+            'headcount_bonus' => 50,
+            'use_branch_default' => false,
+        ]);
+        $this->rule('2026-06-01', 350);
+
+        $may = PayrollTeacherBranchRule::latestForTeacherBranch(self::TEACHER, self::BRANCH, '2026-05-31');
+        $this->assertSame($legacy->id, $may->id);
+        $this->assertSame('1970-01-01', $may->effective_from->toDateString());
+        $this->assertSame(400, (int) $may->base_rates['junior']);
+        $june = PayrollTeacherBranchRule::latestForTeacherBranch(self::TEACHER, self::BRANCH, '2026-06-30');
+        $this->assertSame(350, (int) $june->base_rates['junior']);
+    }
+
     public function test_future_dated_correction_does_not_apply_to_the_month_under_review(): void
     {
         // The #198 situation: old override 400 effective in May; a 350 correction dated 7/10 (future vs June).

@@ -5,6 +5,9 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use LogicException;
 
+/**
+ * @property int|numeric-string|null $CampusID Nullable persisted campus ID added by attendance schema migrations.
+ */
 class StudentSignIn extends Model
 {
     protected $table = 'StudentSingIn';

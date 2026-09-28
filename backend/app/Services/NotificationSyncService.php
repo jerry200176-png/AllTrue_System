@@ -301,8 +301,11 @@ class NotificationSyncService
             }
 
             $dueAt = Carbon::parse($invoice->DueDate);
-            $overdueDays = max(1, $dueAt->diffInDays(now()));
-            $studentName = (string) ($invoice->student_name ?: '學生');
+            // Overdue tiers are calendar-day policy, not elapsed-hour policy.
+            // Carbon 3 returns a float for diffInDays(), so normalize both
+            // endpoints to the day boundary before preserving the integer tier.
+            $overdueDays = max(1, (int) $dueAt->copy()->startOfDay()->diffInDays(now()->startOfDay()));
+            $studentName = (string) ($invoice->getAttribute('student_name') ?: '學生');
             $subject = '學費';
             $totalAmount = (int) ($invoice->TotalAmount ?? 0);
             $paidAmount = (int) ($invoice->PaidAmount ?? 0);
@@ -385,7 +388,7 @@ class NotificationSyncService
             }
 
             $campusId = (int) ($student->CampusID ?? 0);
-            $subject = (string) ($record->Subject ?: $studentClass->Subject ?: '課程');
+            $subject = (string) ($record->Subject ?: $studentClass->getAttribute('Subject') ?: '課程');
             $sessionDate = $record->SessionDate ?: ($record->created_at ? $record->created_at->toDateString() : null);
             $title = "待審評量：{$student->name}";
             $body = $sessionDate ? "{$subject}（{$sessionDate}）" : $subject;

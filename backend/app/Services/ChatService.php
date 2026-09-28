@@ -69,7 +69,7 @@ class ChatService
             'read_count'           => $readCount,
             'is_deleted'           => $isDeleted,
             'deleted_at'           => $m->deleted_at?->toIso8601String(),
-            'created_at'           => $m->created_at?->toIso8601String(),
+            'created_at'           => $m->created_at->toIso8601String(),
         ];
     }
 
@@ -208,7 +208,7 @@ class ChatService
                     'id'          => $lastMsg->id,
                     'body'        => $body,
                     'sender_name' => $lastMsg->sender_name_snapshot,
-                    'created_at'  => $lastMsg->created_at?->toIso8601String(),
+                    'created_at'  => $lastMsg->created_at->toIso8601String(),
                 ];
             }
 
@@ -217,10 +217,10 @@ class ChatService
                 'type'             => $thread->type,
                 'name'             => $thread->type === 'group' ? $thread->name : ($otherMembers[0]['name'] ?? ''),
                 'thread_avatar_url' => $threadAvatarUrl,
-                'is_pinned'        => (bool) $thread->is_pinned,
+                'is_pinned'        => (bool) $thread->getAttribute('is_pinned'),
                 'campus_id'        => $thread->CampusID,
                 'unread_count'     => $unreadCount,
-                'member_role'      => $thread->member_role,
+                'member_role'      => $thread->getAttribute('member_role'),
                 'last_message'     => $lastMsgPreview,
                 'other_members'    => $otherMembers,
                 'updated_at'       => ($thread->last_message_at ?? $thread->created_at)?->toIso8601String(),
@@ -457,7 +457,7 @@ class ChatService
                 'name'       => $m->user->Name ?? '',
                 'avatar_url' => self::publicAvatarUrl($m->user->AvatarUrl ?? null),
                 'role'       => $m->role,
-                'joined_at'  => $m->joined_at?->toIso8601String(),
+                'joined_at'  => $m->joined_at->toIso8601String(),
             ])
             ->values()
             ->all();

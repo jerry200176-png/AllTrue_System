@@ -2917,12 +2917,6 @@ parameters:
 			path: app/Http/Controllers/NotificationController.php
 
 		-
-			message: '#^Parameter \#2 \$default of method Illuminate\\Http\\Request\:\:header\(\) expects array\|string\|null, int given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ParentSession\:\:\$StudentID\.$#'
 			identifier: property.notFound
 			count: 1
@@ -3761,12 +3755,6 @@ parameters:
 			path: app/Http/Controllers/ScheduleDiscrepancyController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\ScheduleDiscrepancy\:\:\$discrepancy_type\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Http/Controllers/ScheduleDiscrepancyController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\ScheduleDiscrepancy\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 2
@@ -3959,12 +3947,6 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$Stop\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
 			identifier: property.notFound
 			count: 12
@@ -3989,18 +3971,6 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$branch_id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$branch_name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$closed_reason\.$#'
 			identifier: property.notFound
 			count: 4
@@ -4016,12 +3986,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$room\.$#'
 			identifier: property.notFound
 			count: 3
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$room_name\.$#'
-			identifier: property.notFound
-			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4169,45 +4133,15 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Offset ''day'' on array\{day\: int, start_time\: string, duration_hours\: float\|int\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 4
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Offset ''day'' on array\{day\: int, start_time\: string, duration_minutes\?\: int\|null\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
-			message: '#^Offset ''duration_hours'' on array\{day\: int, start_time\: string, duration_hours\: float\|int\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 3
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Offset ''duration_minutes'' does not exist on array\{weekday\: int, time\: string\}\.$#'
-			identifier: offsetAccess.notFound
-			count: 2
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Offset ''duration_minutes'' on array\{weekday\: int, time\: string\} in empty\(\) does not exist\.$#'
-			identifier: empty.offset
-			count: 2
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
 			message: '#^Offset ''start_time'' on array\{day\: int, start_time\: non\-empty\-string, duration_hours\: float\|null\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Offset ''start_time'' on array\{day\: int, start_time\: string, duration_hours\: float\|int\} on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 3
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4220,12 +4154,6 @@ parameters:
 			message: '#^Offset ''weekday'' on array\{weekday\: int, time\: string, duration_minutes\?\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 3
-			path: app/Http/Controllers/StudentClassController.php
-
-		-
-			message: '#^Offset 0 on non\-empty\-list\<int\> on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
@@ -4624,12 +4552,6 @@ parameters:
 			path: app/Http/Controllers/TeacherBranchController.php
 
 		-
-			message: '#^Strict comparison using \!\=\= between resource\|non\-empty\-string and null will always evaluate to true\.$#'
-			identifier: notIdentical.alwaysTrue
-			count: 1
-			path: app/Http/Controllers/TeacherBranchController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
@@ -4831,12 +4753,6 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\PayrollTeacherBranchRule\:\:\$base_rates\.$#'
 			identifier: property.notFound
 			count: 1
-			path: app/Models/PayrollTeacherBranchRule.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\PayrollTeacherBranchRule\:\:\$effective_from\.$#'
-			identifier: property.notFound
-			count: 2
 			path: app/Models/PayrollTeacherBranchRule.php
 
 		-
@@ -5831,12 +5747,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\ScheduleDiscrepancy\:\:\$branch_id\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Services/ScheduleDiscrepancyNotifier.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\ScheduleDiscrepancy\:\:\$discrepancy_type\.$#'
 			identifier: property.notFound
 			count: 2
 			path: app/Services/ScheduleDiscrepancyNotifier.php

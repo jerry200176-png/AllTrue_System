@@ -81,7 +81,7 @@ class GradePromotionService
             ->get(['id', 'name', 'ClassID', 'status']);
         $out = [];
         foreach ($rows as $student) {
-            $from = $this->classIdToGrade($student->ClassID !== null ? (int) $student->ClassID : null);
+            $from = $this->classIdToGrade($student->ClassID);
             $to = $this->nextGrade($from !== '' ? $from : null);
             $graduated = $to === null && $from === 'H3';
             $promoted = in_array((int) $student->id, $already, true);

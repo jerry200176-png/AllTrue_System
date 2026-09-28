@@ -305,25 +305,25 @@ class StudentClassController extends Controller
         }
 
         $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
-            $class->subject_name = $courseNames[$class->SubjectID]
+            $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
-                ?? null;
-            $class->teacher_name = $teacherNames[$class->TeacherID]
-                ?? null;
-            $class->teacher_status = strtolower((string) ($userStatuses[$class->TeacherID] ?? 'active'));
+                ?? null);
+            $class->setAttribute('teacher_name', $teacherNames[$class->TeacherID]
+                ?? null);
+            $class->setAttribute('teacher_status', strtolower((string) ($userStatuses[$class->TeacherID] ?? 'active')));
 
             // Map backend PascalCase to frontend snake_case
-            $class->id = (int) $class->ID;
-            $class->student_id = (int) $class->StudentID;
-            $class->teacher_id = (int) $class->TeacherID;
-            $class->student_name = $class->student->name ?? null;
+            $class->setAttribute('id', (int) $class->ID);
+            $class->setAttribute('student_id', (int) $class->StudentID);
+            $class->setAttribute('teacher_id', (int) $class->TeacherID);
+            $class->setAttribute('student_name', $class->student->name ?? null);
 
-            $class->branch_id = $class->room?->campus_id ?? null;
-            $class->branch_name = $class->room?->campus?->name ?? null;
-            $class->room_name = $class->room?->name ?? null;
+            $class->setAttribute('branch_id', $class->room?->campus_id ?? null);
+            $class->setAttribute('branch_name', $class->room?->campus?->name ?? null);
+            $class->setAttribute('room_name', $class->room?->name ?? null);
             $class->settlement_day = $class->settlement_day !== null ? (int) $class->settlement_day : null;
             $class->monthly_sessions = $class->monthly_sessions !== null ? (int) $class->monthly_sessions : null;
-            $class->memo = $class->Memo ?? null;
+            $class->setAttribute('memo', $class->Memo ?? null);
             if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
                 $class->makeHidden(['pricing_snapshot']);
             } else {
@@ -353,12 +353,12 @@ class StudentClassController extends Controller
                 'Social' => 'Social',
             ];
             $subjectNameKey = trim((string) ($class->subject_name ?? ''));
-            $class->subject = $reverseSubjectMap[$subjectNameKey] ?? 'Math';
-            $class->class_type = $class->ClassType ?? 'one_on_one';
-            $isTutoringCourse = $class->class_type === 'tutoring';
-            $class->rate_per_30min = $class->Rate ?? 0;
-            $class->total_hours = (int) ($class->TotalHours ?? 0);
-            $class->duration_hours = $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2;
+            $class->setAttribute('subject', $reverseSubjectMap[$subjectNameKey] ?? 'Math');
+            $class->setAttribute('class_type', $class->ClassType ?? 'one_on_one');
+            $isTutoringCourse = $class->getAttribute('class_type') === 'tutoring';
+            $class->setAttribute('rate_per_30min', $class->Rate ?? 0);
+            $class->setAttribute('total_hours', (int) ($class->TotalHours ?? 0));
+            $class->setAttribute('duration_hours', $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2);
             // 固定排課多日（如 一四）：從 week + week1..week6 彙總成 days_of_week（寫入時第一日在 week，其餘在 week1..week6）
             $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
             $daysOfWeek = [];
@@ -372,12 +372,12 @@ class StudentClassController extends Controller
             if (empty($daysOfWeek) && (int) $class->week >= 1 && (int) $class->week <= 7) {
                 $daysOfWeek = [(int) $class->week];
             }
-            $class->days_of_week = $daysOfWeek;
-            $class->day_of_week = (int) ($daysOfWeek[0] ?? $class->week ?? 0);
+            $class->setAttribute('days_of_week', $daysOfWeek);
+            $class->setAttribute('day_of_week', (int) ($daysOfWeek[0] ?? $class->week ?? 0));
             $dayTimeSlots = [];
             $timeFields = ['time', 'time1', 'time2', 'time3', 'time4', 'time5', 'time6'];
             $durationFields = [null, 'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6'];
-            $globalDurHours = $class->duration_hours;
+            $globalDurHours = $class->getAttribute('duration_hours');
             foreach ($weekFields as $index => $wf) {
                 $day = (int) ($class->{$wf} ?? 0);
                 if ($day < 1 || $day > 7) {
@@ -397,12 +397,12 @@ class StudentClassController extends Controller
                     'duration_hours' => $perDayMin > 0 ? round($perDayMin / 60, 1) : $globalDurHours,
                 ];
             }
-            $class->day_time_slots = $this->dedupeIdenticalConsecutiveDayTimeSlots($dayTimeSlots);
+            $class->setAttribute('day_time_slots', $this->dedupeIdenticalConsecutiveDayTimeSlots($dayTimeSlots));
 
             // 課程主檔 week*/time* 為「已儲存的固定排課契約」。未來堂次若仍含已移除的星期（舊資料），
             // 不可讓其覆寫顯示成多出一個時段（例：只存週六卻因未刪除的週日預排而顯示週日）。
             $contractWeekdays = [];
-            foreach ($class->day_time_slots as $slot) {
+            foreach ($class->getAttribute('day_time_slots') as $slot) {
                 $d = (int) ($slot['day'] ?? 0);
                 if ($d >= 1 && $d <= 7) {
                     $contractWeekdays[$d] = true;
@@ -411,10 +411,10 @@ class StudentClassController extends Controller
 
             // Detect drift between contract and future scheduled sessions (read-only, never overwrite contract)
             $csSlots = $sessionSlotsByClassId[(int) $class->ID] ?? [];
-            $class->schedule_drift = false;
-            if (!empty($csSlots) && !empty($class->day_time_slots)) {
+            $class->setAttribute('schedule_drift', false);
+            if (!empty($csSlots) && !empty($class->getAttribute('day_time_slots'))) {
                 $contractKeys = [];
-                foreach ($class->day_time_slots as $cs) {
+                foreach ($class->getAttribute('day_time_slots') as $cs) {
                     $d = (int) ($cs['day'] ?? 0);
                     $t = (string) ($cs['start_time'] ?? '');
                     $dur = round((float) ($cs['duration_hours'] ?? $globalDurHours), 1);
@@ -428,20 +428,20 @@ class StudentClassController extends Controller
                     $dur = round((float) ($ss['duration_hours'] ?? $globalDurHours), 1);
                     $key = $d . '|' . $t . '|' . $dur;
                     if (!isset($contractKeys[$key])) {
-                        $class->schedule_drift = true;
+                        $class->setAttribute('schedule_drift', true);
                         break;
                     }
                 }
             }
 
-            $class->contract_exception_count = (int) ($contractExceptionCountByClassId[(int) $class->ID] ?? 0);
+            $class->setAttribute('contract_exception_count', (int) ($contractExceptionCountByClassId[(int) $class->ID] ?? 0));
 
             // days_of_week 以實際有時間的時段為準（避免 week1=6 但 time1=null 造成前端顯示多餘星期）
-            if (!empty($class->day_time_slots)) {
-                $daysFromSlots = array_values(array_unique(array_column($class->day_time_slots, 'day')));
+            if (!empty($class->getAttribute('day_time_slots'))) {
+                $daysFromSlots = array_values(array_unique(array_column($class->getAttribute('day_time_slots'), 'day')));
                 sort($daysFromSlots);
-                $class->days_of_week = $daysFromSlots;
-                $class->day_of_week = (int) ($daysFromSlots[0] ?? $class->day_of_week ?? 0);
+                $class->setAttribute('days_of_week', $daysFromSlots);
+                $class->setAttribute('day_of_week', (int) ($daysFromSlots[0] ?? $class->day_of_week ?? 0));
             }
             $class->rate_unit = $class->rate_unit ?? 'session';
 
@@ -450,35 +450,35 @@ class StudentClassController extends Controller
             for ($i = 1; $i <= 5; $i++) {
                 $weeks[] = $i;
             }
-            $class->weeks = $weeks;
+            $class->setAttribute('weeks', $weeks);
 
-            $class->start_time = !empty($class->day_time_slots)
-                ? (string) ($class->day_time_slots[0]['start_time'] ?? '')
-                : ($class->time ? substr($class->time, 0, 5) : '');
-            $durationSecs = (int) round($class->duration_hours * 3600);
-            $class->end_time = $class->start_time ? date('H:i', strtotime($class->start_time) + $durationSecs) : null;
-            $class->payment_type = ($class->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly';
-            $class->sessions_purchased = (int) ($class->SessionCount ?? 0);
+            $class->setAttribute('start_time', !empty($class->getAttribute('day_time_slots'))
+                ? (string) ($class->getAttribute('day_time_slots')[0]['start_time'] ?? '')
+                : ($class->time ? substr($class->time, 0, 5) : ''));
+            $durationSecs = (int) round($class->getAttribute('duration_hours') * 3600);
+            $class->setAttribute('end_time', $class->getAttribute('start_time') ? date('H:i', strtotime($class->getAttribute('start_time')) + $durationSecs) : null);
+            $class->setAttribute('payment_type', ($class->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly');
+            $class->setAttribute('sessions_purchased', (int) ($class->SessionCount ?? 0));
             $storedCharge = (int) ($class->Charge ?? 0);
             $effectiveCharge = $storedCharge;
             if (
                 $effectiveCharge <= 0
-                && $class->payment_type === 'session'
+                && $class->getAttribute('payment_type') === 'session'
                 && !$isTutoringCourse
                 && !$class->isPartOfPackage()
                 && (float) ($class->Rate ?? 0) > 0
-                && $class->sessions_purchased > 0
+                && $class->getAttribute('sessions_purchased') > 0
             ) {
                 $effectiveCharge = $this->calculateCourseChargeFromRate(
                     (float) ($class->Rate ?? 0),
                     (string) ($class->rate_unit ?? 'session'),
-                    $class->sessions_purchased,
+                    $class->getAttribute('sessions_purchased'),
                     (int) ($class->TotalHours ?? 0)
                 );
             }
-            $class->charge = $effectiveCharge;
-            $class->effective_charge = $effectiveCharge;
-            $class->charge_is_fallback = $storedCharge <= 0 && $effectiveCharge > 0;
+            $class->setAttribute('charge', $effectiveCharge);
+            $class->setAttribute('effective_charge', $effectiveCharge);
+            $class->setAttribute('charge_is_fallback', $storedCharge <= 0 && $effectiveCharge > 0);
             $storedUsedSessions = (int) ($class->UsedSessions ?? 0);
             $storedRemainingSessions = (int) ($class->RemainingSessions ?? 0);
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
@@ -493,24 +493,24 @@ class StudentClassController extends Controller
             $hasFractionalBalance = $storedRemainingMinutes !== null
                 && ((int) $storedRemainingMinutes % $perSessionMin !== 0);
 
-            if ($class->sessions_purchased > 0 && !$hasFractionalBalance) {
-                $observedUsedSessions = min($class->sessions_purchased, $observedUsedSessions);
+            if ($class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
+                $observedUsedSessions = min($class->getAttribute('sessions_purchased'), $observedUsedSessions);
                 $class->UsedSessions = $observedUsedSessions;
-                $class->RemainingSessions = max(0, $class->sessions_purchased - $observedUsedSessions);
+                $class->RemainingSessions = max(0, $class->getAttribute('sessions_purchased') - $observedUsedSessions);
             }
-            $class->sessions_used = (int) ($class->UsedSessions ?? 0);
-            $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
+            $class->setAttribute('sessions_used', (int) ($class->UsedSessions ?? 0));
+            $class->setAttribute('remaining_sessions', (int) ($class->RemainingSessions ?? 0));
             if ($usageDiagnostic !== null) {
                 $expectedRemaining = max(
                     0,
-                    (int) $class->sessions_purchased - (int) $usageDiagnostic['expected_used']
+                    (int) $class->getAttribute('sessions_purchased') - (int) $usageDiagnostic['expected_used']
                 );
-                $class->usage_balance_status = (
+                $class->setAttribute('usage_balance_status', (
                     (int) $usageDiagnostic['cancelled_usage_artifacts'] > 0
                     || $storedUsedSessions !== (int) $usageDiagnostic['expected_used']
                     || $storedRemainingSessions !== $expectedRemaining
-                ) ? 'review_required' : 'ok';
-                $class->usage_balance_diagnostic = [
+                ) ? 'review_required' : 'ok');
+                $class->setAttribute('usage_balance_diagnostic', [
                     'stored_used_sessions' => $storedUsedSessions,
                     'stored_remaining_sessions' => $storedRemainingSessions,
                     'observed_used_sessions' => (int) $usageDiagnostic['observed_used'],
@@ -519,10 +519,10 @@ class StudentClassController extends Controller
                     'ledger_used_sessions' => (int) $usageDiagnostic['ledger_used'],
                     'expected_used_sessions' => (int) $usageDiagnostic['expected_used'],
                     'expected_remaining_sessions' => $expectedRemaining,
-                ];
+                ]);
             }
             // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。
-            $class->remaining_minutes = $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null;
+            $class->setAttribute('remaining_minutes', $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null);
             $this->attachPreciseBalanceFields($class);
 
             $pkg = ($class->isPartOfPackage() && isset($packageMap[$class->PackageID]))
@@ -530,15 +530,15 @@ class StudentClassController extends Controller
                 : null;
             if ($pkg !== null) {
                 $planning = $packagePlanningMap[(int) $class->PackageID] ?? [];
-                $class->package_remaining_sessions = $planning['remaining_sessions'] ?? max(0, (int) $pkg->remaining_sessions);
-                $class->package_total_sessions     = (int) $pkg->total_sessions;
-                $class->package_used_sessions      = $planning['actual_consumed'] ?? (int) $pkg->used_sessions;
-                $class->package_purchased_entitlement = $planning['purchased_entitlement'] ?? (int) $pkg->total_sessions;
-                $class->package_actual_consumed = $planning['actual_consumed'] ?? (int) $pkg->used_sessions;
-                $class->package_future_planned_sessions = $planning['future_planned_sessions'] ?? 0;
-                $class->package_overage_sessions = $planning['overage_sessions'] ?? 0;
-                $class->package_renewal_warning = $planning['renewal_warning'] ?? false;
-                $class->package_renewal_message = $planning['renewal_message'] ?? null;
+                $class->setAttribute('package_remaining_sessions', $planning['remaining_sessions'] ?? max(0, (int) $pkg->remaining_sessions));
+                $class->setAttribute('package_total_sessions', (int) $pkg->total_sessions);
+                $class->setAttribute('package_used_sessions', $planning['actual_consumed'] ?? (int) $pkg->used_sessions);
+                $class->setAttribute('package_purchased_entitlement', $planning['purchased_entitlement'] ?? (int) $pkg->total_sessions);
+                $class->setAttribute('package_actual_consumed', $planning['actual_consumed'] ?? (int) $pkg->used_sessions);
+                $class->setAttribute('package_future_planned_sessions', $planning['future_planned_sessions'] ?? 0);
+                $class->setAttribute('package_overage_sessions', $planning['overage_sessions'] ?? 0);
+                $class->setAttribute('package_renewal_warning', $planning['renewal_warning'] ?? false);
+                $class->setAttribute('package_renewal_message', $planning['renewal_message'] ?? null);
             }
 
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
@@ -551,11 +551,11 @@ class StudentClassController extends Controller
             // not undo that projection. Keep its ID/summary for explicit review,
             // never silently confirm/reject it from this read-only endpoint.
             $effectivePaid = $class->isEffectivelyPaid($pkg);
-            $class->payment_status = StudentClass::isFullyPaid(
+            $class->setAttribute('payment_status', StudentClass::isFullyPaid(
                 $effectivePaid,
                 $invoicePaidAmount,
                 $effectiveCharge
-            ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : 'unpaid');
+            ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : 'unpaid'));
 
             $tutoringBillingAnomalyReasons = [];
             if ($isTutoringCourse) {
@@ -582,24 +582,24 @@ class StudentClassController extends Controller
                 // for correction workflows, but never project it as a payable charge.
                 $effectiveCharge = 0;
                 $class->Charge = 0;
-                $class->charge = 0;
-                $class->effective_charge = 0;
-                $class->charge_is_fallback = false;
+                $class->setAttribute('charge', 0);
+                $class->setAttribute('effective_charge', 0);
+                $class->setAttribute('charge_is_fallback', false);
             }
-            $class->tutoring_billing_anomaly = $isTutoringCourse && !empty($tutoringBillingAnomalyReasons);
-            $class->tutoring_billing_anomaly_reasons = $isTutoringCourse
+            $class->setAttribute('tutoring_billing_anomaly', $isTutoringCourse && !empty($tutoringBillingAnomalyReasons));
+            $class->setAttribute('tutoring_billing_anomaly_reasons', $isTutoringCourse
                 ? array_values(array_unique($tutoringBillingAnomalyReasons))
-                : [];
-            $class->latest_payment_report_id = $pendingReportId;
-            $class->latest_payment_summary = $latestPaymentSummaryByClassId[(int) $class->ID] ?? null;
-            $class->paid_at = $directPaidAt;
-            $class->last_paid_at = $invoicePaidAt ?? $directPaidAt;
-            $class->status = empty($class->Stop) ? 'active' : 'inactive';
+                : []);
+            $class->setAttribute('latest_payment_report_id', $pendingReportId);
+            $class->setAttribute('latest_payment_summary', $latestPaymentSummaryByClassId[(int) $class->ID] ?? null);
+            $class->setAttribute('paid_at', $directPaidAt);
+            $class->setAttribute('last_paid_at', $invoicePaidAt ?? $directPaidAt);
+            $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
             $class->trial_converted_to_id = $class->trial_converted_to_id
                 ? (int) $class->trial_converted_to_id
                 : null;
-            $class->first_class_date = $class->StartDate ? (\Carbon\Carbon::parse($class->StartDate)->toDateString()) : null;
+            $class->setAttribute('first_class_date', $class->StartDate ? (\Carbon\Carbon::parse($class->StartDate)->toDateString()) : null);
 
             return $class;
         });
@@ -1401,9 +1401,9 @@ class StudentClassController extends Controller
         }
 
         $studentClass->load(['student', 'classSessions', 'room.campus']);
-        $studentClass->branch_id = $studentClass->room?->campus_id;
-        $studentClass->branch_name = $studentClass->room?->campus?->name;
-        $studentClass->room_name = $studentClass->room?->name;
+        $studentClass->setAttribute('branch_id', $studentClass->room?->campus_id);
+        $studentClass->setAttribute('branch_name', $studentClass->room?->campus?->name);
+        $studentClass->setAttribute('room_name', $studentClass->room?->name);
         if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
             $studentClass->makeHidden(['pricing_snapshot']);
         } else {
@@ -3684,7 +3684,7 @@ class StudentClassController extends Controller
             // period. A legacy source course may contain future rows beyond
             // EndDate; leaving it active during generation makes the new
             // renewal look like a real student overlap.
-            $studentClass->Stop = 1;
+            $studentClass->setAttribute('Stop', 1);
             $studentClass->closed_reason = 'settled';
             $studentClass->save();
             $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
@@ -4111,7 +4111,7 @@ class StudentClassController extends Controller
                 && (int) ($studentClass->Paid ?? 0) === 1
                 && (int) ($studentClass->RemainingSessions ?? 0) <= 0
             ) {
-                $studentClass->Stop = 1;
+                $studentClass->setAttribute('Stop', 1);
                 $studentClass->closed_reason = 'settled';
                 $studentClass->EndDate = Carbon::today()->toDateString();
                 $studentClass->save();
@@ -5657,7 +5657,7 @@ class StudentClassController extends Controller
         // Both values are intentionally fresh on each calculation; including
         // either would make an unchanged preview fail confirmation.
         $stateBilling = $billing;
-        if (isset($stateBilling['discount']) && is_array($stateBilling['discount'])) {
+        if (isset($stateBilling['discount'])) {
             unset($stateBilling['discount']['created_at'], $stateBilling['discount']['transaction_id']);
         }
 
@@ -6113,8 +6113,9 @@ class StudentClassController extends Controller
     private function mapFrontendPayload(Request $request): array
     {
         $input = $request->json()->all();
-        if (isset($input[0]) && is_array($input[0])) {
-            $input = $input[0];
+        $firstRow = $request->json('0');
+        if (is_array($firstRow)) {
+            $input = $firstRow;
         }
 
         // If no translation needed (e.g. standard backend request), return straight away
@@ -6398,9 +6399,9 @@ class StudentClassController extends Controller
         for ($i = 1; $i < count($slots); $i++) {
             $prev = $out[count($out) - 1];
             $cur = $slots[$i];
-            if ((int) ($prev['day'] ?? 0) === (int) ($cur['day'] ?? 0)
-                && (string) ($prev['start_time'] ?? '') === (string) ($cur['start_time'] ?? '')
-                && (string) ($prev['duration_hours'] ?? '') === (string) ($cur['duration_hours'] ?? '')
+            if ((int) $prev['day'] === (int) $cur['day']
+                && (string) $prev['start_time'] === (string) $cur['start_time']
+                && (string) $prev['duration_hours'] === (string) $cur['duration_hours']
             ) {
                 continue;
             }
@@ -7600,10 +7601,10 @@ class StudentClassController extends Controller
                 $sessionEndHm = substr($this->normalizeSessionTime($session->EndTime), 0, 5);
                 $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
                 $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
-                $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($sessionStartHm, $sessionEndHm, $durationMinutes) {
-                    $slotStartFull = $this->normalizeSessionTime($s['time'] ?? '', '16:00:00');
+                $matchesSlot = collect($contractSlotsForDay)->contains(function ($s) use ($sessionStartHm, $sessionEndHm) {
+                    $slotStartFull = $this->normalizeSessionTime($s['time'], '16:00:00');
                     $slotStartHm = substr($slotStartFull, 0, 5);
-                    $dur = max(30, (int) ($s['dur'] ?? $durationMinutes));
+                    $dur = max(30, (int) ($s['dur']));
                     $expectedEndHm = Carbon::createFromFormat('H:i:s', $slotStartFull)->addMinutes($dur)->format('H:i');
                     return $sessionStartHm === $slotStartHm && $sessionEndHm === $expectedEndHm;
                 });
@@ -8165,7 +8166,7 @@ class StudentClassController extends Controller
 
     /**
      * @param  array<int, array<string, mixed>>  $providedSlots
-     * @return array<int, array{weekday:int,time:string}>
+     * @return array<int, array{weekday:int,time:string,duration_minutes?:int}>
      */
     private function resolveScheduleSlotsForRebuild(StudentClass $studentClass, array $providedSlots = []): array
     {
@@ -8738,7 +8739,7 @@ class StudentClassController extends Controller
         DB::beginTransaction();
         try {
             if ($action === 'pause') {
-                $sc->Stop = 1;
+                $sc->setAttribute('Stop', 1);
                 if ($reason === 'completed') {
                     $sc->closed_reason = 'completed';
                 } elseif ($reason === 'settled') {
@@ -8776,7 +8777,7 @@ class StudentClassController extends Controller
                         'message' => '已提前結清的課程不可恢復；請為學生建立新約。',
                     ], 422);
                 }
-                $sc->Stop = 0;
+                $sc->setAttribute('Stop', 0);
                 $sc->closed_reason = null;
                 $sc->save();
 

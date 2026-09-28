@@ -217,7 +217,7 @@ class BugReportController extends Controller
 
         return response()->json([
             'id' => $comment->id,
-            'created_at' => $comment->created_at?->toIso8601String(),
+            'created_at' => $comment->created_at->toIso8601String(),
         ], 201);
     }
 
