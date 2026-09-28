@@ -28,6 +28,63 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
         parent::tearDown();
     }
 
+    /** @dataProvider cachedOccurrenceCases */
+    #[\PHPUnit\Framework\Attributes\DataProvider('cachedOccurrenceCases')]
+    public function test_2833_actual_cached_config_drives_dual_write(?string $global, ?string $campus, bool $enabled): void
+    {
+        $cache = sys_get_temp_dir() . '/alltrue-2833-occurrence-' . bin2hex(random_bytes(8)) . '.php';
+        $names = ['APP_CONFIG_CACHE', 'FEATURE_SCHEDULE_OCCURRENCE_V2', 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1'];
+        $saved = [];
+        foreach ($names as $name) $saved[$name] = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+        try {
+            foreach (['APP_CONFIG_CACHE' => $cache, 'FEATURE_SCHEDULE_OCCURRENCE_V2' => $global, 'FEATURE_SCHEDULE_OCCURRENCE_V2_CAMPUS_1' => $campus] as $name => $value) {
+                $value === null ? putenv($name) : putenv($name . '=' . $value);
+                unset($_ENV[$name], $_SERVER[$name]);
+                if ($value !== null) $_ENV[$name] = $_SERVER[$name] = $value;
+            }
+            $this->assertSame(0, \Illuminate\Support\Facades\Artisan::call('config:cache'));
+            \Illuminate\Container\Container::setInstance($this->app);
+            \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+            \Illuminate\Support\Facades\Facade::setFacadeApplication($this->app);
+            \Illuminate\Database\Eloquent\Model::setConnectionResolver($this->app['db']);
+            \Illuminate\Database\Eloquent\Model::setEventDispatcher($this->app['events']);
+            (new \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables())->bootstrap($this->app);
+            (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($this->app);
+            $this->assertTrue($this->app->configurationIsCached());
+            $this->assertSame(require $cache, config()->all());
+            [$token, $courseId] = $this->seedPlainSession();
+            $this->postReschedule($token, $this->firstMovePayload($courseId))->assertOk();
+            $destination = Schedule::where('student_course_id', $courseId)->where('status', 'scheduled')->first();
+            $this->assertNotNull($destination);
+            if ($enabled) {
+                $this->assertSame('2026-08-01', substr((string) $destination->original_schedule_date, 0, 10));
+                $this->assertSame('10:00', substr((string) $destination->original_start_time, 0, 5));
+            } else {
+                $this->assertNull($destination->original_schedule_date);
+                $this->assertNull($destination->original_start_time);
+            }
+        } finally {
+            foreach ($saved as $name => [$process, $environment, $server]) {
+                $process === false ? putenv($name) : putenv($name . '=' . $process);
+                unset($_ENV[$name], $_SERVER[$name]);
+                if ($environment !== null) $_ENV[$name] = $environment;
+                if ($server !== null) $_SERVER[$name] = $server;
+            }
+            if (is_file($cache)) unlink($cache);
+        }
+    }
+
+    public static function cachedOccurrenceCases(): iterable
+    {
+        yield 'missing-default-off' => [null, null, false];
+        yield 'global-on' => ['true', null, true];
+        yield 'campus-deny' => ['true', 'false', false];
+        yield 'campus-allow' => ['false', 'true', true];
+        yield 'null-fallback' => ['true', 'null', true];
+        yield 'empty-deny' => ['true', '', false];
+        yield 'invalid-deny' => ['true', 'invalid', false];
+    }
+
     public function test_flag_off_leaves_identity_columns_null(): void
     {
         $this->setOccurrenceFlag(false);
@@ -105,6 +162,7 @@ class ScheduleOccurrenceDualWriteTest extends TestCase
         putenv('FEATURE_SCHEDULE_OCCURRENCE_V2=' . $value);
         $_ENV['FEATURE_SCHEDULE_OCCURRENCE_V2'] = $value;
         $_SERVER['FEATURE_SCHEDULE_OCCURRENCE_V2'] = $value;
+        config(['feature_flags.values.FEATURE_SCHEDULE_OCCURRENCE_V2' => $on]);
     }
 
     /** @return array<string, mixed> */

@@ -4,23 +4,20 @@ namespace App\Helpers;
 
 class FeatureFlag
 {
-    /**
-     * 用法：FeatureFlag::enabled('new-billing')
-     * .env：FEATURE_NEW_BILLING=true
-     * 分校覆寫：FEATURE_NEW_BILLING_CAMPUS_2=false  ← 只蓋該分校，其他不影響
-     */
+    /** Values are snapshotted during configuration load/cache rebuild. */
     public static function enabled(string $key, ?int $campusId = null): bool
     {
         $envKey = 'FEATURE_' . strtoupper(str_replace(['-', '.'], '_', $key));
+        $values = config('feature_flags.values', []);
 
         if ($campusId !== null) {
-            $override = env($envKey . '_CAMPUS_' . $campusId);
+            $override = $values[$envKey . '_CAMPUS_' . $campusId] ?? null;
             if ($override !== null) {
-                return filter_var($override, FILTER_VALIDATE_BOOLEAN);
+                return (bool) $override;
             }
         }
 
-        return filter_var(env($envKey, false), FILTER_VALIDATE_BOOLEAN);
+        return (bool) ($values[$envKey] ?? false);
     }
 
     public static function disabled(string $key, ?int $campusId = null): bool
