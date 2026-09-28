@@ -1,6 +1,10 @@
 """Executable policy decisions and regression contracts for Deploy to Pi."""
 
 from pathlib import Path
+import os
+import subprocess
+import tempfile
+import textwrap
 import sys
 import unittest
 
@@ -1251,6 +1255,55 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: contract-test", self.workflow)
         self.assertIn("python3 scripts/tests/test_deploy_activation_state.py", self.workflow)
         self.assertEqual(self.workflow.count("  detect-deployable:"), 1)
+
+
+    def _execute_isolated_rollback(self, git_exit=0, composer_exit=0):
+        # Execute the actual committed shell function with bounded interceptors.
+        # Composer dependency restoration itself is separately proved using real
+        # locked installs; these cases verify failure ordering, not production.
+        function = "rollback_deploy() {" + self.workflow.split("rollback_deploy() {", 1)[1].split("abort_deploy() {", 1)[0]
+        with tempfile.TemporaryDirectory(prefix="alltrue-rollback-contract-") as sandbox:
+            trace = Path(sandbox) / "trace"
+            harness = textwrap.dedent(r"""
+                set -u
+                PREV_COMMIT=isolated-old-source
+                FRONTEND_CHANGED=0
+                ADMISSIONS_FLAG_CHANGED=0
+                CALENDAR_FLAG_CHANGED=0
+                MANAGER_FLAG_CHANGED=0
+                MIGRATION_RAN=0
+                cd() { builtin cd "$SANDBOX"; }
+                git() { echo git >> "$TRACE"; return "$GIT_EXIT"; }
+                composer() { echo composer >> "$TRACE"; return "$COMPOSER_EXIT"; }
+                php() { echo php >> "$TRACE"; return 0; }
+                write_deployment_manifest() { echo manifest >> "$TRACE"; return 0; }
+                curl() { printf '{"status":"ok"}'; }
+            """)
+            result = subprocess.run(
+                ["bash", "-c", harness + function + "\nrollback_deploy\n"],
+                cwd=sandbox, text=True, capture_output=True,
+                env={"PATH": os.environ["PATH"], "SANDBOX": sandbox, "TRACE": str(trace),
+                     "GIT_EXIT": str(git_exit), "COMPOSER_EXIT": str(composer_exit)},
+            )
+            return result, trace.read_text().splitlines()
+
+    def test_rollback_source_failure_stops_before_dependency_or_runtime_changes(self):
+        result, calls = self._execute_isolated_rollback(git_exit=1)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["git"], calls)
+        self.assertNotIn("Rollback 成功", result.stdout)
+
+    def test_rollback_dependency_failure_stops_before_manifest_and_old_source_php(self):
+        result, calls = self._execute_isolated_rollback(composer_exit=1)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["git", "composer"], calls)
+        self.assertNotIn("Rollback 成功", result.stdout)
+
+    def test_rollback_restores_locked_dependencies_before_manifest_and_php(self):
+        result, calls = self._execute_isolated_rollback()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(["git", "composer", "manifest", "php"], calls)
+        self.assertIn("Rollback 成功", result.stdout)
 
 
 class AutonomousMergeWorkflowContractTest(unittest.TestCase):
