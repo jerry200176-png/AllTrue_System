@@ -27,6 +27,69 @@ class EnsureSessionHorizonTest extends TestCase
         config(['feature_flags.values.FEATURE_ENSURE_SESSION_HORIZON' => false]);
     }
 
+    public function test_2833_actual_cache_preserves_service_gate_and_worker_snapshot(): void
+    {
+        $cache = sys_get_temp_dir() . '/alltrue-2833-config-' . bin2hex(random_bytes(8)) . '.php';
+        $names = ['APP_CONFIG_CACHE', 'FEATURE_ENSURE_SESSION_HORIZON', 'FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_1'];
+        $saved = [];
+        foreach ($names as $name) {
+            $saved[$name] = [getenv($name), $_ENV[$name] ?? null, $_SERVER[$name] ?? null];
+        }
+        try {
+            foreach (['APP_CONFIG_CACHE' => $cache, 'FEATURE_ENSURE_SESSION_HORIZON' => 'true', 'FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_1' => 'false'] as $name => $value) {
+                putenv($name . '=' . $value);
+                $_ENV[$name] = $_SERVER[$name] = $value;
+            }
+            $this->assertSame(0, Artisan::call('config:cache'));
+            \Illuminate\Container\Container::setInstance($this->app);
+            \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+            \Illuminate\Support\Facades\Facade::setFacadeApplication($this->app);
+            \Illuminate\Database\Eloquent\Model::setConnectionResolver($this->app['db']);
+            \Illuminate\Database\Eloquent\Model::setEventDispatcher($this->app['events']);
+            $this->assertFileExists($cache);
+            (new \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables())->bootstrap($this->app);
+            (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($this->app);
+            $this->assertTrue($this->app['config_loaded_from_cache']);
+            $sc = $this->explicitCourse(remaining: 8);
+            $service = app(EnsureSessionHorizonService::class);
+            $before = DB::table('ClassSession')->count();
+            $dto = $service->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE);
+            $this->assertSame('FEATURE_FLAG_OFF', $dto['ensure']['primary_reason']);
+            $this->assertSame($before, DB::table('ClassSession')->count());
+            // A long-lived reader retains its configuration, even if process values change.
+            putenv('FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_1=true');
+            $_ENV['FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_1'] = $_SERVER['FEATURE_ENSURE_SESSION_HORIZON_CAMPUS_1'] = 'true';
+            $dto = $service->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE);
+            $this->assertSame('FEATURE_FLAG_OFF', $dto['ensure']['primary_reason']);
+            $this->assertSame($before, DB::table('ClassSession')->count());
+            $this->assertSame(0, Artisan::call('config:cache'));
+            \Illuminate\Container\Container::setInstance($this->app);
+            \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+            \Illuminate\Support\Facades\Facade::setFacadeApplication($this->app);
+            \Illuminate\Database\Eloquent\Model::setConnectionResolver($this->app['db']);
+            \Illuminate\Database\Eloquent\Model::setEventDispatcher($this->app['events']);
+            (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($this->app);
+            $dto = $service->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE);
+            $this->assertTrue($dto['ensure']['ok']);
+            $this->assertGreaterThan(0, $dto['ensure']['created_count']);
+            $sc = $this->explicitCourse(remaining: 8); // A separate course still needs materialization.
+            $this->app['env'] = 'production'; // Still the isolated test DB; only exercise the deny gate.
+            $before = DB::table('ClassSession')->count();
+            $dto = $service->ensure($sc, null, $this->today, null, EnsureSessionHorizonService::MODE_EXECUTE);
+            $this->assertSame('PRODUCTION_EXECUTE_REQUIRES_GO', $dto['ensure']['primary_reason']);
+            $this->assertSame($before, DB::table('ClassSession')->count());
+        } finally {
+            $this->app['env'] = 'testing';
+            foreach ($saved as $name => [$process, $envValue, $serverValue]) {
+                $process === false ? putenv($name) : putenv($name . '=' . $process);
+                unset($_ENV[$name], $_SERVER[$name]);
+                if ($envValue !== null) $_ENV[$name] = $envValue;
+                if ($serverValue !== null) $_SERVER[$name] = $serverValue;
+            }
+            if (is_file($cache)) unlink($cache);
+        }
+    }
+
     public function test_dry_run_does_not_write_and_lists_candidates(): void
     {
         $sc = $this->explicitCourse(remaining: 8);
