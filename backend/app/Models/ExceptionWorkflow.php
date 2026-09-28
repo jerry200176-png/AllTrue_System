@@ -34,22 +34,26 @@ class ExceptionWorkflow extends Model
         'closed_at' => 'datetime',
     ];
 
-    public function candidates()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\ExceptionWorkflowCandidate, $this> */
+    public function candidates(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ExceptionWorkflowCandidate::class, 'workflow_id', 'id');
     }
 
-    public function student()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Student, $this> */
+    public function student(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Student::class, 'student_id', 'id');
     }
 
-    public function studentClass()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\StudentClass, $this> */
+    public function studentClass(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
     }
 
-    public function classSession()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\ClassSession, $this> */
+    public function classSession(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(ClassSession::class, 'class_session_id', 'id');
     }

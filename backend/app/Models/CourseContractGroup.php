@@ -26,14 +26,15 @@ class CourseContractGroup extends Model
         'created_by',
     ];
 
+    /** @return HasMany<CourseContractGroupMember, $this> */
     public function members(): HasMany
     {
         return $this->hasMany(CourseContractGroupMember::class, 'group_id', 'id');
     }
 
+    /** @return HasMany<CourseContractGroupMember, $this> */
     public function activeMembers(): HasMany
     {
-        /** @var HasMany $rel */
         $rel = $this->members();
 
         return $rel->whereNull('unlinked_at');

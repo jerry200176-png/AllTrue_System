@@ -35,22 +35,26 @@ class Invoice extends Model
         });
     }
 
-    public function student()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Student, $this> */
+    public function student(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
     }
 
-    public function items()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\InvoiceItem, $this> */
+    public function items(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(InvoiceItem::class, 'InvoiceID', 'id');
     }
 
-    public function payments()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<\App\Models\Payment, $this> */
+    public function payments(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(Payment::class, 'InvoiceID', 'id');
     }
 
-    public function studentClass()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\StudentClass, $this> */
+    public function studentClass(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
     }
