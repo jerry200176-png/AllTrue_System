@@ -159,6 +159,7 @@ final class Laravel2833Preflight
                 // Use the maintained loader directly: Laravel's console bootstrap can print dotenv errors.
                 \Dotenv\Dotenv::create(\Illuminate\Support\Env::getRepository(), $app->environmentPath(), $app->environmentFile())->safeLoad();
             }
+            self::assertApplicationPaths($app, getcwd());
             (new \Illuminate\Foundation\Bootstrap\LoadConfiguration)->bootstrap($app);
             // Register database bindings only; never boot console/HTTP kernels or providers.
             (new \Illuminate\Database\DatabaseServiceProvider($app))->register();

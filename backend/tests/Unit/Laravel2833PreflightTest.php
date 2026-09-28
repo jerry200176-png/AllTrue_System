@@ -29,6 +29,8 @@ class Laravel2833PreflightTest extends TestCase
     {
         $root = base_path();
         $cache = $_ENV['APP_CONFIG_CACHE'] ?? null;
+        $serverCache = $_SERVER['APP_CONFIG_CACHE'] ?? null;
+        $fixture = tempnam(sys_get_temp_dir(), 'framework-path-');
         try {
             $app = new \Illuminate\Foundation\Application($root);
             \Laravel2833Preflight::assertApplicationPaths($app, $root);
@@ -36,6 +38,11 @@ class Laravel2833PreflightTest extends TestCase
                 $app->setBasePath($override === 'base' ? sys_get_temp_dir() : $root);
                 $app->useEnvironmentPath($override === 'environment' ? sys_get_temp_dir() : $root);
                 $_ENV['APP_CONFIG_CACHE'] = $override === 'cache' ? '/nonexistent/foreign-config.php' : 'bootstrap/cache/config.php';
+                if ($override === 'cache') {
+                    unset($_ENV['APP_CONFIG_CACHE']);
+                    file_put_contents($fixture, 'APP_CONFIG_CACHE=/nonexistent/foreign-config.php' . "\n");
+                    \Dotenv\Dotenv::createMutable(dirname($fixture), basename($fixture))->safeLoad();
+                }
                 try {
                     \Laravel2833Preflight::assertApplicationPaths($app, $root);
                     $this->fail('An application path override was accepted: ' . $override);
@@ -44,10 +51,16 @@ class Laravel2833PreflightTest extends TestCase
                 }
             }
         } finally {
+            unlink($fixture);
             if ($cache === null) {
                 unset($_ENV['APP_CONFIG_CACHE']);
             } else {
                 $_ENV['APP_CONFIG_CACHE'] = $cache;
+            }
+            if ($serverCache === null) {
+                unset($_SERVER['APP_CONFIG_CACHE']);
+            } else {
+                $_SERVER['APP_CONFIG_CACHE'] = $serverCache;
             }
             \Illuminate\Container\Container::setInstance($this->app);
         }
