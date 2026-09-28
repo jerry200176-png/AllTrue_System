@@ -45,13 +45,11 @@ class ParentPortalController extends Controller
 {
     private function portalStudents()
     {
-        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
         return Student::withoutGlobalScope(OperationalTenantScope::class);
     }
 
     private function portalCampuses()
     {
-        // @phpstan-ignore-next-line staticMethod.notFound (Eloquent magic static builder)
         return \App\Models\Campus::withoutGlobalScope(OperationalTenantScope::class);
     }
 

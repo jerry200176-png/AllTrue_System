@@ -110,6 +110,63 @@ class RuntimeEnvironmentCompatibility2833Test extends TestCase
         self::assertSame('1', Env::get('ALLOW_PROD_REPAIR'));
     }
 
+    public function test_actual_cold_cache_keeps_existing_maintenance_approval_live_and_out_of_config(): void
+    {
+        $previous = Container::getInstance();
+        $root = sys_get_temp_dir() . '/runtime-cache-2833-' . bin2hex(random_bytes(8));
+        mkdir($root . '/bootstrap/cache', 0700, true);
+        mkdir($root . '/config', 0700);
+        file_put_contents($root . '/config/app.php', "<?php return ['env'=>'production','timezone'=>'UTC'];");
+        file_put_contents($root . '/runtime-flags.fixture', "ALLOW_PROD_REPAIR=1\nI_APPROVE_TD076_OCCURRENCE_BACKFILL=1\n");
+        try {
+            $this->seed('ALLOW_PROD_REPAIR', null, null, null);
+            $this->seed('I_APPROVE_TD076_OCCURRENCE_BACKFILL', null, null, null);
+            Env::enablePutenv();
+            $app = new Application($root);
+            $app->loadEnvironmentFrom('runtime-flags.fixture');
+            (new \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables())->bootstrap($app);
+            (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($app);
+            self::assertFalse($app['config_loaded_from_cache']);
+            self::assertSame('1', Env::get('ALLOW_PROD_REPAIR'));
+            $config = $app['config']->all();
+            self::assertArrayNotHasKey('ALLOW_PROD_REPAIR', $config);
+            self::assertArrayNotHasKey('I_APPROVE_TD076_OCCURRENCE_BACKFILL', $config);
+            file_put_contents($root . '/bootstrap/cache/config.php', '<?php return ' . var_export($config, true) . ';');
+            $this->seed('ALLOW_PROD_REPAIR', null, null, null);
+            $this->seed('I_APPROVE_TD076_OCCURRENCE_BACKFILL', null, null, null);
+            Env::enablePutenv();
+            $app = new Application($root);
+            $app->loadEnvironmentFrom('runtime-flags.fixture');
+            (new \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables())->bootstrap($app);
+            (new \Illuminate\Foundation\Bootstrap\LoadConfiguration())->bootstrap($app);
+            self::assertTrue($app['config_loaded_from_cache']);
+            self::assertNull(Env::get('ALLOW_PROD_REPAIR')); // Cache never loads the fixture dotenv.
+            $command = new \App\Console\Commands\GenerateForwardSessions();
+            $command->setLaravel($app);
+            $input = new ArrayInput(['--force' => true], $command->getDefinition());
+            $command->setInput($input);
+            $command->setOutput(new OutputStyle($input, new BufferedOutput()));
+            $guard = new \ReflectionMethod($command, 'assertProductionAllowed');
+            self::assertFalse($guard->invoke($command));
+            $this->seed('ALLOW_PROD_REPAIR', '1', null, null);
+            self::assertTrue($guard->invoke($command));
+            $this->seed('ALLOW_PROD_REPAIR', '0', null, null);
+            self::assertFalse($guard->invoke($command));
+            self::assertTrue($app['config_loaded_from_cache']);
+        } finally {
+            $this->seed('ALLOW_PROD_REPAIR', null, null, null);
+            $this->seed('I_APPROVE_TD076_OCCURRENCE_BACKFILL', null, null, null);
+            Container::setInstance($previous);
+            unlink($root . '/bootstrap/cache/config.php');
+            unlink($root . '/config/app.php');
+            unlink($root . '/runtime-flags.fixture');
+            rmdir($root . '/bootstrap/cache');
+            rmdir($root . '/bootstrap');
+            rmdir($root . '/config');
+            rmdir($root);
+        }
+    }
+
     private function seed(string $name, ?string $process, ?string $environment, ?string $server): void
     {
         $process === null ? putenv($name) : putenv($name . '=' . $process);

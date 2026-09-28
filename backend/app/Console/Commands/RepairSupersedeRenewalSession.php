@@ -316,7 +316,7 @@ class RepairSupersedeRenewalSession extends Command
 
             return false;
         }
-        if (env('ALLOW_PROD_REPAIR') !== '1') {
+        if (\Illuminate\Support\Env::get('ALLOW_PROD_REPAIR') !== '1') {
             $this->error('Production requires ALLOW_PROD_REPAIR=1');
 
             return false;
