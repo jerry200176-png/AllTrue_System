@@ -75,6 +75,6 @@ class PaymentReportTokenService
 
     private function secret(): string
     {
-        return config('app.key');
+        return config('app.key', \Illuminate\Support\Env::get('APP_KEY', 'alltrue-payment-report-secret'));
     }
 }

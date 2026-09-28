@@ -7,11 +7,6 @@
  */
 return [
 
-    // Existing report-only policy; these settings never enable enforced CSP.
-    'csp_report_key' => env('SENTRY_CSP_REPORT_KEY'),
-    'csp_report_org' => env('SENTRY_CSP_REPORT_ORG'),
-    'csp_report_project_id' => env('SENTRY_CSP_REPORT_PROJECT_ID'),
-
     // @see https://docs.sentry.io/concepts/key-terms/dsn-explainer/
     'dsn' => env('SENTRY_LARAVEL_DSN', env('SENTRY_DSN')),
 
