@@ -64,7 +64,6 @@ class ExceptionWorkflowService
 
     /**
      * @param  array<int>  $campusIds  Empty array means all campuses.
-     * @return Builder<ExceptionWorkflow>
      */
     public function queryForCampusIds(array $campusIds): Builder
     {
