@@ -98,6 +98,27 @@ class FinanceArAgingTest extends TestCase
         $this->assertEquals(3000, $r->json('students.0.total'));
     }
 
+    public function test_historical_as_of_keeps_legacy_future_start_bucket(): void
+    {
+        // #2833 compatibility only: do not redesign AR aging during framework activation.
+        [$token, $campus] = $this->seedDirector();
+        $student = Student::create([
+            'name' => 'AR compatibility fixture', 'CampusID' => $campus->id,
+            'ClassID' => 0, 'SchoolName' => 'Test School',
+        ]);
+        StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => 1, 'ClassType' => 'one_on_one', 'by1' => 1, 'Period' => 4,
+            'StartDate' => '2026-09-15', 'TotalHours' => 10, 'SessionCount' => 5,
+            'SessionDuration' => 120, 'RemainingSessions' => 5, 'UsedSessions' => 0,
+            'Charge' => 5000, 'Pay' => 2000, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count',
+        ]);
+        $this->getJson('/api/v1/finance/ar-aging?branch_id='.$campus->id.'&as_of=2026-08-01', $this->bearer($token))
+            ->assertOk()->assertJsonPath('students.0.thirty', 3000)
+            ->assertJsonPath('students.0.current', 0)->assertJsonPath('totals.grand_total', 3000);
+    }
+
     /** @return array{string, Campus} */
     private function seedDirector(): array
     {

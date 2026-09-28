@@ -660,7 +660,8 @@ class FinanceController extends Controller
                     $s = \Carbon\Carbon::createFromFormat($fmt, substr($startTime, 0, $subLen));
                     $e = \Carbon\Carbon::createFromFormat($fmt, substr($endTime,   0, $subLen));
                     if ($e > $s) {
-                        return $e->diffInMinutes($s) / 60.0;
+                        // Preserve Carbon 2 absolute, whole-minute duration semantics.
+                        return (int) $e->diffInMinutes($s, true) / 60.0;
                     }
                 } catch (\Exception $ignored) {}
             }
@@ -2545,7 +2546,7 @@ class FinanceController extends Controller
             $startDate = $course->StartDate
                 ? \Carbon\Carbon::parse($course->StartDate)
                 : $asOf;
-            $daysOverdue = max(0, $startDate->diffInDays($asOf));
+            $daysOverdue = max(0, (int) $startDate->diffInDays($asOf, true));
 
             if (!isset($students[$studentId])) {
                 $students[$studentId] = [
