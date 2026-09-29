@@ -8,13 +8,13 @@ const rows = [
   { report_id: 7102, student_class_id: 6102, receipt_no: 'RCPT-SYNTHETIC-7102', student_name: '合成學生', subject: 'Math', status: 'voided', payment_date: '2026-09-11', total_amount: 0, cash_amount: 0, course_lifecycle: 'history_settled', course_lifecycle_label: '歷史課程' },
 ];
 afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
-async function withPage(assertions) {
+async function withPage(assertions, fixtureRows = rows) {
   localStorage.setItem('alltrue_session', JSON.stringify({ access_token: 'synthetic-token', user: { role: 'director' } }));
   const fetchMock = vi.fn(async (input) => {
     const url = new URL(String(input), 'http://synthetic.local');
     const status = url.searchParams.get('status') || 'confirmed';
     const data = url.pathname.startsWith('/api/v1/accounting/payments')
-      ? rows.filter((r) => status === 'all' || r.status === status) : [];
+      ? fixtureRows.filter((r) => status === 'all' || r.status === status) : [];
     return { ok: true, json: async () => ({ data, summary: { total_count: data.filter((r) => r.status === 'confirmed').length, grand_total: data.reduce((n, r) => n + r.total_amount, 0) } }) };
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -77,6 +77,10 @@ describe('In-app350 existing void/history trace read path', () => {
       expect(wrapper.find('.tc-card--outstanding .tc-card-num').text()).toBe('NT$ 800');
     } finally { window.open.mockRestore(); }
   }));
+  it('does not describe an empty void query as missing collected payments', () => withPage(async (wrapper) => {
+    await queryStatus(wrapper, 'voided');
+    expect(wrapper.findComponent({ name: 'AtEmpty' }).props('title')).toBe('此區間尚無符合狀態的收據紀錄');
+  }, []));
   it('keeps CSV void records explicitly marked and outside payment totals', () => {
     const csv = buildAccountingCsvRows([rows[1]])[0];
     expect(csv[12]).toContain('已作廢');

@@ -594,7 +594,7 @@
         </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
-          <AtEmpty icon="receipt_long" title="此區間尚無已核帳收款" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
+          <AtEmpty icon="receipt_long" :title="accountingFilters.status === 'confirmed' ? '此區間尚無已核帳收款' : '此區間尚無符合狀態的收據紀錄'" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
             <template #action>
               <AtButton variant="secondary" shape="rect" @click="activeAccountingTab = 'receivables'">前往待處理</AtButton>
             </template>
