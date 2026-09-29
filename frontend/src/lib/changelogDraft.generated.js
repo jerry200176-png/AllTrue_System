@@ -25,24 +25,24 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
           "correction into an existing monthly contract",
           "next-period monthly booking guidance",
           "monthly period payment attribution",
           "capacity occupancy sources",
-          "historical course badges",
-          "existing void receipt trace query"
+          "historical course badges"
         ]
       }
     ],
     "items": [
       "audited monthly receipt correction",
       "controlled monthly contract correction",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
       "correction into an existing monthly contract",
       "next-period monthly booking guidance",
       "monthly period payment attribution",
       "capacity occupancy sources",
-      "historical course badges",
-      "existing void receipt trace query"
+      "historical course badges"
     ]
   },
   {

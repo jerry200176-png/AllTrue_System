@@ -152,7 +152,9 @@ CSS 解耦：`.teacher-grid-compact .teacher-col-header` → `compact` prop → 
 | `toggle` | `id` |
 | `clear` | — |
 
-### 4.4 `WeekNavBar`（Step 4d）
+### 4.4 `WeekNavBar`（Step 4d）— 已移除（2026-09-29）
+
+已由 SmartCalendar 工具列單一「‹ 今天 › ＋日期」控制取代；以下為歷史記錄。
 
 週檢視上週/下週 + 週次下拉。
 
