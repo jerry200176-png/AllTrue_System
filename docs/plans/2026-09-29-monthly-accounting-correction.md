@@ -8,6 +8,10 @@ R3/T3，實作、測試與唯讀清單準備；操作目錄保持 planned，沒�
 
 正式 authenticated preview 發現來源父帳單已有單一明細，舊 planner 的「來源無明細」前提不成立。修正限定該明細父帳單唯一、金額等於原登錄金額，owner 為來源或 null、期間完整且落在原合約內；由 preview 導出並簽章綁定明細 ID。來源與目標各投影自己的日期、金額和 owner，execute 沿用來源明細 ID，原值保存在既有完整 audit snapshot。多項、其他 owner、金額／期間不符和 preview 後 drift 仍拒絕。修復 lifecycle、核准角色和 executor 不變；本修訂沒有正式資料更正。
 
+### 同一期完整調課鏈
+
+Authenticated preview 通過帳單與收款核對後，發現既有同一期調課鏈。更正核對 parent 完整存在且為 rescheduled、學生／分校／原合約一致、整條鏈均在同一核對期內；拒絕跨期、斷鏈、循環，以及來源／目標外的 parent 或 child。外部連結查詢只讀識別欄位並納入 signed graph，預覽後新增連結也須拒絕。既有按期移轉 schedules 的交易保留整條鏈 ID、內容與 original_schedule_id；rollback 恢復原 owner，verified cash correction 保留。沒有新增 executor、角色、HTTP execute 或操作啟用。
+
 來源：本次 Founder 對話、in-app #369 及私有唯讀證據；Planner/Integration Owner：Codex，session ee4392b134a14f1a873a2be71259852c，基準 212e7637f71bbb43c2c4d3f4b995932f4b960262。沿用已批准修正目標；正式資料修復仍未批准執行。修訂原因：使用者已建立九月目標並作廢誤登收款；不新增第二份合約或重複沖銷。
 
 既有目標含取消歷史及一筆月底待上課，保留 ID。四筆九月已上課仍屬來源，移到既有目標。InvoiceItem 可能缺 owner；只有單筆且 parent Invoice 明確時才更正 owner；未提供 item ID 時由唯讀 graph 導出，回傳的已簽章參數必須綁定該 ID。正式欄位與 ID 綁定私有清單。
@@ -22,7 +26,7 @@ Founder 在 2026-09-29 本次對話確認八月實收 6,000；九月未繳。現
 
 - 新增與一般 monthly-contract-split 分開的 planned POP catalog operation；原一般拆分的收款不變規則保留。
 - `POST student-classes/{id}/monthly-accounting-correction/preview` 沿用主任／super_admin、所屬分校及既有驗證 middleware；只返回核對摘要、參數與簽章，不返回原始帳款／回報 graph。唯讀 preview 讀取原完整來源 graph，以 Founder 證據識別、原日期／金額／付款／回報／帳單 ID、兩期日期／應收、精確目標堂次綁定簽章。
-- 支援範圍先限定：獨立月結、同一學生、來源單一帳單、單一 confirmed 或 voided 回報及精確原付款／沖銷；目標單一未繳無款帳單、沒有價格變更／群組／調課鏈；原始資料不符或期間有第三期有效堂次即拒絕。
+- 支援範圍先限定：獨立月結、同一學生、來源單一帳單、單一 confirmed 或 voided 回報及精確原付款／沖銷；目標單一未繳無款帳單、沒有價格變更／群組；調課鏈限同一期完整關聯。原始資料不符或期間有第三期有效堂次即拒絕。
 - 使用既有定價／月結費用 service 核對兩期已上堂次與應收。缺費率、未上課、混合未核對金額、付款或日期漂移、外校、目標不符或有效時段重疊均 fail closed。
 - 先投影已核對的日期／付款更正，再重用一般拆分的純預覽檢查；投影簽章不能直接授權一般拆分 execute。執行在單一交易中按 ID 排序鎖定來源與目標，重查原簽章，沖銷／重登，再重用既有移轉、鏡像關聯及扣堂重算，更正既有九月未繳 Invoice／InvoiceItem；沒有目標仍保留新建流程。
 - 不捏造主任身份：POP 的 verified actor 寫入既有更正／audit 紀錄；無人員身份時 confirmed_by/voided_by 保持 null，回報註明核准證據及 POP actor。
@@ -44,7 +48,7 @@ Founder 在 2026-09-29 本次對話確認八月實收 6,000；九月未繳。現
 
 原七月／八月請假與取消紀錄保留在來源歷史課程，不移轉、不收費；即使落在更正後日期之外也不刪除。八堂有效堂次與出勤／評量 ID 保留，九月四堂的合約歸屬及既有鏡像一致移轉。既有目標及帳單 ID 沿用，綁定私有不可變清單。
 
-正式最新 graph 尚須確認沒有群組、調課鏈、價格調整、其他付款或重複目標合約。任一條件不符就停止該案，不放寬驗證、不以本清單代替正式快照簽章。
+正式最新 graph 尚須確認沒有群組、價格調整、其他付款或重複目標合約；調課鏈須完整且同一期，沒有範圍外 parent／child。任一條件不符就停止該案，不放寬驗證、不以本清單代替正式快照簽章。
 
 ## 驗證
 

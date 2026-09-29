@@ -444,6 +444,123 @@ class MonthlyAccountingCorrectionTest extends TestCase
         $this->assertSame(6000, (int) $bill->fresh()->TotalAmount); // Read-only projection preserves invoice audit value.
     }
 
+    private function chainSchedule(StudentClass $course, string $date, string $status, ?int $parent = null): int
+    {
+        return DB::table('schedules')->insertGetId(['student_id' => $course->StudentID, 'branch_id' => 1,
+            'student_course_id' => $course->ID, 'day_of_week' => 3, 'schedule_date' => $date,
+            'start_time' => '18:00', 'end_time' => '20:00', 'status' => $status, 'type' => 'normal',
+            'original_schedule_id' => $parent, 'deduction' => $status === 'scheduled' ? 1 : 0]);
+    }
+
+    public function test_complete_reschedule_chains_stay_in_their_period_and_rollback_preserves_history(): void
+    {
+        [$source, $ids, $input, $target, $bill] = $this->existingTargetFixture();
+        $invoice = Invoice::findOrFail($input['invoice_id']);
+        foreach ([['2026-08-13', '2026-08-15'], ['2026-08-25', '2026-08-25'], ['2026-09-09', '2026-09-10']] as [$from, $to]) {
+            $parent = $this->chainSchedule($source, $from, 'rescheduled');
+            $this->chainSchedule($source, $to, 'scheduled', $parent);
+        }
+        $this->chainSchedule($source, '2026-09-09', 'leave');
+        $before = DB::table('schedules')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $plan = $service->preview($source, $input);
+        $this->assertSame($before, DB::table('schedules')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
+        $this->assertSame(0, (int) Payment::sum('Amount'));
+        $result = $service->execute($source, $input, $plan['confirmation_token'], 'accounting-contained-chains', 'pop:test');
+        $expected = array_map(function ($row) use ($target) {
+            if ($row['schedule_date'] >= '2026-09-01') $row['student_course_id'] = $target->ID;
+            return $row;
+        }, $before);
+        $this->assertEquals($expected, DB::table('schedules')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
+        $this->assertSame((int) $target->ID, (int) ClassSession::find($ids[5])->StudentClassID);
+        $this->assertSame(6000, (int) $bill->fresh()->TotalAmount);
+        $this->assertSame('unpaid', $bill->fresh()->Status);
+        $this->assertSame([7500, -7500, 6000], Payment::orderBy('id')->pluck('Amount')->map(fn ($n) => (int) $n)->all());
+        $this->assertTrue($service->verify($result)['ok']);
+        $service->rollback($result);
+        $this->assertSame($before, DB::table('schedules')->orderBy('id')->get()->map(fn ($row) => (array) $row)->all());
+        $this->assertSame(6000, (int) Payment::sum('Amount'));
+        $this->assertSame(6000, (int) $invoice->fresh()->PaidAmount);
+    }
+
+    /** @dataProvider unsafeChainScenarios */
+    public function test_unreviewable_reschedule_chains_do_not_change_cash_or_contracts(string $scenario): void
+    {
+        [$source, , $input, $target] = $this->existingTargetFixture();
+        $parent = $this->chainSchedule($source, '2026-09-09', 'rescheduled');
+        $child = $this->chainSchedule($source, '2026-09-10', 'scheduled', $parent);
+        if ($scenario === 'missing_parent') DB::table('schedules')->where('id', $child)->update(['original_schedule_id' => 999999]);
+        if ($scenario === 'cross_period') DB::table('schedules')->where('id', $parent)->update(['schedule_date' => '2026-08-27']);
+        if ($scenario === 'cycle') {
+            DB::table('schedules')->where('id', $parent)->update(['original_schedule_id' => $child]);
+            DB::table('schedules')->where('id', $child)->update(['status' => 'rescheduled']);
+        }
+        if ($scenario === 'self_link') DB::table('schedules')->where('id', $parent)->update(['original_schedule_id' => $parent]);
+        if ($scenario === 'outside_period') DB::table('schedules')->where('id', $parent)->update(['schedule_date' => '2026-07-27']);
+        if ($scenario === 'wrong_branch') DB::table('schedules')->where('id', $parent)->update(['branch_id' => 2]);
+        if ($scenario === 'wrong_student') DB::table('schedules')->where('id', $parent)->update(['student_id' => $source->StudentID + 1]);
+        if ($scenario === 'active_parent') DB::table('schedules')->where('id', $parent)->update(['status' => 'scheduled']);
+        if (in_array($scenario, ['foreign_parent', 'foreign_child', 'unowned_child'], true)) {
+            $other = $source->replicate(); $other->save();
+            $changed = $scenario === 'foreign_parent' ? $parent : $child;
+            DB::table('schedules')->where('id', $changed)->update(['student_course_id' => $scenario === 'unowned_child' ? null : $other->ID]);
+        }
+        $before = app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source, $target);
+        try {
+            app(MonthlyAccountingCorrectionService::class)->preview($source, $input);
+            $this->fail('Unreviewable chain must be rejected');
+        } catch (ValidationException) {
+            $this->assertSame($before, app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source, $target));
+            $this->assertSame(0, (int) Payment::sum('Amount'));
+            $this->assertSame(0, SessionCorrection::count());
+        }
+    }
+
+    public static function unsafeChainScenarios(): array
+    {
+        return array_map(fn ($scenario) => [$scenario], ['missing_parent', 'cross_period', 'cycle', 'self_link', 'outside_period', 'wrong_branch',
+            'wrong_student', 'active_parent', 'foreign_parent', 'foreign_child', 'unowned_child']);
+    }
+
+    public function test_new_external_chain_link_after_preview_prevents_receipt_registration(): void
+    {
+        [$source, , $input] = $this->existingTargetFixture();
+        $parent = $this->chainSchedule($source, '2026-09-09', 'rescheduled');
+        $this->chainSchedule($source, '2026-09-10', 'scheduled', $parent);
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $plan = $service->preview($source, $input);
+        $other = $source->replicate(); $other->save();
+        $this->chainSchedule($other, '2026-09-11', 'scheduled', $parent);
+        try {
+            $service->execute($source, $input, $plan['confirmation_token'], 'accounting-chain-drift', 'pop:test');
+            $this->fail('New external link must invalidate preview');
+        } catch (ValidationException) {
+            $this->assertSame(0, (int) Payment::sum('Amount'));
+            $this->assertSame(2, Payment::count());
+            $this->assertSame(0, SessionCorrection::count());
+        }
+    }
+
+    public function test_changed_in_scope_chain_after_preview_invalidates_signed_cash_correction(): void
+    {
+        [$source, , $input] = $this->existingTargetFixture();
+        $parent = $this->chainSchedule($source, '2026-09-09', 'rescheduled');
+        $alternate = $this->chainSchedule($source, '2026-09-08', 'rescheduled');
+        $child = $this->chainSchedule($source, '2026-09-10', 'scheduled', $parent);
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $plan = $service->preview($source, $input);
+        DB::table('schedules')->where('id', $child)->update(['original_schedule_id' => $alternate]);
+        try {
+            $service->execute($source, $input, $plan['confirmation_token'], 'accounting-in-scope-chain-drift', 'pop:test');
+            $this->fail('Changed chain must invalidate the signed preview');
+        } catch (ValidationException) {
+            $this->assertSame(0, (int) Payment::sum('Amount'));
+            $this->assertSame(2, Payment::count());
+            $this->assertSame($alternate, (int) DB::table('schedules')->where('id', $child)->value('original_schedule_id'));
+            $this->assertSame(0, SessionCorrection::count());
+        }
+    }
+
     private function simulateBinaryJsonOrder(string $reference): void
     {
         // MySQL JSON storage orders object keys; MariaDB's JSON text preserves them.

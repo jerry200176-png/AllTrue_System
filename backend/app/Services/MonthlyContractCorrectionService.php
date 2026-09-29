@@ -80,9 +80,7 @@ final class MonthlyContractCorrectionService
             }
         }
         $this->require($graph['group_members'] === [] && $graph['occurrence_exceptions'] === [], '已有合約群組或調課識別關聯，須另行核對移轉方案');
-        foreach ($graph['schedules'] as $schedule) {
-            $this->require(empty($schedule['original_schedule_id']), '已有調課鏈，須另行核對移轉方案');
-        }
+        $this->requireContainedScheduleChains($graph, $source, $data);
         $sourcePaid = 0;
         $sourceInvoiceTotal = 0;
         $sourceInvoiceCount = 0;
@@ -232,6 +230,14 @@ final class MonthlyContractCorrectionService
         $sessions = $read(DB::table('ClassSession')->whereIn('StudentClassID', $ids)->orderBy('id'));
         $invoices = $read(DB::table('Invoice')->whereIn('StudentClassID', $ids)->orderBy('id'));
         $invoiceIds = array_column($invoices, 'id');
+        $schedules = $read(DB::table('schedules')->whereIn('student_course_id', $ids)->orderBy('id'));
+        // Include only identifiers for outside links: a parent or child outside
+        // this repair must never disappear from the signed precondition check.
+        $externalLinks = $schedules === [] ? [] : $read(DB::table('schedules')
+            ->where(fn ($query) => $query->whereNotIn('student_course_id', $ids)->orWhereNull('student_course_id'))
+            ->where(fn ($query) => $query->whereIn('id', array_filter(array_column($schedules, 'original_schedule_id')))
+                ->orWhereIn('original_schedule_id', array_column($schedules, 'id')))
+            ->select(['id', 'student_course_id', 'original_schedule_id'])->orderBy('id'));
         $mirrors = [];
         foreach (self::MIRRORS as [$table, $foreignKey, $owner]) {
             $mirrors[$table] = $read(DB::table($table)->where(function ($query) use ($foreignKey, $owner, $sessions, $ids) {
@@ -244,10 +250,43 @@ final class MonthlyContractCorrectionService
             'items' => $read(DB::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)->orderBy('id')),
             'payments' => $read(DB::table('Payment')->whereIn('InvoiceID', $invoiceIds)->orderBy('id')),
             'reports' => $read(DB::table('payment_reports')->whereIn('StudentClassID', $ids)->orderBy('id')),
-            'schedules' => $read(DB::table('schedules')->whereIn('student_course_id', $ids)->orderBy('id')),
+            'schedules' => $schedules, 'external_schedule_links' => $externalLinks,
             'pricing_amendments' => $read(DB::table('student_class_pricing_amendments')->whereIn('student_class_id', $ids)->whereNull('voided_at')->orderBy('id')),
             'group_members' => $read(DB::table('course_contract_group_members')->whereIn('student_class_id', $ids)->orderBy('id')),
             'occurrence_exceptions' => $read(DB::table('schedule_change_log')->whereIn('student_course_id', $ids)->orderBy('id'))];
+    }
+
+    /** A complete chain can move only as a unit inside one reviewed period. */
+    private function requireContainedScheduleChains(array $graph, StudentClass $source, array $input): void
+    {
+        $this->require($graph['external_schedule_links'] === [], '調課鏈連到範圍外合約，須另行核對移轉方案');
+        $byId = array_column($graph['schedules'], null, 'id');
+        $period = static function ($row) use ($input): ?string {
+            $date = $row['schedule_date'];
+            foreach (['source', 'target'] as $name) {
+                if ($date && $date >= $input[$name.'_start'] && $date <= $input[$name.'_end']) return $name;
+            }
+            return null;
+        };
+        foreach ($graph['schedules'] as $schedule) {
+            if (empty($schedule['original_schedule_id'])) continue;
+            $seen = [];
+            $current = $schedule;
+            while (!empty($current['original_schedule_id'])) {
+                $this->require(!isset($seen[$current['id']]), '調課鏈循環，須另行核對移轉方案');
+                $seen[$current['id']] = true;
+                $parent = $byId[$current['original_schedule_id']] ?? null;
+                $this->require($parent !== null, '調課鏈缺少原堂次，須另行核對移轉方案');
+                foreach ([$current, $parent] as $row) {
+                    $this->require((int) $row['student_id'] === (int) $source->getAttribute('StudentID')
+                        && (int) $row['branch_id'] === (int) $graph['student'][0]['CampusID'], '調課鏈學生或分校歸屬不符');
+                }
+                $this->require($parent['status'] === 'rescheduled'
+                    && (int) $parent['student_course_id'] === (int) $current['student_course_id'], '調課鏈狀態或合約歸屬不符');
+                $this->require($period($current) !== null && $period($current) === $period($parent), '調課鏈跨越拆約期間，須另行核對移轉方案');
+                $current = $parent;
+            }
+        }
     }
 
 
