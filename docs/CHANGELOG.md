@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
 - 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
 
+## 2026-09-29 — fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors
+<!-- release-notes: silent_ship=silent-2026-09-29-tabs-scroll-status-tone -->
+- 修正分頁列右側多出的小捲軸；出缺勤「今日已標記狀態」標籤依狀態上色（到班綠、遲到橘、缺席紅、請假灰），不再全部紅色。
+
 ## 2026-09-29 — feat(ui): unify page headers, part 2 (dashboard, students, courses, billing, teachers, admissions, reports, branch health)
 <!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
 - 補完其餘八頁的頁首統一（同一則版本更新說明）：標題不再包在白卡裡、流程說明收進 ⓘ、「重新整理」統一、圖示與側欄一致；主任總覽移除重複橫幅、軍階改為小標籤。僅版面與文案。

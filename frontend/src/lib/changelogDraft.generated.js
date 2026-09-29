@@ -30,10 +30,10 @@ export const changelogDraftNotes = [
         "items": [
           "complete reschedule chains within reviewed monthly periods",
           "existing source invoice items during reviewed correction",
+          "stray scrollbar on tab rows; attendance status chips use status colors",
           "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
           "copy and calmer colors on director pages",
-          "tuition summary as invoiced-only outstanding",
-          "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。"
+          "tuition summary as invoiced-only outstanding"
         ]
       }
     ],
@@ -45,7 +45,7 @@ export const changelogDraftNotes = [
       "controlled monthly contract correction",
       "complete reschedule chains within reviewed monthly periods",
       "existing source invoice items during reviewed correction",
-      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
+      "stray scrollbar on tab rows; attendance status chips use status colors"
     ]
   },
   {

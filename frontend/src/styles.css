@@ -1400,6 +1400,8 @@ body {
   margin-bottom: var(--ds-space-3, 12px);
   border-bottom: 1px solid var(--ds-hairline);
   overflow-x: auto;
+  /* tabs use margin-bottom:-1px to sit on the border; without this the 1px overflow shows a vertical scrollbar */
+  overflow-y: hidden;
 }
 
 .at-tab {
