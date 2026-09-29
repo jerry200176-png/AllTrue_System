@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
 - 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
 
+## 2026-09-29 — fix(ux): label tuition summary as invoiced-only outstanding
+<!-- release-notes: silent_ship=silent-2026-09-29-tuition-summary-label -->
+- 帳務中心收款摘要的金額改稱「已開帳單未結清」，並另列尚未開帳單的筆數，避免把只含已開帳單的金額誤讀成全部未收。計算不變。
+
 ## 2026-09-29 — fix(ux): de-duplicate filters and align course lookup copy
 <!-- release-notes: staff_update=staff-2026-09-29-filters-course-lookup-clarity -->
 - 老師頁移除與分頁重複的「狀態」下拉；學習紀錄「只看未填／已填」改為單一「全部／未填／已填」選擇；課程查找移除不實的「唯讀營運視圖」標籤，「到學生管理新增課程」集中於頁首並將「前往學生管理」降為次要按鈕。僅前端顯示調整，不改資料、權限或計費。
