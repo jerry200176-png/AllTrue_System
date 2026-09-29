@@ -117,6 +117,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ## 📋 任務導航（按任務類型跳）
 
+- 月結缺帳單與收款金額待核對：[`2026-09-29 月結核對與個案修復邊界`](plans/2026-09-29-monthly-billing-review.md)（核對介面／唯讀試算；不代表個案已拆約開單）。
+
 ### 新功能 / Bug 修復
 1. `.cursor/rules/plan-as-prd-cross-functional.mdc` — PRD 14 節格式
 2. `.cursor/rules/bug-fix-plan.mdc` — Bug 調查 SOP（**§B0：修 bug 前必翻歷史 + 認領復發家族，降低復發率**）
