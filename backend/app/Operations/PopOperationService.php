@@ -603,8 +603,14 @@ final class PopOperationService
                 throw new RuntimeException('Reviewed monthly eligibility digest is malformed.');
             }
         }
-        if (!hash_equals($case['requester_sha256'], $case['approver_sha256']) || !is_string($case['valid_until']) || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $case['valid_until'])
-            || Carbon::parse($case['valid_until'])->timestamp <= now()->timestamp
+        try {
+            $expiry = is_string($case['valid_until']) ? Carbon::parse($case['valid_until']) : null;
+        } catch (Throwable) {
+            throw new RuntimeException('Reviewed monthly eligibility expiry is malformed.');
+        }
+        if (!hash_equals($case['requester_sha256'], $case['approver_sha256']) || !$expiry
+            || $expiry->utc()->format('Y-m-d\TH:i:s\Z') !== $case['valid_until']
+            || $expiry->timestamp <= now()->timestamp
             || $case['approval_reference'] !== 'founder-go-monthly-' . substr($parametersHash, 0, 16)
             || !hash_equals($case['parameters_sha256'], $parametersHash)
             || !hash_equals($case['idempotency_sha256'], hash('sha256', $key))

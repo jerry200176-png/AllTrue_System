@@ -84,6 +84,8 @@ class MonthlyAccountingCorrectionTest extends TestCase
             case 'expired': $policy['eligible_cases'][0]['valid_until'] = now()->subMinute()->utc()->format('Y-m-d\TH:i:s\Z'); break;
             case 'empty': $policy['eligible_cases'] = []; break;
             case 'multiple': $policy['eligible_cases'][] = $case; break;
+            case 'invalid-date': $policy['eligible_cases'][0]['valid_until'] = '2099-13-01T12:00:00Z'; break;
+            case 'normalized-date': $policy['eligible_cases'][0]['valid_until'] = '2099-02-31T12:00:00Z'; break;
             case 'malformed': $policy['eligible_cases'][0]['parameters_sha256'] = 'bad'; break;
             case 'other-approver': $policy['eligible_cases'][0]['approver_sha256'] = hash('sha256', 'user:72'); break;
             case 'missing-policy': unlink($path); break;
@@ -102,7 +104,7 @@ class MonthlyAccountingCorrectionTest extends TestCase
     public static function reviewedDraftRejections(): array
     {
         return array_map(fn ($value) => [$value], ['campus', 'course', 'target', 'cash', 'token', 'key', 'actor', 'machine',
-            'director', 'missing-id', 'expired', 'empty', 'multiple', 'malformed', 'other-approver', 'missing-policy']);
+            'director', 'missing-id', 'expired', 'invalid-date', 'normalized-date', 'empty', 'multiple', 'malformed', 'other-approver', 'missing-policy']);
     }
 
     /** @dataProvider reviewedApprovalRejections */
