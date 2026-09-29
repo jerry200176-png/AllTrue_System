@@ -217,4 +217,27 @@ class MonthlyAccountingCorrectionTest extends TestCase
         }
     }
 
+    public function test_accounting_preview_enforces_role_campus_and_hides_raw_snapshot(): void
+    {
+        [$source, , $input] = $this->fixture();
+        $controller = app(\App\Http\Controllers\MonthlyContractCorrectionController::class);
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $request = \Illuminate\Http\Request::create('/', 'POST', $input);
+        $request->attributes->set('auth_role', 'director');
+        $request->attributes->set('auth_campus_ids', [2]);
+        $this->assertSame(403, $controller->accountingPreview($request, $source, $service)->status());
+        $request->attributes->set('auth_campus_ids', [1]);
+        $request->attributes->set('auth_role', 'teacher');
+        $this->assertSame(403, $controller->accountingPreview($request, $source, $service)->status());
+        $request->attributes->set('auth_role', 'director');
+        $response = $controller->accountingPreview($request, $source, $service);
+        $this->assertSame(200, $response->status());
+        $this->assertSame(6000, $response->getData(true)['received_after']);
+        $this->assertArrayNotHasKey('snapshot', $response->getData(true));
+        $this->assertStringNotContainsString('report_token_hash', $response->getContent());
+        $this->assertSame(1, Payment::count()); $this->assertSame(1, StudentClass::count());
+        $request->merge(['actual_received_amount' => 7500]);
+        $this->assertSame(422, $controller->accountingPreview($request, $source, $service)->status());
+    }
+
 }

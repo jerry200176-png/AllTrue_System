@@ -11,7 +11,7 @@ Founder 在 2026-09-29 本次對話確認八月實收 6,000；九月未繳。現
 ## 架構與權限邊界
 
 - 新增與一般 monthly-contract-split 分開的 planned POP catalog operation；原一般拆分的收款不變規則保留。
-- 唯讀 preview 讀取原完整來源 graph，以 Founder 證據識別、原日期／金額／付款／回報／帳單 ID、兩期日期／應收、精確目標堂次綁定簽章。
+- `POST student-classes/{id}/monthly-accounting-correction/preview` 沿用主任／super_admin、所屬分校及既有驗證 middleware；只返回核對摘要、參數與簽章，不返回原始帳款／回報 graph。唯讀 preview 讀取原完整來源 graph，以 Founder 證據識別、原日期／金額／付款／回報／帳單 ID、兩期日期／應收、精確目標堂次綁定簽章。
 - 支援範圍先限定：獨立月結、同一學生、單一有效帳單、單一已確認回報與單一付款、沒有價格變更／群組／調課鏈；原始資料不符或期間有第三期有效堂次即拒絕。
 - 使用既有定價／月結費用 service 核對兩期已上堂次與應收。缺費率、未上課、混合未核對金額、付款或日期漂移、外校或新期已存在均 fail closed。
 - 先投影已核對的日期／付款更正，再重用一般拆分的純預覽檢查；投影簽章不能直接授權一般拆分 execute。執行在單一交易中鎖定來源，重查原簽章，沖銷／重登，再重用既有移轉、鏡像關聯及扣堂重算，建立九月未繳 Invoice／InvoiceItem。
