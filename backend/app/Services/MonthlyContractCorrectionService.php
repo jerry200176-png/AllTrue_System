@@ -255,11 +255,13 @@ final class MonthlyContractCorrectionService
 
     private function recount(StudentClass $course): void
     {
+        $stop = (int) $course->getAttribute('Stop');
         $sessions = DB::table('ClassSession')->where('StudentClassID', $course->getAttribute('ID'))->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])->get();
         $count = $sessions->count();
         $course->forceFill(['SessionCount' => $count, 'monthly_sessions' => $count,
             'TotalHours' => (int) round($sessions->sum(fn ($s) => max(0, (strtotime($s->EndTime) - strtotime($s->StartTime)) / 3600)))])->save();
         SessionDeductionService::recomputeCounters((int) $course->getAttribute('ID'));
+        if ($stop !== 0) $course->fresh()->forceFill(['Stop' => $stop])->save();
     }
 
     private function digest(array $data): string

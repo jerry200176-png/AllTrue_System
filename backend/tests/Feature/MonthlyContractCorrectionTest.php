@@ -81,6 +81,18 @@ class MonthlyContractCorrectionTest extends TestCase
         $service->execute($source, $input, $plan['confirmation_token'], 'monthly-fixture-stale');
     }
 
+    public function test_correction_preserves_paused_source_without_pausing_the_new_period(): void
+    {
+        [$source, , $input] = $this->fixture();
+        $source->update(['Stop' => 1]);
+        $service = app(MonthlyContractCorrectionService::class);
+        $plan = $service->preview($source, $input);
+        $result = $service->execute($source, $input, $plan['confirmation_token'], 'monthly-preserve-pause');
+        $this->assertSame(1, (int) $source->fresh()->Stop);
+        $this->assertSame(0, (int) StudentClass::find($result['target_course_id'])->Stop);
+        $this->assertTrue($service->verify($result)['ok']);
+    }
+
     public function test_legacy_paid_flag_needs_explicit_payment_period_evidence(): void
     {
         [$source, , $input, $invoice] = $this->fixture();
