@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
 - 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。
 
+## 2026-09-29 — feat(ui): compact sidebar branch switcher and More-page breadcrumb
+<!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
+- 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
+
 ## 2026-09-29 — feat(ui): unify page headers, part 2 (dashboard, students, courses, billing, teachers, admissions, reports, branch health)
 <!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
 - 補完其餘八頁的頁首統一（同一則版本更新說明）：標題不再包在白卡裡、流程說明收進 ⓘ、「重新整理」統一、圖示與側欄一致；主任總覽移除重複橫幅、軍階改為小標籤。僅版面與文案。
