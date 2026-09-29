@@ -7,8 +7,8 @@
         data-guide="students-header"
       >
         <template #meta>
-          <span>本分校 <strong>{{ branchStudentTotal }}</strong> 人</span>
-          <span>目前列表 {{ displayStudents.length }} 人</span>
+          <span>本分校 <strong>{{ studentsLoaded ? branchStudentTotal : '—' }}</strong> 人</span>
+          <span>目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
         </template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">匯入名單</AtButton>
