@@ -15,14 +15,14 @@ final class MonthlyContractSplitStrategy
 
     public function plan(array $parameters): array
     {
-        $source = StudentClass::find((int) ($parameters['source_course_id'] ?? 0));
+        $source = StudentClass::query()->find((int) ($parameters['source_course_id'] ?? 0));
         if (!$source || (int) $source->student?->CampusID !== (int) ($parameters['campus_id'] ?? 0)) {
             return ['ok' => false, 'errors' => ['source_campus_mismatch']];
         }
-        $existing = SessionCorrection::where('decision_reference', $parameters['decision_reference'])->whereNull('rolled_back_at')->orderBy('id')->first();
+        $existing = SessionCorrection::query()->where('decision_reference', $parameters['decision_reference'])->whereNull('rolled_back_at')->orderBy('id')->first();
         if ($existing) {
             $result = $existing->snapshot_before;
-            if (($result['source_course_id'] ?? null) !== (int) $source->ID || ($result['confirmation_token'] ?? null) !== $parameters['confirmation_token']) {
+            if (($result['source_course_id'] ?? null) !== (int) $source->getAttribute('ID') || ($result['confirmation_token'] ?? null) !== $parameters['confirmation_token']) {
                 return ['ok' => false, 'errors' => ['repair_reference_mismatch']];
             }
             return ['ok' => true, 'parameters' => $parameters, 'applied' => true, 'snapshot' => $result['snapshot']];
@@ -40,7 +40,7 @@ final class MonthlyContractSplitStrategy
     {
         if (!$plan['ok']) throw new RuntimeException('Monthly repair preconditions failed');
         $p = $plan['parameters'];
-        $result = $this->service->execute(StudentClass::findOrFail($p['source_course_id']), $p['input'], $p['confirmation_token'], $p['decision_reference']);
+        $result = $this->service->execute(StudentClass::query()->findOrFail($p['source_course_id']), $p['input'], $p['confirmation_token'], $p['decision_reference']);
         return ['ok' => true, 'snapshot' => $result, 'target_course_id' => $result['target_course_id']];
     }
 

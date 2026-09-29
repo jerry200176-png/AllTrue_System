@@ -27,41 +27,41 @@ final class MonthlyContractCorrectionService
             'target_course_id' => 'nullable|integer|min:1', 'source_charge' => 'required|integer|min:0', 'target_charge' => 'required|integer|min:0',
             'payment_evidence_reference' => ['nullable', 'string', 'max:128', 'regex:/^[A-Za-z0-9_.:#-]{3,128}$/'],
         ])->validate();
-        $this->require((string) $source->ScheduleMode === 'date' && !(int) $source->PackageID, '月結更正僅適用獨立月結課程');
+        $this->require((string) $source->getAttribute('ScheduleMode') === 'date' && !(int) $source->getAttribute('PackageID'), '月結更正僅適用獨立月結課程');
         $this->require(!$source->isUsageSettlementLocked(), '此課程已結清鎖定，須另行帳務更正');
-        $this->require(substr((string) $source->StartDate, 0, 10) === $data['source_start'], '原合約開始日須保留，請核對期間');
-        $this->require($source->EndDate && $data['target_end'] === substr((string) $source->EndDate, 0, 10), '更正須保留原合約結束日，不可同時擴張或縮減服務期間');
+        $this->require(substr((string) $source->getAttribute('StartDate'), 0, 10) === $data['source_start'], '原合約開始日須保留，請核對期間');
+        $this->require($source->getAttribute('EndDate') && $data['target_end'] === substr((string) $source->getAttribute('EndDate'), 0, 10), '更正須保留原合約結束日，不可同時擴張或縮減服務期間');
         $this->require(Carbon::parse($data['source_end'])->addDay()->toDateString() === $data['target_start'], '新舊期間必須相鄰且不重疊');
-        $target = !empty($data['target_course_id']) ? StudentClass::find($data['target_course_id']) : null;
+        $target = !empty($data['target_course_id']) ? StudentClass::query()->find($data['target_course_id']) : null;
         if (!empty($data['target_course_id'])) $this->require($target !== null, '找不到目標合約');
         if ($target) {
-            $this->require((int) $source->ID !== (int) $target->ID, '來源與目標不可相同');
+            $this->require((int) $source->getAttribute('ID') !== (int) $target->getAttribute('ID'), '來源與目標不可相同');
             foreach (['StudentID', 'SubjectID', 'TeacherID', 'by1', 'ClassType', 'Rate', 'rate_unit', 'settlement_day'] as $field) {
-                $this->require((string) $source->$field === (string) $target->$field, '目標合約的學生、科目、老師或計價規則不符');
+                $this->require((string) $source->getAttribute($field) === (string) $target->getAttribute($field), '目標合約的學生、科目、老師或計價規則不符');
             }
-            $this->require((string) $target->ScheduleMode === 'date' && !(int) $target->PackageID && !$target->isUsageSettlementLocked(), '目標不是可更正的獨立月結合約');
-            $this->require(substr((string) $target->StartDate, 0, 10) === $data['target_start'] && substr((string) $target->EndDate, 0, 10) === $data['target_end'], '目標合約期間不符');
-            $this->require(!(int) $target->Paid && !$target->PayDate, '目標合約已有收款標記');
-            $this->require(!(int) $target->Stop && !$target->closed_reason, '目標合約已停用或關閉');
+            $this->require((string) $target->getAttribute('ScheduleMode') === 'date' && !(int) $target->getAttribute('PackageID') && !$target->isUsageSettlementLocked(), '目標不是可更正的獨立月結合約');
+            $this->require(substr((string) $target->getAttribute('StartDate'), 0, 10) === $data['target_start'] && substr((string) $target->getAttribute('EndDate'), 0, 10) === $data['target_end'], '目標合約期間不符');
+            $this->require(!(int) $target->getAttribute('Paid') && !$target->getAttribute('PayDate'), '目標合約已有收款標記');
+            $this->require(!(int) $target->getAttribute('Stop') && !$target->getAttribute('closed_reason'), '目標合約已停用或關閉');
         } else {
-            $duplicates = StudentClass::where('StudentID', $source->StudentID)->where('SubjectID', $source->SubjectID)
-                ->where('ScheduleMode', 'date')->where('ID', '!=', $source->ID)
+            $duplicates = StudentClass::query()->where('StudentID', $source->getAttribute('StudentID'))->where('SubjectID', $source->getAttribute('SubjectID'))
+                ->where('ScheduleMode', 'date')->where('ID', '!=', $source->getAttribute('ID'))
                 ->where('StartDate', '<=', $data['target_end'])->where('EndDate', '>=', $data['target_start'])->exists();
             $this->require(!$duplicates, '已有重疊的下一期合約，請先選用並核對既有合約');
         }
         $graph = $this->graph($source, $target, $lock);
-        $selected = array_values(array_filter($graph['sessions'], fn ($row) => (int) $row['StudentClassID'] === (int) $source->ID
+        $selected = array_values(array_filter($graph['sessions'], fn ($row) => (int) $row['StudentClassID'] === (int) $source->getAttribute('ID')
             && $row['SessionDate'] >= $data['target_start'] && $row['SessionDate'] <= $data['target_end']));
         $this->require($selected !== [], '目標期間內沒有可移轉堂次');
         $ids = array_column($selected, 'id');
         foreach ($graph['sessions'] as $row) {
-            if ((int) $row['StudentClassID'] !== (int) $source->ID) continue;
+            if ((int) $row['StudentClassID'] !== (int) $source->getAttribute('ID')) continue;
             if (!in_array($row['Status'], ['cancelled', 'voided', 'leave', 'rescheduled'], true)) {
                 $this->require(($row['SessionDate'] >= $data['source_start'] && $row['SessionDate'] <= $data['source_end']) || in_array($row['id'], $ids), '仍有第三期有效堂次，請分期核對後處理');
             }
         }
         foreach ($selected as $row) foreach ($graph['sessions'] as $other) {
-            if (!$target || (int) $other['StudentClassID'] !== (int) $target->ID) continue;
+            if (!$target || (int) $other['StudentClassID'] !== (int) $target->getAttribute('ID')) continue;
             $overlap = $row['SessionDate'] === $other['SessionDate']
                 && $row['StartTime'] < $other['EndTime'] && $other['StartTime'] < $row['EndTime'];
             $this->require(!$overlap, '目標合約已有重疊時段堂次');
@@ -82,12 +82,12 @@ final class MonthlyContractCorrectionService
         $moveInvoiceIds = [];
         foreach ($graph['invoices'] as $invoice) {
             if ($invoice['Status'] === 'void') continue;
-            $this->require((int) $invoice['StudentID'] === (int) $source->StudentID, '帳單學生歸屬不符，須先核對');
+            $this->require((int) $invoice['StudentID'] === (int) $source->getAttribute('StudentID'), '帳單學生歸屬不符，須先核對');
             $invoiceId = (int) $invoice['id'];
             $payments = array_values(array_filter($graph['payments'], fn ($p) => (int) $p['InvoiceID'] === $invoiceId));
             $net = $payments === [] ? (int) $invoice['PaidAmount'] : max(0, array_sum(array_map(fn ($p) =>
                 (int) $p['Amount'] < 0 ? (int) $p['Amount'] : (($p['Method'] ?? '') === 'void' ? 0 : (int) $p['Amount']), $payments)));
-            if ($target && (int) $invoice['StudentClassID'] === (int) $target->ID) {
+            if ($target && (int) $invoice['StudentClassID'] === (int) $target->getAttribute('ID')) {
                 $this->require($net === 0 && $payments === [], '目標合約已有付款或沖銷紀錄');
             }
             $period = $invoice['billing_period'];
@@ -110,23 +110,23 @@ final class MonthlyContractCorrectionService
             }
         }
         $targetInvoices = array_values(array_filter($graph['invoices'], fn ($row) => $row['Status'] !== 'void'
-            && (in_array((int) $row['id'], $moveInvoiceIds, true) || ($target && (int) $row['StudentClassID'] === (int) $target->ID))));
+            && (in_array((int) $row['id'], $moveInvoiceIds, true) || ($target && (int) $row['StudentClassID'] === (int) $target->getAttribute('ID')))));
         if ($targetInvoices) $this->require(array_sum(array_column($targetInvoices, 'TotalAmount')) === $data['target_charge'], '新期帳單金額與應收不符，須先走帳務更正');
         if ($sourceInvoiceCount) $this->require($sourceInvoiceTotal === $data['source_charge'], '舊期帳單金額與應收不符，須先走帳務更正');
         $this->require($sourcePaid <= $data['source_charge'], '舊期應收不可低於保留的實收金額');
-        if ((int) $source->Paid && $sourcePaid === 0) {
+        if ((int) $source->getAttribute('Paid') && $sourcePaid === 0) {
             $this->require(!empty($data['payment_evidence_reference']), '舊期只有已繳標記，須提供已核對的付款期間依據');
         }
         foreach ($graph['reports'] as $report) {
             if (!in_array($report['status'], ['pending', 'confirmed'], true)) continue;
             $this->require($report['status'] === 'confirmed' && !empty($data['payment_evidence_reference'])
-                && (int) $report['StudentClassID'] === (int) $source->ID, '繳費回報的期間須先核對，目標不得繼承舊期回報');
+                && (int) $report['StudentClassID'] === (int) $source->getAttribute('ID'), '繳費回報的期間須先核對，目標不得繼承舊期回報');
         }
         $this->require($graph['pricing_amendments'] === [], '有歷史價格調整，須另行確認新期定價與移轉方案');
         $snapshot = ['input' => $data, 'graph' => $graph];
-        return ['source_course_id' => (int) $source->ID, 'target_course_id' => $target ? (int) $target->ID : null,
+        return ['source_course_id' => (int) $source->getAttribute('ID'), 'target_course_id' => $target ? (int) $target->getAttribute('ID') : null,
             'source_period' => [$data['source_start'], $data['source_end']], 'target_period' => [$data['target_start'], $data['target_end']],
-            'source_charge' => $data['source_charge'], 'source_paid_amount' => (int) $source->Paid && $sourcePaid === 0 ? null : $sourcePaid, 'target_charge' => $data['target_charge'],
+            'source_charge' => $data['source_charge'], 'source_paid_amount' => (int) $source->getAttribute('Paid') && $sourcePaid === 0 ? null : $sourcePaid, 'target_charge' => $data['target_charge'],
             'target_payment_status' => 'unpaid', 'session_ids' => $ids, 'move_invoice_ids' => $moveInvoiceIds,
             'confirmation_token' => $this->digest($snapshot), 'snapshot' => $snapshot];
     }
@@ -135,47 +135,47 @@ final class MonthlyContractCorrectionService
     {
         $this->require((bool) preg_match('/^[A-Za-z0-9_.:#-]{3,128}$/', $reference), '修復識別無效');
         return DB::transaction(function () use ($source, $input, $token, $reference) {
-            $source = StudentClass::where('ID', $source->ID)->lockForUpdate()->firstOrFail();
-            $existing = SessionCorrection::where('decision_reference', $reference)->whereNull('rolled_back_at')->orderBy('id')->first();
+            $source = StudentClass::query()->where('ID', $source->getAttribute('ID'))->lockForUpdate()->firstOrFail();
+            $existing = SessionCorrection::query()->where('decision_reference', $reference)->whereNull('rolled_back_at')->orderBy('id')->first();
             if ($existing) {
                 $result = $existing->snapshot_before;
                 $this->require(($result['confirmation_token'] ?? null) === $token && hash_equals($this->digest($result['input']), $this->digest($input)), '修復識別已綁定其他資料');
                 return $result;
             }
-            $this->require(!SessionCorrection::where('decision_reference', $reference)->exists(), '已回復的修復識別不可重用，須取得新的核准');
-            if (!empty($input['target_course_id'])) StudentClass::where('ID', $input['target_course_id'])->lockForUpdate()->firstOrFail();
+            $this->require(!SessionCorrection::query()->where('decision_reference', $reference)->exists(), '已回復的修復識別不可重用，須取得新的核准');
+            if (!empty($input['target_course_id'])) StudentClass::query()->where('ID', $input['target_course_id'])->lockForUpdate()->firstOrFail();
             $plan = $this->preview($source, $input, true);
             $this->require(hash_equals($plan['confirmation_token'], $token), '預覽已過期，資料有變動，請重新預覽');
             $newTarget = empty($input['target_course_id']);
-            $target = $newTarget ? $source->replicate() : StudentClass::findOrFail($input['target_course_id']);
+            $target = $newTarget ? $source->replicate() : StudentClass::query()->findOrFail($input['target_course_id']);
             $target->forceFill(['StartDate' => $input['target_start'], 'EndDate' => $input['target_end'], 'Charge' => $input['target_charge'],
                 'Paid' => 0, 'Pay' => 0, 'PayDate' => null, 'Stop' => 0, 'closed_reason' => null, 'UsedSessions' => 0,
                 'RemainingSessions' => 0, 'RemainingMinutes' => null, 'PurchasedMinutes' => null, 'settlement_locked_at' => null, 'settlement_snapshot' => null, 'Disconunt' => null]);
             if ($newTarget) {
                 $target->setAttribute('pricing_snapshot', null);
                 $target->setAttribute('trial_converted_to_id', null);
-                $target->MDate = now();
+                $target->setAttribute('MDate', now());
             }
             $target->save();
             $ids = $plan['session_ids'];
-            DB::table('ClassSession')->whereIn('id', $ids)->update(['StudentClassID' => $target->ID]);
-            foreach (self::MIRRORS as [$table, $foreignKey, $owner]) DB::table($table)->whereIn($foreignKey, $ids)->update([$owner => $target->ID]);
-            $scheduleIds = array_column(array_filter($plan['snapshot']['graph']['schedules'], fn ($row) => (int) $row['student_course_id'] === (int) $source->ID
+            DB::table('ClassSession')->whereIn('id', $ids)->update(['StudentClassID' => $target->getAttribute('ID')]);
+            foreach (self::MIRRORS as [$table, $foreignKey, $owner]) DB::table($table)->whereIn($foreignKey, $ids)->update([$owner => $target->getAttribute('ID')]);
+            $scheduleIds = array_column(array_filter($plan['snapshot']['graph']['schedules'], fn ($row) => (int) $row['student_course_id'] === (int) $source->getAttribute('ID')
                 && $row['schedule_date'] >= $input['target_start'] && $row['schedule_date'] <= $input['target_end']), 'id');
-            if ($scheduleIds) DB::table('schedules')->whereIn('id', $scheduleIds)->update(['student_course_id' => $target->ID]);
+            if ($scheduleIds) DB::table('schedules')->whereIn('id', $scheduleIds)->update(['student_course_id' => $target->getAttribute('ID')]);
             if ($plan['move_invoice_ids']) {
-                DB::table('Invoice')->whereIn('id', $plan['move_invoice_ids'])->update(['StudentClassID' => $target->ID]);
-                DB::table('InvoiceItem')->whereIn('InvoiceID', $plan['move_invoice_ids'])->update(['StudentClassID' => $target->ID]);
+                DB::table('Invoice')->whereIn('id', $plan['move_invoice_ids'])->update(['StudentClassID' => $target->getAttribute('ID')]);
+                DB::table('InvoiceItem')->whereIn('InvoiceID', $plan['move_invoice_ids'])->update(['StudentClassID' => $target->getAttribute('ID')]);
             }
             $source->forceFill(['EndDate' => $input['source_end'], 'Charge' => $input['source_charge']])->save();
             $this->recount($source);
             $this->recount($target);
-            $result = ['source_course_id' => (int) $source->ID, 'target_course_id' => (int) $target->ID, 'new_target' => $newTarget,
+            $result = ['source_course_id' => (int) $source->getAttribute('ID'), 'target_course_id' => (int) $target->getAttribute('ID'), 'new_target' => $newTarget,
                 'session_ids' => $ids, 'input' => $input, 'confirmation_token' => $token, 'decision_reference' => $reference,
                 'snapshot' => $plan['snapshot'], 'after_digest' => $this->digest($this->graph($source->fresh(), $target->fresh()))];
             foreach ($ids as $id) {
                 $row = collect($plan['snapshot']['graph']['sessions'])->firstWhere('id', $id);
-                SessionCorrection::create(['session_id' => $id, 'correction_reason' => 'monthly_contract_split', 'decision_reference' => $reference,
+                SessionCorrection::query()->create(['session_id' => $id, 'correction_reason' => 'monthly_contract_split', 'decision_reference' => $reference,
                     'decided_at' => now(), 'decided_by_actor' => 'pop-runner', 'previous_status' => $row['Status'], 'new_status' => $row['Status'], 'snapshot_before' => $result]);
             }
             return $result;
@@ -184,8 +184,8 @@ final class MonthlyContractCorrectionService
 
     public function verify(array $result): array
     {
-        $source = StudentClass::find($result['source_course_id']);
-        $target = StudentClass::find($result['target_course_id']);
+        $source = StudentClass::query()->find($result['source_course_id']);
+        $target = StudentClass::query()->find($result['target_course_id']);
         $ok = $source && $target && hash_equals($result['after_digest'], $this->digest($this->graph($source, $target)));
         return ['ok' => (bool) $ok, 'errors' => $ok ? [] : ['post_repair_data_drifted']];
     }
@@ -193,9 +193,9 @@ final class MonthlyContractCorrectionService
     public function rollback(array $result): array
     {
         return DB::transaction(function () use ($result) {
-            StudentClass::whereIn('ID', [$result['source_course_id'], $result['target_course_id']])->orderBy('ID')->lockForUpdate()->get();
-            $source = StudentClass::findOrFail($result['source_course_id']);
-            $target = StudentClass::findOrFail($result['target_course_id']);
+            StudentClass::query()->whereIn('ID', [$result['source_course_id'], $result['target_course_id']])->orderBy('ID')->lockForUpdate()->get();
+            $source = StudentClass::query()->findOrFail($result['source_course_id']);
+            $target = StudentClass::query()->findOrFail($result['target_course_id']);
             $this->require(hash_equals($result['after_digest'], $this->digest($this->graph($source, $target, true))), '更正後資料已變動，不可自動回復');
             $graph = $result['snapshot']['graph'];
             foreach ($graph['sessions'] as $row) DB::table('ClassSession')->where('id', $row['id'])->update(['StudentClassID' => $row['StudentClassID']]);
@@ -207,15 +207,15 @@ final class MonthlyContractCorrectionService
                 $id = $row['ID']; unset($row['ID']);
                 DB::table('StudentClass')->where('ID', $id)->update($row);
             }
-            if ($result['new_target']) StudentClass::where('ID', $result['target_course_id'])->delete();
-            SessionCorrection::where('decision_reference', $result['decision_reference'])->whereNull('rolled_back_at')->update(['rolled_back_at' => now()]);
+            if ($result['new_target']) StudentClass::query()->where('ID', $result['target_course_id'])->delete();
+            SessionCorrection::query()->where('decision_reference', $result['decision_reference'])->whereNull('rolled_back_at')->update(['rolled_back_at' => now()]);
             return ['ok' => true];
         });
     }
 
     private function graph(StudentClass $source, ?StudentClass $target, bool $lock = false): array
     {
-        $ids = array_values(array_filter([(int) $source->ID, $target ? (int) $target->ID : null]));
+        $ids = array_values(array_filter([(int) $source->getAttribute('ID'), $target ? (int) $target->getAttribute('ID') : null]));
         $read = function ($query) use ($lock) { return ($lock ? $query->lockForUpdate() : $query)->get()->map(fn ($row) => (array) $row)->all(); };
         $sessions = $read(DB::table('ClassSession')->whereIn('StudentClassID', $ids)->orderBy('id'));
         $invoices = $read(DB::table('Invoice')->whereIn('StudentClassID', $ids)->orderBy('id'));
@@ -226,7 +226,7 @@ final class MonthlyContractCorrectionService
                 $query->whereIn($foreignKey, array_column($sessions, 'id'))->orWhereIn($owner, $ids);
             })->orderBy('id'));
         }
-        return ['student' => $read(DB::table('Student')->where('id', $source->StudentID)->select(['id', 'CampusID'])),
+        return ['student' => $read(DB::table('Student')->where('id', $source->getAttribute('StudentID'))->select(['id', 'CampusID'])),
             'courses' => $read(DB::table('StudentClass')->whereIn('ID', $ids)->orderBy('ID')),
             'sessions' => $sessions, 'invoices' => $invoices, 'mirrors' => $mirrors,
             'items' => $read(DB::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)->orderBy('id')),
@@ -240,11 +240,11 @@ final class MonthlyContractCorrectionService
 
     private function recount(StudentClass $course): void
     {
-        $sessions = DB::table('ClassSession')->where('StudentClassID', $course->ID)->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])->get();
+        $sessions = DB::table('ClassSession')->where('StudentClassID', $course->getAttribute('ID'))->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])->get();
         $count = $sessions->count();
         $course->forceFill(['SessionCount' => $count, 'monthly_sessions' => $count,
             'TotalHours' => (int) round($sessions->sum(fn ($s) => max(0, (strtotime($s->EndTime) - strtotime($s->StartTime)) / 3600)))])->save();
-        SessionDeductionService::recomputeCounters((int) $course->ID);
+        SessionDeductionService::recomputeCounters((int) $course->getAttribute('ID'));
     }
 
     private function digest(array $data): string
