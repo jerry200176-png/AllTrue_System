@@ -2839,30 +2839,6 @@ parameters:
 			path: app/Http/Controllers/NotificationController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$Payload\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$SourceID\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$SourceType\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Http/Controllers/NotificationController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Http/Controllers/NotificationController.php
-
-		-
 			message: '#^Call to an undefined method Illuminate\\Contracts\\Pagination\\LengthAwarePaginator\:\:toArray\(\)\.$#'
 			identifier: method.notFound
 			count: 1
@@ -4252,30 +4228,6 @@ parameters:
 			path: app/Http/Controllers/StudentController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$CampusID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/SubstituteController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$Payload\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/SubstituteController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$created_at\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/SubstituteController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/SubstituteController.php
-
-		-
 			message: '#^Anonymous function has an unused use \$startTime\.$#'
 			identifier: closure.unusedUse
 			count: 1
@@ -5300,42 +5252,6 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Services/FeedbackPushNotifier.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$Body\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/NotificationLineDispatcher.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$CampusID\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/NotificationLineDispatcher.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$Severity\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/NotificationLineDispatcher.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$Title\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/NotificationLineDispatcher.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/NotificationLineDispatcher.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Notification\:\:\$ResolvedAt\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/NotificationSyncService.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'

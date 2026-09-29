@@ -194,6 +194,12 @@ class NotificationSyncService
                 unset($payload['OccurredAt']);
             }
         }
+        // The JSON column may store keys in a different order; Eloquent's array-cast dirty check
+        // compares decoded arrays strictly (order-sensitive), so an unchanged Payload would still
+        // be written. Compare by content (order-insensitive) and skip it when equal.
+        if (array_key_exists('Payload', $payload) && is_array($existing->Payload) && $existing->Payload == $payload['Payload']) {
+            unset($payload['Payload']);
+        }
         $existing->fill($payload);
         $existing->ResolvedAt = null;
     }
