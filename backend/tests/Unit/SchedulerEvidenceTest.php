@@ -122,7 +122,7 @@ class SchedulerEvidenceTest extends TestCase
 
         $this->assertCount(1, $events);
         $this->assertSame(SchedulerEvidence::TIMEZONE, $events[0]->timezone);
-        $this->assertTrue($events[0]->withoutOverlapping);
+        $this->assertFalse($events[0]->withoutOverlapping, 'POP uses its DB claim lock, not the shared FPM file cache');
         $this->assertSame('* * * * *', $events[0]->expression);
         $this->assertStringContainsString('pop-execute-approved.log', $events[0]->output);
     }

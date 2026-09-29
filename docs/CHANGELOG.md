@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(ops): unblock local approved repair scheduling
+<!-- release-notes: silent_ship=silent-2026-09-29-pop-local-claim -->
+- POP 排程沿用 MySQL claim lock，不再依賴可能由 FPM 持有的檔案快取鎖；自動取件只選正式版本且未過期的簽章核准，保留所有舊核准及拒絕條件。指定單案依原清單重新試算／核准，不代表帳務已執行。
+
 ## 2026-09-29 — feat(ops): support exact-case human review for monthly correction
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。

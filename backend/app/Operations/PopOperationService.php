@@ -16,7 +16,7 @@ final class PopOperationService
     private const ACTOR_PATTERN = '/^[A-Za-z0-9:_-]{1,128}$/';
     private const REFERENCE_PATTERN = '/^[A-Za-z0-9_.:#\/-]{3,128}$/';
 
-    public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null)
+    public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null, private readonly ?string $deploymentManifestPath = null)
     {
     }
 
@@ -339,9 +339,40 @@ final class PopOperationService
      */
     public function runApprovedLocally(?string $requestId = null): array
     {
-        $candidate = $requestId === null
-            ? DB::table('pop_operation_requests')->where('status', 'approved')->oldest('created_at')->first()
-            : $this->request($requestId);
+        $lockName = 'alltrue:pop:executor';
+        $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
+        if ((int) ($lock->acquired ?? 0) !== 1) {
+            return ['ok' => true, 'status' => 'busy', 'processed' => 0];
+        }
+
+        try {
+            return $this->claimApprovedLocally($requestId);
+        } finally {
+            DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
+        }
+    }
+
+    private function claimApprovedLocally(?string $requestId): array
+    {
+        if ($requestId === null) {
+            $pending = DB::table('pop_operation_requests')->where('status', 'approved');
+            if (!$pending->exists()) {
+                return ['ok' => true, 'status' => 'idle', 'processed' => 0];
+            }
+            $deployedSha = $this->localDeploymentSha();
+            // Old-version or expired approvals remain immutable evidence, but
+            // must not prevent a fresh approved request from reaching its lock.
+            $candidate = $pending->whereExists(function ($query) use ($deployedSha): void {
+                $query->select(DB::raw(1))->from('pop_approval_events')
+                    ->whereColumn('operation_id', 'pop_operation_requests.id')
+                    ->where('event_type', 'approved')
+                    ->where('commit_sha', $deployedSha)
+                    ->whereNotNull('token_hash')->where('token_hash', '<>', '')
+                    ->where('expires_at', '>', now());
+            })->oldest('created_at')->first();
+        } else {
+            $candidate = $this->request($requestId);
+        }
         if (!$candidate) {
             return ['ok' => true, 'status' => 'idle', 'processed' => 0];
         }
@@ -730,12 +761,22 @@ final class PopOperationService
 
     private function assertLocalDeployment(string $commitSha): void
     {
-        $path = base_path('public/deployment.json');
-        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
-        $deployedSha = is_array($manifest) ? (string) ($manifest['backend_sha'] ?? '') : '';
-        if (!preg_match(self::COMMIT_SHA_PATTERN, $deployedSha) || !hash_equals(strtolower($commitSha), strtolower($deployedSha))) {
+        $deployedSha = $this->localDeploymentSha();
+        if (!hash_equals(strtolower($commitSha), $deployedSha)) {
             throw new RuntimeException('POP local executor deployment SHA does not match approval; fail closed.');
         }
+    }
+
+    private function localDeploymentSha(): string
+    {
+        $path = $this->deploymentManifestPath ?? base_path('public/deployment.json');
+        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $deployedSha = is_array($manifest) ? (string) ($manifest['backend_sha'] ?? '') : '';
+        if (!preg_match(self::COMMIT_SHA_PATTERN, $deployedSha)) {
+            throw new RuntimeException('POP local executor deployment SHA does not match approval; fail closed.');
+        }
+
+        return strtolower($deployedSha);
     }
 
     /** @return array<string,mixed> */
