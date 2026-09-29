@@ -458,6 +458,8 @@
       @dismiss-cancel-confirm="cancelState.show = false"
       @confirm-cancel="doConfirmCancelSession"
       @restore-session="restoreCancelledSession"
+      @open-move-contract="openMoveContract"
+      @submit-move-contract="submitMoveContract"
       @delete-exception="deleteException"
       @cancel-makeup="cancelMakeupClass"
       @teacher-change="checkConflict"
@@ -2217,6 +2219,7 @@ const onCourseClick = (course, fullDateStr) => {
   editingException.value = course.is_exception ? course : null;
   const clickedSession = findSessionRowForCell(course, fullDateStr);
   sessionRecovery.value = makeSessionRecovery();
+  moveContract.value = makeMoveContract();
   conflictWarning.value = '';
   const start = normalizeTimeTo30(course.start_time || '16:00');
   const baseCourse = courses.value.find(c => c.id === baseId) || course;
@@ -2472,6 +2475,8 @@ const sessionEditSession = computed(() => {
     canCancelSession: canCancelSelectedSession.value,
     cancelState: cancelState.value,
     recovery: sessionRecovery.value,
+    canMoveContract: canMoveSessionContract.value,
+    moveContract: moveContract.value,
     editingException: !!editingException.value,
     editingExceptionIsExtra: editingExceptionIsExtra.value,
     evalRecords: courseEvalRecords.value,
@@ -2558,6 +2563,68 @@ const loadSessionRecovery = async (sessionId) => {
     };
   } catch (e) {
     sessionRecovery.value.loading = false;
+  }
+};
+
+// ===== 改到其他合約（主任／超級管理員；同學生同科目，含已結束合約）=====
+const makeMoveContract = () => ({
+  open: false, loading: false, targets: [], current: null, targetId: '', reason: '', submitting: false,
+});
+const moveContract = ref(makeMoveContract());
+const canMoveSessionContract = computed(() =>
+  ['director', 'super_admin'].includes(props.userRole) && !!cancelTargetSession.value?.id);
+
+const moveContractRequest = async (sessionId, body, method = 'POST') => {
+  const token = await getToken();
+  const res = await fetch('/api/v1/class-sessions/' + sessionId + '/reassign-contract' + (method === 'GET' ? '-targets' : ''), {
+    method,
+    headers: {
+      Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json',
+    },
+    ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+  return data;
+};
+
+const openMoveContract = async () => {
+  const row = cancelTargetSession.value;
+  if (!row?.id) return;
+  moveContract.value = { ...makeMoveContract(), open: true, loading: true };
+  try {
+    const data = await moveContractRequest(row.id, null, 'GET');
+    moveContract.value = { ...moveContract.value, targets: data.data || [], current: data.current, loading: false };
+  } catch (e) {
+    moveContract.value = makeMoveContract();
+    alert(e.message || '載入合約失敗');
+  }
+};
+
+const submitMoveContract = async () => {
+  const row = cancelTargetSession.value;
+  const mc = moveContract.value;
+  if (!row?.id || !mc.targetId || !mc.reason?.trim() || mc.submitting) return;
+  const body = { new_student_class_id: Number(mc.targetId), reason: mc.reason.trim() };
+  mc.submitting = true;
+  try {
+    const preview = await moveContractRequest(row.id, { ...body, dry_run: true });
+    const line = (k, label) => label + ' #' + preview.before[k].id + '：已用 ' + preview.before[k].used_sessions
+      + ' → ' + preview.after[k].used_sessions + '，剩餘 ' + preview.before[k].remaining_sessions
+      + ' → ' + preview.after[k].remaining_sessions;
+    const warn = preview.warnings.length ? '\n\n注意：' + preview.warnings.join('；') : '';
+    if (!confirm('確定把本堂從合約 #' + preview.old_student_class_id + ' 改到 #' + preview.new_student_class_id + '？\n\n'
+      + line('old', '原合約') + '\n' + line('new', '目標合約') + warn + '\n\n如需還原，再改回原合約即可。')) {
+      mc.submitting = false;
+      return;
+    }
+    const data = await moveContractRequest(row.id, body);
+    showModal.value = false;
+    await loadCourses();
+    alert((data.message || '已改派') + (data.warnings?.length ? '\n注意：' + data.warnings.join('；') : ''));
+  } catch (e) {
+    mc.submitting = false;
+    alert(e.message || '改派失敗，請重新整理後再試');
   }
 };
 
@@ -2743,6 +2810,7 @@ watch(showModal, (v) => {
   if (!v) {
     cancelState.value = { show: false, loading: false };
     sessionRecovery.value = makeSessionRecovery();
+    moveContract.value = makeMoveContract();
   }
 });
 

@@ -81,6 +81,34 @@
             class="action-btn cancel-session"
             @click="$emit('show-cancel-confirm')"
           >🚫 取消本堂</button>
+          <button
+            v-if="!session.isTeacher && session.canMoveContract"
+            class="action-btn move-contract"
+            data-testid="calendar-move-contract"
+            @click="$emit('open-move-contract')"
+          >↪ 改到其他合約</button>
+        </div>
+        <div v-if="!session.isTeacher && session.moveContract?.open" class="session-recovery" data-testid="calendar-move-contract-panel">
+          <strong>把本堂改到同學生、同科目的其他合約</strong>
+          <span v-if="session.moveContract.loading">載入合約中…</span>
+          <span v-else-if="!session.moveContract.targets.length">沒有其他可選的合約</span>
+          <template v-else>
+            <label for="move-contract-target">目標合約</label>
+            <select id="move-contract-target" v-model="session.moveContract.targetId">
+              <option value="">請選擇</option>
+              <option v-for="t in session.moveContract.targets" :key="t.id" :value="t.id">
+                #{{ t.id }}｜{{ t.start_date || '—' }} ~ {{ t.end_date || '—' }}｜已用 {{ t.used_sessions }}／{{ t.session_count }}｜剩 {{ t.remaining_sessions }}{{ t.closed ? '（已結束）' : '' }}
+              </option>
+            </select>
+            <label for="move-contract-reason">改派原因（必填）</label>
+            <input id="move-contract-reason" v-model="session.moveContract.reason" maxlength="255" placeholder="例如：續約後堂次掛錯合約" />
+            <button
+              class="action-btn move-contract"
+              data-testid="calendar-move-contract-submit"
+              :disabled="!session.moveContract.targetId || !session.moveContract.reason?.trim() || session.moveContract.submitting"
+              @click="$emit('submit-move-contract')"
+            >{{ session.moveContract.submitting ? '處理中...' : '確認改派' }}</button>
+          </template>
         </div>
         <div v-if="!session.isTeacher && session.cancelState.show" class="cancel-session-confirm">
           <p>確定取消這堂課？<br><small>取消後仍可從本視窗安全復原；系統會先檢查是否有新變更或衝堂。</small></p>
@@ -267,7 +295,7 @@ const props = defineProps({
 defineEmits([
   'close', 'leave', 'reschedule', 'substitute', 'substitute-v2', 'goto-attendance', 'goto-learning',
   'show-cancel-confirm', 'dismiss-cancel-confirm', 'confirm-cancel',
-  'restore-session',
+  'restore-session', 'open-move-contract', 'submit-move-contract',
   'delete-exception', 'cancel-makeup', 'teacher-change',
 ]);
 </script>
@@ -523,6 +551,7 @@ defineEmits([
 .session-recovery-impact { color: var(--ds-ink-mute); }
 .session-recovery input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; }
 .restore-session { background: var(--ds-success-wash); color: var(--ds-success); border-color: var(--ds-success); }
+.move-contract { background: var(--ds-canvas-soft); color: var(--ds-ink); border-color: var(--ds-hairline, var(--ds-canvas-soft)); }
 .restore-session:disabled { opacity: 0.6; cursor: not-allowed; }
 .eval-summary-box {
   margin-top: 16px;
