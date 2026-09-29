@@ -285,7 +285,7 @@ test.describe('Tuition Collection clarity browser verification', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/tuition-collection-pilot-mount.html?mode=long');
     await expect(page.getByText(/很長的學生姓名/).first()).toBeVisible();
-    const process = page.locator('.tc-process-disclosure > summary');
+    const process = page.locator('.at-help > summary');
     await process.focus();
     await page.keyboard.press('Enter');
     await expect(page.getByText('照順序完成，不用記入口', { exact: true })).toBeVisible();

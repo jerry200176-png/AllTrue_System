@@ -9,16 +9,21 @@
     </template>
 
     <template v-else>
-      <main class="director-workbench-v2" aria-labelledby="director-workbench-v2-title">
-        <header class="director-workbench-v2__header">
-          <div class="director-workbench-v2__heading">
-            <h1 id="director-workbench-v2-title">主任總覽</h1>
-            <p>{{ branchName }} <span aria-hidden="true">·</span> {{ todayDisplay }}</p>
-          </div>
-          <div class="director-workbench-v2__header-actions">
+      <main class="director-workbench-v2" aria-label="主任總覽">
+        <AtPageHeader
+          title="主任總覽"
+          :description="`${branchName} · ${todayDisplay}`"
+          icon="dashboard"
+        >
+          <template #meta>
             <span class="director-workbench-v2__updated" role="status">
               {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
             </span>
+            <span v-if="engagementVisible && initialEngagement" class="dash-engagement-chip" data-guide="director-engagement-rank">
+              <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
+            </span>
+          </template>
+          <template #actions>
             <AtButton
               class="director-workbench-v2__refresh"
               variant="secondary"
@@ -29,21 +34,17 @@
             >
               重新整理
             </AtButton>
-          </div>
-        </header>
+          </template>
+        </AtPageHeader>
 
-        <div v-if="engagementVisible && initialEngagement" class="dash-engagement-strip" data-guide="director-engagement-rank">
-          <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
-        </div>
-
-        <nav class="director-workbench-v2__nav" role="tablist" aria-label="總覽檢視模式">
+        <nav class="director-workbench-v2__nav at-tabs" role="tablist" aria-label="總覽檢視模式">
           <button
             type="button"
             role="tab"
             id="director-workbench-tab-focus"
             aria-controls="director-workbench-panel-focus"
             :aria-selected="dashboardViewMode === 'focus'"
-            :class="{ 'is-active': dashboardViewMode === 'focus' }"
+            :class="['at-tab', { 'is-active': dashboardViewMode === 'focus' }]"
             @click="setDashboardViewMode('focus')"
           >
             今天
@@ -54,7 +55,7 @@
             id="director-workbench-tab-full"
             aria-controls="director-workbench-panel-full"
             :aria-selected="dashboardViewMode === 'full'"
-            :class="{ 'is-active': dashboardViewMode === 'full' }"
+            :class="['at-tab', { 'is-active': dashboardViewMode === 'full' }]"
             @click="setDashboardViewMode('full')"
           >
             完整營運
@@ -73,9 +74,7 @@
           <TodayProgressCard
             :completed="attendedCount"
             :total="todaySchedules.length"
-            :next-task="dashboardPrimaryTasks[0] || null"
             :loading="dashboardLoading"
-            @next="openDashboardTask"
           />
 
           <section class="director-workbench-v2__primary surface-panel" aria-labelledby="director-focus-title">
@@ -373,6 +372,7 @@ import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -1825,13 +1825,13 @@ onBeforeUnmount(() => {
   font-weight: 500;
   max-width: 42rem;
 }
-.dash-engagement-strip {
-  margin-top: 14px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--porsche-border) 88%, transparent);
-  background: rgba(255, 255, 255, 0.55);
-  max-width: 42rem;
+.dash-engagement-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--ds-radius-pill);
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
 }
 .dash-date-panel {
   display: grid;
@@ -2985,48 +2985,30 @@ onBeforeUnmount(() => {
 
 /* Director workbench v2: one surface, one hierarchy, one action language. */
 .director-workbench-v2 {
-  max-width: 1360px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 30px 36px 64px;
+  padding: 0 0 64px;
   color: var(--ds-ink);
 }
-.director-workbench-v2__header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--ds-hairline);
-}
-.director-workbench-v2__heading h1,
 .director-workbench-v2__subheader h2,
 .surface-panel__header h2,
 .surface-panel__header h3 { margin: 0; color: var(--ds-ink); letter-spacing: -0.018em; }
-.director-workbench-v2__heading h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.035em; }
-.director-workbench-v2__heading p,
 .director-workbench-v2__subheader p,
 .surface-panel__header p { margin: 7px 0 0; color: var(--ds-ink-mute); font-size: 13px; line-height: 1.5; }
-.director-workbench-v2__header-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 .director-workbench-v2__updated { color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
 .director-workbench-v2__refresh,
-.director-workbench-v2__nav button,
 .text-action,
 .button { font: inherit; cursor: pointer; }
 .director-workbench-v2__refresh {
   min-height: 44px;
 }
 .director-workbench-v2__refresh:focus-visible,
-.director-workbench-v2__nav button:focus-visible,
 .text-action:focus-visible,
 .button:focus-visible,
 .director-task__action:focus-visible,
 .director-other-work-list button:focus-visible,
 .director-candidate input:focus-visible + span,
 .director-modal__close:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
-.director-workbench-v2__nav { display: flex; gap: 22px; min-height: 52px; border-bottom: 1px solid var(--ds-hairline); }
-.director-workbench-v2__nav button { min-height: 52px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ds-ink-mute); font-size: 14px; font-weight: 800; }
-.director-workbench-v2__nav button:hover { color: var(--ds-ink); }
-.director-workbench-v2__nav button.is-active { border-bottom-color: var(--ds-cta); color: var(--ds-ink); }
 .director-workbench-v2__focus { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.72fr); gap: 24px; align-items: start; padding-top: 24px; }
 .director-workbench-v2__primary { min-width: 0; }
 .director-workbench-v2__aside { display: grid; gap: 18px; min-width: 0; }
@@ -3205,9 +3187,7 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) { .director-task--loading { animation: none; } }
 @media (max-width: 960px) { .director-workbench-v2__focus, .director-workbench-v2__full-grid { grid-template-columns: 1fr; } .director-workbench-v2__aside { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } .director-trust-note { grid-column: 1 / -1; } }
 @media (max-width: 680px) {
-  .director-workbench-v2 { padding: 22px 16px 44px; }
-  .director-workbench-v2__header { align-items: flex-start; flex-direction: column; gap: 14px; }
-  .director-workbench-v2__header-actions { width: 100%; justify-content: space-between; }
+  .director-workbench-v2 { padding: 0 0 44px; }
   .director-workbench-v2__focus, .director-workbench-v2__full { padding-top: 16px; }
   .director-risk-disclosure { margin-inline: 16px; }
   .director-workbench-v2__aside { grid-template-columns: 1fr; gap: 12px; }

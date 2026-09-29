@@ -1,5 +1,5 @@
 <template>
-  <main :class="['admission-page', standalone ? 'admission-page-public' : 'admission-page-staff']">
+  <main :class="['admission-page', standalone ? 'admission-page-public' : 'admission-page-staff at-page']">
     <section v-if="standalone && !clientEnabled" class="admission-public-card admission-disabled" role="status">
       <div class="admission-kicker">全真一對一</div>
       <h1>問班入口準備中</h1>
@@ -74,11 +74,10 @@
         description="集中處理分校家長問班需求、預約體驗試聽並推進正式報名。"
         icon="how_to_reg"
       >
-        <template #meta><span>招生工作流 · 諮詢與試聽進度</span></template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" class="admission-button" :title="publicFormUrl" @click="copyPublicLink"><span class="material-symbols-outlined" aria-hidden="true">content_copy</span>{{ copySuccess ? '已複製連結' : '複製公開問班連結' }}</AtButton>
           <AtButton shape="rect" variant="secondary" class="admission-button" @click="openPublicForm"><span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>查看公開問班表單</AtButton>
-          <AtButton shape="rect" variant="secondary" class="admission-button" :loading="loading" @click="loadQueue"><span v-if="!loading" class="material-symbols-outlined" aria-hidden="true">refresh</span>重新整理</AtButton>
+          <AtButton shape="rect" variant="secondary" class="admission-button" icon="refresh" :loading="loading" @click="loadQueue">重新整理</AtButton>
         </template>
       </AtPageHeader>
       <div class="admission-filters-bar">
@@ -383,8 +382,8 @@ watch(() => props.branchId, async (val, prev) => {
 </script>
 
 <style scoped>
-.admission-page { min-height: 100%; color: var(--ds-ink); font-family: var(--font-ui, system-ui, sans-serif); }
-.admission-page-public { display: grid; place-items: center; padding: 24px 16px; background: linear-gradient(150deg, var(--ds-primary-wash), var(--ds-canvas)); }
+.admission-page { color: var(--ds-ink); font-family: var(--font-ui, system-ui, sans-serif); }
+.admission-page-public { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; background: linear-gradient(150deg, var(--ds-primary-wash), var(--ds-canvas)); }
 .admission-public-card { width: min(100%, 560px); padding: clamp(24px, 5vw, 48px); border: 1px solid var(--ds-hairline); border-radius: 16px; background: var(--ds-canvas); box-shadow: var(--ds-shadow-2); }
 .admission-kicker { color: var(--ds-cta); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 h1 { margin: 8px 0; font-size: clamp(26px, 5vw, 36px); line-height: 1.2; }
@@ -401,7 +400,7 @@ input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; bor
 .admission-consent { display: flex; align-items: center; gap: 8px; } .admission-consent input { width: 20px; min-height: 20px; }
 .admission-error { margin: 14px 0; padding: 10px 12px; border-radius: var(--ds-radius-md); background: var(--ds-danger-wash); color: var(--ds-danger); }
 .admission-success { display: grid; gap: 10px; justify-items: start; padding: 24px 0; } .admission-success .material-symbols-outlined { color: var(--ds-success); font-size: 44px; } .admission-success.compact { display: flex; align-items: center; padding: 16px; border-radius: var(--ds-radius-md); background: var(--ds-success-wash); color: var(--ds-success); }
-.admission-page-staff { padding: 28px clamp(16px, 4vw, 40px) 80px; max-width: 1320px; margin: 0 auto; } .admission-staff-header { display: flex; justify-content: space-between; gap: 24px; align-items: start; margin-bottom: 16px; flex-wrap: wrap; } .admission-staff-header h1 { margin-bottom: 4px; }
+.admission-page-staff { padding-bottom: 48px; } .admission-staff-header { display: flex; justify-content: space-between; gap: 24px; align-items: start; margin-bottom: 16px; flex-wrap: wrap; } .admission-staff-header h1 { margin-bottom: 4px; }
 .admission-filters { max-width: 240px; margin-bottom: 0; } .admission-filters label { margin: 0; }
 .admission-staff-grid { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 20px; align-items: start; } .admission-queue, .admission-detail, .admission-panel { border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-canvas); box-shadow: var(--ds-shadow-1); }
 .admission-queue { overflow: hidden; } .admission-queue-item { display: grid; gap: 5px; width: 100%; padding: 16px; border: 0; border-bottom: 1px solid var(--ds-hairline); background: transparent; color: var(--ds-ink); text-align: left; cursor: pointer; } .admission-queue-item.selected { background: var(--ds-primary-wash); box-shadow: inset 3px 0 var(--ds-cta); } .admission-queue-item small { color: var(--ds-ink-mute); } .admission-next { color: var(--ds-cta) !important; font-weight: 600; }
