@@ -4366,126 +4366,6 @@ parameters:
 			path: app/Http/Controllers/SubstituteController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Campus\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID\.$#'
-			identifier: property.notFound
-			count: 4
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID1\.$#'
-			identifier: property.notFound
-			count: 4
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID2\.$#'
-			identifier: property.notFound
-			count: 4
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 14
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\User\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 6
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:whereDoesntHave\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:whereHas\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\Campus\:\:find\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\Campus\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\TeacherSignIn\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\TeacherSignIn\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\TempRfid\:\:updateOrCreate\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\User\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>TeacherID" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
@@ -5800,42 +5680,6 @@ parameters:
 			path: app/Services/ScheduleDiscrepancyNotifier.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
-			identifier: property.notFound
-			count: 3
-			path: app/Services/SessionDeductionService.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$SessionDeducted\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Services/SessionDeductionService.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\ConnectionInterface\:\:getDriverName\(\)\.$#'
-			identifier: method.notFound
-			count: 2
-			path: app/Services/SessionDeductionService.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\:\:active\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Services/SessionDeductionService.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:active\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Services/SessionDeductionService.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\SessionDeductionLedger\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Services/SessionDeductionService.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\Notification\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
@@ -6068,3 +5912,225 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Services/ParentBinding/BindingConflictService.php
+		-
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Console/Commands/CloseOrphanStudentSignIns.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Campus\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID1\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID2\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 9
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 6
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:whereHas\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Campus\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Campus\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\TeacherSignIn\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\TeacherSignIn\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\TempRfid\:\:updateOrCreate\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\User\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>TeacherID" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Http/Controllers/SwipeRfidController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Services/SessionDeductionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$SessionDeducted\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/SessionDeductionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/SessionDeductionService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\ConnectionInterface\:\:getDriverName\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Services/SessionDeductionService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Builder\:\:active\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Services/SessionDeductionService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:active\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Services/SessionDeductionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\SessionDeductionLedger\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/SessionDeductionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$ClassSessionID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$SessionDeducted\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$StudentClassID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$StudentID\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentSignIn\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:whereDoesntHave\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Notification\:\:firstOrCreate\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Services/StudentPresenceBackfillService.php
+

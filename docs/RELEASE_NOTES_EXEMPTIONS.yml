@@ -7,6 +7,11 @@ exemptions:
     changelog_title: "fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)"
     reason: 刷卡即出席政策本身未變，僅補強邊界情況；尚未部署或於正式環境驗證，不發布教職員公告。
 
+  - id: silent-2026-09-29-monthly-accounting-correction
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(billing): prepare audited monthly receipt correction"
+    reason: 收款更正能力尚未啟用或核准正式清單，沒有修改正式帳務或新主任操作；待部署及個案驗收後再評估公告。
+
   - id: silent-2026-09-29-monthly-next-period-booking
     changelog_date: "2026-09-29"
     changelog_title: "fix(courses): prepare next-period monthly booking guidance"
