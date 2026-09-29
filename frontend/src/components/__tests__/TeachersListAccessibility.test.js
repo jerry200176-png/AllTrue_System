@@ -50,8 +50,7 @@ describe('TeachersList status workspace accessibility', () => {
   it('associates teacher filters with their visible labels', () => {
     expect(source).toContain('<label for="teachers-search">搜尋（姓名／電話）</label>');
     expect(source).toContain('id="teachers-search"');
-    expect(source).toContain('<label for="teachers-status-filter">狀態</label>');
-    expect(source).toContain('id="teachers-status-filter"');
+    expect(source).not.toContain('id="teachers-status-filter"');
     expect(source).toContain('<label for="teachers-subject-filter">科目</label>');
     expect(source).toContain('id="teachers-subject-filter"');
   });
