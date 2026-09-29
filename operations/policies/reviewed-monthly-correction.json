@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "eligible_cases": [
+    {
+      "parameters_sha256": "c41211180a02d7ba3a8461a2a24785ed74c4832537862936fd094b6a1e083e70",
+      "idempotency_sha256": "3a5099e303ebb2a43c0d2685701149d7b42afa4d6e67c07a43bf72e0c67a5d8a",
+      "requester_sha256": "96f0bff74a5165fe124a7fd40bd96af0d8ebf26e34c6aa77f1b3215608dcf355",
+      "approver_sha256": "96f0bff74a5165fe124a7fd40bd96af0d8ebf26e34c6aa77f1b3215608dcf355",
+      "approval_reference": "founder-go-monthly-c41211180a02d7ba",
+      "valid_until": "2026-09-30T12:00:00Z"
+    }
+  ]
+}
