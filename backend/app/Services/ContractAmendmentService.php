@@ -9,10 +9,12 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class ContractAmendmentService
 {
     public const CLOSED_REASON = 'contract_amended';
+    private const CANCEL_NOTE = '[合約提前結束取消]';
     public function preview(StudentClass $course, int $newCount): array
     {
         $this->assertRequest($course, $newCount);
@@ -69,7 +71,7 @@ final class ContractAmendmentService
             foreach ($sessions->slice($newRemaining) as $session) {
                 $session->Status = 'cancelled';
                 $note = trim((string) ($session->Note ?? ''));
-                $session->Note = trim($note . ' [合約提前結束取消]');
+                $session->Note = trim($note . ' ' . self::CANCEL_NOTE);
                 $session->save();
                 $cancelledIds[] = (int) $session->getKey();
             }
@@ -214,6 +216,154 @@ final class ContractAmendmentService
             'paid' => (int) ($course->Paid ?? 0),
             'stop' => (int) ($course->Stop ?? 0),
             'closed_reason' => $course->getAttribute('closed_reason'),
+            'end_date' => $course->getAttribute('EndDate') ? substr((string) $course->getAttribute('EndDate'), 0, 10) : null,
         ];
+    }
+
+    public function revertPreview(StudentClass $course): array
+    {
+        $snap = $this->assertRevertible($course);
+        $before = $snap['before'];
+        $sessions = $this->revertibleSessions($snap);
+        $schedules = $this->revertibleSchedules($snap);
+        $futureCovered = count($this->futureScheduled((int) $course->getKey())) + $sessions->count();
+        return [
+            'student_class_id' => (int) $course->getKey(),
+            'current_session_count' => (int) $course->SessionCount,
+            'restored_session_count' => (int) $before['session_count'],
+            'current_remaining_sessions' => (int) $course->RemainingSessions,
+            'restored_remaining_sessions' => (int) $before['remaining_sessions'],
+            'restorable_sessions_count' => $sessions->count(),
+            'restorable_schedules_count' => $schedules->count(),
+            'unscheduled_remaining_sessions' => max(0, (int) $before['remaining_sessions'] - $futureCovered),
+            'reopens_contract' => (int) $before['stop'] === 0,
+            'financial_mutation' => 'none',
+        ];
+    }
+
+    public function revert(StudentClass $course, int $actorId, string $reason): array
+    {
+        $reason = trim($reason);
+        if ($reason === '') {
+            throw ValidationException::withMessages(['reason' => '撤銷調整必須填寫原因。']);
+        }
+        return DB::transaction(function () use ($course, $actorId, $reason): array {
+            $locked = StudentClass::query()->where('ID', $course->getKey())->lockForUpdate()->first();
+            if ($locked === null) {
+                throw (new ModelNotFoundException())->setModel(StudentClass::class, [$course->getKey()]);
+            }
+            $snap = $this->assertRevertible($locked);
+            $before = $snap['before'];
+            $sessions = $this->revertibleSessions($snap, true);
+            $schedules = $this->revertibleSchedules($snap, true);
+            foreach ($schedules as $schedule) {
+                $clash = Schedule::query()->where('student_id', $schedule->student_id)
+                    ->whereDate('schedule_date', $schedule->schedule_date)
+                    ->where('status', 'scheduled')->where('id', '!=', $schedule->id)
+                    ->where('start_time', '<', $schedule->end_time)->where('end_time', '>', $schedule->start_time)->exists();
+                if ($clash) {
+                    throw new HttpException(409, '原時段已被其他排程占用，無法撤銷調整，請先處理衝突時段。');
+                }
+            }
+
+            $locked->setAttribute('SessionCount', $before['session_count']);
+            $locked->setAttribute('UsedSessions', $before['used_sessions']);
+            $locked->setAttribute('RemainingSessions', $before['remaining_sessions']);
+            $locked->setAttribute('Stop', $before['stop']);
+            $locked->setAttribute('closed_reason', $before['closed_reason']);
+            if (array_key_exists('end_date', $before)) {
+                $locked->setAttribute('EndDate', $before['end_date']);
+            } elseif ((int) $before['stop'] === 0 && (int) $snap['after']['stop'] === 1) {
+                // ponytail: pre-end_date snapshots lack the old EndDate; approximate with the last live session date.
+                $last = ClassSession::query()->where('StudentClassID', $locked->getKey())->where('Status', '!=', 'cancelled')->max('SessionDate');
+                if ($last) {
+                    $locked->setAttribute('EndDate', substr((string) $last, 0, 10));
+                }
+            }
+            $locked->setAttribute('settlement_snapshot', json_encode([
+                'kind' => 'contract_amendment_reverted',
+                'reverted' => $snap,
+                'reason_hash' => hash('sha256', $reason),
+                'actor_user_id' => $actorId ?: null,
+                'at' => now()->toIso8601String(),
+                'financial_mutation' => 'none',
+            ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+            $locked->save();
+            ClassSession::resetSettlementLockCache();
+
+            try {
+                foreach ($sessions as $session) {
+                    $session->Status = 'scheduled';
+                    $session->Note = trim(str_replace(self::CANCEL_NOTE, '', (string) $session->Note));
+                    $session->save();
+                }
+            } catch (ValidationException $e) {
+                throw new HttpException(409, '原時段已被其他堂次占用，無法撤銷調整，請先處理衝突時段。');
+            }
+            if ($schedules->isNotEmpty()) {
+                Schedule::query()->whereIn('id', $schedules->pluck('id'))->update(['status' => 'scheduled', 'updated_at' => now()]);
+            }
+
+            SecurityAuditEvent::append(
+                'student_class.contract_amendment_reverted',
+                'success',
+                [
+                    'actor_type' => 'user',
+                    'actor_id' => $actorId ?: null,
+                    'subject_type' => 'student_class',
+                    'subject_id' => $locked->getKey(),
+                    'campus_id' => (int) ($locked->student?->CampusID ?: 0) ?: null,
+                ],
+                [
+                    'old_session_count' => $snap['after']['session_count'],
+                    'new_session_count' => $before['session_count'],
+                    'reason_code' => 'contract_amendment_reverted',
+                    'reason_hash' => hash('sha256', $reason),
+                    'outcome' => 'success',
+                ]
+            );
+            $unscheduled = max(0, (int) $before['remaining_sessions'] - count($this->futureScheduled((int) $locked->getKey())));
+            return [
+                'message' => "已撤銷調整，合約恢復為 {$before['session_count']} 堂、剩餘 {$before['remaining_sessions']} 堂。帳務資料未變更。"
+                    . ($unscheduled > 0 ? "尚有 {$unscheduled} 堂未排課，請自行排課。" : ''),
+                'restored_session_ids' => $sessions->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+                'restored_schedule_ids' => $schedules->pluck('id')->map(fn ($id): int => (int) $id)->all(),
+                'unscheduled_remaining_sessions' => $unscheduled,
+                'after' => $locked->fresh()->only(['ID', 'SessionCount', 'UsedSessions', 'RemainingSessions', 'Stop', 'closed_reason', 'EndDate']),
+                'financial_mutation' => 'none',
+            ];
+        });
+    }
+
+    /** Returns the amendment snapshot, or 409s when it is missing or the contract drifted since. */
+    private function assertRevertible(StudentClass $course): array
+    {
+        $snap = json_decode((string) $course->getAttribute('settlement_snapshot'), true);
+        if (!is_array($snap) || ($snap['kind'] ?? null) !== self::CLOSED_REASON) {
+            throw new HttpException(409, '此合約沒有可撤銷的調整。');
+        }
+        $after = $snap['after'] ?? [];
+        $drift = (int) $course->SessionCount !== (int) ($after['session_count'] ?? -1)
+            || (int) $course->UsedSessions !== (int) ($after['used_sessions'] ?? -1)
+            || (int) $course->RemainingSessions !== (int) ($after['remaining_sessions'] ?? -1)
+            || (int) $course->Stop !== (int) ($after['stop'] ?? -1)
+            || (string) $course->getAttribute('closed_reason') !== (string) ($after['closed_reason'] ?? '');
+        if ($drift) {
+            throw new HttpException(409, '合約在調整後已有變動，無法自動撤銷，請聯絡管理員。');
+        }
+        return $snap;
+    }
+
+    private function revertibleSessions(array $snap, bool $lock = false)
+    {
+        $q = ClassSession::query()->whereIn('id', $snap['cancelled_session_ids'] ?? [])
+            ->where('Status', 'cancelled')->where('Note', 'like', '%' . self::CANCEL_NOTE . '%')->orderBy('id');
+        return ($lock ? $q->lockForUpdate() : $q)->get();
+    }
+
+    private function revertibleSchedules(array $snap, bool $lock = false)
+    {
+        $q = Schedule::query()->whereIn('id', $snap['cancelled_schedule_ids'] ?? [])->where('status', 'cancelled')->orderBy('id');
+        return ($lock ? $q->lockForUpdate() : $q)->get();
     }
 }

@@ -1,3 +1,7 @@
+## 2026-09-29 — feat(courses): director undo of contract amendment
+<!-- release-notes: silent_ship=silent-2026-09-29-undo-contract-amendment -->
+- 主任可在課程操作選單「撤銷調整」，還原提前結束／調整合約總堂數：恢復堂數、結束狀態與被取消的預排（原時段被占用或合約已有變動時拒絕），需填原因並留稽核紀錄；帳務不變，也不會自動排課。
+
 ## 2026-09-29 — feat(billing): prepare audited monthly receipt correction
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-accounting-correction -->
 - 準備誤登收款的保留原紀錄、沖銷重登與分期開單；新操作保持停用，正式收款更正須另有核准清單，尚未修復個案或發布主任操作公告。

@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Services\ContractAmendmentService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class ContractAmendmentController extends Controller
 {
@@ -52,6 +53,30 @@ final class ContractAmendmentController extends Controller
                 'message' => collect($e->errors())->flatten()->first() ?: '合約調整失敗',
                 'errors' => $e->errors(),
             ], 422);
+        }
+    }
+
+    public function revertPreview(StudentClass $studentClass)
+    {
+        return $this->guarded($studentClass, fn () => $this->service->revertPreview($studentClass));
+    }
+
+    public function revert(Request $request, StudentClass $studentClass)
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'max:255']]);
+        $actor = $request->attributes->get('auth_user');
+        return $this->guarded($studentClass, fn () => $this->service->revert($studentClass, (int) ($actor->id ?? 0), (string) $data['reason']));
+    }
+
+    private function guarded(StudentClass $course, callable $run)
+    {
+        if ($error = $this->authorizeCourse($course)) {
+            return $error;
+        }
+        try {
+            return response()->json($run());
+        } catch (HttpException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->getStatusCode());
         }
     }
 
