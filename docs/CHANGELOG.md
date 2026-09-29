@@ -1,3 +1,19 @@
+## 2026-09-29 — fix(schedule): explain capacity occupancy sources (in-app #347 / GitHub #3197)
+<!-- release-notes: staff_update=staff-2026-09-29-capacity-source-labels -->
+- 課程時段衝突提示改用「固定課程」「課堂紀錄」「排課紀錄」說明來源，保留學生、科目與時段資訊；容量判斷及原始診斷資料不變。
+
+## 2026-09-29 — fix(students): identify historical course badges (in-app #353 / GitHub #3201)
+<!-- release-notes: staff_update=staff-2026-09-29-student-course-history -->
+- 學生列表的歷史課程標籤同步顯示已完課、已結算或待對帳，避免歷史堂數與目前課程混淆；原有堂數、課程篩選及待對帳入口保留。
+
+## 2026-09-29 — fix(billing-ui): expose existing void receipt trace query (in-app #350 / GitHub #3212)
+<!-- release-notes: staff_update=staff-2026-09-29-void-receipt-trace -->
+- 帳務中心收據紀錄可查詢已作廢紀錄，歷史課程仍可開啟原有繳費明細追蹤；作廢狀態在列表及匯出中清楚標示，不計入有效收款合計。
+
+## 2026-09-29 — fix(students): keep tutoring next steps consistent with no-charge status (in-app #351 / GitHub #3206)
+<!-- release-notes: staff_update=staff-2026-09-29-tutoring-payment-prompts -->
+- 學生管理的正常輔導課不再誤列為待付款；已有帳務異常仍提示主任核對，一般收費課的付款提醒與輔導課續報提示保留。
+
 ## 2026-09-28 — chore(framework): preserve native operational value projections (GitHub #977 / #2833)
 <!-- release-notes: silent_ship=silent-2026-09-28-native-value-contracts -->
 - 為框架升級保留學生課程回應、既有必要時段及營運資料投影，維持原有分校、角色、日期與帳務契約。不改正式資料，尚待部署與受影響路徑驗收。

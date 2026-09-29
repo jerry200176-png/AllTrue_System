@@ -4,6 +4,150 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-29-void-receipt-trace",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "作廢收據可追蹤",
+    "summary": "收據紀錄可查詢已作廢項目，歷史課程仍能開啟繳費明細。",
+    "items": [
+      "帳務中心選擇已作廢紀錄或全部，可透過繳費明細核對原有帳務紀錄。",
+      "作廢狀態在列表與匯出中清楚標示，不計入有效收款合計，也不提供再次撤銷。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務中心選擇已作廢紀錄或全部，可透過繳費明細核對原有帳務紀錄。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "作廢狀態在列表與匯出中清楚標示，不計入有效收款合計，也不提供再次撤銷。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:350",
+      "changelog:2026-09-29:void-receipt-trace"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
+    "id": "staff-2026-09-29-tutoring-payment-prompts",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "輔導課付款提示一致",
+    "summary": "正常輔導課不再誤列為待付款，帳務異常仍會提醒主任核對。",
+    "items": [
+      "學生管理的輔導課卡片、待處理數與下一步提示一致，不要求正常輔導課確認付款。",
+      "一般收費課的付款提醒與輔導課續報提示保留；帳務異常仍可前往帳務中心查看。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理的輔導課卡片、待處理數與下一步提示一致，不要求正常輔導課確認付款。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "一般收費課的付款提醒與輔導課續報提示保留；帳務異常仍可前往帳務中心查看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:351",
+      "changelog:2026-09-29:tutoring-payment-prompts"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
+    "id": "staff-2026-09-29-student-course-history",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程標籤區分歷史",
+    "summary": "學生列表標明既有歷史課程狀態，方便區分目前課程與已結束紀錄。",
+    "items": [
+      "歷史課程標明已完課、已結算或待對帳，原有堂數與查閱入口保留。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "歷史課程標明已完課、已結算或待對帳，原有堂數與查閱入口保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:353",
+      "changelog:2026-09-29:student-course-history"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
+    "id": "staff-2026-09-29-capacity-source-labels",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "時段衝突來源更清楚",
+    "summary": "課程時段衝突提示以中文說明紀錄來源，方便核對既有課程與排課。",
+    "items": [
+      "衝突來源顯示固定課程、課堂紀錄或排課紀錄，學生、科目及時段資訊保留。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "衝突來源顯示固定課程、課堂紀錄或排課紀錄，學生、科目及時段資訊保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:347",
+      "changelog:2026-09-29:capacity-source-labels"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-27-homework-hint",
     "publishedAt": "2026-09-27",
     "effectiveAt": null,

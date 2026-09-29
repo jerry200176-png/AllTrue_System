@@ -366,6 +366,7 @@ export function formatAccountingZeroChip(row) {
 
 export function formatAccountingTagLine(row) {
   return [
+    row?.status === 'voided' ? '已作廢' : '',
     formatAccountingZeroChip(row),
     row?.is_prepaid ? '預收' : '',
     row?.is_backfilled ? '補建' : '',
