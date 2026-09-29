@@ -1717,6 +1717,11 @@ class StudentClassController extends Controller
         }
 
         $mapped = $this->mapFrontendPayload($request);
+        if (app(\App\Services\MonthlyContractBoundaryService::class)->extensionRequiresRenewal($studentClass, $mapped)) {
+            return response()->json(['message' => '已收款月結課程不可直接延長期間，請選用或建立下一期未繳費合約。',
+                'code' => 'monthly_paid_period_extension_requires_renewal', 'suggested_actions' => ['renew_monthly']], 422);
+        }
+
         if (array_key_exists('rate_unit', $mapped)) {
             $rateUnit = strtolower(trim((string) $mapped['rate_unit']));
             if (!in_array($rateUnit, ['session', 'hour'], true)) {

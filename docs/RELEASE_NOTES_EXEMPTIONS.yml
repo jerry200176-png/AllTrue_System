@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-monthly-next-period-booking
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(courses): prepare next-period monthly booking guidance"
+    reason: 月結跨期操作與更正預覽尚未部署、核准啟用或完成正式案例驗證，待上線驗證後再發布教職員操作公告。
+
   - id: silent-2026-09-29-monthly-contract-correction
     changelog_date: "2026-09-29"
     changelog_title: "feat(billing): prepare controlled monthly contract correction"
