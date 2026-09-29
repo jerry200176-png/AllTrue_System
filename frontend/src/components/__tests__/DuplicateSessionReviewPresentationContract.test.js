@@ -28,4 +28,12 @@ describe('DuplicateSessionReviewPage presentation contract', () => {
     expect(reviewApi).toContain("/admin/duplicate-sessions/p2-review/${encodeURIComponent(groupId)}");
     expect(reviewApi).toContain('body: JSON.stringify({ keep_student_class_id, reason })');
   });
+
+  it('labels shared-package groups (in-app #316) without hiding any row', () => {
+    expect(page).toContain("import AtBadge from '../components/design-system/AtBadge.vue';");
+    expect(page.match(/v-if="g\.is_shared_package"/g)).toHaveLength(2);
+    expect(page).toContain('label="多科共用"');
+    expect(page).toContain('可能是刻意安排');
+    expect(page).toContain('v-for="g in filteredGroups"');
+  });
 });

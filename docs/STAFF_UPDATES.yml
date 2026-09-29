@@ -51,6 +51,19 @@ updates:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
 
+  - id: staff-2026-09-30-dup-review-shared-label
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 重疊課程審核標示多科共用
+    summary: 屬於多科共用堂數套組的重疊時段仍會列出，並加上「多科共用」標籤供判斷。
+    items:
+      - category: improved
+        text: 標籤提示此重疊可能是刻意安排；重複判定、堂數與扣堂規則不變。
+    source_refs:
+      - "alltrue:bug_report:316"
+
   - id: staff-2026-09-29-row-actions-compact
     published_at: "2026-09-29"
     audiences:

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\CoursePackage;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +32,31 @@ class AdminDuplicateSessionControllerTest extends TestCase
         $this->assertSame(91001, $groups[0]['student_id']);
         $this->assertSame('學生91001', $groups[0]['student_name']);
         $this->assertNotEmpty($groups[0]['id']);
+    }
+
+    public function test_p2_review_flags_shared_package_rows_but_still_lists_them(): void
+    {
+        $campus = Campus::factory()->create();
+        $token = $this->directorToken($campus->id);
+
+        $this->seedDuplicatePair(studentId: 91011, campusId: $campus->id); // not shared
+        [, $sharedA, $sharedB] = $this->seedDuplicatePair(studentId: 91012, campusId: $campus->id);
+        $package = CoursePackage::create([
+            'student_id' => 91012, 'campus_id' => $campus->id, 'name' => '共用套組',
+            'billing_mode' => 'count', 'total_sessions' => 12, 'remaining_sessions' => 10,
+            'used_sessions' => 2, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
+        ]);
+        DB::table('StudentClass')->whereIn('ID', [$sharedA, $sharedB])->update(['PackageID' => $package->id]);
+
+        $res = $this->withToken($token)->getJson('/api/v1/admin/duplicate-sessions/p2-review');
+        $res->assertOk();
+        $byStudent = collect($res->json('data.groups'))->keyBy('student_id');
+
+        $this->assertCount(2, $byStudent);
+        $this->assertFalse($byStudent[91011]['is_shared_package']);
+        $this->assertTrue($byStudent[91012]['is_shared_package']);
+        $this->assertTrue($byStudent[91012]['sides'][0]['is_shared_package']);
     }
 
     public function test_patch_p2_review_cancels_non_kept_side_and_returns_kept_session_ids(): void

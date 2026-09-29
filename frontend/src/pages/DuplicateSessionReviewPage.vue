@@ -106,6 +106,13 @@
             <tr :class="{ 'dsr-row-expanded': expandedKey === g._key }">
               <td>
                 <span class="dsr-student-name">{{ formatDirectorPersonName(g) }}</span>
+                <AtBadge
+                  v-if="g.is_shared_package"
+                  tone="info"
+                  label="多科共用"
+                  title="此學生的課程屬於多科共用堂數套組，重疊時段可能是刻意安排，請自行判斷。"
+                  data-testid="dsr-shared-package-badge"
+                />
               </td>
               <td>
                 <div class="dsr-date">{{ formatDate(g.session_date) }}</div>
@@ -304,6 +311,13 @@
           <header class="dsr-mcard-head">
             <div class="dsr-mcard-head-left">
               <span class="dsr-student-name">{{ formatDirectorPersonName(g) }}</span>
+              <AtBadge
+                  v-if="g.is_shared_package"
+                  tone="info"
+                  label="多科共用"
+                  title="此學生的課程屬於多科共用堂數套組，重疊時段可能是刻意安排，請自行判斷。"
+                  data-testid="dsr-shared-package-badge"
+                />
             </div>
             <span :class="['dsr-status', `dsr-status-${groupStatus(g)}`]">
               {{ statusLabel(groupStatus(g)) }}
@@ -449,6 +463,7 @@
 </template>
 
 <script setup>
+import AtBadge from '../components/design-system/AtBadge.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
