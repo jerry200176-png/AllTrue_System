@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 479 api/* routes · generated 2026-09-17
+> Source: `php artisan route:list --json` · 480 api/* routes · generated 2026-09-29
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -704,7 +704,7 @@
 |--------|-----|--------|------|
 | GET | `api/v1/schools` | `SchoolDirectoryController@index` | role+campus |
 
-## /api/v1/student-classes (34)
+## /api/v1/student-classes (35)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
@@ -732,6 +732,7 @@
 | GET | `api/v1/student-classes/{studentClass}/invoices` | `StudentClassController@invoices` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/manual-sessions` | `StudentClassController@createManualSession` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/manual-sessions/check` | `StudentClassController@checkManualSession` | role+campus |
+| POST | `api/v1/student-classes/{studentClass}/monthly-contract-correction/preview` | `MonthlyContractCorrectionController@preview` | role+campus |
 | GET | `api/v1/student-classes/{studentClass}/package-conversion-preview` | `CoursePackageController@conversionPreview` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/pause` | `StudentClassController@togglePause` | role+campus |
 | POST | `api/v1/student-classes/{studentClass}/purchase-batch` | `StudentClassController@purchaseBatch` | role+campus |
