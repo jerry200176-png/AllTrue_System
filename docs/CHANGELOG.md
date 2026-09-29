@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing): preserve existing source invoice items during reviewed correction
+<!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
+- 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
+
 ## 2026-09-29 — feat(schedule): director can move a session to another contract
 <!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
 - 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。

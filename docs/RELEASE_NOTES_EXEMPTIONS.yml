@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-source-monthly-item
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): preserve existing source invoice items during reviewed correction"
+    reason: 修正尚未啟用的受控修復對既有帳單明細的支援，正式個案未執行，不發布上線或完成公告。
+
   - id: silent-2026-09-29-rfid-swipe-hardening
     changelog_date: "2026-09-29"
     changelog_title: "fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)"
