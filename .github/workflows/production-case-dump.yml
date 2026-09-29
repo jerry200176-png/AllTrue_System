@@ -739,7 +739,7 @@ jobs:
                 'candidate_count'=>$r->candidate_count === null ? null : (int)$r->candidate_count,
                 'phone_match_count'=>$r->phone_match_count === null ? null : (int)$r->phone_match_count])->values()->all();
           }} elseif ($case === 'contract_yang_binghe') {{
-            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$/i', (string)$k))->all();
+            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
             $rowsOf = fn ($q) => $q->get()->map($redact)->values()->all();
             $campuses = $db::table('Campus')->where('name', 'like', '%新店%')->pluck('id')->map(fn ($i) => (int)$i)->all();
