@@ -3,6 +3,24 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-29-calendar-day-nav
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 行事曆日檢視更好用
+    summary: 日檢視自動捲到當天第一堂課，日期切換整合成一組控制，載入時版面不再跳動。
+    items:
+      - category: improved
+        text: 開啟或換日後自動捲到當天最早一堂課；無課則顯示下午時段。
+      - category: improved
+        text: 「今天」與前後切換、日期選擇合併為一組，日檢視按天切換、週檢視按週切換。
+      - category: fixed
+        text: 標題在日檢視顯示當天日期與堂數，載入中不再推動版面。
+    source_refs:
+      - "changelog:2026-09-29:calendar-day-nav"
+
   - id: staff-2026-09-29-capacity-source-labels
     published_at: "2026-09-29"
     audiences:

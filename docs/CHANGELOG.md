@@ -2,6 +2,14 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-counts-loading-ux -->
 - 主任總覽的待審評量、未讀通知、繳費提醒、今日課務進度改與側欄／各頁同一口徑；載入中的列表標頭顯示「—」與骨架而非 0／空狀態。純前端顯示調整，無教職員新操作。
 
+## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
+<!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
+- 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
+
+## 2026-09-29 — fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)
+<!-- release-notes: silent_ship=silent-2026-09-29-rfid-swipe-hardening -->
+- 刷卡即出席（含扣堂）政策不變；補強：無真實堂次不扣堂、忘記刷退時自動補後續連堂、扣堂失敗會通知職員、讀卡機限流由每分鐘 30 放寬到 120。尚未部署，不發布上線公告。
+
 ## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
 <!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
 - 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。

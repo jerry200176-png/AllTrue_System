@@ -138,7 +138,7 @@ class RouteRegistrationTest extends TestCase
     {
         return [
             'auth register' => ['POST', 'api/v1/auth/register', 'throttle:10,10'],
-            'rfid swipe'    => ['POST', 'api/v1/swipe-rfid', 'throttle:30,1'],
+            'rfid swipe'    => ['POST', 'api/v1/swipe-rfid', 'throttle:120,1'],
         ];
     }
 
