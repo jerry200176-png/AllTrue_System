@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
 - 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
 
+## 2026-09-29 — feat(ui): compact sidebar branch switcher and More-page breadcrumb
+<!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
+- 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
+
 ## 2026-09-29 — feat(ui): unify page headers, part 2 (dashboard, students, courses, billing, teachers, admissions, reports, branch health)
 <!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
 - 補完其餘八頁的頁首統一（同一則版本更新說明）：標題不再包在白卡裡、流程說明收進 ⓘ、「重新整理」統一、圖示與側欄一致；主任總覽移除重複橫幅、軍階改為小標籤。僅版面與文案。
