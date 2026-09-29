@@ -17,9 +17,9 @@ describe('SmartCalendar accessibility contracts', () => {
   });
 
   it('gives date, filter, and view controls explicit names and state', () => {
-    expect(source).toContain('role="group" aria-labelledby="calendar-month-label"');
+    expect(source).toContain('role="group" aria-label="日期導覽"');
     expect(source).toContain('aria-live="polite"');
-    expect(source).toContain('<label class="toolbar-label" for="calendar-jump-date">跳至日期</label>');
+    expect(source).toContain('aria-label="選擇日期"');
     expect(source).toContain('id="calendar-jump-date"');
     expect(source).toContain('aria-label="依教室篩選"');
     expect(source).toContain('aria-label="搜尋老師"');
