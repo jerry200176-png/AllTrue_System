@@ -84,6 +84,7 @@ updates:
         text: 主任總覽移除重複的「接著處理」橫幅，軍階改為標題旁的小標籤。
     source_refs:
       - "changelog:2026-09-29:page-header-unify"
+      - "changelog:2026-09-29:page-header-unify-part-2"
 
   - id: staff-2026-09-29-filters-course-lookup-clarity
     published_at: "2026-09-29"
