@@ -90,7 +90,7 @@
       <details class="tc-summary-disclosure" v-if="rows.length">
         <summary>
           <span>收款摘要</span>
-          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・未結清 {{ formatCurrency(totalOutstanding) }}</span>
+          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・已開帳單未結清 {{ formatCurrency(totalOutstanding) }}<template v-if="unbilledOutstandingCount">（另 {{ unbilledOutstandingCount }} 筆待處理尚未開帳單，不計入金額）</template></span>
           <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
         </summary>
         <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
@@ -113,7 +113,7 @@
           <div class="tc-card tc-card--outstanding">
             <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
             <span class="tc-card-label">
-              未結清
+              已開帳單未結清
               <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
                 收款率 {{ collectionRate }}%
               </span>
@@ -1619,6 +1619,11 @@ const totalOutstanding = computed(() => {
     .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
     .reduce((sum, r) => sum + (r.payable_outstanding || 0), 0);
 });
+
+// 未開帳單（payable_status !== 'invoiced'）的提醒 payable_outstanding 為 null，金額只有估算值，
+// 故不計入「已開帳單未結清」；另計筆數讓主任知道還有多少筆金額尚未確定。
+const unbilledOutstandingCount = computed(() => rows.value
+  .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status) && r.payable_status !== 'invoiced').length);
 
 // ═══ Summary Computed ═══
 const overdueRows = computed(() => rows.value.filter(isOverdue));

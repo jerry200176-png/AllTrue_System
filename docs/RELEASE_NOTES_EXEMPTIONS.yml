@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
     reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
 
+  - id: silent-2026-09-29-tuition-summary-label
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): label tuition summary as invoiced-only outstanding"
+    reason: 只改帳務中心摘要文字，金額計算與流程不變，教職員不需新操作說明。
+
   - id: silent-2026-09-29-monthly-billing-review
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare missing monthly invoice review"
