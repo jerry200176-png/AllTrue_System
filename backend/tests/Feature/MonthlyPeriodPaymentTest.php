@@ -145,4 +145,69 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertSame(6000, $summary['periods'][0]['charge']);
         $this->assertSame(6000, (int) $invoice->fresh()->TotalAmount);
     }
+    public function test_review_exposes_missing_invoices_and_outside_contract_lessons_without_rewriting_cash(): void
+    {
+        $course = $this->course();
+        $course->update(['StartDate' => '2026-07-27', 'EndDate' => '2026-09-10', 'Rate' => 1500, 'Charge' => 7500]);
+        ClassSession::where('StudentClassID', $course->ID)->delete();
+        foreach (['2026-08-15', '2026-08-20', '2026-08-25', '2026-08-27', '2026-09-02', '2026-09-10', '2026-09-16', '2026-09-23'] as $date) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-08-06', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'leave']);
+        $invoice = $this->invoice($course, '2026-07', 1000);
+        $invoice->update(['TotalAmount' => 7500, 'PaidAmount' => 7500]);
+        $invoice->payments()->update(['Amount' => 7500]);
+        $before = [$course->fresh()->getAttributes(), $invoice->fresh()->getAttributes(), Payment::first()->getAttributes(), ClassSession::count()];
+        $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
+        $this->assertSame(7500, $summary['registered_paid_amount']);
+        $this->assertSame([6000, 6000], array_column($summary['session_review'], 'estimated_charge'));
+        $this->assertSame([4, 4], array_column($summary['session_review'], 'uncovered_sessions'));
+        $this->assertSame([0, 2], array_column($summary['session_review'], 'outside_contract_sessions'));
+        $this->assertTrue($summary['review_required']);
+        $this->assertSame('unknown', $summary['periods'][2]['payment_status']);
+        $this->assertFalse($course->relationLoaded('pricingAmendments'));
+        $this->assertSame($before, [$course->fresh()->getAttributes(), $invoice->fresh()->getAttributes(), Payment::first()->getAttributes(), ClassSession::count()]);
+    }
+
+    public function test_review_prices_each_lesson_at_its_effective_rate_and_retains_hourly_snapshot(): void
+    {
+        $course = $this->course();
+        $course->update(['Rate' => 600, 'rate_unit' => 'hour']);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-08-10', 'StartTime' => '18:00', 'EndTime' => '19:30', 'Status' => 'completed', 'session_charge' => 777]);
+        foreach ([null, now()] as $voided) {
+            \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $course->ID,
+                'effective_from' => $voided ? '2026-08-14' : '2026-08-15', 'rate' => $voided ? 9999 : 1200, 'rate_unit' => 'session',
+                'source_reference' => 'review-fixture', 'reason' => 'test', 'created_at' => now(), 'voided_at' => $voided]);
+        }
+        $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
+        $this->assertSame(1977, $summary['session_review'][0]['estimated_charge']);
+        $this->assertSame(1200, $summary['session_review'][1]['estimated_charge']);
+        $this->assertSame(600, (int) $course->fresh()->Rate);
+    }
+
+    public function test_missing_rate_is_unknown_instead_of_using_contract_charge_as_an_estimate(): void
+    {
+        $course = $this->course();
+        $course->update(['Rate' => 0]);
+        $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
+        $this->assertNull($summary['session_review'][0]['estimated_charge']);
+        $this->assertNull($summary['session_review'][0]['sessions'][0]['estimated_charge']);
+    }
+
+    public function test_paid_invoice_amount_discrepancy_is_reviewable_without_repricing_it(): void
+    {
+        $course = $this->course();
+        ClassSession::where('StudentClassID', $course->ID)->where('SessionDate', '2026-09-02')->delete();
+        $course->update(['EndDate' => '2026-08-31']);
+        $invoice = $this->invoice($course, '2026-08', 1000);
+        $invoice->update(['TotalAmount' => 1500, 'PaidAmount' => 1500]);
+        $invoice->payments()->update(['Amount' => 1500]);
+        $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
+        $this->assertTrue($summary['review_required']);
+        $this->assertTrue($summary['periods'][0]['amount_discrepancy']);
+        $this->assertSame(1000, $summary['session_review'][0]['estimated_charge']);
+        $this->assertSame(1500, $summary['registered_paid_amount']);
+        $this->assertSame(1500, (int) $invoice->fresh()->TotalAmount);
+    }
+
 }
