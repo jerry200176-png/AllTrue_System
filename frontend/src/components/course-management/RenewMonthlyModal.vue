@@ -23,8 +23,26 @@
           <span class="info-label">舊期到期日</span>
           <span class="info-value">{{ form.current_end_date || '無到期日' }}</span>
         </div>
+        <div class="info-row">
+          <span class="info-label">新期開始日</span>
+          <span class="info-value">{{ form.preview_start_date || '待預覽' }}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">帳單月份</span>
+          <span class="info-value">{{ form.preview_billing_period || '待預覽' }}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">繳費到期日</span>
+          <span class="info-value">{{ form.preview_due_date || '待預覽' }}</span>
+        </div>
       </div>
       <p class="period-hint">確認後會建立「新一期課程」，舊課程會結算成歷史，帳單不會再混在同一筆課程。新期依契約固定時段展開，單堂調課不會自動帶過去。</p>
+      <p class="period-hint">金額為預排估算；月結實際收費依確認已上堂次計算。若既有已上課紀錄需要拆到新期，請先完成月結核對。</p>
+      <p v-if="form.preview_status === 'loading'" class="hint" role="status">正在預覽新一期期間…</p>
+      <div v-if="form.preview_status === 'error'" class="renewal-warnings" role="alert">
+        <p>{{ form.preview_error || '無法取得期間預覽，請重試。' }}</p>
+        <button type="button" class="ghost" @click="$emit('preview-change', finalEndDate)">重新預覽</button>
+      </div>
 
       <div v-if="(warnings || []).length" class="renewal-warnings" role="alert">
         <p v-for="(w, i) in warnings" :key="w.code || i" class="renewal-warning-item">{{ w.message }}</p>
@@ -56,12 +74,12 @@
         <select v-model="props.form.discount.type"><option value="NONE">無折扣</option><option value="FIXED_AMOUNT">固定金額</option><option value="PERCENTAGE">百分比</option></select>
         <input v-if="props.form.discount.type !== 'NONE'" v-model="props.form.discount.value" type="text" inputmode="decimal" placeholder="折扣值" />
         <input v-if="props.form.discount.type !== 'NONE'" v-model="props.form.discount.reason" type="text" maxlength="500" placeholder="折扣原因（必填）" />
-        <span class="hint">原始 {{ discountPreview.originalAmount.toLocaleString() }} · 折扣 {{ discountPreview.discountAmount.toLocaleString() }} · 實收 {{ discountPreview.finalAmount.toLocaleString() }}</span>
+        <span class="hint">預估 {{ discountPreview.originalAmount.toLocaleString() }} · 折扣 {{ discountPreview.discountAmount.toLocaleString() }} · 折扣後估算 {{ discountPreview.finalAmount.toLocaleString() }}</span>
       </div>
 
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
-        <button class="primary" :disabled="submitting" @click="$emit('submit', finalEndDate)">
+        <button class="primary" :disabled="submitting || !canSubmitMonthlyRenewal(form, finalEndDate)" @click="$emit('submit', finalEndDate)">
           {{ submitting ? '建立中…' : '建立新一期' }}
         </button>
       </div>
@@ -70,9 +88,10 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { calculateTransactionDiscountPreview } from '../../lib/coursePricing';
+import { canSubmitMonthlyRenewal } from '../../lib/monthlyRenewalPreview';
 
 const props = defineProps({
   show: Boolean,
@@ -80,7 +99,7 @@ const props = defineProps({
   submitting: { type: Boolean, default: false },
   warnings: { type: Array, default: () => [] },
 });
-defineEmits(['close', 'submit', 'preview-change']);
+const emit = defineEmits(['close', 'submit', 'preview-change']);
 
 const mode = ref('months');
 
@@ -106,6 +125,7 @@ const finalEndDate = computed(() => {
   if (mode.value === 'date') return props.form?.end_date || '';
   return computedEndDate.value;
 });
+watch(mode, () => emit('preview-change', finalEndDate.value));
 </script>
 
 <style scoped>

@@ -5,6 +5,12 @@
 - Prepared an exact-SHA manual dispatch alternative to a second Environment click; candidate only, pending the protected decision. Actor, triggering actor, registered identity, canonical repository owner, run ID/path, main, successful CI and typed confirmation are verified.
 - Automatic deployment and non-application/POP operations cannot use the alternative. Existing configured reviewers and all executor, recovery and verification gates remain enforced; GitHub settings and production data were not changed.
 
+## 2026-09-29 — Preserve approval across an authorized task
+
+- Founder requested removal of repeated conversational approvals within an already approved task. Documented scope continuity across merge, deployment, verification, routine integration and pause/resume.
+- New protected actions and changed targets, financial results or recovery boundaries still require an explicit decision. Code activation does not implicitly authorize historical data repair.
+- No GitHub Environment reviewer, POP approval, recovery, production executor, permission or security control is changed or bypassed.
+
 ## 2026-09-21 — Machine-generated PR risk declarations
 
 - Added a pre-merge declaration gate that independently classifies the PR

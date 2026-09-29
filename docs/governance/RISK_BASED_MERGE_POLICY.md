@@ -21,6 +21,30 @@ Preserve autonomous delivery for reversible changes while keeping a Founder gate
 | **R2 / T2** | Reversible scheduling/runtime changes without a protected boundary | Exact-target required CI, rollback readiness, documented risk/production-verification plan, and resolved bot/reviewer threads; Agent may merge/deploy automatically when deterministic classification stays non-protected. |
 | **R3 / T3** | Production data repair; destructive migration; privilege expansion; financial correction; security boundary; backup/restore; mass recalculation; protected product direction | Agent may prepare implementation, tests, dry-run, Repair Manifest, recovery plan, and evidence package. Stop for Founder approval before production activation, mutation/repair, migration/schema cutover, billing/entitlement semantics, identity/authz, destructive action, backup restore, security-sensitive credential change, or major product/brand direction. |
 
+## Approval continuity within the authorized task
+
+A Founder approval applies to the concrete actions, targets, intended result and
+recovery boundary approved in the current task. The Agent records that scope and
+continues its necessary preparation, merge, deployment, verification and approved
+cleanup without asking the Founder to approve each step again. A pause/resume,
+session restart, routine conflict resolution or a new CI-tested release SHA does
+not by itself expire that approval; exact-target checks and scope comparison still
+run for the final artifact.
+
+Ask again only when a new protected action was excluded from the approved scope,
+the target/financial result/recovery boundary materially changes, live data no
+longer matches the approved outcome, or the authorization is genuinely unclear.
+For an approved data repair, derive the immutable Manifest from a fresh signed
+snapshot and verify it against the approved outcome; preparing that Manifest is
+not a second conversational approval gate. Code-only approval does not authorize
+historical data mutation. Never invent, approve as another person, or bypass a
+required GitHub Environment reviewer, POP approval, backup/recovery check or
+executor control. Report a machine gate that needs Founder interaction once with
+the exact artifact and reason, and continue independent authorized work.
+
+This clarifies how existing explicit authorization persists; it grants no new
+unapproved capability and changes no production, security or money-path gate.
+
 ## How to classify (PR author)
 
 1. Pick the **highest** class that applies to any file or behavior in the PR.  

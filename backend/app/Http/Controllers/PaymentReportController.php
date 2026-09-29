@@ -387,6 +387,23 @@ class PaymentReportController extends Controller
                 return $this->duplicateCoursePaymentResponse();
             }
 
+            $monthlyProjection = null;
+            if ($sc && $sc->ScheduleMode === 'date') {
+                $period = $invoice && preg_match('/^\d{4}-\d{2}$/', (string) $invoice->billing_period)
+                    ? (string) $invoice->billing_period : Carbon::parse($report->payment_date)->format('Y-m');
+                $actual = $this->monthlyBilling->summarizePeriod($sc, $period);
+                $monthlyProjection = $invoice ? app(InvoiceAmountReconciliationService::class)->resolve($invoice, $sc) : null;
+                // A pending forecast must be rechecked before any ledger write.
+                // Partial receipts remain allowed; explicit cross-month cycles keep their invoice authority.
+                $limit = max(0, (int) $actual['charge'] - (int) ($invoice->PaidAmount ?? 0));
+                if ($actual['source'] === 'billable_sessions' && (!$invoice || $monthlyProjection['computed_total_amount'] !== null)
+                    && (int) $report->reported_amount > $limit) {
+                    return response()->json(['message' => '月結已上堂次或應收已變動，請重新核對回報金額。',
+                        'code' => 'monthly_amount_stale', 'expected_amount' => $limit, 'billing_period' => $period,
+                        'period_sessions' => (int) $actual['period_sessions']], 422);
+                }
+            }
+
             if (!$invoice) {
                 $invoice = Invoice::create([
                     'StudentID'      => $report->StudentID,
@@ -413,6 +430,7 @@ class PaymentReportController extends Controller
                 if (
                     (string) ($invoice->Status ?? 'unpaid') === 'unpaid'
                     && (int) ($invoice->PaidAmount ?? 0) === 0
+                    && (!$monthlyProjection || $monthlyProjection['computed_total_amount'] !== null)
                     && $billing['source'] === 'billable_sessions'
                 ) {
                     $invoice->TotalAmount = (int) $billing['charge'];
