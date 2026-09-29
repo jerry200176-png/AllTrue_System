@@ -2475,7 +2475,7 @@ const sessionEditSession = computed(() => {
     canCancelSession: canCancelSelectedSession.value,
     cancelState: cancelState.value,
     recovery: sessionRecovery.value,
-    canMoveContract: canMoveSessionContract.value,
+    canMoveContract: ['director', 'super_admin'].includes(props.userRole) && !!cancelTargetSession.value?.id,
     moveContract: moveContract.value,
     editingException: !!editingException.value,
     editingExceptionIsExtra: editingExceptionIsExtra.value,
@@ -2568,11 +2568,9 @@ const loadSessionRecovery = async (sessionId) => {
 
 // ===== 改到其他合約（主任／超級管理員；同學生同科目，含已結束合約）=====
 const makeMoveContract = () => ({
-  open: false, loading: false, targets: [], current: null, targetId: '', reason: '', submitting: false,
+  open: false, loading: false, targets: [], targetId: '', reason: '', submitting: false,
 });
 const moveContract = ref(makeMoveContract());
-const canMoveSessionContract = computed(() =>
-  ['director', 'super_admin'].includes(props.userRole) && !!cancelTargetSession.value?.id);
 
 const moveContractRequest = async (sessionId, body, method = 'POST') => {
   const token = await getToken();
@@ -2594,10 +2592,10 @@ const openMoveContract = async () => {
   moveContract.value = { ...makeMoveContract(), open: true, loading: true };
   try {
     const data = await moveContractRequest(row.id, null, 'GET');
-    moveContract.value = { ...moveContract.value, targets: data.data || [], current: data.current, loading: false };
+    moveContract.value = { ...moveContract.value, targets: data.data || [], loading: false };
   } catch (e) {
     moveContract.value = makeMoveContract();
-    alert(e.message || '載入合約失敗');
+    alert(e.message);
   }
 };
 

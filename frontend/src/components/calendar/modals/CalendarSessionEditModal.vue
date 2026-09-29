@@ -551,7 +551,6 @@ defineEmits([
 .session-recovery-impact { color: var(--ds-ink-mute); }
 .session-recovery input { width: 100%; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 6px; }
 .restore-session { background: var(--ds-success-wash); color: var(--ds-success); border-color: var(--ds-success); }
-.move-contract { background: var(--ds-canvas-soft); color: var(--ds-ink); border-color: var(--ds-hairline, var(--ds-canvas-soft)); }
 .restore-session:disabled { opacity: 0.6; cursor: not-allowed; }
 .eval-summary-box {
   margin-top: 16px;
