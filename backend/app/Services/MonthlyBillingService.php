@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\ClassSession;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -79,12 +80,15 @@ class MonthlyBillingService
         $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
 
         if ($sessions->isEmpty()) {
+            $evidence = (string) $course->getAttribute('ScheduleMode') === 'date'
+                ? $this->periodSessionQuery($course, $billingPeriod)->get(['Status']) : collect();
+            $knownZero = $evidence->isNotEmpty() && $evidence->every(fn ($row) => in_array($row->Status, ['scheduled', 'cancelled', 'voided', 'leave', 'rescheduled'], true));
             return [
-                'charge' => $storedCharge,
+                'charge' => $knownZero ? 0 : $storedCharge,
                 'period_sessions' => 0,
                 'period_start' => $periodStart,
                 'period_end' => $periodEnd,
-                'source' => 'stored_charge_no_billable_sessions',
+                'source' => $knownZero ? 'billable_sessions' : 'stored_charge_no_billable_sessions',
             ];
         }
 
@@ -133,6 +137,14 @@ class MonthlyBillingService
     /** @return Collection<int, ClassSession> */
     public function billableSessionsForPeriod(Model $course, string $billingPeriod): Collection
     {
+        return $this->periodSessionQuery($course, $billingPeriod)
+            ->whereIn('Status', self::BILLABLE_STATUSES)
+            ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+    }
+
+    private function periodSessionQuery(Model $course, string $billingPeriod): Builder
+    {
         try {
             $anchor = Carbon::createFromFormat('!Y-m', $billingPeriod);
         } catch (\Throwable) {
@@ -142,8 +154,8 @@ class MonthlyBillingService
         $periodStart = $anchor->copy()->startOfMonth()->toDateString();
         $periodEnd = $anchor->copy()->endOfMonth()->toDateString();
 
-        return ClassSession::query()
-            ->where('StudentClassID', (int) $course->getKey())
+        $query = ClassSession::query();
+        $query->where('StudentClassID', (int) $course->getKey())
             ->whereBetween('SessionDate', [$periodStart, $periodEnd])
             ->where(function ($query) use ($course, $periodStart, $periodEnd) {
                 // Monthly/date-mode courses are bounded by their contract
@@ -163,12 +175,8 @@ class MonthlyBillingService
                     max($periodStart, $courseStart),
                     min($periodEnd, $courseEnd),
                 ]);
-            })
-            ->whereIn('Status', self::BILLABLE_STATUSES)
-            ->orderBy('SessionDate')
-            ->orderBy('StartTime')
-            ->orderBy('id')
-            ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+            });
+        return $query;
     }
 
     /** @return list<array{class_session_id:int,date:string,start_time:?string,end_time:?string,subject:string,lesson:int,status:string}> */

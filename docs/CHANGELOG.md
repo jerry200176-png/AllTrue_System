@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
+<!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
+- 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。
+
 ## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
 - 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。

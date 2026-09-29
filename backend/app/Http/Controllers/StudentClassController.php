@@ -3568,10 +3568,9 @@ class StudentClassController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $sourceEndDate = $this->normalizeDateString($studentClass->EndDate ?? null);
-            $newStartDate = $sourceEndDate
-                ? Carbon::parse($sourceEndDate)->addDay()->toDateString()
-                : Carbon::today()->toDateString();
+            $periodReview = app(\App\Services\MonthlyRenewalPeriodService::class)->inspect($studentClass, $newEndDate);
+            if ($periodReview['blockers']) return response()->json(array_merge(['message' => $periodReview['blockers'][0]['message']], $periodReview['blockers'][0]), 422);
+            $newStartDate = $periodReview['start_date'];
 
             if ($newEndDate < $newStartDate) {
                 return response()->json([
@@ -3708,10 +3707,9 @@ class StudentClassController extends Controller
 
             $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
 
-            $billingPeriod = Carbon::parse($newStartDate)->format('Y-m');
+            $billingPeriod = $periodReview['billing_period'];
             $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
-            $dueDay = max(1, min(31, (int) ($newCourse->settlement_day ?? 15)));
-            $dueDate = Carbon::parse($newStartDate)->startOfMonth()->addDays($dueDay - 1)->toDateString();
+            $dueDate = $periodReview['due_date'];
 
             $invoice = Invoice::create([
                 'StudentID'      => (int) $newCourse->StudentID,
@@ -3729,6 +3727,7 @@ class StudentClassController extends Controller
             $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
             InvoiceItem::create([
                 'InvoiceID'   => $invoice->id,
+                'StudentClassID' => (int) $newCourse->ID,
                 'Description' => '月結費用 ' . $periodLabel,
                 'Amount'      => $totalAmount,
                 'PeriodStart' => $newStartDate,
@@ -5547,24 +5546,10 @@ class StudentClassController extends Controller
                 }
             }
 
-            $billingPeriod = $newEnd ? Carbon::parse($newEnd)->format('Y-m') : null;
-            $invoiceExists = false;
-            if ($billingPeriod) {
-                $invoiceExists = Invoice::where('StudentClassID', $studentClass->ID)
-                    ->where('billing_period', $billingPeriod)
-                    ->exists();
-                if ($invoiceExists) {
-                    $warnings[] = [
-                        'code' => 'invoice_already_exists',
-                        'message' => '此月份已有帳單，確認時會沿用既有帳單，不會重複建立。',
-                    ];
-                }
-            }
-
-            $dueDay = max(1, min(31, (int) ($studentClass->settlement_day ?? 15)));
-            $dueDate = $newEnd
-                ? Carbon::parse($newEnd)->startOfMonth()->addDays($dueDay - 1)->toDateString()
-                : null;
+            $periodReview = app(\App\Services\MonthlyRenewalPeriodService::class)->inspect($studentClass, $newEnd);
+            $blockers = array_merge($blockers, $periodReview['blockers']);
+            $billingPeriod = $periodReview['billing_period'];
+            $dueDate = $periodReview['due_date'];
             $previewRate = (float) ($studentClass->Rate ?? 0);
             $previewRateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
             if (!in_array($previewRateUnit, ['session', 'hour'], true)) {
@@ -5634,20 +5619,22 @@ class StudentClassController extends Controller
 
             $proposedCourse = [
                 'schedule_mode' => 'date',
-                'start_date' => $this->normalizeDateString($studentClass->StartDate ?? null),
+                'start_date' => $periodReview['start_date'],
                 'current_end_date' => $currentEnd,
                 'end_date' => $newEnd,
                 'paid' => 0,
             ];
             $billing = [
                 'payment_status_after_confirm' => 'unpaid',
+                'amount_basis' => 'planned_estimate',
+                'confirmed_amount_due' => 0,
                 'amount_due' => $discountSnapshot['final_amount'],
                 'discount' => $discountSnapshot,
                 'invoice' => [
                     'billing_period' => $billingPeriod,
                     'due_date' => $dueDate,
                     'total_amount' => $discountSnapshot['final_amount'],
-                    'will_create' => $billingPeriod ? !$invoiceExists : false,
+                    'will_create' => (bool) $billingPeriod,
                 ],
             ];
             $schedule = [
