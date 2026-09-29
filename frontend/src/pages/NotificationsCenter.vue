@@ -1,5 +1,5 @@
 <template>
-  <div class="notifications-page at-ops-page">
+  <div class="notifications-page at-ops-page at-page">
     <AtPageHeader
       title="主任收件匣"
       description="集中查看待辦案件與營運通知，優先處理即將到期或已逾期項目。"
@@ -15,7 +15,16 @@
       <template #actions>
         <AtButton
           shape="rect"
-          size="sm"
+          variant="secondary"
+          icon="refresh"
+          :disabled="syncing || branchId == null"
+          :loading="syncing"
+          @click="laneFilter === 'case' ? loadCaseItems() : syncNotifications(true)"
+        >
+          重新整理
+        </AtButton>
+        <AtButton
+          shape="rect"
           variant="ghost"
           data-guide="notifications-settings-button"
           @click="goToNotificationSettings"
@@ -46,13 +55,13 @@
     <template v-else>
       <AtSection class="controls-card" data-guide="notifications-controls">
         <!-- 主 tabs：待辦案件 / 營運通知（全部僅次要 overview，不作為預設） -->
-        <div class="type-tabs" role="tablist" aria-label="收件匣分類" aria-orientation="horizontal">
+        <div class="type-tabs at-tabs" role="tablist" aria-label="收件匣分類" aria-orientation="horizontal">
           <button
             v-for="tab in typeTabs"
             :key="tab.value"
             :id="tab.id"
             type="button"
-            class="type-tab"
+            class="type-tab at-tab"
             role="tab"
             :aria-selected="typeFilter === tab.value"
             :aria-controls="tab.panelId"
@@ -109,9 +118,6 @@
 
         <AtToolbar v-if="laneFilter !== 'case'" label="通知動作">
           <template #end>
-            <AtButton shape="rect" size="sm" variant="ghost" :disabled="syncing" :loading="syncing" @click="syncNotifications(true)">
-              {{ syncing ? '同步中...' : '同步通知' }}
-            </AtButton>
             <AtButton shape="rect" size="sm" variant="ghost" :disabled="clearingResolved" :loading="clearingResolved" @click="clearResolved">
               {{ clearingResolved ? '清除中...' : '清除已解除' }}
             </AtButton>
@@ -160,7 +166,7 @@
           v-else-if="laneFilter !== 'case' && displayNotifications.length === 0"
           icon="notifications_off"
           title="目前沒有符合條件的通知"
-          description="可調整篩選條件，或同步通知後再查看。"
+          description="可調整篩選條件，或按「重新整理」後再查看。"
         />
 
         <div v-else>
@@ -1149,49 +1155,6 @@ onUnmounted(() => {
 }
 
 /* ── 分類 Tab（Pajamas-style underline, not pills）── */
-.type-tabs {
-  display: flex;
-  gap: 0;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--ds-hairline);
-  margin-bottom: var(--ds-space-3, 12px);
-}
-
-.type-tab {
-  padding: 8px 14px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ds-text-tertiary, var(--text-light));
-  cursor: pointer;
-  font-size: var(--ds-font-size-base, 14px);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--ds-control-height-touch, 44px);
-  margin-bottom: -1px;
-  transition: color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease),
-    border-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
-}
-
-.type-tab:hover {
-  color: var(--ds-text-primary, var(--ds-ink));
-  background: transparent;
-}
-
-.type-tab:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--ds-focus-ring);
-}
-
-.type-tab.active {
-  background: transparent;
-  color: var(--ds-primary-deep);
-  border-bottom-color: var(--ds-primary);
-}
-
 .tab-badge {
   background: var(--ds-surface-2, var(--ds-canvas-soft));
   color: var(--ds-text-secondary, var(--ds-ink-secondary));
@@ -1204,7 +1167,7 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.type-tab.active .tab-badge {
+.at-tab.active .tab-badge {
   background: var(--ds-primary-wash);
   color: var(--ds-primary-deep);
 }

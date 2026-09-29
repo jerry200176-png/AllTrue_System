@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
 - 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。
 
+## 2026-09-29 — feat(ui): unify page headers, refresh buttons, tabs and icons
+<!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
+- 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
+
 ## 2026-09-29 — fix(ux): label tuition summary as invoiced-only outstanding
 <!-- release-notes: silent_ship=silent-2026-09-29-tuition-summary-label -->
 - 帳務中心收款摘要的金額改稱「已開帳單未結清」，並另列尚未開帳單的筆數，避免把只含已開帳單的金額誤讀成全部未收。計算不變。
