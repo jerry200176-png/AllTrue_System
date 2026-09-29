@@ -9,6 +9,7 @@ use App\Models\PendingSwipe;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -66,8 +67,7 @@ class NotificationSyncService
                 /** @var Notification|null $existing */
                 $existing = $existingByKey->get($sourceKey);
                 if ($existing) {
-                    $existing->fill($payload);
-                    $existing->ResolvedAt = null;
+                    self::applyPayload($existing, $payload);
                     if ($existing->isDirty()) {
                         $existing->save();
                         $updated++;
@@ -76,6 +76,7 @@ class NotificationSyncService
                 }
 
                 try {
+                    $payload['OccurredAt'] ??= now();
                     Notification::create($payload);
                     $created++;
                 } catch (QueryException $e) {
@@ -97,8 +98,7 @@ class NotificationSyncService
                             'source_type' => (string) ($payload['SourceType'] ?? ''),
                             'source_key_sha256' => hash('sha256', $sourceKey),
                         ]);
-                        $existing->fill($payload);
-                        $existing->ResolvedAt = null;
+                        self::applyPayload($existing, $payload);
                         if ($existing->isDirty()) {
                             $existing->save();
                             $updated++;
@@ -128,6 +128,61 @@ class NotificationSyncService
             'active_count' => count($activeByKey),
             'source_key_races_recovered' => $sourceKeyRacesRecovered,
         ];
+    }
+
+    /**
+     * TD-086: one shared cooldown + lock for POST /notifications/sync and unread-count.
+     * Concurrent callers run the sync once; the rest skip and just read.
+     *
+     * @return array|null sync result, or null when skipped (cooldown active / another caller syncing)
+     */
+    public static function syncThrottled(array $campusIds = [], ?int $branchId = null): ?array
+    {
+        if (!config('perfflags.throttle_notification_sync', true)) {
+            return self::sync($campusIds, $branchId);
+        }
+
+        $cooldown = min(300, max(1, (int) config('perfflags.notification_sync_cooldown_seconds', 300)));
+        $key = 'notif_sync_' . ($branchId ?? 'all') . '_' . implode('_', $campusIds);
+        $fresh = static fn (): bool => ($last = Cache::get($key)) && (time() - (int) $last) <= $cooldown;
+
+        if ($fresh()) {
+            return null;
+        }
+
+        $lock = Cache::lock($key . '_lock', 120);
+        if (!$lock->get()) {
+            return null;
+        }
+
+        try {
+            if ($fresh()) {
+                return null;
+            }
+            $result = self::sync($campusIds, $branchId);
+            Cache::put($key, time(), now()->addMinutes(10));
+
+            return $result;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Null OccurredAt in a payload means "now() when created or re-opened"; an already-open
+     * row keeps its timestamp so an unchanged source stays clean (no UPDATE).
+     */
+    private static function applyPayload(Notification $existing, array $payload): void
+    {
+        if (($payload['OccurredAt'] ?? null) === null) {
+            if ($existing->ResolvedAt !== null || $existing->OccurredAt === null) {
+                $payload['OccurredAt'] = now();
+            } else {
+                unset($payload['OccurredAt']);
+            }
+        }
+        $existing->fill($payload);
+        $existing->ResolvedAt = null;
     }
 
     private static function isSourceKeyDuplicate(QueryException $exception): bool
@@ -196,7 +251,7 @@ class NotificationSyncService
                     'outstanding' => $isUnpaid ? $charge : 0,
                     'paid' => !$isUnpaid,
                 ],
-                'OccurredAt' => now(),
+                'OccurredAt' => null, // TD-086: null = now() on create/reopen only
                 'ResolvedAt' => null,
             ];
         }
@@ -258,7 +313,7 @@ class NotificationSyncService
                     'remaining_sessions' => $remaining,
                     'paid'               => (bool) $class->Paid,
                 ],
-                'OccurredAt' => now(),
+                'OccurredAt' => null, // TD-086: null = now() on create/reopen only
                 'ResolvedAt' => null,
             ];
         }
@@ -367,6 +422,8 @@ class NotificationSyncService
             ->with(['studentClass.student'])
             ->whereIn('Status', ['pending', 'changes_requested'])
             ->excludeLeaveSessionPendingReview()
+            // Same "session already started" rule as the dashboard/tab (only_started=1).
+            ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [now()->format('Y-m-d H:i:s')])
             ->whereHas('studentClass', function ($sc) {
                 $sc->where(function ($w) {
                     $w->where('Stop', 0)->orWhereNull('Stop');

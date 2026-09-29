@@ -98,10 +98,10 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $syncResult = NotificationSyncService::sync($campusIds, $branchId);
+        $syncResult = NotificationSyncService::syncThrottled($campusIds, $branchId);
 
         return response()->json([
-            ...$syncResult,
+            ...($syncResult ?? ['created' => 0, 'updated' => 0, 'resolved' => 0, 'active_count' => null, 'skipped' => true]),
             'unread_count' => $this->countUnread($userId, $campusIds),
             'urgent_unread_count' => $this->countUrgentUnread($userId, $campusIds),
         ]);
@@ -317,17 +317,7 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        if (config('perfflags.throttle_notification_sync', true)) {
-            $cooldown = config('perfflags.notification_sync_cooldown_seconds', 300);
-            $syncCacheKey = 'notif_sync_' . ($branchId ?? 'all') . '_' . implode('_', $campusIds);
-            $lastSync = cache($syncCacheKey);
-            if (!$lastSync || (time() - $lastSync) > $cooldown) {
-                NotificationSyncService::sync($campusIds, $branchId);
-                cache([$syncCacheKey => time()], now()->addMinutes(10));
-            }
-        } else {
-            NotificationSyncService::sync($campusIds, $branchId);
-        }
+        NotificationSyncService::syncThrottled($campusIds, $branchId);
 
         $byType = $this->countUnreadByType($userId, $campusIds);
 

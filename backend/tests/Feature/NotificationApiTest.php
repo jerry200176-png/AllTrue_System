@@ -12,7 +12,10 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\NotificationSyncService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class NotificationApiTest extends TestCase
@@ -529,6 +532,130 @@ class NotificationApiTest extends TestCase
         ]);
 
         return $token;
+    }
+
+    // ---- TD-086: sync write amplification / shared cooldown / learning started filter ----
+
+    private function makeSyncStudent(): Student
+    {
+        return Student::create([
+            'name' => '同步效能學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+    }
+
+    public function test_second_sync_without_changes_does_not_touch_existing_rows(): void
+    {
+        $class = $this->createStudentClass($this->makeSyncStudent()->id, 0, 1);
+        $key = "tuition:1:{$class->ID}";
+
+        NotificationSyncService::sync([1], 1);
+        $old = now()->subDays(3)->startOfSecond();
+        DB::table('Notifications')->where('SourceKey', $key)->update(['OccurredAt' => $old, 'updated_at' => $old]);
+
+        $result = NotificationSyncService::sync([1], 1);
+
+        $this->assertSame(0, $result['updated']);
+        $row = Notification::where('SourceKey', $key)->firstOrFail();
+        $this->assertTrue($old->equalTo($row->OccurredAt));
+        $this->assertTrue($old->equalTo($row->updated_at));
+    }
+
+    public function test_changed_source_updates_row_but_keeps_occurred_at(): void
+    {
+        $class = $this->createStudentClass($this->makeSyncStudent()->id, 0, 1, 1);
+        $key = "tuition:1:{$class->ID}";
+
+        NotificationSyncService::sync([1], 1);
+        $old = now()->subDays(3)->startOfSecond();
+        DB::table('Notifications')->where('SourceKey', $key)->update(['OccurredAt' => $old]);
+
+        $class->update(['RemainingSessions' => 4]);
+        $result = NotificationSyncService::sync([1], 1);
+
+        $this->assertSame(1, $result['updated']);
+        $row = Notification::where('SourceKey', $key)->firstOrFail();
+        $this->assertStringContainsString('剩餘 4 堂', $row->Body);
+        $this->assertTrue($old->equalTo($row->OccurredAt));
+    }
+
+    public function test_resolved_then_reopened_notification_gets_fresh_occurred_at(): void
+    {
+        $class = $this->createStudentClass($this->makeSyncStudent()->id, 0, 1);
+        $key = "tuition:1:{$class->ID}";
+
+        NotificationSyncService::sync([1], 1);
+        $class->update(['Paid' => 1, 'RemainingSessions' => 5]);
+        $this->assertSame(1, NotificationSyncService::sync([1], 1)['resolved']);
+        $this->assertNotNull(Notification::where('SourceKey', $key)->firstOrFail()->ResolvedAt);
+
+        $old = now()->subDays(3)->startOfSecond();
+        DB::table('Notifications')->where('SourceKey', $key)->update(['OccurredAt' => $old]);
+        $class->update(['Paid' => 0]);
+        NotificationSyncService::sync([1], 1);
+
+        $row = Notification::where('SourceKey', $key)->firstOrFail();
+        $this->assertNull($row->ResolvedAt);
+        $this->assertTrue($row->OccurredAt->greaterThan($old->copy()->addDay()));
+    }
+
+    public function test_throttled_sync_runs_once_within_cooldown_and_skips_when_locked(): void
+    {
+        $this->createStudentClass($this->makeSyncStudent()->id, 0, 1);
+
+        $this->assertIsArray(NotificationSyncService::syncThrottled([1], 1));
+        $this->assertNull(NotificationSyncService::syncThrottled([1], 1));
+
+        Cache::forget('notif_sync_1_1');
+        $lock = Cache::lock('notif_sync_1_1_lock', 30);
+        $this->assertTrue($lock->get());
+        $this->assertNull(NotificationSyncService::syncThrottled([1], 1));
+        $lock->release();
+        $this->assertIsArray(NotificationSyncService::syncThrottled([1], 1));
+    }
+
+    public function test_post_sync_and_unread_count_share_one_cooldown(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-shared-cooldown@example.com');
+        $this->createStudentClass($this->makeSyncStudent()->id, 0, 1);
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($h)->getJson('/api/v1/notifications/unread-count?branch_id=1')->assertOk();
+        $this->withHeaders($h)->postJson('/api/v1/notifications/sync', ['branch_id' => 1])
+            ->assertOk()
+            ->assertJson(['skipped' => true]);
+    }
+
+    public function test_learning_review_notification_only_for_started_sessions(): void
+    {
+        $class = $this->createStudentClass($this->makeSyncStudent()->id, 1, 1, 9);
+        foreach ([now()->subDay(), now()->addDay()] as $date) {
+            $session = ClassSession::create([
+                'StudentClassID' => $class->ID,
+                'SessionDate' => $date->toDateString(),
+                'StartTime' => '10:00:00',
+                'EndTime' => '12:00:00',
+                'Status' => 'scheduled',
+                'Note' => '',
+            ]);
+            LearningRecord::create([
+                'StudentClassID' => $class->ID,
+                'ClassSessionID' => $session->id,
+                'TeacherID' => 99,
+                'Content' => '待審內容',
+                'Status' => 'pending',
+                'Subject' => 'Math',
+                'SessionDate' => $date->toDateString(),
+            ]);
+        }
+
+        NotificationSyncService::sync([1], 1);
+
+        $this->assertSame(1, Notification::where('Type', 'learning_review')->count());
     }
 
     private function createStudentClass(int $studentId, int $paid, int $campusId, int $remainingSessions = 1): StudentClass
