@@ -473,6 +473,7 @@
                               @click="openCommercialPurchaseEntry(c); closeActionMenu()"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(c) }}</button>
                             <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
+                            <button v-if="effectiveClosedReason(c) === 'contract_amended'" class="action-dropdown-item" role="menuitem" title="還原提前結束／調整合約總堂數" @click="openContractRevertModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">undo</span> 撤銷調整</button>
                             <p class="action-section-label">其他操作</p>
                             <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
@@ -1047,6 +1048,16 @@
       @choose="chooseContractAdjustment"
     />
 
+    <ContractAmendmentRevertModal
+      :show="showContractRevertModal"
+      :course="contractRevertCourse"
+      :preview="contractRevertPreview"
+      :loading-preview="contractRevertLoading"
+      :submitting="contractRevertSubmitting"
+      :error-message="contractRevertError"
+      @close="showContractRevertModal = false"
+      @submit="submitContractRevert"
+    />
     <ContractAmendmentModal
       :show="showContractAmendmentModal"
       :course="contractAmendmentCourse"
@@ -1569,6 +1580,7 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
+import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import CourseSessionCalendar from '../components/course-management/CourseSessionCalendar.vue';
@@ -2470,6 +2482,12 @@ const contractAmendmentPreview = ref(null);
 const contractAmendmentPreviewLoading = ref(false);
 const contractAmendmentSubmitting = ref(false);
 const contractAmendmentError = ref('');
+const showContractRevertModal = ref(false);
+const contractRevertCourse = ref(null);
+const contractRevertPreview = ref(null);
+const contractRevertLoading = ref(false);
+const contractRevertSubmitting = ref(false);
+const contractRevertError = ref('');
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -2626,6 +2644,51 @@ async function submitContractAmendment({ newSessionCount, reason }) {
     contractAmendmentError.value = error?.message || '合約調整失敗。';
   } finally {
     contractAmendmentSubmitting.value = false;
+  }
+}
+
+async function contractRevertRequest(path, body) {
+  const { data: { session: sess } } = await supabase.auth.getSession();
+  const token = sess?.access_token;
+  if (!token) throw new Error('登入狀態已失效，請重新登入。');
+  const res = await fetch(`/api/v1/student-classes/${contractRevertCourse.value.id}/contract-amendment/revert${path}`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '撤銷調整失敗。');
+  return data;
+}
+
+async function openContractRevertModal(course) {
+  contractRevertCourse.value = course;
+  contractRevertPreview.value = null;
+  contractRevertError.value = '';
+  showContractRevertModal.value = true;
+  contractRevertLoading.value = true;
+  try {
+    contractRevertPreview.value = await contractRevertRequest('/preview', {});
+  } catch (error) {
+    contractRevertError.value = error?.message || '無法預覽撤銷調整。';
+  } finally {
+    contractRevertLoading.value = false;
+  }
+}
+
+async function submitContractRevert(reason) {
+  if (contractRevertSubmitting.value) return;
+  contractRevertSubmitting.value = true;
+  contractRevertError.value = '';
+  try {
+    const body = await contractRevertRequest('', { reason });
+    showContractRevertModal.value = false;
+    await loadCourses();
+    toastRef.value?.show?.({ title: '已撤銷調整', description: body?.message, variant: 'success', durationMs: 7000 });
+  } catch (error) {
+    contractRevertError.value = error?.message || '撤銷調整失敗。';
+  } finally {
+    contractRevertSubmitting.value = false;
   }
 }
 
