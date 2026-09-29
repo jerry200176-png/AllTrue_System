@@ -48,6 +48,8 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
         $courseCount = 0;
         $campusCount = [];
         $anomalies = [];
+        $periodReview = [];
+        $periodTotals = ['review_required' => 0, 'valid_multiple_periods' => 0, 'package_members' => 0];
         $aggregate = [
             'sessions_scanned' => 0,
             'anomaly_sessions' => 0,
@@ -63,7 +65,7 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
             'slot_conflict' => 0,
         ];
 
-        $coursesQuery->with(['student', 'coursePackage'])->chunkById(250, function ($courses) use (&$courseCount, &$campusCount, &$anomalies, &$aggregate, $limit): void {
+        $coursesQuery->with(['student', 'coursePackage'])->chunkById(250, function ($courses) use (&$courseCount, &$campusCount, &$anomalies, &$aggregate, &$periodReview, &$periodTotals, $limit): void {
             $sessionsByCourse = ClassSession::query()
                 ->whereIn('StudentClassID', $courses->pluck('ID')->map(fn ($id) => (int) $id)->all())
                 ->orderBy('SessionDate')
@@ -71,11 +73,22 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
                 ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status'])
                 ->groupBy('StudentClassID');
 
+            $periodPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch($courses);
             foreach ($courses as $course) {
                 $courseCount++;
                 $student = $course->student;
                 $campus = (int) ($student ? $student->getAttribute('CampusID') : 0);
                 $campusCount[$campus] = ($campusCount[$campus] ?? 0) + 1;
+                if ((int) $course->PackageID > 0) $periodTotals['package_members']++;
+                $periodPayment = $periodPayments[(int) $course->ID] ?? null;
+                if ($periodPayment && ($periodPayment['review_required'] || count($periodPayment['periods']) > 1)) {
+                    $kind = $periodPayment['review_required'] ? 'review_required' : 'valid_multiple_periods';
+                    $periodTotals[$kind]++;
+                    if (count($periodReview) < $limit) $periodReview[] = [
+                        'campus_id' => $campus, 'course_id' => (int) $course->ID,
+                        'classification' => $kind, 'payment' => $periodPayment,
+                    ];
+                }
 
                 $sessions = $sessionsByCourse->get((int) $course->getAttribute('ID'), collect());
                 $aggregate['sessions_scanned'] += $sessions->count();
@@ -157,6 +170,9 @@ class ReportMonthlyLeaveBoundaryInventory extends Command
             'bounded_anomalies' => $anomalies,
             'bounded_anomalies_limit' => $limit,
             'anomalies_truncated' => $aggregate['anomaly_sessions'] > count($anomalies),
+            'period_payment_totals' => $periodTotals,
+            'bounded_period_payment_review' => $periodReview,
+            'period_payment_review_truncated' => array_sum(array_intersect_key($periodTotals, array_flip(['review_required', 'valid_multiple_periods']))) > count($periodReview),
             'repair_policy' => 'No historical rows changed. Review a controlled Repair Manifest; do not alter paid/settled rows or contract boundaries unless independently proven wrong.',
         ];
 

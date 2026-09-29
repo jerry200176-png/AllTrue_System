@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing): prepare monthly period payment attribution
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-period-payment -->
+- 準備月結逐期付款顯示與跨分校唯讀盤點，保留帳單明示的非日曆月服務期間；尚未部署或完成正式資料核對，不發布上線公告。
+
 ## 2026-09-29 — chore(ops): prepare bounded Laravel readiness metadata (GitHub #977 / #2833)
 <!-- release-notes: silent_ship=silent-2026-09-29-laravel-readonly-preflight -->
 - 準備單一版本的唯讀切換前檢查，核對排課旗標、PHP 平台及 migration 紀錄，避免把未知條件當成可上線。未執行正式查詢、未部署或啟用功能，無教職員新操作。

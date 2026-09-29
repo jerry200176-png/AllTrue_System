@@ -1,5 +1,6 @@
 <script>
 import { computed, ref, watch } from 'vue';
+import { monthlyPaymentLabel, periodPaymentLabel } from '../../lib/monthlyPaymentDisplay.js';
 import CourseSessionCalendar from './CourseSessionCalendar.vue';
 
 const TABS = [
@@ -53,9 +54,16 @@ export default {
   setup(props, { emit }) {
     const sessionsView = ref(props.calendarEnabled ? 'calendar' : 'list');
     const dangerOpen = ref(false);
+    const selectedPeriod = ref('');
+    const monthlySummary = computed(() => props.course?.monthly_payment);
+    const selectedPayment = computed(() => monthlySummary.value?.periods?.find((p) => p.billing_period === (selectedPeriod.value || monthlySummary.value.billing_period)));
+    const effectivePaymentLabel = computed(() => selectedPeriod.value && selectedPayment.value
+      ? `${selectedPeriod.value} ${periodPaymentLabel(selectedPayment.value.payment_status)}`
+      : (monthlyPaymentLabel(props.course) || props.paymentLabel));
     watch(() => props.course?.id, () => {
       sessionsView.value = props.calendarEnabled ? 'calendar' : 'list';
       dangerOpen.value = false;
+      selectedPeriod.value = '';
     });
     watch(() => props.calendarEnabled, (on) => {
       if (!on && sessionsView.value === 'calendar') sessionsView.value = 'list';
@@ -91,7 +99,7 @@ export default {
     }
     return {
       tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
-      sessionsView, dangerOpen, listUnits, onSelectDay,
+      sessionsView, dangerOpen, listUnits, onSelectDay, monthlySummary, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
 };
@@ -119,7 +127,7 @@ export default {
           <div class="cmw__kpis" aria-label="課程摘要">
             <span v-if="remainingLabel" class="cmw__kpi">{{ remainingLabel }}</span>
             <span v-if="nextSessionLabel" class="cmw__kpi">下堂 {{ nextSessionLabel }}</span>
-            <span v-if="paymentLabel" class="cmw__kpi">{{ paymentLabel }}</span>
+            <span v-if="effectivePaymentLabel" class="cmw__kpi">{{ effectivePaymentLabel }}</span>
           </div>
         </div>
       </header>
@@ -139,6 +147,27 @@ export default {
         >{{ t.label }}</button>
       </nav>
       <div class="cmw__body">
+        <section v-if="monthlySummary" class="cmw__card" data-testid="monthly-payment-periods" aria-label="月結期間與付款">
+          <h3>合約期間 {{ monthlySummary.contract_start || '待確認' }} ～ {{ monthlySummary.contract_end || '待確認' }}</h3>
+          <label class="cmw__row">查看帳期
+            <select v-model="selectedPeriod" aria-label="查看月結帳期">
+              <option value="">{{ monthlySummary.billing_period }}（目前待處理帳期）</option>
+              <option v-for="period in monthlySummary.periods" :key="period.billing_period" :value="period.billing_period">{{ period.billing_period }}</option>
+            </select>
+          </label>
+          <p v-if="monthlySummary.review_required" class="cmw__hint" role="status">付款期間待確認，請至帳務中心核對各期收款。跨月份不代表新一期已繳。</p>
+          <div class="cmw__period-table">
+            <table>
+              <thead><tr><th scope="col">帳期／服務期間</th><th scope="col">付款</th><th scope="col">未收金額</th></tr></thead>
+              <tbody><tr v-for="period in monthlySummary.periods" :key="period.billing_period">
+                <th scope="row">{{ period.billing_period }}<small v-if="period.period_start"> {{ period.period_start }} ～ {{ period.period_end }}</small></th>
+                <td>{{ periodPaymentLabel(period.payment_status) }}</td>
+                <td>{{ period.outstanding_amount == null ? '待核對' : `NT$ ${Number(period.outstanding_amount).toLocaleString()}` }}</td>
+              </tr></tbody>
+            </table>
+          </div>
+          <button v-if="monthlySummary.review_required" type="button" class="small ghost" @click="act('tuition')">核對付款期間</button>
+        </section>
         <div
           v-if="activeTab === 'overview'"
           id="cm-panel-overview"
@@ -150,7 +179,7 @@ export default {
           <section class="cmw__metrics" aria-label="營運狀態">
             <div class="cmw__metric"><span class="cmw__metric-k">堂次</span><strong>{{ remainingLabel || '—' }}</strong></div>
             <div class="cmw__metric"><span class="cmw__metric-k">下一堂</span><strong>{{ nextSessionLabel || '—' }}</strong></div>
-            <div class="cmw__metric"><span class="cmw__metric-k">付款</span><strong>{{ paymentLabel || '—' }}</strong></div>
+            <div class="cmw__metric"><span class="cmw__metric-k">付款</span><strong>{{ effectivePaymentLabel || '—' }}</strong></div>
             <div class="cmw__metric"><span class="cmw__metric-k">固定時段</span><strong>{{ scheduleSummary || '未排定' }}</strong></div>
           </section>
           <section v-if="overviewNeeds.length" class="cmw__card cmw__card--needs">
@@ -278,7 +307,7 @@ export default {
             <dl class="cmw__facts">
               <div><dt>計費</dt><dd>{{ billingType() }}</dd></div>
               <div><dt>堂次</dt><dd>{{ remainingLabel || '—' }}</dd></div>
-              <div><dt>付款</dt><dd>{{ paymentLabel || '—' }}</dd></div>
+              <div><dt>付款</dt><dd>{{ effectivePaymentLabel || '—' }}</dd></div>
               <div v-if="course.last_paid_at"><dt>最近付款</dt><dd>{{ course.last_paid_at }}</dd></div>
             </dl>
             <div class="cmw__row">
@@ -356,6 +385,7 @@ export default {
 .cmw__session-date{font-weight:600}
 .cmw__session-state{font-size:.8rem;color:var(--ds-ink-secondary)}
 .cmw__session-note{grid-column:1/-1;font-size:.8rem;color:var(--ds-ink-mute)}
+.cmw__period-table{overflow-x:auto;margin-top:8px}.cmw__period-table table{width:100%;border-collapse:collapse;font-size:.85rem}.cmw__period-table th,.cmw__period-table td{text-align:left;padding:8px;border-bottom:1px solid var(--ds-hairline)}.cmw__period-table small{display:block;font-weight:400;color:var(--ds-ink-mute)}
 .cmw__settings{max-width:none}
 @media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}.cmw__session-row{grid-template-columns:1fr auto}}
 </style>
