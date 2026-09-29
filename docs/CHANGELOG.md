@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
+<!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->
+- 受控月結更正核對完整調課鏈：同一期內連同原堂次保留並移轉，拒絕跨期、斷鏈、循環、學生／分校錯配及範圍外合約關聯；簽章核對也涵蓋新增外部連結。修復仍未啟用，正式個案尚未更正。
+
 ## 2026-09-29 — fix(billing): preserve existing source invoice items during reviewed correction
 <!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
 - 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
@@ -6,13 +10,13 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
 - 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
 
-## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
-<!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
-- 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
-
 ## 2026-09-29 — feat(ui): compact sidebar branch switcher and More-page breadcrumb
 <!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
 - 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
+
+## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
+<!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
+- 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
 
 ## 2026-09-29 — fix(ux): plainer copy and calmer colors on director pages
 <!-- release-notes: staff_update=staff-2026-09-29-plain-copy-calm-color -->
