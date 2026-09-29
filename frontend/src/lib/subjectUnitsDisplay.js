@@ -8,3 +8,12 @@ export function formatSubjectCount(value) {
   return (Number.isFinite(numeric) ? numeric : 0).toFixed(2);
 }
 
+
+/**
+ * Analytical reference total: complete raw weighted total divided by 8 exactly
+ * once at the final step (in-app #331). Display only; never feeds payroll.
+ */
+export function formatSubjectTotalDiv8(rawTotal) {
+  const numeric = Number(rawTotal ?? 0);
+  return ((Number.isFinite(numeric) ? numeric : 0) / 8).toFixed(2);
+}

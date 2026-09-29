@@ -14,6 +14,14 @@
 <!-- release-notes: silent_ship=silent-2026-09-30-staff-multirole-activation -->
 - 新增 `staff-multirole-activation` 手動工作流（preflight 唯讀角色解析差異、單人單分校 grant/revoke、enable/disable 旗標）與 Founder 操作手冊；僅新增受核准的啟用路徑，`STAFF_MULTI_ROLE_V1` 維持關閉，未執行任何正式環境動作。
 
+## 2026-09-30 — feat(ux): label shared-package rows in overlapping-course review (in-app #316)
+<!-- release-notes: staff_update=staff-2026-09-30-dup-review-shared-label -->
+- 重疊課程審核的每組資料新增唯讀欄位 `is_shared_package`；屬多科共用堂數套組者仍照常列出，並標示「多科共用」與提示，供主任判斷是否為刻意安排。重複判定、堂數、扣堂與帳務不變。
+
+## 2026-09-30 — feat(finance): add reference subject-unit totals with and without tutoring
+<!-- release-notes: staff_update=staff-2026-09-30-subject-units-reference-totals -->
+- 科目數統計新增「參考合計（含輔導／不含輔導）÷ 8」兩張卡（in-app #331，Founder 2026-09-30 核准）；由完整加權總分僅在最後一步除以 8，僅供分析，既有數字與薪資計算完全不變。
+
 ## 2026-09-30 — feat(courses): show student school and grade in course lookup
 <!-- release-notes: staff_update=staff-2026-09-30-course-lookup-school-grade -->
 - 課程查找的學生標題列在姓名旁顯示學校與年級（in-app #358，Founder 2026-09-30 核准，僅學校與年級，不含電話與備註）；沿用課程列表既有回傳的學生資料，無後端或資料變更。
