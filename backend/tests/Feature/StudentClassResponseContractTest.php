@@ -128,6 +128,21 @@ class StudentClassResponseContractTest extends TestCase
             ->assertJsonPath('data', []);
     }
 
+    public function test_monthly_review_filter_keeps_pagination_and_director_campus_boundary(): void
+    {
+        [$token] = $this->makeUserToken(1, 'monthly-review-director@test.com', 'A');
+        [, $teacher] = $this->makeUserToken(1, 'monthly-review-teacher@test.com', 'T');
+        $this->makeCourse($teacher, 1);
+        $monthly = $this->makeCourse($teacher, 1, ['ScheduleMode' => 'date']);
+        $this->makeCourse($teacher, 2, ['ScheduleMode' => 'date']);
+        $this->authJson('GET', '/api/v1/student-classes?schedule_mode=date&status=active&per_page=100', $token)
+            ->assertOk()->assertJsonPath('total', 1)->assertJsonPath('data.0.ID', $monthly->ID)
+            ->assertJsonStructure(['data' => [['monthly_payment' => ['session_review', 'registered_paid_amount']]]]);
+        $this->authJson('GET', '/api/v1/student-classes?schedule_mode=date&branch_id=2', $token)
+            ->assertOk()->assertJsonPath('total', 0);
+        $this->authJson('GET', '/api/v1/student-classes?schedule_mode=unexpected', $token)->assertUnprocessable();
+    }
+
     public function test_show_projects_room_fields_without_persisting_them_and_rejects_foreign_campus(): void
     {
         $campus = Campus::factory()->create(['name' => '課程詳情測試分校']);

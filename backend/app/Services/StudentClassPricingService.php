@@ -24,7 +24,11 @@ class StudentClassPricingService
             return $this->cache[$key];
         }
 
-        $amendment = $courseId > 0
+        $loaded = $course->relationLoaded('pricingAmendments')
+            ? $course->getRelation('pricingAmendments')->filter(fn ($row) => !$row->voided_at && substr((string) $row->effective_from, 0, 10) <= $dateValue)
+                ->sortByDesc('id')->sortByDesc('effective_from')->first()
+            : null;
+        $amendment = $course->relationLoaded('pricingAmendments') ? $loaded : ($courseId > 0
             ? StudentClassPricingAmendment::query()
                 ->where('student_class_id', $courseId)
                 ->whereNull('voided_at')
@@ -32,7 +36,7 @@ class StudentClassPricingService
                 ->orderByDesc('effective_from')
                 ->orderByDesc('id')
                 ->first()
-            : null;
+            : null);
 
         if ($amendment) {
             return $this->cache[$key] = [
