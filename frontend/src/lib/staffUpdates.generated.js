@@ -82,6 +82,39 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-student-course-history",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程標籤區分歷史",
+    "summary": "學生列表標明既有歷史課程狀態，方便區分目前課程與已結束紀錄。",
+    "items": [
+      "歷史課程標明已完課、已結算或待對帳，原有堂數與查閱入口保留。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "歷史課程標明已完課、已結算或待對帳，原有堂數與查閱入口保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:353",
+      "changelog:2026-09-29:student-course-history"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-27-homework-hint",
     "publishedAt": "2026-09-27",
     "effectiveAt": null,

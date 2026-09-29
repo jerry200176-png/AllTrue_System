@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(students): identify historical course badges (in-app #353 / GitHub #3201)
+<!-- release-notes: staff_update=staff-2026-09-29-student-course-history -->
+- 學生列表的歷史課程標籤同步顯示已完課、已結算或待對帳，避免歷史堂數與目前課程混淆；原有堂數、課程篩選及待對帳入口保留。
+
 ## 2026-09-29 — fix(billing-ui): expose existing void receipt trace query (in-app #350 / GitHub #3212)
 <!-- release-notes: staff_update=staff-2026-09-29-void-receipt-trace -->
 - 帳務中心收據紀錄可查詢已作廢紀錄，歷史課程仍可開啟原有繳費明細追蹤；作廢狀態在列表及匯出中清楚標示，不計入有效收款合計。
