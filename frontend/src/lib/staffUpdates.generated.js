@@ -115,6 +115,40 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-sidebar-branch-dropdown",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "側欄更精簡",
+    "summary": "分校改用下拉選單切換，從「更多功能」進入的頁面會在頂端顯示所在位置。",
+    "items": [
+      "側欄分校改為下拉選單，使用者資訊統一在右上角帳號選單。",
+      "從「更多功能」開啟的頁面，頂端顯示「更多功能 › 頁面名稱」，點一下可回到清單。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "側欄分校改為下拉選單，使用者資訊統一在右上角帳號選單。",
+          "從「更多功能」開啟的頁面，頂端顯示「更多功能 › 頁面名稱」，點一下可回到清單。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-29:sidebar-branch-dropdown"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-29-capacity-source-labels",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,

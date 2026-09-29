@@ -266,13 +266,18 @@ const fabStyle = computed(() => ({
   bottom: 'auto',
 }));
 
+// clientWidth excludes the page scrollbar, so the FAB never sits on top of it.
+function viewportWidth() {
+  return document.documentElement.clientWidth || window.innerWidth;
+}
+
 function getBottomSafeInset() {
   // Mobile has bottom tab bar
   return window.innerWidth <= 768 ? 100 : 12;
 }
 
 function clampFabPos(x, y) {
-  const maxX = window.innerWidth - FAB_SIZE - FAB_MARGIN;
+  const maxX = viewportWidth() - FAB_SIZE - FAB_MARGIN;
   const maxY = window.innerHeight - FAB_SIZE - getBottomSafeInset();
   return {
     x: Math.min(Math.max(FAB_MARGIN, x), Math.max(FAB_MARGIN, maxX)),
@@ -282,12 +287,12 @@ function clampFabPos(x, y) {
 
 function snapFabToNearestEdge(x, y) {
   const p = clampFabPos(x, y);
-  const maxX = window.innerWidth - FAB_SIZE - FAB_MARGIN;
+  const maxX = viewportWidth() - FAB_SIZE - FAB_MARGIN;
   const maxY = window.innerHeight - FAB_SIZE - getBottomSafeInset();
   const cx = p.x + FAB_SIZE / 2;
   const cy = p.y + FAB_SIZE / 2;
   const dLeft = cx;
-  const dRight = window.innerWidth - cx;
+  const dRight = viewportWidth() - cx;
   const dTop = cy;
   const dBottom = window.innerHeight - cy;
 
@@ -316,7 +321,7 @@ function loadFabPos() {
   } catch { /* ignore */ }
 
   // Default: bottom-right but leave room for guide "?" button
-  const defaultX = window.innerWidth - FAB_MARGIN - FAB_SIZE - 62;
+  const defaultX = viewportWidth() - FAB_MARGIN - FAB_SIZE - 62;
   const defaultY = window.innerHeight - FAB_SIZE - getBottomSafeInset();
   return clampFabPos(defaultX, defaultY);
 }

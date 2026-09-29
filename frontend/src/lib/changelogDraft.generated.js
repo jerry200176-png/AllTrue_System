@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "audited monthly receipt correction；controlled monthly contract correction",
+    "summary": "sidebar branch switcher and More-page breadcrumb；audited monthly receipt correction",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "sidebar branch switcher and More-page breadcrumb",
           "audited monthly receipt correction",
           "controlled monthly contract correction"
         ]
@@ -35,14 +36,14 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "sidebar branch switcher and More-page breadcrumb",
       "audited monthly receipt correction",
       "controlled monthly contract correction",
       "correction into an existing monthly contract",
       "next-period monthly booking guidance",
       "monthly period payment attribution",
       "capacity occupancy sources",
-      "historical course badges",
-      "existing void receipt trace query"
+      "historical course badges"
     ]
   },
   {

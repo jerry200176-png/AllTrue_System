@@ -1,3 +1,7 @@
+## 2026-09-29 — feat(ui): compact sidebar branch switcher and More-page breadcrumb
+<!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
+- 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
+
 ## 2026-09-29 — fix(billing): prepare correction into an existing monthly contract
 <!-- release-notes: silent_ship=silent-2026-09-29-existing-monthly-correction -->
 - 延伸尚未啟用的受控更正：沿用既有新期合約與未繳帳单，保留取消／待上紀錄，已沖銷收款不重複沖銷。正式執行仍須最新核對清單及既有安全核准，尚未修復正式個案。
