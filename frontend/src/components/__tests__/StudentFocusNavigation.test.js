@@ -10,8 +10,8 @@ const courseSource = read('../../pages/CourseManagement.vue');
 const studentsSource = read('../../pages/StudentsList.vue');
 
 describe('student focus navigation contract', () => {
-  it('carries the expanded course group student into the Students master record', () => {
-    expect(courseSource).toContain("studentId: group.student_id");
+  it('carries the course row student into the Students master record', () => {
+    expect(courseSource).toContain("studentId: Number.isSafeInteger(studentId) && studentId > 0 ? studentId : null");
     expect(courseSource).toContain('const group = { key, student_id: studentId');
     expect(appSource).toContain(':initial-student-id="studentFocusIdForNav"');
     expect(appSource).toContain('studentFocusIdForNav.value = Number.isSafeInteger(normalizedStudentId)');
@@ -41,6 +41,6 @@ describe('student focus navigation contract', () => {
 
   it('keeps generic Students navigation context-free', () => {
     expect(courseSource).toContain("@click=\"emit('navigate', 'students')\"");
-    expect(courseSource).toContain("@click=\"emit('navigate', { target: 'students', studentId: group.student_id, intent: 'create' })\"");
+    expect(courseSource).not.toContain("intent: 'create' })\"");
   });
 });

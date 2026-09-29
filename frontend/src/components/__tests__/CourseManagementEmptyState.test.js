@@ -11,9 +11,6 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue');
 const source = readFileSync(pagePath, 'utf8');
-const groupEntryStart = source.indexOf('class="student-group-add-row"');
-const groupEntryEnd = source.indexOf('class="table-wrap group-table-wrap"', groupEntryStart);
-const groupEntry = source.slice(groupEntryStart, groupEntryEnd);
 
 describe('CourseManagement read-only lens (Phase B first slice)', () => {
   it('has no header "新增課程" button launching the backfill scheduler', () => {
@@ -32,11 +29,11 @@ describe('CourseManagement read-only lens (Phase B first slice)', () => {
     expect(source).toContain("@click=\"emit('navigate', 'students')\"");
   });
 
-  it('expanded student groups route course creation to 學生管理', () => {
-    expect(groupEntry).toContain('data-testid="student-group-goto-students"');
-    expect(groupEntry).toContain('到學生管理新增課程');
-    expect(groupEntry).toContain("@click=\"emit('navigate', { target: 'students', studentId: group.student_id, intent: 'create' })\"");
-    expect(groupEntry).not.toContain('openBackfillModalForGroup');
+  it('course creation entry lives once in the header, not per student card', () => {
+    expect(source).toContain('data-testid="course-header-goto-students-create"');
+    expect(source.split('到學生管理新增課程').length - 1).toBe(1);
+    expect(source).not.toContain('student-group-goto-students');
+    expect(source).not.toContain('openBackfillModalForGroup');
   });
 
   it('keeps the existing teacher-copy scheduler path', () => {
