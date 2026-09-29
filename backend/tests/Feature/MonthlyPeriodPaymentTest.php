@@ -130,4 +130,19 @@ class MonthlyPeriodPaymentTest extends TestCase
         $this->assertSame((int) $course->ID, $report['bounded_period_payment_review'][0]['course_id']);
         $this->assertSame($before, [$course->fresh()->getAttributes(), ClassSession::count(), Invoice::count(), Payment::count()]);
     }
+
+    public function test_unpaid_non_calendar_cycle_keeps_its_explicit_invoice_amount(): void
+    {
+        $course = $this->course();
+        $course->update(['StartDate' => '2026-08-15', 'EndDate' => '2026-09-14']);
+        $invoice = $this->invoice($course, '2026-08', 0);
+        $invoice->update(['TotalAmount' => 6000]);
+        \App\Models\InvoiceItem::create(['InvoiceID' => $invoice->id, 'StudentClassID' => $course->ID,
+            'Description' => 'Reviewed service cycle', 'Amount' => 6000, 'PeriodStart' => '2026-08-15', 'PeriodEnd' => '2026-09-14']);
+        $summary = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]))[$course->ID];
+        $this->assertFalse($summary['review_required']);
+        $this->assertSame('unpaid', $summary['payment_status']);
+        $this->assertSame(6000, $summary['periods'][0]['charge']);
+        $this->assertSame(6000, (int) $invoice->fresh()->TotalAmount);
+    }
 }
