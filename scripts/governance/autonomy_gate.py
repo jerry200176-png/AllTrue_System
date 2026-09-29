@@ -1170,6 +1170,8 @@ def verified_founder_manual_activation(
         return False
     if event_name != "workflow_dispatch" or phase != "application-deploy":
         return False
+    if ci_success is not True:
+        return False
     if not isinstance(target_sha, str) or not _FULL_SHA_RE.fullmatch(target_sha):
         return False
     if confirmation != f"ACTIVATE_PRODUCTION:{target_sha}":
@@ -1178,7 +1180,8 @@ def verified_founder_manual_activation(
             or run.get("event") != event_name or run.get("path") != ".github/workflows/deploy.yml"
             or run.get("head_branch") != "main" or run.get("head_sha") != target_sha):
         return False
-    if not repository.get("full_name") or (run.get("repository") or {}).get("full_name") != repository.get("full_name"):
+    if (not authorizer.get("repository") or repository.get("full_name") != authorizer.get("repository")
+            or (run.get("repository") or {}).get("full_name") != repository.get("full_name")):
         return False
     owner = repository.get("owner") or {}
     if owner.get("type") != "User":
@@ -1197,14 +1200,17 @@ def environment_protection_is_valid(
     *, event_name: str, phase: str, required_reviewers_configured: bool,
     prevent_self_review: bool, verified_founder_dispatch: bool = False,
 ) -> bool:
-    """Validate the single static Founder production environment boundary.
+    """Validate Founder authorization and the protected environment boundary.
 
     Every protected activation event uses the same GitHub Environment
     configuration: the Founder is the required reviewer, self-review is
     allowed for this single-Founder repository, administrator bypass is checked
     by the workflow, and deployment is restricted to ``main``. Manual
     exceptional phases additionally retain their typed confirmation step in
-    ``deploy.yml``. Evidence-complete reversible T2 does not call this gate.
+    ``deploy.yml``. When no reviewer is configured, only a separately verified
+    registered-Founder exact-SHA manual application dispatch can carry approval.
+    Automatic events and other phases cannot use that alternative.
+    Evidence-complete reversible T2 does not call this gate.
     """
 
     if event_name not in {"workflow_run", "repository_dispatch", "workflow_dispatch"}:

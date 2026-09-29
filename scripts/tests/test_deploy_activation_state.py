@@ -1353,10 +1353,10 @@ class FounderManualActivationTest(unittest.TestCase):
         principal = self.profile['founder_manual_application_activation']
         owner = {'id': principal['user_id'], 'login': principal['login'], 'type': 'User'}
         self.args = dict(
-            profile=self.profile, repository={'full_name': owner['login'] + '/AllTrue_System', 'owner': owner},
+            profile=self.profile, repository={'full_name': principal['repository'], 'owner': owner},
             run={'id': 123, 'event': 'workflow_dispatch', 'path': '.github/workflows/deploy.yml',
                  'head_branch': 'main', 'head_sha': 'a' * 40, 'actor': owner.copy(),
-                 'triggering_actor': owner.copy(), 'repository': {'full_name': owner['login'] + '/AllTrue_System'}},
+                 'triggering_actor': owner.copy(), 'repository': {'full_name': principal['repository']}},
             run_id=123, event_name='workflow_dispatch', phase='application-deploy',
             workflow_ref='refs/heads/main', target_sha='a' * 40, current_main_sha='a' * 40,
             confirmation='ACTIVATE_PRODUCTION:' + 'a' * 40, ci_success=True,
@@ -1375,7 +1375,7 @@ class FounderManualActivationTest(unittest.TestCase):
             ('event_name', 'workflow_run'), ('phase', 'pop-bootstrap'), ('phase', 'parent-portal-smoke'),
             ('workflow_ref', 'refs/heads/feature'), ('target_sha', 'b' * 40),
             ('current_main_sha', 'b' * 40), ('confirmation', 'ACTIVATE_PRODUCTION:' + 'b' * 40),
-            ('ci_success', False), ('run_id', 124),
+            ('ci_success', False), ('ci_success', 'True'), ('ci_success', 1), ('run_id', 124),
         ]
         for field, value in changes:
             with self.subTest(field=field):
@@ -1394,6 +1394,8 @@ class FounderManualActivationTest(unittest.TestCase):
             args = copy.deepcopy(self.args); args['repository']['owner'][field] = 'wrong'
             self.assertFalse(verified_founder_manual_activation(**args))
         args = copy.deepcopy(self.args); args['run']['repository']['full_name'] = 'other/repo'
+        self.assertFalse(verified_founder_manual_activation(**args))
+        args['repository']['full_name'] = 'other/repo'
         self.assertFalse(verified_founder_manual_activation(**args))
         args = copy.deepcopy(self.args); args['profile']['founder_manual_application_activation']['enabled'] = False
         self.assertFalse(verified_founder_manual_activation(**args))

@@ -947,8 +947,8 @@ jobs:
     needs: [resolve-target, detect-deployable, classify-activation]
     if: ${{ always() && needs.classify-activation.result == 'success' && (((github.event_name == 'workflow_run' || github.event_name == 'repository_dispatch') && needs.classify-activation.outputs.mode == 'awaiting-activation' && needs.classify-activation.outputs.approval_eligible == 'true') || (github.event_name == 'workflow_dispatch' && needs.classify-activation.outputs.mode == 'manual')) }}
     # A newer exact-main target supersedes an older approval request. The
-    # protected environment still requires the Founder reviewer; this only
-    # prevents stale waiting runs from accumulating behind the live target.
+    # protected gate still verifies Founder authorization; this only prevents
+    # stale waiting runs from accumulating behind the live target.
     concurrency:
       group: alltrue-production-activation-gate
       cancel-in-progress: true

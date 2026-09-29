@@ -200,7 +200,7 @@
       "production_mutation": "confirmed",
       "trigger": "workflow_run CI success; repository_dispatch; manual dispatch",
       "production_command_or_path": "Exact target SHA checkout in /home/admin/backend; migrations, backend/frontend build, deployment.json, health/smoke",
-      "authorization": "Production-activation environment protection, exact-main CI success, typed confirmation for protected operations, pinned SSH trust",
+      "authorization": "Production-activation protection: configured Founder reviewer or registered-Founder exact-SHA manual application dispatch proof; exact-main CI, typed confirmation, no admin bypass, main-only and pinned SSH trust",
       "concurrency": "Production side-effect jobs use alltrue-production-side-effects-v2 with cancel-in-progress=false",
       "rollback": "Automatic deploy rollback using previous commit/manifest and migration rollback where supported; documented revert-and-redeploy path",
       "canonical": true,

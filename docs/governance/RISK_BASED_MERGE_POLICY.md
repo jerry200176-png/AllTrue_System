@@ -73,11 +73,13 @@ non-protected scope may auto-deploy. Missing or contradictory deterministic
 evidence is ambiguous and stays held. T3, unknown classifications, production executor
 changes, security/data boundaries, and irreversible operations stay held for
 risk-appropriate review or the protected Founder boundary. Only
-Founder-required/T3 activation references `production-activation`; all supported events use the same
-static policy: Founder required reviewer, self-review allowed, administrator
-bypass disabled, and main-only deployment branch policy. Workflow-dispatch typed
-confirmation remains only for exceptional manual phases; it is not a second
-normal approval path. No fake reviewer or admin bypass is introduced.
+Founder-required/T3 activation references `production-activation`. Configured
+Founder reviewers remain mandatory with self-review allowed; automatic protected
+activation requires that reviewer. The registered-Founder explicit application
+dispatch alternative below can carry one exact-target approval when no reviewer
+is configured. Administrator bypass stays disabled and deployment stays main-only.
+Workflow-dispatch typed confirmation binds the approved exceptional phase and SHA.
+No fake reviewer or admin bypass is introduced.
 
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.
