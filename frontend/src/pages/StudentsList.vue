@@ -1,15 +1,14 @@
 <template>
-  <div class="students-page at-ops-page">
-    <div class="students-shell">
+  <div class="students-page at-ops-page at-page">
       <AtPageHeader
         title="學生管理"
         description="搜尋、篩選與管理本分校學生資料與課程安排。"
-        icon="school"
+        icon="groups"
         data-guide="students-header"
       >
         <template #meta>
-          <span>本分校 <strong>{{ branchStudentTotal }}</strong> 人</span>
-          <span>目前列表 {{ displayStudents.length }} 人</span>
+          <span>本分校 <strong>{{ studentsLoaded ? branchStudentTotal : '—' }}</strong> 人</span>
+          <span>目前列表 {{ studentsLoaded ? displayStudents.length : '—' }} 人</span>
         </template>
         <template #actions>
           <AtButton shape="rect" variant="secondary" icon="upload_file" aria-label="匯入學生名單" @click="openImportDialog">匯入名單</AtButton>
@@ -28,6 +27,7 @@
         </template>
       </AtPageHeader>
 
+    <div class="students-shell">
       <!-- Bulk Action Toolbar (appears when students selected) -->
       <div v-if="hasSelectedStudents" class="bulk-toolbar">
         <span class="bulk-count">
@@ -181,8 +181,9 @@
                   :key="course.id"
                   :class="['subject-pill', { low: isSessionPaymentLowRemaining(course) }]"
                 >
-                  {{ getSubjectLabel(course.subject).split('(')[0].trim() }}
+                  {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
+                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'settled_pending' ? '已結算 · 待對帳' : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -201,7 +202,9 @@
                   <span>{{ expandedId === student.id ? '收合' : '課程/購課' }}</span>
                 </button>
                 <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
-                <AtIconButton icon="delete" label="刪除" variant="danger" @click="deleteStudent(student)" />
+                <AtRowMenu>
+                  <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteStudent(student)">刪除學生</AtButton>
+                </AtRowMenu>
               </div>
             </td>
           </tr>
@@ -256,6 +259,14 @@
                         <span>歷史</span>
                       </div>
                     </div>
+                    <section v-for="pool in sharedPackageSummaries(getActiveStudentCourses(student.id))" :key="`pool-${pool.id}`" class="student-package-summary" :aria-label="`${pool.name}共用堂數`">
+                      <div class="student-course-overview__header"><strong>{{ pool.name }}</strong><span class="student-course-overview__hint">成員課程共用同一堂數池</span></div>
+                      <dl class="student-course-card__meta">
+                        <div><dt>方案總堂數</dt><dd data-testid="package-total">{{ pool.total ?? '待確認' }}</dd></div>
+                        <div><dt>方案已使用</dt><dd data-testid="package-used">{{ pool.used ?? '待確認' }}</dd></div>
+                        <div><dt>方案剩餘堂數</dt><dd data-testid="package-remaining">{{ pool.remaining ?? '待確認' }}</dd></div>
+                      </dl>
+                    </section>
                     <div class="student-course-picker" role="list" aria-label="進行中的課程">
                       <div
                         v-for="course in getActiveStudentCourses(student.id)"
@@ -271,7 +282,7 @@
                           :aria-pressed="getFocusedStudentCourse(student.id)?.id === course.id"
                           @click.stop="selectStudentCourse(student.id, course.id, $event)"
                         >
-                          <span class="student-course-picker__subject">{{ getSubjectLabel(course.subject) }}</span>
+                          <span class="student-course-picker__subject">{{ getStudentCourseSubjectDisplayLabel(course) }}</span>
                           <span class="student-course-picker__status">{{ getCourseAttentionLabel(course) }}</span>
                           <span class="student-course-picker__detail">{{ getCourseProgressSummary(course) }}</span>
                           <span class="student-course-picker__chevron material-symbols-outlined" aria-hidden="true">chevron_right</span>
@@ -312,7 +323,7 @@
                     <header class="student-course-card__header">
                       <div class="student-course-card__identity">
                         <span class="student-course-card__eyebrow">學生課程</span>
-                        <h5>{{ getSubjectLabel(course.subject) }}</h5>
+                        <h5>{{ getStudentCourseSubjectDisplayLabel(course) }}</h5>
                         <div class="student-course-card__badges">
                           <span class="status-tag" :class="course.class_type">{{ classTypeLabel(course.class_type) }}</span>
                           <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
@@ -391,6 +402,9 @@
                       </div>
                       <span class="student-course-card__progress-caption">已使用 {{ courseProgress(course).used }} 堂<span v-if="course.PackageID"> · 方案共用堂數</span></span>
                     </section>
+                    <div v-else-if="isPackageMember(course)" class="student-course-card__progress-empty" role="note">
+                      本課程使用共用方案；堂數請見上方方案摘要，上課日期見本課程明細。
+                    </div>
                     <div v-else-if="String(course.payment_type || '').toLowerCase() === 'session'" class="student-course-card__progress-empty" role="status">
                       堂數未設定，請編輯課程確認。
                     </div>
@@ -482,7 +496,7 @@
                   >
                     <div v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card">
                       <div class="sl-history-card__header">
-                        <span class="tag sl-history-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
+                        <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                         <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
@@ -808,7 +822,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
-        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -1003,7 +1017,9 @@
 <script setup>
 import { ref, onMounted, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
+import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import {
   calculateTransactionDiscountPreview,
@@ -1021,7 +1037,7 @@ import {
   gradePromotionSuccessMessage,
   toggleGradePromotionExclude,
 } from '../lib/gradePromotionUi.js';
-import { courseBadgeSessionLabel } from '../lib/courseBadgeDisplay.js';
+import { courseBadgeSessionLabel, sharedPackageSummaries } from '../lib/courseBadgeDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { fetchClassSessions } from '../lib/classSessionsApi.js';
 import {
@@ -1054,6 +1070,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
+import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
 
@@ -1375,6 +1392,7 @@ const getCourseRemainingSessions = (course) => (
 );
 /** 堂數制才顯示可驗證的進度；月結制不把月份或剩餘欄位誤換算成百分比。 */
 const courseProgress = (course) => {
+  if (isPackageMember(course)) return null;
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') return null;
 
   const total = parseCourseNumber(
@@ -1482,7 +1500,8 @@ const isCourseNeedsAttention = (course) => {
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
   const courseStatus = String(course?.status || '').toLowerCase();
   return isSessionPaymentLowRemaining(course)
-    || ['overdue', 'unpaid', 'pending'].includes(paymentStatus)
+    || isTutoringBillingAnomaly(course)
+    || (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus))
     || courseStatus === 'inactive'
     || !course?.teacher_name
     || !hasCourseSchedule(course)
@@ -1490,9 +1509,10 @@ const isCourseNeedsAttention = (course) => {
     || !course?.room_name;
 };
 const getCourseAttentionLabel = (course) => {
+  if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isSessionPaymentLowRemaining(course)) return '需要續報';
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (['overdue', 'unpaid', 'pending'].includes(paymentStatus)) return '付款待確認';
+  if (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus)) return '付款待確認';
   if (String(course?.status || '').toLowerCase() === 'inactive') return '已暫停';
   if (!course?.teacher_name || !hasCourseSchedule(course) || !course?.branch_name || !course?.room_name) {
     return '資料待確認';
@@ -1500,18 +1520,30 @@ const getCourseAttentionLabel = (course) => {
   return '進行中';
 };
 const getCoursePrimaryAction = (course) => {
+  if (isTutoringBillingAnomaly(course)) {
+    return {
+      key: 'payment',
+      icon: 'receipt_long',
+      label: '查看帳務資料',
+      title: '先核對輔導課帳務資料',
+      description: '輔導課無須繳費，請由主任核對帳務異常。',
+      tone: 'warning',
+    };
+  }
   if (isSessionPaymentLowRemaining(course)) {
     return {
       key: 'renew',
       icon: 'add_circle',
       label: isTutoringCourse(course) ? '延續輔導課' : '續報加購',
       title: '先處理課程續報',
-      description: `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
+      description: isPackageMember(course)
+        ? '請核對上方共用方案摘要，再處理方案續報。'
+        : `剩餘 ${getCourseRemainingSessions(course)} 堂，先補充堂數可避免後續排課中斷。`,
       tone: 'warning',
     };
   }
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (['overdue', 'unpaid', 'pending'].includes(paymentStatus)) {
+  if (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus)) {
     return {
       key: 'payment',
       icon: 'receipt_long',
@@ -1557,6 +1589,7 @@ const openCoursePrimaryAction = (course, studentName = '') => {
   return editCourse(course);
 };
 const getCourseProgressSummary = (course) => {
+  if (isPackageMember(course)) return '共用方案 · 上課日期見明細';
   const progress = courseProgress(course);
   if (progress) return `剩餘 ${progress.remaining} / ${progress.total} 堂`;
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
@@ -1608,39 +1641,10 @@ const canCloseCourse = (course) => {
 };
 
 async function closeCourseNoRenew(course, studentName) {
-  const courseId = Number(course?.id ?? course?.ID ?? 0);
-  if (!courseId) { alert('課程資料缺少識別碼，請重新整理後再試'); return; }
-  const subject = getSubjectLabel(course?.subject);
-  const remaining = Math.max(0, Number(getCourseRemainingSessions(course) ?? 0));
-  const paymentWarning = isCourseSettled(course)
-    ? ''
-    : '\n\n目前尚未完成繳費；結案後會標記「待對帳」，不會視為已繳費。';
-  const balanceWarning = remaining > 0
-    ? `\n\n目前還有 ${remaining} 堂未使用。結案會取消未來排課，並放棄這 ${remaining} 堂剩餘額度。`
-    : '';
-  if (!confirm(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？${paymentWarning}${balanceWarning}\n\n結案後此課程不再排課；若尚未繳費，會保留在帳務中心的「結案待對帳」佇列。已繳費與已上課紀錄仍會保留。`)) return;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入'); return; }
-    const res = await fetch(`/api/v1/student-classes/${courseId}/pause`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({
-        action: 'pause',
-        reason: 'settled',
-        ...(remaining > 0 ? { forfeit_remaining: true } : {}),
-      }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) { alert('結案失敗：' + (json.message || res.statusText)); return; }
-    alert(json.pending_reconciliation
-      ? '已結案，課程保留在帳務中心的「結案待對帳」佇列，尚未視為已繳費。'
-      : '已結案，此課程不再出現在繳費／續課提醒中。');
-    await loadAllStudentCourses();
-  } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
-  }
+  return runCloseCourseNoRenew({
+    course, studentName, getRemainingSessions: getCourseRemainingSessions,
+    getSubjectLabel, isCourseSettled, supabase, reloadCourses: loadAllStudentCourses,
+  });
 }
 
 const getStudentAllCourses = (id) => studentCourses.value[id] || [];
@@ -2106,6 +2110,7 @@ const loadStudentCourses = async (studentId) => {
           id: c.id,
           student_id: studentId,
           subject: c.subject,
+          subject_name: c.subject_name ?? null,
           teacher_id: c.teacher_id,
           teacher_name: c.teacher_name,
           class_type: c.class_type,
@@ -2191,6 +2196,7 @@ const loadAllStudentCourses = async () => {
             id: c.id,
             student_id: sid,
             subject: c.subject,
+            subject_name: c.subject_name ?? null,
             teacher_id: c.teacher_id,
             teacher_name: c.teacher_name || '',
             class_type: c.class_type,
@@ -4084,6 +4090,7 @@ table th { font-size: 12.5px; }
   gap: 6px;
 }
 .rfid-tag {
+  white-space: nowrap;
   font-size: 12px;
   font-family: monospace;
   color: var(--ds-primary);
@@ -4092,6 +4099,7 @@ table th { font-size: 12.5px; }
   gap: 3px;
 }
 .rfid-unbound {
+  white-space: nowrap;
   font-size: 12px;
   color: var(--ds-ink-mute);
   display: inline-flex;

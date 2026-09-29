@@ -9,16 +9,21 @@
     </template>
 
     <template v-else>
-      <main class="director-workbench-v2" aria-labelledby="director-workbench-v2-title">
-        <header class="director-workbench-v2__header">
-          <div class="director-workbench-v2__heading">
-            <h1 id="director-workbench-v2-title">主任總覽</h1>
-            <p>{{ branchName }} <span aria-hidden="true">·</span> {{ todayDisplay }}</p>
-          </div>
-          <div class="director-workbench-v2__header-actions">
+      <main class="director-workbench-v2" aria-label="主任總覽">
+        <AtPageHeader
+          title="主任總覽"
+          :description="`${branchName} · ${todayDisplay}`"
+          icon="dashboard"
+        >
+          <template #meta>
             <span class="director-workbench-v2__updated" role="status">
               {{ dashboardLoading ? '更新中…' : (dashboardLastUpdated ? `更新於 ${dashboardLastUpdated}` : '尚未更新') }}
             </span>
+            <span v-if="engagementVisible && initialEngagement" class="dash-engagement-chip" data-guide="director-engagement-rank">
+              <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
+            </span>
+          </template>
+          <template #actions>
             <AtButton
               class="director-workbench-v2__refresh"
               variant="secondary"
@@ -29,21 +34,17 @@
             >
               重新整理
             </AtButton>
-          </div>
-        </header>
+          </template>
+        </AtPageHeader>
 
-        <div v-if="engagementVisible && initialEngagement" class="dash-engagement-strip" data-guide="director-engagement-rank">
-          <EngagementRankStrip :engagement="initialEngagement" :reduced-motion="engagementReducedMotion" />
-        </div>
-
-        <nav class="director-workbench-v2__nav" role="tablist" aria-label="總覽檢視模式">
+        <nav class="director-workbench-v2__nav at-tabs" role="tablist" aria-label="總覽檢視模式">
           <button
             type="button"
             role="tab"
             id="director-workbench-tab-focus"
             aria-controls="director-workbench-panel-focus"
             :aria-selected="dashboardViewMode === 'focus'"
-            :class="{ 'is-active': dashboardViewMode === 'focus' }"
+            :class="['at-tab', { 'is-active': dashboardViewMode === 'focus' }]"
             @click="setDashboardViewMode('focus')"
           >
             今天
@@ -54,7 +55,7 @@
             id="director-workbench-tab-full"
             aria-controls="director-workbench-panel-full"
             :aria-selected="dashboardViewMode === 'full'"
-            :class="{ 'is-active': dashboardViewMode === 'full' }"
+            :class="['at-tab', { 'is-active': dashboardViewMode === 'full' }]"
             @click="setDashboardViewMode('full')"
           >
             完整營運
@@ -73,9 +74,7 @@
           <TodayProgressCard
             :completed="attendedCount"
             :total="todaySchedules.length"
-            :next-task="dashboardPrimaryTasks[0] || null"
             :loading="dashboardLoading"
-            @next="openDashboardTask"
           />
 
           <section class="director-workbench-v2__primary surface-panel" aria-labelledby="director-focus-title">
@@ -145,7 +144,7 @@
                 </div>
                 <AtButton
                   class="director-task__action"
-                  variant="primary"
+                  :variant="index === 0 ? 'primary' : 'secondary'"
                   shape="rect"
                   icon="arrow_forward"
                   @click="openDashboardTask(task)"
@@ -180,15 +179,15 @@
               </header>
               <dl class="director-summary-list">
                 <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.todaySchedules">今日課程<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ todaySchedules.length }}</dd><small>{{ attendedCount }} 堂已完成</small></div>
-                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations">待審評量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ pendingEvaluations.length }}</dd><small>需要確認的紀錄</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations">待審評量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ pendingEvaluationsTotal }}</dd><small>需要確認的紀錄</small></div>
                 <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.unreadNotifications">未讀通知<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ unreadNotificationCount }}</dd><small>通知中心待查看</small></div>
                 <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.workflowDaily">今日工作量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ workflowDailySummary.due_total }}</dd><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
               </dl>
             </section>
 
             <details v-if="operationsTrust?.decision_center" class="director-trust-note">
-              <summary>
-                <span>課表可信度</span>
+              <summary title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
+                <span>課表正確度</span>
                 <strong :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
               </summary>
               <p>{{ decisionCenter.headline }}</p>
@@ -313,10 +312,10 @@
               </section>
 
               <section id="evals-sec" class="surface-panel" aria-labelledby="director-evals-title">
-                <header class="surface-panel__header"><div><h3 id="director-evals-title">評量待審核</h3><p>確認後，家長才能看到完整回饋。</p></div><span class="surface-panel__count">{{ pendingEvaluations.length }} 筆</span></header>
+                <header class="surface-panel__header"><div><h3 id="director-evals-title">評量待審核</h3><p>確認後，家長才能看到完整回饋。</p></div><span class="surface-panel__count">{{ pendingEvaluationsTotal }} 筆</span></header>
                 <div v-if="!pendingEvaluations.length" class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待審核評量。</span></div>
                 <div v-else class="director-evaluation-list"><article v-for="evaluation in pendingEvaluations.slice(0, 8)" :key="evaluation.id" class="director-evaluation-row"><div><strong>{{ evaluation.student_name }}</strong><span>{{ evaluation.student_class_label || evaluation.Subject || '—' }} · {{ evaluation.SessionDate || '未提供日期' }}</span></div><div><button type="button" class="button button--quiet" @click="emit('navigate', { target: 'learning', recordId: evaluation.id })">查看</button><button type="button" class="button button--primary" @click="approveEvaluation(evaluation)">核准</button><button type="button" class="button button--danger" @click="rejectEvaluation(evaluation)">退回</button></div></article></div>
-                <footer v-if="pendingEvaluations.length > 8" class="surface-panel__footer"><span>還有 {{ pendingEvaluations.length - 8 }} 筆</span><button type="button" class="text-action" @click="emit('navigate', { target: 'learning' })">查看全部</button></footer>
+                <footer v-if="pendingEvaluationsTotal > 8" class="surface-panel__footer"><span>還有 {{ pendingEvaluationsTotal - 8 }} 筆</span><button type="button" class="text-action" @click="emit('navigate', { target: 'learning' })">查看全部</button></footer>
               </section>
             </div>
 
@@ -373,6 +372,7 @@ import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import OperationsQuickStart from '../components/OperationsQuickStart.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import {
@@ -395,6 +395,7 @@ import {
   trustPeopleSlice as trustPeople,
   trustDecisionTitle,
 } from '../lib/trustDecisionDisplay.js';
+import { parseInboxCount } from '../lib/actionInboxContract.js';
 import { buildDirectorDashboardTasks } from '../lib/directorDashboardTasks.js';
 import { runDashboardLoaders } from '../lib/dashboardLoadPlan.js';
 import { isUserEngagementRankDisplayEnabled } from '../lib/userEngagementDisplay';
@@ -416,6 +417,8 @@ const workflowFocusError = ref('');
 
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
+// 伺服器全量筆數（列表只載入前 100 筆，不能用 length 當總數）
+const pendingEvaluationsTotal = ref(0);
 const operationsTrust = ref(null);
 const lowBalanceStudents = ref([]);
 const unreadNotificationCount = ref(0);
@@ -622,8 +625,10 @@ const pendingAttendanceCount = computed(() =>
   todaySchedules.value.filter(s => s.status === 'scheduled').length
 );
 
+// 已完成 = 今日課程中「不是待點名」的堂數；與 pendingAttendanceCount、側欄出缺勤 badge 同一口徑，
+// 避免 total - attended 把 absent/completed 等已結案狀態誤算成待完成。
 const attendedCount = computed(() =>
-  todaySchedules.value.filter(s => s.status === 'attended').length
+  todaySchedules.value.length - pendingAttendanceCount.value
 );
 
 const exceptionWorkflowCount = computed(() => exceptionWorkflows.value.length);
@@ -663,7 +668,7 @@ const dashboardTasks = computed(() => buildDirectorDashboardTasks({
   paymentLabel: paymentActionLaneLabel.value,
   pendingMakeupCount: pendingMakeupCount.value,
   exceptionWorkflowCount: exceptionWorkflowCount.value,
-  pendingEvaluationsCount: pendingEvaluations.value.length,
+  pendingEvaluationsCount: pendingEvaluationsTotal.value,
   unreadFeedbackCount: props.unreadFeedbackCount,
   scheduleDiscrepancyCount: sdSummary.value.pending,
   adoptionTasks: directorTodoCards.value.map((item) => ({
@@ -1128,20 +1133,15 @@ const loadData = async () => {
     if (alertsResp.ok) {
       const alertsJson = await alertsResp.json();
       const alertList = Array.isArray(alertsJson) ? alertsJson : (alertsJson.low_balance || []);
-      const currentBranchId = Number(props.branchId) || 0;
+      // 不再在前端二次過濾：帳務中心顯示 API 全量，主任總覽必須同筆數（API 已依 branch_id 過濾）。
       lowBalanceStudents.value = alertList
-        .filter(c => {
-          if (!c.student_name) return false;
-          const campusId = Number(c.campus_id ?? c.CampusID ?? 0);
-          return !currentBranchId || !campusId || campusId === currentBranchId;
-        })
         .map(c => ({
           id: c.id || c.class_id,
           student_class_id: c.student_class_id || c.id || c.class_id || null,
           invoice_id: c.invoice_id || null,
           student_id: c.student_id || null,
-          raw_name: c.student_name,
-          name: `${c.student_name} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
+          raw_name: c.student_name || '未命名學生',
+          name: `${c.student_name || '未命名學生'} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
           remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0,
           alert_type: c.alert_type || 'unpaid',
           payment_status: c.payment_status || null,
@@ -1253,6 +1253,7 @@ const loadData = async () => {
     if (pendingRes.ok) {
       const pendingJson = await pendingRes.json();
       pendingEvaluations.value = pendingJson.data || [];
+      pendingEvaluationsTotal.value = Number(pendingJson.total ?? pendingEvaluations.value.length);
     }
   } catch (err) {
     console.error('Failed to load pending evaluations:', err);
@@ -1328,7 +1329,17 @@ const loadNotificationSummary = async (token, baseUrl) => {
     });
     if (!res.ok) { unreadNotificationCount.value = 0; notificationSummary.value = []; return; }
     const json = await res.json();
-    unreadNotificationCount.value = Number(json.unread_count || 0);
+    // 數字與側欄／通知中心同源（action-inbox/count）；列表端點只負責摘要清單。
+    try {
+      const countRes = await fetch(`${baseUrl}/v1/action-inbox/count?branch_id=${props.branchId}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+      });
+      unreadNotificationCount.value = countRes.ok
+        ? parseInboxCount(await countRes.json()).notificationsUnread
+        : Number(json.unread_count || 0);
+    } catch {
+      unreadNotificationCount.value = Number(json.unread_count || 0);
+    }
     notificationSummary.value = (json.data || []).map(item => ({
       id: item.id, title: item.Title || '通知', typeLabel: notificationTypeLabel(item.Type),
     }));
@@ -1400,6 +1411,7 @@ const approveEvaluation = async (evalItem) => {
     });
     if (res.ok) {
       pendingEvaluations.value = pendingEvaluations.value.filter(e => e.id !== evalItem.id);
+      pendingEvaluationsTotal.value = Math.max(0, pendingEvaluationsTotal.value - 1);
       loadData();
     } else { const err = await res.json(); alert('核准失敗: ' + (err.message || '')); }
   } catch { alert('核准失敗'); }
@@ -1813,13 +1825,13 @@ onBeforeUnmount(() => {
   font-weight: 500;
   max-width: 42rem;
 }
-.dash-engagement-strip {
-  margin-top: 14px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--porsche-border) 88%, transparent);
-  background: rgba(255, 255, 255, 0.55);
-  max-width: 42rem;
+.dash-engagement-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--ds-radius-pill);
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
 }
 .dash-date-panel {
   display: grid;
@@ -2973,48 +2985,30 @@ onBeforeUnmount(() => {
 
 /* Director workbench v2: one surface, one hierarchy, one action language. */
 .director-workbench-v2 {
-  max-width: 1360px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 30px 36px 64px;
+  padding: 0 0 64px;
   color: var(--ds-ink);
 }
-.director-workbench-v2__header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--ds-hairline);
-}
-.director-workbench-v2__heading h1,
 .director-workbench-v2__subheader h2,
 .surface-panel__header h2,
 .surface-panel__header h3 { margin: 0; color: var(--ds-ink); letter-spacing: -0.018em; }
-.director-workbench-v2__heading h1 { font-size: 30px; font-weight: 800; letter-spacing: -0.035em; }
-.director-workbench-v2__heading p,
 .director-workbench-v2__subheader p,
 .surface-panel__header p { margin: 7px 0 0; color: var(--ds-ink-mute); font-size: 13px; line-height: 1.5; }
-.director-workbench-v2__header-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
 .director-workbench-v2__updated { color: var(--ds-ink-mute); font-size: 12px; font-variant-numeric: tabular-nums; }
 .director-workbench-v2__refresh,
-.director-workbench-v2__nav button,
 .text-action,
 .button { font: inherit; cursor: pointer; }
 .director-workbench-v2__refresh {
   min-height: 44px;
 }
 .director-workbench-v2__refresh:focus-visible,
-.director-workbench-v2__nav button:focus-visible,
 .text-action:focus-visible,
 .button:focus-visible,
 .director-task__action:focus-visible,
 .director-other-work-list button:focus-visible,
 .director-candidate input:focus-visible + span,
 .director-modal__close:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
-.director-workbench-v2__nav { display: flex; gap: 22px; min-height: 52px; border-bottom: 1px solid var(--ds-hairline); }
-.director-workbench-v2__nav button { min-height: 52px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ds-ink-mute); font-size: 14px; font-weight: 800; }
-.director-workbench-v2__nav button:hover { color: var(--ds-ink); }
-.director-workbench-v2__nav button.is-active { border-bottom-color: var(--ds-cta); color: var(--ds-ink); }
 .director-workbench-v2__focus { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(260px, 0.72fr); gap: 24px; align-items: start; padding-top: 24px; }
 .director-workbench-v2__primary { min-width: 0; }
 .director-workbench-v2__aside { display: grid; gap: 18px; min-width: 0; }
@@ -3193,9 +3187,7 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) { .director-task--loading { animation: none; } }
 @media (max-width: 960px) { .director-workbench-v2__focus, .director-workbench-v2__full-grid { grid-template-columns: 1fr; } .director-workbench-v2__aside { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } .director-trust-note { grid-column: 1 / -1; } }
 @media (max-width: 680px) {
-  .director-workbench-v2 { padding: 22px 16px 44px; }
-  .director-workbench-v2__header { align-items: flex-start; flex-direction: column; gap: 14px; }
-  .director-workbench-v2__header-actions { width: 100%; justify-content: space-between; }
+  .director-workbench-v2 { padding: 0 0 44px; }
   .director-workbench-v2__focus, .director-workbench-v2__full { padding-top: 16px; }
   .director-risk-disclosure { margin-inline: 16px; }
   .director-workbench-v2__aside { grid-template-columns: 1fr; gap: 12px; }

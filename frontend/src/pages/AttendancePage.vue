@@ -1,39 +1,38 @@
 <template>
-  <div class="att-page">
+  <div class="att-page at-page">
     <AtPageHeader
       title="出缺勤管理"
       :description="isTeacher ? '查看今日堂次並完成點名，也可補登過去堂次。' : '追蹤學生到班狀態、點名核課與補登過往堂次。'"
       icon="fact_check"
       data-guide="attendance-header"
     >
-      <template #meta><span>{{ isTeacher ? '老師工作台' : '主任工作台' }}</span><span>以今日待處理為主</span></template>
       <template #actions>
-        <AtButton variant="ghost" shape="rect" icon="refresh" @click="refreshAll">重新整理今日堂次</AtButton>
+        <AtButton variant="secondary" shape="rect" icon="refresh" @click="refreshAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
 
     <!-- Tab Switcher（director/super_admin 才顯示） -->
-    <div v-if="!isTeacher" class="att-tabs" role="tablist" aria-label="出缺勤工作區">
+    <div v-if="!isTeacher" class="att-tabs at-tabs" role="tablist" aria-label="出缺勤工作區">
       <button
         id="attendance-tab-student"
         type="button"
-        class="att-tab-btn"
+        class="att-tab-btn at-tab"
         :class="{ active: activeTab === 'student' }"
         role="tab"
         :aria-selected="activeTab === 'student'"
         aria-controls="attendance-student-panel"
         @click="switchTab('student')"
-      >學生點名 <span class="att-tab-note">主任</span></button>
+      >學生點名</button>
       <button
         id="attendance-tab-teacher"
         type="button"
-        class="att-tab-btn"
+        class="att-tab-btn at-tab"
         :class="{ active: activeTab === 'teacher' }"
         role="tab"
         :aria-selected="activeTab === 'teacher'"
         aria-controls="attendance-teacher-panel"
         @click="switchTab('teacher')"
-      >老師打卡 <span class="att-tab-note">主任</span></button>
+      >老師打卡</button>
     </div>
 
     <!-- ═══ Teacher Attendance Tab ═══ -->
@@ -320,8 +319,8 @@
                     <button
                       v-for="opt in statusOptions" :key="opt.value"
                       type="button"
-                      :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
-                      :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
+                      :aria-pressed="isStatusChosen(s.class_session_id, opt.value)"
+                      :class="['att-status-btn', `att-st-${opt.value}`, { active: isStatusChosen(s.class_session_id, opt.value) }]"
                       @click="setStatus(s.class_session_id, opt.value)"
                     >{{ opt.short }}</button>
                   </div>
@@ -341,10 +340,10 @@
                       :class="{ 'att-report-btn-active': !!getSessionDiscrepancy(s.class_session_id) }"
                       type="button"
                       @click="openReportModalForSession(s)"
-                      :title="getSessionDiscrepancy(s.class_session_id) ? '已回報 — 點此查看' : '課表與實際不符？點此回報'"
+                      :title="getSessionDiscrepancy(s.class_session_id) ? '已回報 — 點此查看' : '回報出入：課表與實際不符？點此回報'"
+                      :aria-label="getSessionDiscrepancy(s.class_session_id) ? '已回報，查看出入回報' : '回報出入'"
                     >
                       <span class="material-symbols-outlined" aria-hidden="true">flag</span>
-                      <span>{{ getSessionDiscrepancy(s.class_session_id) ? '已回報' : '回報出入' }}</span>
                     </button>
                   </div>
                 </td>
@@ -392,8 +391,8 @@
                 <button
                   v-for="opt in statusOptions" :key="opt.value"
                   type="button"
-                  :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
-                  :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
+                  :aria-pressed="isStatusChosen(s.class_session_id, opt.value)"
+                  :class="['att-status-btn', `att-st-${opt.value}`, { active: isStatusChosen(s.class_session_id, opt.value) }]"
                   @click="setStatus(s.class_session_id, opt.value)"
                 >{{ opt.label }}</button>
               </div>
@@ -440,7 +439,7 @@
             <span class="att-person-name">{{ s.student_name || '—' }}</span>
             <span>{{ s.subject_name || '—' }}</span>
             <span>{{ s.teacher_name || '—' }}</span>
-            <span class="att-status-readonly">{{ s.status_label }}</span>
+            <span :class="['att-status-readonly', statusToneClass(s.status_label)]">{{ s.status_label }}</span>
             <span v-if="s.status_note" class="att-status-note">{{ s.status_note }}</span>
           </div>
         </div>
@@ -1414,6 +1413,9 @@ const manualMsgType = ref('');
 
 const pendingSessions = ref([]);
 const sessionStatusRows = ref([]);
+// 已標記狀態的色調：只有缺席用紅色，到班不該看起來像錯誤。
+const STATUS_TONE = { 到班: 'is-ok', 遲到: 'is-warn', '請假(待審)': 'is-warn', 請假: 'is-muted', 缺席: 'is-bad' };
+const statusToneClass = (label) => STATUS_TONE[String(label || '').trim()] || 'is-muted';
 const pendingLoading = ref(false);
 const pendingMarkStatus = ref({});
 const pendingMarkSubmitting = ref({});
@@ -1771,8 +1773,15 @@ function toggleSelect(id) {
   }
 }
 
+// 預設「到班」只用於送出，未點選前畫面不顯示為已記錄（避免像已完成）。
+const pendingMarkTouched = ref({});
+function isStatusChosen(sessionId, value) {
+  return !!pendingMarkTouched.value[sessionId] && pendingMarkStatus.value[sessionId] === value;
+}
+
 function setStatus(sessionId, status) {
   pendingMarkStatus.value = { ...pendingMarkStatus.value, [sessionId]: status };
+  pendingMarkTouched.value = { ...pendingMarkTouched.value, [sessionId]: true };
 }
 
 function focusPendingList() {
@@ -2514,7 +2523,6 @@ watch(() => props.branchId, () => {
 </script>
 
 <style scoped>
-.att-page { max-width: 1200px; }
 
 .att-teacher-snapshot {
   display: flex;
@@ -2764,11 +2772,17 @@ watch(() => props.branchId, () => {
 .att-status-readonly {
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
+  background: var(--ds-canvas-soft, var(--ds-hairline));
+  color: var(--ds-ink-mute);
   font-weight: 700;
   text-align: center;
 }
+.att-status-readonly.is-ok { background: var(--ds-success-wash); color: var(--ds-success); }
+.att-status-readonly.is-warn { background: var(--ds-warning-wash); color: var(--ds-warning); }
+.att-status-readonly.is-bad { background: var(--ds-danger-wash); color: var(--ds-danger); }
+/* dark theme only overrides the -wash tokens; keep chip text readable on the dark washes */
+:global([data-theme="dark"]) .att-status-readonly.is-ok,
+:global([data-theme="dark"]) .att-status-readonly.is-warn { color: var(--ds-ink); }
 .att-status-note {
   color: var(--ds-warning);
   overflow: hidden;
@@ -3107,6 +3121,8 @@ watch(() => props.branchId, () => {
   gap: 6px;
   align-items: flex-end;
 }
+.att-ops-stack { flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
+.att-ops-stack .att-report-btn { padding: 6px; min-width: 36px; justify-content: center; }
 
 .att-report-btn {
   display: inline-flex;
@@ -3237,40 +3253,7 @@ watch(() => props.branchId, () => {
 }
 
 /* ──────── Tab Switcher ──────── */
-.att-tabs {
-  display: flex;
-  border-bottom: 2px solid var(--border);
-  margin-bottom: 16px;
-}
-.att-tab-btn {
-  padding: 10px 20px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ds-ink-mute);
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-  min-height: 44px;
-}
-.att-tab-btn:hover { color: var(--ds-ink); }
-.att-tab-btn:focus-visible,
 .att-status-btn:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
-.att-tab-btn.active {
-  color: var(--ds-primary);
-  border-bottom-color: var(--ds-primary);
-  font-weight: 700;
-}
-.att-tab-note {
-  margin-left: 4px;
-  color: var(--ds-ink-mute);
-  font-size: 11px;
-  font-weight: 500;
-}
-.att-tab-btn.active .att-tab-note { color: var(--ds-primary); }
-
 @media (max-width: 640px) {
   .att-workspace-intro { align-items: flex-start; flex-direction: column; gap: 10px; }
   .att-focus-count { align-self: flex-start; }
@@ -3418,9 +3401,6 @@ button.danger:hover:not(:disabled) { background: var(--ds-danger) !important; }
 .att-page input:not([type="checkbox"]),
 .att-page select,
 .att-page textarea {
-  min-height: var(--ds-control-height-touch, 44px);
-}
-.att-page .att-tab-btn {
   min-height: var(--ds-control-height-touch, 44px);
 }
 .att-page .at-btn,

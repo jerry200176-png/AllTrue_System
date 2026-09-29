@@ -1,0 +1,40 @@
+id: INT-20260926-125943-59Z2
+title: Complete existing shipped feedback category delivery329
+intent: Complete existing shipped feedback category delivery329
+kind: intent
+brain_dump: Continue existing AllTrue product delivery; preserve3195 source and perform
+  verified R1 engineering closeout through existing lifecycle authority
+boundary: Single329 status/public retest only after evidence; no business data, activation,
+  identity, gates or general allowlist changes
+success_condition: Exact containment regression health and lawful writeback verified
+risk: high
+priority: 3
+labels: []
+scope:
+  allow:
+  - .github/workflows/bug-phase-c-allowlist.yml
+  - scripts/ci/bug-writeback-workflow.test.mjs
+  - docs/plans/**
+  - .agent-session/manifest.json
+  - .exo/**
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 8
+  max_loc_changed: 250
+checks:
+- npm run lint:no-undef
+type: feature
+status: todo
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-26T12:59:43+08:00'
+children:
+- TKT-20260926-125957-KIDL
+resource_profile: default

@@ -1,15 +1,27 @@
 <template>
-  <div class="tc-page">
+  <div class="tc-page at-page">
     <AtPageHeader
       title="帳務中心"
       description="處理應收、已回報待查帳、確認入帳與續課提醒。"
-      icon="account_balance"
+      icon="payments"
       data-guide="tuition-header"
     >
-      <template #meta><span>先確認對象，再回報，最後確認入帳</span></template>
+      <template #help>
+        <AtHelpDisclosure label="帳務處理流程">
+          <OperationsQuickStart
+            compact
+            eyebrow="帳務處理流程"
+            heading="照順序完成，不用記入口"
+            description="先找到對象，再送出回報，最後由主任確認入帳。"
+            :current-id="billingFlowCurrentId"
+            :steps="billingFlowSteps"
+            @select="selectBillingFlowStep"
+          />
+        </AtHelpDisclosure>
+      </template>
       <template #actions>
         <AtButton
-          variant="ghost"
+          variant="secondary"
           shape="rect"
           icon="refresh"
           :loading="activeTabLoading"
@@ -20,30 +32,12 @@
       </template>
     </AtPageHeader>
 
-    <details class="tc-process-disclosure">
-      <summary>
-        <span class="material-symbols-outlined" aria-hidden="true">route</span>
-        <span class="tc-process-disclosure__title">帳務處理流程</span>
-        <span class="tc-process-disclosure__hint">先找到對象，再回報，最後確認入帳</span>
-        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
-      </summary>
-      <OperationsQuickStart
-        compact
-        eyebrow="帳務處理流程"
-        heading="照順序完成，不用記入口"
-        description="先找到對象，再送出回報，最後由主任確認入帳。"
-        :current-id="billingFlowCurrentId"
-        :steps="billingFlowSteps"
-        @select="selectBillingFlowStep"
-      />
-    </details>
-
-    <div class="acct-tabs" role="tablist" aria-label="帳務中心分頁">
+    <div class="acct-tabs at-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
         v-for="tab in ACCOUNTING_TABS"
         :key="tab.key"
         type="button"
-        class="acct-tab"
+        class="acct-tab at-tab"
         :class="{ active: activeAccountingTab === tab.key }"
         role="tab"
         :id="`tuition-accounting-tab-${tab.key}`"
@@ -51,16 +45,21 @@
         :aria-selected="activeAccountingTab === tab.key"
         @click="activeAccountingTab = tab.key"
       >
-        <span class="material-symbols-outlined" style="font-size:18px">{{ tab.icon }}</span>
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px">{{ tab.icon }}</span>
         {{ tab.label }}
       </button>
     </div>
 
+    <div class="tc-page__body">
     <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
       <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
       <span>{{ tuitionFocusMessage }}</span>
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
+
+    <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
+      <MonthlyBillingReview ref="monthlyReview" :branch-id="branchId" @ledger="openLedgerForClass" @navigate="emit('navigate', $event)" />
+    </section>
 
     <section
       v-if="activeAccountingTab === 'receivables'"
@@ -86,7 +85,7 @@
       <details class="tc-summary-disclosure" v-if="rows.length">
         <summary>
           <span>收款摘要</span>
-          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・未結清 {{ formatCurrency(totalOutstanding) }}</span>
+          <span class="tc-summary-disclosure__hint">{{ rows.length }} 筆提醒・已開帳單未結清 {{ formatCurrency(totalOutstanding) }}<template v-if="unbilledOutstandingCount">（另 {{ unbilledOutstandingCount }} 筆待處理尚未開帳單，不計入金額）</template></span>
           <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
         </summary>
         <div class="tc-summary tc-summary--strip" aria-label="催繳摘要">
@@ -109,7 +108,7 @@
           <div class="tc-card tc-card--outstanding">
             <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
             <span class="tc-card-label">
-              未結清
+              已開帳單未結清
               <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
                 收款率 {{ collectionRate }}%
               </span>
@@ -281,6 +280,10 @@
                   學生
                   <span v-if="sortKey === 'student_name'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
+                <th class="tc-col-sessions tc-th-sort" role="button" tabindex="0" @click="toggleSort('remaining_sessions')" @keydown.enter.prevent="toggleSort('remaining_sessions')" @keydown.space.prevent="toggleSort('remaining_sessions')">
+                  剩餘堂數
+                  <span v-if="sortKey === 'remaining_sessions'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th class="tc-th-sort" role="button" tabindex="0" @click="toggleSort('subject')" @keydown.enter.prevent="toggleSort('subject')" @keydown.space.prevent="toggleSort('subject')">
                   科目
                   <span v-if="sortKey === 'subject'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
@@ -300,10 +303,6 @@
                 <th class="tc-col-date tc-th-sort" role="button" tabindex="0" @click="toggleSort('due_date')" @keydown.enter.prevent="toggleSort('due_date')" @keydown.space.prevent="toggleSort('due_date')">
                   到期／逾期
                   <span v-if="sortKey === 'due_date'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
-                </th>
-                <th class="tc-col-sessions tc-th-sort" role="button" tabindex="0" @click="toggleSort('remaining_sessions')" @keydown.enter.prevent="toggleSort('remaining_sessions')" @keydown.space.prevent="toggleSort('remaining_sessions')">
-                  剩餘堂數
-                  <span v-if="sortKey === 'remaining_sessions'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
                 </th>
                 <th class="tc-col-actions">操作</th>
               </tr>
@@ -331,6 +330,18 @@
                     placeholder="後5碼"
                     @click.stop
                   />
+                </td>
+                <td class="tc-col-sessions">
+                  <template v-if="r.schedule_mode === 'count' && r.remaining_sessions != null">
+                    <button
+                      v-if="r.id"
+                      class="tc-sessions-link"
+                      @click="openSessionDetail(r)"
+                      :title="'點入查看上課明細'"
+                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
+                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
+                  </template>
+                  <span v-else class="text-light">—</span>
                 </td>
                 <td>
                   <div>{{ r.subject }}</div>
@@ -378,18 +389,6 @@
                     <span v-else-if="r.days_until_settlement != null && r.days_until_settlement <= 2" class="soon-tag">
                       {{ r.days_until_settlement }}天後
                     </span>
-                  </template>
-                  <span v-else class="text-light">—</span>
-                </td>
-                <td class="tc-col-sessions">
-                  <template v-if="r.schedule_mode === 'count' && r.remaining_sessions != null">
-                    <button
-                      v-if="r.id"
-                      class="tc-sessions-link"
-                      @click="openSessionDetail(r)"
-                      :title="'點入查看上課明細'"
-                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
-                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
                   </template>
                   <span v-else class="text-light">—</span>
                 </td>
@@ -515,6 +514,14 @@
             <input v-model="accountingFilters.subject" type="text" placeholder="全部科目" />
           </label>
           <label>
+            收據狀態
+            <select v-model="accountingFilters.status" aria-label="收據狀態">
+              <option value="confirmed">有效收據</option>
+              <option value="voided">已作廢紀錄</option>
+              <option value="all">全部（含作廢）</option>
+            </select>
+          </label>
+          <label>
             付款方式
             <select v-model="accountingFilters.payment_method">
               <option value="">全部</option>
@@ -582,11 +589,11 @@
           </div>
         </div>
         <p class="tc-summary-note">
-          「已確認收款筆數」是一筆筆收據；「涵蓋課程數」是這些收款對到的不同課程。若同一課程有多筆收款，請逐筆撤銷錯的那筆，不要刪除原紀錄。
+          「已確認收款筆數」是一筆筆收據；「涵蓋課程數」是這些收款對到的不同課程。若同一課程有多筆收款，請逐筆撤銷錯的那筆，不要刪除原紀錄。作廢紀錄不計入收款合計，可開啟繳費明細追蹤。
         </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
-          <AtEmpty icon="receipt_long" title="此區間尚無已核帳收款" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
+          <AtEmpty icon="receipt_long" :title="accountingFilters.status === 'confirmed' ? '此區間尚無已核帳收款' : '此區間尚無符合狀態的收據紀錄'" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
             <template #action>
               <AtButton variant="secondary" shape="rect" @click="activeAccountingTab = 'receivables'">前往待處理</AtButton>
             </template>
@@ -647,7 +654,7 @@
                 :key="row.report_id"
                 class="acct-row-clickable"
                 :class="{ 'acct-row-selected': selectedReportIds.has(row.report_id) }"
-                @click="openReceiptByReport(row.report_id)"
+                @click="row.status === 'voided' ? openLedgerForReport(row) : openReceiptByReport(row.report_id)"
               >
                 <td class="acct-col-check" @click.stop>
                   <input
@@ -674,6 +681,7 @@
                 <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
                 <td>
                   <span v-if="formatAccountingZeroChip(row)" class="acct-chip acct-chip--type">{{ formatAccountingZeroChip(row) }}</span>
+                  <span v-if="row.status === 'voided'" class="acct-chip acct-chip--backfill">已作廢</span>
                   <span v-if="row.is_prepaid" class="acct-chip acct-chip--prepaid">預收</span>
                   <span v-if="row.is_backfilled" class="acct-chip acct-chip--backfill">補建</span>
                   <span v-if="row.course_lifecycle === 'history_completed' || row.course_lifecycle === 'history_settled'" class="acct-chip acct-chip--backfill">{{ row.course_lifecycle_label }}</span>
@@ -686,12 +694,12 @@
                       <span class="material-symbols-outlined">account_balance</span>
                       繳費明細
                     </button>
-                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${humanizeDocumentRef(row.receipt_no)}`">
+                    <button v-if="row.status === 'confirmed'" class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">receipt</span>
                       查看收據
                     </button>
                     <button
-                      v-if="canVoid"
+                      v-if="canVoid && row.status === 'confirmed'"
                       class="tc-btn tc-btn--void"
                       @click="openVoidDialog(row)"
                       :disabled="voidLoading"
@@ -747,6 +755,10 @@
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">多收待處理</span></div>
         </div>
         <p class="tc-summary-note">「已結案課程」包含已完成收款與仍待對帳的結案課程；「收據紀錄」是一筆筆收款與更正紀錄，兩邊統計方式不同。</p>
+        <p class="tc-summary-note" role="note" aria-label="帳務標籤說明">
+          舊制無帳單：課程已標記繳費，但目前沒有有效帳單。例外待處理：至少一張有效帳單的淨收款超過帳單金額。
+          請從同一列的「繳費明細」查看既有紀錄，再與帳務負責人核對；標籤本身不會自動處理款項。
+        </p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
           <AtSkeleton :rows="4" height="28px" />
@@ -1007,12 +1019,14 @@
 
     <!-- Toast -->
     <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import { useToast } from '../composables/useToast';
+import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
@@ -1023,6 +1037,7 @@ import AtDialog from '../components/design-system/AtDialog.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
@@ -1055,10 +1070,12 @@ const actionLoading = ref(null);
 
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待處理', icon: 'payments' },
+  { key: 'monthly-review', label: '月結待核對', icon: 'fact_check' },
   { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
   { key: 'payments', label: '收據紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
+const monthlyReview = ref(null);
 const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
@@ -1154,7 +1171,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1477,6 +1494,7 @@ function defaultAccountingFilters() {
     student: '',
     subject: '',
     payment_method: '',
+    status: 'confirmed',
   };
 }
 
@@ -1490,7 +1508,9 @@ function openReceiptByReport(reportId) {
 }
 
 function refreshActiveTab() {
-  if (activeAccountingTab.value === 'receivables') {
+  if (activeAccountingTab.value === 'monthly-review') {
+    monthlyReview.value?.reload();
+  } else if (activeAccountingTab.value === 'receivables') {
     loadAlerts();
   } else if (activeAccountingTab.value === 'settled') {
     loadSettledCourses();
@@ -1596,6 +1616,11 @@ const totalOutstanding = computed(() => {
     .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status))
     .reduce((sum, r) => sum + (r.payable_outstanding || 0), 0);
 });
+
+// 未開帳單（payable_status !== 'invoiced'）的提醒 payable_outstanding 為 null，金額只有估算值，
+// 故不計入「已開帳單未結清」；另計筆數讓主任知道還有多少筆金額尚未確定。
+const unbilledOutstandingCount = computed(() => rows.value
+  .filter(r => OUTSTANDING_STATUSES.includes(r.payment_status) && r.payable_status !== 'invoiced').length);
 
 // ═══ Summary Computed ═══
 const overdueRows = computed(() => rows.value.filter(isOverdue));
@@ -1776,6 +1801,7 @@ async function loadAccountingPayments() {
       start: accountingFilters.value.start,
       end: accountingFilters.value.end,
       per_page: '200',
+      status: accountingFilters.value.status,
     });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
@@ -1836,6 +1862,7 @@ async function fetchAccountingExportRows() {
   const params = new URLSearchParams({
     start: accountingFilters.value.start,
     end: accountingFilters.value.end,
+    status: accountingFilters.value.status,
   });
   if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
   if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
@@ -2315,6 +2342,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
+  if (tab === 'monthly-review') return;
   if (tab === 'receivables') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {
@@ -2355,13 +2383,12 @@ loadAlerts();
 
 <style scoped>
 /* ─── Page ─── */
-.tc-page {
+.tc-page__body {
   background: var(--card-bg);
   border-radius: 14px;
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   min-width: 0;
-  width: 100%;
   max-width: 100%;
 }
 .tc-page button,
@@ -2414,37 +2441,6 @@ loadAlerts();
 .tc-summary-disclosure .tc-summary { margin: 0; padding: 0 10px 10px; }
 
 /* ─── Accounting center tabs ─── */
-.acct-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-.acct-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 14px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  color: var(--text-light);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.acct-tab:hover {
-  color: var(--text);
-  background: var(--bg);
-}
-.acct-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-  background: var(--primary-light, rgba(37,99,235,0.06));
-}
 .acct-panel {
   display: flex;
   flex-direction: column;
@@ -2876,6 +2872,13 @@ loadAlerts();
   .tc-table tbody tr:hover td:last-child { background: var(--ds-canvas-soft); }
   .tc-table tbody tr.tc-row--focused td:last-child,
   .tc-table tbody tr.acct-row-selected td:last-child { background: var(--ds-primary-wash); }
+  /* In-App 339: retain every action in its existing order without letting the
+   * sticky receivables cell cover most of the readable data area. */
+  .tc-table:not(.acct-table) .tc-actions {
+    flex-wrap: wrap;
+    width: max-content;
+    max-width: min(18rem, 32vw);
+  }
 }
 
 .tc-th-sort {
@@ -3452,7 +3455,7 @@ loadAlerts();
 
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
-  .tc-page { padding: 16px; }
+  .tc-page__body { padding: 16px; }
   .tc-summary { gap: 8px; }
   .tc-card { padding: 8px 12px; }
   .tc-card-num { font-size: 18px; }
@@ -3508,30 +3511,32 @@ loadAlerts();
   .tc-table:not(.acct-table) td:nth-child(1) { grid-column: 2; grid-row: 1; width: 44px; }
   .tc-table:not(.acct-table) td:nth-child(2) { grid-column: 1; grid-row: 1; font-size: 15px; }
   .tc-table:not(.acct-table) td:nth-child(3) { grid-column: 1 / -1; grid-row: 2; color: var(--text-light); }
-  .tc-table:not(.acct-table) td:nth-child(4) { grid-column: 1; grid-row: 3; }
-  .tc-table:not(.acct-table) td:nth-child(5) { grid-column: 2; grid-row: 3; text-align: right; }
-  .tc-table:not(.acct-table) td:nth-child(6) { grid-column: 1; grid-row: 4; }
-  .tc-table:not(.acct-table) td:nth-child(7) { grid-column: 2; grid-row: 4; text-align: right; }
-  .tc-table:not(.acct-table) td:nth-child(8) { grid-column: 1; grid-row: 5; }
-  .tc-table:not(.acct-table) td:nth-child(9) { grid-column: 2; grid-row: 5; text-align: right; }
-  .tc-table:not(.acct-table) td:nth-child(10) { grid-column: 1 / -1; grid-row: 6; }
+  .tc-table:not(.acct-table) td:nth-child(3)::before { content: '剩餘堂數'; color: var(--text-light); font-size: 11px; margin-right: 4px; }
+  .tc-table:not(.acct-table) td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; color: var(--text-light); }
+  .tc-table:not(.acct-table) td:nth-child(5) { grid-column: 1; grid-row: 4; }
+  .tc-table:not(.acct-table) td:nth-child(6) { grid-column: 2; grid-row: 4; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(7) { grid-column: 1; grid-row: 5; }
+  .tc-table:not(.acct-table) td:nth-child(8) { grid-column: 2; grid-row: 5; text-align: right; }
+  .tc-table:not(.acct-table) td:nth-child(9) { grid-column: 1; grid-row: 6; }
+  .tc-table:not(.acct-table) td:nth-child(10) { grid-column: 2; grid-row: 6; text-align: right; }
   .tc-table:not(.acct-table) td:nth-child(11) { grid-column: 1 / -1; grid-row: 7; }
-  .tc-table:not(.acct-table) td:nth-child(4)::before,
-  .tc-table:not(.acct-table) td:nth-child(6)::before,
+  .tc-table:not(.acct-table) td:nth-child(12) { grid-column: 1 / -1; grid-row: 8; }
+  .tc-table:not(.acct-table) td:nth-child(5)::before,
   .tc-table:not(.acct-table) td:nth-child(7)::before,
   .tc-table:not(.acct-table) td:nth-child(8)::before,
   .tc-table:not(.acct-table) td:nth-child(9)::before,
-  .tc-table:not(.acct-table) td:nth-child(10)::before {
+  .tc-table:not(.acct-table) td:nth-child(10)::before,
+  .tc-table:not(.acct-table) td:nth-child(11)::before {
     color: var(--text-light);
     font-size: 11px;
     margin-right: 4px;
   }
-  .tc-table:not(.acct-table) td:nth-child(4)::before { content: '模式'; }
-  .tc-table:not(.acct-table) td:nth-child(6)::before { content: '應繳'; }
-  .tc-table:not(.acct-table) td:nth-child(7)::before { content: '已繳'; }
-  .tc-table:not(.acct-table) td:nth-child(8)::before { content: '未結清'; }
-  .tc-table:not(.acct-table) td:nth-child(9)::before { content: '最近付款'; }
-  .tc-table:not(.acct-table) td:nth-child(10)::before { content: '到期／逾期'; }
+  .tc-table:not(.acct-table) td:nth-child(5)::before { content: '模式'; }
+  .tc-table:not(.acct-table) td:nth-child(7)::before { content: '應繳'; }
+  .tc-table:not(.acct-table) td:nth-child(8)::before { content: '已繳'; }
+  .tc-table:not(.acct-table) td:nth-child(9)::before { content: '未結清'; }
+  .tc-table:not(.acct-table) td:nth-child(10)::before { content: '最近付款'; }
+  .tc-table:not(.acct-table) td:nth-child(11)::before { content: '到期／逾期'; }
   .tc-table:not(.acct-table) .tc-actions { justify-content: flex-start; }
   .tc-table:not(.acct-table) .tc-col-actions { padding-top: 10px; }
 

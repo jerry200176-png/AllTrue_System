@@ -4,10 +4,15 @@
 
 | Claim | Required evidence |
 |-------|-------------------|
-| Code fixed | PR merged to main + linked tests |
-| Deployed | Workflow success + production SHA/hash matches merge |
-| Behavior fixed | Prod API/UI observation **or** bundle marker + targeted API check |
+| Code verified | Targeted regression and required CI passed for the fix |
+| Merged | PR merged to main; this alone does not prove deployment |
+| Deployed | Canonical deployment workflow succeeded |
+| Production version verified | Public production SHA/hash contains the fix; this alone does not prove the affected user path |
+| Production user-path verified | Direct observation of the affected production API/UI path; record `NO` when absent |
+| R0/R1 engineering delivery | Exact production SHA containing the change + deterministic affected-path regression + production health/version, provided no schema, identity/permission, billing, migration, or production data mutation/repair is involved. Record direct production user-path verification separately; absent means `NO`, not `YES`. |
+| R2/R3 or protected behavior fixed | Direct affected production API/UI path evidence, plus existing risk-specific approval, rollback, and acceptance requirements; low-risk evidence is not a substitute. |
 | In-app bug engineering-complete | Public comment + `resolved` + **API evidence** (below) |
+| Reporter accepted | Reporter-verify succeeded; timeout closure is a separate operational outcome, not affirmative reporter acceptance |
 | In-app bug closed | Reporter-verify **or** timeout below |
 | Governance control live | File on main + ≥1 CI/Rule/code enforcement |
 
@@ -24,6 +29,8 @@ Enforced in `BugReportService` (not free-text “done”):
 | Resolver / time | `changed_by` + status log `created_at`; encoded in `[resolution_evidence]{...}` note |
 
 Missing evidence → **422**, status unchanged. Internal-only comments do **not** satisfy public reply.
+
+For a qualifying R0/R1 fix, `resolved` means engineering delivery with a public request to retry, **not** reporter acceptance. Reporter acceptance remains `PENDING` until reporter-verify; a policy-qualified timeout is operational closure without affirmative acceptance. If the reporter says the problem persists, reopen investigation. No new production fixture or status schema is implied.
 
 ## Anti-metrics (never sole success)
 

@@ -1200,6 +1200,14 @@ jobs:
             if ! git reset --hard "$PREV_COMMIT"; then
               echo "⚠️ git reset 失敗"
               rollback_failed=1
+              return 1
+            fi
+
+            # Restore the exact previous lock before any old-source PHP command.
+            if ! (cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader); then
+              echo "❌ rollback Composer dependency restore 失敗"
+              rollback_failed=1
+              return 1
             fi
 
             if [ "${FRONTEND_CHANGED:-0}" -gt 0 ]; then

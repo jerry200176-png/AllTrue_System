@@ -7,12 +7,16 @@
       data-guide="director-accounts-header"
     />
 
-    <div v-if="msg" :class="['msg', msg.type]">{{ msg.text }}</div>
+    <div v-if="msg" :class="['msg', msg.type]" :role="msg.type === 'error' ? 'alert' : 'status'" aria-live="polite">{{ msg.text }}</div>
 
     <!-- Active directors -->
     <section class="section">
       <h3 class="section-title">已審核主任</h3>
-      <div v-if="loadingActive" class="loading-hint">載入中...</div>
+      <div v-if="loadingActive" class="loading-hint" role="status" aria-live="polite">載入中...</div>
+      <div v-else-if="activeError" class="state-card error-state" role="alert" aria-live="assertive">
+        <span>{{ activeError }}</span>
+        <AtButton shape="rect" variant="secondary" @click="loadActive">重新載入</AtButton>
+      </div>
       <div v-else-if="activeList.length === 0" class="empty-hint">目前沒有已審核的主任</div>
       <div v-else class="pending-table-wrap">
         <table class="pending-table">
@@ -26,19 +30,19 @@
           </thead>
           <tbody>
             <tr v-for="item in activeList" :key="item.id">
-              <td>{{ item.name }}</td>
-              <td>{{ item.account }}</td>
-              <td>{{ item.campus_names.join('、') || '—' }}</td>
-              <td class="actions">
-                <button type="button" class="btn-campus" @click="openCampusModal(item)" :disabled="actionId === item.id">
+              <td data-label="姓名">{{ item.name }}</td>
+              <td data-label="帳號">{{ item.account }}</td>
+              <td data-label="分校">{{ item.campus_names.join('、') || '—' }}</td>
+              <td class="actions" data-label="操作">
+                <AtButton shape="rect" size="sm" variant="secondary" @click="openCampusModal(item, $event)" :disabled="actionId === item.id || campusModal.saving">
                   編輯分校
-                </button>
-                <button type="button" class="btn-reset" @click="resetPassword(item)" :disabled="actionId === item.id">
+                </AtButton>
+                <AtButton shape="rect" size="sm" variant="secondary" @click="resetPassword(item)" :disabled="actionId === item.id || campusModal.saving">
                   重設密碼
-                </button>
-                <button type="button" class="btn-delete" @click="destroyDirector(item)" :disabled="actionId === item.id">
+                </AtButton>
+                <AtButton shape="rect" size="sm" variant="danger" @click="destroyDirector(item)" :disabled="actionId === item.id || campusModal.saving">
                   刪除
-                </button>
+                </AtButton>
                 <span v-if="tempPasswords[item.id]" class="temp-password">
                   新密碼：<strong>{{ tempPasswords[item.id] }}</strong>
                 </span>
@@ -52,7 +56,11 @@
     <!-- Pending approvals -->
     <section class="section" data-guide="director-accounts-table">
       <h3 class="section-title">待審申請</h3>
-      <div v-if="loading" class="loading-hint">載入中...</div>
+      <div v-if="loading" class="loading-hint" role="status" aria-live="polite">載入中...</div>
+      <div v-else-if="pendingError" class="state-card error-state" role="alert" aria-live="assertive">
+        <span>{{ pendingError }}</span>
+        <AtButton shape="rect" variant="secondary" @click="loadPending">重新載入</AtButton>
+      </div>
       <div v-else-if="list.length === 0" class="empty-hint">目前沒有待審申請</div>
       <div v-else class="pending-table-wrap">
         <table class="pending-table">
@@ -66,12 +74,12 @@
           </thead>
           <tbody>
             <tr v-for="item in list" :key="item.id">
-              <td>{{ item.name }}</td>
-              <td>{{ item.email }}</td>
-              <td>{{ item.campus_name }}</td>
-              <td class="actions">
-                <button type="button" class="btn-approve" @click="approve(item.id)" :disabled="actionId === item.id">通過</button>
-                <button type="button" class="btn-reject" @click="reject(item.id)" :disabled="actionId === item.id">拒絕</button>
+              <td data-label="姓名">{{ item.name }}</td>
+              <td data-label="帳號">{{ item.email }}</td>
+              <td data-label="分校">{{ item.campus_name }}</td>
+              <td class="actions" data-label="操作">
+                <AtButton shape="rect" size="sm" variant="primary" @click="approve(item.id)" :disabled="actionId === item.id || campusModal.saving">通過</AtButton>
+                <AtButton shape="rect" size="sm" variant="danger" @click="reject(item.id)" :disabled="actionId === item.id || campusModal.saving">拒絕</AtButton>
               </td>
             </tr>
           </tbody>
@@ -80,29 +88,36 @@
     </section>
 
     <!-- Edit campus modal -->
-    <div v-if="campusModal.visible" class="modal-overlay" @click.self="closeCampusModal">
-      <div class="modal-card">
-        <h3 class="modal-title">編輯分校 — {{ campusModal.directorName }}</h3>
-        <p class="modal-hint">勾選此主任可管理的分校（至少一間）</p>
-        <div class="campus-checkbox-list">
-          <label v-for="c in allCampuses" :key="c.id" class="campus-checkbox-item">
-            <input type="checkbox" :value="c.id" v-model="campusModal.selectedIds">
-            <span>{{ c.name }}</span>
-          </label>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn-cancel" @click="closeCampusModal">取消</button>
-          <button type="button" class="btn-save" @click="saveCampuses" :disabled="campusModal.saving || campusModal.selectedIds.length === 0">
-            {{ campusModal.saving ? '儲存中...' : '儲存' }}
-          </button>
-        </div>
+    <AtDialog
+      :open="campusModal.visible"
+      :title="`編輯分校 — ${campusModal.directorName}`"
+      title-id="campus-modal-title"
+      panel-class="director-campus-dialog"
+      :close-on-backdrop="!campusModal.saving"
+      @close="closeCampusModal"
+    >
+      <p id="campus-modal-hint" class="modal-hint">勾選此主任可管理的分校（至少一間）</p>
+      <div class="campus-checkbox-list">
+        <label v-for="c in allCampuses" :key="c.id" class="campus-checkbox-item">
+          <input type="checkbox" :value="c.id" v-model="campusModal.selectedIds" :disabled="campusModal.saving">
+          <span>{{ c.name }}</span>
+        </label>
       </div>
-    </div>
+      <div v-if="campusError" class="section-msg error" role="alert">{{ campusError }}</div>
+      <template #actions>
+        <AtButton shape="rect" variant="ghost" @click="closeCampusModal" :disabled="campusModal.saving">取消</AtButton>
+        <AtButton shape="rect" variant="primary" :loading="campusModal.saving" @click="saveCampuses" :disabled="campusModal.saving || campusModal.selectedIds.length === 0">
+          {{ campusModal.saving ? '儲存中...' : '儲存' }}
+        </AtButton>
+      </template>
+    </AtDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, nextTick, onMounted } from 'vue';
+import AtDialog from '../components/design-system/AtDialog.vue';
+import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
 const props = defineProps({
@@ -115,10 +130,14 @@ const list = ref([]);
 const loading = ref(true);
 const activeList = ref([]);
 const loadingActive = ref(true);
+const pendingError = ref('');
+const activeError = ref('');
+const campusError = ref('');
 const msg = ref(null);
 const actionId = ref(null);
 const tempPasswords = ref({});
 const allCampuses = ref([]);
+const campusModalTrigger = ref(null);
 
 const campusModal = reactive({
   visible: false,
@@ -135,10 +154,15 @@ async function loadAll() {
 
 async function loadPending() {
   loading.value = true;
+  pendingError.value = '';
   try {
     const res = await fetch('/api/v1/directors/pending', { headers: authHeaders() });
     const data = await res.json().catch(() => []);
+    if (!res.ok) throw new Error(data?.message || '主任申請資料暫時無法載入');
     list.value = Array.isArray(data) ? data : [];
+  } catch (error) {
+    list.value = [];
+    pendingError.value = error?.message || '主任申請資料暫時無法載入';
   } finally {
     loading.value = false;
   }
@@ -146,54 +170,76 @@ async function loadPending() {
 
 async function loadActive() {
   loadingActive.value = true;
+  activeError.value = '';
   try {
     const res = await fetch('/api/v1/directors', { headers: authHeaders() });
     const data = await res.json().catch(() => []);
+    if (!res.ok) throw new Error(data?.message || '已審核主任資料暫時無法載入');
     activeList.value = Array.isArray(data) ? data : [];
+  } catch (error) {
+    activeList.value = [];
+    activeError.value = error?.message || '已審核主任資料暫時無法載入';
   } finally {
     loadingActive.value = false;
   }
 }
 
 async function loadCampuses() {
+  campusError.value = '';
   try {
     const res = await fetch('/api/v1/campuses', { headers: authHeaders() });
     const data = await res.json().catch(() => []);
+    if (!res.ok) throw new Error(data?.message || '分校資料暫時無法載入');
     allCampuses.value = Array.isArray(data) ? data : [];
-  } catch (_) { /* noop */ }
+  } catch (error) {
+    allCampuses.value = [];
+    campusError.value = error?.message || '分校資料暫時無法載入';
+  }
 }
 
-function openCampusModal(item) {
+function openCampusModal(item, event) {
+  if (campusModal.visible || campusModal.saving) return;
   campusModal.directorId = item.id;
   campusModal.directorName = item.name;
   campusModal.selectedIds = [...(item.campus_ids || [])];
   campusModal.saving = false;
+  campusModalTrigger.value = event?.currentTarget || null;
   campusModal.visible = true;
 }
 
 function closeCampusModal() {
+  if (campusModal.saving) return;
   campusModal.visible = false;
 }
 
 async function saveCampuses() {
-  if (!props.token || campusModal.selectedIds.length === 0) return;
+  if (!props.token || campusModal.saving || campusModal.selectedIds.length === 0) return;
+  const directorId = campusModal.directorId;
+  const directorName = campusModal.directorName;
+  const campusIds = [...campusModal.selectedIds];
+  campusError.value = '';
   campusModal.saving = true;
   try {
-    const res = await fetch(`/api/v1/directors/${campusModal.directorId}/campuses`, {
+    const res = await fetch(`/api/v1/directors/${directorId}/campuses`, {
       method: 'PUT',
       headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campus_ids: campusModal.selectedIds }),
+      body: JSON.stringify({ campus_ids: campusIds }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      msg.value = { type: 'error', text: data?.message || '更新失敗' };
+      campusError.value = data?.message || '更新失敗';
+      msg.value = { type: 'error', text: campusError.value };
       return;
     }
-    msg.value = { type: 'success', text: `已更新「${campusModal.directorName}」的分校` };
-    closeCampusModal();
+    msg.value = { type: 'success', text: `已更新「${directorName}」的分校` };
+    campusModal.visible = false;
     await loadActive();
+  } catch {
+    campusError.value = '更新失敗，請稍後重試';
+    msg.value = { type: 'error', text: campusError.value };
   } finally {
     campusModal.saving = false;
+    if (!campusModal.visible) nextTick(() => campusModalTrigger.value?.focus());
   }
 }
 
@@ -310,17 +356,9 @@ onMounted(() => loadAll());
 
 <style scoped>
 .director-accounts-page {
+  box-sizing: border-box;
+  max-width: 1200px;
   padding: 1.5rem;
-  max-width: 720px;
-}
-.director-accounts-page h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
-}
-.page-desc {
-  color: #666;
-  font-size: 0.9rem;
-  margin-bottom: 1.25rem;
 }
 .section {
   margin-bottom: 2rem;
@@ -328,142 +366,168 @@ onMounted(() => loadAll());
 .section-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #455a64;
+  color: var(--ds-ink-secondary);
   margin: 0 0 0.75rem;
 }
 .msg {
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-md, 8px);
   margin-bottom: 1rem;
 }
-.msg.success { background: #e8f5e9; color: #2e7d32; }
-.msg.error { background: #ffebee; color: #c62828; }
+.msg.success { background: color-mix(in srgb, var(--ds-success) 10%, white); color: var(--ds-success); }
+.msg.error { background: color-mix(in srgb, var(--ds-danger) 10%, white); color: var(--ds-danger); }
 .loading-hint, .empty-hint {
-  color: #78909c;
+  color: var(--ds-ink-mute);
+  border: 1px dashed var(--ds-hairline);
+  border-radius: var(--ds-radius-md, 8px);
   padding: 1.5rem;
+}
+.state-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-md, 8px);
+}
+.error-state {
+  color: var(--ds-danger);
+  background: color-mix(in srgb, var(--ds-danger) 6%, white);
 }
 .pending-table-wrap { overflow-x: auto; }
 .pending-table {
   width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg, 12px);
+  box-shadow: var(--ds-shadow-level-1, 0 2px 8px rgba(0,0,0,.06));
 }
 .pending-table th, .pending-table td {
   padding: 12px 14px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--ds-hairline);
+  overflow-wrap: anywhere;
 }
 .pending-table th {
-  background: #fafafa;
+  background: var(--ds-canvas-soft);
   font-size: 12px;
   font-weight: 600;
-  color: #78909c;
+  color: var(--ds-ink-mute);
   text-transform: uppercase;
 }
-.pending-table .actions { display: flex; gap: 8px; }
-.btn-approve, .btn-reject {
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
+.pending-table .actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 300px;
 }
-.btn-approve {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-.btn-approve:hover:not(:disabled) { background: #c8e6c9; }
-.btn-reject {
-  background: #ffebee;
-  color: #c62828;
-}
-.btn-reject:hover:not(:disabled) { background: #ffcdd2; }
-.btn-approve:disabled, .btn-reject:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-reset {
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-  background: #fff3e0;
-  color: #e65100;
-}
-.btn-reset:hover:not(:disabled) { background: #ffe0b2; }
-.btn-reset:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-delete {
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-  background: #fce4ec;
-  color: #c2185b;
-}
-.btn-delete:hover:not(:disabled) { background: #f8bbd9; }
-.btn-delete:disabled { opacity: 0.6; cursor: not-allowed; }
+.pending-table .actions .at-btn { min-height: var(--ds-control-height-touch, 44px); }
 .temp-password {
   font-size: 13px;
-  color: #455a64;
-  background: #f5f5f5;
+  color: var(--ds-ink-secondary);
+  background: var(--ds-canvas-soft);
+  border: 1px solid var(--ds-hairline);
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 6px);
   white-space: nowrap;
 }
-.btn-campus {
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-  background: #e3f2fd;
-  color: #1565c0;
-}
-.btn-campus:hover:not(:disabled) { background: #bbdefb; }
-.btn-campus:disabled { opacity: 0.6; cursor: not-allowed; }
-.pending-table .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .modal-overlay {
-  position: fixed; inset: 0; z-index: 9000;
-  background: rgba(0,0,0,.4);
-  display: flex; align-items: center; justify-content: center;
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, .48);
 }
 .modal-card {
-  background: #fff; border-radius: 12px; padding: 1.5rem;
-  width: 360px; max-width: 92vw; max-height: 80vh; overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  box-sizing: border-box;
+  width: min(420px, 100%);
+  max-height: min(640px, calc(100dvh - 32px));
+  overflow-y: auto;
+  padding: 1.5rem;
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-lg, 12px);
+  box-shadow: var(--ds-shadow-level-2, 0 8px 32px rgba(0,0,0,.18));
 }
 .modal-title { margin: 0 0 0.25rem; font-size: 1.05rem; }
-.modal-hint { color: #78909c; font-size: 0.85rem; margin: 0 0 1rem; }
+.modal-hint { color: var(--ds-ink-mute); font-size: 0.85rem; margin: 0 0 1rem; }
 .campus-checkbox-list {
   display: flex; flex-direction: column; gap: 6px;
   max-height: 300px; overflow-y: auto; margin-bottom: 1.25rem;
 }
 .campus-checkbox-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px; border-radius: 6px; cursor: pointer;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 6px 8px; border-radius: var(--ds-radius-sm, 6px); cursor: pointer;
   font-size: 14px;
 }
-.campus-checkbox-item:hover { background: #f5f5f5; }
+.campus-checkbox-item:hover { background: var(--ds-canvas-soft); }
 .campus-checkbox-item input[type="checkbox"] {
-  width: 16px; height: 16px; accent-color: #1565c0;
+  width: 20px; height: 20px; accent-color: var(--ds-primary);
 }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; }
-.btn-cancel {
-  padding: 8px 16px; border-radius: 6px; font-size: 13px;
-  cursor: pointer; border: 1px solid #ccc; background: #fff;
-  font-family: inherit; color: #455a64;
+.modal-footer .at-btn { min-height: var(--ds-control-height-touch, 44px); min-width: 96px; }
+
+@media (max-width: 900px) {
+  .director-accounts-page { padding: 1rem; }
+  .state-card { align-items: stretch; flex-direction: column; }
+  .state-card .at-btn { width: 100%; }
+  .pending-table,
+  .pending-table tbody,
+  .pending-table tr,
+  .pending-table td { display: block; width: auto; }
+  .pending-table { border: 0; box-shadow: none; background: transparent; }
+  .pending-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .pending-table tbody tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--ds-hairline);
+    border-radius: var(--ds-radius-lg, 12px);
+    background: var(--ds-canvas);
+    box-shadow: var(--ds-shadow-level-1, 0 2px 8px rgba(0,0,0,.06));
+  }
+  .pending-table td {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--ds-hairline);
+  }
+  .pending-table td::before {
+    content: attr(data-label);
+    color: var(--ds-ink-mute);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .pending-table td:last-child { border-bottom: 0; }
+  .pending-table .actions {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    min-width: 0;
+    align-items: center;
+  }
+  .pending-table .actions .at-btn,
+  .pending-table .actions .temp-password { grid-column: 2; width: 100%; }
+  .modal-footer { flex-direction: column-reverse; }
+  .modal-footer .at-btn { width: 100%; }
 }
-.btn-cancel:hover { background: #f5f5f5; }
-.btn-save {
-  padding: 8px 16px; border-radius: 6px; font-size: 13px;
-  cursor: pointer; border: none; background: #1565c0; color: #fff;
-  font-family: inherit;
-}
-.btn-save:hover:not(:disabled) { background: #0d47a1; }
-.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+:global(.director-campus-dialog.at-dialog__panel .at-dialog__close) { width: 44px; height: 44px; }
+:global(.director-campus-dialog.at-dialog__panel .at-btn) { min-height: 44px; }
+:global(.director-campus-dialog.at-dialog__panel) { animation-name: director-campus-enter; }
+@keyframes director-campus-enter { from { opacity: 0; } to { opacity: 1; } }
 </style>

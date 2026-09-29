@@ -92,6 +92,7 @@ final class PopOperationServiceIdempotencyTest extends TestCase
     {
         @unlink($this->catalogDir . '/catalog.yaml');
         @unlink($this->catalogDir . '/policies/default.yaml');
+        @unlink($this->catalogDir . '/deployment.json');
         @rmdir($this->catalogDir . '/policies');
         @rmdir($this->catalogDir);
         parent::tearDown();
@@ -180,6 +181,161 @@ final class PopOperationServiceIdempotencyTest extends TestCase
         self::assertSame($first['execution_id'], $replay['execution_id']);
         self::assertSame(1, PopRetryTestStrategy::$executeCalls);
         self::assertSame(1, DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')->count());
+    }
+
+    public function test_dual_approval_financial_repair_still_requires_founder_reference(): void
+    {
+        $path = $this->catalogDir . '/catalog.yaml';
+        file_put_contents($path, str_replace(['founder-explicit-single-repair', "approver_roles: ['super_admin']"],
+            ['critical-dual-approval', "approver_roles: ['director', 'super_admin']"], file_get_contents($path)));
+        [$requestId, , $context] = $this->draft();
+        $this->dryRun($requestId, $context);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Founder-scoped POP approval requires a founder-go reference');
+        $this->service->approve($requestId, 'ordinary-director-reference', 'user:2', 'director', str_repeat('c', 40), 2, [9]);
+    }
+
+    public function test_local_poll_skips_expired_and_old_version_approvals_without_mutating_their_evidence(): void
+    {
+        $sha = str_repeat('c', 40);
+        $expired = $this->localApprovedRequest($sha);
+        DB::table('pop_approval_events')->where('operation_id', $expired)->update(['expires_at' => now()->subMinute()]);
+        $old = $this->localApprovedRequest(str_repeat('b', 40));
+        $live = $this->localApprovedRequest($sha);
+        $engine = $this->localEngine($sha);
+
+        $result = $engine->runApprovedLocally();
+
+        self::assertTrue($result['ok']);
+        self::assertSame($live, $result['request_id']);
+        self::assertSame('succeeded', DB::table('pop_operation_requests')->where('id', $live)->value('status'));
+        foreach ([$expired, $old] as $id) {
+            self::assertSame('approved', DB::table('pop_operation_requests')->where('id', $id)->value('status'));
+            self::assertSame(1, DB::table('pop_execution_records')->where('operation_id', $id)->count(), 'Only its original dry-run exists');
+            self::assertSame(1, DB::table('pop_approval_events')->where('operation_id', $id)->count());
+        }
+        self::assertSame(1, PopRetryTestStrategy::$executeCalls);
+        self::assertSame('idle', $engine->runApprovedLocally()['status']);
+        self::assertSame(1, PopRetryTestStrategy::$executeCalls);
+    }
+
+    public function test_explicit_local_request_still_rejects_expired_and_wrong_version_approval(): void
+    {
+        $sha = str_repeat('c', 40);
+        $old = $this->localApprovedRequest(str_repeat('b', 40));
+        $engine = $this->localEngine($sha);
+        try {
+            $engine->runApprovedLocally($old);
+            self::fail('Old-version approval must fail closed');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('deployment SHA does not match', $error->getMessage());
+        }
+        $expired = $this->localApprovedRequest($sha);
+        DB::table('pop_approval_events')->where('operation_id', $expired)->update(['expires_at' => now()->subMinute()]);
+        try {
+            $engine->runApprovedLocally($expired);
+            self::fail('Expired approval must fail closed');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('expired approval', $error->getMessage());
+        }
+        self::assertSame(0, PopRetryTestStrategy::$executeCalls);
+    }
+
+    public function test_db_claim_lock_still_prevents_a_competing_local_executor_without_file_cache(): void
+    {
+        $sha = str_repeat('c', 40);
+        $id = $this->localApprovedRequest($sha);
+        $engine = $this->localEngine($sha);
+        $connection = (string) config('database.default');
+        config(['database.connections.pop_competitor' => config('database.connections.' . $connection)]);
+        $competitor = DB::connection('pop_competitor');
+        $lock = 'alltrue:pop:' . $id;
+        self::assertSame(1, (int) $competitor->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired);
+        try {
+            $busy = $engine->runApprovedLocally($id);
+            self::assertSame('busy', $busy['status']);
+            self::assertSame(0, PopRetryTestStrategy::$executeCalls);
+            self::assertSame('approved', DB::table('pop_operation_requests')->where('id', $id)->value('status'));
+        } finally {
+            $competitor->selectOne('SELECT RELEASE_LOCK(?) AS released', [$lock]);
+            DB::purge('pop_competitor');
+        }
+        self::assertTrue($engine->runApprovedLocally($id)['ok']);
+        self::assertSame(1, PopRetryTestStrategy::$executeCalls);
+        self::assertSame('skipped', $engine->runApprovedLocally($id)['status']);
+        self::assertSame(1, PopRetryTestStrategy::$executeCalls);
+    }
+
+    public function test_local_poll_does_not_execute_a_tampered_token_or_malformed_manifest(): void
+    {
+        $sha = str_repeat('c', 40);
+        $id = $this->localApprovedRequest($sha);
+        DB::table('pop_approval_events')->where('operation_id', $id)->update(['token_hash' => str_repeat('0', 64)]);
+        try {
+            $this->localEngine($sha)->runApprovedLocally();
+            self::fail('Token mismatch must fail closed');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('token hash mismatch', $error->getMessage());
+        }
+        try {
+            $this->localEngine('malformed')->runApprovedLocally();
+            self::fail('Malformed deployment manifest must fail closed');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('deployment SHA', $error->getMessage());
+        }
+        self::assertSame(0, PopRetryTestStrategy::$executeCalls);
+    }
+
+    public function test_global_db_lock_serializes_distinct_requests_and_is_released_after_failure(): void
+    {
+        $sha = str_repeat('c', 40);
+        $first = $this->localApprovedRequest($sha);
+        $second = $this->localApprovedRequest($sha);
+        $engine = $this->localEngine($sha);
+        config(['database.connections.pop_competitor' => config('database.connections.' . config('database.default'))]);
+        $competitor = DB::connection('pop_competitor');
+        $lock = 'alltrue:pop:executor';
+        self::assertSame(1, (int) $competitor->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired);
+        try {
+            self::assertSame('busy', $engine->runApprovedLocally($first)['status']);
+            self::assertSame('busy', $engine->runApprovedLocally($second)['status']);
+            self::assertSame(0, PopRetryTestStrategy::$executeCalls);
+        } finally {
+            $competitor->selectOne('SELECT RELEASE_LOCK(?) AS released', [$lock]);
+        }
+        DB::table('pop_approval_events')->where('operation_id', $first)->update(['token_hash' => str_repeat('0', 64)]);
+        try {
+            $engine->runApprovedLocally($first);
+            self::fail('Tampered token must fail closed');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('token hash mismatch', $error->getMessage());
+        }
+        try {
+            self::assertSame(1, (int) $competitor->selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lock])->acquired, 'Failure releases the global lock');
+        } finally {
+            $competitor->selectOne('SELECT RELEASE_LOCK(?) AS released', [$lock]);
+            DB::purge('pop_competitor');
+        }
+        self::assertTrue($engine->runApprovedLocally($second)['ok']);
+        self::assertSame(1, PopRetryTestStrategy::$executeCalls);
+    }
+
+    private function localApprovedRequest(string $sha): string
+    {
+        $key = 'local-poll-' . bin2hex(random_bytes(6));
+        $draft = $this->service->createDraft('course-contract-repair', ['campus_id' => 9], $key, 'machine:test', 'pop_machine', [9], 1);
+        $this->service->runDryRun($draft['id'], 'machine:test', 1, 'pop_machine', [9]);
+        $this->service->approve($draft['id'], 'founder-go-local-poll', 'user:2', 'super_admin', $sha, 2, [9]);
+
+        return $draft['id'];
+    }
+
+    private function localEngine(string $sha): PopOperationService
+    {
+        $path = $this->catalogDir . '/deployment.json';
+        file_put_contents($path, json_encode(['backend_sha' => $sha], JSON_THROW_ON_ERROR));
+
+        return new PopOperationService(new PopOperationCatalog($this->catalogDir . '/catalog.yaml'), null, $path);
     }
 
     /** @return array{0:string,1:string,2:array<string,string>} */

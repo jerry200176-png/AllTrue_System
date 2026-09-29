@@ -10,6 +10,22 @@ use ReflectionMethod;
 
 class TeacherEligibilityStudentAttendanceTest extends TestCase
 {
+    /** #2833: seconds cannot silently change the existing whole-minute payroll input. */
+    public function test_duration_fallbacks_keep_whole_minutes_at_second_boundaries(): void
+    {
+        $row = (object) [
+            'start_time' => '16:00:00', 'end_time' => '18:00:45',
+            'student_sign_in_at' => '2026-09-01 16:00:00',
+            'student_sign_out_at' => '2026-09-01 18:00:45',
+        ];
+        self::assertSame(2.0, $this->invoke('classSessionDurationHours', $row));
+        self::assertSame(2.0, $this->invoke('studentAttendanceDurationHours', $row));
+        self::assertSame(2.0, $this->invoke('durationHours', $row));
+        self::assertSame(2.0, $this->invoke('subjectRecordHours', $row));
+        $row->student_sign_out_at = null;
+        self::assertSame(2.0, $this->invoke('studentAttendanceDurationHours', $row));
+    }
+
     private TeacherEligibilityController $controller;
 
     protected function setUp(): void

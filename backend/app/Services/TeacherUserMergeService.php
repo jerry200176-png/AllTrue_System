@@ -316,10 +316,10 @@ class TeacherUserMergeService
             if (!$this->hasColumn('User', $col)) {
                 continue;
             }
-            if (!isset($merge->$col) || $merge->$col === null || $merge->$col === '') {
+            if (!isset($merge->$col) || $merge->$col === '') {
                 continue;
             }
-            if (!isset($keep->$col) || $keep->$col === null || $keep->$col === '') {
+            if (!isset($keep->$col) || $keep->$col === '') {
                 $patch[$col] = $merge->$col;
             }
         }

@@ -1,3 +1,215 @@
+## 2026-09-29 — fix(ops): report closed monthly case eligibility explicitly
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-case-closed -->
+- 合法空白單案資格明確拒絕為沒有可執行案例，隨 backend 正常部署帶入已清空清單；不改資料、核准角色或執行通道。
+
+## 2026-09-29 — fix(ops): unblock local approved repair scheduling
+<!-- release-notes: silent_ship=silent-2026-09-29-pop-local-claim -->
+- POP 排程沿用 MySQL claim lock，不再依賴可能由 FPM 持有的檔案快取鎖；自動取件只選正式版本且未過期的簽章核准，保留所有舊核准及拒絕條件。指定單案依原清單重新試算／核准，不代表帳務已執行。
+
+## 2026-09-29 — feat(ops): support exact-case human review for monthly correction
+<!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
+- 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
+
+## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
+<!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->
+- 受控月結更正核對完整調課鏈：同一期內連同原堂次保留並移轉，拒絕跨期、斷鏈、循環、學生／分校錯配及範圍外合約關聯；簽章核對也涵蓋新增外部連結。修復仍未啟用，正式個案尚未更正。
+
+## 2026-09-29 — perf(inbox): stop notification sync rewriting every row and share one sync cooldown
+<!-- release-notes: silent_ship=silent-2026-09-29-notif-sync-perf -->
+- 通知同步不再每次改寫所有既有通知列（保留原 OccurredAt，只更新真正變動的列）；`POST notifications/sync` 與側欄未讀數共用同一個 300 秒冷卻與鎖，併發只同步一次；側欄「學習評量」只計已開課堂次，與儀表板一致。TD-086。
+
+## 2026-09-29 — perf(app): share one in-flight sidebar badge refresh and fetch badges in parallel (TD-087)
+<!-- release-notes: silent_ship=silent-2026-09-29-badge-refresh-parallel -->
+- 側欄徽章刷新同時只跑一次（期間有新請求則結束後補跑一次），七個徽章請求改為並行；數字來源與口徑不變。
+
+## 2026-09-29 — fix(billing): preserve existing source invoice items during reviewed correction
+<!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
+- 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
+
+## 2026-09-29 — fix(ux): compact row actions on attendance, notifications and students
+<!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
+- 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
+
+## 2026-09-29 — perf(inbox): paint 待處理收件匣 before the background ops sync
+<!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
+- 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。
+
+## 2026-09-29 — feat(schedule): director can move a session to another contract
+<!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
+- 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
+
+## 2026-09-29 — fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors
+<!-- release-notes: silent_ship=silent-2026-09-29-tabs-scroll-status-tone -->
+- 修正分頁列右側多出的小捲軸；出缺勤「今日已標記狀態」標籤依狀態上色（到班綠、遲到橘、缺席紅、請假灰），不再全部紅色。
+
+## 2026-09-29 — fix(ux): one source per dashboard count, loading placeholders
+<!-- release-notes: silent_ship=silent-2026-09-29-counts-loading-ux -->
+- 主任總覽的待審評量、未讀通知、繳費提醒、今日課務進度改與側欄／各頁同一口徑；載入中的列表標頭顯示「—」與骨架而非 0／空狀態。純前端顯示調整，無教職員新操作。
+
+## 2026-09-29 — feat(ui): compact sidebar branch switcher and More-page breadcrumb
+<!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
+- 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
+
+## 2026-09-29 — feat(ui): unify page headers, part 2 (dashboard, students, courses, billing, teachers, admissions, reports, branch health)
+<!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
+- 補完其餘八頁的頁首統一（同一則版本更新說明）：標題不再包在白卡裡、流程說明收進 ⓘ、「重新整理」統一、圖示與側欄一致；主任總覽移除重複橫幅、軍階改為小標籤。僅版面與文案。
+
+## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
+<!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
+- 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
+
+## 2026-09-29 — fix(ux): plainer copy and calmer colors on director pages
+<!-- release-notes: staff_update=staff-2026-09-29-plain-copy-calm-color -->
+- 主任首頁「今天要處理的事」只有第一項用主色按鈕，其餘改次要按鈕；「課表可信度」改「課表正確度」並加說明；通知中心「企業視圖」改「通知重點」、「SLA／逾期優先」改「逾期優先」；分校健康看板說明改白話、「待接資料」卡改「資料不足」、「主要訊號」改「主要狀況」；行事曆教師配色移除紅／橘紅／粉紅色系，避免像錯誤狀態。純前端文字與顏色，邏輯不變。
+
+## 2026-09-29 — feat(ui): unify page headers, refresh buttons, tabs and icons
+<!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
+- 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
+
+## 2026-09-29 — fix(ux): label tuition summary as invoiced-only outstanding
+<!-- release-notes: silent_ship=silent-2026-09-29-tuition-summary-label -->
+- 帳務中心收款摘要的金額改稱「已開帳單未結清」，並另列尚未開帳單的筆數，避免把只含已開帳單的金額誤讀成全部未收。計算不變。
+
+## 2026-09-29 — fix(ux): de-duplicate filters and align course lookup copy
+<!-- release-notes: staff_update=staff-2026-09-29-filters-course-lookup-clarity -->
+- 老師頁移除與分頁重複的「狀態」下拉；學習紀錄「只看未填／已填」改為單一「全部／未填／已填」選擇；課程查找移除不實的「唯讀營運視圖」標籤，「到學生管理新增課程」集中於頁首並將「前往學生管理」降為次要按鈕。僅前端顯示調整，不改資料、權限或計費。
+
+## 2026-09-29 — fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)
+<!-- release-notes: silent_ship=silent-2026-09-29-rfid-swipe-hardening -->
+- 刷卡即出席（含扣堂）政策不變；補強：無真實堂次不扣堂、忘記刷退時自動補後續連堂、扣堂失敗會通知職員、讀卡機限流由每分鐘 30 放寬到 120。尚未部署，不發布上線公告。
+
+## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
+<!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
+- 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。
+
+## 2026-09-29 — fix(billing): prepare missing monthly invoice review
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-billing-review -->
+- 準備帳務中心「月結待核對」與堂次費率試算，明示缺少帳單服務期間和合約越界；系統登錄收款與實際入帳分開核對。尚未部署，未拆分正式個案或建立九月帳單。
+
+## 2026-09-29 — fix(billing): prepare correction into an existing monthly contract
+<!-- release-notes: silent_ship=silent-2026-09-29-existing-monthly-correction -->
+- 延伸尚未啟用的受控更正：沿用既有新期合約與未繳帳单，保留取消／待上紀錄，已沖銷收款不重複沖銷。正式執行仍須最新核對清單及既有安全核准，尚未修復正式個案。
+
+## 2026-09-29 — feat(billing): prepare audited monthly receipt correction
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-accounting-correction -->
+- 準備誤登收款的保留原紀錄、沖銷重登與分期開單；新操作保持停用，正式收款更正須另有核准清單，尚未修復個案或發布主任操作公告。
+
+## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
+- 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。
+
+## 2026-09-29 — feat(courses): director undo of contract amendment
+<!-- release-notes: silent_ship=silent-2026-09-29-undo-contract-amendment -->
+- 主任可在課程操作選單「撤銷調整」，還原提前結束／調整合約總堂數：恢復堂數、結束狀態與被取消的預排（原時段被占用或合約已有變動時拒絕），需填原因並留稽核紀錄；帳務不變，也不會自動排課。
+
+## 2026-09-29 — feat(billing): prepare controlled monthly contract correction
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-contract-correction -->
+- 準備月結分期更正的唯讀預覽、資料變動檢查、交易移轉與回復；執行目錄保持停用，尚未核准或修復正式資料。
+
+## 2026-09-29 — fix(billing): prepare monthly period payment attribution
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-period-payment -->
+- 準備月結逐期付款顯示與跨分校唯讀盤點，保留帳單明示的非日曆月服務期間；尚未部署或完成正式資料核對，不發布上線公告。
+
+## 2026-09-29 — chore(ops): prepare bounded Laravel readiness metadata (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-29-laravel-readonly-preflight -->
+- 準備單一版本的唯讀切換前檢查，核對排課旗標、PHP 平台及 migration 紀錄，避免把未知條件當成可上線。未執行正式查詢、未部署或啟用功能，無教職員新操作。
+
+## 2026-09-29 — fix(schedule): explain capacity occupancy sources (in-app #347 / GitHub #3197)
+<!-- release-notes: staff_update=staff-2026-09-29-capacity-source-labels -->
+- 課程時段衝突提示改用「固定課程」「課堂紀錄」「排課紀錄」說明來源，保留學生、科目與時段資訊；容量判斷及原始診斷資料不變。
+
+## 2026-09-29 — fix(students): identify historical course badges (in-app #353 / GitHub #3201)
+<!-- release-notes: staff_update=staff-2026-09-29-student-course-history -->
+- 學生列表的歷史課程標籤同步顯示已完課、已結算或待對帳，避免歷史堂數與目前課程混淆；原有堂數、課程篩選及待對帳入口保留。
+
+## 2026-09-29 — fix(billing-ui): expose existing void receipt trace query (in-app #350 / GitHub #3212)
+<!-- release-notes: staff_update=staff-2026-09-29-void-receipt-trace -->
+- 帳務中心收據紀錄可查詢已作廢紀錄，歷史課程仍可開啟原有繳費明細追蹤；作廢狀態在列表及匯出中清楚標示，不計入有效收款合計。
+
+## 2026-09-29 — fix(students): keep tutoring next steps consistent with no-charge status (in-app #351 / GitHub #3206)
+<!-- release-notes: staff_update=staff-2026-09-29-tutoring-payment-prompts -->
+- 學生管理的正常輔導課不再誤列為待付款；已有帳務異常仍提示主任核對，一般收費課的付款提醒與輔導課續報提示保留。
+
+## 2026-09-28 — chore(framework): preserve native operational value projections (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-28-native-value-contracts -->
+- 為框架升級保留學生課程回應、既有必要時段及營運資料投影，維持原有分校、角色、日期與帳務契約。不改正式資料，尚待部署與受影響路徑驗收。
+
+## 2026-09-28 — chore(config): preserve cache-consistent rollout flag reads (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-28-rollout-flag-cache -->
+- 既有排課旗標在設定載入與快取重建時保持一致，保留缺省關閉及分校覆寫；維護核准與授權開關仍即時讀取。不啟用功能或變更正式旗標，尚待部署與受影響路徑驗收。
+
+## 2026-09-28 — fix(ops): restore locked dependencies before rollback runtime (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-28-rollback-locked-dependencies -->
+- 部署失敗回復在確認舊來源與鎖定依賴還原後才繼續執行，還原失敗明確停止；不更動上線批准或產品功能，尚待受保護整合與正式驗收。
+
+## 2026-09-27 — chore(attendance): preserve minute precision across Carbon versions (GitHub #977)
+<!-- release-notes: silent_ship=silent-2026-09-27-attendance-carbon-compatibility -->
+- 保留現行出勤配對的整分鐘邊界、同距離處理、工時計算及歷史帳齡分類，為後續框架升級準備相容修復；不變更教職員流程或計薪政策。
+
+## 2026-09-27 — fix(finance): restore canonical outstanding subject labels (GitHub #977 / #2833)
+<!-- release-notes: silent_ship=silent-2026-09-27-outstanding-subject-compatibility -->
+- 財務 outstanding 查詢沿用課程的科目名稱與既有備援名稱，避免科目空白，並合併重複科目查詢；名單條件、分校範圍與帳務資料處理不變。
+
+## 2026-09-27 — chore(deps): maintain frontend runtime dependencies (PR #3188)
+<!-- release-notes: silent_ship=silent-2026-09-27-frontend-dependencies-3188 -->
+- 更新 Vue、Sentry 與既有前端測試／建置套件的相容小版本，維護既有功能；教職員無需額外操作，不新增使用流程。
+
+## 2026-09-27 — fix(learning): align homework hint with current-assignment label (in-app #43)
+<!-- release-notes: staff_update=staff-2026-09-27-homework-hint -->
+- 學習評量「本次作業範圍」的輸入提示使用相同用語，避免誤解為下堂課才要寫的作業。
+
+## 2026-09-27 — fix(assessment): align missing-record diagnostics with attendance rules (GitHub #1078)
+<!-- release-notes: staff_update=staff-2026-09-27-assessment-diagnostic-scope -->
+- 營運摘要的缺少評量提示依既有需填評量的上課狀態計算，排除缺席，並涵蓋已完成、試聽與輔導有到；不建立評量、不改點名或扣堂。
+
+## 2026-09-26 — fix(calendar): guard leave and extra request ownership (PR #2677)
+<!-- release-notes: staff_update=staff-2026-09-26-calendar-request-safety -->
+- 行事曆請假先核對本次影響；加課檢查與送出綁定同一課程、日期及時段。送出期間避免重複操作，舊回應不覆蓋新目標，既有堂數制與月結處理規則不變。
+
+## 2026-09-26 — fix(accounts): preserve campus editor target during save (PR #2646)
+<!-- release-notes: staff_update=staff-2026-09-26-director-dialog-safety -->
+- 主任帳號管理的手機操作與錯誤提示更清楚；儲存分校期間保留原主任的視窗，避免切換目標或重複送出，原有權限與帳號操作不變。
+
+## 2026-09-26 — improve(payroll): keyboard review and reachable controls (PR #2679)
+<!-- release-notes: staff_update=staff-2026-09-26-payroll-review-controls -->
+- 兼職薪資查閱的排序與老師明細可用鍵盤操作，載入、重試與空白狀態更清楚，手機按鈕更容易點選；計薪、鎖帳、費率及原有權限不變。
+
+## 2026-09-26 — improve(diagnostics): keyboard sorting and reachable report controls (PR #2656)
+<!-- release-notes: staff_update=staff-2026-09-26-nightly-diagnostic-controls -->
+- 夜間堂數診斷的排序可用鍵盤操作，篩選與重試按鈕更容易點選；報告仍只提供診斷，不改堂數或帳務。
+
+## 2026-09-26 — fix(binding): close successful unlink confirmation (PR #3280)
+<!-- release-notes: staff_update=staff-2026-09-26-binding-confirmation-close -->
+- 綁定管理在解除成功後會關閉確認視窗並更新清單；失敗時仍顯示錯誤並可重試，解除流程與權限不變。
+
+## 2026-09-26 — improve(assessment): existing page clarity on mobile (PR #2661)
+<!-- release-notes: staff_update=staff-2026-09-26-assessment-page-clarity -->
+- 學習檢測頁面在手機上以卡片呈現範圍、日期、狀態及原有操作；建立與結果視窗沿用共用對話框，檢測處理流程與入口設定維持既有行為。
+
+## 2026-09-26 — fix(students): shared balance belongs to package (in-app #367)
+<!-- release-notes: staff_update=staff-2026-09-26-shared-pool-367 -->
+- 學生管理將共用方案的總堂數、已使用與剩餘堂數集中在方案摘要；成員課程顯示自己的上課日期，不再重複顯示方案池進度。
+
+## 2026-09-26 — fix(tuition): explain existing settled-course labels (in-app #348)
+<!-- release-notes: staff_update=staff-2026-09-26-settled-label-help-348 -->
+- 已結清課程彙總補上「舊制無帳單」與「例外待處理」的既有狀態說明，並提示從原有繳費明細核對紀錄；不改款項、標籤分類或帳務操作。
+
+## 2026-09-26 — fix(tuition): bound existing desktop action area (in-app #339)
+<!-- release-notes: staff_update=staff-2026-09-26-tuition-action-width-339 -->
+- 帳務中心桌面待處理表格的操作區限制寬度並自動換行，減少固定操作欄遮住金額；原有按鈕、順序、付款流程及手機卡片版維持既有行為。
+
+## 2026-09-25 — fix(students): 課程保留已設定的科目名稱（in-app #366）
+<!-- release-notes: staff_update=staff-2026-09-25-student-subject-label-366 -->
+- 學生管理的課程列、課程卡片與後續操作會優先顯示 API 提供的原始科目名稱；標準科目維持既有標籤，不改課程資料、排課或帳務語意。
+
+## 2026-09-25 — fix(tuition): 帳務中心剩餘堂數更易查看（in-app #362）
+<!-- release-notes: staff_update=staff-2026-09-25-tuition-remaining-lessons-362 -->
+- 帳務中心把「剩餘堂數」移到學生欄旁，桌面不必橫向捲到表格最右側；手機卡片也會在課程科目上方顯示堂數。原有上課明細入口、堂數與帳務處理不變。
+
+## 2026-09-25 — fix(courses): 課程查找就地結束課程（in-app #352）
+<!-- release-notes: staff_update=staff-2026-09-25-course-close-in-place-352 -->
+- 課程查找頁現在可就地確認並結束課程，不再為此操作跳到學生管理；沿用既有確認、剩餘堂數放棄提示及未繳費待對帳處理，不改課程或付款規則。
+
 ## 2026-09-24 — fix(calendar): keep printed detail pages within their titled date (in-app #335)
 <!-- release-notes: staff_update=staff-2026-09-24-calendar-print-day-pages-335 -->
 - 列印課表的每日明細現在換日時會另起一頁，頁面日期標題與表格內所有堂次日期一致；同日資料超過頁面容量時仍保留續頁，不更動排課或堂次資料。

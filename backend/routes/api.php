@@ -197,9 +197,12 @@ Route::prefix('v1')->group(function () {
     ]));
 
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
-    // SEC-006: 30 req/IP/1 min — blocks RFID brute-force enumeration.
+    // SEC-006: 120 req/IP/1 min. One Pi reader serves a whole class (many swipes at
+    // bell time), so 30/min dropped real swipes. Safe to raise: the endpoint needs a
+    // valid per-campus Bearer token before any RFID lookup, and 120/min still makes
+    // token guessing infeasible.
     Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe'])
-        ->middleware('throttle:30,1');
+        ->middleware('throttle:120,1');
     // SEC-002: 10 req/IP/10 min — prevents bulk account creation.
     Route::post('auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:10,10');
@@ -537,8 +540,12 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/billing-correction', [StudentClassController::class, 'billingCorrection']);
         Route::post('student-classes/{studentClass}/contract-amendment/preview', [ContractAmendmentController::class, 'preview']);
         Route::post('student-classes/{studentClass}/contract-amendment', [ContractAmendmentController::class, 'execute']);
+        Route::post('student-classes/{studentClass}/contract-amendment/revert/preview', [ContractAmendmentController::class, 'revertPreview']);
+        Route::post('student-classes/{studentClass}/contract-amendment/revert', [ContractAmendmentController::class, 'revert']);
         Route::post('student-classes/{studentClass}/charge-correction', [StudentClassController::class, 'chargeCorrection']);
         Route::post('student-classes/{studentClass}/split-contract/preview', [StudentClassController::class, 'splitContractPreview']);
+        Route::post('student-classes/{studentClass}/monthly-contract-correction/preview', [\App\Http\Controllers\MonthlyContractCorrectionController::class, 'preview']);
+        Route::post('student-classes/{studentClass}/monthly-accounting-correction/preview', [\App\Http\Controllers\MonthlyContractCorrectionController::class, 'accountingPreview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
         Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);
         Route::get('student-identities', [StudentIdentityController::class, 'index']);
@@ -675,13 +682,9 @@ Route::prefix('v1')->group(function () {
         Route::get('class-sessions/{id}/recovery', [ClassSessionController::class, 'recovery'])->whereNumber('id');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
         Route::post('class-sessions/{id}/restore', [ClassSessionController::class, 'restore'])->whereNumber('id');
-        // Contract renewal pain point (#1382 prior art) — super_admin only (highest admin tier).
-        Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])
-            ->whereNumber('id')
-            ->middleware('role:super_admin');
-        Route::post('class-sessions/{id}/reassign-contract', [ClassSessionController::class, 'reassignContract'])
-            ->whereNumber('id')
-            ->middleware('role:super_admin');
+        // Move a session to another contract of the same student+subject (director + super_admin, campus-scoped).
+        Route::get('class-sessions/{id}/reassign-contract-targets', [ClassSessionController::class, 'reassignContractTargets'])->whereNumber('id')->middleware('role:director,super_admin');
+        Route::post('class-sessions/{id}/reassign-contract', [ClassSessionController::class, 'reassignContract'])->whereNumber('id')->middleware('role:director,super_admin');
         Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
         // PRD 9c058f19 — 代課流程 UX 優化
         Route::post('class-sessions/{id}/substitute/undo', [SubstituteController::class, 'undo']);

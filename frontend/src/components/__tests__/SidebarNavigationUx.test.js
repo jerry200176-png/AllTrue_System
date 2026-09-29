@@ -63,7 +63,8 @@ describe('sidebar navigation UX contract', () => {
     expect(appSource).toContain('mobileMoreSearchInput');
     expect(appSource).toContain('mobileMoreSearchQuery');
     expect(appSource).toContain('mobileMoreFilteredGroups');
-    expect(appSource).toContain('全域搜尋 · ⌘K');
+    expect(appSource).toContain('全域搜尋 · {{ globalSearchShortcutLabel }}');
+    expect(appSource).toContain("? '⌘K' : 'Ctrl+K'");
     expect(appSource).toContain('搜尋學生、老師、課程或功能…');
     expect(appSource).toContain('GlobalSearchResults');
     expect(appSource).toContain('onGlobalSearchKeydown');
@@ -88,5 +89,20 @@ describe('sidebar navigation UX contract', () => {
     expect(attendance).toContain('placeholder="搜尋學生姓名…"');
     expect(attendance).not.toContain('placeholder="搜尋課程（學生/科目）..."');
     expect(attendance).not.toContain('placeholder="搜尋學生姓名..."');
+  });
+
+  it('keeps the sidebar footer compact: branch dropdown, no duplicate user card', () => {
+    expect(appSource).toContain('id="sidebar-branch-select"');
+    expect(appSource).not.toContain('class="user-block"');
+    expect(appSource).toContain('class="more-breadcrumb"');
+    expect(appSource).toContain('v-if="role === \'super_admin\'"\n          class="build-stamp-bar"');
+  });
+
+  it('refreshes sidebar badges once at a time and in parallel', () => {
+    expect(appSource).toContain('let badgeRefreshInFlight = null;');
+    expect(appSource).toContain('if (badgeRefreshInFlight) {');
+    expect(appSource).toContain('} while (badgeRefreshAgain);');
+    expect(appSource).toMatch(/await Promise\.allSettled\(\[\s*mergeBugUnreadBadge\(\),/);
+    expect(appSource).not.toMatch(/await mergeBugUnreadBadge\(\);\s*await mergeChatUnreadBadge\(\);/);
   });
 });

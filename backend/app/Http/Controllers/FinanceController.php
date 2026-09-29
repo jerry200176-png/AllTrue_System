@@ -142,12 +142,23 @@ class FinanceController extends Controller
             $query->whereIn('StudentID', $studentIds);
         }
 
-        $classes = $query->with('student')->get()->map(function ($c) {
+        $rows = $query->with('student')->get();
+        $subjectIds = $rows->filter(fn ($course) => $course->getAttribute('Subject') === null || $course->getAttribute('Subject') === '')
+            ->pluck('SubjectID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
+        $subjectNames = empty($subjectIds) ? [] : DB::table('Subject')->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')->all();
+        $missingIds = array_values(array_filter($subjectIds, fn ($id) => !isset($subjectNames[$id])));
+        if (!empty($missingIds)) {
+            $legacyNames = DB::table('BaseData')->where('Name', '課程')->whereIn('id', $missingIds)->pluck('Val', 'id')->all();
+            foreach ($legacyNames as $id => $name) {
+                $subjectNames[$id] = $name;
+            }
+        }
+        $classes = $rows->map(function ($c) use ($subjectNames) {
             return [
                 'student_id'         => $c->StudentID,
                 'student_name'       => $c->student->name ?? 'Unknown',
                 'class_id'           => $c->ID,
-                'subject'            => $c->Subject,
+                'subject'            => $c->displaySubjectName($subjectNames),
                 'remaining_sessions' => (int) ($c->RemainingSessions ?? 0),
                 'paid'               => (bool) $c->Paid,
             ];
@@ -649,7 +660,8 @@ class FinanceController extends Controller
                     $s = \Carbon\Carbon::createFromFormat($fmt, substr($startTime, 0, $subLen));
                     $e = \Carbon\Carbon::createFromFormat($fmt, substr($endTime,   0, $subLen));
                     if ($e > $s) {
-                        return $e->diffInMinutes($s) / 60.0;
+                        // Preserve Carbon 2 absolute, whole-minute duration semantics.
+                        return (int) $e->diffInMinutes($s, true) / 60.0;
                     }
                 } catch (\Exception $ignored) {}
             }
@@ -2534,7 +2546,7 @@ class FinanceController extends Controller
             $startDate = $course->StartDate
                 ? \Carbon\Carbon::parse($course->StartDate)
                 : $asOf;
-            $daysOverdue = max(0, $startDate->diffInDays($asOf));
+            $daysOverdue = max(0, (int) $startDate->diffInDays($asOf, true));
 
             if (!isset($students[$studentId])) {
                 $students[$studentId] = [

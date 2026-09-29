@@ -7,11 +7,11 @@
       <div class="manual-session-grid">
         <label class="form-group">
           <span>上課日期</span>
-          <input v-model="form.session_date" type="date" :min="today" @change="$emit('check')" />
+          <input v-model="form.session_date" type="date" :min="today" :disabled="submitting" @change="$emit('check')" />
         </label>
         <label class="form-group">
           <span>開始時間</span>
-          <input v-model="form.start_time" type="time" step="1800" @change="$emit('check')" />
+          <input v-model="form.start_time" type="time" step="1800" :disabled="submitting" @change="$emit('check')" />
         </label>
       </div>
 
@@ -25,11 +25,20 @@
       </div>
 
       <button
-        v-if="isMonthly && ['monthly_date_range_required', 'after_course_end'].includes(result?.error_code)"
+        v-if="isMonthly && ['monthly_date_range_required', 'MONTHLY_DATE_RANGE_REQUIRED'].includes(result?.error_code)"
         type="button"
         class="ghost small manual-session-edit-course"
         @click="$emit('edit-course')"
       >先設定月結結束日</button>
+
+      <section v-if="isMonthly && result?.next_period" class="manual-session-next-period" aria-label="下一期排課">
+        <p>舊期到期日 {{ result.next_period.source_end }}。此堂須使用涵蓋 {{ form.session_date }} 的合約。</p>
+        <button v-for="candidate in result.next_period.candidates" :key="candidate.id" type="button" class="ghost small"
+          :disabled="submitting || checking" @click="$emit('next-period', candidate.id)">選用 {{ candidate.start_date }} ～ {{ candidate.end_date }} 合約</button>
+        <button v-if="!result.next_period.candidates?.length" type="button" class="primary small"
+          :disabled="submitting || checking" @click="$emit('next-period', null)">預覽建立下一期未繳費合約</button>
+        <p>會先核對合約及衝堂，再由您確認新增這一堂。</p>
+      </section>
 
       <div class="actions">
         <button type="button" class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
@@ -51,7 +60,7 @@ defineProps({
   isMonthly: Boolean,
   today: { type: String, required: true },
 });
-defineEmits(['close', 'check', 'submit', 'edit-course']);
+defineEmits(['close', 'check', 'submit', 'edit-course', 'next-period']);
 </script>
 
 <style scoped>
@@ -64,6 +73,8 @@ defineEmits(['close', 'check', 'submit', 'edit-course']);
 .manual-session-result.error { background: var(--ds-danger-wash); color: var(--ds-danger); }
 .manual-session-warning { color: var(--ds-warning); font-weight: 600; line-height: 1.5; }
 .manual-session-retry { justify-self: start; margin-top: 4px; }
+.manual-session-next-period { margin-top: 14px; display: grid; gap: 8px; font-size: .88rem; }
+.manual-session-next-period p { margin: 0; color: var(--ds-text-secondary); }
 .manual-session-edit-course { margin-top: 10px; width: 100%; }
 @media (max-width: 560px) { .manual-session-grid { grid-template-columns: 1fr; } }
 </style>

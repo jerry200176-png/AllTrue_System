@@ -1,5 +1,5 @@
 <template>
-  <div class="notifications-page at-ops-page">
+  <div class="notifications-page at-ops-page at-page">
     <AtPageHeader
       title="主任收件匣"
       description="集中查看待辦案件與營運通知，優先處理即將到期或已逾期項目。"
@@ -15,7 +15,16 @@
       <template #actions>
         <AtButton
           shape="rect"
-          size="sm"
+          variant="secondary"
+          icon="refresh"
+          :disabled="syncing || branchId == null"
+          :loading="syncing"
+          @click="laneFilter === 'case' ? loadCaseItems() : syncNotifications(true)"
+        >
+          重新整理
+        </AtButton>
+        <AtButton
+          shape="rect"
           variant="ghost"
           data-guide="notifications-settings-button"
           @click="goToNotificationSettings"
@@ -46,13 +55,13 @@
     <template v-else>
       <AtSection class="controls-card" data-guide="notifications-controls">
         <!-- 主 tabs：待辦案件 / 營運通知（全部僅次要 overview，不作為預設） -->
-        <div class="type-tabs" role="tablist" aria-label="收件匣分類" aria-orientation="horizontal">
+        <div class="type-tabs at-tabs" role="tablist" aria-label="收件匣分類" aria-orientation="horizontal">
           <button
             v-for="tab in typeTabs"
             :key="tab.value"
             :id="tab.id"
             type="button"
-            class="type-tab"
+            class="type-tab at-tab"
             role="tab"
             :aria-selected="typeFilter === tab.value"
             :aria-controls="tab.panelId"
@@ -68,11 +77,11 @@
 
         <AtFilterBar v-if="laneFilter !== 'case'" label="通知篩選">
           <label>
-            企業視圖
+            通知重點
             <select v-model="focusMode">
               <option value="all">全部通知</option>
               <option value="actionable">待處理優先</option>
-              <option value="sla">SLA／逾期優先</option>
+              <option value="sla">逾期優先</option>
               <option value="high">僅高風險</option>
             </select>
           </label>
@@ -109,9 +118,6 @@
 
         <AtToolbar v-if="laneFilter !== 'case'" label="通知動作">
           <template #end>
-            <AtButton shape="rect" size="sm" variant="ghost" :disabled="syncing" :loading="syncing" @click="syncNotifications(true)">
-              {{ syncing ? '同步中...' : '同步通知' }}
-            </AtButton>
             <AtButton shape="rect" size="sm" variant="ghost" :disabled="clearingResolved" :loading="clearingResolved" @click="clearResolved">
               {{ clearingResolved ? '清除中...' : '清除已解除' }}
             </AtButton>
@@ -160,7 +166,7 @@
           v-else-if="laneFilter !== 'case' && displayNotifications.length === 0"
           icon="notifications_off"
           title="目前沒有符合條件的通知"
-          description="可調整篩選條件，或同步通知後再查看。"
+          description="可調整篩選條件，或按「重新整理」後再查看。"
         />
 
         <div v-else>
@@ -216,19 +222,11 @@
                 <span v-if="notificationSummary(item)" class="notification-context">{{ notificationSummary(item) }}</span>
               </div>
               <div class="urgent-actions">
-                <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
-                <AtButton
-                  v-if="canGoToTuitionBilling(item)"
-                  shape="rect"
-                  size="sm"
-                  variant="primary"
-                  class="notification-action"
-                  @click="goToTarget(item.Type, item)"
-                >
-                  前往帳務中心
-                </AtButton>
-                <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
-                <AtButton v-if="targetPage(item.Type)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="goToTarget(item.Type, item)">前往處理</AtButton>
+                <AtButton v-if="primaryActionLabel(item)" shape="rect" size="sm" variant="primary" class="notification-action" @click="goToTarget(item.Type, item)">{{ primaryActionLabel(item) }}</AtButton>
+                <AtRowMenu v-if="!item.read_at || canCopyTuition(item)">
+                  <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
+                  <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
+                </AtRowMenu>
               </div>
             </div>
           </div>
@@ -261,19 +259,11 @@
             </div>
 
             <div class="item-actions">
-              <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
-              <AtButton
-                v-if="canGoToTuitionBilling(item)"
-                shape="rect"
-                size="sm"
-                variant="primary"
-                class="notification-action"
-                @click="goToTarget(item.Type, item)"
-              >
-                前往帳務中心
-              </AtButton>
-              <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
-              <AtButton v-if="targetPage(item.Type)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="goToTarget(item.Type, item)">前往處理</AtButton>
+              <AtButton v-if="primaryActionLabel(item)" shape="rect" size="sm" variant="primary" class="notification-action" @click="goToTarget(item.Type, item)">{{ primaryActionLabel(item) }}</AtButton>
+              <AtRowMenu v-if="!item.read_at || canCopyTuition(item)">
+                <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
+                <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
+              </AtRowMenu>
             </div>
           </div>
           </template>
@@ -307,6 +297,7 @@ import AtSection from '../components/design-system/AtSection.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtToolbar from '../components/design-system/AtToolbar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtBadge from '../components/design-system/AtBadge.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -523,8 +514,10 @@ const paymentAmountFromPayload = (payload) => {
 const notificationSummary = (item) => {
   const payload = payloadOf(item);
   const parts = [];
-  if (payload.student_name) parts.push(payload.student_name);
-  if (payload.subject) parts.push(payload.subject);
+  // 標題已含姓名／科目時不在第二行重複
+  const title = String(item?.Title || '');
+  if (payload.student_name && !title.includes(payload.student_name)) parts.push(payload.student_name);
+  if (payload.subject && !title.includes(payload.subject)) parts.push(payload.subject);
   const amount = paymentAmountFromPayload(payload);
   if (amount > 0) parts.push(formatCurrency(amount));
   if (payload.overdue_days) parts.push(`逾期 ${payload.overdue_days} 天`);
@@ -532,6 +525,12 @@ const notificationSummary = (item) => {
     parts.push(`剩餘 ${payload.remaining_sessions} 堂`);
   }
   return parts.join(' ｜ ');
+};
+
+// 每列只留一個最具體的導向：帳務中心優先，否則前往處理。
+const primaryActionLabel = (item) => {
+  if (canGoToTuitionBilling(item)) return '前往帳務中心';
+  return targetPage(item.Type) ? '前往處理' : '';
 };
 
 const canCopyTuition = (item) => {
@@ -818,12 +817,15 @@ const loadNotifications = async (page = 1) => {
   loading.value = true;
   errorMessage.value = '';
   try {
-    const countOk = await refreshInboxCounts();
-    void countOk;
+    // Count decides the default lane only on first resolve; afterwards it is
+    // independent of the list GETs, so run it in parallel instead of in series.
+    const needLaneFromCount = !userPickedLane.value && !initialLaneResolved.value;
+    const countP = refreshInboxCounts();
+    if (needLaneFromCount) await countP;
     const caseP = loadCaseItems();
 
     if (laneFilter.value === 'case') {
-      await Promise.allSettled([caseP]);
+      await Promise.allSettled([caseP, countP]);
       notifications.value = [];
       currentPage.value = 1;
       lastPage.value = 1;
@@ -843,7 +845,7 @@ const loadNotifications = async (page = 1) => {
       return json;
     });
 
-    const settled = await Promise.allSettled([caseP, notifP]);
+    const settled = await Promise.allSettled([caseP, notifP, countP]);
     const notifResult = settled[1];
     if (notifResult.status === 'fulfilled') {
       const json = notifResult.value;
@@ -882,14 +884,17 @@ const syncNotifications = async (showAlert = false) => {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
-      body: JSON.stringify({ branch_id: Number(props.branchId) }),
+      // Manual 重新整理 (showAlert) forces a real sync past the server cooldown.
+      body: JSON.stringify({ branch_id: Number(props.branchId), force: showAlert }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || '通知同步失敗');
 
     await loadNotifications(1);
     if (showAlert) {
-      alert(`同步完成：新增 ${json.created || 0}、更新 ${json.updated || 0}、解除 ${json.resolved || 0}`);
+      alert(json.skipped
+        ? '剛剛已同步過，清單已更新。'
+        : `同步完成：新增 ${json.created || 0}、更新 ${json.updated || 0}、解除 ${json.resolved || 0}`);
     }
   } catch (err) {
     errorMessage.value = err.message || '通知同步失敗';
@@ -1016,17 +1021,11 @@ watch(urgentNotifications, async () => {
 let refreshTimer = null;
 
 onMounted(async () => {
-  // in-app #300: reconcile ops cards before first paint so completed work
-  // (e.g. approved learning reviews) leaves the inbox without a manual sync.
-  if (props.branchId) {
-    try {
-      await syncNotifications(false);
-    } catch {
-      await loadNotifications(1);
-    }
-  } else {
-    await loadNotifications(1);
-  }
+  // Paint the list first; the (slow, write-heavy) ops sync runs in the
+  // background and reloads when done. It used to block first paint ~11s
+  // (in-app #300 wants reconciled cards, which the post-sync reload still gives).
+  await loadNotifications(1);
+  if (props.branchId) void syncNotifications(false);
   refreshTimer = window.setInterval(() => {
     loadNotifications(laneFilter.value === 'case' ? casesPage.value : currentPage.value);
   }, 60000);
@@ -1152,49 +1151,6 @@ onUnmounted(() => {
 }
 
 /* ── 分類 Tab（Pajamas-style underline, not pills）── */
-.type-tabs {
-  display: flex;
-  gap: 0;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--ds-hairline);
-  margin-bottom: var(--ds-space-3, 12px);
-}
-
-.type-tab {
-  padding: 8px 14px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ds-text-tertiary, var(--text-light));
-  cursor: pointer;
-  font-size: var(--ds-font-size-base, 14px);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--ds-control-height-touch, 44px);
-  margin-bottom: -1px;
-  transition: color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease),
-    border-color var(--ds-motion-fast, 120ms) var(--ds-ease-standard, ease);
-}
-
-.type-tab:hover {
-  color: var(--ds-text-primary, var(--ds-ink));
-  background: transparent;
-}
-
-.type-tab:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--ds-focus-ring);
-}
-
-.type-tab.active {
-  background: transparent;
-  color: var(--ds-primary-deep);
-  border-bottom-color: var(--ds-primary);
-}
-
 .tab-badge {
   background: var(--ds-surface-2, var(--ds-canvas-soft));
   color: var(--ds-text-secondary, var(--ds-ink-secondary));
@@ -1207,7 +1163,7 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.type-tab.active .tab-badge {
+.at-tab.active .tab-badge {
   background: var(--ds-primary-wash);
   color: var(--ds-primary-deep);
 }
@@ -1266,15 +1222,17 @@ onUnmounted(() => {
 }
 
 .urgent-panel {
-  border: 1px solid var(--ds-danger);
+  border: 1px solid var(--ds-hairline);
   border-radius: var(--ds-radius-md, 6px);
-  background: var(--ds-danger-wash);
+  background: var(--ds-surface-1, var(--ds-canvas));
   padding: 10px;
   margin-bottom: 10px;
 }
 
 .urgent-panel h4 {
-  color: var(--ds-danger);
+  color: var(--ds-ink);
+  border-left: 3px solid var(--ds-danger);
+  padding-left: 6px;
   margin: 0 0 8px;
   font-size: 13px;
 }
@@ -1285,7 +1243,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-top: 1px dashed var(--ds-danger-wash);
+  border-top: 1px solid var(--ds-hairline);
 }
 
 .urgent-row:first-of-type {
@@ -1294,7 +1252,7 @@ onUnmounted(() => {
 
 .urgent-title {
   font-size: 13px;
-  color: var(--ds-danger);
+  color: var(--ds-ink);
   font-weight: 600;
 }
 

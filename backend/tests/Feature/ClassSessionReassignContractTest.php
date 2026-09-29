@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\CourseContractGroup;
 use App\Models\CourseContractGroupMember;
-use App\Models\LearningRecord;
+use App\Models\ClassSession;
+use App\Models\SessionDeductionLedger;
+use App\Models\StudentSignIn;
+use App\Services\SessionDeductionService;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -23,213 +26,133 @@ class ClassSessionReassignContractTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_reassigns_session_keeps_learning_record_content_but_syncs_student_class_id_and_recalculates_both_contracts(): void
+    public function test_attended_session_moves_with_signin_ledger_lr_and_counters_on_both(): void
     {
-        $token = $this->superAdminToken();
+        $token = $this->directorToken([1]);
         $student = $this->createStudent(1);
         $old = $this->createCourse($student->id, subjectId: 1);
         $new = $this->createCourse($student->id, subjectId: 1);
-        $this->linkGroup($student->id, 1, [$old->ID, $new->ID]);
-
-        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
-        $lrContentBefore = '轉移測試評量內容';
-        DB::table('LearningRecord')->insert([
-            'StudentClassID' => $old->ID,
-            'ClassSessionID' => $sessionId,
-            'TeacherID' => 1,
-            'Content' => $lrContentBefore,
-            'Status' => 'approved',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-        $lrBefore = DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->first();
-
-        $res = $this->postJson(
-            "/api/v1/class-sessions/{$sessionId}/reassign-contract",
-            ['new_student_class_id' => $new->ID, 'reason' => '合約續約，堂次改派'],
-            ['Authorization' => "Bearer {$token}"]
-        );
-
-        $res->assertOk();
-        $this->assertSame(
-            (int) $new->ID,
-            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
-        );
-
-        // LearningRecord *content* must be byte-for-byte unchanged (Content,
-        // Status, TeacherID, etc.) — the teacher's work is never touched.
-        // But StudentClassID is a denormalized mirror of
-        // ClassSession.StudentClassID (relied on by billing/approval queries
-        // in StudentClassController), so it MUST follow the session to the
-        // new contract — same invariant the existing transfer-sessions
-        // endpoint enforces. Only that one column may differ from $lrBefore.
-        $lrAfter = DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->first();
-        $beforeMinusStudentClassId = (array) $lrBefore;
-        $afterMinusStudentClassId = (array) $lrAfter;
-        unset($beforeMinusStudentClassId['StudentClassID'], $afterMinusStudentClassId['StudentClassID']);
-        $this->assertEquals($beforeMinusStudentClassId, $afterMinusStudentClassId);
-        $this->assertSame($lrContentBefore, $lrAfter->Content);
-        $this->assertSame((int) $new->ID, (int) $lrAfter->StudentClassID);
-
-        // Both contracts' 已用/剩餘堂數 recalculated via the same
-        // SessionDeductionService the rest of the app uses.
-        $old->refresh();
-        $new->refresh();
-        $this->assertSame(0, (int) $old->UsedSessions);
-        $this->assertSame(8, (int) $old->RemainingSessions);
-        $this->assertSame(1, (int) $new->UsedSessions);
-        $this->assertSame(7, (int) $new->RemainingSessions);
-
+        $sessionId = $this->seedAttended($old, '2026-08-02');
+        $this->seedAttended($old, '2026-08-09'); // stays on $old
+        SessionDeductionService::recomputeCounters((int) $old->ID);
+        $res = $this->move($token, $sessionId, $new->ID);
+        $res->assertOk()->assertJsonPath('warnings', []);
+        $this->assertSame((int) $new->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+        foreach (['StudentSingIn', 'LearningRecord'] as $t) {
+            $this->assertSame((int) $new->ID, (int) DB::table($t)->where('ClassSessionID', $sessionId)->value('StudentClassID'));
+        }
+        $this->assertSame((int) $new->ID, (int) DB::table('session_deduction_ledger')->where('class_session_id', $sessionId)->value('student_class_id'));
+        $this->assertSame([1, 7, 1, 7], [(int) $old->fresh()->UsedSessions, (int) $old->fresh()->RemainingSessions, (int) $new->fresh()->UsedSessions, (int) $new->fresh()->RemainingSessions]);
         $this->assertDatabaseHas('class_session_reassignments', [
-            'class_session_id' => $sessionId,
-            'old_student_class_id' => $old->ID,
-            'new_student_class_id' => $new->ID,
-            'reason' => '合約續約，堂次改派',
+            'class_session_id' => $sessionId, 'old_student_class_id' => $old->ID,
+            'new_student_class_id' => $new->ID, 'reason' => '改到正確合約',
         ]);
+        $this->assertDatabaseHas('security_audit_events', ['event_type' => 'class_session.contract_reassigned']);
     }
 
-    public function test_rejects_cross_student_reassignment(): void
+    public function test_move_into_closed_contract_works_and_warns_when_remaining_left(): void
     {
-        $token = $this->superAdminToken();
-        $studentA = $this->createStudent(1);
-        $studentB = $this->createStudent(1);
-        $old = $this->createCourse($studentA->id, subjectId: 1);
-        $new = $this->createCourse($studentB->id, subjectId: 1);
-        $this->linkGroup($studentA->id, 1, [$old->ID]); // group irrelevant here; fails student check first
-        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
+        $token = $this->directorToken([1]);
+        $student = $this->createStudent(1);
+        $closed = $this->createCourse($student->id, subjectId: 1);
+        DB::table('StudentClass')->where('ID', $closed->ID)->update(['Stop' => 1, 'closed_reason' => 'contract_amended', 'SessionCount' => 3, 'UsedSessions' => 3, 'RemainingSessions' => 0]);
+        $cur = $this->createCourse($student->id, subjectId: 1);
+        $sessionId = $this->seedAttended($cur, '2026-08-02');
+        ClassSession::resetSettlementLockCache();
+        $targets = $this->getJson("/api/v1/class-sessions/{$sessionId}/reassign-contract-targets", ['Authorization' => "Bearer {$token}"]);
+        $targets->assertOk()->assertJsonPath('data.0.id', (int) $closed->ID)->assertJsonPath('data.0.closed', true);
 
-        $res = $this->postJson(
-            "/api/v1/class-sessions/{$sessionId}/reassign-contract",
-            ['new_student_class_id' => $new->ID, 'reason' => '測試'],
-            ['Authorization' => "Bearer {$token}"]
-        );
+        $res = $this->move($token, $sessionId, $closed->ID);
 
-        $res->assertStatus(422);
-        $this->assertSame(
-            (int) $old->ID,
-            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
-        );
+        $res->assertOk();
+        $this->assertSame((int) $closed->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+        $c = $closed->fresh();
+        $this->assertSame([1, 1, 2, 'contract_amended'], [(int) $c->Stop, (int) $c->UsedSessions, (int) $c->RemainingSessions, $c->closed_reason]);
+        $this->assertNotEmpty($res->json('warnings'));
+    }
+
+    public function test_slot_conflict_on_target_is_rejected(): void
+    {
+        $token = $this->directorToken([1]);
+        $student = $this->createStudent(1);
+        $old = $this->createCourse($student->id, subjectId: 1);
+        $new = $this->createCourse($student->id, subjectId: 1);
+        $sessionId = $this->seedAttended($old, '2026-08-02');
+        $this->createClassSession((int) $new->ID, '2026-08-02', 'scheduled');
+
+        $this->move($token, $sessionId, $new->ID)->assertStatus(422);
+        $this->assertSame((int) $old->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
         $this->assertDatabaseMissing('class_session_reassignments', ['class_session_id' => $sessionId]);
     }
 
-    public function test_rejects_cross_subject_reassignment(): void
+    public function test_reason_required_and_teacher_and_other_campus_director_rejected(): void
     {
-        $token = $this->superAdminToken();
         $student = $this->createStudent(1);
         $old = $this->createCourse($student->id, subjectId: 1);
-        $new = $this->createCourse($student->id, subjectId: 2);
-        $this->linkGroup($student->id, 1, [$old->ID, $new->ID]);
+        $new = $this->createCourse($student->id, subjectId: 1);
         $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
+        $url = "/api/v1/class-sessions/{$sessionId}/reassign-contract";
+        $targetsUrl = "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets";
 
-        $res = $this->postJson(
-            "/api/v1/class-sessions/{$sessionId}/reassign-contract",
-            ['new_student_class_id' => $new->ID, 'reason' => '測試'],
-            ['Authorization' => "Bearer {$token}"]
-        );
-
-        $res->assertStatus(422);
-        $this->assertSame(
-            (int) $old->ID,
-            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
-        );
+        $this->postJson($url, ['new_student_class_id' => $new->ID], ['Authorization' => 'Bearer ' . $this->directorToken([1])])->assertStatus(422);
+        $teacher = $this->directorToken([1], 'T');
+        $this->postJson($url, ['new_student_class_id' => $new->ID, 'reason' => 'x'], ['Authorization' => "Bearer {$teacher}"])->assertStatus(403);
+        $this->getJson($targetsUrl, ['Authorization' => "Bearer {$teacher}"])->assertStatus(403);
+        $other = $this->directorToken([2]);
+        $this->postJson($url, ['new_student_class_id' => $new->ID, 'reason' => 'x'], ['Authorization' => "Bearer {$other}"])->assertStatus(403);
+        $this->getJson($targetsUrl, ['Authorization' => "Bearer {$other}"])->assertStatus(403);
+        $director = $this->directorToken([1]);
+        foreach ([$this->createCourse($this->createStudent(1)->id, 1), $this->createCourse($student->id, 2)] as $bad) {
+            $this->move($director, $sessionId, $bad->ID)->assertStatus(422); // other student / other subject
+        }
     }
 
-    public function test_rejects_when_contracts_not_linked_via_course_contract_group(): void
+    public function test_moving_back_restores_everything(): void
     {
         $token = $this->superAdminToken();
         $student = $this->createStudent(1);
         $old = $this->createCourse($student->id, subjectId: 1);
         $new = $this->createCourse($student->id, subjectId: 1);
-        // No course_contract_group linkage created.
-        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
+        $sessionId = $this->seedAttended($old, '2026-08-02');
+        SessionDeductionService::recomputeCounters((int) $old->ID);
 
-        $res = $this->postJson(
+        $this->move($token, $sessionId, $new->ID, ['dry_run' => true])->assertOk()
+            ->assertJsonPath('before.old.used_sessions', 1)->assertJsonPath('after.old.used_sessions', 0)
+            ->assertJsonPath('after.new.used_sessions', 1);
+        $this->move($token, $sessionId, $new->ID)->assertOk();
+        $this->move($token, $sessionId, $old->ID, ['reason' => '改回'])->assertOk();
+
+        $this->assertSame((int) $old->ID, (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID'));
+        $this->assertSame((int) $old->ID, (int) DB::table('StudentSingIn')->where('ClassSessionID', $sessionId)->value('StudentClassID'));
+        $this->assertSame([1, 7, 0, 8], [(int) $old->fresh()->UsedSessions, (int) $old->fresh()->RemainingSessions, (int) $new->fresh()->UsedSessions, (int) $new->fresh()->RemainingSessions]);
+        $this->assertSame(2, DB::table('class_session_reassignments')->where('class_session_id', $sessionId)->count());
+    }
+
+    // helpers added for the move tests
+    private function move(string $token, int $sessionId, int $toId, array $extra = [])
+    {
+        return $this->postJson(
             "/api/v1/class-sessions/{$sessionId}/reassign-contract",
-            ['new_student_class_id' => $new->ID, 'reason' => '測試'],
+            $extra + ['new_student_class_id' => $toId, 'reason' => '改到正確合約'],
             ['Authorization' => "Bearer {$token}"]
-        );
-
-        $res->assertStatus(422);
-        $this->assertSame(
-            (int) $old->ID,
-            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
         );
     }
 
-    public function test_rejects_when_caller_is_not_super_admin(): void
+    private function seedAttended(StudentClass $course, string $date): int
     {
-        $token = $this->directorToken([1]);
-        $student = $this->createStudent(1);
-        $old = $this->createCourse($student->id, subjectId: 1);
-        $new = $this->createCourse($student->id, subjectId: 1);
-        $this->linkGroup($student->id, 1, [$old->ID, $new->ID]);
-        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
+        $id = $this->createClassSession((int) $course->ID, $date);
+        StudentSignIn::create([
+            'StudentClassID' => $course->ID, 'StudentID' => $course->StudentID, 'TeacherID' => 1, 'GradeID' => 1,
+            'SubjectID' => 1, 'Hours' => 2, 'SignInDT' => now()->subHours(2), 'SignOutDT' => now(), 'MDT' => now(),
+            'ClassSessionID' => $id, 'Status' => 'present', 'CampusID' => 1, 'SessionDeducted' => true,
+        ]);
+        SessionDeductionLedger::create(['student_class_id' => $course->ID, 'class_session_id' => $id, 'event_type' => 'deduct', 'source' => 'attendance']);
+        DB::table('LearningRecord')->insert([
+            'StudentClassID' => $course->ID, 'ClassSessionID' => $id, 'TeacherID' => 1,
+            'Content' => '評量', 'Status' => 'approved', 'created_at' => now(), 'updated_at' => now(),
+        ]);
 
-        $res = $this->postJson(
-            "/api/v1/class-sessions/{$sessionId}/reassign-contract",
-            ['new_student_class_id' => $new->ID, 'reason' => '測試'],
-            ['Authorization' => "Bearer {$token}"]
-        );
-
-        $res->assertStatus(403);
-        $this->assertSame(
-            (int) $old->ID,
-            (int) DB::table('ClassSession')->where('id', $sessionId)->value('StudentClassID')
-        );
-    }
-
-    public function test_targets_endpoint_lists_only_group_linked_same_student_subject_contracts(): void
-    {
-        $token = $this->superAdminToken();
-        $student = $this->createStudent(1);
-        $old = $this->createCourse($student->id, subjectId: 1);
-        $new = $this->createCourse($student->id, subjectId: 1);
-        $unrelated = $this->createCourse($student->id, subjectId: 1); // not linked to $old's group
-        $this->linkGroup($student->id, 1, [$old->ID, $new->ID]);
-        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
-
-        $res = $this->getJson(
-            "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets",
-            ['Authorization' => "Bearer {$token}"]
-        );
-
-        $res->assertOk();
-        $ids = collect($res->json('data'))->pluck('id')->all();
-        $this->assertSame([(int) $new->ID], $ids);
-        $this->assertNotContains((int) $unrelated->ID, $ids);
-        $this->assertNotContains((int) $old->ID, $ids);
-        $this->assertSame(8, $res->json('data.0.remaining_sessions'));
-    }
-
-    public function test_targets_endpoint_empty_when_no_group_link(): void
-    {
-        $token = $this->superAdminToken();
-        $student = $this->createStudent(1);
-        $old = $this->createCourse($student->id, subjectId: 1);
-        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
-
-        $res = $this->getJson(
-            "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets",
-            ['Authorization' => "Bearer {$token}"]
-        );
-
-        $res->assertOk();
-        $this->assertSame([], $res->json('data'));
-    }
-
-    public function test_targets_endpoint_rejects_when_caller_is_not_super_admin(): void
-    {
-        $token = $this->directorToken([1]);
-        $student = $this->createStudent(1);
-        $old = $this->createCourse($student->id, subjectId: 1);
-        $sessionId = $this->createClassSession((int) $old->ID, '2026-08-02');
-
-        $res = $this->getJson(
-            "/api/v1/class-sessions/{$sessionId}/reassign-contract-targets",
-            ['Authorization' => "Bearer {$token}"]
-        );
-
-        $res->assertStatus(403);
+        return $id;
     }
 
     // ── helpers ──
@@ -248,13 +171,13 @@ class ClassSessionReassignContractTest extends TestCase
         return $token;
     }
 
-    private function directorToken(array $campusIds): string
+    private function directorToken(array $campusIds, string $type = 'A'): string
     {
         $user = User::create([
             'LoginName' => 'dir-reassign-' . uniqid() . '@test.com',
             'Name' => '主任測試',
             'PSW' => 'secret',
-            'type' => 'A',
+            'type' => $type,
             'phone' => '0912345678',
         ]);
         foreach ($campusIds as $cid) {
@@ -302,35 +225,14 @@ class ClassSessionReassignContractTest extends TestCase
         ]);
     }
 
-    private function createClassSession(int $courseId, string $date): int
+    private function createClassSession(int $courseId, string $date, string $status = 'attended'): int
     {
         return DB::table('ClassSession')->insertGetId([
             'StudentClassID' => $courseId,
             'SessionDate' => $date,
             'StartTime' => '23:00',
             'EndTime' => '23:30',
-            'Status' => 'attended',
+            'Status' => $status,
         ]);
-    }
-
-    /**
-     * @param  array<int>  $studentClassIds
-     */
-    private function linkGroup(int $studentId, int $campusId, array $studentClassIds): CourseContractGroup
-    {
-        $group = CourseContractGroup::create([
-            'student_id' => $studentId,
-            'campus_id' => $campusId,
-        ]);
-        $seq = 0;
-        foreach ($studentClassIds as $scId) {
-            CourseContractGroupMember::create([
-                'group_id' => $group->id,
-                'student_class_id' => $scId,
-                'relation_type' => $seq === 0 ? 'original' : 'renewal',
-                'sequence' => $seq++,
-            ]);
-        }
-        return $group;
     }
 }

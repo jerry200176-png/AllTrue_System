@@ -2,6 +2,141 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-monthly-case-closed
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ops): report closed monthly case eligibility explicitly"
+    reason: 內部單案資格關閉的拒絕訊息與發布驗證，不發布公告。
+
+  - id: silent-2026-09-29-pop-local-claim
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ops): unblock local approved repair scheduling"
+    reason: 內部正式排程取件修復，仍須單案 DB 核准與驗證，不發布帳務完成公告。
+
+  - id: silent-2026-09-29-reviewed-monthly-case
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(ops): support exact-case human review for monthly correction"
+    reason: 僅限受控單案的內部核對入口，部署資格不代表修復完成，不發布教職員完成公告。
+
+  - id: silent-2026-09-29-contained-monthly-chains
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): preserve complete reschedule chains within reviewed monthly periods"
+    reason: 補齊尚未啟用的受控更正對完整調課鏈的核對與保留；未執行正式拆約／收款，不發布完成公告。
+
+  - id: silent-2026-09-29-notif-sync-perf
+    changelog_date: "2026-09-29"
+    changelog_title: "perf(inbox): stop notification sync rewriting every row and share one sync cooldown"
+    reason: 內部效能修正，不改變通知內容與解除／重開語意，不發布教職員公告。
+
+  - id: silent-2026-09-29-badge-refresh-parallel
+    changelog_date: "2026-09-29"
+    changelog_title: "perf(app): share one in-flight sidebar badge refresh and fetch badges in parallel (TD-087)"
+    reason: 內部效能調整，徽章數字與操作不變，教職員不需說明。
+
+  - id: silent-2026-09-29-source-monthly-item
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): preserve existing source invoice items during reviewed correction"
+    reason: 修正尚未啟用的受控修復對既有帳單明細的支援，正式個案未執行，不發布上線或完成公告。
+
+  - id: silent-2026-09-29-inbox-first-paint
+    changelog_date: "2026-09-29"
+    changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
+    reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
+
+  - id: silent-2026-09-29-rfid-swipe-hardening
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)"
+    reason: 刷卡即出席政策本身未變，僅補強邊界情況；尚未部署或於正式環境驗證，不發布教職員公告。
+
+  - id: silent-2026-09-29-tabs-scroll-status-tone
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors"
+    reason: 版面小修正（多餘捲軸、狀態標籤顏色），流程與資料不變，不需另發版本說明。
+
+  - id: silent-2026-09-29-counts-loading-ux
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): one source per dashboard count, loading placeholders"
+    reason: 純前端數字口徑與載入狀態顯示修正，不改流程或權限，教職員不需新操作說明。
+
+  - id: silent-2026-09-29-confirmed-monthly-fees
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
+    reason: 月結帳務及續約介面尚未核准部署或驗證正式受影響路徑，不先發布上線公告。
+
+  - id: silent-2026-09-29-tuition-summary-label
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): label tuition summary as invoiced-only outstanding"
+    reason: 只改帳務中心摘要文字，金額計算與流程不變，教職員不需新操作說明。
+
+  - id: silent-2026-09-29-monthly-billing-review
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): prepare missing monthly invoice review"
+    reason: 月結缺帳單核對與唯讀試算尚未部署或核准啟用，正式個案尚未拆約開單；待正式驗收後再公告操作入口。
+
+  - id: silent-2026-09-29-existing-monthly-correction
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): prepare correction into an existing monthly contract"
+    reason: 更正能力維持 planned，尚未執行正式收款或堂次移轉；部署及個案驗收後再評估主任操作公告。
+
+  - id: silent-2026-09-29-monthly-accounting-correction
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(billing): prepare audited monthly receipt correction"
+    reason: 收款更正能力尚未啟用或核准正式清單，沒有修改正式帳務或新主任操作；待部署及個案驗收後再評估公告。
+
+  - id: silent-2026-09-29-move-session-contract
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(schedule): director can move a session to another contract"
+    reason: 權限擴大屬受保護邊界，待 Founder 核准並上線驗證後再發布主任操作公告。
+
+  - id: silent-2026-09-29-monthly-next-period-booking
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(courses): prepare next-period monthly booking guidance"
+    reason: 月結跨期操作與更正預覽尚未部署、核准啟用或完成正式案例驗證，待上線驗證後再發布教職員操作公告。
+
+  - id: silent-2026-09-29-monthly-contract-correction
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(billing): prepare controlled monthly contract correction"
+    reason: 受控資料更正能力尚未啟用、核准或執行，不公告主任可直接修改已收款歷史。
+
+  - id: silent-2026-09-29-monthly-period-payment
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): prepare monthly period payment attribution"
+    reason: 月結逐期付款與唯讀盤點的實作準備，未部署或核對正式資料；待啟用、驗證與文案核准後再公告教職員。
+
+  - id: silent-2026-09-29-laravel-readonly-preflight
+    changelog_date: "2026-09-29"
+    changelog_title: "chore(ops): prepare bounded Laravel readiness metadata (GitHub #977 / #2833)"
+    reason: 維運唯讀驗收能力準備，不新增教職員功能；尚未執行正式查詢、部署或啟用，不發布未驗證的上線公告。
+
+  - id: silent-2026-09-28-native-value-contracts
+    changelog_date: "2026-09-28"
+    changelog_title: "chore(framework): preserve native operational value projections (GitHub #977 / #2833)"
+    reason: 既有資料投影與框架相容前置，不新增產品操作或改變權限帳務語意；未部署或觀察正式受影響路徑，不宣布已上線。
+
+  - id: silent-2026-09-28-rollout-flag-cache
+    changelog_date: "2026-09-28"
+    changelog_title: "chore(config): preserve cache-consistent rollout flag reads (GitHub #977 / #2833)"
+    reason: 既有旗標設定快取相容前置，未啟用功能、未部署且未觀察正式旗標；無教職員新操作，不發布未驗證功能公告。
+
+  - id: silent-2026-09-28-rollback-locked-dependencies
+    changelog_date: "2026-09-28"
+    changelog_title: "fix(ops): restore locked dependencies before rollback runtime (GitHub #977 / #2833)"
+    reason: 既有部署回復可靠度修正，不新增教職員功能或操作；未合併或部署，不發布未驗證公告。
+
+  - id: silent-2026-09-27-attendance-carbon-compatibility
+    changelog_date: "2026-09-27"
+    changelog_title: "chore(attendance): preserve minute precision across Carbon versions (GitHub #977)"
+    reason: 維持現行 Carbon 2 的分鐘精度與帳齡語意，僅準備後續升級相容性；不新增產品功能、操作或政策，不宣稱框架已升級或 production 已驗收。
+
+  - id: silent-2026-09-27-outstanding-subject-compatibility
+    changelog_date: "2026-09-27"
+    changelog_title: "fix(finance): restore canonical outstanding subject labels (GitHub #977 / #2833)"
+    reason: 既有財務唯讀 API 的相容修正與框架回歸前置；現行前端未找到該 API 呼叫，且未部署或觀察受影響 production 路徑，不宣布教職員畫面已改善。後續依實際使用與驗證證據評估公告。
+
+  - id: silent-2026-09-27-frontend-dependencies-3188
+    changelog_date: "2026-09-27"
+    changelog_title: "chore(deps): maintain frontend runtime dependencies (PR #3188)"
+    reason: 相容的前端依賴維護，不新增教職員功能、操作或產品語意，無需教職員公告；不宣稱修復尚未驗證的 browser Sentry 問題。
+
   - id: staff-2026-09-21-transaction-discount-322-b-evidence
     changelog_date: "2026-09-21"
     changelog_title: "feat(billing): transaction-level discounts snapshot at creation (in-app #322 / GitHub #3072)"
@@ -457,3 +592,8 @@ exemptions:
     changelog_date: "2026-08-14"
     changelog_title: "chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門"
     reason: 內部 allowlisted production 作業閘門，沒有教職員可操作的新產品入口。
+
+  - id: silent-2026-09-29-undo-contract-amendment
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(courses): director undo of contract amendment"
+    reason: 主任操作選單新增「撤銷調整」，屬既有提前結束流程的補救入口，待部署與主任驗收後再評估公告。

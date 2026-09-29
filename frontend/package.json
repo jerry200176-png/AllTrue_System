@@ -72,15 +72,15 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.73.0",
+    "@sentry/vue": "^10.75.0",
     "@supabase/supabase-js": "^2.116.0",
-    "vue": "^3.5.42"
+    "vue": "^3.5.43"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@vitejs/plugin-vue": "^6.0.8",
+    "@vitejs/plugin-vue": "^6.0.9",
     "@vitest/coverage-v8": "^4.1.11",
-    "@vue/test-utils": "^2.5.0",
+    "@vue/test-utils": "^2.5.1",
     "eslint": "^9.39.5",
     "eslint-plugin-vue": "^9.33.0",
     "globals": "^15.15.0",
@@ -92,6 +92,6 @@
     "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.63.1"
+    "@rollup/rollup-linux-arm64-gnu": "^4.63.3"
   }
 }

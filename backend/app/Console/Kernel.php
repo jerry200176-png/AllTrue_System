@@ -20,7 +20,8 @@ class Kernel extends ConsoleKernel
         // host cron drives this local command; no GitHub runner or SSH hop is used.
         $schedule->command('pop:execute-approved')
             ->everyMinute()
-            ->withoutOverlapping(2)
+            // Claims are serialized by PopOperationService's MySQL named lock.
+            // A file-cache mutex can be owned by FPM and block the cron user.
             ->timezone(SchedulerEvidence::TIMEZONE)
             ->sendOutputTo(SchedulerEvidence::executorOutputPath())
             ->onSuccess(static function (): void {

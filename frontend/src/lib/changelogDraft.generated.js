@@ -5,6 +5,153 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.29",
+    "date": "2026-09-29",
+    "title": "2026.09.29 草稿（未發布）",
+    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；sidebar branch switcher and More-page breadcrumb",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+          "sidebar branch switcher and More-page breadcrumb",
+          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
+          "audited monthly receipt correction",
+          "undo of contract amendment",
+          "controlled monthly contract correction"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "complete reschedule chains within reviewed monthly periods",
+          "existing source invoice items during reviewed correction",
+          "stray scrollbar on tab rows; attendance status chips use status colors",
+          "source per dashboard count, loading placeholders",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+          "copy and calmer colors on director pages"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "notification sync rewriting every row and share one sync cooldown",
+          "one in-flight sidebar badge refresh and fetch badges in parallel (TD-087)",
+          "待處理收件匣 before the background ops sync"
+        ]
+      }
+    ],
+    "items": [
+      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+      "sidebar branch switcher and More-page breadcrumb",
+      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
+      "audited monthly receipt correction",
+      "undo of contract amendment",
+      "controlled monthly contract correction",
+      "complete reschedule chains within reviewed monthly periods",
+      "existing source invoice items during reviewed correction"
+    ]
+  },
+  {
+    "version": "2026.09.27",
+    "date": "2026-09-27",
+    "title": "2026.09.27 草稿（未發布）",
+    "summary": "canonical outstanding subject labels；homework hint with current-assignment label",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "canonical outstanding subject labels",
+          "homework hint with current-assignment label",
+          "missing-record diagnostics with attendance rules"
+        ]
+      }
+    ],
+    "items": [
+      "canonical outstanding subject labels",
+      "homework hint with current-assignment label",
+      "missing-record diagnostics with attendance rules"
+    ]
+  },
+  {
+    "version": "2026.09.26",
+    "date": "2026-09-26",
+    "title": "2026.09.26 草稿（未發布）",
+    "summary": "leave and extra request ownership；campus editor target during save",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "leave and extra request ownership",
+          "campus editor target during save",
+          "successful unlink confirmation",
+          "balance belongs to package",
+          "existing settled-course labels",
+          "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "review and reachable controls",
+          "sorting and reachable report controls",
+          "page clarity on mobile"
+        ]
+      }
+    ],
+    "items": [
+      "leave and extra request ownership",
+      "campus editor target during save",
+      "successful unlink confirmation",
+      "balance belongs to package",
+      "existing settled-course labels",
+      "主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑",
+      "review and reachable controls",
+      "sorting and reachable report controls"
+    ]
+  },
+  {
+    "version": "2026.09.25",
+    "date": "2026-09-25",
+    "title": "2026.09.25 草稿（未發布）",
+    "summary": "課程保留已設定的科目名稱；帳務中心剩餘堂數更易查看",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "課程保留已設定的科目名稱",
+          "帳務中心剩餘堂數更易查看",
+          "課程查找就地結束課程"
+        ]
+      }
+    ],
+    "items": [
+      "課程保留已設定的科目名稱",
+      "帳務中心剩餘堂數更易查看",
+      "課程查找就地結束課程"
+    ]
+  },
+  {
     "version": "2026.09.24",
     "date": "2026-09-24",
     "title": "2026.09.24 草稿（未發布）",
@@ -541,156 +688,6 @@ export const changelogDraftNotes = [
       "修正手機行事曆單堂檢視操作",
       "修正手機意見與建議表單排版",
       "家長首頁學習重點版本公告"
-    ]
-  },
-  {
-    "version": "2026.09.08",
-    "date": "2026-09-08",
-    "title": "2026.09.08 草稿（未發布）",
-    "summary": "修正超級管理員看不到版本更新內容的問題；繳費狀態明確標示為非操作項目",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "修正超級管理員看不到版本更新內容的問題"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "繳費狀態明確標示為非操作項目",
-          "Parent Binding authentication and campus scope",
-          "老師科目數不顯示自我分母占比",
-          "Portal V1 correctness and existing-data home summary",
-          "科目數完整加總後才除以 8"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "Cmd-K 可搜尋授權的學生、老師與課程",
-          "意見與建議入口更容易使用",
-          "導覽搜尋範圍與高頻查找提示更清楚"
-        ]
-      }
-    ],
-    "items": [
-      "修正超級管理員看不到版本更新內容的問題",
-      "繳費狀態明確標示為非操作項目",
-      "Parent Binding authentication and campus scope",
-      "老師科目數不顯示自我分母占比",
-      "Portal V1 correctness and existing-data home summary",
-      "科目數完整加總後才除以 8",
-      "Cmd-K 可搜尋授權的學生、老師與課程",
-      "意見與建議入口更容易使用"
-    ]
-  },
-  {
-    "version": "2026.09.07",
-    "date": "2026-09-07",
-    "title": "2026.09.07 草稿（未發布）",
-    "summary": "老師管理載入與篩選回復更清楚；學生管理載入與搜尋回復更清楚",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "其他改善",
-        "items": [
-          "老師管理載入與篩選回復更清楚",
-          "學生管理載入與搜尋回復更清楚",
-          "教室管理錯誤回復更清楚",
-          "手機更多功能可搜尋",
-          "跨頁工作可接續",
-          "側欄更多功能漸進搜尋與快捷鍵"
-        ]
-      }
-    ],
-    "items": [
-      "老師管理載入與篩選回復更清楚",
-      "學生管理載入與搜尋回復更清楚",
-      "教室管理錯誤回復更清楚",
-      "手機更多功能可搜尋",
-      "跨頁工作可接續",
-      "側欄更多功能漸進搜尋與快捷鍵"
-    ]
-  },
-  {
-    "version": "2026.09.06",
-    "date": "2026-09-06",
-    "title": "2026.09.06 草稿（未發布）",
-    "summary": "修正共用方案付款狀態與排課繳費日期更正安全機制；統一主任與老師新手教學並清理重複入口",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "修正共用方案付款狀態與排課繳費日期更正安全機制"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "統一主任與老師新手教學並清理重複入口"
-        ]
-      }
-    ],
-    "items": [
-      "修正共用方案付款狀態與排課繳費日期更正安全機制",
-      "統一主任與老師新手教學並清理重複入口"
-    ]
-  },
-  {
-    "version": "2026.09.05",
-    "date": "2026-09-05",
-    "title": "2026.09.05 草稿（未發布）",
-    "summary": "補齊負責人、追蹤與詢問歷程；科目數改為日粒度明細",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "補齊負責人、追蹤與詢問歷程",
-          "科目數改為日粒度明細"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-          "phone binding classifier parity"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-          "高頻核心頁面降低切換與認知負擔"
-        ]
-      }
-    ],
-    "items": [
-      "補齊負責人、追蹤與詢問歷程",
-      "科目數改為日粒度明細",
-      "搜尋更新不閃爍並可直接追蹤 Bug 回報",
-      "phone binding classifier parity",
-      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
-      "高頻核心頁面降低切換與認知負擔"
     ]
   }
 ];

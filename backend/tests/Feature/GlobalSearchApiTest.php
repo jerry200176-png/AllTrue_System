@@ -118,6 +118,25 @@ class GlobalSearchApiTest extends TestCase
         $this->assertSame(['可見學生'], array_column($response->json('groups.0.items'), 'title'));
     }
 
+    public function test_course_grade_metadata_falls_back_to_selected_student_grade_alias(): void
+    {
+        $campus = Campus::factory()->create(['name' => 'AliasCampus']);
+        $director = $this->staff('director', $campus->id);
+        $student = Student::factory()->create(['name' => 'AliasStudent', 'CampusID' => $campus->id, 'ClassID' => 7]);
+        $subjectId = DB::table('Subject')->insertGetId(['School_id' => 1, 'Grade_no' => 1, 'Subject_Name' => 'AliasSubject']);
+        $course = $this->course($student->id, $director->id, $subjectId);
+        $course->GradeID = 0;
+        $course->save();
+        $response = $this->withHeaders($this->authHeaders($director))->getJson('/api/v1/global-search?q=AliasSubject')->assertOk();
+        $rows = $response->json('groups.2.items');
+        $this->assertCount(1, $rows);
+        $this->assertSame($course->ID, $rows[0]['course_id']);
+        $this->assertSame('AliasStudent', $rows[0]['title']);
+        $this->assertSame($campus->id, $rows[0]['campus_id']);
+        $this->assertStringContainsString('分校：AliasCampus', $rows[0]['meta']);
+        $this->assertStringContainsString('J1', $rows[0]['meta']);
+    }
+
     private function staff(string $role, int $campusId, string $name = '測試人員'): User
     {
         $user = User::create([

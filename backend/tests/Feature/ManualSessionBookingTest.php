@@ -507,4 +507,18 @@ class ManualSessionBookingTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('error_code', 'MONTHLY_DATE_RANGE_REQUIRED');
     }
+
+    public function test_monthly_next_period_is_explicit_and_stale_session_cannot_bypass_boundary(): void
+    {
+        $this->course->update(['ScheduleMode' => 'date', 'Paid' => 1]);
+        $date = Carbon::parse($this->course->EndDate)->addDay()->toDateString();
+        $stale = ClassSession::create(['StudentClassID' => $this->course->ID, 'SessionDate' => $date, 'StartTime' => '16:00', 'EndTime' => '17:00', 'Status' => 'scheduled']);
+        $next = $this->course->replicate();
+        $next->forceFill(['StartDate' => $date, 'EndDate' => Carbon::parse($date)->addMonth()->toDateString(), 'Paid' => 0])->save();
+        $response = $this->withHeaders($this->headers())
+            ->postJson("/api/v1/student-classes/{$this->course->ID}/manual-sessions/check", ['session_date' => $date, 'start_time' => '16:00']);
+        $response->assertStatus(422)->assertJsonPath('error_code', 'AFTER_COURSE_END')
+            ->assertJsonPath('next_period.candidates.0.id', (int) $next->ID);
+        $this->assertSame((int) $this->course->ID, (int) $stale->fresh()->StudentClassID);
+    }
 }

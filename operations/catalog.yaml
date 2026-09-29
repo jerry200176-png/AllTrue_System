@@ -1,8 +1,96 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 2
+version: 3
 
 operations:
+  reviewed-monthly-accounting-correction:
+    lifecycle: active
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-monthly-manifest
+    eligibility_policy: operations/policies/reviewed-monthly-correction.json
+    founder_approval_required: true
+    runbook: docs/OPERATIONS_RUNBOOK.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: false
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: single_student_contract
+    estimated_duration: 10m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\MonthlyAccountingCorrectionStrategy
+    parameter_keys: [campus_id, source_course_id, input, confirmation_token, decision_reference]
+    tags: [repair, monthly, contract, billing]
+    notes: Exact-case eligibility only; empty policy denies every request. An authenticated database approval is mandatory; Git merge is not approval. No HTTP execute route. Rollback reverses contract split and voids new invoice; verified cash correction and all receipt history remain.
+
+  monthly-accounting-correction:
+    lifecycle: planned
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [director, super_admin]
+    approval_policy: critical-dual-approval
+    founder_approval_required: true
+    runbook: docs/OPERATIONS_RUNBOOK.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: false
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: single_student_contract
+    estimated_duration: 10m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\MonthlyAccountingCorrectionStrategy
+    parameter_keys: [campus_id, source_course_id, input, confirmation_token, decision_reference]
+    tags: [repair, monthly, contract, billing]
+    notes: Planned only; Founder-reviewed cash evidence and date correction required. No HTTP execute route. Rollback reverses contract split and voids new invoice; verified cash correction and all receipt history remain.
+
+  monthly-contract-split:
+    lifecycle: planned
+    domain: billing-entitlement
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [director, super_admin]
+    approval_policy: critical-dual-approval
+    founder_approval_required: true
+    runbook: docs/OPERATIONS_RUNBOOK.md
+    alert_group: LINE:ops-data
+    escalation_policy: billing-entitlement-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: single_student_contract
+    estimated_duration: 5m
+    invariant_packs: [billing-entitlement-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\MonthlyContractSplitStrategy
+    parameter_keys: [campus_id, source_course_id, input, confirmation_token, decision_reference]
+    tags: [repair, monthly, contract, billing]
+    notes: Planned only. Activate after Founder GO for the reviewed repair manifest; no HTTP execute route. Existing payments and receipts stay unchanged.
+
   course-contract-repair:
     lifecycle: active
     domain: billing-entitlement

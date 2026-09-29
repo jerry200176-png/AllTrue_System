@@ -1,15 +1,14 @@
 <template>
-  <div class="teachers-page">
-  <div class="card teachers-card">
+  <div class="teachers-page at-page">
     <AtPageHeader
       title="老師管理"
       description="管理老師資料、分校配置與登入帳號操作。"
-      icon="groups"
+      icon="badge"
       data-guide="teachers-header"
     >
       <template #meta>
-        <span>共 {{ teachers.length }} 位</span>
-        <span>目前列表 {{ filteredTeachers.length }} 位</span>
+        <span>共 {{ teachersLoaded ? teachers.length : '—' }} 位</span>
+        <span>目前列表 {{ teachersLoaded ? filteredTeachers.length : '—' }} 位</span>
       </template>
       <template #actions>
         <AtButton variant="ghost" shape="rect" icon="upload_file" @click="openBulkModal">批次新增老師</AtButton>
@@ -17,11 +16,12 @@
       </template>
     </AtPageHeader>
 
+  <div class="card teachers-card">
     <div class="teachers-view-tabs" role="tablist" aria-label="老師狀態">
-      <div class="tabs">
-        <button id="teachers-tab-active" type="button" role="tab" aria-controls="teachers-panel-active" :aria-selected="tab === 'active'" :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
-        <button id="teachers-tab-pending" type="button" role="tab" aria-controls="teachers-panel-pending" :aria-selected="tab === 'pending'" :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span></button>
-        <button id="teachers-tab-suspended" type="button" role="tab" aria-controls="teachers-panel-suspended" :aria-selected="tab === 'suspended'" :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span></button>
+      <div class="tabs at-tabs">
+        <button id="teachers-tab-active" type="button" role="tab" aria-controls="teachers-panel-active" :aria-selected="tab === 'active'" :class="['at-tab', { active: tab === 'active' }]" @click="tab = 'active'">正式老師</button>
+        <button id="teachers-tab-pending" type="button" role="tab" aria-controls="teachers-panel-pending" :aria-selected="tab === 'pending'" :class="['at-tab', { active: tab === 'pending' }]" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span></button>
+        <button id="teachers-tab-suspended" type="button" role="tab" aria-controls="teachers-panel-suspended" :aria-selected="tab === 'suspended'" :class="['at-tab', { active: tab === 'suspended' }]" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span></button>
       </div>
     </div>
 
@@ -29,15 +29,6 @@
       <div class="filter-item filter-item-search">
         <label for="teachers-search">搜尋（姓名／電話）</label>
         <input id="teachers-search" v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
-      </div>
-      <div class="filter-item">
-        <label for="teachers-status-filter">狀態</label>
-        <select id="teachers-status-filter" v-model="filterStatus" @change="loadTeachers">
-          <option value="">全部</option>
-          <option value="active">在職</option>
-          <option value="pending">待審核</option>
-          <option value="suspended">停用</option>
-        </select>
       </div>
       <div class="filter-item">
         <label for="teachers-subject-filter">科目</label>
@@ -525,7 +516,6 @@ const showBulkModal = ref(false);
 const editingId = ref(null);
 const tab = ref('active');
 const searchQ = ref('');
-const filterStatus = ref('');
 const filterSubjectId = ref('');
 const selectedTeacherIds = ref([]);
 const selectedTeacherIdSet = computed(() => new Set(selectedTeacherIds.value.map(String)));
@@ -988,11 +978,9 @@ const bulkParseSummary = computed(() => {
 
 const filteredTeachers = computed(() => {
     // #145：原本只有 active/pending 兩條路徑，停用(suspended)老師被隱藏。
-    // 狀態下拉（含「停用」）若有選取則優先生效；否則依分頁（含新增的停用分頁）。
+    // 狀態只由上方分頁決定（已移除重複的「狀態」下拉）。
     let list;
-    if (filterStatus.value) {
-      list = teachers.value.filter(t => t.status === filterStatus.value);
-    } else if (tab.value === 'suspended') {
+    if (tab.value === 'suspended') {
       list = teachers.value.filter(t => t.status === 'suspended');
     } else if (tab.value === 'active') {
       list = teachers.value.filter(t => t.status === 'active');
@@ -1019,7 +1007,6 @@ const filteredTeachers = computed(() => {
 
 const hasTeacherFilters = computed(() => Boolean(
   searchQ.value.trim()
-  || filterStatus.value
   || filterSubjectId.value
   || selectedTeacherIds.value.length > 0
   || tab.value !== 'active'
@@ -1068,7 +1055,6 @@ const loadTeachers = async () => {
     params.set('per_page', 'all');
     if (props.branchId != null) params.set('branch_id', String(props.branchId));
     if (searchQ.value.trim()) params.set('q', searchQ.value.trim());
-    if (filterStatus.value) params.set('status', filterStatus.value);
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/teachers?${params}`, { headers });
     const data = await res.json().catch(() => ({}));
@@ -1095,7 +1081,6 @@ const loadTeachers = async () => {
 
 const clearTeacherFilters = () => {
   searchQ.value = '';
-  filterStatus.value = '';
   filterSubjectId.value = '';
   selectedTeacherIds.value = [];
   tab.value = 'active';
@@ -1643,8 +1628,9 @@ watch(showBulkModal, (opened) => {
 .teachers-view-tabs {
   display: flex;
   align-items: center;
-  margin-bottom: var(--ds-space-3);
-  border-bottom: 1px solid var(--ds-hairline);
+}
+.teachers-view-tabs > .tabs {
+  flex: 1;
 }
 
 .teacher-summary {
@@ -1985,26 +1971,6 @@ watch(showBulkModal, (opened) => {
 .teachers-insights-disclosure__body { display: grid; gap: 12px; padding: 0 13px 13px; }
 .teachers-insights-disclosure .teacher-chips-row { margin: 0; }
 .teachers-insights-disclosure .teacher-summary { margin: 0; }
-
-.tabs {
-    display: flex;
-    gap: 8px;
-}
-.tabs button {
-    background: var(--ds-canvas-soft);
-    border: 1px solid var(--ds-hairline);
-    border-radius: 10px;
-    padding: 8px 12px;
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--ds-ink-mute);
-}
-.tabs button.active {
-    border-color: var(--ds-primary);
-    color: var(--ds-primary-deep);
-    background: var(--ds-primary-wash);
-    font-weight: 700;
-}
 
 .bulk-result-actions {
   display: flex;

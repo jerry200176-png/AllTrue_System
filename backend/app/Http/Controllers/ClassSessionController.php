@@ -10,6 +10,7 @@ use App\Models\LearningRecord;
 use App\Models\LearningRecordTeacherChange;
 use App\Models\Notification;
 use App\Models\Schedule;
+use App\Models\SecurityAuditEvent;
 use App\Models\ScheduleAuditLog;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -830,9 +831,6 @@ class ClassSessionController extends Controller
         }
 
         $schedule = $schedules->first();
-        if (!$schedule instanceof Schedule) {
-            return null;
-        }
 
         return $this->scheduleExceptionSlot($schedule);
     }
@@ -1975,152 +1973,170 @@ class ClassSessionController extends Controller
         );
     }
 
-    /**
-     * POST /api/v1/class-sessions/{id}/reassign-contract
-     *
-     * Contract renewal pain point (student 洪睿淵 case; prior art:
-     * RFC_COURSE_CONTINUITY.md #1382 — that RFC links renewed contracts for a
-     * unified view but deliberately never moves session/evaluation history).
-     *
-     * Moves a single ClassSession to a different StudentClass contract so its
-     * already-filled LearningRecord "belongs" to the new contract without the
-     * teacher re-filling anything. LearningRecord's content (Progress etc.)
-     * is never rewritten, but its denormalized StudentClassID mirror IS kept
-     * in sync (see LearningRecordDriftCheck) so billing/approval queries
-     * elsewhere don't lose track of it.
-     * Route is super_admin-only (highest admin tier, same convention as
-     * `role:super_admin` admin/campus-management routes).
-     */
+    private const REASSIGN_STATUSES = ['attended', 'completed', 'late', 'absent', 'leave', 'scheduled', 'cancelled'];
+
+    /** @return array<string, mixed> */
+    private function contractMoveSummary(StudentClass $c): array
+    {
+        $closed = (int) $c->getAttribute('Stop') === 1 || $c->isUsageSettlementLocked() || trim((string) $c->getAttribute('closed_reason')) !== '';
+
+        return [
+            'id' => (int) $c->getKey(),
+            'start_date' => substr((string) $c->getAttribute('StartDate'), 0, 10) ?: null,
+            'end_date' => substr((string) $c->getAttribute('EndDate'), 0, 10) ?: null,
+            'session_count' => (int) $c->getAttribute('SessionCount'),
+            'used_sessions' => (int) $c->getAttribute('UsedSessions'),
+            'remaining_sessions' => (int) $c->getAttribute('RemainingSessions'),
+            'closed' => $closed,
+        ];
+    }
+
     /**
      * GET /api/v1/class-sessions/{id}/reassign-contract-targets
      *
-     * Lists the group-linked StudentClass contracts a super_admin may reassign
-     * this ClassSession onto (same student+subject, linked via
-     * course_contract_group, excluding the session's current contract).
-     * Colocated with reassignContract() since it exists only to populate
-     * that endpoint's target dropdown — same eligibility rules, read-only.
+     * Same-student + same-subject contracts (closed ones flagged `closed`) this session can move onto.
      */
-    public function reassignContractTargets(int $id): \Illuminate\Http\JsonResponse
+    public function reassignContractTargets(Request $request, int $id)
     {
-        $session = ClassSession::find($id);
-        if (!$session) {
-            return response()->json(['message' => '找不到該堂次'], 404);
+        $found = $this->findAccessibleSession($request, $id);
+        if ($found instanceof \Symfony\Component\HttpFoundation\Response) {
+            return $found;
         }
-
-        $old = StudentClass::where('ID', $session->StudentClassID)->first();
-        if (!$old) {
-            return response()->json(['message' => '找不到堂次目前所屬的課程合約'], 404);
-        }
-
-        $groupIds = CourseContractGroupMember::where('student_class_id', $old->ID)
-            ->whereNull('unlinked_at')
-            ->pluck('group_id');
-
-        $targetIds = $groupIds->isEmpty() ? collect() : CourseContractGroupMember::whereIn('group_id', $groupIds)
-            ->whereNull('unlinked_at')
-            ->where('student_class_id', '!=', $old->ID)
-            ->pluck('student_class_id')
-            ->unique();
-
-        $targets = $targetIds->isEmpty() ? collect() : StudentClass::whereIn('ID', $targetIds)
-            ->where('StudentID', $old->StudentID)
-            ->where('SubjectID', $old->SubjectID)
+        [, $old] = $found;
+        $targets = StudentClass::query()->where('StudentID', $old->getAttribute('StudentID'))
+            ->where('SubjectID', $old->getAttribute('SubjectID'))
+            ->where('ID', '!=', $old->getKey())
+            ->orderBy('StartDate')
             ->get();
 
-        $teacherNames = DB::table('User')->whereIn('id', $targets->pluck('TeacherID'))->pluck('Name', 'id');
-        $subjectNames = DB::table('Subject')->whereIn('id', $targets->pluck('SubjectID'))->pluck('Subject_Name', 'id');
-
         return response()->json([
-            'data' => $targets->map(fn (StudentClass $t) => [
-                'id' => (int) $t->ID,
-                'subject_id' => (int) $t->SubjectID,
-                'subject_name' => $subjectNames[$t->SubjectID] ?? null,
-                'teacher_id' => (int) $t->TeacherID,
-                'teacher_name' => $teacherNames[$t->TeacherID] ?? null,
-                'remaining_sessions' => $t->RemainingSessions !== null ? (int) $t->RemainingSessions : null,
-            ])->values(),
+            'data' => $targets->map(fn (StudentClass $t) => $this->contractMoveSummary($t))->values(),
         ]);
     }
 
-    public function reassignContract(Request $request, int $id): \Illuminate\Http\JsonResponse
+    /**
+     * POST /api/v1/class-sessions/{id}/reassign-contract  (director + super_admin, campus-scoped)
+     *
+     * Moves one session (+ sign-in / ledger / learning record) to another contract of the same
+     * student+subject, closed ones included (raw query builder: Eloquent guards block settled
+     * contracts). Counters via SessionDeductionService; money untouched. `dry_run` rolls back after
+     * computing before/after. Moving back is the undo.
+     */
+    public function reassignContract(Request $request, int $id)
     {
         $data = $request->validate([
             'new_student_class_id' => 'required|integer|min:1',
             'reason' => 'required|string|max:255',
+            'dry_run' => 'sometimes|boolean',
         ]);
+        $reason = trim($data['reason']);
+        if ($reason === '') {
+            return response()->json(['message' => '請填寫改派原因'], 422);
+        }
+        $dryRun = (bool) ($data['dry_run'] ?? false);
 
-        $session = ClassSession::find($id);
-        if (!$session) {
-            return response()->json(['message' => '找不到該堂次'], 404);
+        $found = $this->findAccessibleSession($request, $id);
+        if ($found instanceof \Symfony\Component\HttpFoundation\Response) {
+            return $found;
         }
 
-        return DB::transaction(function () use ($request, $data, $session) {
-            $old = StudentClass::where('ID', $session->StudentClassID)->lockForUpdate()->first();
+        DB::beginTransaction();
+        try {
+            $session = ClassSession::query()->where('id', $id)->lockForUpdate()->first();
+            $oldId = (int) ($session->StudentClassID ?? 0);
+            $newId = (int) $data['new_student_class_id'];
+            $contracts = StudentClass::query()->whereIn('ID', [$oldId, $newId])->orderBy('ID')->lockForUpdate()->get()->keyBy('ID');
+            $old = $contracts->get($oldId);
+            $new = $contracts->get($newId);
+
+            $error = null;
             if (!$old) {
-                return response()->json(['message' => '找不到堂次目前所屬的課程合約'], 404);
+                $error = '找不到堂次目前所屬的課程合約';
+            } elseif (!$new) {
+                $error = '找不到目標課程合約';
+            } elseif ($newId === $oldId) {
+                $error = '目標課程合約與目前課程合約相同，無需改派。';
+            } elseif ((int) $new->getAttribute('StudentID') !== (int) $old->getAttribute('StudentID') || (int) $new->getAttribute('SubjectID') !== (int) $old->getAttribute('SubjectID')) {
+                $error = '新舊課程合約的學生或科目不一致，拒絕改派。';
+            } elseif (!in_array(strtolower((string) $session->Status), self::REASSIGN_STATUSES, true)) {
+                $error = '此堂次狀態（' . $session->Status . '）不支援改派合約。';
+            } elseif (strtolower((string) $session->Status) !== 'cancelled' && ClassSession::query()->where('StudentClassID', $newId)
+                ->whereDate('SessionDate', $session->SessionDate)
+                ->where('StartTime', $session->StartTime)
+                ->where('id', '!=', $session->id)
+                ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'cancelled'))
+                ->exists()) {
+                $error = '目標合約同一日期／時段已有其他有效堂次，拒絕改派。';
+            }
+            if ($error) {
+                DB::rollBack();
+
+                return response()->json(['message' => $error], 422);
             }
 
-            $new = StudentClass::where('ID', $data['new_student_class_id'])->lockForUpdate()->first();
-            if (!$new) {
-                return response()->json(['message' => '找不到目標課程合約'], 422);
+            $before = ['old' => $this->contractMoveSummary($old), 'new' => $this->contractMoveSummary($new)];
+            $stops = [$oldId => $old->getAttribute('Stop'), $newId => $new->getAttribute('Stop')];
+
+            DB::table('ClassSession')->where('id', $session->id)->update(['StudentClassID' => $newId, 'updated_at' => now()]);
+            DB::table('StudentSingIn')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);
+            DB::table('session_deduction_ledger')->where('class_session_id', $session->id)->update(['student_class_id' => $newId]);
+            DB::table('LearningRecord')->where('ClassSessionID', $session->id)->update(['StudentClassID' => $newId]);
+            ClassSession::resetSettlementLockCache();
+
+            SessionDeductionService::recomputeCounters($oldId);
+            SessionDeductionService::recomputeCounters($newId);
+            foreach ($stops as $cid => $stop) {
+                DB::table('StudentClass')->where('ID', $cid)->update(['Stop' => $stop]);
+            }
+            $after = [
+                'old' => $this->contractMoveSummary(StudentClass::query()->where('ID', $oldId)->first()),
+                'new' => $this->contractMoveSummary(StudentClass::query()->where('ID', $newId)->first()),
+            ];
+
+            $warnings = [];
+            foreach (['old' => '原', 'new' => '目標'] as $k => $label) {
+                $rem = $after[$k]['remaining_sessions'];
+                if (($after[$k]['closed'] && $rem > 0) || (!$after[$k]['closed'] && $rem < 0)) {
+                    $warnings[] = "{$label}合約 #{$after[$k]['id']} " . ($rem > 0 ? "已結束但仍剩 {$rem} 堂" : '剩餘堂數為負') . '，請確認。';
+                }
             }
 
-            if ((int) $new->ID === (int) $old->ID) {
-                return response()->json(['message' => '目標課程合約與目前課程合約相同，無需改派。'], 422);
+            if ($dryRun) {
+                DB::rollBack();
+                ClassSession::resetSettlementLockCache();
+            } else {
+                $actorId = optional($request->attributes->get('auth_user'))->id;
+                ClassSessionReassignment::create([
+                    'class_session_id' => $session->id,
+                    'old_student_class_id' => $oldId,
+                    'new_student_class_id' => $newId,
+                    'reason' => $reason,
+                    'performed_by' => $actorId,
+                    'created_at' => now(),
+                ]);
+                SecurityAuditEvent::append('class_session.contract_reassigned', 'success', [
+                    'actor_type' => 'user', 'actor_id' => $actorId,
+                    'subject_type' => 'class_session', 'subject_id' => $session->id,
+                    'campus_id' => (int) Student::query()->where('id', $old->getAttribute('StudentID'))->value('CampusID'),
+                ], ['reason_hash' => sha1($reason), 'source' => "sc{$oldId}->sc{$newId}"]);
+                DB::commit();
             }
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            ClassSession::resetSettlementLockCache();
+            throw $e;
+        }
 
-            if ((int) $new->StudentID !== (int) $old->StudentID || (int) $new->SubjectID !== (int) $old->SubjectID) {
-                return response()->json(['message' => '新舊課程合約的學生或科目不一致，拒絕改派。'], 422);
-            }
-
-            $oldGroupIds = CourseContractGroupMember::where('student_class_id', $old->ID)
-                ->whereNull('unlinked_at')
-                ->pluck('group_id');
-            $linked = $oldGroupIds->isNotEmpty() && CourseContractGroupMember::whereIn('group_id', $oldGroupIds)
-                ->where('student_class_id', $new->ID)
-                ->whereNull('unlinked_at')
-                ->exists();
-            if (!$linked) {
-                return response()->json([
-                    'message' => '新舊課程合約未透過課程延續群組建立關聯，拒絕改派。',
-                ], 422);
-            }
-
-            try {
-                $session->StudentClassID = $new->ID;
-                $session->save(); // fires assertCourseIsMutable() against the new contract
-            } catch (ValidationException $e) {
-                return response()->json(['message' => implode('；', $e->validator->errors()->all())], 422);
-            }
-
-            ClassSessionReassignment::create([
-                'class_session_id' => $session->id,
-                'old_student_class_id' => $old->ID,
-                'new_student_class_id' => $new->ID,
-                'reason' => $data['reason'],
-                'performed_by' => optional($request->attributes->get('auth_user'))->id,
-                'created_at' => now(),
-            ]);
-
-            // LearningRecord content (Progress etc.) is never touched — it stays
-            // bound to the same ClassSession.id. But StudentClassID is a
-            // denormalized mirror of ClassSession.StudentClassID (see
-            // LearningRecordDriftCheck), relied on by billing/approval queries
-            // across StudentClassController — must stay in sync, same as the
-            // existing transfer-sessions endpoint (StudentClassController::transferSessions).
-            LearningRecord::where('ClassSessionID', $session->id)->getQuery()
-                ->update(['StudentClassID' => $new->ID]);
-
-            SessionDeductionService::recomputeCounters((int) $old->ID);
-            SessionDeductionService::recomputeCounters((int) $new->ID);
-
-            return response()->json([
-                'message' => '已將堂次改派至新課程合約，剩餘堂數已更新。',
-                'class_session_id' => (int) $session->id,
-                'old_student_class_id' => (int) $old->ID,
-                'new_student_class_id' => (int) $new->ID,
-            ]);
-        });
+        return response()->json([
+            'message' => $dryRun ? '預覽' : '已將堂次改派至新課程合約，堂數已更新。',
+            'dry_run' => $dryRun,
+            'class_session_id' => (int) $id,
+            'old_student_class_id' => $oldId,
+            'new_student_class_id' => $newId,
+            'before' => $before,
+            'after' => $after,
+            'warnings' => $warnings,
+        ]);
     }
 
     /**
@@ -2374,7 +2390,7 @@ class ClassSessionController extends Controller
             );
             $crossConflicts = array_values(array_filter(
                 $allBusy,
-                static fn ($c) => (int) ($c['campus_id'] ?? 0) > 0 && (int) $c['campus_id'] !== (int) $campusId
+                static fn ($c) => (int) ($c['campus_id']) > 0 && (int) $c['campus_id'] !== (int) $campusId
             ));
             if (!empty($crossConflicts)) {
                 Log::info('[substitute] cross_campus_conflict', [
@@ -2383,7 +2399,7 @@ class ClassSessionController extends Controller
                     'session_date' => $sessionDate,
                     'conflict_count' => count($crossConflicts),
                     'conflict_campus_ids' => array_values(array_unique(array_filter(array_map(
-                        static fn ($conflict) => (int) ($conflict['campus_id'] ?? 0),
+                        static fn ($conflict) => (int) ($conflict['campus_id']),
                         $crossConflicts
                     )))),
                 ]);

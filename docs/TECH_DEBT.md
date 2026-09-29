@@ -756,6 +756,48 @@
 
 ## Open
 
+### TD-086 — NotificationSyncService 每次同步重寫全部通知列（P1，收件匣 ~11s 主因）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Partially paid（2026-09-29：建議做法 (1)(2) 已做；(3) 同步移出請求路徑、(4) 減少 eager load 仍 Open） |
+| 優先級 | P1 |
+| 發現日期 | 2026-09-29 |
+| 發現來源 | 收件匣首載 ~11s 效能調查 |
+| 影響模組 | `NotificationSyncService::sync`、`NotificationController::sync/unreadCount` |
+| 描述 | 各 `build*Notifications` 皆設 `'OccurredAt' => now()`，`$existing->fill()` 後每列必為 dirty → 每次同步對「所有」活躍通知各 UPDATE 一次（含 updated_at）；另全表載入 StudentClass（with student/subjectRecord/coursePackage）。`POST notifications/sync` 無節流；側欄 `GET notifications/unread-count` 內含節流同步（300s），開機時多個 `refreshUnreadNotifications` 併發都 miss cache，等於同時多次同步。 |
+| 建議做法 | (1) 既有列保留原 OccurredAt（僅新建時 now()），並以內容 hash／Payload 比對決定是否 save；(2) `POST sync` 與 unread-count 共用同一個 cache 冷卻與 `Cache::lock`（併發只跑一次）；(3) 同步移出請求路徑（排程／queue，讀取端只讀）；(4) 只選必要欄位／chunk，減少 eager load。 |
+| 清償成本估計 | 中（需 PHPUnit 保護「解除／重開／更新」語意，OccurredAt 顯示排序需確認） |
+| 不做的代價 | 收件匣與每個分校開機都背負全表寫入，資料越多越慢 |
+
+### TD-087 — App.vue 開機徽章刷新重複觸發且串行（P2）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Partially resolved（in-flight 去重＋徽章並行已做；`ensureDirectorBranches` 不阻塞 loading 未做） |
+| 優先級 | P2 |
+| 發現日期 | 2026-09-29 |
+| 發現來源 | 同上 |
+| 影響模組 | `frontend/src/App.vue` `refreshUnreadNotifications`、`onMounted` |
+| 描述 | onMounted 先串行 `getSession → fetchProfile → ensureDirectorBranches` 才 `loading=false`；`refreshUnreadNotifications` 由 onMounted、`watch(currentBranch)`、`watch([session, role])`、輪詢各觸發一次，內部 7 個 merge*Badge 以 await 串行。 |
+| 建議做法 | 合併／去重（in-flight promise 共用）、merge*Badge 改 Promise.allSettled、`ensureDirectorBranches` 不阻塞 loading。 |
+| 清償成本估計 | 小～中 |
+| 不做的代價 | 每頁開機多餘往返；與 TD-086 疊加放大 |
+
+### TD-088 — 其他頁 3–5 秒資料載入未逐頁量測（P3）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-09-29 |
+| 發現來源 | 同上 |
+| 影響模組 | StudentsList、CourseManagement、TuitionCollectionPage、SmartCalendar |
+| 描述 | 尚無逐端點耗時證據（不可對正式環境量測）；共用因素為 App 開機序列與側欄同步搶佔 DB。 |
+| 建議做法 | 先做 TD-086/087，再以 staging 或 slow-query log／APM 逐端點取證，再決定索引或快取。 |
+| 清償成本估計 | 視取證而定 |
+| 不做的代價 | 盲目加索引／快取 |
+
 ### TD-082 — 非帳務畫面仍有技術／英文 UI 文案（P2）
 
 | 欄位 | 內容 |

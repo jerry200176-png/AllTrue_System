@@ -199,6 +199,98 @@ class ContractAmendmentTest extends TestCase
         $this->assertSame(8, (int) $course->fresh()->SessionCount);
     }
 
+    public function test_revert_restores_contract_and_cancelled_sessions_then_rejects_second_revert(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $course = $this->course($this->student()->id, ['SessionCount' => 8, 'RemainingSessions' => 8, 'UsedSessions' => 0, 'EndDate' => '2026-12-31']);
+            $keep = $this->createClassSession($course->ID, '2026-09-20', 'scheduled');
+            $future = $this->createClassSession($course->ID, '2026-09-27', 'scheduled');
+            $url = "/api/v1/student-classes/{$course->ID}/contract-amendment";
+            $this->withToken($token)->postJson($url, ['new_session_count' => 1, 'reason' => '調整'])->assertOk();
+            $this->assertSame('cancelled', ClassSession::find($future->id)->Status);
+
+            $this->withToken($token)->postJson("$url/revert/preview")->assertOk()
+                ->assertJsonPath('restored_session_count', 8)
+                ->assertJsonPath('restorable_sessions_count', 1)
+                ->assertJsonPath('unscheduled_remaining_sessions', 6);
+            $this->withToken($token)->postJson("$url/revert", [])->assertStatus(422);
+            $this->withToken($token)->postJson("$url/revert", ['reason' => '誤操作'])->assertOk()
+                ->assertJsonPath('after.SessionCount', 8)
+                ->assertJsonPath('after.RemainingSessions', 8);
+
+            $course->refresh();
+            $this->assertSame(0, (int) $course->Stop);
+            $this->assertNull($course->closed_reason);
+            $this->assertSame('2026-12-31', substr((string) $course->EndDate, 0, 10));
+            $this->assertSame('contract_amendment_reverted', json_decode($course->settlement_snapshot, true)['kind']);
+            $restored = ClassSession::find($future->id);
+            $this->assertSame('scheduled', $restored->Status);
+            $this->assertSame('', trim((string) $restored->Note));
+            $this->assertSame('scheduled', ClassSession::find($keep->id)->Status);
+            $this->assertSame(1, DB::table('security_audit_events')->where('event_type', 'student_class.contract_amendment_reverted')->count());
+
+            $this->withToken($token)->postJson("$url/revert", ['reason' => '再撤銷'])->assertStatus(409);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_revert_rejects_drifted_contract(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $course = $this->course($this->student()->id, ['SessionCount' => 4, 'RemainingSessions' => 2, 'UsedSessions' => 2]);
+            $url = "/api/v1/student-classes/{$course->ID}/contract-amendment";
+            $this->withToken($token)->postJson($url, ['new_session_count' => 3, 'reason' => '調整'])->assertOk();
+            $course->refresh()->update(['RemainingSessions' => 0]);
+
+            $this->withToken($token)->postJson("$url/revert", ['reason' => '撤銷'])->assertStatus(409)
+                ->assertJsonPath('message', '合約在調整後已有變動，無法自動撤銷，請聯絡管理員。');
+            $this->assertSame(3, (int) $course->fresh()->SessionCount);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_revert_rejects_when_cancelled_slot_is_now_occupied(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-16 10:00:00', 'Asia/Taipei'));
+        try {
+            [$token] = $this->director();
+            $student = $this->student();
+            $course = $this->course($student->id, ['SessionCount' => 4, 'RemainingSessions' => 2, 'UsedSessions' => 2]);
+            for ($i = 1; $i <= 2; $i++) {
+                $this->createClassSession($course->ID, "2026-09-0{$i}", 'attended');
+            }
+            $future = $this->createClassSession($course->ID, '2026-09-27', 'scheduled');
+            $url = "/api/v1/student-classes/{$course->ID}/contract-amendment";
+            $this->withToken($token)->postJson($url, ['new_session_count' => 2, 'reason' => '提前結束'])->assertOk();
+            $other = $this->course($student->id, ['SubjectID' => 2]);
+            $this->createClassSession($other->ID, '2026-09-27', 'scheduled');
+
+            $this->withToken($token)->postJson("$url/revert", ['reason' => '撤銷'])->assertStatus(409);
+            $course->refresh();
+            $this->assertSame(1, (int) $course->Stop);
+            $this->assertSame('contract_amended', $course->closed_reason);
+            $this->assertSame('cancelled', ClassSession::find($future->id)->Status);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_revert_is_forbidden_for_teacher_role(): void
+    {
+        $user = User::create(['LoginName' => 't-' . uniqid() . '@example.com', 'Name' => '老師', 'PSW' => 'secret', 'type' => 'T', 'phone' => '0900000001', 'MustChangePassword' => false]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        $course = $this->course($this->student()->id);
+        $this->withToken($token)->postJson("/api/v1/student-classes/{$course->ID}/contract-amendment/revert", ['reason' => 'x'])->assertStatus(403);
+    }
+
     public function test_transfer_route_remains_target_required_and_separate(): void
     {
         [$token] = $this->director();

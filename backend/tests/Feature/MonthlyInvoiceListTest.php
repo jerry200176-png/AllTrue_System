@@ -95,6 +95,22 @@ class MonthlyInvoiceListTest extends TestCase
         $this->assertSame([], $res->json('invoices'));
     }
 
+    public function test_course_list_does_not_show_september_as_paid_by_august_payment(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $course = $this->createMonthlyCourse($student->id);
+        $course->update(['Paid' => 1, 'StartDate' => '2026-08-01', 'EndDate' => '2026-09-30']);
+        foreach (['2026-08' => 4800, '2026-09' => 0] as $period => $paid) {
+            Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID,
+                'IssueDate' => $period . '-01', 'billing_period' => $period,
+                'TotalAmount' => 4800, 'PaidAmount' => $paid, 'Status' => $paid ? 'paid' : 'unpaid']);
+        }
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson('/api/v1/student-classes?student_id=' . $student->id);
+        $response->assertOk()->assertJsonPath('data.0.payment_status', 'unpaid');
+    }
+
     public function test_list_invoices_is_campus_isolated(): void
     {
         $campus1Token = $this->createDirectorToken([1], 'dir-campus1@test.com');

@@ -32,7 +32,7 @@ for (const width of [390, 1440]) {
     await dismissOverlays(page);
     await expect(page.getByRole('alert').filter({ hasText: '載入待點名堂次失敗' })).toBeVisible();
     state.fail = false;
-    await page.getByRole('button', { name: '重新整理今日堂次', exact: true }).click();
+    await page.getByRole('button', { name: '重新整理', exact: true }).click();
     await expect(page.locator('.att-page')).toContainText('隔離測試學生');
     await expect(page.getByRole('alert').filter({ hasText: '載入待點名堂次失敗' })).toHaveCount(0);
     const heights = await page.locator('.att-page button:visible').evaluateAll(bs => bs.map(b => b.getBoundingClientRect().height));

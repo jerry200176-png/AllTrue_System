@@ -57,7 +57,7 @@ class ScheduleDiscrepancyNotifier
 
     private static function buildMessage(string $campusName, string $reporterName, ScheduleDiscrepancy $d): string
     {
-        $typeLabel = ScheduleDiscrepancy::TYPE_LABELS[$d->discrepancy_type] ?? $d->discrepancy_type;
+        $typeLabel = ScheduleDiscrepancy::typeLabel($d->getAttribute('discrepancy_type'));
         $date = $d->session_date ? $d->session_date->format('Y-m-d') : '';
         $time = $d->time_range ?: '';
         $subject = $d->subject ?: '';

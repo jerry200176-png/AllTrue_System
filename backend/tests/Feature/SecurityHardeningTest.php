@@ -96,6 +96,32 @@ class SecurityHardeningTest extends TestCase
         return [$token, $user];
     }
 
+    public function test_expired_bearer_token_is_rejected_and_deleted(): void
+    {
+        [$token] = $this->makeDirectorToken();
+        $record = AuthToken::where('token', $token)->firstOrFail();
+        $record->update(['expires_at' => now()->subMinute()]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson('/api/v1/me')
+            ->assertStatus(401)
+            ->assertJsonPath('message', 'Token expired');
+        $this->assertDatabaseMissing('auth_tokens', ['id' => $record->id]);
+    }
+
+    public function test_future_and_legacy_null_expiry_bearer_tokens_remain_valid(): void
+    {
+        foreach ([now()->addDay(), null] as $expiresAt) {
+            [$token] = $this->makeDirectorToken();
+            $record = AuthToken::where('token', $token)->firstOrFail();
+            $record->update(['expires_at' => $expiresAt]);
+
+            $this->withHeaders(['Authorization' => "Bearer {$token}"])
+                ->getJson('/api/v1/me')->assertOk();
+            $this->assertDatabaseHas('auth_tokens', ['id' => $record->id]);
+        }
+    }
+
     // ─── SEC-002 / FR-001: auth/register throttle ─────────────────────────────
 
     /** @test */
@@ -166,11 +192,11 @@ class SecurityHardeningTest extends TestCase
     // ─── SEC-006 / FR-004: swipe-rfid throttle ────────────────────────────────
 
     /** @test */
-    public function swipe_rfid_throttle_blocks_after_30_requests(): void
+    public function swipe_rfid_throttle_blocks_after_120_requests(): void
     {
         $this->clearThrottle();
 
-        for ($i = 1; $i <= 30; $i++) {
+        for ($i = 1; $i <= 120; $i++) {
             $res = $this->withHeaders(['Authorization' => 'Bearer sec-test-token-abc'])
                 ->postJson('/api/v1/swipe-rfid', [
                     'branch_code' => (string) $this->campus->id,
@@ -182,7 +208,7 @@ class SecurityHardeningTest extends TestCase
         $this->withHeaders(['Authorization' => 'Bearer sec-test-token-abc'])
             ->postJson('/api/v1/swipe-rfid', [
                 'branch_code' => (string) $this->campus->id,
-                'rfid'        => 'RFID-31',
+                'rfid'        => 'RFID-121',
             ])->assertStatus(429);
     }
 

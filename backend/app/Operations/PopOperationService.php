@@ -16,7 +16,7 @@ final class PopOperationService
     private const ACTOR_PATTERN = '/^[A-Za-z0-9:_-]{1,128}$/';
     private const REFERENCE_PATTERN = '/^[A-Za-z0-9_.:#\/-]{3,128}$/';
 
-    public function __construct(private readonly PopOperationCatalog $catalog)
+    public function __construct(private readonly PopOperationCatalog $catalog, private readonly ?string $eligibilityPath = null, private readonly ?string $deploymentManifestPath = null)
     {
     }
 
@@ -39,6 +39,12 @@ final class PopOperationService
         $this->assertCampusScope($normalized, $actorRole, $actorCampusIds);
         $hash = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
         $contextHash = $this->contextHash($context);
+        if ($this->isReviewedMonthly($entry)) {
+            if ($actorRole !== 'super_admin' || $actorId === null || $actor !== 'user:' . $actorId) {
+                throw new RuntimeException('Reviewed monthly repair requires an authenticated human requester.');
+            }
+            $this->monthlyEligibility($entry, $hash, $idempotencyKey, $actor);
+        }
 
         return DB::transaction(function () use ($entry, $operationId, $normalized, $idempotencyKey, $actor, $actorId, $hash, $contextHash): array {
             $existing = DB::table('pop_operation_requests')
@@ -117,7 +123,10 @@ final class PopOperationService
         }
         $parameters = json_decode((string) $request->parameters, true, 512, JSON_THROW_ON_ERROR);
         $this->assertCampusScope($parameters, $approverRole, $approverCampusIds);
-        if ($approverId !== null && (string) $request->actor === 'user:' . $approverId) {
+        $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
+        if ($this->isReviewedMonthly($entry)) {
+            $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
+        } elseif ($approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
         $dryRun = $this->latest($request, 'dry-run');
@@ -128,10 +137,15 @@ final class PopOperationService
             throw new RuntimeException('POP request catalog version is stale; create a new draft.');
         }
 
-        return DB::transaction(function () use ($requestId, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles): array {
+        return DB::transaction(function () use ($requestId, $entry, $approvalReference, $approver, $approverRole, $commitSha, $approverId, $ttlMinutes, $parameters, $requiredRoles): array {
             $locked = DB::table('pop_operation_requests')->where('id', $requestId)->lockForUpdate()->first();
             if (!$locked) {
                 throw new RuntimeException('POP request not found; fail closed.');
+            }
+            $lockedParameters = json_decode((string) $locked->parameters, true, 512, JSON_THROW_ON_ERROR);
+            $this->assertRequestIntegrity($locked, $entry, $lockedParameters, null, false);
+            if ($this->isReviewedMonthly($entry)) {
+                $this->assertMonthlyApprover($locked, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
             }
             $sameRole = DB::table('pop_approval_events')
                 ->where('operation_id', $requestId)
@@ -325,9 +339,40 @@ final class PopOperationService
      */
     public function runApprovedLocally(?string $requestId = null): array
     {
-        $candidate = $requestId === null
-            ? DB::table('pop_operation_requests')->where('status', 'approved')->oldest('created_at')->first()
-            : $this->request($requestId);
+        $lockName = 'alltrue:pop:executor';
+        $lock = DB::selectOne('SELECT GET_LOCK(?, 0) AS acquired', [$lockName]);
+        if ((int) ($lock->acquired ?? 0) !== 1) {
+            return ['ok' => true, 'status' => 'busy', 'processed' => 0];
+        }
+
+        try {
+            return $this->claimApprovedLocally($requestId);
+        } finally {
+            DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [$lockName]);
+        }
+    }
+
+    private function claimApprovedLocally(?string $requestId): array
+    {
+        if ($requestId === null) {
+            $pending = DB::table('pop_operation_requests')->where('status', 'approved');
+            if (!$pending->exists()) {
+                return ['ok' => true, 'status' => 'idle', 'processed' => 0];
+            }
+            $deployedSha = $this->localDeploymentSha();
+            // Old-version or expired approvals remain immutable evidence, but
+            // must not prevent a fresh approved request from reaching its lock.
+            $candidate = $pending->whereExists(function ($query) use ($deployedSha): void {
+                $query->select(DB::raw(1))->from('pop_approval_events')
+                    ->whereColumn('operation_id', 'pop_operation_requests.id')
+                    ->where('event_type', 'approved')
+                    ->where('commit_sha', $deployedSha)
+                    ->whereNotNull('token_hash')->where('token_hash', '<>', '')
+                    ->where('expires_at', '>', now());
+            })->oldest('created_at')->first();
+        } else {
+            $candidate = $this->request($requestId);
+        }
         if (!$candidate) {
             return ['ok' => true, 'status' => 'idle', 'processed' => 0];
         }
@@ -459,6 +504,9 @@ final class PopOperationService
         if (!hash_equals((string) $request->parameters_hash, $parametersHash)) {
             throw new RuntimeException('POP request parameters hash drifted; fail closed.');
         }
+        if ($this->isReviewedMonthly($entry)) {
+            $this->monthlyEligibility($entry, $parametersHash, (string) $request->idempotency_key, (string) $request->actor);
+        }
         $storedContextHash = (string) ($request->context_hash ?? '');
         if ($validateContext) {
             $contextHash = $this->contextHash($context);
@@ -513,6 +561,23 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($this->isReviewedMonthly($entry)
+            && $policy === 'founder-exact-monthly-manifest'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MonthlyAccountingCorrectionStrategy::class
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'single_student_contract'
+            && ($entry['reversible'] ?? null) === false
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         $isFounderScopedRepair = $policy === 'founder-explicit-single-repair'
             && ($entry['id'] ?? null) === 'course-contract-repair'
             && ($entry['founder_approval_required'] ?? false) === true
@@ -532,11 +597,81 @@ final class PopOperationService
     /** @param array<string,mixed> $entry */
     private function assertFounderApprovalReference(array $entry, string $reference): void
     {
-        if (($entry['approval_policy'] ?? null) !== 'founder-explicit-single-repair') {
+        if (($entry['approval_policy'] ?? null) !== 'founder-explicit-single-repair' && ($entry['founder_approval_required'] ?? false) !== true) {
             return;
         }
         if (!str_starts_with(strtolower($reference), 'founder-go-')) {
             throw new RuntimeException('Founder-scoped POP approval requires a founder-go reference; fail closed.');
+        }
+    }
+
+    /** Eligibility is policy, never approval: an authenticated DB event is still required. */
+    private function isReviewedMonthly(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'reviewed-monthly-accounting-correction';
+    }
+
+    /** @return array<string,mixed> */
+    private function monthlyEligibility(array $entry, string $parametersHash, string $key, string $requester): array
+    {
+        $this->approvalRoles($entry);
+        if (($entry['eligibility_policy'] ?? null) !== 'operations/policies/reviewed-monthly-correction.json') {
+            throw new RuntimeException('Reviewed monthly eligibility policy is unavailable.');
+        }
+        $path = $this->eligibilityPath ?? dirname(base_path()) . '/' . $entry['eligibility_policy'];
+        $policy = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $cases = is_array($policy) ? ($policy['eligible_cases'] ?? null) : null;
+        if (($policy['version'] ?? null) === 1 && $cases === []) {
+            throw new RuntimeException('Reviewed monthly repair has no active eligible case.');
+        }
+        if (($policy['version'] ?? null) !== 1 || !is_array($cases) || !array_is_list($cases) || count($cases) !== 1) {
+            throw new RuntimeException('Reviewed monthly policy must contain exactly one eligible case.');
+        }
+        $case = $cases[0];
+        $fields = ['parameters_sha256', 'idempotency_sha256', 'requester_sha256', 'approver_sha256', 'approval_reference', 'valid_until'];
+        if (!is_array($case) || array_diff(array_keys($case), $fields) !== [] || array_diff($fields, array_keys($case)) !== []) {
+            throw new RuntimeException('Reviewed monthly eligibility tuple is malformed.');
+        }
+        foreach (array_slice($fields, 0, 4) as $field) {
+            if (!is_string($case[$field]) || !preg_match('/^[0-9a-f]{64}$/', $case[$field])) {
+                throw new RuntimeException('Reviewed monthly eligibility digest is malformed.');
+            }
+        }
+        try {
+            $expiry = is_string($case['valid_until']) ? Carbon::parse($case['valid_until']) : null;
+        } catch (Throwable) {
+            throw new RuntimeException('Reviewed monthly eligibility expiry is malformed.');
+        }
+        if (!hash_equals($case['requester_sha256'], $case['approver_sha256']) || !$expiry
+            || $expiry->utc()->format('Y-m-d\TH:i:s\Z') !== $case['valid_until']
+            || $expiry->timestamp <= now()->timestamp
+            || $case['approval_reference'] !== 'founder-go-monthly-' . substr($parametersHash, 0, 16)
+            || !hash_equals($case['parameters_sha256'], $parametersHash)
+            || !hash_equals($case['idempotency_sha256'], hash('sha256', $key))
+            || !hash_equals($case['requester_sha256'], hash('sha256', $requester))) {
+            throw new RuntimeException('Reviewed monthly request is outside the eligible case or time window.');
+        }
+        return $case;
+    }
+
+    private function assertMonthlyApprover(object $request, array $entry, string $actor, string $role, ?int $id, string $reference, int $ttl = 0): void
+    {
+        $case = $this->monthlyEligibility($entry, (string) $request->parameters_hash, (string) $request->idempotency_key, (string) $request->actor);
+        if ($role !== 'super_admin' || $id === null || $actor !== 'user:' . $id
+            || !hash_equals($case['approver_sha256'], hash('sha256', $actor))
+            || $reference !== $case['approval_reference']
+            || now()->addMinutes($ttl)->timestamp > Carbon::parse($case['valid_until'])->timestamp) {
+            throw new RuntimeException('Reviewed monthly approval does not match the authenticated case owner or window.');
+        }
+    }
+
+    /** @param array<int,object> $approvals */
+    private function assertMonthlyApprovalEvents(object $request, array $entry, array $approvals): void
+    {
+        if (!$this->isReviewedMonthly($entry)) return;
+        foreach ($approvals as $approval) {
+            $this->assertMonthlyApprover($request, $entry, (string) $approval->approver, (string) $approval->approver_role,
+                $approval->approver_id === null ? null : (int) $approval->approver_id, (string) $approval->approval_reference);
         }
     }
 
@@ -568,6 +703,7 @@ final class PopOperationService
             ->where('operation_id', $request->id)
             ->where('event_type', 'approved')
             ->get();
+        $this->assertMonthlyApprovalEvents($request, $entry, $approvals->all());
         $approvedRoles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
         if (array_diff($requiredRoles, $approvedRoles) !== []) {
             return null;
@@ -598,6 +734,7 @@ final class PopOperationService
             ->where('operation_id', $request->id)
             ->where('event_type', 'approved')
             ->get();
+        $this->assertMonthlyApprovalEvents($request, $entry, $approvals->all());
         $roles = $approvals->pluck('approver_role')->map(fn ($role): string => (string) $role)->unique()->values()->all();
         $commits = $approvals->pluck('commit_sha')->map(fn ($sha): string => (string) $sha)->unique()->values()->all();
         $approval = $approvals->first(fn ($row): bool => (string) $row->token_hash !== '');
@@ -627,12 +764,22 @@ final class PopOperationService
 
     private function assertLocalDeployment(string $commitSha): void
     {
-        $path = base_path('public/deployment.json');
-        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
-        $deployedSha = is_array($manifest) ? (string) ($manifest['backend_sha'] ?? '') : '';
-        if (!preg_match(self::COMMIT_SHA_PATTERN, $deployedSha) || !hash_equals(strtolower($commitSha), strtolower($deployedSha))) {
+        $deployedSha = $this->localDeploymentSha();
+        if (!hash_equals(strtolower($commitSha), $deployedSha)) {
             throw new RuntimeException('POP local executor deployment SHA does not match approval; fail closed.');
         }
+    }
+
+    private function localDeploymentSha(): string
+    {
+        $path = $this->deploymentManifestPath ?? base_path('public/deployment.json');
+        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $deployedSha = is_array($manifest) ? (string) ($manifest['backend_sha'] ?? '') : '';
+        if (!preg_match(self::COMMIT_SHA_PATTERN, $deployedSha)) {
+            throw new RuntimeException('POP local executor deployment SHA does not match approval; fail closed.');
+        }
+
+        return strtolower($deployedSha);
     }
 
     /** @return array<string,mixed> */

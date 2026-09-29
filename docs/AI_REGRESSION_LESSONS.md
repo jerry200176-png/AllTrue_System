@@ -492,6 +492,10 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R26. 月結續報與堂數額度不可混在同一語意
 
+**2026-09-29 收費及續約預覽補充（in-app #369，待部署）**：零已上課不能與「完全缺歷史」共用預排金額 fallback。有明確 scheduled／cancelled／leave 等資料但沒有 attended/completed/late 的本期，未繳且無實收帳單投影為零；已收款 audit amount、明訂跨月週期及共用方案保留。Renew preview/execute 必須共用新起日、以起日取 billing month，短月結算日 clamp 月底；來源合約日期外已有已上堂次時先核對，不自動續建或搬移。估算不可標為實收；尚未載入、錯誤、blocked 或日期不同的 preview 不得提交。根因為既有月結實際費用 fallback 與續約日期權威分散的 UX／邏輯缺口；回歸覆蓋零堂轉 attended、月底、跨月 preview/execute 一致與越界 blocked，不能把單筆人工修復當成預防。
+
+**2026-09-29 跨期補充（待部署）**：月結 `Paid=1` 不能證明下一期已收款；付款依帳單服務期間核對，非日曆月結算週期與合法多期帳單不得被自動拆分。已收款期間延長走續報；歷史堂次拆分需保留 ID、出勤、評量、扣堂與實收，經不可變清單與 Founder GO 執行。缺少正式付款歸屬只能列待確認，不能猜測主任操作或自動修復。
+
 - 月結續報若延長原 `StudentClass`，舊期已繳與新期待繳會混在同一課程，主任無法判斷哪一期已結算。
 - 堂數制若直接列出所有有效 `ClassSession`，購買 8 堂也可能看到第 9 堂，造成家長對帳與少收費風險。
 - **強制規則**：月結續報必須建立新一期課程並結算舊期；堂數 chip 序號只給購買額度內堂次，`IsContractException=1` 顯示為例外堂，超出 `SessionCount` 的非例外堂必須顯示為超排異常。
@@ -731,6 +735,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   2. 「已排程」的證據 = 執行 log，不是 `schedule:list` 輸出、不是程式碼。
   3. `pi-health.yml` §3b 心跳檢查（schedule.log 10 分鐘內必須有更新）為此的自動防線，不得移除。
   4. 心跳只證明 driver 活著，不能證明每個任務完成；每個排程任務必須保留私有 output 與 PII-free completion ledger，並由 `scheduler:evidence-summary` 在次日 health check 驗證「每任務恰好一次、成功、輸出可解析」及對應 aggregate postcondition。
+  5. POP 2026-09-29 實例：driver 心跳正常，但 FPM 所有的 file-cache mutex 目錄阻塞 cron；以 `sha1('framework/schedule-' + sha1(expression + command))` 對上 health 的不可寫路徑才確認根因。POP 既有 MySQL claim lock 保留，避免重複執行；舊版本／過期 DB 核准不得擋住新版本的精確核准，不修改或借用舊核准。
 - **測試必補**：pi-health scheduler 心跳 critical（本條隨 #1127 併入）。
 
 ---
@@ -1489,6 +1494,9 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R119. 未收款課程堂數更正必須走具名流程，不得放寬一般契約鎖定（GitHub #1901，2026-08-22）
 
+- **月結調課鏈核對（2026-09-29）**：拆約須保留同一期完整調課鏈及原始 ID／內容；核對原堂次狀態、學生、分校、合約、期間和所有入／出連結，拒絕跨期、斷鏈、循環及範圍外連結。完整鏈與外部連結識別納入 signed graph，預覽後新增連結須使簽章失效；不可只刪掉調課鏈 guard，或以 API 未列出關聯推定沒有關聯。
+
+- **月結更正補充（2026-09-29）**：必須用 authenticated preview 核對來源與目標的父帳單明細，不得由合約摘要推定來源沒有 InvoiceItem。單一 null-owner 明細可在父帳單歸屬、原金額與期間一致時簽章綁定 ID，沿用該 ID 更正並保留原始 audit snapshot；多項或其他 owner 仍拒絕。這不授權一般編輯繞過契約鎖定或修復核准。
 - **現象**：洪睿淵理化課實際應收 7 堂，但課程已產生扣堂紀錄且仍維持 8 堂；一般編輯回 `billing_contract_locked`，主任無法產生正確 7 堂／7,700 元收據。
 - **根因層級**：F1／F7 的流程架構缺口——契約鎖定正確保護歷史，但缺少「尚未收款的錯誤購買堂數」安全更正邊界；若直接移除 guard，會讓已收款或已使用額度也能被追溯改寫。
 - **強制規則**：只允許 director／super_admin 更正未收款、非共用、按堂課程；無有效 Payment、無 pending／confirmed PaymentReport；新堂數不得低於 observed used；金額必須等於單堂費率×新堂數。保留已上課／ledger，僅取消超額 scheduled，重算餘額並寫 PII-minimized audit。

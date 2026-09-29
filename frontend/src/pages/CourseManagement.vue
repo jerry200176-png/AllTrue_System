@@ -1,5 +1,5 @@
 <template>
-  <div class="course-page">
+  <div class="course-page at-page">
     <AtPageHeader
       title="課程查找"
       description="查找課程、編輯月結日期與新增堂次，都在這一頁完成。"
@@ -7,12 +7,32 @@
       data-guide="course-mgmt-header"
     >
       <template #meta>
-        <span>目前列表 {{ groupedCourses.length }} 位學生</span>
+        <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
         <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
-        <span class="course-lens-badge">唯讀營運視圖</span>
+      </template>
+      <template #help>
+        <AtHelpDisclosure label="先看懂這一頁">
+          <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
+          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
+            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
+            <div>
+              <strong>這一頁適合查找與分流</strong>
+              <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
+            </div>
+          </div>
+
+          <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
+            <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
+              <span class="course-lens-metric__label">{{ metric.label }}</span>
+              <strong class="course-lens-metric__value">{{ metric.value }}</strong>
+              <span class="course-lens-metric__hint">{{ metric.hint }}</span>
+            </article>
+          </div>
+        </AtHelpDisclosure>
       </template>
       <template #actions>
-        <AtButton class="course-lens-primary-action" shape="rect" variant="primary" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
+        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="emit('navigate', 'students')">到學生管理新增課程</AtButton>
+        <AtButton class="course-lens-nav-action" shape="rect" variant="ghost" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
         <details class="course-tools-menu">
           <summary class="btn-soft course-tools-menu__summary">
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
@@ -33,32 +53,6 @@
     </AtPageHeader>
 
     <div class="card course-header-card">
-
-      <details class="course-context-disclosure">
-        <summary>
-          <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span class="course-context-disclosure__title">先看懂這一頁</span>
-          <span class="course-context-disclosure__hint">查找、排課與營運；建立、續報與購買請從學生管理進入</span>
-          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
-        </summary>
-        <div class="course-context-disclosure__body">
-          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
-            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
-            <div>
-              <strong>這一頁適合查找與分流</strong>
-              <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
-            </div>
-          </div>
-
-          <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
-            <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
-              <span class="course-lens-metric__label">{{ metric.label }}</span>
-              <strong class="course-lens-metric__value">{{ metric.value }}</strong>
-              <span class="course-lens-metric__hint">{{ metric.hint }}</span>
-            </article>
-          </div>
-        </div>
-      </details>
 
       <!-- Filters -->
       <div class="filter-bar grid" data-guide="course-mgmt-filters">
@@ -253,12 +247,6 @@
               @click.stop="selectStudentGroupTab(group, 'billing', $event)"
             >帳務資料</button>
           </div>
-          <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
-            <button type="button" class="btn-soft student-group-add-btn" data-testid="student-group-goto-students" @click="emit('navigate', { target: 'students', studentId: group.student_id, intent: 'create' })">
-              <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_add</span>
-              到學生管理新增課程
-            </button>
-          </div>
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'"
             :id="studentGroupPanelId(group.key, 'courses')"
@@ -420,7 +408,7 @@
                           v-if="canCloseCourse(c)"
                           class="small ghost course-settle-action"
                           title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒"
-                          @click="goToStudentsCommercial(c, 'close')"
+                          @click="closeCourseInPlace(c)"
                         >結束課程（不再續課）</button>
                         <button
                           v-if="isManualOccurrenceCourse(c)"
@@ -479,12 +467,13 @@
                               @click="openCommercialPurchaseEntry(c); closeActionMenu()"
                             ><span class="material-symbols-outlined action-icon" aria-hidden="true">shopping_cart</span> {{ purchaseActionLabel(c) }}</button>
                             <button class="action-dropdown-item action-dropdown-adjustment" role="menuitem" title="依情境選擇更正未付款堂數或轉移已上課紀錄" @click="openContractAdjustmentModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">edit_note</span> 合約／堂次調整</button>
+                            <button v-if="effectiveClosedReason(c) === 'contract_amended'" class="action-dropdown-item" role="menuitem" title="還原提前結束／調整合約總堂數" @click="openContractRevertModal(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">undo</span> 撤銷調整</button>
                             <p class="action-section-label">其他操作</p>
                             <button class="action-dropdown-item" role="menuitem" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">content_copy</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">pause_circle</span> 暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" role="menuitem" @click="requestCoursePause(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">play_circle</span> 恢復課程</button>
-                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒" @click="goToStudentsCommercial(c, 'close'); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結束課程（不再續課）</button>
+                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" role="menuitem" title="保留已上課與付款紀錄，停止這門課的後續排課與續課提醒" @click="closeCourseInPlace(c); closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">check_circle</span> 結束課程（不再續課）</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" role="menuitem" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="material-symbols-outlined action-icon" aria-hidden="true">delete</span> 刪除課程</button>
@@ -1053,6 +1042,16 @@
       @choose="chooseContractAdjustment"
     />
 
+    <ContractAmendmentRevertModal
+      :show="showContractRevertModal"
+      :course="contractRevertCourse"
+      :preview="contractRevertPreview"
+      :loading-preview="contractRevertLoading"
+      :submitting="contractRevertSubmitting"
+      :error-message="contractRevertError"
+      @close="showContractRevertModal = false"
+      @submit="submitContractRevert"
+    />
     <ContractAmendmentModal
       :show="showContractAmendmentModal"
       :course="contractAmendmentCourse"
@@ -1182,6 +1181,8 @@
       @check="runQuickAddCheck"
     />
 
+    <MonthlyCorrectionPreviewModal :show="monthlyCorrectionShow" :candidates="monthlyCorrectionCandidates" :form="monthlyCorrectionForm" :preview="monthlyCorrectionPreview"
+      :blocked="monthlyCorrectionBlocked" :loading="monthlyCorrectionLoading" :error="monthlyCorrectionError" @close="closeMonthlyCorrection" @check="checkMonthlyCorrection" @invalidate="invalidateMonthlyCorrection" />
     <ManualSessionModal
       :show="showManualSessionModal"
       :form="manualSessionForm"
@@ -1194,6 +1195,7 @@
       @check="runManualSessionCheck"
       @submit="submitManualSession"
       @edit-course="editManualSessionCourse"
+      @next-period="selectNextMonthlyContract"
     />
 
     <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
@@ -1515,8 +1517,10 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { supabase } from '../supabase';
+import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
@@ -1526,8 +1530,8 @@ import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '..
 import {
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
-  getRenewalPreviewAmount,
 } from '../lib/coursePricing';
+import { applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -1557,6 +1561,10 @@ import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
+import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
+import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
+import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
+import { monthlyPaymentLabel } from '../lib/monthlyPaymentDisplay.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
   buildBillingCorrectionBlockedState,
@@ -1567,6 +1575,7 @@ import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
+import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import ManualSessionModal from '../components/course-management/ManualSessionModal.vue';
 import CourseSessionCalendar from '../components/course-management/CourseSessionCalendar.vue';
@@ -1682,8 +1691,34 @@ const goToStudentsCommercial = (course, intent = 'edit') => {
   emit('navigate', buildStudentsCommercialNav(course, { intent }));
 };
 
+function courseRemainingSessionsForClose(course) {
+  const value = Number(course?.remaining_sessions ?? course?.RemainingSessions);
+  return Number.isFinite(value) ? value : null;
+}
+
+function courseIsSettledForClose(course) {
+  const paymentStatus = String(course?.payment_status || '').toLowerCase();
+  if (paymentStatus === 'paid') return true;
+  const paid = Number(course?.Paid ?? course?.paid);
+  const charge = Number(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
+  if (Number.isFinite(paid) && Number.isFinite(charge)) return paid >= charge && charge > 0;
+  return Number.isFinite(paid) && paid > 0;
+}
+
+function closeCourseInPlace(course) {
+  return runCloseCourseNoRenew({
+    course,
+    studentName: course?.student_name || course?.student?.name,
+    getRemainingSessions: courseRemainingSessionsForClose,
+    getSubjectLabel,
+    isCourseSettled: courseIsSettledForClose,
+    supabase,
+    reloadCourses: () => loadCourses(pagination.value.page),
+  });
+}
+
 const courses = ref([]);
-const coursesLoading = ref(false);
+const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
 let courseLoadRequestId = 0;
 const allStudents = ref([]);
 const teachers = ref([]);
@@ -2442,6 +2477,12 @@ const contractAmendmentPreview = ref(null);
 const contractAmendmentPreviewLoading = ref(false);
 const contractAmendmentSubmitting = ref(false);
 const contractAmendmentError = ref('');
+const showContractRevertModal = ref(false);
+const contractRevertCourse = ref(null);
+const contractRevertPreview = ref(null);
+const contractRevertLoading = ref(false);
+const contractRevertSubmitting = ref(false);
+const contractRevertError = ref('');
 const billingCorrectionCourse = ref(null);
 const billingCorrectionSubmitting = ref(false);
 const billingCorrectionForm = ref({ new_session_count: 1, new_charge: 0, reason: '' });
@@ -2598,6 +2639,51 @@ async function submitContractAmendment({ newSessionCount, reason }) {
     contractAmendmentError.value = error?.message || '合約調整失敗。';
   } finally {
     contractAmendmentSubmitting.value = false;
+  }
+}
+
+async function contractRevertRequest(path, body) {
+  const { data: { session: sess } } = await supabase.auth.getSession();
+  const token = sess?.access_token;
+  if (!token) throw new Error('登入狀態已失效，請重新登入。');
+  const res = await fetch(`/api/v1/student-classes/${contractRevertCourse.value.id}/contract-amendment/revert${path}`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '撤銷調整失敗。');
+  return data;
+}
+
+async function openContractRevertModal(course) {
+  contractRevertCourse.value = course;
+  contractRevertPreview.value = null;
+  contractRevertError.value = '';
+  showContractRevertModal.value = true;
+  contractRevertLoading.value = true;
+  try {
+    contractRevertPreview.value = await contractRevertRequest('/preview', {});
+  } catch (error) {
+    contractRevertError.value = error?.message || '無法預覽撤銷調整。';
+  } finally {
+    contractRevertLoading.value = false;
+  }
+}
+
+async function submitContractRevert(reason) {
+  if (contractRevertSubmitting.value) return;
+  contractRevertSubmitting.value = true;
+  contractRevertError.value = '';
+  try {
+    const body = await contractRevertRequest('', { reason });
+    showContractRevertModal.value = false;
+    await loadCourses();
+    toastRef.value?.show?.({ title: '已撤銷調整', description: body?.message, variant: 'success', durationMs: 7000 });
+  } catch (error) {
+    contractRevertError.value = error?.message || '撤銷調整失敗。';
+  } finally {
+    contractRevertSubmitting.value = false;
   }
 }
 
@@ -2834,6 +2920,12 @@ const quickAddSessionForm = ref({
   subject: 'Math',
 });
 const showManualSessionModal = ref(false);
+const {
+  show: monthlyCorrectionShow, candidates: monthlyCorrectionCandidates, form: monthlyCorrectionForm, preview: monthlyCorrectionPreview,
+  blocked: monthlyCorrectionBlocked, loading: monthlyCorrectionLoading, error: monthlyCorrectionError, open: openMonthlyCorrection,
+  close: closeMonthlyCorrection, check: checkMonthlyCorrection, invalidate: invalidateMonthlyCorrection,
+} = useMonthlyCorrectionPreview();
+const pendingMonthlyBooking = ref(null);
 const manualSessionCourse = ref(null);
 const manualSessionCheck = ref(null);
 const manualSessionChecking = ref(false);
@@ -2958,6 +3050,7 @@ function onCourseManagerAction({ name, payload } = {}) {
   const map = {
     pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),
     close: () => goToStudentsCommercial(c, 'close'), delete: () => { confirmDeleteTarget.value = c; },
+    'monthly-correction': () => openMonthlyCorrection(c),
     'manual-session': () => openManualSessionModal(c), 'monthly-session': () => openMonthlySessionModal(c),
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
     'retry-sessions': () => retryLoadCourseSessions(c),
@@ -3165,6 +3258,7 @@ function purchaseActionTitle(c) {
 }
 
 function openPurchaseModal(course) {
+  pendingMonthlyBooking.value = null;
   // Local only for trial convert-trial and package set-total (distinct semantics from students purchase-batch).
   if (!isSessionMode(course)) {
     renewMonthlyCourse.value = course;
@@ -3225,7 +3319,10 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (!token || !course?.id) return;
+    if (!token || !course?.id) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
+      return;
+    }
     const currentEnd = course?.end_date || course?.EndDate || null;
     let endDate = requestedEndDate;
     if (!endDate) {
@@ -3239,7 +3336,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
         endDate = d.toISOString().slice(0, 10);
       }
     }
-    renewMonthlyForm.value.preview_end_date = endDate;
+    invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
@@ -3251,7 +3348,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
       body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
     });
     const json = await res.json().catch(() => ({}));
-    if (res.ok && showRenewMonthlyModal.value && canApplyRenewalPreview({
+    if (showRenewMonthlyModal.value && canApplyRenewalPreview({
       requestId,
       currentRequestId: renewMonthlyPreviewRequestId.value,
       courseId: course.id,
@@ -3259,14 +3356,17 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
       requestedEndDate: endDate,
       currentEndDate: renewMonthlyForm.value.preview_end_date,
     })) {
-      if (Array.isArray(json.warnings)) {
-        renewMonthlyWarnings.value = json.warnings;
+      if (res.ok || json.severity === 'blocked') {
+        renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
+        applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
+      } else {
+        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: json.message || '無法取得期間預覽，請重試。' });
       }
-      const amount = getRenewalPreviewAmount(json);
-      if (amount != null) renewMonthlyForm.value.original_amount = amount;
     }
   } catch {
-    /* preview is advisory only */
+    if (requestId === renewMonthlyPreviewRequestId.value && course?.id === renewMonthlyCourse.value?.id) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '無法取得期間預覽，請檢查連線後重試。' });
+    }
   }
 }
 
@@ -3276,6 +3376,7 @@ function refreshRenewMonthlyPreview(endDate) {
 
 function closeRenewMonthlyModal() {
   if (renewMonthlySubmitting.value) return;
+  pendingMonthlyBooking.value = null;
   renewMonthlyPreviewRequestId.value += 1;
   showRenewMonthlyModal.value = false;
   renewMonthlyCourse.value = null;
@@ -3435,6 +3536,10 @@ async function submitPurchaseSessions() {
 
 async function submitRenewMonthly(endDate) {
   if (renewMonthlySubmitting.value) return;
+  if (!canSubmitMonthlyRenewal(renewMonthlyForm.value, endDate)) {
+    alert('請先完成新一期期間預覽與月結核對。');
+    return;
+  }
   const course = renewMonthlyCourse.value;
   if (!course?.id) return;
   if (!endDate) {
@@ -3479,6 +3584,16 @@ async function submitRenewMonthly(endDate) {
       durationMs: 7000,
     });
     await loadCourses();
+    const pending = pendingMonthlyBooking.value;
+    pendingMonthlyBooking.value = null;
+    if (pending && newCourse.id) {
+      try {
+        const nextCourse = await loadNextMonthlyContract({ source: pending.source, targetId: Number(newCourse.id), date: pending.form.session_date, token });
+        openManualSessionModal(nextCourse, { date: pending.form.session_date, start_time: pending.form.start_time });
+      } catch (error) {
+        alert(`新一期已建立；${error.message}。請從新合約排課，勿再次續約。`);
+      }
+    }
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
   } finally {
@@ -3667,6 +3782,31 @@ function closeManualSessionModal() {
 
 function openMonthlySessionModal(course) {
   openManualSessionModal(course);
+}
+
+async function selectNextMonthlyContract(targetId) {
+  const source = manualSessionCourse.value;
+  if (!source || manualSessionChecking.value || manualSessionSubmitting.value || !manualSessionCheck.value?.next_period) return;
+  const form = { ...manualSessionForm.value };
+  if (!targetId) {
+    closeManualSessionModal();
+    openPurchaseModal(source);
+    pendingMonthlyBooking.value = { source, form };
+    return;
+  }
+  if (!manualSessionCheck.value.next_period.candidates.some((candidate) => Number(candidate.id) === Number(targetId))) return;
+  manualSessionSubmitting.value = true;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const nextCourse = await loadNextMonthlyContract({ source, targetId: Number(targetId), date: form.session_date, token: session?.access_token });
+    if (!showManualSessionModal.value || manualSessionCourse.value !== source || manualSessionForm.value.session_date !== form.session_date) return;
+    closeManualSessionModal();
+    openManualSessionModal(nextCourse, { date: form.session_date, start_time: form.start_time });
+  } catch (error) {
+    manualSessionCheck.value = { can_add: false, message: error.message };
+  } finally {
+    manualSessionSubmitting.value = false;
+  }
 }
 
 function editManualSessionCourse() {
@@ -4524,6 +4664,7 @@ const courseLensMetrics = computed(() => {
 const paymentStatusButtonClass = (course) => {
   if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
   if (isTutoringCourse(course)) return 'tag-no-payment';
+  if (course?.monthly_payment?.review_required || course?.payment_status === 'review_required') return 'tag-pending-report';
   if (course?.payment_status === 'paid') return 'tag-paid';
   if (course?.payment_status === 'pending_report') return 'tag-pending-report';
   return 'tag-unpaid';
@@ -4535,6 +4676,8 @@ const currentInvoiceForBillingRow = (row) => {
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
+  if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
+  if (course?.payment_status === 'review_required') return '付款期間待確認';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
   if (course?.payment_status === 'partial') return '部分繳';
@@ -5794,11 +5937,7 @@ onUnmounted(() => {
 
 <style scoped>
 .course-page {
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 12px 24px;
-  box-sizing: border-box;
+  padding-bottom: 24px;
   position: relative;
 }
 /* ----- Page header ----- */
@@ -5823,7 +5962,7 @@ onUnmounted(() => {
   grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 42px;
+  min-height: 34px;
   padding: 0 12px;
   color: var(--ds-ink-secondary);
   font-size: 12px;
@@ -5870,41 +6009,8 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.course-lens-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 3px 9px;
-  border: 1px solid var(--ds-primary);
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-primary-wash);
-  color: var(--ds-primary-deep);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
 
-.course-lens-primary-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 40px;
-  padding: 9px 14px;
-  border: 1px solid var(--ds-cta);
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-cta);
-  color: var(--ds-on-cta);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition);
-}
 
-.course-lens-primary-action:hover {
-  border-color: var(--ds-cta-hover);
-  background: var(--ds-cta-hover);
-}
 
 .course-lens-guidance {
   display: flex;
@@ -6275,7 +6381,6 @@ onUnmounted(() => {
   color: var(--ds-primary-deep);
 }
 
-.course-lens-primary-action:focus-visible,
 .course-filter-clear:focus-visible,
 .btn-soft:focus-visible {
   outline: 3px solid var(--ds-focus-ring);
@@ -6397,9 +6502,6 @@ onUnmounted(() => {
   .header-buttons {
     width: 100%;
     justify-content: flex-start;
-  }
-  .course-lens-primary-action {
-    margin-right: auto;
   }
   .course-lens-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6651,14 +6753,6 @@ onUnmounted(() => {
   vertical-align: middle;
 }
 
-.student-group-add-row {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 8px 12px 6px;
-  background: var(--ds-canvas-soft);
-  border-bottom: 1px solid var(--ds-hairline);
-}
 
 .student-group-view-tabs {
   display: flex;
@@ -6709,10 +6803,6 @@ onUnmounted(() => {
 }
 .student-billing-note .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-warning); font-size: 18px; }
 
-.student-group-add-btn {
-  font-size: 12.5px;
-  font-weight: 600;
-}
 
 .group-table-wrap {
   border-top: 1px solid var(--border);
@@ -7808,9 +7898,6 @@ button.danger:disabled {
     padding: 16px;
   }
 
-  .course-lens-primary-action {
-    width: 100%;
-  }
 
   .course-lens-summary {
     gap: 8px;
@@ -8960,7 +9047,6 @@ button.danger:disabled {
   background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
   border-color: #334155;
 }
-[data-theme="dark"] .student-group-add-row,
 [data-theme="dark"] .empty-active-courses {
   background: rgba(15, 23, 42, 0.88);
 }

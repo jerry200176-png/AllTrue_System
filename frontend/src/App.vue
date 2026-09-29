@@ -153,59 +153,46 @@
       </nav>
 
       <div class="sidebar-footer">
-        <div class="user-block">
-          <div class="user-avatar">
-            <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" class="user-avatar-image" />
-            <span v-else>{{ avatarLetter }}</span>
-          </div>
-          <div>
-            <div class="user-name">{{ userProfile?.username || session?.user?.name || 'User' }}</div>
-            <div class="user-role">{{ roleLabel }}</div>
-            <div v-if="role === 'super_admin'" class="user-role-hint">可檢視所有分校</div>
-            <div
-              v-if="showStaffModeSwitch"
-              class="staff-mode-switch"
-              data-guide="app-staff-mode-switch"
-            >
-              <div class="branch-switcher-label">工作身分</div>
-              <div class="branch-buttons">
-                <button
-                  type="button"
-                  class="branch-btn"
-                  :class="{ active: role === 'director' }"
-                  @click="switchStaffMode('director')"
-                >主任</button>
-                <button
-                  type="button"
-                  class="branch-btn"
-                  :class="{ active: role === 'teacher' }"
-                  @click="switchStaffMode('teacher')"
-                >老師</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-if="isDirector" class="branch-switcher" data-guide="app-branch-switcher">
-          <div class="branch-switcher-label">切換分校</div>
+        <!-- 使用者名稱／身分已在右上角帳號選單顯示；側欄只留切換用的控制項。 -->
+        <div
+          v-if="showStaffModeSwitch"
+          class="staff-mode-switch"
+          data-guide="app-staff-mode-switch"
+        >
+          <div class="branch-switcher-label">工作身分</div>
           <div class="branch-buttons">
             <button
-              v-for="b in branches"
-              :key="b.id"
-              :class="['branch-btn', { active: currentBranch === b.id }]"
-              @click="currentBranch = b.id"
-            >{{ b.name.split('(')[0].trim() }}</button>
+              type="button"
+              class="branch-btn"
+              :class="{ active: role === 'director' }"
+              @click="switchStaffMode('director')"
+            >主任</button>
+            <button
+              type="button"
+              class="branch-btn"
+              :class="{ active: role === 'teacher' }"
+              @click="switchStaffMode('teacher')"
+            >老師</button>
           </div>
         </div>
-        <div v-else-if="isTeacher && teacherBranches.length > 1" class="branch-switcher" data-guide="app-branch-switcher">
-          <div class="branch-switcher-label">切換分校</div>
-          <div class="branch-buttons">
-            <button
-              v-for="b in teacherBranches"
+        <div
+          v-if="sidebarBranchOptions.length > 1"
+          class="branch-switcher"
+          data-guide="app-branch-switcher"
+          v-show="!sidebarCollapsed"
+        >
+          <label class="branch-switcher-label" for="sidebar-branch-select">目前分校</label>
+          <select
+            id="sidebar-branch-select"
+            v-model="currentBranch"
+            class="branch-select"
+          >
+            <option
+              v-for="b in sidebarBranchOptions"
               :key="b.id"
-              :class="['branch-btn', { active: currentBranch === b.id }]"
-              @click="currentBranch = b.id"
-            >{{ b.name.split('(')[0].trim() }}</button>
-          </div>
+              :value="b.id"
+            >{{ b.name.split('(')[0].trim() }}</option>
+          </select>
         </div>
 
       </div>
@@ -229,7 +216,7 @@
       >
         <div class="sidebar-more-header">
           <div>
-            <span class="sidebar-more-kicker">全域搜尋 · ⌘K</span>
+            <span class="sidebar-more-kicker">全域搜尋 · {{ globalSearchShortcutLabel }}</span>
             <h2 id="sidebar-more-title">更多功能</h2>
           </div>
           <button
@@ -365,9 +352,17 @@
     <div class="main-content">
       <div class="main-topbar">
         <span
+          v-if="role === 'super_admin'"
           class="build-stamp-bar"
           :title="`部署時間 ${buildTimeDisplay}`"
         >建置 {{ buildTimeDisplay }}</span>
+        <button
+          v-if="activeSidebarMoreLabel && !dashboardReturnContext"
+          type="button"
+          class="more-breadcrumb"
+          :aria-label="`回到更多功能（目前：${activeSidebarMoreLabel}）`"
+          @click="toggleSidebarMore"
+        >更多功能 <span aria-hidden="true">›</span> <strong>{{ activeSidebarMoreLabel }}</strong></button>
         <button
           v-if="dashboardReturnContext"
           type="button"
@@ -813,6 +808,7 @@
 
 <script setup>
 import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import AtSkeleton from './components/design-system/AtSkeleton.vue';
 import { supabase } from './supabase';
 import {
   branches,
@@ -867,7 +863,7 @@ const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/Parttim
 const TeacherEligibilityPage = defineAsyncComponent(() => import('./pages/TeacherEligibilityPage.vue'));
 const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
 const BranchManagementPage  = defineAsyncComponent(() => import('./pages/BranchManagementPage.vue'));
-const BranchHealthBoard     = defineAsyncComponent(() => import('./pages/BranchHealthBoard.vue'));
+const BranchHealthBoard     = defineAsyncComponent({ loader: () => import('./pages/BranchHealthBoard.vue'), loadingComponent: AtSkeleton, delay: 0 });
 const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
 const ProfileCenterPage     = defineAsyncComponent(() => import('./pages/ProfileCenterPage.vue'));
 const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPage.vue'));
@@ -2315,6 +2311,19 @@ watch(mobileMoreSearchQuery, (query) => {
 const activeInSidebarMore = computed(() => sidebarMoreGroups.value.some(
   group => group.items.some(item => item.page === active.value),
 ));
+const activeSidebarMoreLabel = computed(() => {
+  for (const group of sidebarMoreGroups.value) {
+    const item = group.items.find(i => i.page === active.value);
+    if (item) return item.label;
+  }
+  return '';
+});
+const globalSearchShortcutLabel = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌘K' : 'Ctrl+K';
+const sidebarBranchOptions = computed(() => {
+  if (isDirector.value) return branches.value;
+  if (isTeacher.value) return teacherBranches.value;
+  return [];
+});
 const sidebarMoreBadgeCount = computed(() => sidebarMoreGroups.value.reduce(
   (sum, group) => sum + group.items.reduce((groupSum, item) => groupSum + getItemBadgeCount(item), 0),
   0,
@@ -2847,15 +2856,37 @@ async function onFeedbackQueueChanged() {
   await refreshUnreadNotifications();
 }
 
-async function refreshUnreadNotifications() {
+// Mount, branch/role watchers and the poll all call this; share one in-flight run and
+// re-run once afterwards if another call arrived meanwhile (so a branch switch is not lost).
+let badgeRefreshInFlight = null;
+let badgeRefreshAgain = false;
+function refreshUnreadNotifications() {
+  if (badgeRefreshInFlight) {
+    badgeRefreshAgain = true;
+    return badgeRefreshInFlight;
+  }
+  badgeRefreshInFlight = (async () => {
+    try {
+      do {
+        badgeRefreshAgain = false;
+        await runBadgeRefresh();
+      } while (badgeRefreshAgain);
+    } finally {
+      badgeRefreshInFlight = null;
+    }
+  })();
+  return badgeRefreshInFlight;
+}
+
+async function runBadgeRefresh() {
   if (!session.value?.access_token || !currentBranch.value) {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
     inboxNeedsAttentionCount.value = 0;
     badgeByType.value = {};
-    await mergeBugUnreadBadge();
-    await mergeChatUnreadBadge();
-    await mergeDirectorPendingBadge();
+    // Each merge*Badge reads-copies-writes badgeByType synchronously after its own await,
+    // so they are safe to run concurrently.
+    await Promise.allSettled([mergeBugUnreadBadge(), mergeChatUnreadBadge(), mergeDirectorPendingBadge()]);
     return;
   }
 
@@ -2872,8 +2903,7 @@ async function refreshUnreadNotifications() {
       if (notifRes.status === 401 || inboxRes.status === 401) {
         await supabase.auth.signOut();
         session.value = null;
-        await mergeBugUnreadBadge();
-        await mergeChatUnreadBadge();
+        await Promise.allSettled([mergeBugUnreadBadge(), mergeChatUnreadBadge()]);
         return;
       }
       if (!notifRes.ok) throw new Error('unread-count request failed');
@@ -2902,13 +2932,15 @@ async function refreshUnreadNotifications() {
     badgeByType.value = {};
   }
 
-  await mergeBugUnreadBadge();
-  await mergeChatUnreadBadge();
-  await mergeDirectorPendingBadge();
-  await mergeTeacherAttendanceBadge();
-  await mergeScheduleDiscrepancyBadge();
-  await mergeParentFeedbackBadge();
-  await mergeTeacherLearningPendingBadge();
+  await Promise.allSettled([
+    mergeBugUnreadBadge(),
+    mergeChatUnreadBadge(),
+    mergeDirectorPendingBadge(),
+    mergeTeacherAttendanceBadge(),
+    mergeScheduleDiscrepancyBadge(),
+    mergeParentFeedbackBadge(),
+    mergeTeacherLearningPendingBadge(),
+  ]);
 }
 
 async function mergeTeacherLearningPendingBadge() {
@@ -3146,18 +3178,6 @@ function formatBuildTime(rawIso) {
   white-space: nowrap;
 }
 
-.user-role-hint {
-  font-size: 0.7rem;
-  color: #2e7d32;
-  margin-top: 2px;
-}
-.user-avatar-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center center;
-  display: block;
-}
 .nav-no-role-hint {
   padding: 12px 20px;
   font-size: 12px;
@@ -3678,6 +3698,27 @@ function formatBuildTime(rawIso) {
   cursor: pointer;
 }
 
+.more-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-canvas);
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.more-breadcrumb strong {
+  color: var(--ds-ink);
+  font-weight: 600;
+}
+
+.more-breadcrumb:hover,
+.more-breadcrumb:focus-visible,
 .dashboard-return-button:hover,
 .dashboard-return-button:focus-visible {
   border-color: var(--ds-primary);

@@ -1,8 +1,8 @@
 <template>
-  <main class="branch-health" data-testid="branch-health-board">
+  <main class="branch-health at-page" data-testid="branch-health-board">
     <AtPageHeader title="分校健康" description="總部查看各分校目前可驗證的營運訊號；這不是總分或排名。" icon="monitor_heart">
       <template #meta><span>資料更新於 <strong>{{ updatedLabel }}</strong></span></template>
-      <template #actions><AtButton shape="rect" variant="ghost" icon="refresh" :disabled="loading" @click="load">重新整理</AtButton></template>
+      <template #actions><AtButton shape="rect" variant="secondary" icon="refresh" :disabled="loading" @click="load">重新整理</AtButton></template>
     </AtPageHeader>
 
     <AtSkeleton v-if="loading" rows="6" />
@@ -12,12 +12,12 @@
     </AtInlineAlert>
 
     <template v-else>
-      <div class="branch-health__note" role="note"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>紅／黃／綠只代表已接入的證據訊號。教師流失、教師 capacity、完整續班率與家長客訴尚未接入，不會被當成正常。</span></div>
+      <div class="branch-health__note" role="note"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>顏色只根據目前系統有的資料判斷；老師流失、老師可排課量、續班率、家長客訴還沒納入。</span></div>
       <section class="branch-health__summary" aria-label="分校健康摘要">
         <AtMetric label="目前分校" :value="rows.length" delta="啟用中的分校" accent="var(--ds-primary)" />
         <AtMetric label="優先處理" :value="statusCounts.red" delta="有紅色訊號" delta-tone="negative" accent="var(--ds-danger)" />
         <AtMetric label="需要注意" :value="statusCounts.yellow" delta="有黃色訊號" delta-tone="neutral" accent="var(--ds-warning)" />
-        <AtMetric label="待接資料" :value="unavailableCount" delta="不是正常狀態" delta-tone="neutral" accent="var(--ds-info)" />
+        <AtMetric label="資料不足" :value="unavailableCount" delta="不代表正常" delta-tone="neutral" accent="var(--ds-info)" />
       </section>
 
       <AtSection title="分校健康看板">
@@ -26,7 +26,7 @@
           <div class="branch-health__table-wrap">
             <table class="branch-health__table">
               <caption class="sr-only">各分校五個營運健康維度</caption>
-              <thead><tr><th scope="col">分校</th><th v-for="dimension in dimensionOrder" :key="dimension.key" scope="col">{{ dimension.label }}</th><th scope="col">主要訊號</th></tr></thead>
+              <thead><tr><th scope="col">分校</th><th v-for="dimension in dimensionOrder" :key="dimension.key" scope="col">{{ dimension.label }}</th><th scope="col">主要狀況</th></tr></thead>
               <tbody>
                 <tr v-for="row in rows" :key="row.branch_id" :class="{ 'is-selected': selected?.branch_id === row.branch_id }" @click="select(row)">
                   <th scope="row"><AtButton shape="rect" size="sm" variant="ghost" class="branch-health__branch" @click.stop="select(row)">{{ row.branch_name }}</AtButton></th>
@@ -48,7 +48,7 @@
                   <dd><span :class="pillClass(row.dimensions?.[dimension.key])">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</span></dd>
                 </div>
               </dl>
-              <p class="branch-health__mobile-headline"><strong>主要訊號</strong>{{ row.headline || '—' }}</p>
+              <p class="branch-health__mobile-headline"><strong>主要狀況</strong>{{ row.headline || '—' }}</p>
             </article>
           </div>
         </template>
@@ -80,7 +80,7 @@ import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 
 const props = defineProps({ token: { type: String, default: '' } });
-const rows = ref([]); const selected = ref(null); const loading = ref(false); const error = ref(''); const updatedAt = ref('');
+const rows = ref([]); const selected = ref(null); const loading = ref(true); const error = ref(''); const updatedAt = ref('');
 const dimensionOrder = [{ key: 'students', label: '學生' }, { key: 'teaching', label: '教學' }, { key: 'parents', label: '家長' }, { key: 'teachers', label: '教師' }, { key: 'operations', label: '營運' }];
 const statusCounts = computed(() => rows.value.reduce((counts, row) => { const status = row.status || 'green'; counts[status] = (counts[status] || 0) + 1; return counts; }, { red: 0, yellow: 0, green: 0 }));
 const unavailableCount = computed(() => rows.value.reduce((count, row) => count + dimensionOrder.filter(({ key }) => row.dimensions?.[key]?.status === 'unavailable').length, 0));
@@ -104,7 +104,6 @@ onMounted(load);
 </script>
 
 <style scoped>
-.branch-health { max-width: 1280px; margin: 0 auto; }
 .branch-health__note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 18px; padding: 12px 14px; color: var(--ds-ink-secondary); background: var(--ds-info-wash); border: 1px solid color-mix(in srgb, var(--ds-info) 25%, transparent); border-radius: 10px; font-size: 13px; line-height: 1.6; }
 .branch-health__note .material-symbols-outlined { color: var(--ds-info); font-size: 19px; }
 .branch-health__summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
