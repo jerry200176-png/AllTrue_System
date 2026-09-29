@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-29-student-course-history
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 課程標籤區分歷史
+    summary: 學生列表標明既有歷史課程狀態，方便區分目前課程與已結束紀錄。
+    items:
+      - category: improved
+        text: 歷史課程標明已完課、已結算或待對帳，原有堂數與查閱入口保留。
+    source_refs:
+      - "alltrue:bug_report:353"
+      - "changelog:2026-09-29:student-course-history"
+
   - id: staff-2026-09-29-void-receipt-trace
     published_at: "2026-09-29"
     audiences:
