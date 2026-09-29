@@ -1372,6 +1372,75 @@ body {
   max-width: calc(100vw - var(--sidebar-w));
 }
 
+/* Canonical page shell + underline tabs (UX page-header unification).
+   Header sits on the page canvas (never inside a card); body may use cards. */
+.at-page {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.at-tabs {
+  display: flex;
+  gap: var(--ds-space-1, 4px);
+  margin-bottom: var(--ds-space-3, 12px);
+  border-bottom: 1px solid var(--ds-hairline);
+  overflow-x: auto;
+}
+
+.at-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ds-control-height-touch, 44px);
+  padding: 0 14px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ds-ink-mute);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--ds-motion-fast, 120ms) ease, border-color var(--ds-motion-fast, 120ms) ease;
+}
+
+.at-tab:hover {
+  color: var(--ds-ink);
+  background: transparent;
+}
+
+.at-tab:focus-visible {
+  outline: 3px solid var(--ds-focus-ring);
+  outline-offset: -3px;
+}
+
+.at-tab.active,
+.at-tab.is-active,
+.at-tab[aria-selected="true"] {
+  border-bottom-color: var(--ds-cta);
+  background: transparent;
+  color: var(--ds-ink);
+  font-weight: 700;
+}
+
 .page-header {
   margin-bottom: 24px;
 }
