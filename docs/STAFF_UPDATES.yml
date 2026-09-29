@@ -68,6 +68,40 @@ updates:
       - "changelog:2026-09-29:page-header-unify"
       - "changelog:2026-09-29:page-header-unify-part-2"
 
+  - id: staff-2026-09-29-plain-copy-calm-color
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 文字更白話、顏色更不刺眼
+    summary: 主任首頁與通知、分校健康看板的用詞改成白話，行事曆老師顏色不再使用紅色系。
+    items:
+      - category: improved
+        text: 主任首頁「今天要處理的事」只突顯第一項，其餘按鈕改次要樣式。
+      - category: improved
+        text: 「企業視圖」改「通知重點」、「課表可信度」改「課表正確度」、分校看板「待接資料」改「資料不足」。
+      - category: fixed
+        text: 行事曆老師配色避開紅色，不再像錯誤狀態。
+    source_refs:
+      - "changelog:2026-09-29:plain-copy-calm-color"
+
+  - id: staff-2026-09-29-page-header-unify
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 頁面頂部更簡潔一致
+    summary: 主要頁面的標題區縮短，資料表格更早出現在畫面上。
+    items:
+      - category: improved
+        text: 流程與 SOP 說明收進標題旁的 ⓘ，點開才顯示；「重新整理」按鈕、分頁樣式與頁首圖示在各頁一致。
+      - category: improved
+        text: 主任總覽移除重複的「接著處理」橫幅，軍階改為標題旁的小標籤。
+    source_refs:
+      - "changelog:2026-09-29:page-header-unify"
+
   - id: staff-2026-09-29-filters-course-lookup-clarity
     published_at: "2026-09-29"
     audiences:
