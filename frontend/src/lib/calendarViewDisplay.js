@@ -28,6 +28,16 @@ export function formatCalendarRange(start, end) {
   return `${startLabel}–${endLabel}`;
 }
 
+/**
+ * 日檢視初始捲動位置（px）：最早一堂課上方 leadHours 小時；當日無課則捲到 defaultHour。
+ * 不早於 firstHour（欄位標頭為 sticky，不計入）。
+ */
+export function dayViewScrollTop(startHours, firstHour = 8, { rowHeight = 56, leadHours = 1, defaultHour = 14 } = {}) {
+  const valid = (startHours || []).filter(Number.isFinite);
+  const target = (valid.length ? Math.min(...valid) - leadHours : defaultHour);
+  return Math.max(0, target - firstHour) * rowHeight;
+}
+
 export function calendarViewLabel({ viewMode = 'week', isWeekOverview = false } = {}) {
   if (viewMode === 'teacher') return '老師清單';
   return isWeekOverview ? '週檢視' : '日檢視';

@@ -148,6 +148,47 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-calendar-day-nav",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "行事曆日檢視更好用",
+    "summary": "日檢視自動捲到當天第一堂課，日期切換整合成一組控制，載入時版面不再跳動。",
+    "items": [
+      "開啟或換日後自動捲到當天最早一堂課；無課則顯示下午時段。",
+      "「今天」與前後切換、日期選擇合併為一組，日檢視按天切換、週檢視按週切換。",
+      "標題在日檢視顯示當天日期與堂數，載入中不再推動版面。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "開啟或換日後自動捲到當天最早一堂課；無課則顯示下午時段。",
+          "「今天」與前後切換、日期選擇合併為一組，日檢視按天切換、週檢視按週切換。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "標題在日檢視顯示當天日期與堂數，載入中不再推動版面。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-29:calendar-day-nav"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-27-homework-hint",
     "publishedAt": "2026-09-27",
     "effectiveAt": null,
