@@ -31,9 +31,9 @@ export const changelogDraftNotes = [
           "existing source invoice items during reviewed correction",
           "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
           "source per dashboard count, loading placeholders",
+          "copy and calmer colors on director pages",
           "tuition summary as invoiced-only outstanding",
-          "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。",
-          "RFID swipe-as-attendance edge cases"
+          "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。"
         ]
       }
     ],
