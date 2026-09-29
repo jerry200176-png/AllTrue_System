@@ -735,6 +735,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   2. 「已排程」的證據 = 執行 log，不是 `schedule:list` 輸出、不是程式碼。
   3. `pi-health.yml` §3b 心跳檢查（schedule.log 10 分鐘內必須有更新）為此的自動防線，不得移除。
   4. 心跳只證明 driver 活著，不能證明每個任務完成；每個排程任務必須保留私有 output 與 PII-free completion ledger，並由 `scheduler:evidence-summary` 在次日 health check 驗證「每任務恰好一次、成功、輸出可解析」及對應 aggregate postcondition。
+  5. POP 2026-09-29 實例：driver 心跳正常，但 FPM 所有的 file-cache mutex 目錄阻塞 cron；以 `sha1('framework/schedule-' + sha1(expression + command))` 對上 health 的不可寫路徑才確認根因。POP 既有 MySQL claim lock 保留，避免重複執行；舊版本／過期 DB 核准不得擋住新版本的精確核准，不修改或借用舊核准。
 - **測試必補**：pi-health scheduler 心跳 critical（本條隨 #1127 併入）。
 
 ---

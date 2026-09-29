@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-pop-local-claim
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ops): unblock local approved repair scheduling"
+    reason: 內部正式排程取件修復，仍須單案 DB 核准與驗證，不發布帳務完成公告。
+
   - id: silent-2026-09-29-reviewed-monthly-case
     changelog_date: "2026-09-29"
     changelog_title: "feat(ops): support exact-case human review for monthly correction"
