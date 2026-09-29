@@ -1,13 +1,28 @@
 <script setup>
 // Compact ⓘ disclosure for a page's "how this page works" / SOP text.
 // Lives in AtPageHeader's `help` slot; the panel floats so it never pushes data down.
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+
 defineProps({
   label: { type: String, default: '這一頁怎麼用' },
 });
+
+// <details> has no Esc / outside-click dismissal; the panel floats over data, so add both.
+const root = ref(null);
+function close(returnFocus) {
+  if (!root.value?.open) return;
+  root.value.open = false;
+  if (returnFocus) root.value.querySelector('summary')?.focus();
+}
+function onDocClick(event) {
+  if (root.value && !root.value.contains(event.target)) close(false);
+}
+onMounted(() => document.addEventListener('click', onDocClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 </script>
 
 <template>
-  <details class="at-help" data-testid="at-help">
+  <details ref="root" class="at-help" data-testid="at-help" @keydown.esc="close(true)">
     <summary class="at-help__trigger" :aria-label="label" :title="label">
       <span class="material-symbols-outlined" aria-hidden="true">info</span>
     </summary>

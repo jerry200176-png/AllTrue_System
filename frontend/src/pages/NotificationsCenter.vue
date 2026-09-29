@@ -19,7 +19,7 @@
           icon="refresh"
           :disabled="syncing || branchId == null"
           :loading="syncing"
-          @click="syncNotifications(true)"
+          @click="laneFilter === 'case' ? loadCaseItems() : syncNotifications(true)"
         >
           重新整理
         </AtButton>
@@ -166,7 +166,7 @@
           v-else-if="laneFilter !== 'case' && displayNotifications.length === 0"
           icon="notifications_off"
           title="目前沒有符合條件的通知"
-          description="可調整篩選條件，或同步通知後再查看。"
+          description="可調整篩選條件，或按「重新整理」後再查看。"
         />
 
         <div v-else>
