@@ -884,14 +884,17 @@ const syncNotifications = async (showAlert = false) => {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
-      body: JSON.stringify({ branch_id: Number(props.branchId) }),
+      // Manual 重新整理 (showAlert) forces a real sync past the server cooldown.
+      body: JSON.stringify({ branch_id: Number(props.branchId), force: showAlert }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || '通知同步失敗');
 
     await loadNotifications(1);
     if (showAlert) {
-      alert(`同步完成：新增 ${json.created || 0}、更新 ${json.updated || 0}、解除 ${json.resolved || 0}`);
+      alert(json.skipped
+        ? '剛剛已同步過，清單已更新。'
+        : `同步完成：新增 ${json.created || 0}、更新 ${json.updated || 0}、解除 ${json.resolved || 0}`);
     }
   } catch (err) {
     errorMessage.value = err.message || '通知同步失敗';

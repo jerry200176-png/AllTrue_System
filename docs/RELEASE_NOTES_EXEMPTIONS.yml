@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "fix(billing): preserve complete reschedule chains within reviewed monthly periods"
     reason: 補齊尚未啟用的受控更正對完整調課鏈的核對與保留；未執行正式拆約／收款，不發布完成公告。
 
+  - id: silent-2026-09-29-notif-sync-perf
+    changelog_date: "2026-09-29"
+    changelog_title: "perf(inbox): stop notification sync rewriting every row and share one sync cooldown"
+    reason: 內部效能修正，不改變通知內容與解除／重開語意，不發布教職員公告。
+
   - id: silent-2026-09-29-badge-refresh-parallel
     changelog_date: "2026-09-29"
     changelog_title: "perf(app): share one in-flight sidebar badge refresh and fetch badges in parallel (TD-087)"
