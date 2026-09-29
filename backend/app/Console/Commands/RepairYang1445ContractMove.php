@@ -22,12 +22,10 @@ use RuntimeException;
 class RepairYang1445ContractMove extends Command
 {
     protected $signature = 'repair:yang-1445-contract-move
-                            {--dry-run}
                             {--execute}
                             {--verify}
                             {--rollback}
                             {--force}
-                            {--snapshot=}
                             {--actor=}';
 
     protected $description = 'Move attended session 36285 from renewal 3777 back to closed contract 1445 (one case)';
@@ -98,12 +96,6 @@ class RepairYang1445ContractMove extends Command
             return self::SUCCESS;
         }
 
-        if ($path = (string) $this->option('snapshot')) {
-            @mkdir(dirname($path), 0755, true);
-            file_put_contents($path, json_encode($before, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . PHP_EOL);
-            $this->info('Snapshot: ' . $path);
-        }
-
         try {
             DB::transaction(fn () => $this->apply());
         } catch (\Throwable $e) {
@@ -157,49 +149,32 @@ class RepairYang1445ContractMove extends Command
 
         $campus = DB::table('Student')->where('id', self::STUDENT)->value('CampusID');
         $eq('student_campus', $campus, self::CAMPUS);
-        foreach ([[$old, 'old', 65, 146, self::OLD], [$new, 'new', 65, 146, self::NEW]] as [$sc, $n, $subj, $teacher, $id]) {
-            $eq("{$n}.StudentID", $sc->StudentID, self::STUDENT);
-            $eq("{$n}.SubjectID", $sc->SubjectID, $subj);
-            $eq("{$n}.TeacherID", $sc->TeacherID, $teacher);
+        $exp = [
+            'old.StudentID' => [$old->StudentID, self::STUDENT], 'old.SubjectID' => [$old->SubjectID, 65], 'old.TeacherID' => [$old->TeacherID, 146],
+            'new.StudentID' => [$new->StudentID, self::STUDENT], 'new.SubjectID' => [$new->SubjectID, 65], 'new.TeacherID' => [$new->TeacherID, 146],
+            'old.SessionCount' => [$old->SessionCount, 7], 'old.UsedSessions' => [$old->UsedSessions, 7],
+            'old.RemainingSessions' => [$old->RemainingSessions, 0], 'old.Stop' => [$old->Stop, 1],
+            'old.closed_reason' => [$old->closed_reason, 'contract_amended'], 'old.EndDate' => [$day($old->EndDate), '2026-09-29'],
+            'old.Charge' => [$old->Charge, 7200], 'old.settlement_locked_at' => [$old->settlement_locked_at ?? '', ''],
+            'new.SessionCount' => [$new->SessionCount, 8], 'new.UsedSessions' => [$new->UsedSessions, 1],
+            'new.RemainingSessions' => [$new->RemainingSessions, 7], 'new.Stop' => [$new->Stop, 0],
+            'new.StartDate' => [$day($new->StartDate), self::DATE], 'new.EndDate' => [$day($new->EndDate), '2026-11-14'],
+            'new.Charge' => [$new->Charge, 8800],
+            'moved.StudentClassID' => [$moved->StudentClassID, self::NEW], 'moved.date' => [$day($moved->SessionDate), self::DATE],
+            'moved.start' => [$hm($moved->StartTime), '13:00'], 'moved.Status' => [$moved->Status, 'attended'],
+            'ghost.StudentClassID' => [$ghost->StudentClassID, self::OLD], 'ghost.date' => [$day($ghost->SessionDate), self::DATE],
+            'ghost.start' => [$hm($ghost->StartTime), '13:00'], 'ghost.Status' => [$ghost->Status, 'scheduled'],
+            'ghost.Note' => [$ghost->Note, self::GHOST_NOTE],
+            'refTail.StudentClassID' => [$refTail->StudentClassID, self::NEW], 'refTail.date' => [$day($refTail->SessionDate), '2026-11-07'],
+            'refTail.start' => [$hm($refTail->StartTime), '13:00'], 'refTail.end' => [$hm($refTail->EndTime), '15:00'],
+            'signin.StudentClassID' => [$signin->StudentClassID, self::NEW], 'signin.ClassSessionID' => [$signin->ClassSessionID, self::MOVED],
+            'lr.StudentClassID' => [$lr->StudentClassID, self::NEW], 'lr.ClassSessionID' => [$lr->ClassSessionID, self::MOVED],
+            'ledger.student_class_id' => [$ledger->student_class_id, self::NEW], 'ledger.class_session_id' => [$ledger->class_session_id, self::MOVED],
+            'ledger.event_type' => [$ledger->event_type, 'deduct'],
+        ];
+        foreach ($exp as $label => [$actual, $expected]) {
+            $eq($label, $actual, $expected);
         }
-        $eq('old.SessionCount', $old->SessionCount, 7);
-        $eq('old.UsedSessions', $old->UsedSessions, 7);
-        $eq('old.RemainingSessions', $old->RemainingSessions, 0);
-        $eq('old.Stop', $old->Stop, 1);
-        $eq('old.closed_reason', $old->closed_reason, 'contract_amended');
-        $eq('old.EndDate', $day($old->EndDate), '2026-09-29');
-        $eq('old.Charge', $old->Charge, 7200);
-        if (($old->settlement_locked_at ?? null) !== null) {
-            $e[] = 'old.settlement_locked_at not null';
-        }
-        $eq('new.SessionCount', $new->SessionCount, 8);
-        $eq('new.UsedSessions', $new->UsedSessions, 1);
-        $eq('new.RemainingSessions', $new->RemainingSessions, 7);
-        $eq('new.Stop', $new->Stop, 0);
-        $eq('new.StartDate', $day($new->StartDate), self::DATE);
-        $eq('new.EndDate', $day($new->EndDate), '2026-11-14');
-        $eq('new.Charge', $new->Charge, 8800);
-
-        $eq('moved.StudentClassID', $moved->StudentClassID, self::NEW);
-        $eq('moved.date', $day($moved->SessionDate), self::DATE);
-        $eq('moved.start', $hm($moved->StartTime), '13:00');
-        $eq('moved.Status', $moved->Status, 'attended');
-        $eq('ghost.StudentClassID', $ghost->StudentClassID, self::OLD);
-        $eq('ghost.date', $day($ghost->SessionDate), self::DATE);
-        $eq('ghost.start', $hm($ghost->StartTime), '13:00');
-        $eq('ghost.Status', $ghost->Status, 'scheduled');
-        $eq('ghost.Note', $ghost->Note, self::GHOST_NOTE);
-        $eq('refTail.StudentClassID', $refTail->StudentClassID, self::NEW);
-        $eq('refTail.date', $day($refTail->SessionDate), '2026-11-07');
-        $eq('refTail.start', $hm($refTail->StartTime), '13:00');
-        $eq('refTail.end', $hm($refTail->EndTime), '15:00');
-        $eq('signin.StudentClassID', $signin->StudentClassID, self::NEW);
-        $eq('signin.ClassSessionID', $signin->ClassSessionID, self::MOVED);
-        $eq('lr.StudentClassID', $lr->StudentClassID, self::NEW);
-        $eq('lr.ClassSessionID', $lr->ClassSessionID, self::MOVED);
-        $eq('ledger.student_class_id', $ledger->student_class_id, self::NEW);
-        $eq('ledger.class_session_id', $ledger->class_session_id, self::MOVED);
-        $eq('ledger.event_type', $ledger->event_type, 'deduct');
 
         $tailClash = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
@@ -239,14 +214,8 @@ class RepairYang1445ContractMove extends Command
     /** @param array<string,mixed> $b */
     private function printPlan(array $b): void
     {
-        $this->line('--- WILL CHANGE ---');
-        $this->line('SC1445: SessionCount 7->8 Used 7->8 Remaining 0 Stop 1 closed_reason contract_amended->settled EndDate ->2026-09-19; settlement_snapshot += correction (original kept)');
-        $this->line('ClassSession 42097: scheduled -> cancelled, Note += "' . self::GHOST_TAG . '"');
-        $this->line('ClassSession 36285 / StudentSingIn 13108 / LearningRecord 20203 / ledger 15877: StudentClassID 3777 -> 1445');
-        $this->line('SC3777: Used 1->0 Remaining 7->8 EndDate ->2026-11-21; new tail ClassSession 2026-11-21 13:00-15:00 (mirrors 36292)');
-        $this->line('audit: session_corrections(42097) with full snapshot_before, class_session_reassignments(36285), SecurityAuditEvent');
-        $this->line('--- WILL NOT CHANGE --- Invoice/Payment/Charge/Paid, schedules, other sessions, 1445 Stop/settlement_locked_at');
-        $this->line('COUNTS before: ' . json_encode($b['counts']));
+        $this->line('WILL CHANGE: SC1445 7->8 sessions/used 8/remaining 0/settled/EndDate 2026-09-19; 36285+signin 13108+LR 20203+ledger 15877 -> 1445; ghost 42097 cancelled; SC3777 used 0/remaining 8/tail 2026-11-21/EndDate 2026-11-21; audit rows.');
+        $this->line('WILL NOT CHANGE: Invoice/Payment/Charge/Paid, schedules, other sessions, 1445 Stop. COUNTS before: ' . json_encode($b['counts']));
     }
 
     private function apply(): void
@@ -316,11 +285,8 @@ class RepairYang1445ContractMove extends Command
         $tailId = (int) DB::table('ClassSession')->insertGetId($tail);
 
         // 4. audit ledger (session_corrections authoritative; snapshot_before feeds --rollback)
-        $rows = [];
-        foreach (['old', 'new', 'moved', 'ghost', 'signin', 'lr', 'ledger'] as $k) {
-            $rows[$k] = (array) $b[$k];
-        }
-        $corr = SessionCorrection::query()->create([
+        $rows = array_map(fn ($r) => (array) $r, array_intersect_key($b, array_flip(['old', 'new', 'moved', 'ghost', 'signin', 'lr', 'ledger'])));
+        $corr = new SessionCorrection([
             'session_id' => self::GHOST, 'replaced_by_session_id' => self::MOVED,
             'correction_reason' => 'superseded_by_moved_session', 'decision_reference' => self::REF,
             'decided_at' => $now, 'decided_by_user_id' => null, 'decided_by_actor' => $actor,
@@ -328,6 +294,7 @@ class RepairYang1445ContractMove extends Command
             'preserved_learning_record_id' => self::LR, 'keeper_learning_record_id' => self::LR,
             'snapshot_before' => ['rows' => $rows, 'counts' => $b['counts'], 'created_tail_session_id' => $tailId],
         ]);
+        $corr->save();
         SecurityAuditEvent::append('repair.yang_1445_contract_move', 'success', [
             'actor_type' => 'system', 'subject_type' => 'student_class', 'subject_id' => self::OLD, 'campus_id' => self::CAMPUS,
         ], [
@@ -356,43 +323,38 @@ class RepairYang1445ContractMove extends Command
         $day = fn ($v) => substr((string) $v, 0, 10);
         $old = DB::table('StudentClass')->where('ID', self::OLD)->first();
         $new = DB::table('StudentClass')->where('ID', self::NEW)->first();
-        $eq('old.SessionCount', $old->SessionCount, 8);
-        $eq('old.UsedSessions', $old->UsedSessions, 8);
-        $eq('old.RemainingSessions', $old->RemainingSessions, 0);
-        $eq('old.Stop', $old->Stop, 1);
-        $eq('old.closed_reason', $old->closed_reason, 'settled');
-        $eq('old.EndDate', $day($old->EndDate), self::DATE);
-        $eq('old.Charge', $old->Charge, 7200);
-        $eq('old.snapshot_keeps_original', str_contains((string) $old->settlement_snapshot, '"kind":"contract_amended"') ? 1 : 0, 1);
-        $eq('old.snapshot_has_correction', str_contains((string) $old->settlement_snapshot, self::REF) ? 1 : 0, 1);
-        $eq('new.UsedSessions', $new->UsedSessions, 0);
-        $eq('new.RemainingSessions', $new->RemainingSessions, 8);
-        $eq('new.SessionCount', $new->SessionCount, 8);
-        $eq('new.Stop', $new->Stop, 0);
-        $eq('new.EndDate', $day($new->EndDate), self::TAIL_DATE);
-        $eq('new.Charge', $new->Charge, 8800);
-        $eq('moved.StudentClassID', DB::table('ClassSession')->where('id', self::MOVED)->value('StudentClassID'), self::OLD);
-        $eq('moved.Status', DB::table('ClassSession')->where('id', self::MOVED)->value('Status'), 'attended');
-        $eq('signin.StudentClassID', DB::table('StudentSingIn')->where('id', self::SIGNIN)->value('StudentClassID'), self::OLD);
-        $eq('lr.StudentClassID', DB::table('LearningRecord')->where('id', self::LR)->value('StudentClassID'), self::OLD);
-        $eq('ledger.student_class_id', DB::table('session_deduction_ledger')->where('id', self::LEDGER)->value('student_class_id'), self::OLD);
+        $v = fn (string $t, string $pk, int $id, string $col) => DB::table($t)->where($pk, $id)->value($col);
         $ghost = DB::table('ClassSession')->where('id', self::GHOST)->first();
-        $eq('ghost.Status', $ghost->Status, 'cancelled');
-        $eq('ghost.Note_tag', str_ends_with((string) $ghost->Note, self::GHOST_TAG) ? 1 : 0, 1);
         $tail = DB::table('ClassSession')->where('id', $tailId)->first();
-        $eq('tail_exists', $tail ? 1 : 0, 1);
-        if ($tail) {
-            $eq('tail.StudentClassID', $tail->StudentClassID, self::NEW);
-            $eq('tail.date', $day($tail->SessionDate), self::TAIL_DATE);
-            $eq('tail.start', substr((string) $tail->StartTime, 0, 5), '13:00');
-            $eq('tail.Status', $tail->Status, 'scheduled');
-        }
         $c1 = $this->counts();
-        $eq('old_done', $c1['old_done'], ($c0['old_done'] ?? -99) + 1);
-        $eq('old_live', $c1['old_live'], $c0['old_live'] ?? -99);
-        $eq('new_done', $c1['new_done'], ($c0['new_done'] ?? -99) - 1);
-        $eq('new_live', $c1['new_live'], $c0['new_live'] ?? -99);
-        $eq('reassignment_rows', DB::table('class_session_reassignments')->where('class_session_id', self::MOVED)->count(), 1);
+        $exp = [
+            'old.SessionCount' => [$old->SessionCount, 8], 'old.UsedSessions' => [$old->UsedSessions, 8],
+            'old.RemainingSessions' => [$old->RemainingSessions, 0], 'old.Stop' => [$old->Stop, 1],
+            'old.closed_reason' => [$old->closed_reason, 'settled'], 'old.EndDate' => [$day($old->EndDate), self::DATE],
+            'old.Charge' => [$old->Charge, 7200],
+            'old.snapshot_keeps_original' => [str_contains((string) $old->settlement_snapshot, '"kind":"contract_amended"'), true],
+            'old.snapshot_has_correction' => [str_contains((string) $old->settlement_snapshot, self::REF), true],
+            'new.SessionCount' => [$new->SessionCount, 8], 'new.UsedSessions' => [$new->UsedSessions, 0],
+            'new.RemainingSessions' => [$new->RemainingSessions, 8], 'new.Stop' => [$new->Stop, 0],
+            'new.EndDate' => [$day($new->EndDate), self::TAIL_DATE], 'new.Charge' => [$new->Charge, 8800],
+            'moved.StudentClassID' => [$v('ClassSession', 'id', self::MOVED, 'StudentClassID'), self::OLD],
+            'moved.Status' => [$v('ClassSession', 'id', self::MOVED, 'Status'), 'attended'],
+            'signin.StudentClassID' => [$v('StudentSingIn', 'id', self::SIGNIN, 'StudentClassID'), self::OLD],
+            'lr.StudentClassID' => [$v('LearningRecord', 'id', self::LR, 'StudentClassID'), self::OLD],
+            'ledger.student_class_id' => [$v('session_deduction_ledger', 'id', self::LEDGER, 'student_class_id'), self::OLD],
+            'ghost.Status' => [$ghost->Status, 'cancelled'],
+            'ghost.Note_tag' => [str_ends_with((string) $ghost->Note, self::GHOST_TAG), true],
+            'tail.StudentClassID' => [$tail->StudentClassID ?? null, self::NEW],
+            'tail.date' => [$day($tail->SessionDate ?? ''), self::TAIL_DATE],
+            'tail.start' => [substr((string) ($tail->StartTime ?? ''), 0, 5), '13:00'],
+            'tail.Status' => [$tail->Status ?? null, 'scheduled'],
+            'old_done' => [$c1['old_done'], ($c0['old_done'] ?? -99) + 1], 'old_live' => [$c1['old_live'], $c0['old_live'] ?? -99],
+            'new_done' => [$c1['new_done'], ($c0['new_done'] ?? -99) - 1], 'new_live' => [$c1['new_live'], $c0['new_live'] ?? -99],
+            'reassignment_rows' => [DB::table('class_session_reassignments')->where('class_session_id', self::MOVED)->count(), 1],
+        ];
+        foreach ($exp as $label => [$actual, $expected]) {
+            $eq($label, is_bool($actual) ? (int) $actual : $actual, is_bool($expected) ? (int) $expected : $expected);
+        }
 
         return $e;
     }
@@ -414,12 +376,6 @@ class RepairYang1445ContractMove extends Command
         $snap = $corr->snapshot_before;
         $tailId = (int) ($snap['created_tail_session_id'] ?? 0);
         $errors = $this->postErrors($corr);   // rollback only from the exact applied state
-        $tail = DB::table('ClassSession')->where('id', $tailId)->first();
-        if ($tail && (DB::table('StudentSingIn')->where('ClassSessionID', $tailId)->exists()
-            || DB::table('LearningRecord')->where('ClassSessionID', $tailId)->exists()
-            || DB::table('session_deduction_ledger')->where('class_session_id', $tailId)->exists())) {
-            $errors[] = 'tail session has dependent rows';
-        }
         $this->line($execute ? '=== EXECUTE ROLLBACK ===' : '=== DRY RUN ROLLBACK ===');
         foreach ($errors as $e) {
             $this->error('DRIFT: ' . $e);

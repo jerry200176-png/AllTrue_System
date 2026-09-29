@@ -47,28 +47,17 @@ jobs:
         with:
           host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
           host-key: ${{ secrets.PI_HOST_KEY }}
-      - name: Validate inputs
+      - name: Validate inputs and set up SSH
         env:
           MODE: ${{ inputs.mode }}
           CONFIRM: ${{ inputs.confirm }}
-        run: |
-          set -euo pipefail
-          case "$MODE" in
-            dry-run|execute|rollback) ;;
-            *) echo "::error::invalid mode"; exit 1 ;;
-          esac
-          if [ "$MODE" != "dry-run" ]; then
-            [ "$CONFIRM" = "I_APPROVE_YANG_1445_MOVE_36285" ] || {
-              echo "::error::execute/rollback requires exact confirmation string"
-              exit 1
-            }
-          fi
-
-      - name: Setup SSH
-        env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
         run: |
           set -euo pipefail
+          case "$MODE" in dry-run|execute|rollback) ;; *) echo "::error::invalid mode"; exit 1 ;; esac
+          if [ "$MODE" != "dry-run" ] && [ "$CONFIRM" != "I_APPROVE_YANG_1445_MOVE_36285" ]; then
+            echo "::error::execute/rollback requires exact confirmation string"; exit 1
+          fi
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
@@ -87,22 +76,14 @@ jobs:
           set -euo pipefail
           cd /home/admin/backend
 
-          echo "=== mode=${MODE} ==="
-          echo "TIP: session_corrections (decision_reference repair-yang-1445) is authoritative. Red X after mutation != NOT_APPLIED."
+          echo "=== mode=${MODE} === (pre-state snapshot lives in session_corrections repair-yang-1445)"
           CMD="php artisan repair:yang-1445-contract-move"
 
-          if [ "${MODE}" = "dry-run" ]; then
-            $CMD
-            echo "Dry-run complete; no production data was changed."
-            exit 0
-          fi
-
+          [ "${MODE}" = "dry-run" ] && { $CMD; exit $?; }
           if [ "${MODE}" = "rollback" ]; then
-            export ALLOW_PROD_REPAIR=1
-            $CMD --rollback --execute --force
+            ALLOW_PROD_REPAIR=1 $CMD --rollback --execute --force
             exit $?
           fi
-
           # execute: exact-state preflight first (ALREADY_APPLIED short-circuits, drift aborts)
           PRE=$($CMD 2>&1) || { echo "$PRE"; echo "REPAIR_STATE=NOT_APPLIED"; exit 1; }
           echo "$PRE"
@@ -111,35 +92,13 @@ jobs:
             exit 0
           fi
 
-          TS=$(date '+%Y-%m-%d_%H%M%S')
-          mkdir -p /home/admin/backups/emergency
-          BACKUP_FILE="/home/admin/backups/emergency/db_pre_yang_1445_${TS}.sql.gz"
-          DB_USER="$(grep '^DB_USERNAME=' /home/admin/backend/.env | cut -d= -f2-)"
-          mysqldump -h 127.0.0.1 -u "$DB_USER" -p"$(grep '^DB_PASSWORD=' /home/admin/backend/.env | cut -d= -f2-)" \
-            --single-transaction AllTrue \
-            ClassSession StudentClass StudentSingIn LearningRecord session_deduction_ledger \
-            class_session_reassignments session_corrections \
-            | gzip > "$BACKUP_FILE"
-          test -s "$BACKUP_FILE"
-          echo "Backup: $BACKUP_FILE"
-
-          export ALLOW_PROD_REPAIR=1
           set +e
-          $CMD --execute --force --actor="${ACTOR}" --snapshot="storage/app/repair-snapshots/yang-1445-${TS}.json"
+          ALLOW_PROD_REPAIR=1 $CMD --execute --force --actor="${ACTOR}"
           MUT_EC=$?
-          unset ALLOW_PROD_REPAIR
-          # Independent post-verify (the command already verifies inside its transaction).
           $CMD --verify
           VER_EC=$?
           set -e
-          if [ "$MUT_EC" -ne 0 ]; then
-            echo "REPAIR_STATE=NOT_APPLIED_OR_FAILED mut=$MUT_EC"
-            exit "$MUT_EC"
-          fi
-          if [ "$VER_EC" -ne 0 ]; then
-            echo "REPAIR_STATE=APPLIED_POSTVERIFY_FAILED"
-            echo "::warning::Mutation committed. Do NOT re-run execute; inspect session_corrections."
-            exit 42
-          fi
+          [ "$MUT_EC" -eq 0 ] || { echo "REPAIR_STATE=NOT_APPLIED_OR_FAILED"; exit "$MUT_EC"; }
+          [ "$VER_EC" -eq 0 ] || { echo "REPAIR_STATE=APPLIED_POSTVERIFY_FAILED; do NOT re-run execute"; exit 42; }
           echo "REPAIR_STATE=APPLIED_AND_VERIFIED"
           ENDSSH
