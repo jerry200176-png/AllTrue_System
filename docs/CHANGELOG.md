@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-subject-units-reference-totals -->
 - 科目數統計新增「參考合計（含輔導／不含輔導）÷ 8」兩張卡（in-app #331，Founder 2026-09-30 核准）；由完整加權總分僅在最後一步除以 8，僅供分析，既有數字與薪資計算完全不變。
 
+## 2026-09-30 — feat(courses): show student school and grade in course lookup
+<!-- release-notes: staff_update=staff-2026-09-30-course-lookup-school-grade -->
+- 課程查找的學生標題列在姓名旁顯示學校與年級（in-app #358，Founder 2026-09-30 核准，僅學校與年級，不含電話與備註）；沿用課程列表既有回傳的學生資料，無後端或資料變更。
+
 ## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
 <!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->
 - 受控月結更正核對完整調課鏈：同一期內連同原堂次保留並移轉，拒絕跨期、斷鏈、循環、學生／分校錯配及範圍外合約關聯；簽章核對也涵蓋新增外部連結。修復仍未啟用，正式個案尚未更正。
