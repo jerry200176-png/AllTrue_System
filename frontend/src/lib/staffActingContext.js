@@ -79,6 +79,11 @@ export function installActingAsFetchBridge(target = globalThis) {
       const body = await resp.clone().text().catch(() => '');
       if (!body.includes('acting_context_denied')) return resp;
       writeStoredActingAs(null, target.localStorage);
+      // Only replay requests that can be re-sent: string/URL input and no stream body
+      // (a Request object or ReadableStream body may already be consumed).
+      const replayable = (typeof input === 'string' || (typeof URL === 'function' && input instanceof URL))
+        && !(typeof ReadableStream === 'function' && init?.body instanceof ReadableStream);
+      if (!replayable) return resp;
       headers.delete(ACTING_AS_HEADER);
       return originalFetch(input, { ...init, headers });
     });

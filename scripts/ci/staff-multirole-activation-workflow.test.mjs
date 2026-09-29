@@ -41,9 +41,9 @@ for (const [name, body] of Object.entries(jobs)) {
   if (name !== 'guard') assert.match(body, /needs: guard/, `${name} needs guard`);
 }
 assert.ok(!/environment:/.test(jobs.pilot_dry_run), 'dry-run is read-only, no approval');
-assert.match(jobs.pilot_dry_run, /PILOT_DRY_RUN=1/);
-assert.ok(!/PILOT_DRY_RUN=0/.test(jobs.pilot_dry_run));
-assert.match(jobs.pilot_grant, /PILOT_DRY_RUN=0/);
+assert.match(jobs.pilot_dry_run, /PILOT_DRY_RUN: "1"/);
+assert.ok(!/PILOT_DRY_RUN: "0"/.test(jobs.pilot_dry_run));
+assert.match(jobs.pilot_grant, /PILOT_DRY_RUN: "0"/);
 assert.ok(jobs.pilot_grant.includes('PILOT_NARROW_FROM: ${{ needs.guard.outputs.narrow_from }}'));
 assert.ok(jobs.pilot_grant.includes('PILOT_FLAG_ON_ACK: ${{ needs.guard.outputs.flag_ack }}'));
 for (const name of ['pilot_grant', 'enable', 'disable']) {
@@ -88,9 +88,23 @@ assert.ok(en.includes('REFUSED-BACKUP-FAILED') && en.includes('cp .env "$BACKUP_
 assert.ok(en.includes('timeout 300 bash /home/admin/scripts/post-merge-smoke.sh'), 'smoke has timeout');
 assert.ok(en.includes('REFUSED-PILOT-SET-MISMATCH') && en.includes('$EXPECTED_PILOT_USER_ID'), 'exact pilot set');
 assert.ok(en.includes('REFUSED-NARROWING-NOT-ACKNOWLEDGED') && en.includes('"$ACK_NARROWING" != "true"'), 'narrowing gate');
-for (const v of ['SMOKE_TEACHER_LOGIN', 'SMOKE_TEACHER_PASSWORD', 'SMOKE_BRANCH_ID', 'EXPECTED_HEAD_SHA']) {
-  assert.ok(en.includes(`${v}="$${v}"`), `${v} passed via env VAR="$VAR"`);
+assert.ok(/send_env EXPECTED_HEAD_SHA EXPECTED_PILOT_USER_ID ACK_NARROWING DIFF_B64 SMOKE_TEACHER_LOGIN SMOKE_TEACHER_PASSWORD SMOKE_BRANCH_ID/.test(en), 'enable sends env via stdin');
+// Nothing but the key/host may be on any ssh command line: values are base64 on stdin.
+for (const name of ['preflight', 'pilot_dry_run', 'pilot_grant', 'enable', 'disable']) {
+  for (const m of jobs[name].matchAll(/ssh -i ~\/\.ssh\/deploy_key[^\n]*\n([^\n]*\n)?/g)) {
+    assert.ok(!/SMOKE_|PASSWORD|LOGIN|\benv [A-Z_]+=/.test(m[0]), `${name}: no variable values on the ssh command line`);
+  }
+  assert.ok(!/\benv [A-Z_]+="\$/.test(jobs[name]), `${name}: no env VAR="$VAR" on ssh line`);
 }
+assert.ok(jobs.enable.includes('base64 -w0') && jobs.enable.includes('| base64 -d)"'), 'send_env base64 round trip');
+// Exit trap: signals become exit; trap ignores PIPE and logs to a file; restore precedes any echo in rollback().
+assert.ok(en.includes("trap 'exit 1' HUP TERM PIPE"));
+const exitTrap = en.split('\n').find((l) => /trap '.*' EXIT/.test(l));
+assert.ok(exitTrap && exitTrap.includes('trap "" PIPE') && exitTrap.includes('exec >>"$BACKUP_DIR/enable_${STAMP}.log" 2>&1'), 'exit trap ignores PIPE and redirects to log');
+assert.ok(exitTrap.indexOf('exec >>') < exitTrap.indexOf('rollback FAILED-UNEXPECTED-EXIT'));
+const rbBody = en.slice(en.indexOf('rollback() {'), en.indexOf('# Signals become'));
+assert.ok(rbBody.indexOf('cp "$BACKUP_FILE" .env') >= 0 && rbBody.indexOf('cp "$BACKUP_FILE" .env') < rbBody.indexOf('echo '), 'rollback restores before the first echo');
+assert.ok(rbBody.indexOf("trap '' PIPE") < rbBody.indexOf('cp "$BACKUP_FILE" .env'));
 for (const name of ['preflight', 'pilot_dry_run', 'pilot_grant', 'enable']) {
   const body = jobs[name];
   const heredoc = body.slice(body.indexOf("<< 'ENDSSH'"), body.indexOf('\n          ENDSSH'));

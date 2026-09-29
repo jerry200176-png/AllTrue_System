@@ -164,10 +164,15 @@ jobs:
       - name: Read HEAD, effective flag, grants and role-resolution diff (read-only)
         run: |
           set -uo pipefail
-          ssh -i ~/.ssh/deploy_key \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env DIFF_B64="$DIFF_B64" \
-            bash -s << 'ENDSSH' | tee /tmp/preflight-output.txt
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env DIFF_B64
+            cat << 'ENDSSH'
           set -uo pipefail
           cd /home/admin
           echo "production-head=$(git rev-parse HEAD)"
@@ -180,6 +185,8 @@ jobs:
           php artisan tinker --execute="$(echo "$DIFF_B64" | base64 -d)" 2>&1
           echo "READ_ONLY=true"
           ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/preflight-output.txt
           if ! grep -q '^diff-result=' /tmp/preflight-output.txt; then
             echo "::error::preflight produced no diff-result marker -- diff did not run."
             exit 1
@@ -239,21 +246,29 @@ jobs:
 
       - name: Dry-run the grant script (PILOT_DRY_RUN=1, never writes)
         env:
+          PILOT_MODE: grant
+          PILOT_DRY_RUN: "1"
           PILOT_USER_ID: ${{ github.event.inputs.user_id }}
           PILOT_CAMPUS_ID: ${{ github.event.inputs.campus_id }}
           PILOT_ACTOR: ${{ github.actor }}
         run: |
           set -uo pipefail
-          ssh -i ~/.ssh/deploy_key \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env GRANT_B64="$GRANT_B64" PILOT_MODE=grant PILOT_DRY_RUN=1 \
-                PILOT_USER_ID="$PILOT_USER_ID" PILOT_CAMPUS_ID="$PILOT_CAMPUS_ID" PILOT_ACTOR="$PILOT_ACTOR" \
-            bash -s << 'ENDSSH' | tee /tmp/pilot-result.txt
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env GRANT_B64 PILOT_MODE PILOT_DRY_RUN PILOT_USER_ID PILOT_CAMPUS_ID PILOT_ACTOR
+            cat << 'ENDSSH'
           set -uo pipefail
           cd /home/admin/backend
           php artisan tinker --execute="$(echo "$GRANT_B64" | base64 -d)" 2>&1
           echo "READ_ONLY=true"
           ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/pilot-result.txt
           # A REFUSED decision is a valid rehearsal outcome (it shows what the real run would need).
           if ! grep -Eq '^pilot-result=(DRY-RUN-OK|REFUSED)' /tmp/pilot-result.txt; then
             echo "::error::dry-run did not produce a decision -- see log above."
@@ -304,6 +319,7 @@ jobs:
       - name: Apply grant/revoke (idempotent, transactional, audited)
         env:
           PILOT_MODE: ${{ github.event.inputs.action == 'grant_pilot' && 'grant' || 'revoke' }}
+          PILOT_DRY_RUN: "0"
           PILOT_USER_ID: ${{ github.event.inputs.user_id }}
           PILOT_CAMPUS_ID: ${{ github.event.inputs.campus_id }}
           PILOT_ACTOR: ${{ github.actor }}
@@ -311,16 +327,21 @@ jobs:
           PILOT_FLAG_ON_ACK: ${{ needs.guard.outputs.flag_ack }}
         run: |
           set -uo pipefail
-          ssh -i ~/.ssh/deploy_key \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env GRANT_B64="$GRANT_B64" PILOT_MODE="$PILOT_MODE" PILOT_DRY_RUN=0 \
-                PILOT_USER_ID="$PILOT_USER_ID" PILOT_CAMPUS_ID="$PILOT_CAMPUS_ID" PILOT_ACTOR="$PILOT_ACTOR" \
-                PILOT_NARROW_FROM="$PILOT_NARROW_FROM" PILOT_FLAG_ON_ACK="$PILOT_FLAG_ON_ACK" \
-            bash -s << 'ENDSSH' | tee /tmp/pilot-result.txt
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env GRANT_B64 PILOT_MODE PILOT_DRY_RUN PILOT_USER_ID PILOT_CAMPUS_ID PILOT_ACTOR PILOT_NARROW_FROM PILOT_FLAG_ON_ACK
+            cat << 'ENDSSH'
           set -uo pipefail
           cd /home/admin/backend
           php artisan tinker --execute="$(echo "$GRANT_B64" | base64 -d)" 2>&1
           ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/pilot-result.txt
           if ! grep -q '^pilot-result=SUCCESS$' /tmp/pilot-result.txt; then
             echo "::error::pilot grant/revoke did not report SUCCESS -- see log above (nothing committed unless SUCCESS)."
             exit 1
@@ -389,19 +410,19 @@ jobs:
           SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
           SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
           SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
+          SMOKE_BASE_URL: https://daan.lifenet.com.tw
+          SMOKE_ON_PI: "1"
         run: |
           set -uo pipefail
-          ssh -i ~/.ssh/deploy_key \
-            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" \
-            env EXPECTED_HEAD_SHA="$EXPECTED_HEAD_SHA" \
-                EXPECTED_PILOT_USER_ID="$EXPECTED_PILOT_USER_ID" \
-                ACK_NARROWING="$ACK_NARROWING" \
-                DIFF_B64="$DIFF_B64" \
-                SMOKE_TEACHER_LOGIN="$SMOKE_TEACHER_LOGIN" \
-                SMOKE_TEACHER_PASSWORD="$SMOKE_TEACHER_PASSWORD" \
-                SMOKE_BRANCH_ID="$SMOKE_BRANCH_ID" \
-                SMOKE_BASE_URL="https://daan.lifenet.com.tw" SMOKE_ON_PI=1 \
-            bash -s << 'ENDSSH' | tee /tmp/enable-result.txt
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env EXPECTED_HEAD_SHA EXPECTED_PILOT_USER_ID ACK_NARROWING DIFF_B64 SMOKE_TEACHER_LOGIN SMOKE_TEACHER_PASSWORD SMOKE_BRANCH_ID SMOKE_BASE_URL SMOKE_ON_PI
+            cat << 'ENDSSH'
           set -uo pipefail
           cd /home/admin
 
@@ -472,10 +493,12 @@ jobs:
           EDITED=0
           FINISHED=0
           rollback() {
+            # Restore FIRST, before any echo: a closed stdout (dropped SSH) must not kill us before the copy.
+            trap '' PIPE
+            cp "$BACKUP_FILE" .env
             RB_REASON="$1"
             EDITED=0
-            echo "=== ROLLBACK ($RB_REASON): restoring $BACKUP_FILE ==="
-            cp "$BACKUP_FILE" .env
+            echo "=== ROLLBACK ($RB_REASON): restored $BACKUP_FILE ==="
             RB_ENV_SUM="$(sha256sum .env | cut -d' ' -f1)"
             rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
             php artisan optimize
@@ -494,7 +517,9 @@ jobs:
             fi
           }
           # A dropped SSH session or unexpected exit after the edit must not leave the flag half-applied.
-          trap 'if [ "$EDITED" = 1 ] && [ "$FINISHED" != 1 ]; then rollback FAILED-UNEXPECTED-EXIT-ROLLED-BACK; fi' EXIT
+          # Signals become a normal exit so the EXIT trap runs; the trap logs to a file because stdout may be gone.
+          trap 'exit 1' HUP TERM PIPE
+          trap 'if [ "$EDITED" = 1 ] && [ "$FINISHED" != 1 ]; then trap "" PIPE; exec >>"$BACKUP_DIR/enable_${STAMP}.log" 2>&1; rollback FAILED-UNEXPECTED-EXIT-ROLLED-BACK; fi' EXIT
 
           echo "=== [4/9] Idempotent single-line edit (never truncate, never duplicate) ==="
           KEY_COUNT_BEFORE="$(grep -c '^STAFF_MULTI_ROLE_V1=' .env || true)"
@@ -560,6 +585,8 @@ jobs:
           FINISHED=1
           echo "enable-result=SUCCESS"
           ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/enable-result.txt
           RESULT=$?
           if ! grep -q '^enable-result=SUCCESS$' /tmp/enable-result.txt; then
             echo "::error::enable did not report SUCCESS -- see log above. Check for ROLLBACK-FAILED."

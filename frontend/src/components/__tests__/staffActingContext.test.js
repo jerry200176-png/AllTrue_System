@@ -88,4 +88,30 @@ describe('staffActingContext', () => {
     expect(seen).toEqual(['teacher', null]);
     expect(store.has('alltrue_acting_as')).toBe(false);
   });
+  it('does not replay a Request-object input on acting_context_denied (body may be consumed)', async () => {
+    const store = new Map([
+      ['alltrue_session', JSON.stringify({ access_token: 'synthetic' })],
+      ['alltrue_acting_as', 'teacher'],
+    ]);
+    const storage = {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+      removeItem: (key) => store.delete(key),
+    };
+    let calls = 0;
+    const target = {
+      Headers,
+      location: { origin: 'https://app.test', href: 'https://app.test/' },
+      localStorage: storage,
+      fetch: async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ message: 'Forbidden', code: 'acting_context_denied' }), { status: 403 });
+      },
+    };
+    installActingAsFetchBridge(target);
+    const req = new Request('https://app.test/api/v1/students', { method: 'POST', body: '{}' });
+    const resp = await target.fetch(req);
+    expect(resp.status).toBe(403);
+    expect(calls).toBe(1);
+    expect(store.has('alltrue_acting_as')).toBe(false);
+  });
 });
