@@ -1,5 +1,5 @@
 <template>
-  <div class="course-page">
+  <div class="course-page at-page">
     <AtPageHeader
       title="課程查找"
       description="查找課程、編輯月結日期與新增堂次，都在這一頁完成。"
@@ -9,6 +9,26 @@
       <template #meta>
         <span>目前列表 {{ groupedCourses.length }} 位學生</span>
         <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
+      </template>
+      <template #help>
+        <AtHelpDisclosure label="先看懂這一頁">
+          <p>查找、排課與營運；建立、續報與購買請從學生管理進入。</p>
+          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
+            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
+            <div>
+              <strong>這一頁適合查找與分流</strong>
+              <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
+            </div>
+          </div>
+
+          <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
+            <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
+              <span class="course-lens-metric__label">{{ metric.label }}</span>
+              <strong class="course-lens-metric__value">{{ metric.value }}</strong>
+              <span class="course-lens-metric__hint">{{ metric.hint }}</span>
+            </article>
+          </div>
+        </AtHelpDisclosure>
       </template>
       <template #actions>
         <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="emit('navigate', 'students')">到學生管理新增課程</AtButton>
@@ -33,32 +53,6 @@
     </AtPageHeader>
 
     <div class="card course-header-card">
-
-      <details class="course-context-disclosure">
-        <summary>
-          <span class="material-symbols-outlined" aria-hidden="true">info</span>
-          <span class="course-context-disclosure__title">先看懂這一頁</span>
-          <span class="course-context-disclosure__hint">查找、排課與營運；建立、續報與購買請從學生管理進入</span>
-          <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
-        </summary>
-        <div class="course-context-disclosure__body">
-          <div class="course-lens-guidance" role="note" data-testid="course-lens-guidance">
-            <span class="material-symbols-outlined course-lens-guidance__icon" aria-hidden="true">near_me</span>
-            <div>
-              <strong>這一頁適合查找與分流</strong>
-              <span>建立、續報、購買與學生資料由「學生管理」負責；本頁保留查找、排課、課程營運與既有課程編輯。</span>
-            </div>
-          </div>
-
-          <div class="course-lens-summary" aria-label="課程管理摘要" data-testid="course-lens-summary">
-            <article v-for="metric in courseLensMetrics" :key="metric.key" class="course-lens-metric" :class="`course-lens-metric--${metric.tone}`">
-              <span class="course-lens-metric__label">{{ metric.label }}</span>
-              <strong class="course-lens-metric__value">{{ metric.value }}</strong>
-              <span class="course-lens-metric__hint">{{ metric.hint }}</span>
-            </article>
-          </div>
-        </div>
-      </details>
 
       <!-- Filters -->
       <div class="filter-bar grid" data-guide="course-mgmt-filters">
@@ -1523,6 +1517,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
 import { supabase } from '../supabase';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
@@ -5942,11 +5937,7 @@ onUnmounted(() => {
 
 <style scoped>
 .course-page {
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 0 12px 24px;
-  box-sizing: border-box;
+  padding-bottom: 24px;
   position: relative;
 }
 /* ----- Page header ----- */

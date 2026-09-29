@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-contained-monthly-chains
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): preserve complete reschedule chains within reviewed monthly periods"
+    reason: 補齊尚未啟用的受控更正對完整調課鏈的核對與保留；未執行正式拆約／收款，不發布完成公告。
+
   - id: silent-2026-09-29-source-monthly-item
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): preserve existing source invoice items during reviewed correction"
@@ -12,15 +17,15 @@ exemptions:
     changelog_title: "fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)"
     reason: 刷卡即出席政策本身未變，僅補強邊界情況；尚未部署或於正式環境驗證，不發布教職員公告。
 
-  - id: silent-2026-09-29-confirmed-monthly-fees
-    changelog_date: "2026-09-29"
-    changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
-    reason: 月結帳務及續約介面尚未核准部署或驗證正式受影響路徑，不先發布上線公告。
-
   - id: silent-2026-09-29-inbox-first-paint
     changelog_date: "2026-09-29"
     changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
     reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
+
+  - id: silent-2026-09-29-confirmed-monthly-fees
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
+    reason: 月結帳務及續約介面尚未核准部署或驗證正式受影響路徑，不先發布上線公告。
 
   - id: silent-2026-09-29-tuition-summary-label
     changelog_date: "2026-09-29"
