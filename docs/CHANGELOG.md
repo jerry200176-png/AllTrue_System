@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
 - 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。
 
+## 2026-09-29 — fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors
+<!-- release-notes: silent_ship=silent-2026-09-29-tabs-scroll-status-tone -->
+- 修正分頁列右側多出的小捲軸；出缺勤「今日已標記狀態」標籤依狀態上色（到班綠、遲到橘、缺席紅、請假灰），不再全部紅色。
+
 ## 2026-09-29 — fix(ux): one source per dashboard count, loading placeholders
 <!-- release-notes: silent_ship=silent-2026-09-29-counts-loading-ux -->
 - 主任總覽的待審評量、未讀通知、繳費提醒、今日課務進度改與側欄／各頁同一口徑；載入中的列表標頭顯示「—」與骨架而非 0／空狀態。純前端顯示調整，無教職員新操作。

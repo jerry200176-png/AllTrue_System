@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
     reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
 
+  - id: silent-2026-09-29-tabs-scroll-status-tone
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors"
+    reason: 版面小修正（多餘捲軸、狀態標籤顏色），流程與資料不變，不需另發版本說明。
+
   - id: silent-2026-09-29-counts-loading-ux
     changelog_date: "2026-09-29"
     changelog_title: "fix(ux): one source per dashboard count, loading placeholders"

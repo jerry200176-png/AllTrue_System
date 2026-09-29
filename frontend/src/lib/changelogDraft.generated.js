@@ -31,10 +31,10 @@ export const changelogDraftNotes = [
         "items": [
           "complete reschedule chains within reviewed monthly periods",
           "existing source invoice items during reviewed correction",
+          "stray scrollbar on tab rows; attendance status chips use status colors",
           "source per dashboard count, loading placeholders",
           "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-          "copy and calmer colors on director pages",
-          "tuition summary as invoiced-only outstanding"
+          "copy and calmer colors on director pages"
         ]
       },
       {
