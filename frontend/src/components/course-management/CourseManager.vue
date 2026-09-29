@@ -147,7 +147,7 @@ export default {
         >{{ t.label }}</button>
       </nav>
       <div class="cmw__body">
-        <section v-if="monthlySummary" class="cmw__card" data-testid="monthly-payment-periods" aria-label="月結期間與付款">
+        <section v-if="monthlySummary && ['overview', 'billing'].includes(activeTab)" class="cmw__card" data-testid="monthly-payment-periods" aria-label="月結期間與付款">
           <h3>合約期間 {{ monthlySummary.contract_start || '待確認' }} ～ {{ monthlySummary.contract_end || '待確認' }}</h3>
           <label class="cmw__row">查看帳期
             <select v-model="selectedPeriod" aria-label="查看月結帳期">
@@ -155,18 +155,37 @@ export default {
               <option v-for="period in monthlySummary.periods" :key="period.billing_period" :value="period.billing_period">{{ period.billing_period }}</option>
             </select>
           </label>
-          <p v-if="monthlySummary.review_required" class="cmw__hint" role="status">付款期間待確認，請至帳務中心核對各期收款。跨月份不代表新一期已繳。</p>
+          <p v-if="monthlySummary.review_required" class="cmw__hint" role="status">付款期間待確認。先核對堂次與已登錄收款，再預覽分期更正；尚未建立帳單的月份，在帳務中心也不會有繳費單。</p>
           <div class="cmw__period-table">
             <table>
-              <thead><tr><th scope="col">帳期／服務期間</th><th scope="col">付款</th><th scope="col">未收金額</th></tr></thead>
+              <thead><tr><th scope="col">帳期／服務期間</th><th scope="col">帳單付款登錄</th><th scope="col">未收金額</th></tr></thead>
               <tbody><tr v-for="period in monthlySummary.periods" :key="period.billing_period">
                 <th scope="row">{{ period.billing_period }}<small v-if="period.period_start"> {{ period.period_start }} ～ {{ period.period_end }}</small></th>
-                <td>{{ periodPaymentLabel(period.payment_status) }}</td>
+                <td>{{ periodPaymentLabel(period.payment_status) }}<small v-if="period.source === 'unattributed'">尚無對應帳單</small><small v-if="period.amount_discrepancy">帳單總額與堂次試算不同，需核對約定</small></td>
                 <td>{{ period.outstanding_amount == null ? '待核對' : `NT$ ${Number(period.outstanding_amount).toLocaleString()}` }}</td>
               </tr></tbody>
             </table>
           </div>
-          <button v-if="monthlySummary.review_required" type="button" class="small ghost" @click="act('tuition')">核對付款期間</button>
+          <template v-if="monthlySummary.session_review">
+            <p class="cmw__hint">系統登錄收款：{{ monthlySummary.registered_paid_amount == null ? '待核對' : `NT$ ${Number(monthlySummary.registered_paid_amount).toLocaleString()}` }}。此為帳務紀錄，實際收款與月份歸屬仍須核對。</p>
+            <div class="cmw__period-table">
+              <table aria-label="依上課日期核對費用">
+                <thead><tr><th scope="col">上課月份</th><th scope="col">已上課費用試算</th><th scope="col">需核對事項</th></tr></thead>
+                <tbody><tr v-for="month in monthlySummary.session_review" :key="month.calendar_month">
+                  <th scope="row">{{ month.calendar_month }}</th>
+                  <td><details><summary>{{ month.completed_sessions }} 堂 · {{ month.estimated_charge == null ? '費率待核對' : `NT$ ${Number(month.estimated_charge).toLocaleString()}` }}</summary>
+                    <ul><li v-for="session in month.sessions" :key="session.session_id">{{ session.date }} · {{ session.rate_unit === 'hour' ? '每小時' : '每堂' }} NT$ {{ Number(session.rate).toLocaleString() }} · 試算 {{ session.estimated_charge == null ? '待核對' : `NT$ ${Number(session.estimated_charge).toLocaleString()}` }}<template v-if="session.amendment_id">（依定價調整）</template></li></ul>
+                  </details></td>
+                  <td><span v-if="month.uncovered_sessions">{{ month.uncovered_sessions }} 堂沒有對應帳單服務期間</span><span v-else>已有帳單服務期間</span><small v-if="month.outside_contract_sessions">{{ month.outside_contract_sessions }} 堂超出合約日期，需一併更正</small></td>
+                </tr></tbody>
+              </table>
+            </div>
+            <p class="cmw__hint">試算依已上課日期與當日費率，包含越界堂次；請假、取消與待上課不計入。試算金額尚未成為應收帳單。</p>
+          </template>
+          <div v-if="monthlySummary.review_required" class="cmw__row">
+            <button type="button" class="small ghost" @click="act('invoice')">查看登錄帳單與收款</button>
+            <button type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
+          </div>
         </section>
         <div
           v-if="activeTab === 'overview'"
@@ -386,7 +405,7 @@ export default {
 .cmw__session-date{font-weight:600}
 .cmw__session-state{font-size:.8rem;color:var(--ds-ink-secondary)}
 .cmw__session-note{grid-column:1/-1;font-size:.8rem;color:var(--ds-ink-mute)}
-.cmw__period-table{overflow-x:auto;margin-top:8px}.cmw__period-table table{width:100%;border-collapse:collapse;font-size:.85rem}.cmw__period-table th,.cmw__period-table td{text-align:left;padding:8px;border-bottom:1px solid var(--ds-hairline)}.cmw__period-table small{display:block;font-weight:400;color:var(--ds-ink-mute)}
+.cmw__period-table{overflow-x:auto;margin-top:8px}.cmw__period-table table{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums}.cmw__period-table th,.cmw__period-table td{text-align:left;padding:8px;border-bottom:1px solid var(--ds-hairline)}.cmw__period-table small{display:block;font-weight:400;color:var(--ds-ink-mute)}
 .cmw__settings{max-width:none}
 @media (max-width:720px){.cmw__panel{width:100vw}.cmw__body{padding:12px}.cmw__session-row{grid-template-columns:1fr auto}}
 </style>

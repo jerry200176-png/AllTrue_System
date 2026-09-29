@@ -127,6 +127,17 @@ async function installApiMocks(page, mode, pageName = '', authProfile = null, on
       await hangPromise;
     }
 
+    if (pageName === 'tuition' && p.includes('/student-classes')) {
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ last_page: 1, data: [{
+        ID: 5105, StudentID: 2000, student_name: '測試月結學生', subject_name: '數學', teacher_name: '測試老師',
+        monthly_payment: { review_required: true, contract_start: '2026-07-27', contract_end: '2026-09-10', registered_paid_amount: 7500,
+          session_review: [
+            { calendar_month: '2026-08', completed_sessions: 4, estimated_charge: 6000, uncovered_sessions: 4, outside_contract_sessions: 0 },
+            { calendar_month: '2026-09', completed_sessions: 4, estimated_charge: 6000, uncovered_sessions: 4, outside_contract_sessions: 2 },
+          ] },
+      }] }) });
+    }
+
     if (pageName === 'calendar' && p.includes('/student-classes')) {
       if (mode === 'error') return route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: '課表資料暫時無法載入' }) });
       if (mode === 'empty') {
@@ -1191,6 +1202,28 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.locator('#tuition-accounting-panel-payments')).toBeVisible();
     await expect(page.locator('#tuition-accounting-panel-settled')).toHaveCount(0);
   });
+
+  for (const width of [1440, 390]) {
+    test(`billing missing monthly invoices are discoverable at ${width}px`, async ({ page }) => {
+      await openPilot(page, { pageName: 'tuition', mode: 'normal', viewport: { width, height: 900 } });
+      const request = page.waitForRequest(req => req.url().includes('/student-classes?'));
+      await page.getByRole('tab', { name: '月結待核對', exact: true }).click();
+      const query = await request;
+      expect(query.method()).toBe('GET');
+      expect(new URL(query.url()).searchParams.get('branch_id')).toBe('1');
+      expect(new URL(query.url()).searchParams.get('schedule_mode')).toBe('date');
+      const review = page.locator('#tuition-accounting-panel-monthly-review');
+      await expect(review).toContainText('測試月結學生');
+      await expect(review).toContainText('2026-09 · 已上 4 堂 · 試算 NT$ 6,000');
+      await expect(review).toContainText('4 堂沒有對應帳單服務期間');
+      await expect(review).toContainText('2 堂超出合約日期');
+      await expect(review.getByRole('button', { name: '前往課程核對' })).toBeVisible();
+      await expect(page.locator('#tuition-accounting-panel-receivables')).toHaveCount(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+      fs.mkdirSync(outDir, { recursive: true });
+      await page.screenshot({ path: path.join(outDir, `monthly-billing-review-${width}.png`), fullPage: true });
+    });
+  }
 
   test('teacher list tabs keep status workspace and RFID readable', async ({ page }) => {
     await openPilot(page, { pageName: 'teachers', mode: 'normal', viewport: { width: 390, height: 844 } });
