@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "audited monthly receipt correction；controlled monthly contract correction",
+    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；audited monthly receipt correction",
     "audience": [
       "teacher",
       "director"
@@ -18,7 +18,9 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
           "audited monthly receipt correction",
+          "undo of contract amendment",
           "controlled monthly contract correction"
         ]
       },
@@ -35,14 +37,14 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
       "audited monthly receipt correction",
+      "undo of contract amendment",
       "controlled monthly contract correction",
       "existing source invoice items during reviewed correction",
       "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
       "RFID swipe-as-attendance edge cases",
-      "confirmed monthly fees and visible renewal periods",
-      "missing monthly invoice review",
-      "correction into an existing monthly contract"
+      "confirmed monthly fees and visible renewal periods"
     ]
   },
   {
