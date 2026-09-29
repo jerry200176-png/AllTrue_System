@@ -26,12 +26,12 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
           "RFID swipe-as-attendance edge cases",
           "confirmed monthly fees and visible renewal periods",
           "missing monthly invoice review",
           "correction into an existing monthly contract",
-          "next-period monthly booking guidance",
-          "monthly period payment attribution"
+          "next-period monthly booking guidance"
         ]
       }
     ],
@@ -39,11 +39,11 @@ export const changelogDraftNotes = [
       "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
       "audited monthly receipt correction",
       "controlled monthly contract correction",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
       "RFID swipe-as-attendance edge cases",
       "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
-      "correction into an existing monthly contract",
-      "next-period monthly booking guidance"
+      "correction into an existing monthly contract"
     ]
   },
   {
