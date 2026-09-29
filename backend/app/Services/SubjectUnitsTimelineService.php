@@ -261,7 +261,8 @@ final class SubjectUnitsTimelineService
         try {
             $start = Carbon::parse((string) $row->start_time);
             $end = Carbon::parse((string) $row->end_time);
-            if ($end->gt($start)) return $start->diffInMinutes($end) / 60;
+            // Preserve Carbon 2 whole-minute fallback without changing payroll precision.
+            if ($end->gt($start)) return (int) $start->diffInMinutes($end, true) / 60;
         } catch (\Throwable) {
             // Keep the established two-hour fallback for legacy rows.
         }

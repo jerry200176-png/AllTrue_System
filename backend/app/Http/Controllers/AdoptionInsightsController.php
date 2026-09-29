@@ -64,6 +64,7 @@ class AdoptionInsightsController extends Controller
             ]);
 
         foreach ($pendingLearning as $row) {
+            /** @var LearningRecord&object{due_date: string, status: string, student_name: string, owner_name: string} $row */
             $dueAt = (string) $row->due_date;
             $slaLevel = $this->resolveSlaLevel($dueAt);
             $tasks[] = [
@@ -95,6 +96,7 @@ class AdoptionInsightsController extends Controller
             ]);
 
         foreach ($workflowRows as $row) {
+            /** @var ExceptionWorkflow&object{student_name: string} $row */
             $dueAt = optional($row->due_at)->toDateString();
             $slaLevel = $this->resolveSlaLevel((string) $dueAt);
             $tasks[] = [
@@ -138,8 +140,8 @@ class AdoptionInsightsController extends Controller
         usort($tasks, static function (array $a, array $b): int {
             $slaPriority = ['breached' => 0, 'warning' => 1, 'normal' => 2];
             $priority = ['pending' => 0, 'changes_requested' => 1, 'open' => 2, 'acknowledged' => 3, 'candidate_ready' => 4];
-            $sa = $slaPriority[$a['sla_level'] ?? 'normal'] ?? 9;
-            $sb = $slaPriority[$b['sla_level'] ?? 'normal'] ?? 9;
+            $sa = $slaPriority[$a['sla_level']] ?? 9;
+            $sb = $slaPriority[$b['sla_level']] ?? 9;
             if ($sa !== $sb) {
                 return $sa <=> $sb;
             }
@@ -190,6 +192,7 @@ class AdoptionInsightsController extends Controller
                 ->get(['ula.user_id', 'u.Name as actor_name', 'ula.login_at']);
 
             foreach ($logins as $row) {
+                /** @var UserLoginActivity&object{actor_name: string|null} $row */
                 $items[] = [
                     'type' => 'login',
                     'actor' => $row->actor_name ?: ('#' . $row->user_id),
@@ -211,6 +214,7 @@ class AdoptionInsightsController extends Controller
             ->get(['lr.id', 'lr.ApprovedAt', DB::raw("COALESCE(approver.Name, '主任') as actor_name")]);
 
         foreach ($approvals as $row) {
+            /** @var LearningRecord&object{actor_name: string} $row */
             $items[] = [
                 'type' => 'learning_approved',
                 'actor' => $row->actor_name,

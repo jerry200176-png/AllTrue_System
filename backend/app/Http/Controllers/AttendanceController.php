@@ -319,7 +319,7 @@ class AttendanceController extends Controller
 
         // Bug fix (2026-04-21)：堂次級精確過濾——代課後原老師不應在補點名看到被代課堂
         // classIds 是保守超集合（課程級）；此處補做堂次級（session × date × time）確認
-        if ($role === 'teacher' && isset($teacherId) && $teacherId > 0) {
+        if ($role === 'teacher' && $teacherId > 0) {
             $sessionsBuilder->where(function ($outer) use ($teacherId) {
                 $outer->whereExists(function ($q) use ($teacherId) {
                     $q->select(DB::raw(1))
@@ -659,7 +659,7 @@ class AttendanceController extends Controller
         // from its callback, but this boundary must map them after rollback.
         try {
             return DB::transaction($transaction);
-        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+        } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
     }
@@ -836,7 +836,7 @@ class AttendanceController extends Controller
                 return response()->json(['message' => 'Attendance already recorded'], 409);
             }
             throw $e;
-        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+        } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
     }

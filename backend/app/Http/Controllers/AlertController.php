@@ -653,7 +653,7 @@ class AlertController extends Controller
     private function makeFakeSCForPackage(\App\Models\CoursePackage $pkg): StudentClass
     {
         $sc = new StudentClass();
-        $sc->ID = null;
+        $sc->setAttribute('ID', null);
         $sc->StudentID = $pkg->student_id;
         $sc->settlement_day = $pkg->settlement_day;
         $sc->Paid = $pkg->paid ? 1 : 0;
@@ -673,7 +673,7 @@ class AlertController extends Controller
     {
         $sc = StudentClass::with(['student', 'coursePackage'])->findOrFail($studentClassId);
 
-        if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
+        if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || $sc->isEffectivelyPaid()) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
 
@@ -714,9 +714,7 @@ class AlertController extends Controller
                 // Count-mode alerts already use the contract price rather than
                 // a stale historical Charge snapshot. Keep the tuition slip on
                 // that same canonical display path (in-app #275).
-                'charge' => $sc instanceof StudentClass
-                    ? $this->countModeCharge($sc)
-                    : max(0, (int) ($sc->Charge ?? 0)),
+                'charge' => $this->countModeCharge($sc),
                 'period_sessions' => null,
                 'period_start' => null,
                 'period_end' => null,

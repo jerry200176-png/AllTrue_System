@@ -189,7 +189,7 @@ class RepairAttendanceRootFix826 extends Command
         if (!app()->environment('production')) {
             return true;
         }
-        if (!$this->option('force') || env('ALLOW_PROD_REPAIR') !== '1') {
+        if (!$this->option('force') || \Illuminate\Support\Env::get('ALLOW_PROD_REPAIR') !== '1') {
             $this->error('Production requires --force and ALLOW_PROD_REPAIR=1');
             return false;
         }

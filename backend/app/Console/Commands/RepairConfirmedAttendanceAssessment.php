@@ -39,7 +39,7 @@ class RepairConfirmedAttendanceAssessment extends Command
     ): int {
         $execute = (bool) $this->option('execute');
         if ($execute && app()->environment('production')
-            && (!$this->option('force') || env('ALLOW_PROD_REPAIR') !== '1')) {
+            && (!$this->option('force') || \Illuminate\Support\Env::get('ALLOW_PROD_REPAIR') !== '1')) {
             $this->error('Production requires --force and ALLOW_PROD_REPAIR=1');
             return self::FAILURE;
         }

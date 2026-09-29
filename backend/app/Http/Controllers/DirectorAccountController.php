@@ -24,7 +24,7 @@ class DirectorAccountController extends Controller
     {
         // SEC-F1: If DIRECTOR_REGISTRATION_TOKEN is configured, the request must
         // include a matching registration_token. Prevents open enumeration/account creation.
-        $requiredToken = config('app.director_registration_token', env('DIRECTOR_REGISTRATION_TOKEN', null));
+        $requiredToken = config('app.director_registration_token', \Illuminate\Support\Env::get('DIRECTOR_REGISTRATION_TOKEN', null));
         if (!empty($requiredToken)) {
             $provided = $request->input('registration_token', '');
             if (!hash_equals($requiredToken, (string) $provided)) {
@@ -57,7 +57,7 @@ class DirectorAccountController extends Controller
         $user->Name = $data['name'];
         $user->PSW = Hash::make($data['password']);
         $user->type = 'U'; // pending until approved
-        $user->phone = null;
+        $user->setAttribute('phone', null);
         $user->save();
 
         UserCampus::create([

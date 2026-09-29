@@ -619,7 +619,7 @@ class RepairLeaveCascadeSlotTimes extends Command
 
             return false;
         }
-        if ((string) env('ALLOW_PROD_REPAIR', '') !== '1') {
+        if ((string) \Illuminate\Support\Env::get('ALLOW_PROD_REPAIR', '') !== '1') {
             $this->error('Set ALLOW_PROD_REPAIR=1 for production writes');
 
             return false;

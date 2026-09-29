@@ -169,17 +169,20 @@ class ClassSession extends Model
         }
     }
 
-    public function studentClass()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<StudentClass, $this> */
+    public function studentClass(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
     }
 
-    public function subject()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Subject, $this> */
+    public function subject(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(\App\Models\Subject::class, 'SubjectID', 'id');
     }
 
-    public function signIns()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<StudentSignIn, $this> */
+    public function signIns(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(StudentSignIn::class, 'ClassSessionID', 'id');
     }

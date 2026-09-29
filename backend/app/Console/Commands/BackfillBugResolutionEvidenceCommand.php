@@ -41,16 +41,16 @@ class BackfillBugResolutionEvidenceCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
 
         if ($apply && $dryRun) {
-            return $this->fail('choose exactly one of --dry-run or --apply');
+            return $this->failWithMessage('choose exactly one of --dry-run or --apply');
         }
         if ($apply && $this->option('confirmation') !== self::CONFIRMATION) {
-            return $this->fail('apply requires the exact confirmation phrase');
+            return $this->failWithMessage('apply requires the exact confirmation phrase');
         }
 
         $manifest = $this->readManifest((string) $this->argument('manifest'));
         $productionHead = strtolower(trim((string) $this->option('production-head')));
         if (!preg_match('/^[0-9a-f]{40}$/', $productionHead)) {
-            return $this->fail('production head must be a full 40-character git SHA');
+            return $this->failWithMessage('production head must be a full 40-character git SHA');
         }
 
         try {
@@ -60,7 +60,7 @@ class BackfillBugResolutionEvidenceCommand extends Command
                 $prepared[] = $this->prepareItem($item, $manifest, $productionHead);
             }
         } catch (Throwable $exception) {
-            return $this->fail($exception->getMessage());
+            return $this->failWithMessage($exception->getMessage());
         }
 
         if (!$apply) {
@@ -263,7 +263,8 @@ class BackfillBugResolutionEvidenceCommand extends Command
             ->where('to_status', 'resolved')
             ->orderByDesc('id')
             ->first();
-        if (!$resolveLog || !$resolveLog->created_at) {
+        $resolvedAt = Carbon::make($resolveLog?->created_at);
+        if (!$resolveLog || $resolvedAt === null) {
             throw new RuntimeException("bug #{$bugId}: latest resolved status log is missing");
         }
 
@@ -272,7 +273,7 @@ class BackfillBugResolutionEvidenceCommand extends Command
             ->where('id', $commentId)
             ->where('bug_report_id', $bugId)
             ->where('is_internal_note', false)
-            ->where('created_at', '>=', $resolveLog->created_at)
+            ->where('created_at', '>=', $resolvedAt)
             ->first();
         if (!$comment) {
             throw new RuntimeException("bug #{$bugId}: public resolution context is missing or predates the latest resolve");
@@ -352,7 +353,7 @@ class BackfillBugResolutionEvidenceCommand extends Command
         }
     }
 
-    private function fail(string $message): int
+    private function failWithMessage(string $message): int
     {
         $this->error($message);
         return self::FAILURE;

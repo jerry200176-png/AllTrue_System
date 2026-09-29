@@ -82,7 +82,8 @@ class StudentClass extends Model
         }
     }
 
-    public function student()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Student, $this> */
+    public function student(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
     }
@@ -93,27 +94,32 @@ class StudentClass extends Model
             || in_array((string) $this->getAttribute('closed_reason'), ['usage_settled', 'contract_amended'], true);
     }
 
-    public function subjectRecord()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Subject, $this> */
+    public function subjectRecord(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Subject::class, 'SubjectID', 'id');
     }
 
-    public function teacher()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<User, $this> */
+    public function teacher(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'TeacherID', 'id');
     }
 
-    public function classSessions()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<ClassSession, $this> */
+    public function classSessions(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ClassSession::class, 'StudentClassID', 'ID');
     }
 
-    public function learningRecords()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<LearningRecord, $this> */
+    public function learningRecords(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(LearningRecord::class, 'StudentClassID', 'ID');
     }
 
-    public function invoices()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<Invoice, $this> */
+    public function invoices(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(Invoice::class, 'StudentClassID', 'ID');
     }
@@ -123,17 +129,20 @@ class StudentClass extends Model
         return $this->hasMany(StudentClassPricingAmendment::class, 'student_class_id', 'ID');
     }
 
-    public function paymentReports()
+    /** @return \Illuminate\Database\Eloquent\Relations\HasMany<PaymentReport, $this> */
+    public function paymentReports(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(PaymentReport::class, 'StudentClassID', 'ID');
     }
 
-    public function room()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Room, $this> */
+    public function room(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Room::class, 'room_id', 'id');
     }
 
-    public function coursePackage()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<CoursePackage, $this> */
+    public function coursePackage(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(CoursePackage::class, 'PackageID', 'id');
     }

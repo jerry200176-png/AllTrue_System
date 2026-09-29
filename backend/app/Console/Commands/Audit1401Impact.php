@@ -78,7 +78,7 @@ class Audit1401Impact extends Command
                 ->orderBy('campus_id')
                 ->get();
             foreach ($byCampus as $row) {
-                $this->line("2. unverified_binding_count_campus\t{$row->campus_id}\t{$row->cnt}");
+                $this->line("2. unverified_binding_count_campus\t{$row->campus_id}\t" . $row->getAttribute('cnt'));
             }
             if ($byCampus->isEmpty()) {
                 $this->line('2. unverified_binding_count_campus\t(none)');
@@ -227,7 +227,7 @@ class Audit1401Impact extends Command
                 ->orderBy('Student.CampusID')
                 ->get();
             foreach ($byCampus as $row) {
-                $this->line("7. legacy_session_still_active_campus\t{$row->campus_id}\t{$row->cnt}");
+                $this->line("7. legacy_session_still_active_campus\t" . $row->getAttribute('campus_id') . "\t" . $row->getAttribute('cnt'));
             }
             if ($byCampus->isEmpty()) {
                 $this->line('7. legacy_session_still_active_campus\t(none)');

@@ -175,7 +175,6 @@ class StudentClassResponseContractTest extends TestCase
         $this->authJson('GET', "/api/v1/student-classes/{$foreign->ID}", $token)->assertForbidden();
     }
 
-    /** @dataProvider memoPayloadShapes */
     #[\PHPUnit\Framework\Attributes\DataProvider('memoPayloadShapes')]
     public function test_memo_update_preserves_object_and_legacy_single_row_json_payloads(bool $wrapped): void
     {

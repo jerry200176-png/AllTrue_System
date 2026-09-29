@@ -39,7 +39,7 @@ class BackfillPackageBinding extends Command
 
         $report = [];
         foreach ($courses as $sc) {
-            $alreadyBound = !empty($sc->PackageID) && (int) $sc->PackageID > 0;
+            $alreadyBound = (int) ($sc->PackageID ?? 0) > 0;
             $samePackage = (int) ($sc->PackageID ?? 0) === $pkg->id;
             $report[] = [
                 $sc->ID,
@@ -65,7 +65,7 @@ class BackfillPackageBinding extends Command
         $bound = 0;
         DB::transaction(function () use ($courses, $pkg, &$bound) {
             foreach ($courses as $sc) {
-                if (!empty($sc->PackageID) && (int) $sc->PackageID > 0 && (int) $sc->PackageID !== $pkg->id) {
+                if ((int) ($sc->PackageID ?? 0) > 0 && (int) $sc->PackageID !== $pkg->id) {
                     continue;
                 }
                 $sc->PackageID = $pkg->id;

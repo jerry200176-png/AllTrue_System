@@ -26,7 +26,8 @@ class ChatThreadMember extends Model
         return $this->belongsTo(ChatThread::class, 'thread_id');
     }
 
-    public function user()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\User, $this> */
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
     }

@@ -39,22 +39,26 @@ class PaymentReport extends Model
         'reported_amount' => 'decimal:2',
     ];
 
-    public function student()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Student, $this> */
+    public function student(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
     }
 
-    public function studentClass()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\StudentClass, $this> */
+    public function studentClass(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
     }
 
-    public function invoice()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Invoice, $this> */
+    public function invoice(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Invoice::class, 'InvoiceID', 'id');
     }
 
-    public function confirmedByUser()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\User, $this> */
+    public function confirmedByUser(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'confirmed_by', 'id');
     }

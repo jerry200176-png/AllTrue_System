@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "fix(ops): restore locked dependencies before rollback runtime (GitHub #977 / #2833)"
     reason: 既有部署回復可靠度修正，不新增教職員功能或操作；未合併或部署，不發布未驗證公告。
 
+  - id: silent-2026-09-27-laravel12-2833
+    changelog_date: "2026-09-27"
+    changelog_title: "chore(framework): prepare Laravel 12 compatibility (PR #2833)"
+    reason: 框架相容與安全維護準備，尚未部署或通過 production 受影響路徑驗收；不新增教職員操作、不發布未驗證的改善公告。
+
   - id: silent-2026-09-27-attendance-carbon-compatibility
     changelog_date: "2026-09-27"
     changelog_title: "chore(attendance): preserve minute precision across Carbon versions (GitHub #977)"

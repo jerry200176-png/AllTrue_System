@@ -28,7 +28,7 @@ class TestCommand extends Command
             return self::FAILURE;
         }
 
-        $paths = $this->argument('path') ?? [];
+        $paths = $this->argument('path');
         $command = [PHP_BINARY, $phpunitBinary];
         if (!empty($paths)) {
             $command = array_merge($command, $paths);

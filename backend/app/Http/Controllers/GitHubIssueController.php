@@ -19,7 +19,7 @@ class GitHubIssueController extends Controller
         $perPage = min((int) $request->input('per_page', 30), 100);
         $page = max((int) $request->input('page', 1), 1);
 
-        $token = env('GITHUB_TOKEN');
+        $token = \Illuminate\Support\Env::get('GITHUB_TOKEN');
         if (!$token) {
             return response()->json([
                 'data' => [],

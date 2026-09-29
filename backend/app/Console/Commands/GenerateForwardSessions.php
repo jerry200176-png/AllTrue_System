@@ -122,7 +122,7 @@ class GenerateForwardSessions extends Command
             $this->error('Production requires --force with --execute (or --scheduled for the nightly job)');
             return false;
         }
-        if (env('ALLOW_PROD_REPAIR') !== '1') {
+        if (\Illuminate\Support\Env::get('ALLOW_PROD_REPAIR') !== '1') {
             $this->error('Production requires ALLOW_PROD_REPAIR=1 (PCR GO gate)');
             return false;
         }

@@ -95,7 +95,7 @@ class CleanupOrphanBindings extends Command
                 'student_id'     => $anomaly->student_id,
                 'student_name'   => $student?->name ?? '(deleted)',
                 'campus_id'      => $student?->CampusID ?? '(unknown)',
-                'binding_count'  => $anomaly->binding_count,
+                'binding_count'  => $anomaly->getAttribute('binding_count'),
             ]);
 
             $anomalyStudents++;

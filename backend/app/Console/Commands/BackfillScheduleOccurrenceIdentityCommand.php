@@ -103,11 +103,11 @@ class BackfillScheduleOccurrenceIdentityCommand extends Command
             $this->error('Production requires --force');
             return false;
         }
-        if (env('ALLOW_PROD_REPAIR') !== '1') {
+        if (\Illuminate\Support\Env::get('ALLOW_PROD_REPAIR') !== '1') {
             $this->error('Production requires ALLOW_PROD_REPAIR=1');
             return false;
         }
-        if (env('I_APPROVE_TD076_OCCURRENCE_BACKFILL') !== '1') {
+        if (\Illuminate\Support\Env::get('I_APPROVE_TD076_OCCURRENCE_BACKFILL') !== '1') {
             $this->error('Production requires I_APPROVE_TD076_OCCURRENCE_BACKFILL=1');
             return false;
         }

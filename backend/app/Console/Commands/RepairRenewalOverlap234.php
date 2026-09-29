@@ -138,5 +138,5 @@ class RepairRenewalOverlap234 extends Command
     }
 
     private function actorId(): ?int { $id = (int) $this->option('actor-user-id'); return $id > 0 ? $id : null; }
-    private function prodOk(): bool { if (!app()->environment('production')) return true; if (!$this->option('force') || env('ALLOW_PROD_REPAIR') !== '1') { $this->error('Production requires --force and ALLOW_PROD_REPAIR=1'); return false; } return true; }
+    private function prodOk(): bool { if (!app()->environment('production')) return true; if (!$this->option('force') || \Illuminate\Support\Env::get('ALLOW_PROD_REPAIR') !== '1') { $this->error('Production requires --force and ALLOW_PROD_REPAIR=1'); return false; } return true; }
 }

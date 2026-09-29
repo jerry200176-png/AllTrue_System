@@ -36,12 +36,14 @@ class CoursePackage extends Model
         'enabled' => 'boolean',
     ];
 
-    public function student()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Student, $this> */
+    public function student(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Student::class, 'student_id', 'id');
     }
 
-    public function campus()
+    /** @return \Illuminate\Database\Eloquent\Relations\BelongsTo<\App\Models\Campus, $this> */
+    public function campus(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Campus::class, 'campus_id', 'id');
     }
