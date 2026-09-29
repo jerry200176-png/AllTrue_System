@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
+<!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->
+- 受控月結更正核對完整調課鏈：同一期內連同原堂次保留並移轉，拒絕跨期、斷鏈、循環、學生／分校錯配及範圍外合約關聯；簽章核對也涵蓋新增外部連結。修復仍未啟用，正式個案尚未更正。
+
 ## 2026-09-29 — fix(billing): preserve existing source invoice items during reviewed correction
 <!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
 - 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
