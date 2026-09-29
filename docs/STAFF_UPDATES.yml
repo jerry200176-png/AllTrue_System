@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-29-void-receipt-trace
+    published_at: "2026-09-29"
+    audiences:
+      - director
+    importance: digest
+    title: 作廢收據可追蹤
+    summary: 收據紀錄可查詢已作廢項目，歷史課程仍能開啟繳費明細。
+    items:
+      - category: improved
+        text: 帳務中心選擇已作廢紀錄或全部，可透過繳費明細核對原有帳務紀錄。
+      - category: fixed
+        text: 作廢狀態在列表與匯出中清楚標示，不計入有效收款合計，也不提供再次撤銷。
+    source_refs:
+      - "alltrue:bug_report:350"
+      - "changelog:2026-09-29:void-receipt-trace"
+
   - id: staff-2026-09-29-tutoring-payment-prompts
     published_at: "2026-09-29"
     audiences:
