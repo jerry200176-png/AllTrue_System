@@ -164,4 +164,36 @@ class SwipeRfidHardeningTest extends TestCase
 
         $this->assertSame(0, Notification::where('Type', 'deduction_failed')->count());
     }
+
+    public function test_orphan_close_does_not_backfill_from_manual_absent_or_stale_rows(): void
+    {
+        $yesterday = now()->subDay()->toDateString();
+
+        // Manual absent row with no SignOutDT: closed, but never deducts later sessions.
+        $a = $this->student();
+        $scA = $this->studentClass($a->id);
+        $laterA = $this->mkSession($scA->ID, $yesterday, '12:00:00', '14:00:00');
+        $this->orphan($a, "{$yesterday} 10:00:00")->update(['Memo' => '', 'Status' => 'absent']);
+
+        // RFID row older than 2 days: closed, not retro-deducted.
+        $b = $this->student();
+        $scB = $this->studentClass($b->id);
+        $old = now()->subDays(5)->toDateString();
+        $laterB = $this->mkSession($scB->ID, $old, '12:00:00', '14:00:00');
+        $this->orphan($b, "{$old} 10:00:00");
+
+        // Session a teacher already resolved (not scheduled) is never overridden.
+        $c = $this->student();
+        $scC = $this->studentClass($c->id);
+        $resolved = $this->mkSession($scC->ID, $yesterday, '12:00:00', '14:00:00', 'absent');
+        $this->orphan($c, "{$yesterday} 10:00:00");
+
+        $this->artisan('student-signin:close-orphans')->assertSuccessful();
+
+        foreach ([$laterA, $laterB, $resolved] as $s) {
+            $this->assertSame(0, StudentSignIn::where('ClassSessionID', $s->id)->count());
+        }
+        $this->assertSame('absent', $resolved->refresh()->Status);
+        $this->assertSame(0, StudentSignIn::whereNull('SignOutDT')->count());
+    }
 }

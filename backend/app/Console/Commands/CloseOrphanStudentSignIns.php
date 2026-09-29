@@ -72,7 +72,12 @@ class CloseOrphanStudentSignIns extends Command
             $orphan->MDT       = now();
             $orphan->save();
 
-            if ($student = Student::find($orphan->StudentID)) {
+            // Only RFID-door rows prove presence; manual/absent rows must not trigger
+            // deduction. Old backlog (>2 days) is closed but never retro-deducted.
+            $isRfidPresence = in_array($orphan->Memo, ['swipe-rfid', 'self_study'], true)
+                && $orphan->Status === 'present';
+            $isRecent = $signInDT->gte($today->copy()->subDays(2));
+            if ($isRfidPresence && $isRecent && ($student = Student::find($orphan->StudentID))) {
                 StudentPresenceBackfillService::backfill(
                     $student,
                     $signInDT,

@@ -37,10 +37,8 @@ class StudentPresenceBackfillService
             ->whereDate('SessionDate', $today)
             ->whereTime('StartTime', '>=', $signInDT->format('H:i:s'))
             ->whereTime('StartTime', '<=', $signOutDT->format('H:i:s'))
-            ->whereNotIn(DB::raw('LOWER(Status)'), array_merge(
-                [SessionStatus::CANCELLED],
-                SessionStatus::leaveFamily()
-            ))
+            // Only untouched sessions: never override a teacher/leave/cancel decision.
+            ->where(DB::raw('LOWER(Status)'), SessionStatus::SCHEDULED)
             ->whereDoesntHave('signIns', fn ($q) => $q->whereNull('VoidedAt'))
             ->get();
 
