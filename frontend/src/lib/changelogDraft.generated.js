@@ -26,12 +26,12 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "missing monthly invoice review",
           "correction into an existing monthly contract",
           "next-period monthly booking guidance",
           "monthly period payment attribution",
           "capacity occupancy sources",
-          "historical course badges",
-          "existing void receipt trace query"
+          "historical course badges"
         ]
       }
     ],
@@ -39,11 +39,11 @@ export const changelogDraftNotes = [
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
       "audited monthly receipt correction",
       "controlled monthly contract correction",
+      "missing monthly invoice review",
       "correction into an existing monthly contract",
       "next-period monthly booking guidance",
       "monthly period payment attribution",
-      "capacity occupancy sources",
-      "historical course badges"
+      "capacity occupancy sources"
     ]
   },
   {
