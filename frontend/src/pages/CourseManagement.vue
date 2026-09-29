@@ -1194,7 +1194,7 @@
     />
 
     <MonthlyCorrectionPreviewModal :show="monthlyCorrectionShow" :candidates="monthlyCorrectionCandidates" :form="monthlyCorrectionForm" :preview="monthlyCorrectionPreview"
-      :loading="monthlyCorrectionLoading" :error="monthlyCorrectionError" @close="closeMonthlyCorrection" @check="checkMonthlyCorrection" @invalidate="invalidateMonthlyCorrection" />
+      :blocked="monthlyCorrectionBlocked" :loading="monthlyCorrectionLoading" :error="monthlyCorrectionError" @close="closeMonthlyCorrection" @check="checkMonthlyCorrection" @invalidate="invalidateMonthlyCorrection" />
     <ManualSessionModal
       :show="showManualSessionModal"
       :form="manualSessionForm"
@@ -2933,7 +2933,7 @@ const quickAddSessionForm = ref({
 const showManualSessionModal = ref(false);
 const {
   show: monthlyCorrectionShow, candidates: monthlyCorrectionCandidates, form: monthlyCorrectionForm, preview: monthlyCorrectionPreview,
-  loading: monthlyCorrectionLoading, error: monthlyCorrectionError, open: openMonthlyCorrection,
+  blocked: monthlyCorrectionBlocked, loading: monthlyCorrectionLoading, error: monthlyCorrectionError, open: openMonthlyCorrection,
   close: closeMonthlyCorrection, check: checkMonthlyCorrection, invalidate: invalidateMonthlyCorrection,
 } = useMonthlyCorrectionPreview();
 const pendingMonthlyBooking = ref(null);

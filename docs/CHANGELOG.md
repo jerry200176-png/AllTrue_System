@@ -2,6 +2,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-undo-contract-amendment -->
 - 主任可在課程操作選單「撤銷調整」，還原提前結束／調整合約總堂數：恢復堂數、結束狀態與被取消的預排（原時段被占用或合約已有變動時拒絕），需填原因並留稽核紀錄；帳務不變，也不會自動排課。
 
+## 2026-09-29 — fix(billing): prepare missing monthly invoice review
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-billing-review -->
+- 準備帳務中心「月結待核對」與堂次費率試算，明示缺少帳單服務期間和合約越界；系統登錄收款與實際入帳分開核對。尚未部署，未拆分正式個案或建立九月帳單。
+
 ## 2026-09-29 — fix(billing): prepare correction into an existing monthly contract
 <!-- release-notes: silent_ship=silent-2026-09-29-existing-monthly-correction -->
 - 延伸尚未啟用的受控更正：沿用既有新期合約與未繳帳单，保留取消／待上紀錄，已沖銷收款不重複沖銷。正式執行仍須最新核對清單及既有安全核准，尚未修復正式個案。
