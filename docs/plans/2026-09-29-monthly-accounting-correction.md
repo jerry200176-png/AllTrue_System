@@ -1,6 +1,6 @@
 # 月結誤登收款／越界日期更正準備
 
-R3/T3，實作、測試與唯讀清單準備；原通用操作目錄保持 planned，沒有 HTTP execute。任何啟用、正式收款／收據／帳單更正仍需 Founder 核准不可變清單。
+R3/T3。核准單案已由正式 Pi-local executor 完成 execute／verify，並核對合約、帳單、收款歷史、收據、繳費單及帳務中心；本修訂將移除單案資格，原通用操作仍保持 planned，沒有 HTTP execute。以下未執行狀態屬各次修訂當時的準備紀錄。
 
 ## 修訂 v2（2026-09-29）
 
@@ -58,7 +58,7 @@ Founder 在 2026-09-29 本次對話確認八月實收 6,000；九月未繳。現
 
 驗證已 voided net=0、既有目標日期／預估應收／NULL item owner、取消重疊及待上堂次完整資料形狀。readonly 不改款；更正新增唯一正確收款，移四堂並保留原 target/invoice/session IDs。測試冪等、target 漂移、額外付款、有效重疊、audit failure atomic rollback，以及既有 target 的 contract-only rollback。待上堂次不提前收費。能力 planned；部署、不可變 repair manifest 與實際 mutation 分別需保護核准。
 
-## 單案本人確認方案（啟用仍須獨立核准）
+## 單案本人確認方案（歷史：已核准執行，資格收尾由本修訂處理）
 
 Founder 已選擇準備僅限本案、由本人確認的方案。另設獨立 POP operation，
 不修改原 planned／主任及管理員雙核對的入口。公開 policy 只容許一組不含
@@ -82,3 +82,9 @@ DB 核准人與既有資料防漂移／交易／verify。機器不能代核准�
 首次精確版本部署及 DB 核准通過後，正式排程仍未取件；readonly health 心跳正常，且不可寫快取路徑與 POP file-cache mutex 雜湊一致。移除該冗餘檔案鎖，保留每筆 MySQL claim lock，並以全域 MySQL lock 維持單一執行器。取件只選實際部署 SHA、未過期且具 token 的核准，其他驗證照常執行；舊 DB 核准不刪除、不延長、不借用。
 
 指定單案的完整參數／本人／期限維持一致，只替換未執行請求的冪等鍵，重新試算及核准新版本。正式財務完成與否須以 Pi-local verify 及帳務／繳費單查詢證據判定。
+
+## 核准單案完成與資格收尾
+
+正式 Pi-local execute／verify 已成功；authenticated 查詢確認兩期合約、各期已上堂次與金額、原付款及原沖銷、單筆正確收款／confirmed 收據、未繳目標帳單與繳費單、帳務中心提醒、既有明細 owner 與未上課堂次均符合核准清單。月底待上課未提前計费；不新增重複合約、帳單或沖銷。
+
+完整識別與財務稽核證據保存在私有清單，不提交公開 repo。本修訂將 `eligible_cases` 回復空白，任何新 draft／approval／execute 都必須重新準備及核准；原 DB 核准與執行紀錄不刪除、不改寫。此資格移除的合併／部署證據須與修復執行證據分開記錄；正式資格收回以部署版本及拒絕新請求的 runtime 證據判定。
