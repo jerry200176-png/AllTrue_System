@@ -397,7 +397,7 @@ class RepairYang1445ContractMove extends Command
                     [$t, $c] = $pk[$k];
                     $vals = $snap['rows'][$k];
                     $id = $vals[$c];
-                    unset($vals[$c]);
+                    unset($vals[$c], $vals['StartTimeHM'], $vals['ActiveSlotFlag']); // generated columns
                     DB::table($t)->where($c, $id)->update($vals);
                 }
                 DB::table('ClassSession')->where('id', $tailId)->delete();
