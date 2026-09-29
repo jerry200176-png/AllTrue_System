@@ -32,6 +32,10 @@ gh pr merge --squash --delete-branch
 
 Never `--admin`. If a **code** merge to `main` starts `deploy.yml`, that is the product control plane (I1). Docs-only still skips deploy. Extra mutation uses committed `workflow_dispatch`, never SSH / artisan / phpunit on the Pi.
 
+## Continue an approved task
+
+Apply [approval continuity](../governance/RISK_BASED_MERGE_POLICY.md#approval-continuity-within-the-authorized-task): after explicit Founder GO, execute the approved scope without asking again at every merge/deploy/verification step. Recheck exact-head evidence and the approved boundary; request a new decision only for a material scope change or a genuinely missing authorization. Existing platform gates remain mandatory.
+
 ## After merge
 
 1. Confirm deploy / Actions if deployable.  
