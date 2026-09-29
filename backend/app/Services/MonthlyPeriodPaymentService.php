@@ -24,7 +24,7 @@ final class MonthlyPeriodPaymentService
         $sessions = ClassSession::query()->whereIn('StudentClassID', $ids)
             ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])
             ->orderBy('SessionDate')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge'])->groupBy('StudentClassID');
-        $amendments = StudentClassPricingAmendment::whereIn('student_class_id', $ids)->get()->groupBy('student_class_id');
+        $amendments = StudentClassPricingAmendment::query()->whereIn('student_class_id', $ids)->get()->groupBy('student_class_id');
         $result = [];
         foreach ($courses as $course) {
             $hadPricing = $course->relationLoaded('pricingAmendments');
