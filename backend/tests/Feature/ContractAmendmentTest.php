@@ -262,6 +262,9 @@ class ContractAmendmentTest extends TestCase
             [$token] = $this->director();
             $student = $this->student();
             $course = $this->course($student->id, ['SessionCount' => 4, 'RemainingSessions' => 2, 'UsedSessions' => 2]);
+            for ($i = 1; $i <= 2; $i++) {
+                $this->createClassSession($course->ID, "2026-09-0{$i}", 'attended');
+            }
             $future = $this->createClassSession($course->ID, '2026-09-27', 'scheduled');
             $url = "/api/v1/student-classes/{$course->ID}/contract-amendment";
             $this->withToken($token)->postJson($url, ['new_session_count' => 2, 'reason' => '提前結束'])->assertOk();
