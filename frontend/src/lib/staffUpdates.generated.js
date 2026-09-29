@@ -115,6 +115,39 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-capacity-source-labels",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "時段衝突來源更清楚",
+    "summary": "課程時段衝突提示以中文說明紀錄來源，方便核對既有課程與排課。",
+    "items": [
+      "衝突來源顯示固定課程、課堂紀錄或排課紀錄，學生、科目及時段資訊保留。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "衝突來源顯示固定課程、課堂紀錄或排課紀錄，學生、科目及時段資訊保留。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:347",
+      "changelog:2026-09-29:capacity-source-labels"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-27-homework-hint",
     "publishedAt": "2026-09-27",
     "effectiveAt": null,

@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(schedule): explain capacity occupancy sources (in-app #347 / GitHub #3197)
+<!-- release-notes: staff_update=staff-2026-09-29-capacity-source-labels -->
+- 課程時段衝突提示改用「固定課程」「課堂紀錄」「排課紀錄」說明來源，保留學生、科目與時段資訊；容量判斷及原始診斷資料不變。
+
 ## 2026-09-29 — fix(students): identify historical course badges (in-app #353 / GitHub #3201)
 <!-- release-notes: staff_update=staff-2026-09-29-student-course-history -->
 - 學生列表的歷史課程標籤同步顯示已完課、已結算或待對帳，避免歷史堂數與目前課程混淆；原有堂數、課程篩選及待對帳入口保留。
