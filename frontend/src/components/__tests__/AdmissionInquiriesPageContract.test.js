@@ -7,7 +7,7 @@ const source = readFileSync(resolve(__dirname, '../../pages/AdmissionInquiriesPa
 
 describe('admission inquiry UI contract', () => {
   it('keeps the public flow standalone and progressive', () => {
-    expect(source).toContain("standalone ? 'admission-page-public' : 'admission-page-staff'");
+    expect(source).toContain("standalone ? 'admission-page-public' : 'admission-page-staff at-page'");
     expect(source).toContain('<template v-if="!standalone">');
     expect(source).not.toContain('<template v-else>');
     expect(source).toContain('standalone && !clientEnabled');

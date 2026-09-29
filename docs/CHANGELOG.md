@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
 - 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
 
+## 2026-09-29 — feat(ui): unify page headers, part 2 (dashboard, students, courses, billing, teachers, admissions, reports, branch health)
+<!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
+- 補完其餘八頁的頁首統一（同一則版本更新說明）：標題不再包在白卡裡、流程說明收進 ⓘ、「重新整理」統一、圖示與側欄一致；主任總覽移除重複橫幅、軍階改為小標籤。僅版面與文案。
+
 ## 2026-09-29 — feat(ui): unify page headers, refresh buttons, tabs and icons
 <!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
 - 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
