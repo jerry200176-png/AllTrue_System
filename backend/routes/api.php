@@ -197,9 +197,12 @@ Route::prefix('v1')->group(function () {
     ]));
 
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
-    // SEC-006: 30 req/IP/1 min — blocks RFID brute-force enumeration.
+    // SEC-006: 120 req/IP/1 min. One Pi reader serves a whole class (many swipes at
+    // bell time), so 30/min dropped real swipes. Safe to raise: the endpoint needs a
+    // valid per-campus Bearer token before any RFID lookup, and 120/min still makes
+    // token guessing infeasible.
     Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe'])
-        ->middleware('throttle:30,1');
+        ->middleware('throttle:120,1');
     // SEC-002: 10 req/IP/10 min — prevents bulk account creation.
     Route::post('auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:10,10');

@@ -550,6 +550,12 @@ class SessionDeductionService
             self::recomputeCounters($sc->ID);
             return $deducted;
         } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('session_deduct_on_attendance_failed', [
+                'student_class_id' => $sc->ID,
+                'sign_in_id'       => $signIn?->id,
+                'class_session_id' => $classSessionId ?: ($signIn->ClassSessionID ?? null),
+                'error'            => $e->getMessage(),
+            ]);
             return false;
         }
     }

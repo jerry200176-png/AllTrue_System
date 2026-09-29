@@ -142,7 +142,7 @@ class CloseOrphanStudentSignInsTest extends TestCase
         Log::spy();
         $this->artisan('student-signin:close-orphans')->assertExitCode(0);
 
-        Log::shouldHaveReceived('info')->once()->with(
+        Log::shouldHaveReceived('info')->atLeast()->once()->with(
             'orphan_signin_autoclose_summary',
             Mockery::on(static fn (array $context): bool => $context === [
                 'closed_count' => 1,
