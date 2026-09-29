@@ -64,6 +64,7 @@ class MonthlyAccountingCorrectionTest extends TestCase
         DB::table('StudentSingIn')->insert(['StudentClassID' => $source->ID, 'ClassSessionID' => $ids[6], 'StudentID' => $source->StudentID, 'TeacherID' => 1, 'Status' => 'present', 'SignInDT' => now()]);
         $service = app(MonthlyAccountingCorrectionService::class); $plan = $service->preview($source, $input);
         $result = $service->execute($source, $input, $plan['confirmation_token'], 'accounting-fixture-1', 'pop:test');
+        $this->simulateBinaryJsonOrder('accounting-fixture-1');
         $this->assertTrue($service->verify($result)['ok']);
         $this->assertSame(7500, (int) $payment->fresh()->Amount);
         $this->assertSame([7500, -7500, 6000], Payment::orderBy('id')->pluck('Amount')->map(fn ($n) => (int) $n)->all());
@@ -205,6 +206,7 @@ class MonthlyAccountingCorrectionTest extends TestCase
         $this->assertFalse($strategy->plan(array_replace($parameters, ['campus_id' => 2]))['ok']);
         $this->assertFalse($strategy->plan(array_replace($parameters, ['confirmation_token' => str_repeat('0', 64)]))['ok']);
         $service->execute($source, $input, $preview['confirmation_token'], 'accounting-strategy', 'pop:test');
+        $this->simulateBinaryJsonOrder('accounting-strategy');
         $this->assertTrue($strategy->plan($parameters)['applied']);
         $parameters['input']['actual_received_amount'] = 7500;
         $this->assertFalse($strategy->plan($parameters)['ok']);
@@ -250,6 +252,19 @@ class MonthlyAccountingCorrectionTest extends TestCase
         $this->assertSame(1, Payment::count()); $this->assertSame(1, StudentClass::count());
         $request->merge(['actual_received_amount' => 7500]);
         $this->assertSame(422, $controller->accountingPreview($request, $source, $service)->status());
+    }
+
+    private function simulateBinaryJsonOrder(string $reference): void
+    {
+        // MySQL JSON storage orders object keys; MariaDB's JSON text preserves them.
+        $reorder = function (array $value) use (&$reorder): array {
+            foreach ($value as &$item) if (is_array($item)) $item = $reorder($item);
+            if (!array_is_list($value)) uksort($value, fn ($a, $b) => strlen($a) <=> strlen($b) ?: strcmp($a, $b));
+            return $value;
+        };
+        foreach (SessionCorrection::where('decision_reference', $reference)->get() as $correction) {
+            $correction->update(['snapshot_before' => $reorder($correction->snapshot_before)]);
+        }
     }
 
 }

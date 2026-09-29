@@ -100,7 +100,7 @@ final class MonthlyAccountingCorrectionService
             $source = $this->course((int) $source->getKey(), true);
             $existing = SessionCorrection::query()->where('decision_reference', $reference)->orderBy('id')->first();
             if ($existing) {
-                $result = $existing->snapshot_before;
+                $result = PopOperationService::canonicalParameters($existing->snapshot_before);
                 $this->require(!$existing->rolled_back_at && ($result['source_course_id'] ?? null) === (int) $source->getAttribute('ID') && ($result['accounting_token'] ?? null) === $token
                     && $this->digest($result['accounting_input']) === $this->digest($input), '更正識別已使用或回復');
                 return $result;
@@ -136,7 +136,7 @@ final class MonthlyAccountingCorrectionService
             $result['source_item_id'] = (int) $item->getAttribute('id'); $result['target_invoice_id'] = (int) $targetInvoice->getKey();
             $source->fresh()->forceFill(['Stop' => 1, 'closed_reason' => 'settled'])->save();
             $result['after_digest'] = $this->digest($this->split->snapshotGraph($source->fresh(), $target->fresh()));
-            $result = json_decode(json_encode($result, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
+            $result = PopOperationService::canonicalParameters(json_decode(json_encode($result, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR));
             SessionCorrection::query()->where('decision_reference', $reference)->update(['snapshot_before' => json_encode($result, JSON_THROW_ON_ERROR), 'decided_by_actor' => $actor, 'correction_reason' => 'monthly_accounting_correction']);
             return $result;
         });

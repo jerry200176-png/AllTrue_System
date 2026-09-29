@@ -4,6 +4,7 @@ namespace App\Operations\Strategies;
 
 use App\Models\SessionCorrection;
 use App\Models\StudentClass;
+use App\Operations\PopOperationService;
 use App\Services\MonthlyAccountingCorrectionService;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -24,7 +25,8 @@ final class MonthlyAccountingCorrectionStrategy
         if ($existing) {
             $result = $existing->snapshot_before;
             if ($existing->rolled_back_at || ($result['accounting_token'] ?? null) !== $parameters['confirmation_token']
-                || ($result['source_course_id'] ?? null) !== (int) $source->getAttribute('ID') || ($result['accounting_input'] ?? null) !== $parameters['input']) {
+                || ($result['source_course_id'] ?? null) !== (int) $source->getAttribute('ID')
+                || PopOperationService::canonicalParameters($result['accounting_input'] ?? []) !== PopOperationService::canonicalParameters($parameters['input'])) {
                 return ['ok' => false, 'errors' => ['repair_reference_mismatch']];
             }
             return ['ok' => true, 'parameters' => $parameters, 'applied' => true];
