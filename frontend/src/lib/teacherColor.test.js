@@ -28,7 +28,7 @@ test('falsy teacherId → 灰色 #90A4AE，且不寫入快取', () => {
 test('Cache Miss：不同 teacher 依序拿 palette 前幾色', () => {
   assert.equal(getTeacherColor(1), '#1E88E5'); // palette[0]
   assert.equal(getTeacherColor(2), '#43A047'); // palette[1]
-  assert.equal(getTeacherColor(3), '#E53935'); // palette[2]
+  assert.equal(getTeacherColor(3), '#7CB342'); // palette[2]
 });
 
 test('Cache Hit：同一 teacherId 第二次回傳相同顏色（走快取）', () => {

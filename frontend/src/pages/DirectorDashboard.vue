@@ -145,7 +145,7 @@
                 </div>
                 <AtButton
                   class="director-task__action"
-                  variant="primary"
+                  :variant="index === 0 ? 'primary' : 'secondary'"
                   shape="rect"
                   icon="arrow_forward"
                   @click="openDashboardTask(task)"
@@ -187,8 +187,8 @@
             </section>
 
             <details v-if="operationsTrust?.decision_center" class="director-trust-note">
-              <summary>
-                <span>課表可信度</span>
+              <summary title="依課表衝突、缺漏與待確認事項計算的分數，滿分 100。">
+                <span>課表正確度</span>
                 <strong :class="`director-trust-note__score--${decisionCenter.status}`">{{ decisionCenter.score }}/{{ decisionCenter.max }}</strong>
               </summary>
               <p>{{ decisionCenter.headline }}</p>
