@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing): preserve existing source invoice items during reviewed correction
+<!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
+- 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
+
 ## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
 <!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
 - 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
