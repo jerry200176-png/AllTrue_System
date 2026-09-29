@@ -2,6 +2,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-filters-course-lookup-clarity -->
 - 老師頁移除與分頁重複的「狀態」下拉；學習紀錄「只看未填／已填」改為單一「全部／未填／已填」選擇；課程查找移除不實的「唯讀營運視圖」標籤，「到學生管理新增課程」集中於頁首並將「前往學生管理」降為次要按鈕。僅前端顯示調整，不改資料、權限或計費。
 
+## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
+<!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
+- 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
+
 ## 2026-09-29 — fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)
 <!-- release-notes: silent_ship=silent-2026-09-29-rfid-swipe-hardening -->
 - 刷卡即出席（含扣堂）政策不變；補強：無真實堂次不扣堂、忘記刷退時自動補後續連堂、扣堂失敗會通知職員、讀卡機限流由每分鐘 30 放寬到 120。尚未部署，不發布上線公告。

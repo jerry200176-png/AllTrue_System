@@ -26,11 +26,11 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
           "RFID swipe-as-attendance edge cases",
           "confirmed monthly fees and visible renewal periods",
           "missing monthly invoice review",
-          "correction into an existing monthly contract",
-          "next-period monthly booking guidance"
+          "correction into an existing monthly contract"
         ]
       }
     ],
@@ -38,11 +38,11 @@ export const changelogDraftNotes = [
       "audited monthly receipt correction",
       "controlled monthly contract correction",
       "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
       "RFID swipe-as-attendance edge cases",
       "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
-      "correction into an existing monthly contract",
-      "next-period monthly booking guidance"
+      "correction into an existing monthly contract"
     ]
   },
   {

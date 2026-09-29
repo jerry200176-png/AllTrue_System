@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calendarViewLabel,
+  dayViewScrollTop,
   formatCalendarRange,
   scheduleDiscrepancyActionLabel,
 } from '../../../lib/calendarViewDisplay.js';
@@ -26,5 +27,12 @@ describe('calendarViewDisplay', () => {
     expect(scheduleDiscrepancyActionLabel('acknowledged')).toBe('繼續處理');
     expect(scheduleDiscrepancyActionLabel('resolved')).toBe('查看處理結果');
     expect(scheduleDiscrepancyActionLabel('withdrawn')).toBe('查看回報');
+  });
+
+  it('scrolls to one hour above the earliest lesson, default 14:00 when empty', () => {
+    expect(dayViewScrollTop([19, 17, 18], 8)).toBe(8 * 56); // 16:00
+    expect(dayViewScrollTop([], 8)).toBe(6 * 56); // 14:00
+    expect(dayViewScrollTop([8, 9], 8)).toBe(0); // clamp at first hour
+    expect(dayViewScrollTop([NaN], 8)).toBe(6 * 56);
   });
 });
