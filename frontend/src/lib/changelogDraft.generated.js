@@ -26,11 +26,11 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+          "confirmed monthly fees and visible renewal periods",
           "missing monthly invoice review",
           "correction into an existing monthly contract",
           "next-period monthly booking guidance",
-          "monthly period payment attribution",
-          "capacity occupancy sources"
+          "monthly period payment attribution"
         ]
       }
     ],
@@ -38,11 +38,11 @@ export const changelogDraftNotes = [
       "audited monthly receipt correction",
       "controlled monthly contract correction",
       "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+      "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
       "correction into an existing monthly contract",
       "next-period monthly booking guidance",
-      "monthly period payment attribution",
-      "capacity occupancy sources"
+      "monthly period payment attribution"
     ]
   },
   {
