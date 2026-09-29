@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
 - 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
 
+## 2026-09-29 — fix(ux): plainer copy and calmer colors on director pages
+<!-- release-notes: staff_update=staff-2026-09-29-plain-copy-calm-color -->
+- 主任首頁「今天要處理的事」只有第一項用主色按鈕，其餘改次要按鈕；「課表可信度」改「課表正確度」並加說明；通知中心「企業視圖」改「通知重點」、「SLA／逾期優先」改「逾期優先」；分校健康看板說明改白話、「待接資料」卡改「資料不足」、「主要訊號」改「主要狀況」；行事曆教師配色移除紅／橘紅／粉紅色系，避免像錯誤狀態。純前端文字與顏色，邏輯不變。
+
 ## 2026-09-29 — feat(ui): unify page headers, refresh buttons, tabs and icons
 <!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
 - 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
