@@ -1,10 +1,18 @@
-## 2026-09-29 — feat(ui): unify page headers, refresh buttons, tabs and icons
-<!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
-- 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
+## 2026-09-29 — fix(billing): preserve existing source invoice items during reviewed correction
+<!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
+- 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
+
+## 2026-09-29 — feat(schedule): director can move a session to another contract
+<!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
+- 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
 
 ## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
 <!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
 - 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
+
+## 2026-09-29 — feat(ui): unify page headers, refresh buttons, tabs and icons
+<!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
+- 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
 
 ## 2026-09-29 — fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)
 <!-- release-notes: silent_ship=silent-2026-09-29-rfid-swipe-hardening -->
@@ -29,6 +37,10 @@
 ## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
 - 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。
+
+## 2026-09-29 — feat(courses): director undo of contract amendment
+<!-- release-notes: silent_ship=silent-2026-09-29-undo-contract-amendment -->
+- 主任可在課程操作選單「撤銷調整」，還原提前結束／調整合約總堂數：恢復堂數、結束狀態與被取消的預排（原時段被占用或合約已有變動時拒絕），需填原因並留稽核紀錄；帳務不變，也不會自動排課。
 
 ## 2026-09-29 — feat(billing): prepare controlled monthly contract correction
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-contract-correction -->
