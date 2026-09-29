@@ -88,3 +88,7 @@ DB 核准人與既有資料防漂移／交易／verify。機器不能代核准�
 正式 Pi-local execute／verify 已成功；authenticated 查詢確認兩期合約、各期已上堂次與金額、原付款及原沖銷、單筆正確收款／confirmed 收據、未繳目標帳單與繳費單、帳務中心提醒、既有明細 owner 與未上課堂次均符合核准清單。月底待上課未提前計费；不新增重複合約、帳單或沖銷。
 
 完整識別與財務稽核證據保存在私有清單，不提交公開 repo。本修訂將 `eligible_cases` 回復空白，任何新 draft／approval／execute 都必須重新準備及核准；原 DB 核准與執行紀錄不刪除、不改寫。此資格移除的合併／部署證據須與修復執行證據分開記錄；正式資格收回以部署版本及拒絕新請求的 runtime 證據判定。
+
+## 單案關閉的 runtime 驗證（2026-09-29）
+
+資格清單已在 main 清空，但僅 operations/policies 變更未被既有 deployability detector 視為 application runtime，因此部署工作雖成功結束、Deploy to Production 卻 skipped，不能宣稱正式資格已關閉。本修訂對合法空清單明確回傳 no-active-case 拒絕，保留 malformed／多案例拒絕與所有原限制，隨正常 backend 部署一併帶入已清空清單。回歸涵蓋空白／多案例／缺清單均無 request、approval、payment 寫入。正式 closeout 必須核對實際部署 SHA、authenticated draft 拒絕及原已更正帳務不變；沒有額外資料修復或對外通知。僅 policy 更新漏判 runtime 的通用修正另案評估，本次不改 workflow／governance classifier／保護設定。

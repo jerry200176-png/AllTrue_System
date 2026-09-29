@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(ops): report closed monthly case eligibility explicitly
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-case-closed -->
+- 合法空白單案資格明確拒絕為沒有可執行案例，隨 backend 正常部署帶入已清空清單；不改資料、核准角色或執行通道。
+
 ## 2026-09-29 — fix(ops): unblock local approved repair scheduling
 <!-- release-notes: silent_ship=silent-2026-09-29-pop-local-claim -->
 - POP 排程沿用 MySQL claim lock，不再依賴可能由 FPM 持有的檔案快取鎖；自動取件只選正式版本且未過期的簽章核准，保留所有舊核准及拒絕條件。指定單案依原清單重新試算／核准，不代表帳務已執行。

@@ -621,6 +621,9 @@ final class PopOperationService
         $path = $this->eligibilityPath ?? dirname(base_path()) . '/' . $entry['eligibility_policy'];
         $policy = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
         $cases = is_array($policy) ? ($policy['eligible_cases'] ?? null) : null;
+        if (($policy['version'] ?? null) === 1 && $cases === []) {
+            throw new RuntimeException('Reviewed monthly repair has no active eligible case.');
+        }
         if (($policy['version'] ?? null) !== 1 || !is_array($cases) || !array_is_list($cases) || count($cases) !== 1) {
             throw new RuntimeException('Reviewed monthly policy must contain exactly one eligible case.');
         }

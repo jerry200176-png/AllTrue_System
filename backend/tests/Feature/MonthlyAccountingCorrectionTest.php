@@ -93,7 +93,13 @@ class MonthlyAccountingCorrectionTest extends TestCase
         if (is_file($path)) file_put_contents($path, json_encode($policy));
         try {
             try { $engine->createDraft('reviewed-monthly-accounting-correction', $parameters, $key, $actor, $role, [1, 2], $id); $this->fail('Expected eligibility rejection'); }
-            catch (\RuntimeException) {
+            catch (\RuntimeException $e) {
+                if ($variation === 'empty') {
+                    $this->assertSame('Reviewed monthly repair has no active eligible case.', $e->getMessage());
+                }
+                if ($variation === 'multiple' || $variation === 'missing-policy') {
+                    $this->assertSame('Reviewed monthly policy must contain exactly one eligible case.', $e->getMessage());
+                }
                 $this->assertSame(0, DB::table('pop_operation_requests')->count());
                 $this->assertSame(0, DB::table('pop_approval_events')->count());
                 $this->assertSame(2, Payment::count());
