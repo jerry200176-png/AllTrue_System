@@ -29,10 +29,10 @@ export const changelogDraftNotes = [
         "items": [
           "existing source invoice items during reviewed correction",
           "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+          "copy and calmer colors on director pages",
           "RFID swipe-as-attendance edge cases",
           "confirmed monthly fees and visible renewal periods",
-          "missing monthly invoice review",
-          "correction into an existing monthly contract"
+          "missing monthly invoice review"
         ]
       }
     ],
@@ -43,8 +43,8 @@ export const changelogDraftNotes = [
       "controlled monthly contract correction",
       "existing source invoice items during reviewed correction",
       "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-      "RFID swipe-as-attendance edge cases",
-      "confirmed monthly fees and visible renewal periods"
+      "copy and calmer colors on director pages",
+      "RFID swipe-as-attendance edge cases"
     ]
   },
   {

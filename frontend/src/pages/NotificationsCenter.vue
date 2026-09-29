@@ -68,11 +68,11 @@
 
         <AtFilterBar v-if="laneFilter !== 'case'" label="通知篩選">
           <label>
-            企業視圖
+            通知重點
             <select v-model="focusMode">
               <option value="all">全部通知</option>
               <option value="actionable">待處理優先</option>
-              <option value="sla">SLA／逾期優先</option>
+              <option value="sla">逾期優先</option>
               <option value="high">僅高風險</option>
             </select>
           </label>

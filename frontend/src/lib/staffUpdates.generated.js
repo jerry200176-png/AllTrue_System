@@ -115,6 +115,47 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-plain-copy-calm-color",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "文字更白話、顏色更不刺眼",
+    "summary": "主任首頁與通知、分校健康看板的用詞改成白話，行事曆老師顏色不再使用紅色系。",
+    "items": [
+      "主任首頁「今天要處理的事」只突顯第一項，其餘按鈕改次要樣式。",
+      "「企業視圖」改「通知重點」、「課表可信度」改「課表正確度」、分校看板「待接資料」改「資料不足」。",
+      "行事曆老師配色避開紅色，不再像錯誤狀態。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "主任首頁「今天要處理的事」只突顯第一項，其餘按鈕改次要樣式。",
+          "「企業視圖」改「通知重點」、「課表可信度」改「課表正確度」、分校看板「待接資料」改「資料不足」。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "行事曆老師配色避開紅色，不再像錯誤狀態。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-29:plain-copy-calm-color"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-29-capacity-source-labels",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,

@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
 - 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
 
+## 2026-09-29 — fix(ux): plainer copy and calmer colors on director pages
+<!-- release-notes: staff_update=staff-2026-09-29-plain-copy-calm-color -->
+- 主任首頁「今天要處理的事」只有第一項用主色按鈕，其餘改次要按鈕；「課表可信度」改「課表正確度」並加說明；通知中心「企業視圖」改「通知重點」、「SLA／逾期優先」改「逾期優先」；分校健康看板說明改白話、「待接資料」卡改「資料不足」、「主要訊號」改「主要狀況」；行事曆教師配色移除紅／橘紅／粉紅色系，避免像錯誤狀態。純前端文字與顏色，邏輯不變。
+
 ## 2026-09-29 — fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)
 <!-- release-notes: silent_ship=silent-2026-09-29-rfid-swipe-hardening -->
 - 刷卡即出席（含扣堂）政策不變；補強：無真實堂次不扣堂、忘記刷退時自動補後續連堂、扣堂失敗會通知職員、讀卡機限流由每分鐘 30 放寬到 120。尚未部署，不發布上線公告。
