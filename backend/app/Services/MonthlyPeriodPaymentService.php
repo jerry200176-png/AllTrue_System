@@ -5,13 +5,14 @@ namespace App\Services;
 use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\StudentClass;
+use App\Models\StudentClassPricingAmendment;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /** Read-only period attribution; a legacy Paid flag cannot settle another period. */
 final class MonthlyPeriodPaymentService
 {
-    public function __construct(private InvoiceAmountReconciliationService $amounts) {}
+    public function __construct(private InvoiceAmountReconciliationService $amounts, private MonthlyBillingService $billing) {}
 
     public function batch(Collection $courses): array
     {
@@ -22,10 +23,16 @@ final class MonthlyPeriodPaymentService
             ->with(['payments', 'items'])->orderBy('id')->get()->groupBy('StudentClassID');
         $sessions = ClassSession::query()->whereIn('StudentClassID', $ids)
             ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])
-            ->orderBy('SessionDate')->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
+            ->orderBy('SessionDate')->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge'])->groupBy('StudentClassID');
+        $amendments = StudentClassPricingAmendment::whereIn('student_class_id', $ids)->get()->groupBy('student_class_id');
         $result = [];
         foreach ($courses as $course) {
+            $hadPricing = $course->relationLoaded('pricingAmendments');
+            $originalPricing = $hadPricing ? $course->getRelation('pricingAmendments') : null;
+            $course->setRelation('pricingAmendments', $amendments->get($course->getAttribute('ID'), collect()));
             $result[(int) $course->getAttribute('ID')] = $this->summarize($course, $invoices->get($course->getAttribute('ID'), collect()), $sessions->get($course->getAttribute('ID'), collect()));
+            if ($hadPricing) $course->setRelation('pricingAmendments', $originalPricing);
+            else $course->unsetRelation('pricingAmendments');
         }
         return $result;
     }
@@ -51,8 +58,9 @@ final class MonthlyPeriodPaymentService
             $amount = $this->amounts->resolve($invoice, $course);
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
-                'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice'];
+                'charge' => 0, 'paid_amount' => 0, 'invoice_ids' => [], 'source' => 'invoice', 'amount_discrepancy' => false];
             if ($existing['period_start'] !== $start || $existing['period_end'] !== $end) $ambiguous = true;
+            $existing['amount_discrepancy'] = $existing['amount_discrepancy'] || $amount['amount_discrepancy'];
             $existing['charge'] += $amount['total_amount'];
             $existing['paid_amount'] += $paid;
             $existing['invoice_ids'][] = (int) $invoice->id;
@@ -94,17 +102,36 @@ final class MonthlyPeriodPaymentService
         }
         ksort($periods);
         foreach ($periods as &$period) {
+            $period['amount_discrepancy'] ??= false;
             $period['payment_status'] = $period['source'] === 'unattributed' ? 'unknown'
                 : ($period['paid_amount'] >= $period['charge'] ? 'paid' : ($period['paid_amount'] > 0 ? 'partial' : 'unpaid'));
             $period['outstanding_amount'] = $period['charge'] === null ? null : max(0, $period['charge'] - $period['paid_amount']);
         }
         unset($period);
         $rows = array_values($periods);
-        $review = $ambiguous || collect($rows)->contains('payment_status', 'unknown');
+        $sessionReview = $sessions->groupBy(fn ($session) => substr((string) $session->SessionDate, 0, 7))
+            ->map(function ($monthlySessions, $month) use ($course, $rows, $start, $end) {
+                $estimate = $this->billing->reviewSessions($course, $monthlySessions);
+                $estimate['calendar_month'] = $month;
+                $estimate['uncovered_sessions'] = $monthlySessions->filter(function ($session) use ($rows) {
+                    $date = substr((string) $session->SessionDate, 0, 10);
+                    return !collect($rows)->contains(fn ($row) => $row['invoice_ids'] !== []
+                        && $date >= $row['period_start'] && $date <= $row['period_end']);
+                })->count();
+                $estimate['outside_contract_sessions'] = $monthlySessions->filter(function ($session) use ($start, $end) {
+                    $date = substr((string) $session->SessionDate, 0, 10);
+                    return ($start && $date < $start) || ($end && $date > $end);
+                })->count();
+                return $estimate;
+            })->values()->all();
+        $review = collect($rows)->contains('amount_discrepancy', true) || collect($sessionReview)->contains(fn ($row) => $row['outside_contract_sessions'] > 0) || $ambiguous || collect($rows)->contains('payment_status', 'unknown');
         $selected = collect($rows)->first(fn ($row) => in_array($row['payment_status'], ['unpaid', 'partial'], true))
             ?? collect($rows)->firstWhere('payment_status', 'unknown') ?? end($rows);
         return ['periods' => $rows, 'billing_period' => $selected['billing_period'],
             'payment_status' => $review ? 'review_required' : $selected['payment_status'], 'review_required' => $review,
-            'contract_start' => $start ?: null, 'contract_end' => $end ?: null];
+            'contract_start' => $start ?: null, 'contract_end' => $end ?: null,
+            'registered_paid_amount' => $invoices->isEmpty() ? null : (int) $invoices->sum(fn ($invoice) => $invoice->payments->isEmpty()
+                ? max(0, (int) $invoice->PaidAmount) : $this->amounts->resolve($invoice, $course)['net_applied']),
+            'session_review' => $sessionReview];
     }
 }

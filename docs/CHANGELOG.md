@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing): prepare missing monthly invoice review
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-billing-review -->
+- 準備帳務中心「月結待核對」與堂次費率試算，明示缺少帳單服務期間和合約越界；系統登錄收款與實際入帳分開核對。尚未部署，未拆分正式個案或建立九月帳單。
+
 ## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
 - 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。

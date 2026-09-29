@@ -7,6 +7,7 @@ export function useMonthlyCorrectionPreview() {
   const form = ref({});
   const preview = ref(null);
   const error = ref('');
+  const blocked = ref(false);
   const candidates = ref([]);
   let version = 0;
   let courseId = 0;
@@ -21,11 +22,12 @@ export function useMonthlyCorrectionPreview() {
       source_end: oldPeriod?.period_end || '',
       target_start: periods.find((period) => period.period_start > (oldPeriod?.period_end || ''))?.period_start || '',
       target_end: String(course.EndDate ?? course.end_date ?? '').slice(0, 10),
-      target_course_id: null, source_charge: Number(course.Charge ?? course.charge ?? 0), target_charge: null,
+      target_course_id: null, source_charge: course.monthly_payment?.review_required ? null : Number(course.Charge ?? course.charge ?? 0), target_charge: null,
       payment_evidence_reference: null,
     };
     preview.value = null;
-    error.value = '';
+    blocked.value = (course.monthly_payment?.session_review || []).some(month => month.outside_contract_sessions > 0);
+    error.value = blocked.value ? '堂次超出原合約日期，需先由管理者核對日期更正清單；一般分期預覽目前無法處理。原資料尚未修改。' : '';
     loading.value = false;
     show.value = true;
     candidates.value = [];
@@ -44,7 +46,8 @@ export function useMonthlyCorrectionPreview() {
       if (!show.value || courseId !== requestedCourseId || version !== openVersion) return;
       candidates.value = (data.data || []).filter((row) => Number(row.ID ?? row.id) !== requestedCourseId
         && row.ScheduleMode === 'date' && Number(row.SubjectID) === Number(course.SubjectID)
-        && Number(row.StudentID) === studentId && !Number(row.PackageID));
+        && Number(row.StudentID) === studentId && Number(row.TeacherID) === Number(course.TeacherID)
+        && Number(row.by1) === Number(course.by1) && !Number(row.PackageID));
     } catch (failure) {
       if (show.value && courseId === requestedCourseId) error.value = failure.message;
     }
@@ -52,6 +55,7 @@ export function useMonthlyCorrectionPreview() {
   function invalidate() { version += 1; preview.value = null; loading.value = false; }
   function close() { invalidate(); show.value = false; }
   async function check() {
+    if (blocked.value) return;
     const requestVersion = ++version;
     const input = { ...form.value };
     preview.value = null;
@@ -74,5 +78,5 @@ export function useMonthlyCorrectionPreview() {
       if (requestVersion === version) loading.value = false;
     }
   }
-  return { show, candidates, form, preview, error, loading, open, close, check, invalidate };
+  return { show, blocked, candidates, form, preview, error, loading, open, close, check, invalidate };
 }
