@@ -539,6 +539,7 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/contract-amendment', [ContractAmendmentController::class, 'execute']);
         Route::post('student-classes/{studentClass}/charge-correction', [StudentClassController::class, 'chargeCorrection']);
         Route::post('student-classes/{studentClass}/split-contract/preview', [StudentClassController::class, 'splitContractPreview']);
+        Route::post('student-classes/{studentClass}/monthly-contract-correction/preview', [\App\Http\Controllers\MonthlyContractCorrectionController::class, 'preview']);
         Route::post('student-classes/{studentClass}/split-contract', [StudentClassController::class, 'splitContract']);
         Route::post('student-classes/{studentClass}/recover-transfer-sessions', [StudentClassController::class, 'recoverAndTransferSessions']);
         Route::get('student-identities', [StudentIdentityController::class, 'index']);

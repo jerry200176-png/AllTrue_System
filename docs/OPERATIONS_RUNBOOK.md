@@ -1378,3 +1378,18 @@ gh run view <run_id>                                  # 讀 Step Summary 四指�
 付款歸屬依 `billing_period` 與帳單項目明示的服務期間，不能依開單日推斷。只有單一月份且無帳單的舊資料沿用該期 `Paid`；跨期旗標不足以證明新期已繳。API 的 `monthly_payment` 提供期間、應收、實收、待收與核對狀態，`payment_status` 不再把舊期收款擴及整課程。
 
 木柵回報的跨期課程尚未取得正式合約、帳單及收款明細，原因只能列為待查：現行 recurring enrollment 允許較長日期範圍，explicit-session enrollment 有單月限制。不得據此認定主任操作路徑或付款歸屬。
+
+
+#### 已收款月結分期更正：預覽與受控修復
+
+`POST student-classes/{id}/monthly-contract-correction/preview` 僅主任所屬分校與 super_admin 可讀；沒有瀏覽器 execute 路由。必填舊期／新期起訖與兩期應收，期間相鄰且保留原始合約總範圍；舊期只有 Paid 標記時須提供已核對的付款依據識別，不能猜測金額或服務期間。預覽不返回原始帳款快照。
+
+`monthly-contract-split` 目錄維持 `planned`。正式執行前必須有不可變 Repair Manifest、Data Repair Gate R3、Founder GO，才可經審查切換目錄為 active。現有 POP 要求 director 與 super_admin 核准同一參數及 commit SHA，兩筆核准都須有 `founder-go-` 識別；不可用一般主任核准代替 Founder 決策。
+
+清單須綁定 campus_id、source_course_id、完整 input、confirmation_token、唯一 decision_reference，以及付款歸屬佐證。先乾跑並逐筆確認移轉堂次、兩期應收、既有下一期合約與帳單；不能把唯讀盤點的多期分類自動變成修復清單。沒有正式識別與收款佐證的案例不得送出執行。
+
+交易會鎖定合約及關聯資料、重新核對預覽簽章，移轉原堂次與出勤／評量／扣堂／排課的合約歸屬，保留 ID、內容、時間與實收；新期不繼承 Paid／PayDate。舊期帳單及收款不改金額，新期僅可移轉完全無付款歷史的帳單，應收須與既有帳單一致。重試同一識別不重複建立合約；回復後識別不可重用。
+
+已結清、方案、第三期有效堂次、孤立證據、調課鏈、合約群組、價格調整、待核帳回報、目標已收款或帳單跨界，均拒絕自動更正。這些情況須另擬經核對的處理方案。
+
+POP verify 比對更正後完整資料指紋；rollback 使用原快照恢復所有原歸屬與合約欄位，只有本次新建的目標可刪除。更正後有新出勤、收款、備註或群組等資料變動時拒絕自動回復，需另審修復清單。部署回復用 revert commit／前一部署 SHA，不可當成資料回復。
