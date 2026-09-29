@@ -13,6 +13,8 @@
 
 ## Start here (10-minute onboarding)
 
+月結誤登收款／拆期的準備與執行邊界：[2026-09-29 更正計畫](plans/2026-09-29-monthly-accounting-correction.md)；正式資料尚未更正。
+
 | Question | Canonical answer |
 |----------|------------------|
 | 我要從哪裡開始？ | `AGENTS.md` → [`governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) → this INDEX → task-specific row below |

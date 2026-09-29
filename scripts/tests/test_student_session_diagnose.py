@@ -40,6 +40,15 @@ class StudentSessionDiagnoseTest(unittest.TestCase):
         self.assertNotIn('account_last5', reports)
         self.assertTrue(any('FROM student_class_pricing_amendments' in query for query in queries))
 
+    def test_invoice_items_are_scoped_by_parent_invoice_even_without_item_owner(self):
+        result, queries = self.run_probe()
+        self.assertEqual(0, result.returncode)
+        items = next(query for query in queries if 'FROM InvoiceItem ii' in query)
+        self.assertIn('JOIN Invoice i ON i.id=ii.InvoiceID', items)
+        self.assertIn('sc.ID=i.StudentClassID', items)
+        self.assertNotIn('sc.ID=ii.StudentClassID', items)
+        self.assertIn("IFNULL(ii.StudentClassID,'')", items)
+
     def test_invalid_scope_never_opens_database(self):
         for campus, date in [('16 OR 1=1', '2026-09-23'), ('16', '2026-02-30'), ('16', "2026-09-23' OR 1=1")]:
             result, queries = self.run_probe(campus, date)

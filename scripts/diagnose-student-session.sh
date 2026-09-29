@@ -87,9 +87,10 @@ ORDER BY i.id;"
 
 echo "--- InvoiceItem rows linked to this student's contracts ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',ii.id,ii.InvoiceID,ii.StudentClassID,ii.Amount,IFNULL(ii.PeriodStart,''),IFNULL(ii.PeriodEnd,''),LEFT(IFNULL(ii.Description,''),120),ii.created_at,ii.updated_at)
+SELECT CONCAT_WS('|',ii.id,ii.InvoiceID,IFNULL(ii.StudentClassID,''),ii.Amount,IFNULL(ii.PeriodStart,''),IFNULL(ii.PeriodEnd,''),LEFT(IFNULL(ii.Description,''),120),ii.created_at,ii.updated_at)
 FROM InvoiceItem ii
-JOIN StudentClass sc ON sc.ID=ii.StudentClassID
+JOIN Invoice i ON i.id=ii.InvoiceID
+JOIN StudentClass sc ON sc.ID=i.StudentClassID
 JOIN Student s ON s.id=sc.StudentID
 WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
 ORDER BY ii.InvoiceID,ii.id;"
