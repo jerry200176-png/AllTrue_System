@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors"
     reason: 版面小修正（多餘捲軸、狀態標籤顏色），流程與資料不變，不需另發版本說明。
 
+  - id: silent-2026-09-29-counts-loading-ux
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): one source per dashboard count, loading placeholders"
+    reason: 純前端數字口徑與載入狀態顯示修正，不改流程或權限，教職員不需新操作說明。
+
   - id: silent-2026-09-29-confirmed-monthly-fees
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
