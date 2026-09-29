@@ -221,6 +221,16 @@ for (const [id, revision, issue] of [
   assert.ok(entry[1].includes('仍等待您實際確認'), `${id} must not claim reporter acceptance`);
 }
 
+// Shipped-batch closeout 2026-09-29 adds one immutable per-report metadata record.
+{
+  const entry = phaseCSource.match(/\n            353 => \[([\s\S]*?)\n            \],/);
+  assert.ok(entry, 'scoped Phase-C entry 353 must exist');
+  assert.ok(entry[1].includes('"rev" => "3056e8ccd9240b6e7086565308516f7832765f8c"'), '353 requires the exact containing product merge');
+  assert.ok(entry[1].includes('"deploy" => "36527079538"'), '353 requires a concrete successful deploy run');
+  assert.ok(entry[1].includes('issues/3201'), '353 must notify its canonical issue');
+  assert.ok(entry[1].includes('仍等待您實際確認'), '353 must not claim reporter acceptance');
+}
+
 console.log('bug-writeback-workflow.test.mjs: ok');
 
 assert.match(phaseCSource,

@@ -642,6 +642,11 @@ jobs:
               "rev" => "1a413b1deb954e61952f99692b88ae676d19e575",
               "deploy" => "",
             ],
+            353 => [
+              "reply" => "已調整並上線：學生管理的課程標籤現在會在已完課、已結算或待對帳的歷史課程旁標示「歷史」，堂數為 0 的舊課程比較不會被誤認為目前仍在上的課程。這次只增加標示，沒有隱藏課程，也沒有改動堂數、篩選、付款或續報功能；我們尚未確認您截圖中的那堂數學課就是歷史課程，也沒有更動任何課程資料。工程回歸測試與正式版本檢查已完成，仍等待您實際確認。請重新整理學生管理後查看同一位學生；若該數學 0 堂仍沒有「歷史」標示，或和課程查找顯示的堂數不一致，請按「問題仍存在」並回覆課程查找顯示的堂數（請勿貼學生姓名）。追蹤：https://github.com/jerry200176-png/AllTrue_System/issues/3201",
+              "rev" => "3056e8ccd9240b6e7086565308516f7832765f8c",
+              "deploy" => "36527079538",
+            ],
           ];
           // One authorized target per run. A request for an unknown ID or an
           // unshipped revision fails before any comment/status mutation.
