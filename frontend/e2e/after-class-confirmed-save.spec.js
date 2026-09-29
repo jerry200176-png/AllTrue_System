@@ -134,7 +134,7 @@ for (const width of [390, 1440]) {
     await page.locator('.lr-form').getByRole('button',{name:'關閉',exact:true}).click();
     const switchBranch = async id => {
       if(width===390) await page.locator('#mobile-branch-select-teacher').selectOption(String(id));
-      else await page.locator('.branch-switcher').getByRole('button',{name:id===1?'隔離分校甲':'隔離分校乙',exact:true}).click();
+      else await page.locator('#sidebar-branch-select').selectOption(String(id));
     };
     const openRow = async () => {
       await page.locator('#lr-teacher-tab-all').click();
