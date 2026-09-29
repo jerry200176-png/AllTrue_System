@@ -7,7 +7,8 @@ assert.doesNotMatch(app, /^const \w+\s*= defineAsyncComponent\(/m, 'page chunks 
 assert.match(app, /^const BranchHealthBoard\s*= asyncPage\(/m);
 
 const cm = readFileSync(new URL('../pages/CourseManagement.vue', import.meta.url), 'utf8');
-assert.match(cm, /\(c\.class_type \?\? c\.ClassType \?\? 'one_on_one'\) === typeFilter/, 'class_type filter must be applied client-side (backend ignores it)');
+assert.match(cm, /params\.set\('class_type', filters\.value\.class_type\)/);
+assert.doesNotMatch(cm, /typeFilter/, 'fetch-all-pages workaround removed; backend filters class_type');
 
 const bugs = readFileSync(new URL('../pages/BugReportsPage.vue', import.meta.url), 'utf8');
 assert.match(bugs, /listDisplay\(bug\)\.title/);

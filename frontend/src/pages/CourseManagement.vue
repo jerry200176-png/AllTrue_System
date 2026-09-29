@@ -4775,15 +4775,12 @@ const loadCourses = async (page = 1) => {
     }
     loadPendingLeaveWorkflows(token);
     if (token) {
-      // 後端 /student-classes 不支援 class_type 篩選（會被忽略），改為抓全部後於前端只留符合的課程。
-      // ponytail: 依賴後端 per_page 上限 1000 並逐頁補抓；若後端日後支援 class_type 可移除。
-      const typeFilter = filters.value.class_type;
       const params = new URLSearchParams({
         branch_id: String(props.branchId),
-        per_page: String(typeFilter ? 1000 : pagination.value.perPage),
+        per_page: String(pagination.value.perPage),
         page: String(page),
       });
-      if (typeFilter) params.set('class_type', typeFilter);
+      if (filters.value.class_type) params.set('class_type', filters.value.class_type);
       if (filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
       if (filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
       if (filters.value.course_status) params.set('status', filters.value.course_status);
@@ -4795,20 +4792,7 @@ const loadCourses = async (page = 1) => {
       if (res.ok) {
         const json = await res.json();
         const list = json?.data ?? json;
-        let arr = Array.isArray(list) ? list : (list?.data ?? []);
-        if (typeFilter) {
-          for (let p = 2; p <= Number(json?.last_page ?? 1); p++) {
-            params.set('page', String(p));
-            const r = await fetch(`/api/v1/student-classes?${params}`, {
-              credentials: 'include',
-              headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-            });
-            if (!r.ok) break;
-            const j = await r.json();
-            arr = arr.concat(Array.isArray(j?.data) ? j.data : []);
-          }
-          arr = arr.filter(c => (c.class_type ?? c.ClassType ?? 'one_on_one') === typeFilter);
-        }
+        const arr = Array.isArray(list) ? list : (list?.data ?? []);
         const result = arr.map(c => ({
           ...c,
           id: Number(c?.id ?? c?.ID ?? 0),
@@ -4820,14 +4804,12 @@ const loadCourses = async (page = 1) => {
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null
         }));
         if (!isCurrentListRequest(requestId, courseLoadRequestId)) return;
-        pagination.value = typeFilter
-          ? { page: 1, lastPage: 1, total: arr.length, perPage: pagination.value.perPage }
-          : {
-            page: Number(json?.current_page ?? page),
-            lastPage: Number(json?.last_page ?? 1),
-            total: Number(json?.total ?? arr.length),
-            perPage: pagination.value.perPage,
-          };
+        pagination.value = {
+          page: Number(json?.current_page ?? page),
+          lastPage: Number(json?.last_page ?? 1),
+          total: Number(json?.total ?? arr.length),
+          perPage: pagination.value.perPage,
+        };
         courses.value = result;
         resetExpandedStudentGroups(groupCoursesByStudent(result));
         syncCourseManagerCourseFromList();

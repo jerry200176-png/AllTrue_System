@@ -12,7 +12,7 @@
 
 ## 2026-09-30 — fix(ux): page loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter
 <!-- release-notes: staff_update=staff-2026-09-30-ux-followups -->
-- 換頁載入時顯示骨架畫面（延遲 150ms，快速載入不閃爍）；編輯學生視窗可按 Esc 關閉，「LINE 綁定家長」改顯示「已綁定 LINE」與 2026/09/03 格式日期，監護人關係顯示中文；課程查找「上課類型」篩選改為只列出符合類型的課程；意見與建議列表遇自動產生的標題時改顯示頁面名稱（列表 API 未回傳說明文字，無後端變更）。
+- 換頁載入時顯示骨架畫面（延遲 150ms，快速載入不閃爍）；編輯學生視窗可按 Esc 關閉，「LINE 綁定家長」改顯示「已綁定 LINE」與 2026/09/03 格式日期，監護人關係顯示中文；課程查找「上課類型」篩選改為只列出符合類型的課程；意見與建議列表遇自動產生的標題時改顯示說明第一行（後端列表僅新增唯讀摘要欄位）。
 
 ## 2026-09-30 — feat(courses): show student school and grade in course lookup
 <!-- release-notes: staff_update=staff-2026-09-30-course-lookup-school-grade -->
