@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-rfid-swipe-hardening
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)"
+    reason: 刷卡即出席政策本身未變，僅補強邊界情況；尚未部署或於正式環境驗證，不發布教職員公告。
+
   - id: silent-2026-09-29-confirmed-monthly-fees
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"

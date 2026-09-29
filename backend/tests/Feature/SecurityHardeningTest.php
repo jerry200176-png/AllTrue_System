@@ -192,11 +192,11 @@ class SecurityHardeningTest extends TestCase
     // ─── SEC-006 / FR-004: swipe-rfid throttle ────────────────────────────────
 
     /** @test */
-    public function swipe_rfid_throttle_blocks_after_30_requests(): void
+    public function swipe_rfid_throttle_blocks_after_120_requests(): void
     {
         $this->clearThrottle();
 
-        for ($i = 1; $i <= 30; $i++) {
+        for ($i = 1; $i <= 120; $i++) {
             $res = $this->withHeaders(['Authorization' => 'Bearer sec-test-token-abc'])
                 ->postJson('/api/v1/swipe-rfid', [
                     'branch_code' => (string) $this->campus->id,
@@ -208,7 +208,7 @@ class SecurityHardeningTest extends TestCase
         $this->withHeaders(['Authorization' => 'Bearer sec-test-token-abc'])
             ->postJson('/api/v1/swipe-rfid', [
                 'branch_code' => (string) $this->campus->id,
-                'rfid'        => 'RFID-31',
+                'rfid'        => 'RFID-121',
             ])->assertStatus(429);
     }
 

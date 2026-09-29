@@ -4,8 +4,11 @@ namespace App\Console\Commands;
 
 use App\Models\ClassSession;
 use App\Models\StudentSignIn;
+use App\Models\Student;
+use App\Services\StudentPresenceBackfillService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -17,9 +20,8 @@ use Illuminate\Support\Facades\Log;
  *   1. 找該學生當日最後一堂 ClassSession.EndTime → 設為 SignOutDT
  *   2. 若無 ClassSession → fallback SignInDT 當日 22:00（補習班預設關門）
  *
- * 注意：此指令僅補 SignOutDT，presenceWindow backfill（若需要）
- *       請由 SwipeRfidController::backfillPresenceWindow 在下次自然刷退時處理，
- *       或另外排程觸發。
+ * 關閉後與自然刷退相同，呼叫 StudentPresenceBackfillService 對在場時段內
+ * 開始、尚無有效簽到的堂次補出席並扣堂（#2809：忘記刷退不應漏算後續連堂）。冪等。
  */
 class CloseOrphanStudentSignIns extends Command
 {
@@ -67,9 +69,36 @@ class CloseOrphanStudentSignIns extends Command
                 $source   .= '_adjusted';
             }
 
-            $orphan->SignOutDT = $signOutDT;
-            $orphan->MDT       = now();
-            $orphan->save();
+            // One orphan per transaction: a backfill failure rolls back its close, so the
+            // orphan is retried next run instead of being closed without deduction.
+            try {
+                DB::transaction(function () use ($orphan, $signInDT, $signOutDT, $today) {
+                    $orphan->SignOutDT = $signOutDT;
+                    $orphan->MDT       = now();
+                    $orphan->save();
+
+                    // Only RFID-door rows prove presence; manual/absent rows must not trigger
+                    // deduction. Old backlog (>2 days) is closed but never retro-deducted.
+                    $isRfidPresence = in_array($orphan->Memo, ['swipe-rfid', 'self_study'], true)
+                        && $orphan->Status === 'present';
+                    $isRecent = $signInDT->gte($today->copy()->subDays(2));
+                    if ($isRfidPresence && $isRecent && ($student = Student::find($orphan->StudentID))) {
+                        StudentPresenceBackfillService::backfill(
+                            $student,
+                            $signInDT,
+                            $signOutDT,
+                            (int) ($orphan->CampusID ?: $student->CampusID)
+                        );
+                    }
+                });
+            } catch (\Throwable $e) {
+                Log::error('orphan_signin_close_failed', [
+                    'sign_in_id' => $orphan->id,
+                    'student_id' => $orphan->StudentID,
+                    'error'      => $e->getMessage(),
+                ]);
+                continue;
+            }
 
             $sourceCounts[$source] = ($sourceCounts[$source] ?? 0) + 1;
             $closed++;
