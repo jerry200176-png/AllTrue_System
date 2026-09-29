@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.30",
+    "date": "2026-09-30",
+    "title": "2026.09.30 草稿（未發布）",
+    "summary": "student school and grade in course lookup",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "student school and grade in course lookup"
+        ]
+      }
+    ],
+    "items": [
+      "student school and grade in course lookup"
+    ]
+  },
+  {
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
@@ -649,45 +671,6 @@ export const changelogDraftNotes = [
       "需要留意事項更容易處理",
       "家長入口標頭更容易操作",
       "家長學習分頁更容易操作"
-    ]
-  },
-  {
-    "version": "2026.09.09",
-    "date": "2026-09-09",
-    "title": "2026.09.09 草稿（未發布）",
-    "summary": "繳費通知與帳務中心金額一致；輔導課明確標示無須繳費",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "繳費通知與帳務中心金額一致",
-          "輔導課明確標示無須繳費",
-          "月結請假跨入口維持日期邊界",
-          "家長學習評量入口與空狀態可操作",
-          "修正手機行事曆單堂檢視操作",
-          "修正手機意見與建議表單排版"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "家長首頁學習重點版本公告"
-        ]
-      }
-    ],
-    "items": [
-      "繳費通知與帳務中心金額一致",
-      "輔導課明確標示無須繳費",
-      "月結請假跨入口維持日期邊界",
-      "家長學習評量入口與空狀態可操作",
-      "修正手機行事曆單堂檢視操作",
-      "修正手機意見與建議表單排版",
-      "家長首頁學習重點版本公告"
     ]
   }
 ];

@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-30-course-lookup-school-grade",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "課程查找顯示學校與年級",
+    "summary": "課程查找的學生標題列現在會在姓名旁顯示學校與年級。",
+    "items": [
+      "學生姓名旁新增學校與年級（僅這兩項，不顯示電話與備註）。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "學生姓名旁新增學校與年級（僅這兩項，不顯示電話與備註）。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:358"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-29-void-receipt-trace",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,
