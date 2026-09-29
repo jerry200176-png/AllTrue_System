@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-monthly-case-closed
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ops): report closed monthly case eligibility explicitly"
+    reason: 內部單案資格關閉的拒絕訊息與發布驗證，不發布公告。
+
   - id: silent-2026-09-29-pop-local-claim
     changelog_date: "2026-09-29"
     changelog_title: "fix(ops): unblock local approved repair scheduling"
