@@ -275,6 +275,68 @@ class MonthlyAccountingCorrectionTest extends TestCase
         return [$source, $ids, $input, $target, $bill, $item, $pending];
     }
 
+    public function test_existing_source_and_target_items_keep_their_ids_and_separate_ownership(): void
+    {
+        [$source, , $input, $target, , $targetItem] = $this->existingTargetFixture();
+        $item = \App\Models\InvoiceItem::create(['InvoiceID' => $input['invoice_id'], 'Amount' => 7500,
+            'PeriodStart' => '2026-07-27', 'PeriodEnd' => '2026-08-31', 'Description' => 'Original month']);
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $plan = $service->preview($source, $input);
+        $this->assertSame((int) $item->id, (int) $plan['input']['expected_source_item_id']);
+        $this->assertNull($item->fresh()->StudentClassID);
+        $this->assertSame(2, \App\Models\InvoiceItem::count());
+        $result = $service->execute($source, $plan['input'], $plan['confirmation_token'], 'existing-source-item', 'pop:test');
+        $this->assertTrue($service->verify($result)['ok']);
+        $this->assertSame((int) $item->id, $result['source_item_id']);
+        $this->assertSame(2, \App\Models\InvoiceItem::count());
+        $this->assertSame((int) $source->ID, (int) $item->fresh()->StudentClassID);
+        $this->assertSame((int) $target->ID, (int) $targetItem->fresh()->StudentClassID);
+        $this->assertSame(6000, (int) $item->fresh()->Amount);
+        $this->assertSame('2026-08-01', (string) $item->fresh()->PeriodStart);
+        $this->assertSame('2026-08-31', (string) $item->fresh()->PeriodEnd);
+        $this->assertSame(6000, (int) $targetItem->fresh()->Amount);
+        $this->assertSame([7500, -7500, 6000], Payment::orderBy('id')->pluck('Amount')->map(fn ($n) => (int) $n)->all());
+    }
+
+    public function test_source_item_with_new_target_is_reused_without_target_owner_projection(): void
+    {
+        [$source, , $input] = $this->fixture();
+        $item = \App\Models\InvoiceItem::create(['InvoiceID' => $input['invoice_id'], 'StudentClassID' => $source->ID,
+            'Amount' => 7500, 'PeriodStart' => '2026-07-27', 'PeriodEnd' => '2026-08-31', 'Description' => 'Original month']);
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $plan = $service->preview($source, $input);
+        $result = $service->execute($source, $plan['input'], $plan['confirmation_token'], 'source-item-new-target', 'pop:test');
+        $this->assertTrue($service->verify($result)['ok']);
+        $this->assertSame((int) $item->id, $result['source_item_id']);
+        $this->assertSame(2, \App\Models\InvoiceItem::count());
+        $this->assertSame((int) $source->ID, (int) $item->fresh()->StudentClassID);
+    }
+
+    public function test_source_item_drift_or_ambiguous_ownership_cannot_write_cash(): void
+    {
+        [$source, , $input, $target] = $this->existingTargetFixture();
+        $item = \App\Models\InvoiceItem::create(['InvoiceID' => $input['invoice_id'], 'Amount' => 7500,
+            'PeriodStart' => '2026-07-27', 'PeriodEnd' => '2026-08-31', 'Description' => 'Original month']);
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $plan = $service->preview($source, $input);
+        foreach ([['StudentClassID' => $target->ID], ['Amount' => 4500], ['PeriodStart' => '2026-07-01']] as $change) {
+            $item->forceFill(['StudentClassID' => null, 'Amount' => 7500, 'PeriodStart' => '2026-07-27']);
+            $item->forceFill($change)->save();
+            try {
+                $service->execute($source, $plan['input'], $plan['confirmation_token'], 'source-item-drift', 'pop:test');
+                $this->fail('Unreviewed source item must be rejected');
+            } catch (ValidationException) {
+                $this->assertSame(2, Payment::count());
+                $this->assertSame(0, SessionCorrection::count());
+                $this->assertSame(0, (int) $source->fresh()->Paid);
+            }
+        }
+        $item->forceFill(['StudentClassID' => null, 'Amount' => 7500, 'PeriodStart' => '2026-07-27'])->save();
+        $extra = $item->replicate(); $extra->save();
+        $this->expectException(ValidationException::class);
+        $service->preview($source, $input);
+    }
+
     public function test_existing_target_and_already_voided_receipt_are_corrected_without_duplicates(): void
     {
         [$source, $ids, $input, $target, $bill, $item, $pending] = $this->existingTargetFixture();

@@ -1493,6 +1493,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R119. 未收款課程堂數更正必須走具名流程，不得放寬一般契約鎖定（GitHub #1901，2026-08-22）
 
+- **月結更正補充（2026-09-29）**：必須用 authenticated preview 核對來源與目標的父帳單明細，不得由合約摘要推定來源沒有 InvoiceItem。單一 null-owner 明細可在父帳單歸屬、原金額與期間一致時簽章綁定 ID，沿用該 ID 更正並保留原始 audit snapshot；多項或其他 owner 仍拒絕。這不授權一般編輯繞過契約鎖定或修復核准。
 - **現象**：洪睿淵理化課實際應收 7 堂，但課程已產生扣堂紀錄且仍維持 8 堂；一般編輯回 `billing_contract_locked`，主任無法產生正確 7 堂／7,700 元收據。
 - **根因層級**：F1／F7 的流程架構缺口——契約鎖定正確保護歷史，但缺少「尚未收款的錯誤購買堂數」安全更正邊界；若直接移除 guard，會讓已收款或已使用額度也能被追溯改寫。
 - **強制規則**：只允許 director／super_admin 更正未收款、非共用、按堂課程；無有效 Payment、無 pending／confirmed PaymentReport；新堂數不得低於 observed used；金額必須等於單堂費率×新堂數。保留已上課／ledger，僅取消超額 scheduled，重算餘額並寫 PII-minimized audit。

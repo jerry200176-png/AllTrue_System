@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ContractAdjustmentChoiceModal from '../ContractAdjustmentChoiceModal.vue';
 import ContractAmendmentModal from '../ContractAmendmentModal.vue';
+import ContractAmendmentRevertModal from '../ContractAmendmentRevertModal.vue';
 
 describe('ContractAdjustmentChoiceModal', () => {
   it('explains the independent adjustment workflows without exposing their APIs', () => {
@@ -111,4 +112,24 @@ describe('ContractAmendmentModal', () => {
     expect(wrapper.text()).toContain('合約會提前結束');
   });
 
+});
+
+describe('ContractAmendmentRevertModal', () => {
+  const preview = {
+    current_session_count: 7, restored_session_count: 8,
+    current_remaining_sessions: 0, restored_remaining_sessions: 1,
+    restorable_sessions_count: 1, restorable_schedules_count: 0, unscheduled_remaining_sessions: 1,
+  };
+
+  it('shows before/after counts and requires a reason before submitting', async () => {
+    const wrapper = mount(ContractAmendmentRevertModal, { props: { show: true, course: { id: 1 }, preview } });
+    expect(wrapper.text()).toContain('7 堂');
+    expect(wrapper.text()).toContain('8 堂');
+    expect(wrapper.text()).toContain('尚未排課');
+    expect(wrapper.find('button.primary').attributes('disabled')).toBeDefined();
+
+    await wrapper.find('#revert-reason').setValue('主任誤操作');
+    await wrapper.find('button.primary').trigger('click');
+    expect(wrapper.emitted('submit')).toEqual([['主任誤操作']]);
+  });
 });
