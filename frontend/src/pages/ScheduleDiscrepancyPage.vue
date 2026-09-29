@@ -1,17 +1,27 @@
 <template>
-  <div class="sdp-page">
+  <div class="sdp-page at-page">
     <AtPageHeader
       title="課表回報管理"
       description="老師回報的課表與實際不符情形。處理後系統會留下稽核紀錄。"
-      icon="rule"
+      icon="flag"
     >
+      <template #help>
+        <AtHelpDisclosure label="快速處理 SOP">
+          <strong>快速處理 SOP（建議流程）</strong>
+          <ol>
+            <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
+            <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
+            <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
+          </ol>
+        </AtHelpDisclosure>
+      </template>
       <template #actions>
-        <AtButton variant="ghost" shape="rect" icon="refresh" @click="refresh">重新整理</AtButton>
+        <AtButton variant="secondary" shape="rect" icon="refresh" @click="refresh">重新整理</AtButton>
       </template>
     </AtPageHeader>
 
     <!-- Tabs -->
-    <nav class="sdp-tabs" role="tablist" aria-label="回報狀態">
+    <nav class="sdp-tabs at-tabs" role="tablist" aria-label="回報狀態">
       <button
         v-for="tab in tabs"
         :key="tab.value"
@@ -19,7 +29,7 @@
         :id="`sdp-tab-${tab.value}`"
         :aria-controls="`sdp-panel-${tab.value}`"
         :aria-selected="activeTab === tab.value"
-        :class="['sdp-tab', { active: activeTab === tab.value }]"
+        :class="['sdp-tab', 'at-tab', { active: activeTab === tab.value }]"
         type="button"
         @click="setTab(tab.value)"
       >
@@ -27,21 +37,6 @@
         <span v-if="counts[tab.value] > 0" class="sdp-tab-badge" :class="`sdp-tab-badge-${tab.value}`">{{ counts[tab.value] }}</span>
       </button>
     </nav>
-
-    <details class="sdp-sop-card">
-      <summary>
-        <span class="material-symbols-outlined sdp-sop-icon" aria-hidden="true">help_outline</span>
-        <span class="sdp-sop-title">快速處理 SOP（建議流程）</span>
-        <span class="material-symbols-outlined sdp-sop-arrow" aria-hidden="true">expand_more</span>
-      </summary>
-      <div class="sdp-sop-body">
-        <ol>
-          <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
-          <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
-          <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
-        </ol>
-      </div>
-    </details>
 
     <section :id="`sdp-panel-${activeTab}`" class="sdp-list-wrap" role="tabpanel" :aria-labelledby="`sdp-tab-${activeTab}`" :aria-busy="loading">
       <div v-if="!hasBranch" class="sdp-state sdp-state-empty sdp-state-no-branch">
@@ -296,6 +291,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { fetchDiscrepancies, fetchDiscrepancySummary, updateDiscrepancyStatus, STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 import { scheduleDiscrepancyActionLabel } from '../lib/calendarViewDisplay.js';
 
@@ -560,7 +556,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.sdp-page { max-width: 1200px; margin: 0 auto; }
 
 .sdp-header {
   display: flex;
@@ -572,32 +567,6 @@ onBeforeUnmount(() => {
 }
 .sdp-header-btns { display: flex; gap: 8px; }
 
-.sdp-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border-soft, #e5e7eb);
-  margin-bottom: 12px;
-  overflow-x: auto;
-}
-.sdp-tab {
-  background: transparent;
-  border: 0;
-  padding: 10px 16px;
-  min-height: 44px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-light, #64748b);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.sdp-tab.active {
-  color: var(--primary, #2563eb);
-  border-bottom-color: var(--primary, #2563eb);
-}
 .sdp-tab-badge {
   display: inline-flex;
   align-items: center;
@@ -614,58 +583,6 @@ onBeforeUnmount(() => {
 .sdp-tab-badge-pending { background: var(--warning-soft, #fffbeb); color: var(--warning-strong, #b45309); }
 .sdp-tab-badge-acknowledged { background: var(--info-soft, #eff6ff); color: var(--info-strong, #1d4ed8); }
 .sdp-tab-badge-resolved { background: var(--success-soft, #ecfdf5); color: var(--success-strong, #047857); }
-
-.sdp-sop-card {
-  margin-bottom: 12px;
-  border: 1px solid var(--info-border, #bfdbfe);
-  background: var(--info-soft, #eff6ff);
-  border-radius: 10px;
-  padding: 10px 14px;
-}
-.sdp-sop-card summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--info-strong);
-  list-style: none;
-  user-select: none;
-}
-.sdp-sop-card summary::-webkit-details-marker {
-  display: none;
-}
-.sdp-sop-icon {
-  font-size: 18px;
-}
-.sdp-sop-title {
-  font-size: 13px;
-  color: var(--info-strong);
-}
-.sdp-sop-arrow {
-  margin-left: auto;
-  font-size: 18px;
-  transition: transform 0.2s ease;
-}
-.sdp-sop-card[open] .sdp-sop-arrow {
-  transform: rotate(180deg);
-}
-.sdp-sop-body {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--info-border);
-}
-.sdp-sop-card ol {
-  margin: 0;
-  padding-left: 18px;
-}
-.sdp-sop-card li {
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: var(--text, #0f172a);
-  line-height: 1.5;
-}
 
 .sdp-list-wrap { background: var(--card-bg, #fff); border: 1px solid var(--border-soft, #e5e7eb); border-radius: 12px; padding: 12px; }
 

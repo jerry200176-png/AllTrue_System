@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；audited monthly receipt correction",
+    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
           "audited monthly receipt correction",
           "undo of contract amendment",
           "controlled monthly contract correction"
@@ -38,13 +39,13 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
       "audited monthly receipt correction",
       "undo of contract amendment",
       "controlled monthly contract correction",
       "existing source invoice items during reviewed correction",
       "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-      "tuition summary as invoiced-only outstanding",
-      "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。"
+      "tuition summary as invoiced-only outstanding"
     ]
   },
   {
