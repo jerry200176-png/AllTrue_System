@@ -13,7 +13,7 @@
 
 ## Start here (10-minute onboarding)
 
-月結誤登收款／拆期的準備與執行邊界：[2026-09-29 更正計畫](plans/2026-09-29-monthly-accounting-correction.md)；正式資料尚未更正。
+月結誤登收款／拆期的準備與執行邊界：[2026-09-29 更正計畫](plans/2026-09-29-monthly-accounting-correction.md)；核准單案已完成驗證；本修訂收尾單案資格，通用修復仍保持 planned。
 
 | Question | Canonical answer |
 |----------|------------------|
