@@ -12,6 +12,7 @@ use App\Models\TeacherSignIn;
 use App\Models\User;
 use App\Services\AttendanceEffectsService;
 use App\Services\SessionDeductionService;
+use App\Services\StudentPresenceBackfillService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -162,11 +163,11 @@ class SwipeRfidController extends Controller
                 $openRecord->MDT = $swipeAt;
                 $openRecord->save();
 
-                $this->backfillPresenceWindow(
+                StudentPresenceBackfillService::backfill(
                     $student,
                     Carbon::parse($openRecord->SignInDT),
                     $swipeAt,
-                    $campus
+                    $campusId
                 );
 
                 return response()->json([
@@ -260,6 +261,7 @@ class SwipeRfidController extends Controller
             // Deduct session on sign-in (點名成功才扣堂)
             if ($studentClass && !$signIn->SessionDeducted) {
                 SessionDeductionService::deductOnAttendance($studentClass, $signIn);
+                StudentPresenceBackfillService::alertIfNotDeducted($signIn, $campusId);
             }
 
             return response()->json([
@@ -284,8 +286,9 @@ class SwipeRfidController extends Controller
     }
 
     /**
-     * 依當日 ClassSession 找出最接近刷卡時間的課堂
-     * 若無符合的 ClassSession，則依 StudentClass 的 week/time 比對（排課模式）
+     * 依當日 ClassSession 找出最接近刷卡時間的課堂。
+     * 無符合的 ClassSession → self_study（不扣堂）。不再依 StudentClass week/time 回退：
+     * 沒有真實 ClassSession 就不得標記出席或扣堂（#2809 Founder 2026-09-29）。
      */
     private function findMatchingClass(Student $student, Carbon $swipeAt): array
     {
@@ -346,136 +349,7 @@ class SwipeRfidController extends Controller
             }
         }
 
-        $classes = StudentClass::where('StudentID', $student->id)
-            ->where('Stop', 0)
-            ->where('StartDate', '<=', $swipeAt)
-            ->where(function ($q) use ($swipeAt) {
-                $q->whereNull('EndDate')->orWhere('EndDate', '>=', $swipeAt);
-            })
-            // A date occurrence is authoritative even when it is leave/cancelled.
-            // Do not fall back to the recurring StudentClass and create a
-            // self-study attendance row for a non-attendance occurrence.
-            ->whereNotIn('ID', ClassSession::query()
-                ->whereDate('SessionDate', $swipeAt->toDateString())
-                ->whereIn('StudentClassID', StudentClass::query()
-                    ->where('StudentID', $student->getKey())
-                    ->select('ID')
-                )
-                ->pluck('StudentClassID'))
-            ->get();
-
-        $dow = $swipeAt->dayOfWeek;
-        $windowMinutes = 30;
-
-        foreach ($classes as $sc) {
-            for ($w = 1; $w <= 6; $w++) {
-                $weekCol = "week{$w}";
-                $timeCol = "time{$w}";
-                $weekVal = $sc->$weekCol ?? null;
-                $timeVal = $sc->$timeCol ?? null;
-                if ($weekVal !== null && (int) $weekVal === (int) $dow && $timeVal) {
-                    try {
-                        $start = Carbon::parse($timeVal);
-                        $swipeTime = $swipeAt->format('H:i');
-                        $startTime = $start->format('H:i');
-                        $diff = abs(Carbon::parse($swipeTime)->diffInMinutes(Carbon::parse($startTime)));
-                        if ($diff <= $windowMinutes) {
-                            $hours = $sc->TotalHours ? (int) $sc->TotalHours : null;
-                            return [$sc, $hours, null];
-                        }
-                    } catch (\Throwable $e) {
-                        continue;
-                    }
-                }
-            }
-        }
-
         return [null, null, null];
-    }
-
-    /**
-     * Presence Window：刷退時回溯在場時段，對缺漏的 ClassSession 補建 StudentSignIn 並扣堂。
-     * 幂等保護：已有 active StudentSignIn（含老師手動建立）的 ClassSession 會被 whereDoesntHave 排除。
-     */
-    private function backfillPresenceWindow(
-        Student $student,
-        Carbon  $signInDT,
-        Carbon  $signOutDT,
-        Campus  $campus
-    ): void {
-        $today       = $signInDT->toDateString();
-        $signInTime  = $signInDT->format('H:i:s');
-        $signOutTime = $signOutDT->format('H:i:s');
-
-        $sessions = ClassSession::query()
-            ->with('studentClass')
-            ->whereHas('studentClass', fn ($q) => $q
-                ->where('StudentID', $student->id)
-                ->where('Stop', 0)
-            )
-            ->whereDate('SessionDate', $today)
-            ->whereTime('StartTime', '>=', $signInTime)
-            ->whereTime('StartTime', '<=', $signOutTime)
-            ->whereNotIn(DB::raw('LOWER(Status)'), array_merge(
-                [\App\Support\SessionStatus::CANCELLED],
-                \App\Support\SessionStatus::leaveFamily()
-            ))
-            ->whereDoesntHave('signIns', fn ($q) => $q->whereNull('VoidedAt'))
-            ->get();
-
-        foreach ($sessions as $session) {
-            $sc = $session->studentClass;
-            if (!$sc) {
-                continue;
-            }
-
-            // TD-009: 防禦 EndTime=null（DB 有 NOT NULL 但舊資料可能例外），跳過避免 SignOutDT=00:00
-            if (!$session->EndTime) {
-                Log::warning('presence_window_skip_null_end_time', [
-                    'class_session_id' => $session->id,
-                    'student_id'       => $student->id,
-                ]);
-                continue;
-            }
-
-            $sessionSignInDT  = Carbon::parse($today . ' ' . $session->StartTime);
-            $sessionSignOutDT = Carbon::parse($today . ' ' . $session->EndTime);
-
-            $newSignIn = StudentSignIn::create([
-                'StudentClassID'   => $sc->ID,
-                'StudentID'        => $student->id,
-                'TeacherID'        => $sc->TeacherID,
-                'RecordedByUserID' => null,
-                'GradeID'          => $sc->GradeID,
-                'SubjectID'        => $sc->SubjectID,
-                'Get1byID'         => $sc->by1,
-                'Hours'            => $sc->TotalHours ? (int) $sc->TotalHours : null,
-                'Memo'             => 'presence-window',
-                'SignInDT'         => $sessionSignInDT,
-                'SignOutDT'        => $sessionSignOutDT,
-                'MDT'              => now(),
-                'ClassSessionID'   => $session->id,
-                'Status'           => 'present',
-                'CampusID'         => $campus->id,
-                'PersonType'       => 'student',
-                'SessionDeducted'  => false,
-            ]);
-
-            // FR-004: sync ClassSession.Status for backfilled records.
-            // Backfill sessions use session StartTime as SignInDT (not actual swipe time),
-            // so we treat them as 'attended' (not late).
-            AttendanceEffectsService::applySessionStatus($session, 'present');
-
-            SessionDeductionService::deductOnAttendance($sc, $newSignIn);
-
-            Log::info('presence_window_backfill', [
-                'student_id'       => $student->id,
-                'student_name'     => $student->name,
-                'class_session_id' => $session->id,
-                'sign_in_dt'       => $sessionSignInDT->toDateTimeString(),
-                'sign_out_dt'      => $sessionSignOutDT->toDateTimeString(),
-            ]);
-        }
     }
 
     private const STUDENT_SWIPE_DEBOUNCE_SECONDS = 60;

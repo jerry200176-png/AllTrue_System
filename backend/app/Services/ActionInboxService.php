@@ -189,7 +189,7 @@ $q->whereIn($column, $ids === [] ? [-1] : $ids);
         $kind = in_array($type, ['substitute', 'substitute_confirm'], true) ? 'substitute' : $type;
         $payload = is_array($n->Payload) ? $n->Payload : [];
         $target = match ($kind) {
-            'pending_swipe' => 'attendance',
+            'pending_swipe', 'deduction_failed' => 'attendance',
             'learning_review' => 'learning',
             'tuition', 'low_sessions' => 'tuition-collect',
             'schedule_change', 'substitute' => 'calendar',
