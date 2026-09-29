@@ -1541,8 +1541,8 @@ import { getPerSessionFee, getCourseTotalFee, getRateUnitDisplayLabel } from '..
 import {
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
-  getRenewalPreviewAmount,
 } from '../lib/coursePricing';
+import { applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -3330,7 +3330,10 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (!token || !course?.id) return;
+    if (!token || !course?.id) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
+      return;
+    }
     const currentEnd = course?.end_date || course?.EndDate || null;
     let endDate = requestedEndDate;
     if (!endDate) {
@@ -3344,7 +3347,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
         endDate = d.toISOString().slice(0, 10);
       }
     }
-    renewMonthlyForm.value.preview_end_date = endDate;
+    invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
@@ -3356,7 +3359,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
       body: JSON.stringify({ mode: 'renew_monthly', end_date: endDate }),
     });
     const json = await res.json().catch(() => ({}));
-    if (res.ok && showRenewMonthlyModal.value && canApplyRenewalPreview({
+    if (showRenewMonthlyModal.value && canApplyRenewalPreview({
       requestId,
       currentRequestId: renewMonthlyPreviewRequestId.value,
       courseId: course.id,
@@ -3364,14 +3367,17 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
       requestedEndDate: endDate,
       currentEndDate: renewMonthlyForm.value.preview_end_date,
     })) {
-      if (Array.isArray(json.warnings)) {
-        renewMonthlyWarnings.value = json.warnings;
+      if (res.ok || json.severity === 'blocked') {
+        renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
+        applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
+      } else {
+        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: json.message || '無法取得期間預覽，請重試。' });
       }
-      const amount = getRenewalPreviewAmount(json);
-      if (amount != null) renewMonthlyForm.value.original_amount = amount;
     }
   } catch {
-    /* preview is advisory only */
+    if (requestId === renewMonthlyPreviewRequestId.value && course?.id === renewMonthlyCourse.value?.id) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '無法取得期間預覽，請檢查連線後重試。' });
+    }
   }
 }
 
@@ -3541,6 +3547,10 @@ async function submitPurchaseSessions() {
 
 async function submitRenewMonthly(endDate) {
   if (renewMonthlySubmitting.value) return;
+  if (!canSubmitMonthlyRenewal(renewMonthlyForm.value, endDate)) {
+    alert('請先完成新一期期間預覽與月結核對。');
+    return;
+  }
   const course = renewMonthlyCourse.value;
   if (!course?.id) return;
   if (!endDate) {

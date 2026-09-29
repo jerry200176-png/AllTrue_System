@@ -1,6 +1,6 @@
-## 2026-09-29 — feat(courses): director undo of contract amendment
-<!-- release-notes: silent_ship=silent-2026-09-29-undo-contract-amendment -->
-- 主任可在課程操作選單「撤銷調整」，還原提前結束／調整合約總堂數：恢復堂數、結束狀態與被取消的預排（原時段被占用或合約已有變動時拒絕），需填原因並留稽核紀錄；帳務不變，也不會自動排課。
+## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
+<!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
+- 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。
 
 ## 2026-09-29 — fix(billing): prepare missing monthly invoice review
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-billing-review -->
@@ -17,6 +17,10 @@
 ## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
 - 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。
+
+## 2026-09-29 — feat(courses): director undo of contract amendment
+<!-- release-notes: silent_ship=silent-2026-09-29-undo-contract-amendment -->
+- 主任可在課程操作選單「撤銷調整」，還原提前結束／調整合約總堂數：恢復堂數、結束狀態與被取消的預排（原時段被占用或合約已有變動時拒絕），需填原因並留稽核紀錄；帳務不變，也不會自動排課。
 
 ## 2026-09-29 — feat(billing): prepare controlled monthly contract correction
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-contract-correction -->

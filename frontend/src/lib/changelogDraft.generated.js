@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "undo of contract amendment；audited monthly receipt correction",
+    "summary": "audited monthly receipt correction；undo of contract amendment",
     "audience": [
       "teacher",
       "director"
@@ -18,32 +18,32 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "undo of contract amendment",
           "audited monthly receipt correction",
+          "undo of contract amendment",
           "controlled monthly contract correction"
         ]
       },
       {
         "title": "修正內容",
         "items": [
+          "confirmed monthly fees and visible renewal periods",
           "missing monthly invoice review",
           "correction into an existing monthly contract",
           "next-period monthly booking guidance",
           "monthly period payment attribution",
-          "capacity occupancy sources",
-          "historical course badges"
+          "capacity occupancy sources"
         ]
       }
     ],
     "items": [
-      "undo of contract amendment",
       "audited monthly receipt correction",
+      "undo of contract amendment",
       "controlled monthly contract correction",
+      "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
       "correction into an existing monthly contract",
       "next-period monthly booking guidance",
-      "monthly period payment attribution",
-      "capacity occupancy sources"
+      "monthly period payment attribution"
     ]
   },
   {

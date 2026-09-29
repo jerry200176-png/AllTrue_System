@@ -89,7 +89,9 @@ describe('CourseManagement high-risk flow characterization', () => {
 
     expect(preview).toContain('`/api/v1/student-classes/${course.id}/renewal-preview`');
     expect(preview).toContain("mode: 'renew_monthly'");
-    expect(preview).toContain('renewMonthlyWarnings.value = json.warnings;');
+    expect(preview).toContain("if (res.ok || json.severity === 'blocked')");
+    expect(preview).toContain('renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];');
+    expect(preview).toContain('applyMonthlyRenewalPreview(renewMonthlyForm.value, json);');
     expect(submit).toContain('if (renewMonthlySubmitting.value) return;');
     expect(submit).toContain("alert('請選擇新到期日或延長月數')");
     expect(submit).toContain('`/api/v1/student-classes/${course.id}/renew-monthly`');
