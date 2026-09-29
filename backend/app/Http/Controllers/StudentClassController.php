@@ -189,7 +189,7 @@ class StudentClassController extends Controller
         );
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
-        $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch($classes->getCollection());
+        $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($classes->items()));
         $pendingReportByClassId = !empty($classIds)
             ? PaymentReport::query()
                 ->whereIn('StudentClassID', $classIds)

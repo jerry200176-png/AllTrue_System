@@ -15,17 +15,17 @@ final class MonthlyPeriodPaymentService
 
     public function batch(Collection $courses): array
     {
-        $courses = $courses->filter(fn ($course) => (string) $course->ScheduleMode === 'date' && !(int) $course->PackageID);
+        $courses = $courses->filter(fn ($course) => (string) $course->getAttribute('ScheduleMode') === 'date' && !(int) $course->getAttribute('PackageID'));
         if ($courses->isEmpty()) return [];
         $ids = $courses->pluck('ID')->all();
-        $invoices = Invoice::query()->notVoided()->whereIn('StudentClassID', $ids)
+        $invoices = (new Invoice)->scopeNotVoided(Invoice::query())->whereIn('StudentClassID', $ids)
             ->with(['payments', 'items'])->orderBy('id')->get()->groupBy('StudentClassID');
         $sessions = ClassSession::query()->whereIn('StudentClassID', $ids)
             ->whereNotIn('Status', ['cancelled', 'voided', 'leave', 'rescheduled'])
             ->orderBy('SessionDate')->get(['StudentClassID', 'SessionDate'])->groupBy('StudentClassID');
         $result = [];
         foreach ($courses as $course) {
-            $result[(int) $course->ID] = $this->summarize($course, $invoices->get($course->ID, collect()), $sessions->get($course->ID, collect()));
+            $result[(int) $course->getAttribute('ID')] = $this->summarize($course, $invoices->get($course->getAttribute('ID'), collect()), $sessions->get($course->getAttribute('ID'), collect()));
         }
         return $result;
     }
@@ -42,12 +42,12 @@ final class MonthlyPeriodPaymentService
                 continue;
             }
             $month = Carbon::createFromFormat('!Y-m', $period);
-            $items = $invoice->items->filter(fn ($item) => (int) $item->StudentClassID === (int) $course->ID);
+            $items = $invoice->items->filter(fn ($item) => (int) $item->StudentClassID === (int) $course->getAttribute('ID'));
             if ($invoice->items->count() !== $items->count() || $items->count() > 1) $ambiguous = true;
             $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
-            if ($start > $end || ($items->isNotEmpty() && ($start < substr((string) $course->StartDate, 0, 10)
-                || $end > substr((string) $course->EndDate, 0, 10)))) $ambiguous = true;
+            if ($start > $end || ($items->isNotEmpty() && ($start < substr((string) $course->getAttribute('StartDate'), 0, 10)
+                || $end > substr((string) $course->getAttribute('EndDate'), 0, 10)))) $ambiguous = true;
             $amount = $this->amounts->resolve($invoice, $course);
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
@@ -64,8 +64,8 @@ final class MonthlyPeriodPaymentService
             $covered = collect($periods)->contains(fn ($period) => $date >= $period['period_start'] && $date <= $period['period_end']);
             if (!$covered) $uncoveredMonths[substr($date, 0, 7)] = true;
         }
-        $start = substr((string) $course->StartDate, 0, 10);
-        $end = substr((string) $course->EndDate, 0, 10);
+        $start = substr((string) $course->getAttribute('StartDate'), 0, 10);
+        $end = substr((string) $course->getAttribute('EndDate'), 0, 10);
         if ($invoices->isNotEmpty() && $start && $end) {
             // Check explicit range coverage, including a next period with no
             // sessions yet. Do not manufacture calendar-month invoices.
@@ -82,7 +82,7 @@ final class MonthlyPeriodPaymentService
             && ($uncoveredMonths === [] || isset($uncoveredMonths[substr($start, 0, 7)]))) {
             $period = substr($start, 0, 7);
             $periods[$period] = ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
-                'charge' => max(0, (int) $course->Charge), 'paid_amount' => (int) $course->Paid === 1 ? max(0, (int) $course->Charge) : 0,
+                'charge' => max(0, (int) $course->getAttribute('Charge')), 'paid_amount' => (int) $course->getAttribute('Paid') === 1 ? max(0, (int) $course->getAttribute('Charge')) : 0,
                 'invoice_ids' => [], 'source' => 'single_period_legacy'];
             $uncoveredMonths = [];
         }
