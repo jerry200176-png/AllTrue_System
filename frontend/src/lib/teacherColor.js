@@ -7,8 +7,8 @@
 // Teacher colors
 const teacherColorMap = {};
 const palette = [
-  '#1E88E5', '#43A047', '#E53935', '#FB8C00', '#8E24AA',
-  '#00ACC1', '#D81B60', '#6D4C41', '#546E7A', '#F4511E',
+  '#1E88E5', '#43A047', '#7CB342', '#FB8C00', '#8E24AA',
+  '#00ACC1', '#5C6BC0', '#6D4C41', '#546E7A', '#9E9D24',
   '#3949AB', '#00897B', '#C0CA33', '#5E35B1', '#039BE5'
 ];
 export const getTeacherColor = (teacherId) => {

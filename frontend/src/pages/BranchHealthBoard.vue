@@ -12,12 +12,12 @@
     </AtInlineAlert>
 
     <template v-else>
-      <div class="branch-health__note" role="note"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>紅／黃／綠只代表已接入的證據訊號。教師流失、教師 capacity、完整續班率與家長客訴尚未接入，不會被當成正常。</span></div>
+      <div class="branch-health__note" role="note"><span class="material-symbols-outlined" aria-hidden="true">info</span><span>顏色只根據目前系統有的資料判斷；老師流失、老師可排課量、續班率、家長客訴還沒納入。</span></div>
       <section class="branch-health__summary" aria-label="分校健康摘要">
         <AtMetric label="目前分校" :value="rows.length" delta="啟用中的分校" accent="var(--ds-primary)" />
         <AtMetric label="優先處理" :value="statusCounts.red" delta="有紅色訊號" delta-tone="negative" accent="var(--ds-danger)" />
         <AtMetric label="需要注意" :value="statusCounts.yellow" delta="有黃色訊號" delta-tone="neutral" accent="var(--ds-warning)" />
-        <AtMetric label="待接資料" :value="unavailableCount" delta="不是正常狀態" delta-tone="neutral" accent="var(--ds-info)" />
+        <AtMetric label="資料不足" :value="unavailableCount" delta="不代表正常" delta-tone="neutral" accent="var(--ds-info)" />
       </section>
 
       <AtSection title="分校健康看板">
@@ -26,7 +26,7 @@
           <div class="branch-health__table-wrap">
             <table class="branch-health__table">
               <caption class="sr-only">各分校五個營運健康維度</caption>
-              <thead><tr><th scope="col">分校</th><th v-for="dimension in dimensionOrder" :key="dimension.key" scope="col">{{ dimension.label }}</th><th scope="col">主要訊號</th></tr></thead>
+              <thead><tr><th scope="col">分校</th><th v-for="dimension in dimensionOrder" :key="dimension.key" scope="col">{{ dimension.label }}</th><th scope="col">主要狀況</th></tr></thead>
               <tbody>
                 <tr v-for="row in rows" :key="row.branch_id" :class="{ 'is-selected': selected?.branch_id === row.branch_id }" @click="select(row)">
                   <th scope="row"><AtButton shape="rect" size="sm" variant="ghost" class="branch-health__branch" @click.stop="select(row)">{{ row.branch_name }}</AtButton></th>
@@ -48,7 +48,7 @@
                   <dd><span :class="pillClass(row.dimensions?.[dimension.key])">{{ row.dimensions?.[dimension.key]?.label || '待接資料' }}</span></dd>
                 </div>
               </dl>
-              <p class="branch-health__mobile-headline"><strong>主要訊號</strong>{{ row.headline || '—' }}</p>
+              <p class="branch-health__mobile-headline"><strong>主要狀況</strong>{{ row.headline || '—' }}</p>
             </article>
           </div>
         </template>
