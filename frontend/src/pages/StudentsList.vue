@@ -202,7 +202,9 @@
                   <span>{{ expandedId === student.id ? '收合' : '課程/購課' }}</span>
                 </button>
                 <AtIconButton icon="edit" label="編輯" @click="editStudent(student)" />
-                <AtIconButton icon="delete" label="刪除" variant="danger" @click="deleteStudent(student)" />
+                <AtRowMenu>
+                  <AtButton shape="rect" size="sm" variant="danger" icon="delete" @click="deleteStudent(student)">刪除學生</AtButton>
+                </AtRowMenu>
               </div>
             </td>
           </tr>
@@ -1068,6 +1070,7 @@ import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtIconButton from '../components/design-system/AtIconButton.vue';
+import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import SchoolNameInput from '../components/SchoolNameInput.vue';
 
@@ -4087,6 +4090,7 @@ table th { font-size: 12.5px; }
   gap: 6px;
 }
 .rfid-tag {
+  white-space: nowrap;
   font-size: 12px;
   font-family: monospace;
   color: var(--ds-primary);
@@ -4095,6 +4099,7 @@ table th { font-size: 12.5px; }
   gap: 3px;
 }
 .rfid-unbound {
+  white-space: nowrap;
   font-size: 12px;
   color: var(--ds-ink-mute);
   display: inline-flex;

@@ -222,19 +222,11 @@
                 <span v-if="notificationSummary(item)" class="notification-context">{{ notificationSummary(item) }}</span>
               </div>
               <div class="urgent-actions">
-                <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
-                <AtButton
-                  v-if="canGoToTuitionBilling(item)"
-                  shape="rect"
-                  size="sm"
-                  variant="primary"
-                  class="notification-action"
-                  @click="goToTarget(item.Type, item)"
-                >
-                  前往帳務中心
-                </AtButton>
-                <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
-                <AtButton v-if="targetPage(item.Type)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="goToTarget(item.Type, item)">前往處理</AtButton>
+                <AtButton v-if="primaryActionLabel(item)" shape="rect" size="sm" variant="primary" class="notification-action" @click="goToTarget(item.Type, item)">{{ primaryActionLabel(item) }}</AtButton>
+                <AtRowMenu v-if="!item.read_at || canCopyTuition(item)">
+                  <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
+                  <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
+                </AtRowMenu>
               </div>
             </div>
           </div>
@@ -267,19 +259,11 @@
             </div>
 
             <div class="item-actions">
-              <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
-              <AtButton
-                v-if="canGoToTuitionBilling(item)"
-                shape="rect"
-                size="sm"
-                variant="primary"
-                class="notification-action"
-                @click="goToTarget(item.Type, item)"
-              >
-                前往帳務中心
-              </AtButton>
-              <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
-              <AtButton v-if="targetPage(item.Type)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="goToTarget(item.Type, item)">前往處理</AtButton>
+              <AtButton v-if="primaryActionLabel(item)" shape="rect" size="sm" variant="primary" class="notification-action" @click="goToTarget(item.Type, item)">{{ primaryActionLabel(item) }}</AtButton>
+              <AtRowMenu v-if="!item.read_at || canCopyTuition(item)">
+                <AtButton v-if="!item.read_at" shape="rect" size="sm" variant="ghost" class="notification-action" @click="markRead(item.id)">標記已讀</AtButton>
+                <AtButton v-if="canCopyTuition(item)" shape="rect" size="sm" variant="ghost" class="notification-action" @click="copyTuitionMessage(item)">複製繳費通知</AtButton>
+              </AtRowMenu>
             </div>
           </div>
           </template>
@@ -313,6 +297,7 @@ import AtSection from '../components/design-system/AtSection.vue';
 import AtFilterBar from '../components/design-system/AtFilterBar.vue';
 import AtToolbar from '../components/design-system/AtToolbar.vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtRowMenu from '../components/design-system/AtRowMenu.vue';
 import AtBadge from '../components/design-system/AtBadge.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
@@ -529,8 +514,10 @@ const paymentAmountFromPayload = (payload) => {
 const notificationSummary = (item) => {
   const payload = payloadOf(item);
   const parts = [];
-  if (payload.student_name) parts.push(payload.student_name);
-  if (payload.subject) parts.push(payload.subject);
+  // 標題已含姓名／科目時不在第二行重複
+  const title = String(item?.Title || '');
+  if (payload.student_name && !title.includes(payload.student_name)) parts.push(payload.student_name);
+  if (payload.subject && !title.includes(payload.subject)) parts.push(payload.subject);
   const amount = paymentAmountFromPayload(payload);
   if (amount > 0) parts.push(formatCurrency(amount));
   if (payload.overdue_days) parts.push(`逾期 ${payload.overdue_days} 天`);
@@ -538,6 +525,12 @@ const notificationSummary = (item) => {
     parts.push(`剩餘 ${payload.remaining_sessions} 堂`);
   }
   return parts.join(' ｜ ');
+};
+
+// 每列只留一個最具體的導向：帳務中心優先，否則前往處理。
+const primaryActionLabel = (item) => {
+  if (canGoToTuitionBilling(item)) return '前往帳務中心';
+  return targetPage(item.Type) ? '前往處理' : '';
 };
 
 const canCopyTuition = (item) => {
@@ -1226,15 +1219,17 @@ onUnmounted(() => {
 }
 
 .urgent-panel {
-  border: 1px solid var(--ds-danger);
+  border: 1px solid var(--ds-hairline);
   border-radius: var(--ds-radius-md, 6px);
-  background: var(--ds-danger-wash);
+  background: var(--ds-surface-1, var(--ds-canvas));
   padding: 10px;
   margin-bottom: 10px;
 }
 
 .urgent-panel h4 {
-  color: var(--ds-danger);
+  color: var(--ds-ink);
+  border-left: 3px solid var(--ds-danger);
+  padding-left: 6px;
   margin: 0 0 8px;
   font-size: 13px;
 }
@@ -1245,7 +1240,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-top: 1px dashed var(--ds-danger-wash);
+  border-top: 1px solid var(--ds-hairline);
 }
 
 .urgent-row:first-of-type {
@@ -1254,7 +1249,7 @@ onUnmounted(() => {
 
 .urgent-title {
   font-size: 13px;
-  color: var(--ds-danger);
+  color: var(--ds-ink);
   font-weight: 600;
 }
 

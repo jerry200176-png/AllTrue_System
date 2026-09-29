@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
 - 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
 
+## 2026-09-29 — fix(ux): compact row actions on attendance, notifications and students
+<!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
+- 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
+
 ## 2026-09-29 — perf(inbox): paint 待處理收件匣 before the background ops sync
 <!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
 - 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。

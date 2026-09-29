@@ -149,6 +149,38 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-row-actions-compact",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "列表操作更精簡",
+    "summary": "點名、營運通知與學生列表的列內按鈕更精簡，次要操作收進「更多」選單。",
+    "items": [
+      "點名列按鈕同列顯示，未記錄前狀態不預先填色；營運通知每列一個主要動作；學生刪除移入「更多」選單。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "點名列按鈕同列顯示，未記錄前狀態不預先填色；營運通知每列一個主要動作；學生刪除移入「更多」選單。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-29:row-actions-compact"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-29-plain-copy-calm-color",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,

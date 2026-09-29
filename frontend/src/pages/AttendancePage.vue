@@ -319,8 +319,8 @@
                     <button
                       v-for="opt in statusOptions" :key="opt.value"
                       type="button"
-                      :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
-                      :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
+                      :aria-pressed="isStatusChosen(s.class_session_id, opt.value)"
+                      :class="['att-status-btn', `att-st-${opt.value}`, { active: isStatusChosen(s.class_session_id, opt.value) }]"
                       @click="setStatus(s.class_session_id, opt.value)"
                     >{{ opt.short }}</button>
                   </div>
@@ -340,10 +340,10 @@
                       :class="{ 'att-report-btn-active': !!getSessionDiscrepancy(s.class_session_id) }"
                       type="button"
                       @click="openReportModalForSession(s)"
-                      :title="getSessionDiscrepancy(s.class_session_id) ? '已回報 — 點此查看' : '課表與實際不符？點此回報'"
+                      :title="getSessionDiscrepancy(s.class_session_id) ? '已回報 — 點此查看' : '回報出入：課表與實際不符？點此回報'"
+                      :aria-label="getSessionDiscrepancy(s.class_session_id) ? '已回報，查看出入回報' : '回報出入'"
                     >
                       <span class="material-symbols-outlined" aria-hidden="true">flag</span>
-                      <span>{{ getSessionDiscrepancy(s.class_session_id) ? '已回報' : '回報出入' }}</span>
                     </button>
                   </div>
                 </td>
@@ -391,8 +391,8 @@
                 <button
                   v-for="opt in statusOptions" :key="opt.value"
                   type="button"
-                  :aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"
-                  :class="['att-status-btn', `att-st-${opt.value}`, { active: pendingMarkStatus[s.class_session_id] === opt.value }]"
+                  :aria-pressed="isStatusChosen(s.class_session_id, opt.value)"
+                  :class="['att-status-btn', `att-st-${opt.value}`, { active: isStatusChosen(s.class_session_id, opt.value) }]"
                   @click="setStatus(s.class_session_id, opt.value)"
                 >{{ opt.label }}</button>
               </div>
@@ -1773,8 +1773,15 @@ function toggleSelect(id) {
   }
 }
 
+// 預設「到班」只用於送出，未點選前畫面不顯示為已記錄（避免像已完成）。
+const pendingMarkTouched = ref({});
+function isStatusChosen(sessionId, value) {
+  return !!pendingMarkTouched.value[sessionId] && pendingMarkStatus.value[sessionId] === value;
+}
+
 function setStatus(sessionId, status) {
   pendingMarkStatus.value = { ...pendingMarkStatus.value, [sessionId]: status };
+  pendingMarkTouched.value = { ...pendingMarkTouched.value, [sessionId]: true };
 }
 
 function focusPendingList() {
@@ -3114,6 +3121,8 @@ watch(() => props.branchId, () => {
   gap: 6px;
   align-items: flex-end;
 }
+.att-ops-stack { flex-direction: row; align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
+.att-ops-stack .att-report-btn { padding: 6px; min-width: 36px; justify-content: center; }
 
 .att-report-btn {
   display: inline-flex;
