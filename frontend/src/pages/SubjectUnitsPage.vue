@@ -59,6 +59,16 @@
         :delta="`加權總分 ${totals.totalUnitsWithoutTutoring}`"
         delta-tone="positive"
       />
+      <AtMetric
+        label="參考合計（含輔導）÷ 8"
+        :value="totals.referenceWith"
+        :delta="`加權總分 ${totals.totalUnitsWithTutoring} ÷ 8，僅供分析，不影響薪資`"
+      />
+      <AtMetric
+        label="參考合計（不含輔導）÷ 8"
+        :value="totals.referenceWithout"
+        :delta="`加權總分 ${totals.totalUnitsWithoutTutoring} ÷ 8，僅供分析，不影響薪資`"
+      />
     </div>
 
     <!-- Subject-count calculation (matches GET /api/v1/finance/subject-units) -->
@@ -227,7 +237,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches, loadBranches } from '../lib/useBranches';
-import { formatSubjectCount } from '../lib/subjectUnitsDisplay';
+import { formatSubjectCount, formatSubjectTotalDiv8 } from '../lib/subjectUnitsDisplay';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 
@@ -247,7 +257,8 @@ const showCalcGuide = ref(true);
 const totals = ref({
   oneOnOneHours: 0, oneOnTwoHours: 0, oneOnThreeHours: 0, tutoringHours: 0,
   totalHours: 0, totalUnitsWithTutoring: 0, totalUnitsWithoutTutoring: 0,
-  subjectCountWith: '0.00', subjectCountWithout: '0.00'
+  subjectCountWith: '0.00', subjectCountWithout: '0.00',
+  referenceWith: '0.00', referenceWithout: '0.00'
 });
 const currentDate = ref(new Date());
 const selectedBranchId = ref(props.branchId ? Number(props.branchId) : null);
@@ -366,6 +377,8 @@ const loadData = async () => {
       totalUnitsWithoutTutoring: t.weighted_without_tutoring || 0,
       subjectCountWith: formatSubjectCount(t.subject_count_with),
       subjectCountWithout: formatSubjectCount(t.subject_count_without),
+      referenceWith: formatSubjectTotalDiv8(t.subject_count_with),
+      referenceWithout: formatSubjectTotalDiv8(t.subject_count_without),
     };
   } catch (e) {
     console.error('Failed to load subject units:', e);
