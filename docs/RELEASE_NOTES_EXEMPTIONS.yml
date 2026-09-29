@@ -2,10 +2,10 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
-  - id: silent-2026-09-29-inbox-first-paint
+  - id: silent-2026-09-29-source-monthly-item
     changelog_date: "2026-09-29"
-    changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
-    reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
+    changelog_title: "fix(billing): preserve existing source invoice items during reviewed correction"
+    reason: 修正尚未啟用的受控修復對既有帳單明細的支援，正式個案未執行，不發布上線或完成公告。
 
   - id: silent-2026-09-29-rfid-swipe-hardening
     changelog_date: "2026-09-29"
@@ -16,6 +16,11 @@ exemptions:
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
     reason: 月結帳務及續約介面尚未核准部署或驗證正式受影響路徑，不先發布上線公告。
+
+  - id: silent-2026-09-29-inbox-first-paint
+    changelog_date: "2026-09-29"
+    changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
+    reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
 
   - id: silent-2026-09-29-monthly-billing-review
     changelog_date: "2026-09-29"
@@ -31,6 +36,11 @@ exemptions:
     changelog_date: "2026-09-29"
     changelog_title: "feat(billing): prepare audited monthly receipt correction"
     reason: 收款更正能力尚未啟用或核准正式清單，沒有修改正式帳務或新主任操作；待部署及個案驗收後再評估公告。
+
+  - id: silent-2026-09-29-move-session-contract
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(schedule): director can move a session to another contract"
+    reason: 權限擴大屬受保護邊界，待 Founder 核准並上線驗證後再發布主任操作公告。
 
   - id: silent-2026-09-29-monthly-next-period-booking
     changelog_date: "2026-09-29"
@@ -537,3 +547,8 @@ exemptions:
     changelog_date: "2026-08-14"
     changelog_title: "chore(ops): 張正甯／張正樂國文續購 8 堂未入帳作業閘門"
     reason: 內部 allowlisted production 作業閘門，沒有教職員可操作的新產品入口。
+
+  - id: silent-2026-09-29-undo-contract-amendment
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(courses): director undo of contract amendment"
+    reason: 主任操作選單新增「撤銷調整」，屬既有提前結束流程的補救入口，待部署與主任驗收後再評估公告。
