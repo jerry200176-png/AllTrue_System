@@ -43,8 +43,7 @@ export const changelogDraftNotes = [
       "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
       "correction into an existing monthly contract",
-      "next-period monthly booking guidance",
-      "monthly period payment attribution"
+      "next-period monthly booking guidance"
     ]
   },
   {
