@@ -3,22 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-09-29-sidebar-branch-dropdown
-    published_at: "2026-09-29"
-    audiences:
-      - director
-      - teacher
-    importance: digest
-    title: 側欄更精簡
-    summary: 分校改用下拉選單切換，從「更多功能」進入的頁面會在頂端顯示所在位置。
-    items:
-      - category: improved
-        text: 側欄分校改為下拉選單，使用者資訊統一在右上角帳號選單。
-      - category: improved
-        text: 從「更多功能」開啟的頁面，頂端顯示「更多功能 › 頁面名稱」，點一下可回到清單。
-    source_refs:
-      - "changelog:2026-09-29:sidebar-branch-dropdown"
-
   - id: staff-2026-09-29-calendar-day-nav
     published_at: "2026-09-29"
     audiences:
@@ -66,6 +50,22 @@ updates:
     source_refs:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
+
+  - id: staff-2026-09-29-sidebar-branch-dropdown
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 側欄更精簡
+    summary: 分校改用下拉選單切換，從「更多功能」進入的頁面會在頂端顯示所在位置。
+    items:
+      - category: improved
+        text: 側欄分校改為下拉選單，使用者資訊統一在右上角帳號選單。
+      - category: improved
+        text: 從「更多功能」開啟的頁面，頂端顯示「更多功能 › 頁面名稱」，點一下可回到清單。
+    source_refs:
+      - "changelog:2026-09-29:sidebar-branch-dropdown"
 
   - id: staff-2026-09-29-void-receipt-trace
     published_at: "2026-09-29"

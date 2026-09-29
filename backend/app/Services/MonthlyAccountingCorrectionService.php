@@ -30,6 +30,7 @@ final class MonthlyAccountingCorrectionService
             'expected_billing_period' => ['required', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
             'expected_registered_amount' => 'required|integer|min:1|max:999999',
             'expected_receipt_status' => 'sometimes|in:confirmed,voided', 'expected_void_payment_id' => 'required_if:expected_receipt_status,voided|integer|min:1',
+            'expected_source_item_id' => 'nullable|integer|min:1',
             'expected_target' => 'required_with:split.target_course_id|array',
             'expected_target.start' => 'required_with:split.target_course_id|date_format:Y-m-d', 'expected_target.end' => 'required_with:split.target_course_id|date_format:Y-m-d',
             'expected_target.charge' => 'required_with:split.target_course_id|integer|min:0', 'expected_target.invoice_id' => 'required_with:split.target_course_id|integer|min:1',
@@ -67,7 +68,19 @@ final class MonthlyAccountingCorrectionService
         $sourceInvoices = array_values(array_filter($graph['invoices'], fn ($row) => (int) $row['StudentClassID'] === (int) $source->getKey()));
         $this->require(count($sourceInvoices) === 1 && count($graph['reports']) === 1, '非單筆來源帳單或回報，須另行核對');
         $invoice = $sourceInvoices[0];
-        $this->require(!collect($graph['items'])->contains(fn ($row) => (int) $row['InvoiceID'] === (int) $invoice['id']), '來源已有帳單項目，須另行核對');
+        $sourceItems = array_values(array_filter($graph['items'], fn ($row) => (int) $row['InvoiceID'] === (int) $invoice['id']));
+        $this->require(count($sourceItems) <= 1, '來源有多項帳單明細，須另行核對');
+        $sourceItem = $sourceItems[0] ?? null;
+        if (!array_key_exists('expected_source_item_id', $data)) $data['expected_source_item_id'] = $sourceItem['id'] ?? null;
+        $this->require((int) ($sourceItem['id'] ?? 0) === (int) ($data['expected_source_item_id'] ?? 0), '來源帳單明細已變動');
+        if ($sourceItem) {
+            $this->require(($sourceItem['StudentClassID'] === null || (int) $sourceItem['StudentClassID'] === (int) $source->getKey())
+                && (int) $sourceItem['Amount'] === $data['expected_registered_amount'], '來源帳單明細歸屬或金額不符');
+            $start = substr((string) ($sourceItem['PeriodStart'] ?? ''), 0, 10);
+            $end = substr((string) ($sourceItem['PeriodEnd'] ?? ''), 0, 10);
+            $this->require(!Validator::make(['start' => $start, 'end' => $end], ['start' => 'required|date_format:Y-m-d', 'end' => 'required|date_format:Y-m-d|after_or_equal:start'])->fails()
+                && $start >= $data['expected_start'] && $end <= $data['expected_end'] && $start <= $end, '來源帳單明細期間須另行核對');
+        }
         $payment = collect($graph['payments'])->firstWhere('id', $data['payment_id']); $report = $graph['reports'][0];
         $this->require((int) $invoice['id'] === $data['invoice_id'] && (int) $report['id'] === $data['report_id'] && $payment !== null, '帳務識別已變動');
         $this->require($invoice['billing_period'] === $data['expected_billing_period'] && $invoice['Status'] === ($voided ? 'unpaid' : 'paid')
@@ -105,12 +118,16 @@ final class MonthlyAccountingCorrectionService
                 'TotalAmount' => $split[$isSource ? 'source_charge' : 'target_charge'], 'PaidAmount' => $isSource ? $data['actual_received_amount'] : 0, 'Status' => $isSource ? 'paid' : 'unpaid']);
         }
         unset($row);
-        foreach ($projected['items'] as &$row) $row = array_merge($row, ['StudentClassID' => $target->getKey(), 'Amount' => $split['target_charge'], 'PeriodStart' => $split['target_start'], 'PeriodEnd' => $split['target_end']]);
+        foreach ($projected['items'] as &$row) {
+            $period = (int) $row['InvoiceID'] === (int) $invoice['id'] ? 'source' : 'target';
+            $row = array_merge($row, ['StudentClassID' => $period === 'source' ? $source->getKey() : $target->getKey(),
+                'Amount' => $split[$period.'_charge'], 'PeriodStart' => $split[$period.'_start'], 'PeriodEnd' => $split[$period.'_end']]);
+        }
         unset($row);
         $projected['reports'][0]['status'] = 'voided';
         if (!$voided) $projected['payments'][] = array_merge($payment, ['id' => -1, 'Amount' => -$data['expected_registered_amount'], 'Method' => 'void']);
         $projected['payments'][] = array_merge($payment, ['id' => -2, 'Amount' => $data['actual_received_amount']]);
-        $projected['items'][] = ['id' => -1, 'InvoiceID' => $invoice['id'], 'StudentClassID' => $source->getKey(), 'Amount' => $split['source_charge'], 'PeriodStart' => $split['source_start'], 'PeriodEnd' => $split['source_end']];
+        if (!$sourceItem) $projected['items'][] = ['id' => -1, 'InvoiceID' => $invoice['id'], 'StudentClassID' => $source->getKey(), 'Amount' => $split['source_charge'], 'PeriodStart' => $split['source_start'], 'PeriodEnd' => $split['source_end']];
         $plan = $this->split->previewState($reviewed, $split, $projected, false, $reviewedTarget);
         $expected = $data['expected_target_session_ids']; sort($expected); $actual = $plan['session_ids']; sort($actual);
         $this->require($expected === $actual, '目標堂次清單已變動');
@@ -267,7 +284,8 @@ final class MonthlyAccountingCorrectionService
 
     private function item(Invoice $invoice, StudentClass $course, string $start, string $end, int $amount): InvoiceItem
     {
-        $item = new InvoiceItem(['InvoiceID' => $invoice->getAttribute('id'), 'StudentClassID' => $course->getAttribute('ID'),
+        $item = InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->first() ?? new InvoiceItem();
+        $item->forceFill(['InvoiceID' => $invoice->getAttribute('id'), 'StudentClassID' => $course->getAttribute('ID'),
             'Description' => '月結期間 '.$start.' ～ '.$end, 'Amount' => $amount, 'PeriodStart' => $start, 'PeriodEnd' => $end]);
         $item->save();
         return $item;
