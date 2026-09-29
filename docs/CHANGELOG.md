@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
+- 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。
+
 ## 2026-09-29 — feat(billing): prepare controlled monthly contract correction
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-contract-correction -->
 - 準備月結分期更正的唯讀預覽、資料變動檢查、交易移轉與回復；執行目錄保持停用，尚未核准或修復正式資料。

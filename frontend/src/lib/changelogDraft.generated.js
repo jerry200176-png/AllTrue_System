@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "controlled monthly contract correction；monthly period payment attribution",
+    "summary": "controlled monthly contract correction；next-period monthly booking guidance",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "next-period monthly booking guidance",
           "monthly period payment attribution",
           "capacity occupancy sources",
           "historical course badges",
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "controlled monthly contract correction",
+      "next-period monthly booking guidance",
       "monthly period payment attribution",
       "capacity occupancy sources",
       "historical course badges",

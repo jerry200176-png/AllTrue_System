@@ -318,6 +318,7 @@ export default {
           </section>
           <section class="cmw__card">
             <h3>合約</h3>
+            <button v-if="isMonthlyMode && monthlySummary" type="button" class="small ghost" @click="act('monthly-correction')">預覽分期更正</button>
             <div class="cmw__row">
               <button type="button" class="small primary" @click="act('purchase')">{{ purchaseLabel }}</button>
               <button type="button" class="small ghost" @click="act('contract-adjust')">合約／堂次調整</button>

@@ -1182,6 +1182,8 @@
       @check="runQuickAddCheck"
     />
 
+    <MonthlyCorrectionPreviewModal :show="monthlyCorrectionShow" :candidates="monthlyCorrectionCandidates" :form="monthlyCorrectionForm" :preview="monthlyCorrectionPreview"
+      :loading="monthlyCorrectionLoading" :error="monthlyCorrectionError" @close="closeMonthlyCorrection" @check="checkMonthlyCorrection" @invalidate="invalidateMonthlyCorrection" />
     <ManualSessionModal
       :show="showManualSessionModal"
       :form="manualSessionForm"
@@ -1194,6 +1196,7 @@
       @check="runManualSessionCheck"
       @submit="submitManualSession"
       @edit-course="editManualSessionCourse"
+      @next-period="selectNextMonthlyContract"
     />
 
     <div v-if="showPackageConversionModal" class="modal-overlay" @click.self="!packageConversionSubmitting && (showPackageConversionModal = false)">
@@ -1558,6 +1561,10 @@ import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import { buildForceOverrideFields, findCourseForPurchase } from '../lib/enrollmentConflictDecision';
 import { isPendingWorkflowStatus } from '../lib/exceptionWorkflowFocus.js';
+import MonthlyCorrectionPreviewModal from '../components/course-management/MonthlyCorrectionPreviewModal.vue';
+import { useMonthlyCorrectionPreview } from '../composables/course-management/useMonthlyCorrectionPreview.js';
+import { loadNextMonthlyContract } from '../lib/nextMonthlyContract.js';
+import { monthlyPaymentLabel } from '../lib/monthlyPaymentDisplay.js';
 import { nextManualSessionDate } from '../lib/manualSessionDate.js';
 import {
   buildBillingCorrectionBlockedState,
@@ -2861,6 +2868,12 @@ const quickAddSessionForm = ref({
   subject: 'Math',
 });
 const showManualSessionModal = ref(false);
+const {
+  show: monthlyCorrectionShow, candidates: monthlyCorrectionCandidates, form: monthlyCorrectionForm, preview: monthlyCorrectionPreview,
+  loading: monthlyCorrectionLoading, error: monthlyCorrectionError, open: openMonthlyCorrection,
+  close: closeMonthlyCorrection, check: checkMonthlyCorrection, invalidate: invalidateMonthlyCorrection,
+} = useMonthlyCorrectionPreview();
+const pendingMonthlyBooking = ref(null);
 const manualSessionCourse = ref(null);
 const manualSessionCheck = ref(null);
 const manualSessionChecking = ref(false);
@@ -2985,6 +2998,7 @@ function onCourseManagerAction({ name, payload } = {}) {
   const map = {
     pause: () => requestCoursePause(c), resume: () => requestCoursePause(c),
     close: () => goToStudentsCommercial(c, 'close'), delete: () => { confirmDeleteTarget.value = c; },
+    'monthly-correction': () => openMonthlyCorrection(c),
     'manual-session': () => openManualSessionModal(c), 'monthly-session': () => openMonthlySessionModal(c),
     'quick-add': () => { if (canQuickAddSession(c) || isMonthlyMode(c)) openQuickAddSessionModal(c); },
     'retry-sessions': () => retryLoadCourseSessions(c),
@@ -3192,6 +3206,7 @@ function purchaseActionTitle(c) {
 }
 
 function openPurchaseModal(course) {
+  pendingMonthlyBooking.value = null;
   // Local only for trial convert-trial and package set-total (distinct semantics from students purchase-batch).
   if (!isSessionMode(course)) {
     renewMonthlyCourse.value = course;
@@ -3303,6 +3318,7 @@ function refreshRenewMonthlyPreview(endDate) {
 
 function closeRenewMonthlyModal() {
   if (renewMonthlySubmitting.value) return;
+  pendingMonthlyBooking.value = null;
   renewMonthlyPreviewRequestId.value += 1;
   showRenewMonthlyModal.value = false;
   renewMonthlyCourse.value = null;
@@ -3506,6 +3522,16 @@ async function submitRenewMonthly(endDate) {
       durationMs: 7000,
     });
     await loadCourses();
+    const pending = pendingMonthlyBooking.value;
+    pendingMonthlyBooking.value = null;
+    if (pending && newCourse.id) {
+      try {
+        const nextCourse = await loadNextMonthlyContract({ source: pending.source, targetId: Number(newCourse.id), date: pending.form.session_date, token });
+        openManualSessionModal(nextCourse, { date: pending.form.session_date, start_time: pending.form.start_time });
+      } catch (error) {
+        alert(`新一期已建立；${error.message}。請從新合約排課，勿再次續約。`);
+      }
+    }
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
   } finally {
@@ -3694,6 +3720,31 @@ function closeManualSessionModal() {
 
 function openMonthlySessionModal(course) {
   openManualSessionModal(course);
+}
+
+async function selectNextMonthlyContract(targetId) {
+  const source = manualSessionCourse.value;
+  if (!source || manualSessionChecking.value || manualSessionSubmitting.value || !manualSessionCheck.value?.next_period) return;
+  const form = { ...manualSessionForm.value };
+  if (!targetId) {
+    closeManualSessionModal();
+    openPurchaseModal(source);
+    pendingMonthlyBooking.value = { source, form };
+    return;
+  }
+  if (!manualSessionCheck.value.next_period.candidates.some((candidate) => Number(candidate.id) === Number(targetId))) return;
+  manualSessionSubmitting.value = true;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const nextCourse = await loadNextMonthlyContract({ source, targetId: Number(targetId), date: form.session_date, token: session?.access_token });
+    if (!showManualSessionModal.value || manualSessionCourse.value !== source || manualSessionForm.value.session_date !== form.session_date) return;
+    closeManualSessionModal();
+    openManualSessionModal(nextCourse, { date: form.session_date, start_time: form.start_time });
+  } catch (error) {
+    manualSessionCheck.value = { can_add: false, message: error.message };
+  } finally {
+    manualSessionSubmitting.value = false;
+  }
 }
 
 function editManualSessionCourse() {
@@ -4551,6 +4602,7 @@ const courseLensMetrics = computed(() => {
 const paymentStatusButtonClass = (course) => {
   if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
   if (isTutoringCourse(course)) return 'tag-no-payment';
+  if (course?.monthly_payment?.review_required || course?.payment_status === 'review_required') return 'tag-pending-report';
   if (course?.payment_status === 'paid') return 'tag-paid';
   if (course?.payment_status === 'pending_report') return 'tag-pending-report';
   return 'tag-unpaid';
@@ -4562,6 +4614,8 @@ const currentInvoiceForBillingRow = (row) => {
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isTutoringCourse(course)) return '無須繳費';
+  if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
+  if (course?.payment_status === 'review_required') return '付款期間待確認';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
   if (course?.payment_status === 'partial') return '部分繳';
