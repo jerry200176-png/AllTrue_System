@@ -21,6 +21,12 @@ final class MonthlyContractCorrectionService
     public function preview(StudentClass $source, array $input, bool $lock = false): array
     {
         $source->refresh();
+        return $this->previewState($source, $input, null, $lock);
+    }
+
+    /** Advisory projection only; execute always re-reads authoritative rows. */
+    public function previewState(StudentClass $source, array $input, ?array $reviewedGraph = null, bool $lock = false): array
+    {
         $data = Validator::make($input, [
             'source_start' => 'required|date_format:Y-m-d', 'source_end' => 'required|date_format:Y-m-d|after_or_equal:source_start',
             'target_start' => 'required|date_format:Y-m-d|after:source_end', 'target_end' => 'required|date_format:Y-m-d|after_or_equal:target_start',
@@ -49,7 +55,7 @@ final class MonthlyContractCorrectionService
                 ->where('StartDate', '<=', $data['target_end'])->where('EndDate', '>=', $data['target_start'])->exists();
             $this->require(!$duplicates, '已有重疊的下一期合約，請先選用並核對既有合約');
         }
-        $graph = $this->graph($source, $target, $lock);
+        $graph = $reviewedGraph ?? $this->graph($source, $target, $lock);
         $selected = array_values(array_filter($graph['sessions'], fn ($row) => (int) $row['StudentClassID'] === (int) $source->getAttribute('ID')
             && $row['SessionDate'] >= $data['target_start'] && $row['SessionDate'] <= $data['target_end']));
         $this->require($selected !== [], '目標期間內沒有可移轉堂次');
@@ -211,6 +217,11 @@ final class MonthlyContractCorrectionService
             SessionCorrection::query()->where('decision_reference', $result['decision_reference'])->whereNull('rolled_back_at')->update(['rolled_back_at' => now()]);
             return ['ok' => true];
         });
+    }
+
+    public function snapshotGraph(StudentClass $source, ?StudentClass $target = null, bool $lock = false): array
+    {
+        return $this->graph($source, $target, $lock);
     }
 
     private function graph(StudentClass $source, ?StudentClass $target, bool $lock = false): array

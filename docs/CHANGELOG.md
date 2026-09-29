@@ -1,3 +1,7 @@
+## 2026-09-29 — feat(billing): prepare audited monthly receipt correction
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-accounting-correction -->
+- 準備誤登收款的保留原紀錄、沖銷重登與分期開單；新操作保持停用，正式收款更正須另有核准清單，尚未修復個案或發布主任操作公告。
+
 ## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
 - 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。
