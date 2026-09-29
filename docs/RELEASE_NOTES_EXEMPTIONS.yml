@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
     reason: 月結帳務及續約介面尚未核准部署或驗證正式受影響路徑，不先發布上線公告。
 
+  - id: silent-2026-09-29-tuition-summary-label
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): label tuition summary as invoiced-only outstanding"
+    reason: 只改帳務中心摘要文字，金額計算與流程不變，教職員不需新操作說明。
+
   - id: silent-2026-09-29-monthly-billing-review
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare missing monthly invoice review"

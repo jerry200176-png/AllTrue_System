@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
 - 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
 
+## 2026-09-29 — fix(ux): label tuition summary as invoiced-only outstanding
+<!-- release-notes: silent_ship=silent-2026-09-29-tuition-summary-label -->
+- 帳務中心收款摘要的金額改稱「已開帳單未結清」，並另列尚未開帳單的筆數，避免把只含已開帳單的金額誤讀成全部未收。計算不變。
+
 ## 2026-09-29 — fix(ux): de-duplicate filters and align course lookup copy
 <!-- release-notes: staff_update=staff-2026-09-29-filters-course-lookup-clarity -->
 - 老師頁移除與分頁重複的「狀態」下拉；學習紀錄「只看未填／已填」改為單一「全部／未填／已填」選擇；課程查找移除不實的「唯讀營運視圖」標籤，「到學生管理新增課程」集中於頁首並將「前往學生管理」降為次要按鈕。僅前端顯示調整，不改資料、權限或計費。
