@@ -57,3 +57,22 @@ Founder 在 2026-09-29 本次對話確認八月實收 6,000；九月未繳。現
 ### v2 驗收與恢复
 
 驗證已 voided net=0、既有目標日期／預估應收／NULL item owner、取消重疊及待上堂次完整資料形狀。readonly 不改款；更正新增唯一正確收款，移四堂並保留原 target/invoice/session IDs。測試冪等、target 漂移、額外付款、有效重疊、audit failure atomic rollback，以及既有 target 的 contract-only rollback。待上堂次不提前收費。能力 planned；部署、不可變 repair manifest 與實際 mutation 分別需保護核准。
+
+## 單案本人確認方案（準備階段，未啟用）
+
+Founder 已選擇準備僅限本案、由本人確認的方案。另設獨立 POP operation，
+不修改原 planned／主任及管理員雙核對的入口。公開 policy 只容許一組不含
+個資的參數／冪等鍵／同一本人識別 hash、精確核准 reference 與 UTC 期限；
+本草案 eligible_cases 空白，所有正式請求均拒絕。核准狀態仍屬 DB，合併
+policy 不等於核准，也不會直接執行。catalog／policy 同步遞增版本，舊 draft
+須重建，不能跳過 stale 檢查。
+
+實際登入本人先核對簽章清單、dry-run，再以同一 verified super_admin 身分
+核准；token 綁定精確部署 SHA、參數與期限。Pi-local 執行每次重查單案資格、
+DB 核准人與既有資料防漂移／交易／verify。機器不能代核准，其他分校／學生
+及不同資料不適用。回復仍只撤銷拆約，已核實收款不重寫；不得標成 reversible。
+
+正式 preview 通過後，私有清單須明示八月已結算 6,000、九月四堂未繳 6,000，
+沿用使用者已建九月合約和帳單，保留付款沖銷、堂次、調課及出勤評量歷史；
+月底待上課不提前收费。最後一次 Founder GO 才可涵蓋本單案權限啟用及清單
+執行；目前只準備，沒有正式帳務變更。完成 audit 後移除單案資格。

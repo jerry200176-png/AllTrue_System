@@ -19,6 +19,141 @@ class MonthlyAccountingCorrectionTest extends TestCase
 {
     use RefreshDatabase;
 
+
+    /** Isolated policy eligibility; these fixtures never represent production approval. */
+    private function reviewedPopFixture(): array
+    {
+        [$source, $ids, $input, $target, $bill] = $this->existingTargetFixture();
+        $plan = app(MonthlyAccountingCorrectionService::class)->preview($source, $input);
+        $parameters = ['campus_id' => 1, 'source_course_id' => (int) $source->ID, 'input' => $plan['input'],
+            'confirmation_token' => $plan['confirmation_token'], 'decision_reference' => 'reviewed-monthly-fixture'];
+        $hash = hash('sha256', json_encode(\App\Operations\PopOperationService::canonicalParameters($parameters), JSON_THROW_ON_ERROR));
+        $case = ['parameters_sha256' => $hash, 'idempotency_sha256' => hash('sha256', 'reviewed-fixture'),
+            'requester_sha256' => hash('sha256', 'user:71'), 'approver_sha256' => hash('sha256', 'user:71'),
+            'approval_reference' => 'founder-go-monthly-' . substr($hash, 0, 16), 'valid_until' => now()->addHour()->utc()->format('Y-m-d\TH:i:s\Z')];
+        $path = tempnam(sys_get_temp_dir(), 'pop-eligibility-');
+        file_put_contents($path, json_encode(['version' => 1, 'eligible_cases' => [$case]], JSON_THROW_ON_ERROR));
+        $engine = new \App\Operations\PopOperationService(new \App\Operations\PopOperationCatalog(), $path);
+        return [$engine, $parameters, $case, $path, $source, $target, $bill, $ids];
+    }
+
+    public function test_exact_case_owner_can_approve_only_after_dry_run_then_preserves_cash_history_and_unpaid_bill(): void
+    {
+        [$engine, $parameters, $case, $path, $source, $target, $bill, $ids] = $this->reviewedPopFixture();
+        try {
+            $draft = $engine->createDraft('reviewed-monthly-accounting-correction', $parameters, 'reviewed-fixture', 'user:71', 'super_admin', [], 71);
+            $this->assertSame('draft', $draft['status']);
+            $this->assertSame(0, DB::table('pop_approval_events')->count());
+            $this->assertSame('succeeded', $engine->runDryRun($draft['id'], 'user:71', 71, 'super_admin')['result']);
+            $this->assertSame([7500, -7500], Payment::orderBy('id')->pluck('Amount')->map(fn ($n) => (int) $n)->all());
+            $sha = str_repeat('a', 40);
+            $approval = $engine->approve($draft['id'], $case['approval_reference'], 'user:71', 'super_admin', $sha, 71);
+            $this->assertTrue($approval['ready']);
+            $this->assertSame(['super_admin'], $approval['approved_roles']);
+            $event = DB::table('pop_approval_events')->first();
+            $this->assertSame(71, (int) $event->approver_id);
+            $this->assertSame('succeeded', $engine->run($draft['id'], 'execute', $approval['token'], $sha)['result']);
+            $this->assertSame('succeeded', $engine->run($draft['id'], 'verify', $approval['token'], $sha)['result']);
+            $this->assertSame([7500, -7500, 6000], Payment::orderBy('id')->pluck('Amount')->map(fn ($n) => (int) $n)->all());
+            $this->assertSame(6000, (int) $bill->fresh()->TotalAmount);
+            $this->assertSame(0, (int) $bill->fresh()->PaidAmount);
+            $this->assertSame('unpaid', $bill->fresh()->Status);
+            $this->assertSame('2026-09-01', substr($target->fresh()->StartDate, 0, 10));
+            $this->assertSame('2026-08-31', substr($source->fresh()->EndDate, 0, 10));
+            foreach (array_slice($ids, 4) as $id) $this->assertSame((int) $target->ID, (int) ClassSession::find($id)->StudentClassID);
+        } finally { unlink($path); }
+    }
+
+    /** @dataProvider reviewedDraftRejections */
+    public function test_reviewed_draft_rejects_every_nonmatching_case_without_writes(string $variation): void
+    {
+        [$engine, $parameters, $case, $path] = $this->reviewedPopFixture();
+        $key = 'reviewed-fixture'; $actor = 'user:71'; $role = 'super_admin'; $id = 71;
+        $policy = ['version' => 1, 'eligible_cases' => [$case]];
+        switch ($variation) {
+            case 'campus': $parameters['campus_id'] = 2; break;
+            case 'course': $parameters['source_course_id']++; break;
+            case 'target': $parameters['input']['split']['target_course_id']++; break;
+            case 'cash': $parameters['input']['actual_received_amount']++; break;
+            case 'token': $parameters['confirmation_token'] = 'tampered'; break;
+            case 'key': $key = 'different-key'; break;
+            case 'actor': $actor = 'user:72'; $id = 72; break;
+            case 'machine': $role = 'pop_machine'; $actor = 'api-client:71'; break;
+            case 'director': $role = 'director'; break;
+            case 'missing-id': $id = null; break;
+            case 'expired': $policy['eligible_cases'][0]['valid_until'] = now()->subMinute()->utc()->format('Y-m-d\TH:i:s\Z'); break;
+            case 'empty': $policy['eligible_cases'] = []; break;
+            case 'multiple': $policy['eligible_cases'][] = $case; break;
+            case 'malformed': $policy['eligible_cases'][0]['parameters_sha256'] = 'bad'; break;
+            case 'other-approver': $policy['eligible_cases'][0]['approver_sha256'] = hash('sha256', 'user:72'); break;
+            case 'missing-policy': unlink($path); break;
+        }
+        if (is_file($path)) file_put_contents($path, json_encode($policy));
+        try {
+            try { $engine->createDraft('reviewed-monthly-accounting-correction', $parameters, $key, $actor, $role, [1, 2], $id); $this->fail('Expected eligibility rejection'); }
+            catch (\RuntimeException) {
+                $this->assertSame(0, DB::table('pop_operation_requests')->count());
+                $this->assertSame(0, DB::table('pop_approval_events')->count());
+                $this->assertSame(2, Payment::count());
+            }
+        } finally { if (is_file($path)) unlink($path); }
+    }
+
+    public static function reviewedDraftRejections(): array
+    {
+        return array_map(fn ($value) => [$value], ['campus', 'course', 'target', 'cash', 'token', 'key', 'actor', 'machine',
+            'director', 'missing-id', 'expired', 'empty', 'multiple', 'malformed', 'other-approver', 'missing-policy']);
+    }
+
+    /** @dataProvider reviewedApprovalRejections */
+    public function test_reviewed_approval_and_execution_keep_original_guards(string $variation): void
+    {
+        [$engine, $parameters, $case, $path, $source] = $this->reviewedPopFixture();
+        try {
+            $draft = $engine->createDraft('reviewed-monthly-accounting-correction', $parameters, 'reviewed-fixture', 'user:71', 'super_admin', [], 71);
+            if ($variation !== 'no-dry-run') $engine->runDryRun($draft['id'], 'user:71', 71, 'super_admin');
+            $actor = 'user:71'; $id = 71; $role = 'super_admin'; $reference = $case['approval_reference']; $ttl = 15;
+            switch ($variation) {
+                case 'different-person': $actor = 'user:72'; $id = 72; break;
+                case 'machine': $actor = 'api-client:71'; break;
+                case 'missing-id': $id = null; break;
+                case 'director': $role = 'director'; break;
+                case 'reference': $reference = 'founder-go-another-case'; break;
+                case 'catalog': DB::table('pop_operation_requests')->where('id', $draft['id'])->update(['catalog_version' => 1]); break;
+                case 'ttl': $ttl = 60; $case['valid_until'] = now()->addMinutes(10)->utc()->format('Y-m-d\TH:i:s\Z'); file_put_contents($path, json_encode(['version' => 1, 'eligible_cases' => [$case]])); break;
+                case 'request-integrity': DB::table('pop_operation_requests')->where('id', $draft['id'])->update(['actor' => 'user:72']); break;
+            }
+            $postApproval = in_array($variation, ['expired-after-approval', 'changed-policy', 'stale-snapshot', 'wrong-sha', 'missing-token', 'event-person'], true);
+            try {
+                $approval = $engine->approve($draft['id'], $reference, $actor, $role, str_repeat('a', 40), $id, [1], $ttl);
+                if (!$postApproval) $this->fail('Expected approval rejection');
+            } catch (\RuntimeException) {
+                if ($postApproval) throw new \RuntimeException('Approval unexpectedly failed');
+                $this->assertSame(0, DB::table('pop_approval_events')->count());
+            }
+            if ($postApproval) {
+                if ($variation === 'expired-after-approval') { $case['valid_until'] = now()->subMinute()->utc()->format('Y-m-d\TH:i:s\Z'); file_put_contents($path, json_encode(['version' => 1, 'eligible_cases' => [$case]])); }
+                if ($variation === 'changed-policy') file_put_contents($path, '{"version":1,"eligible_cases":[]}');
+                if ($variation === 'stale-snapshot') ClassSession::where('StudentClassID', $source->ID)->first()->update(['Note' => 'Changed after review']);
+                if ($variation === 'event-person') DB::table('pop_approval_events')->update(['approver_id' => 72, 'approver' => 'user:72']);
+                try {
+                    $result = $engine->run($draft['id'], 'execute', $variation === 'missing-token' ? null : $approval['token'], str_repeat($variation === 'wrong-sha' ? 'b' : 'a', 40));
+                    $this->assertSame('failed', $result['result']);
+                    $this->assertSame('precondition_failed', $result['failure_reason']);
+                    $this->assertSame('stale-snapshot', $variation);
+                } catch (\RuntimeException $error) { if ($variation === 'stale-snapshot') throw $error; $this->assertNotSame('stale-snapshot', $variation); }
+            }
+            $this->assertSame(2, Payment::count());
+            $this->assertSame(0, SessionCorrection::count());
+        } finally { unlink($path); }
+    }
+
+    public static function reviewedApprovalRejections(): array
+    {
+        return array_map(fn ($value) => [$value], ['different-person', 'machine', 'missing-id', 'director', 'reference', 'catalog',
+            'ttl', 'request-integrity', 'no-dry-run', 'expired-after-approval', 'changed-policy', 'stale-snapshot', 'wrong-sha', 'missing-token', 'event-person']);
+    }
+
     private function fixture(): array
     {
         $student = Student::create(['name' => 'Accounting fixture', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '']);

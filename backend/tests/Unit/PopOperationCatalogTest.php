@@ -10,18 +10,22 @@ use ReflectionMethod;
 
 final class PopOperationCatalogTest extends TestCase
 {
-    public function test_catalog_version_is_readable(): void
+    public function test_versions_follow_the_configured_catalog_and_policy_files(): void
     {
-        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
-
-        self::assertSame(2, $catalog->version());
-    }
-
-    public function test_policy_version_is_required_from_the_default_policy(): void
-    {
-        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
-
-        self::assertSame(2, $catalog->policyVersion());
+        $dir = sys_get_temp_dir() . '/pop-versions-' . bin2hex(random_bytes(6));
+        mkdir($dir); mkdir($dir . '/policies');
+        $catalog = new PopOperationCatalog($dir . '/catalog.yaml');
+        try {
+            foreach ([[7, 11], [8, 12]] as [$catalogVersion, $policyVersion]) {
+                file_put_contents($dir . '/catalog.yaml', "version: $catalogVersion\n");
+                file_put_contents($dir . '/policies/default.yaml', "version: $policyVersion\n");
+                self::assertSame($catalogVersion, $catalog->version());
+                self::assertSame($policyVersion, $catalog->policyVersion());
+            }
+        } finally {
+            unlink($dir . '/catalog.yaml'); unlink($dir . '/policies/default.yaml');
+            rmdir($dir . '/policies'); rmdir($dir);
+        }
     }
 
     public function test_course_contract_repair_is_active_and_binds_to_pi_local_execution(): void
@@ -55,6 +59,21 @@ final class PopOperationCatalogTest extends TestCase
         $invalid['blast_radius'] = 'multi_row';
         $this->expectException(RuntimeException::class);
         $method->invoke($service, $invalid);
+    }
+
+    public function test_reviewed_monthly_shape_never_claims_cash_is_reversible(): void
+    {
+        $catalog = new PopOperationCatalog(dirname(__DIR__, 3) . '/operations/catalog.yaml');
+        $service = new PopOperationService($catalog);
+        $method = new ReflectionMethod($service, 'approvalRoles');
+        $entry = $catalog->operation('reviewed-monthly-accounting-correction');
+        self::assertSame(['super_admin'], $method->invoke($service, $entry));
+        self::assertSame('planned', $catalog->operation('monthly-accounting-correction')['lifecycle']);
+        $policy = json_decode(file_get_contents(dirname(__DIR__, 3) . '/' . $entry['eligibility_policy']), true);
+        self::assertCount(0, $policy['eligible_cases']);
+        $entry['reversible'] = true;
+        $this->expectException(RuntimeException::class);
+        $method->invoke($service, $entry);
     }
 
     public function test_founder_scoped_approval_reference_requires_explicit_founder_go_marker(): void

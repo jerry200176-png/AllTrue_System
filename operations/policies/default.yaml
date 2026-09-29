@@ -1,8 +1,22 @@
 # POP default policies — Phase 1 (config only, not evaluated in production yet)
-version: 2
+version: 3
 lifecycle: active
 
 rules:
+  - id: founder-exact-monthly-manifest
+    match:
+      operation_id: reviewed-monthly-accounting-correction
+      risk: critical
+      blast_radius: single_student_contract
+    eligibility_policy: operations/policies/reviewed-monthly-correction.json
+    require_approvals: [super_admin]
+    founder_explicit: true
+    auto_rollback_on_failed_verify: false
+    retries: 0
+    concurrency:
+      key: global
+      max_parallel: 1
+
   - id: founder-explicit-single-repair
     match:
       operation_id: course-contract-repair
