@@ -139,21 +139,22 @@
       </div>
 
       <div class="lr-toolbar-row">
-        <label
+        <div
           v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
-          class="lr-unfilled-toggle"
-          title="待審／需修改且正文未填；已核准但正文仍空白者僅在「已核准」或「全部」分頁會被篩出"
+          class="lr-fill-segment"
+          role="group"
+          aria-label="填寫狀態"
+          title="未填：待審／需修改且正文未填；已填：只顯示評量正文已填寫的紀錄"
         >
-          <input type="checkbox" v-model="onlyUnfilled"> 只看未填
-        </label>
-
-        <label
-          v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
-          class="lr-unfilled-toggle"
-          title="只顯示評量正文已填寫的紀錄（供檢視已完成的評量內容）"
-        >
-          <input type="checkbox" v-model="onlyFilled"> 只看已填
-        </label>
+          <button
+            v-for="opt in fillLensOptions"
+            :key="opt.value"
+            type="button"
+            :class="['lr-fill-segment__btn', { active: fillLens === opt.value }]"
+            :aria-pressed="fillLens === opt.value ? 'true' : 'false'"
+            @click="fillLens = opt.value"
+          >{{ opt.label }}</button>
+        </div>
 
         <!-- Selection mode toggle: checkboxes/batch bar only appear once this is on
              (Gmail/Files-app pattern) instead of cluttering every row by default. -->
@@ -1741,6 +1742,16 @@ const onlyUnfilled = ref(false);
 // assessments — every other filter here is unfilled/to-do oriented. Client-side display
 // only (no API/data/permission change); mutually exclusive with onlyUnfilled below.
 const onlyFilled = ref(false);
+// 全部 / 未填 / 已填 三選一，仍由 onlyUnfilled / onlyFilled 兩個 ref 承載（持久化格式不變）。
+const fillLensOptions = [
+  { value: 'all', label: '全部' },
+  { value: 'unfilled', label: '未填' },
+  { value: 'filled', label: '已填' },
+];
+const fillLens = computed({
+  get: () => (onlyUnfilled.value ? 'unfilled' : onlyFilled.value ? 'filled' : 'all'),
+  set: (v) => { onlyUnfilled.value = v === 'unfilled'; onlyFilled.value = v === 'filled'; },
+});
 const showMoreFilters = ref(false);
 // Advanced filter card (搜尋學生/篩選老師/日期範圍/科目) starts collapsed — it was
 // permanently expanded, adding 4+ always-visible form rows above the record list on
@@ -5207,16 +5218,27 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   color: var(--ds-ink-secondary);
   font-weight: 700;
 }
-.lr-unfilled-toggle {
+.lr-fill-segment {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--ds-ink-mute);
-  user-select: none;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 8px;
+  overflow: hidden;
 }
-.lr-unfilled-toggle input { width: auto; margin: 0; }
+.lr-fill-segment__btn {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--ds-ink-mute);
+  cursor: pointer;
+}
+.lr-fill-segment__btn + .lr-fill-segment__btn { border-left: 1px solid var(--ds-hairline); }
+.lr-fill-segment__btn.active {
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary);
+  font-weight: 600;
+}
 .lr-select-mode-btn.active {
   background: var(--ds-primary-wash);
   border-color: var(--ds-primary);
