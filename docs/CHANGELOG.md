@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
 - 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
 
+## 2026-09-29 — fix(ux): de-duplicate filters and align course lookup copy
+<!-- release-notes: staff_update=staff-2026-09-29-filters-course-lookup-clarity -->
+- 老師頁移除與分頁重複的「狀態」下拉；學習紀錄「只看未填／已填」改為單一「全部／未填／已填」選擇；課程查找移除不實的「唯讀營運視圖」標籤，「到學生管理新增課程」集中於頁首並將「前往學生管理」降為次要按鈕。僅前端顯示調整，不改資料、權限或計費。
+
 ## 2026-09-29 — fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)
 <!-- release-notes: silent_ship=silent-2026-09-29-rfid-swipe-hardening -->
 - 刷卡即出席（含扣堂）政策不變；補強：無真實堂次不扣堂、忘記刷退時自動補後續連堂、扣堂失敗會通知職員、讀卡機限流由每分鐘 30 放寬到 120。尚未部署，不發布上線公告。

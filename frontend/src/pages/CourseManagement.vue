@@ -9,10 +9,10 @@
       <template #meta>
         <span>目前列表 {{ groupedCourses.length }} 位學生</span>
         <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
-        <span class="course-lens-badge">唯讀營運視圖</span>
       </template>
       <template #actions>
-        <AtButton class="course-lens-primary-action" shape="rect" variant="primary" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
+        <AtButton class="course-lens-add-action" data-testid="course-header-goto-students-create" shape="rect" variant="secondary" icon="person_add" @click="emit('navigate', 'students')">到學生管理新增課程</AtButton>
+        <AtButton class="course-lens-nav-action" shape="rect" variant="ghost" icon="person_search" @click="emit('navigate', 'students')">前往學生管理</AtButton>
         <details class="course-tools-menu">
           <summary class="btn-soft course-tools-menu__summary">
             <span class="material-symbols-outlined btn-icon" aria-hidden="true">more_horiz</span>
@@ -252,12 +252,6 @@
               :tabindex="studentGroupTab(group.key) === 'billing' ? 0 : -1"
               @click.stop="selectStudentGroupTab(group, 'billing', $event)"
             >帳務資料</button>
-          </div>
-          <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
-            <button type="button" class="btn-soft student-group-add-btn" data-testid="student-group-goto-students" @click="emit('navigate', { target: 'students', studentId: group.student_id, intent: 'create' })">
-              <span class="material-symbols-outlined btn-icon" aria-hidden="true">person_add</span>
-              到學生管理新增課程
-            </button>
           </div>
           <div
             v-if="expandedStudentGroups.has(group.key) && studentGroupTab(group.key) === 'courses'"
@@ -5977,7 +5971,7 @@ onUnmounted(() => {
   grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 42px;
+  min-height: 34px;
   padding: 0 12px;
   color: var(--ds-ink-secondary);
   font-size: 12px;
@@ -6024,41 +6018,8 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.course-lens-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 3px 9px;
-  border: 1px solid var(--ds-primary);
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-primary-wash);
-  color: var(--ds-primary-deep);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
 
-.course-lens-primary-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 40px;
-  padding: 9px 14px;
-  border: 1px solid var(--ds-cta);
-  border-radius: var(--ds-radius-pill);
-  background: var(--ds-cta);
-  color: var(--ds-on-cta);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: var(--transition);
-}
 
-.course-lens-primary-action:hover {
-  border-color: var(--ds-cta-hover);
-  background: var(--ds-cta-hover);
-}
 
 .course-lens-guidance {
   display: flex;
@@ -6429,7 +6390,6 @@ onUnmounted(() => {
   color: var(--ds-primary-deep);
 }
 
-.course-lens-primary-action:focus-visible,
 .course-filter-clear:focus-visible,
 .btn-soft:focus-visible {
   outline: 3px solid var(--ds-focus-ring);
@@ -6551,9 +6511,6 @@ onUnmounted(() => {
   .header-buttons {
     width: 100%;
     justify-content: flex-start;
-  }
-  .course-lens-primary-action {
-    margin-right: auto;
   }
   .course-lens-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6805,14 +6762,6 @@ onUnmounted(() => {
   vertical-align: middle;
 }
 
-.student-group-add-row {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 8px 12px 6px;
-  background: var(--ds-canvas-soft);
-  border-bottom: 1px solid var(--ds-hairline);
-}
 
 .student-group-view-tabs {
   display: flex;
@@ -6863,10 +6812,6 @@ onUnmounted(() => {
 }
 .student-billing-note .material-symbols-outlined { flex: 0 0 auto; color: var(--ds-warning); font-size: 18px; }
 
-.student-group-add-btn {
-  font-size: 12.5px;
-  font-weight: 600;
-}
 
 .group-table-wrap {
   border-top: 1px solid var(--border);
@@ -7962,9 +7907,6 @@ button.danger:disabled {
     padding: 16px;
   }
 
-  .course-lens-primary-action {
-    width: 100%;
-  }
 
   .course-lens-summary {
     gap: 8px;
@@ -9114,7 +9056,6 @@ button.danger:disabled {
   background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
   border-color: #334155;
 }
-[data-theme="dark"] .student-group-add-row,
 [data-theme="dark"] .empty-active-courses {
   background: rgba(15, 23, 42, 0.88);
 }
