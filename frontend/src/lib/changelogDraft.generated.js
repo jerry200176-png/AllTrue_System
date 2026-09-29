@@ -25,24 +25,24 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "tuition summary as invoiced-only outstanding",
           "confirmed monthly fees and visible renewal periods",
           "missing monthly invoice review",
           "correction into an existing monthly contract",
           "next-period monthly booking guidance",
-          "monthly period payment attribution",
-          "capacity occupancy sources"
+          "monthly period payment attribution"
         ]
       }
     ],
     "items": [
       "audited monthly receipt correction",
       "controlled monthly contract correction",
+      "tuition summary as invoiced-only outstanding",
       "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
       "correction into an existing monthly contract",
       "next-period monthly booking guidance",
-      "monthly period payment attribution",
-      "capacity occupancy sources"
+      "monthly period payment attribution"
     ]
   },
   {

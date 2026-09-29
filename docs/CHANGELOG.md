@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(ux): label tuition summary as invoiced-only outstanding
+<!-- release-notes: silent_ship=silent-2026-09-29-tuition-summary-label -->
+- 帳務中心收款摘要的金額改稱「已開帳單未結清」，並另列尚未開帳單的筆數，避免把只含已開帳單的金額誤讀成全部未收。計算不變。
+
 ## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
 <!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
 - 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。

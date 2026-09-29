@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-tuition-summary-label
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): label tuition summary as invoiced-only outstanding"
+    reason: 只改帳務中心摘要文字，金額計算與流程不變，教職員不需新操作說明。
+
   - id: silent-2026-09-29-confirmed-monthly-fees
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
