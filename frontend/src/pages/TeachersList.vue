@@ -31,15 +31,6 @@
         <input id="teachers-search" v-model="searchQ" placeholder="輸入姓名或電話..." @input="debouncedLoad" />
       </div>
       <div class="filter-item">
-        <label for="teachers-status-filter">狀態</label>
-        <select id="teachers-status-filter" v-model="filterStatus" @change="loadTeachers">
-          <option value="">全部</option>
-          <option value="active">在職</option>
-          <option value="pending">待審核</option>
-          <option value="suspended">停用</option>
-        </select>
-      </div>
-      <div class="filter-item">
         <label for="teachers-subject-filter">科目</label>
         <select id="teachers-subject-filter" v-model="filterSubjectId" aria-label="依科目篩選">
           <option value="">全部</option>
@@ -525,7 +516,6 @@ const showBulkModal = ref(false);
 const editingId = ref(null);
 const tab = ref('active');
 const searchQ = ref('');
-const filterStatus = ref('');
 const filterSubjectId = ref('');
 const selectedTeacherIds = ref([]);
 const selectedTeacherIdSet = computed(() => new Set(selectedTeacherIds.value.map(String)));
@@ -988,11 +978,9 @@ const bulkParseSummary = computed(() => {
 
 const filteredTeachers = computed(() => {
     // #145：原本只有 active/pending 兩條路徑，停用(suspended)老師被隱藏。
-    // 狀態下拉（含「停用」）若有選取則優先生效；否則依分頁（含新增的停用分頁）。
+    // 狀態只由上方分頁決定（已移除重複的「狀態」下拉）。
     let list;
-    if (filterStatus.value) {
-      list = teachers.value.filter(t => t.status === filterStatus.value);
-    } else if (tab.value === 'suspended') {
+    if (tab.value === 'suspended') {
       list = teachers.value.filter(t => t.status === 'suspended');
     } else if (tab.value === 'active') {
       list = teachers.value.filter(t => t.status === 'active');
@@ -1019,7 +1007,6 @@ const filteredTeachers = computed(() => {
 
 const hasTeacherFilters = computed(() => Boolean(
   searchQ.value.trim()
-  || filterStatus.value
   || filterSubjectId.value
   || selectedTeacherIds.value.length > 0
   || tab.value !== 'active'
@@ -1068,7 +1055,6 @@ const loadTeachers = async () => {
     params.set('per_page', 'all');
     if (props.branchId != null) params.set('branch_id', String(props.branchId));
     if (searchQ.value.trim()) params.set('q', searchQ.value.trim());
-    if (filterStatus.value) params.set('status', filterStatus.value);
     const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/teachers?${params}`, { headers });
     const data = await res.json().catch(() => ({}));
@@ -1095,7 +1081,6 @@ const loadTeachers = async () => {
 
 const clearTeacherFilters = () => {
   searchQ.value = '';
-  filterStatus.value = '';
   filterSubjectId.value = '';
   selectedTeacherIds.value = [];
   tab.value = 'active';
