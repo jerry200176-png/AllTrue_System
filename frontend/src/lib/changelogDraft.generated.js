@@ -32,6 +32,12 @@ export const changelogDraftNotes = [
           "correction into an existing monthly contract",
           "next-period monthly booking guidance"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "待處理收件匣 before the background ops sync"
+        ]
       }
     ],
     "items": [

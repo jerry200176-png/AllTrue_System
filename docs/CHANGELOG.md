@@ -1,3 +1,7 @@
+## 2026-09-29 — perf(inbox): paint 待處理收件匣 before the background ops sync
+<!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
+- 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。
+
 ## 2026-09-29 — fix(calendar): day view auto-scroll, single date control, non-shifting loading
 <!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
 - 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
