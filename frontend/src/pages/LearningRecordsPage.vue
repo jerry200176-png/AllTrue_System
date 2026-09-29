@@ -5220,7 +5220,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 }
 .lr-fill-segment {
   display: inline-flex;
-  border: 1px solid var(--ds-border, #d0d5dd);
+  border: 1px solid var(--ds-hairline);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -5233,7 +5233,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
   color: var(--ds-ink-mute);
   cursor: pointer;
 }
-.lr-fill-segment__btn + .lr-fill-segment__btn { border-left: 1px solid var(--ds-border, #d0d5dd); }
+.lr-fill-segment__btn + .lr-fill-segment__btn { border-left: 1px solid var(--ds-hairline); }
 .lr-fill-segment__btn.active {
   background: var(--ds-primary-wash);
   color: var(--ds-primary);
