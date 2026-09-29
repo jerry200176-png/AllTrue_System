@@ -2,6 +2,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
 - 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
 
+## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
+<!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
+- 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。
+
 ## 2026-09-29 — fix(billing): prepare missing monthly invoice review
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-billing-review -->
 - 準備帳務中心「月結待核對」與堂次費率試算，明示缺少帳單服務期間和合約越界；系統登錄收款與實際入帳分開核對。尚未部署，未拆分正式個案或建立九月帳單。
