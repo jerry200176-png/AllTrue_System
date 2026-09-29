@@ -36,6 +36,36 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-dup-review-shared-label",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "重疊課程審核標示多科共用",
+    "summary": "屬於多科共用堂數套組的重疊時段仍會列出，並加上「多科共用」標籤供判斷。",
+    "items": [
+      "標籤提示此重疊可能是刻意安排；重複判定、堂數與扣堂規則不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "標籤提示此重疊可能是刻意安排；重複判定、堂數與扣堂規則不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:316"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-course-lookup-school-grade",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,
