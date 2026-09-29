@@ -196,6 +196,7 @@
               <span class="student-group-left">
                 <span class="expand-indicator" aria-hidden="true">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
                 <span class="cell-student">{{ group.student_name }}</span>
+                <span v-if="group.school_grade" class="student-group-school-grade" data-testid="student-school-grade">{{ group.school_grade }}</span>
                 <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
               </span>
               <span class="student-group-meta">
@@ -1519,6 +1520,7 @@ import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import { isCurrentListRequest } from '../lib/listRefreshState.js';
+import { studentSchoolGradeLabel } from '../lib/studentSchoolGrade.js';
 import { supabase } from '../supabase';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
@@ -4504,11 +4506,13 @@ const groupCoursesByStudent = (list = []) => {
       ? `sid:${studentId}`
       : `name:${studentName}`;
     if (!groupedMap.has(key)) {
-      const group = { key, student_id: studentId, student_name: studentName, courses: [] };
+      const group = { key, student_id: studentId, student_name: studentName, school_grade: '', courses: [] };
       groupedMap.set(key, group);
       grouped.push(group);
     }
-    groupedMap.get(key).courses.push(c);
+    const g = groupedMap.get(key);
+    if (!g.school_grade) g.school_grade = studentSchoolGradeLabel(c);
+    g.courses.push(c);
   }
   return grouped;
 };
@@ -7036,6 +7040,12 @@ onUnmounted(() => {
   font-weight: 900;
   color: var(--text);
   letter-spacing: 0.02em;
+}
+
+.student-group-school-grade {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ds-ink-mute);
 }
 
 .subject-tag {
