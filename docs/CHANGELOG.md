@@ -1,6 +1,10 @@
 ## 2026-09-29 — feat(schedule): director can move a session to another contract
 <!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
 - 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
+## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
+<!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
+- 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。
+
 ## 2026-09-29 — fix(billing): prepare missing monthly invoice review
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-billing-review -->
 - 準備帳務中心「月結待核對」與堂次費率試算，明示缺少帳單服務期間和合約越界；系統登錄收款與實際入帳分開核對。尚未部署，未拆分正式個案或建立九月帳單。

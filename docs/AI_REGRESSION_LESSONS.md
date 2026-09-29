@@ -492,6 +492,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R26. 月結續報與堂數額度不可混在同一語意
 
+**2026-09-29 收費及續約預覽補充（in-app #369，待部署）**：零已上課不能與「完全缺歷史」共用預排金額 fallback。有明確 scheduled／cancelled／leave 等資料但沒有 attended/completed/late 的本期，未繳且無實收帳單投影為零；已收款 audit amount、明訂跨月週期及共用方案保留。Renew preview/execute 必須共用新起日、以起日取 billing month，短月結算日 clamp 月底；來源合約日期外已有已上堂次時先核對，不自動續建或搬移。估算不可標為實收；尚未載入、錯誤、blocked 或日期不同的 preview 不得提交。根因為既有月結實際費用 fallback 與續約日期權威分散的 UX／邏輯缺口；回歸覆蓋零堂轉 attended、月底、跨月 preview/execute 一致與越界 blocked，不能把單筆人工修復當成預防。
+
 **2026-09-29 跨期補充（待部署）**：月結 `Paid=1` 不能證明下一期已收款；付款依帳單服務期間核對，非日曆月結算週期與合法多期帳單不得被自動拆分。已收款期間延長走續報；歷史堂次拆分需保留 ID、出勤、評量、扣堂與實收，經不可變清單與 Founder GO 執行。缺少正式付款歸屬只能列待確認，不能猜測主任操作或自動修復。
 
 - 月結續報若延長原 `StudentClass`，舊期已繳與新期待繳會混在同一課程，主任無法判斷哪一期已結算。
