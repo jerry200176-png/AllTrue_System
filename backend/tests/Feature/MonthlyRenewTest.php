@@ -135,6 +135,59 @@ class MonthlyRenewTest extends TestCase
         $this->assertSame('unpaid', (string) $invoice->Status);
     }
 
+    public function test_monthly_renewal_preview_and_execute_share_start_month_and_clamped_due_date(): void
+    {
+        Carbon::setTestNow('2026-09-01 08:00:00');
+        $token = $this->createDirectorToken([1], 'director-period-fixture@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'StartDate' => '2026-08-01', 'EndDate' => '2026-09-10', 'settlement_day' => 31, 'week' => 3, 'time' => '18:00:00', 'Rate' => 1500, 'monthly_sessions' => 4]);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-10-31'])
+            ->assertOk()->assertJsonPath('proposed_course.start_date', '2026-09-11')->assertJsonPath('billing.invoice.billing_period', '2026-09')->assertJsonPath('billing.invoice.due_date', '2026-09-30');
+        $response = $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", ['end_date' => '2026-10-31'])->assertCreated();
+        $invoice = Invoice::where('StudentClassID', $response->json('new_course.id'))->firstOrFail();
+        $this->assertSame('2026-09', $invoice->billing_period); $this->assertSame('2026-09-30', $invoice->DueDate);
+        $this->assertSame((int) $response->json('new_course.id'), (int) $invoice->items()->firstOrFail()->StudentClassID);
+    }
+
+    public function test_monthly_renewal_blocks_completed_sessions_outside_source_contract_without_writes(): void
+    {
+        Carbon::setTestNow('2026-09-29 08:00:00');
+        $token = $this->createDirectorToken([1], 'director-outside-fixture@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'StartDate' => '2026-07-27', 'EndDate' => '2026-09-10', 'settlement_day' => 31]);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-09-23', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", ['mode' => 'renew_monthly', 'end_date' => '2026-09-30'])
+            ->assertStatus(422)->assertJsonPath('severity', 'blocked')->assertJsonPath('blockers.0.code', 'monthly_completed_sessions_outside_contract');
+        $this->withHeaders($headers)->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", ['end_date' => '2026-09-30'])
+            ->assertStatus(422)->assertJsonPath('code', 'monthly_completed_sessions_outside_contract');
+        $this->assertSame(1, StudentClass::count()); $this->assertSame(0, Invoice::count());
+        $this->assertSame('attended', ClassSession::firstOrFail()->Status); $this->assertSame(0, (int) $course->fresh()->Stop);
+    }
+
+    public function test_unconfirmed_monthly_forecast_cannot_be_registered_as_received_cash(): void
+    {
+        Carbon::setTestNow('2026-09-29 08:00:00');
+        $token = $this->createDirectorToken([1], 'director-forecast-fixture@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['ScheduleMode' => 'date', 'StartDate' => '2026-09-11', 'EndDate' => '2026-09-30', 'Rate' => 1500, 'Charge' => 4500, 'Paid' => 0, 'settlement_day' => 31]);
+        ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => '2026-09-30', 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled']);
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => '2026-09-29', 'DueDate' => '2026-09-30', 'billing_period' => '2026-09', 'TotalAmount' => 4500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID, 'invoice_id' => $invoice->id, 'amount' => 4500, 'payment_method' => 'cash', 'payment_date' => '2026-09-29', 'reported_by_name' => 'Fixture payer',
+        ])->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 0);
+        $this->assertSame(0, \App\Models\PaymentReport::count()); $this->assertSame(0, \App\Models\Payment::count());
+        $this->assertSame(0, (int) $course->fresh()->Paid); $this->assertSame(4500, (int) $invoice->fresh()->TotalAmount);
+        $report = \App\Models\PaymentReport::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => 'Legacy forecast', 'reported_amount' => 4500, 'payment_method' => 'cash', 'payment_date' => '2026-09-29',
+            'status' => 'pending', 'report_token_hash' => hash('sha256', 'forecast-pending-fixture'), 'token_expires_at' => now()]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertStatus(422)->assertJsonPath('code', 'monthly_amount_stale')->assertJsonPath('expected_amount', 0);
+        $this->assertSame('pending', $report->fresh()->status); $this->assertSame(0, \App\Models\Payment::count());
+        $this->assertSame(4500, (int) $invoice->fresh()->TotalAmount); $this->assertSame(0, (int) $course->fresh()->Paid);
+    }
+
     public function test_updating_monthly_course_schedule_creates_fixed_future_sessions_for_detail_view(): void
     {
         $token = $this->createDirectorToken([1], 'director-renew-edit@example.com');
