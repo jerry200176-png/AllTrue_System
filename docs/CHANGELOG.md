@@ -30,6 +30,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
 - 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。
 
+## 2026-09-29 — feat(courses): director undo of contract amendment
+<!-- release-notes: silent_ship=silent-2026-09-29-undo-contract-amendment -->
+- 主任可在課程操作選單「撤銷調整」，還原提前結束／調整合約總堂數：恢復堂數、結束狀態與被取消的預排（原時段被占用或合約已有變動時拒絕），需填原因並留稽核紀錄；帳務不變，也不會自動排課。
+
 ## 2026-09-29 — feat(billing): prepare controlled monthly contract correction
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-contract-correction -->
 - 準備月結分期更正的唯讀預覽、資料變動檢查、交易移轉與回復；執行目錄保持停用，尚未核准或修復正式資料。
