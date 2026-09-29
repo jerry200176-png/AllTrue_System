@@ -41,6 +41,7 @@ export const changelogDraftNotes = [
         "title": "其他改善",
         "items": [
           "notification sync rewriting every row and share one sync cooldown",
+          "one in-flight sidebar badge refresh and fetch badges in parallel (TD-087)",
           "待處理收件匣 before the background ops sync"
         ]
       }

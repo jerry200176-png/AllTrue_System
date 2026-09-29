@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "perf(inbox): stop notification sync rewriting every row and share one sync cooldown"
     reason: 內部效能修正，不改變通知內容與解除／重開語意，不發布教職員公告。
 
+  - id: silent-2026-09-29-badge-refresh-parallel
+    changelog_date: "2026-09-29"
+    changelog_title: "perf(app): share one in-flight sidebar badge refresh and fetch badges in parallel (TD-087)"
+    reason: 內部效能調整，徽章數字與操作不變，教職員不需說明。
+
   - id: silent-2026-09-29-source-monthly-item
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): preserve existing source invoice items during reviewed correction"

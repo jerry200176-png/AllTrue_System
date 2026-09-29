@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-notif-sync-perf -->
 - 通知同步不再每次改寫所有既有通知列（保留原 OccurredAt，只更新真正變動的列）；`POST notifications/sync` 與側欄未讀數共用同一個 300 秒冷卻與鎖，併發只同步一次；側欄「學習評量」只計已開課堂次，與儀表板一致。TD-086。
 
+## 2026-09-29 — perf(app): share one in-flight sidebar badge refresh and fetch badges in parallel (TD-087)
+<!-- release-notes: silent_ship=silent-2026-09-29-badge-refresh-parallel -->
+- 側欄徽章刷新同時只跑一次（期間有新請求則結束後補跑一次），七個徽章請求改為並行；數字來源與口徑不變。
+
 ## 2026-09-29 — fix(billing): preserve existing source invoice items during reviewed correction
 <!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
 - 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
