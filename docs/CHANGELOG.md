@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(ops): Founder-gated activation path for staff multi-role pilot (in-app #299)
+<!-- release-notes: silent_ship=silent-2026-09-30-staff-multirole-activation -->
+- 新增 `staff-multirole-activation` 手動工作流（preflight 唯讀角色解析差異、單人單分校 grant/revoke、enable/disable 旗標）與 Founder 操作手冊；僅新增受核准的啟用路徑，`STAFF_MULTI_ROLE_V1` 維持關閉，未執行任何正式環境動作。
+
 ## 2026-09-30 — feat(courses): show student school and grade in course lookup
 <!-- release-notes: staff_update=staff-2026-09-30-course-lookup-school-grade -->
 - 課程查找的學生標題列在姓名旁顯示學校與年級（in-app #358，Founder 2026-09-30 核准，僅學校與年級，不含電話與備註）；沿用課程列表既有回傳的學生資料，無後端或資料變更。
