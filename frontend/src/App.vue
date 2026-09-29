@@ -2856,15 +2856,37 @@ async function onFeedbackQueueChanged() {
   await refreshUnreadNotifications();
 }
 
-async function refreshUnreadNotifications() {
+// Mount, branch/role watchers and the poll all call this; share one in-flight run and
+// re-run once afterwards if another call arrived meanwhile (so a branch switch is not lost).
+let badgeRefreshInFlight = null;
+let badgeRefreshAgain = false;
+function refreshUnreadNotifications() {
+  if (badgeRefreshInFlight) {
+    badgeRefreshAgain = true;
+    return badgeRefreshInFlight;
+  }
+  badgeRefreshInFlight = (async () => {
+    try {
+      do {
+        badgeRefreshAgain = false;
+        await runBadgeRefresh();
+      } while (badgeRefreshAgain);
+    } finally {
+      badgeRefreshInFlight = null;
+    }
+  })();
+  return badgeRefreshInFlight;
+}
+
+async function runBadgeRefresh() {
   if (!session.value?.access_token || !currentBranch.value) {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
     inboxNeedsAttentionCount.value = 0;
     badgeByType.value = {};
-    await mergeBugUnreadBadge();
-    await mergeChatUnreadBadge();
-    await mergeDirectorPendingBadge();
+    // Each merge*Badge reads-copies-writes badgeByType synchronously after its own await,
+    // so they are safe to run concurrently.
+    await Promise.allSettled([mergeBugUnreadBadge(), mergeChatUnreadBadge(), mergeDirectorPendingBadge()]);
     return;
   }
 
@@ -2881,8 +2903,7 @@ async function refreshUnreadNotifications() {
       if (notifRes.status === 401 || inboxRes.status === 401) {
         await supabase.auth.signOut();
         session.value = null;
-        await mergeBugUnreadBadge();
-        await mergeChatUnreadBadge();
+        await Promise.allSettled([mergeBugUnreadBadge(), mergeChatUnreadBadge()]);
         return;
       }
       if (!notifRes.ok) throw new Error('unread-count request failed');
@@ -2911,13 +2932,15 @@ async function refreshUnreadNotifications() {
     badgeByType.value = {};
   }
 
-  await mergeBugUnreadBadge();
-  await mergeChatUnreadBadge();
-  await mergeDirectorPendingBadge();
-  await mergeTeacherAttendanceBadge();
-  await mergeScheduleDiscrepancyBadge();
-  await mergeParentFeedbackBadge();
-  await mergeTeacherLearningPendingBadge();
+  await Promise.allSettled([
+    mergeBugUnreadBadge(),
+    mergeChatUnreadBadge(),
+    mergeDirectorPendingBadge(),
+    mergeTeacherAttendanceBadge(),
+    mergeScheduleDiscrepancyBadge(),
+    mergeParentFeedbackBadge(),
+    mergeTeacherLearningPendingBadge(),
+  ]);
 }
 
 async function mergeTeacherLearningPendingBadge() {

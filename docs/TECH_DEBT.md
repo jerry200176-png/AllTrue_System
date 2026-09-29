@@ -774,7 +774,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Partially resolved（in-flight 去重＋徽章並行已做；`ensureDirectorBranches` 不阻塞 loading 未做） |
 | 優先級 | P2 |
 | 發現日期 | 2026-09-29 |
 | 發現來源 | 同上 |
