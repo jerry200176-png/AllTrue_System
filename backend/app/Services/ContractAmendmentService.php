@@ -297,7 +297,7 @@ final class ContractAmendmentService
                     $session->Note = trim(str_replace(self::CANCEL_NOTE, '', (string) $session->Note));
                     $session->save();
                 }
-            } catch (ValidationException $e) {
+            } catch (\App\Exceptions\SlotOccupiedException | ValidationException $e) {
                 throw new HttpException(409, '原時段已被其他堂次占用，無法撤銷調整，請先處理衝突時段。');
             }
             if ($schedules->isNotEmpty()) {
