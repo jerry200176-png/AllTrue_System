@@ -2,6 +2,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-calendar-day-nav -->
 - 班級行事曆日檢視載入或換日後自動捲到當天最早一堂課（無課則 14:00）；月份／週次／跳至日期／今天合併為「‹ 今天 › ＋日期」單一控制（日檢視按天、週檢視按週）；標題日檢視改顯示當天與當天堂數；載入中改用骨架不再推動版面。移除 `WeekNavBar`；純前端，排課／扣堂邏輯不變。
 
+## 2026-09-29 — fix(billing): prepare missing monthly invoice review
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-billing-review -->
+- 準備帳務中心「月結待核對」與堂次費率試算，明示缺少帳單服務期間和合約越界；系統登錄收款與實際入帳分開核對。尚未部署，未拆分正式個案或建立九月帳單。
+
 ## 2026-09-29 — fix(billing): prepare correction into an existing monthly contract
 <!-- release-notes: silent_ship=silent-2026-09-29-existing-monthly-correction -->
 - 延伸尚未啟用的受控更正：沿用既有新期合約與未繳帳单，保留取消／待上紀錄，已沖銷收款不重複沖銷。正式執行仍須最新核對清單及既有安全核准，尚未修復正式個案。

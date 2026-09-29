@@ -3,7 +3,7 @@
     <section class="modal course-modal" role="dialog" aria-modal="true" aria-labelledby="monthly-correction-title">
       <h3 id="monthly-correction-title">預覽月結分期更正</h3>
       <p>先核對兩期期間、應收金額與付款依據。此預覽不會修改合約或收款。</p>
-      <div class="correction-fields" @input="$emit('invalidate')">
+      <div v-if="!blocked" class="correction-fields" @input="$emit('invalidate')">
         <label>原合約開始日<input v-model="form.source_start" type="date" readonly /></label>
         <label>舊期結束日<input v-model="form.source_end" type="date" /></label>
         <label>新期開始日<input v-model="form.target_start" type="date" /></label>
@@ -19,17 +19,17 @@
       <p v-if="error" role="alert">{{ error }}</p>
       <p v-if="loading" role="status">正在核對堂次與帳款…</p>
       <dl v-if="preview" class="correction-summary" aria-label="更正預覽">
-        <dt>保留舊期實收</dt><dd>{{ preview.source_paid_amount === null ? '依已核對付款紀錄，保留原標記' : `NT$ ${preview.source_paid_amount.toLocaleString()}` }}</dd>
+        <dt>保留系統登錄收款</dt><dd>{{ preview.source_paid_amount === null ? '原繳費標記待核對，不代表實際收款' : `NT$ ${preview.source_paid_amount.toLocaleString()}` }}</dd>
         <dt>移轉堂次</dt><dd>{{ preview.session_ids.length }} 堂（保留原紀錄）</dd>
         <dt>新期應收</dt><dd>NT$ {{ preview.target_charge.toLocaleString() }} · 未繳費</dd>
       </dl>
       <p v-if="preview">預覽已備妥。實際更正須由管理者核對修復清單並完成核准。</p>
-      <div class="actions"><button type="button" class="ghost" @click="$emit('close')">關閉</button><button type="button" class="primary" :disabled="loading" @click="$emit('check')">預覽更正</button></div>
+      <div class="actions"><button type="button" class="ghost" @click="$emit('close')">關閉</button><button type="button" class="primary" :disabled="loading || blocked" @click="$emit('check')">預覽更正</button></div>
     </section>
   </div>
 </template>
 <script setup>
-defineProps({ candidates: { type: Array, default: () => [] }, show: Boolean, form: { type: Object, required: true }, preview: { type: Object, default: null }, loading: Boolean, error: String });
+defineProps({ candidates: { type: Array, default: () => [] }, show: Boolean, blocked: Boolean, form: { type: Object, required: true }, preview: { type: Object, default: null }, loading: Boolean, error: String });
 defineEmits(['close', 'check', 'invalidate']);
 </script>
 <style scoped>
