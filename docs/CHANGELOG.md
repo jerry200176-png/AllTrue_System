@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(students): keep tutoring next steps consistent with no-charge status (in-app #351 / GitHub #3206)
+<!-- release-notes: staff_update=staff-2026-09-29-tutoring-payment-prompts -->
+- 學生管理的正常輔導課不再誤列為待付款；已有帳務異常仍提示主任核對，一般收費課的付款提醒與輔導課續報提示保留。
+
 ## 2026-09-28 — chore(framework): preserve native operational value projections (GitHub #977 / #2833)
 <!-- release-notes: silent_ship=silent-2026-09-28-native-value-contracts -->
 - 為框架升級保留學生課程回應、既有必要時段及營運資料投影，維持原有分校、角色、日期與帳務契約。不改正式資料，尚待部署與受影響路徑驗收。

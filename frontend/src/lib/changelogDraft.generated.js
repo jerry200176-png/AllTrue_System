@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.09.29",
+    "date": "2026-09-29",
+    "title": "2026.09.29 草稿（未發布）",
+    "summary": "tutoring next steps consistent with no-charge status",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "tutoring next steps consistent with no-charge status"
+        ]
+      }
+    ],
+    "items": [
+      "tutoring next steps consistent with no-charge status"
+    ]
+  },
+  {
     "version": "2026.09.27",
     "date": "2026-09-27",
     "title": "2026.09.27 草稿（未發布）",
@@ -635,53 +657,6 @@ export const changelogDraftNotes = [
       "修正手機行事曆單堂檢視操作",
       "修正手機意見與建議表單排版",
       "家長首頁學習重點版本公告"
-    ]
-  },
-  {
-    "version": "2026.09.08",
-    "date": "2026-09-08",
-    "title": "2026.09.08 草稿（未發布）",
-    "summary": "修正超級管理員看不到版本更新內容的問題；繳費狀態明確標示為非操作項目",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "修正超級管理員看不到版本更新內容的問題"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "繳費狀態明確標示為非操作項目",
-          "Parent Binding authentication and campus scope",
-          "老師科目數不顯示自我分母占比",
-          "Portal V1 correctness and existing-data home summary",
-          "科目數完整加總後才除以 8"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "Cmd-K 可搜尋授權的學生、老師與課程",
-          "意見與建議入口更容易使用",
-          "導覽搜尋範圍與高頻查找提示更清楚"
-        ]
-      }
-    ],
-    "items": [
-      "修正超級管理員看不到版本更新內容的問題",
-      "繳費狀態明確標示為非操作項目",
-      "Parent Binding authentication and campus scope",
-      "老師科目數不顯示自我分母占比",
-      "Portal V1 correctness and existing-data home summary",
-      "科目數完整加總後才除以 8",
-      "Cmd-K 可搜尋授權的學生、老師與課程",
-      "意見與建議入口更容易使用"
     ]
   }
 ];
