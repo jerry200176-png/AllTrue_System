@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)
+<!-- release-notes: silent_ship=silent-2026-09-29-rfid-swipe-hardening -->
+- 刷卡即出席（含扣堂）政策不變；補強：無真實堂次不扣堂、忘記刷退時自動補後續連堂、扣堂失敗會通知職員、讀卡機限流由每分鐘 30 放寬到 120。尚未部署，不發布上線公告。
+
 ## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
 <!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
 - 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。

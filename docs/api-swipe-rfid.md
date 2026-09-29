@@ -4,13 +4,13 @@
 
 > **交叉索引**：架構脈絡亦見 [`SYSTEM_TECH_GUIDE.md`](SYSTEM_TECH_GUIDE.md) §RFID／出缺勤；**行為不一致時以 Controller／路由為準**。
 >
-> **Product intent (#2809):** v1 door RFID = **campus presence only** (no direct
-> course attendance / deduction). Canonical policy:
-> [`architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md`](architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md).
-> This file documents **device request/response contracts** and **current runtime**
-> until `FEATURE_RFID_PRESENCE_ONLY` re-boundaries the controller. Some narrative
-> below (identity order, teacher storage) may lag code — prefer
-> `SwipeRfidController` + `SYSTEM_TECH_GUIDE` §4 when they disagree.
+> **Product policy (#2809, Founder 2026-09-29):** a student swipe counts as
+> course attendance, same as the teacher marking 已上, **including session
+> deduction** — but only when it matches a real `ClassSession`; otherwise the row
+> is `self_study` with no deduction. See
+> [`architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md`](architecture/RFC_RFID_CAMPUS_PRESENCE_V1.md)
+> section 0 (the presence-only design is superseded). Rate limit: 120 req/min/IP.
+> Some narrative below may lag code — prefer `SwipeRfidController` when they disagree.
 
 ---
 
@@ -91,7 +91,7 @@ flowchart TD
 #### `findMatchingClass`（到班時對應課程）
 
 1. **優先**：當日 `ClassSession`（`SessionDate` 為刷卡當日），且關聯的 `StudentClass` 為該學生、`Stop = 0`。在開始時間 **±30 分鐘**內，取與刷卡時間差距最小者。
-2. **否則**：該學生有效區間內的 `StudentClass`（`Stop = 0`、`StartDate`／`EndDate` 合理），比對 `week1`～`week6` 與 `time1`～`time6` 是否符合**當日星期**與**時間 ±30 分鐘**。
+2. **否則**：不比對 `StudentClass` 週課表（已移除，#2809）；記為 `self_study`，不綁定課程、不扣堂。
 3. 若皆無 → 仍會建立簽到紀錄，但課程相關欄位可能為 `null`。
 
 ### 5.2 老師（`Teacher`）
