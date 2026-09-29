@@ -99,6 +99,18 @@ class MonthlyAccountingCorrectionTest extends TestCase
         $this->assertSame(200, $slip->status());
         $this->assertSame(6000, $slip->getData(true)['charge']);
         $this->assertSame(6000, $slip->getData(true)['payable_amount']);
+        $previousClock = \Carbon\Carbon::getTestNow();
+        \Carbon\Carbon::setTestNow('2026-09-29 12:00:00');
+        try {
+            $alerts = app(\App\Http\Controllers\AlertController::class)->tuition($request)->getData(true);
+            $row = collect($alerts)->firstWhere('id', (int) $target->ID);
+            $this->assertNotNull($row);
+            $this->assertSame(6000, $row['payable_amount']);
+            $this->assertSame('unpaid', $row['payment_status']);
+            $this->assertSame('2026-09', $row['billing_period']);
+            $this->assertSame((int) $bill->id, $row['payable_invoice_id']);
+            $this->assertNull(collect($alerts)->firstWhere('id', (int) $source->ID));
+        } finally { \Carbon\Carbon::setTestNow($previousClock); }
         $this->assertSame($result, $service->execute($source, $input, $plan['confirmation_token'], 'accounting-fixture-1', 'pop:test'));
         $this->assertSame(3, Payment::count());
     }
