@@ -196,4 +196,23 @@ class SwipeRfidHardeningTest extends TestCase
         $this->assertSame('absent', $resolved->refresh()->Status);
         $this->assertSame(0, StudentSignIn::whereNull('SignOutDT')->count());
     }
+
+    public function test_backfill_does_not_recreate_attendance_staff_voided(): void
+    {
+        $student = $this->student();
+        $sc = $this->studentClass($student->id);
+        $yesterday = now()->subDay()->toDateString();
+        $later = $this->mkSession($sc->ID, $yesterday, '12:00:00', '14:00:00');
+        StudentSignIn::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'ClassSessionID' => $later->id,
+            'Memo' => 'presence-window', 'SignInDT' => "{$yesterday} 12:00:00", 'SignOutDT' => "{$yesterday} 14:00:00",
+            'MDT' => now(), 'Status' => 'present', 'CampusID' => $this->campus->id,
+            'PersonType' => 'student', 'SessionDeducted' => false, 'VoidedAt' => now(),
+        ]);
+        $this->orphan($student, "{$yesterday} 10:00:00");
+
+        $this->artisan('student-signin:close-orphans')->assertSuccessful();
+
+        $this->assertSame(0, StudentSignIn::where('ClassSessionID', $later->id)->whereNull('VoidedAt')->count());
+    }
 }

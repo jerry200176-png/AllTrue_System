@@ -39,7 +39,8 @@ class StudentPresenceBackfillService
             ->whereTime('StartTime', '<=', $signOutDT->format('H:i:s'))
             // Only untouched sessions: never override a teacher/leave/cancel decision.
             ->where(DB::raw('LOWER(Status)'), SessionStatus::SCHEDULED)
-            ->whereDoesntHave('signIns', fn ($q) => $q->whereNull('VoidedAt'))
+            // Any sign-in, voided included: a staff void/undo must not be re-created.
+            ->whereDoesntHave('signIns')
             ->get();
 
         foreach ($sessions as $session) {

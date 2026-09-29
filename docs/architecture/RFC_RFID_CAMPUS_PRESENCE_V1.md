@@ -33,6 +33,8 @@ Rules that keep this safe:
 | 11 | Teacher already marked: no double deduct | Already handled |
 | 12 | Other campus reader: not found | Already handled |
 | 13 | Card bound to teacher and student: teacher clock | Already handled |
+| 14 | Overlapping sessions (A 10:00-11:00, B 10:30-11:30, swipe 10:40) → only B counted | Known limit; teacher marks A manually |
+| 15 | Staff voids/undoes a backfilled attendance | Handled: backfill skips any session with a sign-in, voided included |
 
 ---
 
