@@ -28,6 +28,23 @@ const baseCourse = () => ({
   room_name: 'A',
 })
 
+it('shows separate invoice periods and never labels September paid by August', async () => {
+  const wrapper = mountCm({
+    isMonthlyMode: true,
+    course: { ...baseCourse(), payment_type: 'monthly', monthly_payment: {
+      contract_start: '2026-08-01', contract_end: '2026-09-30', review_required: false,
+      periods: [
+        { billing_period: '2026-08', payment_status: 'paid', period_start: '2026-08-01', period_end: '2026-08-31', outstanding_amount: 0 },
+        { billing_period: '2026-09', payment_status: 'unpaid', period_start: '2026-09-01', period_end: '2026-09-30', outstanding_amount: 4000 },
+      ],
+    } },
+  });
+  expect(wrapper.get('[data-testid="monthly-payment-periods"]').text()).toContain('2026-09');
+  expect(wrapper.get('[data-testid="monthly-payment-periods"]').text()).toContain('未繳費');
+  expect(wrapper.text()).toContain('2026-08-01');
+  wrapper.unmount();
+});
+
 function mountCm(extra = {}) {
   return mount(CourseManager, {
     props: {

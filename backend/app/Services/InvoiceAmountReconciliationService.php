@@ -61,9 +61,22 @@ class InvoiceAmountReconciliationService
         $periodEnd = null;
         $billingPeriod = $invoice->getAttribute('billing_period')
             ?: substr((string) ($invoice->getAttribute('IssueDate') ?? ''), 0, 7);
+        $items = $course && (string) $course->ScheduleMode === 'date'
+            ? ($invoice->relationLoaded('items') ? $invoice->getRelationValue('items') : $invoice->items()->get())
+            : collect();
+        // An explicit service cycle spanning calendar months cannot be priced
+        // from only the billing_period's calendar month. Retain its agreed
+        // invoice amount until a reviewed accounting correction is requested.
+        $hasCrossMonthServiceRange = $items->contains(fn ($item) => $item->PeriodStart && $item->PeriodEnd
+            && $course->StartDate && $course->EndDate
+            && (string) $item->PeriodStart >= substr((string) $course->StartDate, 0, 10)
+            && (string) $item->PeriodEnd <= substr((string) $course->EndDate, 0, 10)
+            && (string) $item->PeriodStart <= (string) $item->PeriodEnd
+            && substr((string) $item->PeriodStart, 0, 7) !== substr((string) $item->PeriodEnd, 0, 7));
 
         if (
             $course
+            && !$hasCrossMonthServiceRange
             && (string) ($course->ScheduleMode ?? 'count') === 'date'
             && preg_match('/^\d{4}-\d{2}$/', (string) $billingPeriod)
         ) {

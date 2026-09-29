@@ -189,6 +189,7 @@ class StudentClassController extends Controller
         );
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
         $invoiceAggMap = AlertController::invoiceAggregateByStudentClassIds($classIds);
+        $monthlyPayments = app(\App\Services\MonthlyPeriodPaymentService::class)->batch(collect($classes->items()));
         $pendingReportByClassId = !empty($classIds)
             ? PaymentReport::query()
                 ->whereIn('StudentClassID', $classIds)
@@ -304,7 +305,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
+        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -594,6 +595,16 @@ class StudentClassController extends Controller
             $class->setAttribute('latest_payment_summary', $latestPaymentSummaryByClassId[(int) $class->ID] ?? null);
             $class->setAttribute('paid_at', $directPaidAt);
             $class->setAttribute('last_paid_at', $invoicePaidAt ?? $directPaidAt);
+            if (!$isTutoringCourse && isset($monthlyPayments[(int) $class->ID])) {
+                $monthlyPayment = $monthlyPayments[(int) $class->ID];
+                $class->setAttribute('monthly_payment', $monthlyPayment);
+                // A report is an administrative claim, not a payment for all periods.
+                if (!($pendingReportId !== null && count($monthlyPayment['periods']) === 1
+                    && $monthlyPayment['periods'][0]['source'] === 'single_period_legacy'
+                    && $monthlyPayment['payment_status'] === 'unpaid')) {
+                    $class->setAttribute('payment_status', $monthlyPayment['payment_status']);
+                }
+            }
             $class->setAttribute('status', empty($class->Stop) ? 'active' : 'inactive');
             $class->closed_reason = $class->closed_reason ?? null;
             $class->trial_converted_to_id = $class->trial_converted_to_id

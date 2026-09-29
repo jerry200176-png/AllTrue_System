@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-monthly-period-payment
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): prepare monthly period payment attribution"
+    reason: 月結逐期付款與唯讀盤點的實作準備，未部署或核對正式資料；待啟用、驗證與文案核准後再公告教職員。
+
   - id: silent-2026-09-29-laravel-readonly-preflight
     changelog_date: "2026-09-29"
     changelog_title: "chore(ops): prepare bounded Laravel readiness metadata (GitHub #977 / #2833)"

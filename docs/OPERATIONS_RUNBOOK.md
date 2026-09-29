@@ -1365,3 +1365,16 @@ gh run view <run_id>                                  # 讀 Step Summary 四指�
 ### Z2. 缺 secrets 行為
 
 未設 `PI_HOST`/`PI_USER`/`PI_SSH_KEY`/`PI_HOST_KEY` 時，workflow 以 `::notice::` 略過（不 failure），不阻塞。設定後自動生效。
+
+
+### 月結跨期付款唯讀核對（2026-09-29，待啟用驗證）
+
+`monthly:leave-boundary-inventory --limit=200 --json` 增加逐期付款分類，保持唯讀。正式環境只經既有 `monthly-leave-boundary-inventory.yml` 執行已部署版本，不直接 SSH 或執行 artisan。`period_payment_totals` 是全量分類計數，`bounded_period_payment_review` 最多包含指定筆數；截斷時不得把樣本當成全量修復清單。
+
+- `review_required`：付款期間未知、下一期未被帳單涵蓋、帳單歸屬或範圍有歧義。逐筆核對，不自動認定為 bug。
+- `valid_multiple_periods`：同課程有明確的多期帳單。這是合法情況，不能自動按日曆月份拆分。
+- `package_members`：共用方案維持原付款規則，本工具不拆分方案。
+
+付款歸屬依 `billing_period` 與帳單項目明示的服務期間，不能依開單日推斷。只有單一月份且無帳單的舊資料沿用該期 `Paid`；跨期旗標不足以證明新期已繳。API 的 `monthly_payment` 提供期間、應收、實收、待收與核對狀態，`payment_status` 不再把舊期收款擴及整課程。
+
+木柵回報的跨期課程尚未取得正式合約、帳單及收款明細，原因只能列為待查：現行 recurring enrollment 允許較長日期範圍，explicit-session enrollment 有單月限制。不得據此認定主任操作路徑或付款歸屬。

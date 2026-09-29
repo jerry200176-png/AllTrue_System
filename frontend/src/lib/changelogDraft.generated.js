@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "capacity occupancy sources；historical course badges",
+    "summary": "monthly period payment attribution；capacity occupancy sources",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "monthly period payment attribution",
           "capacity occupancy sources",
           "historical course badges",
           "existing void receipt trace query",
@@ -26,6 +27,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "monthly period payment attribution",
       "capacity occupancy sources",
       "historical course badges",
       "existing void receipt trace query",
