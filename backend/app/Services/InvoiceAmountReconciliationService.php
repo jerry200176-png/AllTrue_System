@@ -61,7 +61,9 @@ class InvoiceAmountReconciliationService
         $periodEnd = null;
         $billingPeriod = $invoice->getAttribute('billing_period')
             ?: substr((string) ($invoice->getAttribute('IssueDate') ?? ''), 0, 7);
-        $items = $invoice->relationLoaded('items') ? $invoice->getRelationValue('items') : $invoice->items()->get();
+        $items = $course && (string) $course->ScheduleMode === 'date'
+            ? ($invoice->relationLoaded('items') ? $invoice->getRelationValue('items') : $invoice->items()->get())
+            : collect();
         // An explicit service cycle spanning calendar months cannot be priced
         // from only the billing_period's calendar month. Retain its agreed
         // invoice amount until a reviewed accounting correction is requested.
