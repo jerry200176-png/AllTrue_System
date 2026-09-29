@@ -229,9 +229,9 @@ final class ContractAmendmentService
         $futureCovered = count($this->futureScheduled((int) $course->getKey())) + $sessions->count();
         return [
             'student_class_id' => (int) $course->getKey(),
-            'current_session_count' => (int) $course->SessionCount,
+            'current_session_count' => (int) $course->getAttribute('SessionCount'),
             'restored_session_count' => (int) $before['session_count'],
-            'current_remaining_sessions' => (int) $course->RemainingSessions,
+            'current_remaining_sessions' => (int) $course->getAttribute('RemainingSessions'),
             'restored_remaining_sessions' => (int) $before['remaining_sessions'],
             'restorable_sessions_count' => $sessions->count(),
             'restorable_schedules_count' => $schedules->count(),
@@ -343,10 +343,10 @@ final class ContractAmendmentService
             throw new HttpException(409, '此合約沒有可撤銷的調整。');
         }
         $after = $snap['after'] ?? [];
-        $drift = (int) $course->SessionCount !== (int) ($after['session_count'] ?? -1)
-            || (int) $course->UsedSessions !== (int) ($after['used_sessions'] ?? -1)
-            || (int) $course->RemainingSessions !== (int) ($after['remaining_sessions'] ?? -1)
-            || (int) $course->Stop !== (int) ($after['stop'] ?? -1)
+        $drift = (int) $course->getAttribute('SessionCount') !== (int) ($after['session_count'] ?? -1)
+            || (int) $course->getAttribute('UsedSessions') !== (int) ($after['used_sessions'] ?? -1)
+            || (int) $course->getAttribute('RemainingSessions') !== (int) ($after['remaining_sessions'] ?? -1)
+            || (int) $course->getAttribute('Stop') !== (int) ($after['stop'] ?? -1)
             || (string) $course->getAttribute('closed_reason') !== (string) ($after['closed_reason'] ?? '');
         if ($drift) {
             throw new HttpException(409, '合約在調整後已有變動，無法自動撤銷，請聯絡管理員。');
