@@ -1299,13 +1299,13 @@ test.describe('UI foundation — real Vue page evidence', () => {
     expect(meRequests[0]).toEqual({ actingAs: 'director', userId: 9901 });
 
     await modeSwitch.locator('button').filter({ hasText: '老師' }).click();
-    await expect(page.locator('.user-role').first()).toContainText('老師');
+    await expect(page.locator('.account-role').first()).toContainText('老師');
     await expect.poll(() => meRequests.at(-1)?.actingAs).toBe('teacher');
     expect(meRequests.every((request) => request.userId === 9901)).toBe(true);
     await expect(modeSwitch.locator('button').filter({ hasText: '老師' })).toHaveClass(/active/);
 
     await modeSwitch.locator('button').filter({ hasText: '主任' }).click();
-    await expect(page.locator('.user-role').first()).toContainText('主任');
+    await expect(page.locator('.account-role').first()).toContainText('主任');
     await expect.poll(() => meRequests.at(-1)?.actingAs).toBe('director');
     expect(meRequests.every((request) => request.userId === 9901)).toBe(true);
     await expect(modeSwitch.locator('button').filter({ hasText: '主任' })).toHaveClass(/active/);
