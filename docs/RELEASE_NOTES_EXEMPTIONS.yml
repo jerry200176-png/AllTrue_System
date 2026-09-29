@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "fix(ux): one source per dashboard count, loading placeholders"
     reason: 純前端數字口徑與載入狀態顯示修正，不改流程或權限，教職員不需新操作說明。
 
+  - id: silent-2026-09-29-tuition-summary-label
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): label tuition summary as invoiced-only outstanding"
+    reason: 只改帳務中心摘要文字，金額計算與流程不變，教職員不需新操作說明。
+
   - id: silent-2026-09-29-monthly-billing-review
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare missing monthly invoice review"

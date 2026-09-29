@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-counts-loading-ux -->
 - 主任總覽的待審評量、未讀通知、繳費提醒、今日課務進度改與側欄／各頁同一口徑；載入中的列表標頭顯示「—」與骨架而非 0／空狀態。純前端顯示調整，無教職員新操作。
 
+## 2026-09-29 — fix(ux): label tuition summary as invoiced-only outstanding
+<!-- release-notes: silent_ship=silent-2026-09-29-tuition-summary-label -->
+- 帳務中心收款摘要的金額改稱「已開帳單未結清」，並另列尚未開帳單的筆數，避免把只含已開帳單的金額誤讀成全部未收。計算不變。
+
 ## 2026-09-29 — fix(ux): de-duplicate filters and align course lookup copy
 <!-- release-notes: staff_update=staff-2026-09-29-filters-course-lookup-clarity -->
 - 老師頁移除與分頁重複的「狀態」下拉；學習紀錄「只看未填／已填」改為單一「全部／未填／已填」選擇；課程查找移除不實的「唯讀營運視圖」標籤，「到學生管理新增課程」集中於頁首並將「前往學生管理」降為次要按鈕。僅前端顯示調整，不改資料、權限或計費。
