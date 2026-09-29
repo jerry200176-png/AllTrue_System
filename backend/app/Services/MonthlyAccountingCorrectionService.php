@@ -231,7 +231,7 @@ final class MonthlyAccountingCorrectionService
         return $new;
     }
 
-    private function reviewTarget(StudentClass $source, StudentClass $target, array $data, array $graph): StudentClass
+    private function reviewTarget(StudentClass $source, StudentClass $target, array &$data, array $graph): StudentClass
     {
         $expected = $data['expected_target']; $split = $data['split'];
         $this->require((int) $source->getKey() !== (int) $target->getKey(), '來源與目標不可相同');
@@ -241,6 +241,10 @@ final class MonthlyAccountingCorrectionService
         $this->require($invoice && (int) $invoice['StudentClassID'] === (int) $target->getKey() && $invoice['Status'] === 'unpaid'
             && (int) $invoice['PaidAmount'] === 0 && (int) $invoice['TotalAmount'] === $expected['charge'] && $invoice['billing_period'] === substr($split['target_start'], 0, 7), '目標帳單已變動或有收款');
         $items = array_values(array_filter($graph['items'], fn ($row) => (int) $row['InvoiceID'] === (int) $invoice['id']));
+        if (!array_key_exists('item_id', $expected)) {
+            $expected['item_id'] = $items[0]['id'] ?? null;
+            $data['expected_target']['item_id'] = $expected['item_id']; // The signed manifest binds the uniquely owned parent item.
+        }
         $this->require(count($items) <= 1 && (int) ($items[0]['id'] ?? 0) === (int) ($expected['item_id'] ?? 0), '目標帳單項目不符');
         if ($items) $this->require(empty($items[0]['StudentClassID']) || (int) $items[0]['StudentClassID'] === (int) $target->getKey(), '目標帳單項目屬於其他合約');
         foreach ($graph['sessions'] as $row) {

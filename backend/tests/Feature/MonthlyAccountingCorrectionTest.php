@@ -315,6 +315,16 @@ class MonthlyAccountingCorrectionTest extends TestCase
         $this->assertSame('void', $bill->fresh()->Status);
     }
 
+    public function test_readonly_preview_resolves_unique_parent_item_for_the_signed_manifest(): void
+    {
+        [$source, , $input, , , $item] = $this->existingTargetFixture();
+        unset($input['expected_target']['item_id']);
+        $plan = app(MonthlyAccountingCorrectionService::class)->preview($source, $input);
+        $this->assertSame((int) $item->id, (int) $plan['input']['expected_target']['item_id']);
+        $this->assertNull($item->fresh()->StudentClassID);
+        $this->assertSame(2, Payment::count()); $this->assertSame(0, (int) Payment::sum('Amount'));
+    }
+
     public function test_existing_target_drift_rejects_before_correct_receipt_is_registered(): void
     {
         [$source, , $input, , $bill] = $this->existingTargetFixture();
