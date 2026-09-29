@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-laravel-readonly-preflight
+    changelog_date: "2026-09-29"
+    changelog_title: "chore(ops): prepare bounded Laravel readiness metadata (GitHub #977 / #2833)"
+    reason: 維運唯讀驗收能力準備，不新增教職員功能；尚未執行正式查詢、部署或啟用，不發布未驗證的上線公告。
+
   - id: silent-2026-09-28-native-value-contracts
     changelog_date: "2026-09-28"
     changelog_title: "chore(framework): preserve native operational value projections (GitHub #977 / #2833)"

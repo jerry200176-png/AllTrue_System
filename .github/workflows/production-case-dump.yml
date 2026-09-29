@@ -16,6 +16,7 @@ on:
           - parent_binding
           - transfer_capacity_chen
           - course_2817_incident
+          - laravel_2833_preflight
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -73,6 +74,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
+          if [[ "$CASE_KEY" == "laravel_2833_preflight" ]]; then
+            [[ -z "$TARGET_STUDENT_NAME" && -z "$TARGET_STUDENT_CLASS_ID" && "$TARGET_SUBJECT_NAME" == "數學" ]]
+            PREFLIGHT_B64=$(base64 -w0 scripts/laravel-2833-preflight.php)
+            REQUEST_B64=$(base64 -w0 operations/closeout/laravel-2833-preflight.request.json)
+            ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts "$PI_SSH_USER@$PI_SSH_HOST" \
+              "PREFLIGHT_B64='$PREFLIGHT_B64' REQUEST_B64='$REQUEST_B64' bash -s" <<'PREFLIGHT' | tee out/production-case.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php -r 'eval(substr(base64_decode(getenv("PREFLIGHT_B64"), true), 5)); Laravel2833Preflight::run(json_decode(base64_decode(getenv("REQUEST_B64"), true), true, 512, JSON_THROW_ON_ERROR));'
+          PREFLIGHT
+          else
           python3 - <<'PY' > /tmp/production_case_probe.php
           import os
           import json
@@ -740,6 +753,7 @@ jobs:
           php artisan tinker --execute="require '${probe_file}';"
           rm -f "${probe_file}"
           REMOTE
+          fi
           python3 - <<'PY'
           import json
           from pathlib import Path

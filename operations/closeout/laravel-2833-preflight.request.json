@@ -1,0 +1,6 @@
+{
+  "expected_backend_sha": "b09235bba2d265036e6d62f4211891eef5416146",
+  "candidate_head": "94f842915426b2f96275c74d81e0ab1428deb6b8",
+  "flags": ["FEATURE_SCHEDULE_OCCURRENCE_V2", "FEATURE_ENSURE_SESSION_HORIZON"],
+  "migration_directories": ["database/migrations", "vendor/laravel/sanctum/database/migrations"]
+}
