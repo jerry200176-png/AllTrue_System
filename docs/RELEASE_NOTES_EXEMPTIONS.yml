@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "fix(billing): preserve existing source invoice items during reviewed correction"
     reason: 修正尚未啟用的受控修復對既有帳單明細的支援，正式個案未執行，不發布上線或完成公告。
 
+  - id: silent-2026-09-29-inbox-first-paint
+    changelog_date: "2026-09-29"
+    changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
+    reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
+
   - id: silent-2026-09-29-rfid-swipe-hardening
     changelog_date: "2026-09-29"
     changelog_title: "fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)"

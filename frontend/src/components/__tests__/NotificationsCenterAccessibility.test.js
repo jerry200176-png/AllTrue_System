@@ -29,3 +29,19 @@ describe('notifications center tab accessibility contract', () => {
     expect(source).toContain('document.getElementById(nextTab.id)?.focus()');
   });
 });
+
+describe('notifications center load sequence (perf)', () => {
+  const mount = source.slice(source.indexOf('onMounted(async () => {'));
+  it('paints the list before the background sync instead of awaiting the sync first', () => {
+    const load = mount.indexOf('await loadNotifications(1);');
+    const sync = mount.indexOf('void syncNotifications(false);');
+    expect(load).toBeGreaterThan(-1);
+    expect(sync).toBeGreaterThan(load);
+    expect(mount).not.toContain('await syncNotifications');
+  });
+
+  it('runs the count request in parallel with the list GETs once the lane is resolved', () => {
+    expect(source).toContain('if (needLaneFromCount) await countP;');
+    expect(source).toContain('Promise.allSettled([caseP, notifP, countP])');
+  });
+});

@@ -824,12 +824,15 @@ const loadNotifications = async (page = 1) => {
   loading.value = true;
   errorMessage.value = '';
   try {
-    const countOk = await refreshInboxCounts();
-    void countOk;
+    // Count decides the default lane only on first resolve; afterwards it is
+    // independent of the list GETs, so run it in parallel instead of in series.
+    const needLaneFromCount = !userPickedLane.value && !initialLaneResolved.value;
+    const countP = refreshInboxCounts();
+    if (needLaneFromCount) await countP;
     const caseP = loadCaseItems();
 
     if (laneFilter.value === 'case') {
-      await Promise.allSettled([caseP]);
+      await Promise.allSettled([caseP, countP]);
       notifications.value = [];
       currentPage.value = 1;
       lastPage.value = 1;
@@ -849,7 +852,7 @@ const loadNotifications = async (page = 1) => {
       return json;
     });
 
-    const settled = await Promise.allSettled([caseP, notifP]);
+    const settled = await Promise.allSettled([caseP, notifP, countP]);
     const notifResult = settled[1];
     if (notifResult.status === 'fulfilled') {
       const json = notifResult.value;
@@ -1022,17 +1025,11 @@ watch(urgentNotifications, async () => {
 let refreshTimer = null;
 
 onMounted(async () => {
-  // in-app #300: reconcile ops cards before first paint so completed work
-  // (e.g. approved learning reviews) leaves the inbox without a manual sync.
-  if (props.branchId) {
-    try {
-      await syncNotifications(false);
-    } catch {
-      await loadNotifications(1);
-    }
-  } else {
-    await loadNotifications(1);
-  }
+  // Paint the list first; the (slow, write-heavy) ops sync runs in the
+  // background and reloads when done. It used to block first paint ~11s
+  // (in-app #300 wants reconciled cards, which the post-sync reload still gives).
+  await loadNotifications(1);
+  if (props.branchId) void syncNotifications(false);
   refreshTimer = window.setInterval(() => {
     loadNotifications(laneFilter.value === 'case' ? casesPage.value : currentPage.value);
   }, 60000);

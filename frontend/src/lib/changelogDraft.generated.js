@@ -36,6 +36,12 @@ export const changelogDraftNotes = [
           "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
           "copy and calmer colors on director pages"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "待處理收件匣 before the background ops sync"
+        ]
       }
     ],
     "items": [

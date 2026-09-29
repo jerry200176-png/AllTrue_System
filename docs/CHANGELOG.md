@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
 - 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
 
+## 2026-09-29 — perf(inbox): paint 待處理收件匣 before the background ops sync
+<!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
+- 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。
+
 ## 2026-09-29 — feat(schedule): director can move a session to another contract
 <!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
 - 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
