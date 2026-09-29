@@ -7,7 +7,7 @@
       data-guide="course-mgmt-header"
     >
       <template #meta>
-        <span>目前列表 {{ groupedCourses.length }} 位學生</span>
+        <span>目前列表 {{ coursesLoading && !groupedCourses.length ? '—' : groupedCourses.length }} 位學生</span>
         <span v-if="pagination.lastPage > 1">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
       </template>
       <template #help>
@@ -1718,7 +1718,7 @@ function closeCourseInPlace(course) {
 }
 
 const courses = ref([]);
-const coursesLoading = ref(false);
+const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
 let courseLoadRequestId = 0;
 const allStudents = ref([]);
 const teachers = ref([]);

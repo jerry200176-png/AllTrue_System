@@ -80,7 +80,7 @@ import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 
 const props = defineProps({ token: { type: String, default: '' } });
-const rows = ref([]); const selected = ref(null); const loading = ref(false); const error = ref(''); const updatedAt = ref('');
+const rows = ref([]); const selected = ref(null); const loading = ref(true); const error = ref(''); const updatedAt = ref('');
 const dimensionOrder = [{ key: 'students', label: '學生' }, { key: 'teaching', label: '教學' }, { key: 'parents', label: '家長' }, { key: 'teachers', label: '教師' }, { key: 'operations', label: '營運' }];
 const statusCounts = computed(() => rows.value.reduce((counts, row) => { const status = row.status || 'green'; counts[status] = (counts[status] || 0) + 1; return counts; }, { red: 0, yellow: 0, green: 0 }));
 const unavailableCount = computed(() => rows.value.reduce((count, row) => count + dimensionOrder.filter(({ key }) => row.dimensions?.[key]?.status === 'unavailable').length, 0));
