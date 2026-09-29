@@ -121,7 +121,10 @@ describe('TeachersList loading and recovery states', () => {
 
     const wrapper = mountTeachers();
     await flushPromises();
-    await wrapper.find('#teachers-status-filter').setValue('active');
+    vi.useFakeTimers();
+    await wrapper.find('#teachers-search').setValue('測試');
+    await vi.advanceTimersByTimeAsync(300);
+    vi.useRealTimers();
     await flushPromises();
 
     expect(wrapper.find('.teachers-refresh-state--error').text()).toContain('仍顯示上次成功載入');
@@ -138,7 +141,7 @@ describe('TeachersList loading and recovery states', () => {
       const url = String(input);
       if (url.includes('/teachers?')) {
         teacherAttempt += 1;
-        return Promise.resolve(teacherAttempt < 3
+        return Promise.resolve(teacherAttempt < 2
           ? response({ data: [] })
           : response({ data: [teacher] }));
       }
@@ -149,7 +152,7 @@ describe('TeachersList loading and recovery states', () => {
     await flushPromises();
     expect(wrapper.find('.teachers-list-state--true-empty').exists()).toBe(true);
 
-    await wrapper.find('#teachers-status-filter').setValue('pending');
+    await wrapper.find('#teachers-tab-pending').trigger('click');
     await flushPromises();
     expect(wrapper.find('.teachers-list-state--filtered-empty').exists()).toBe(true);
     expect(wrapper.find('.teachers-list-state--filtered-empty').text()).toContain('找不到符合條件的老師');
@@ -157,7 +160,8 @@ describe('TeachersList loading and recovery states', () => {
     await wrapper.find('.teachers-list-state--filtered-empty .teachers-list-state__action').trigger('click');
     await flushPromises();
     expect(wrapper.find('.teacher-profile-card').text()).toContain(teacher.username);
-    expect(wrapper.find('#teachers-status-filter').element.value).toBe('');
+    expect(wrapper.find('#teachers-status-filter').exists()).toBe(false);
+    expect(wrapper.find('#teachers-tab-active').attributes('aria-selected')).toBe('true');
     wrapper.unmount();
   });
 });
