@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-dup-review-shared-label -->
 - 重疊課程審核的每組資料新增唯讀欄位 `is_shared_package`；屬多科共用堂數套組者仍照常列出，並標示「多科共用」與提示，供主任判斷是否為刻意安排。重複判定、堂數、扣堂與帳務不變。
 
+## 2026-09-30 — feat(courses): show student school and grade in course lookup
+<!-- release-notes: staff_update=staff-2026-09-30-course-lookup-school-grade -->
+- 課程查找的學生標題列在姓名旁顯示學校與年級（in-app #358，Founder 2026-09-30 核准，僅學校與年級，不含電話與備註）；沿用課程列表既有回傳的學生資料，無後端或資料變更。
+
 ## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
 <!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->
 - 受控月結更正核對完整調課鏈：同一期內連同原堂次保留並移轉，拒絕跨期、斷鏈、循環、學生／分校錯配及範圍外合約關聯；簽章核對也涵蓋新增外部連結。修復仍未啟用，正式個案尚未更正。
