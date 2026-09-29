@@ -23,7 +23,7 @@ Rules that keep this safe:
 | 1 | Weekly-schedule fallback deducted without a real ClassSession | Fixed in this PR (fallback removed; self_study, no deduction) |
 | 2 | Borrowed / wrong card | Known limit; staff void via existing flow |
 | 3 | Swiped but did not attend, or left early | Known limit; teacher corrects via manual attendance |
-| 4 | Consecutive classes + forgot swipe-out | Fixed in this PR (orphan close now backfills) |
+| 4 | Consecutive classes + forgot swipe-out | Fixed in this PR (orphan close now backfills — only from RFID-origin `present` rows within 2 days, and only into still-`scheduled` sessions, so manual/absent rows and teacher decisions are never overridden) |
 | 5 | Second swipe > 60 s is treated as sign-out | Known limit |
 | 6 | Silent deduction failure | Fixed in this PR (Log::error + staff Notification) |
 | 7 | Rate limit dropped real swipes (30/min) | Fixed in this PR (120/min) |
