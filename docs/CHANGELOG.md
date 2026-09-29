@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
 - 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
 
+## 2026-09-29 — fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors
+<!-- release-notes: silent_ship=silent-2026-09-29-tabs-scroll-status-tone -->
+- 修正分頁列右側多出的小捲軸；出缺勤「今日已標記狀態」標籤依狀態上色（到班綠、遲到橘、缺席紅、請假灰），不再全部紅色。
+
 ## 2026-09-29 — fix(ux): one source per dashboard count, loading placeholders
 <!-- release-notes: silent_ship=silent-2026-09-29-counts-loading-ux -->
 - 主任總覽的待審評量、未讀通知、繳費提醒、今日課務進度改與側欄／各頁同一口徑；載入中的列表標頭顯示「—」與骨架而非 0／空狀態。純前端顯示調整，無教職員新操作。

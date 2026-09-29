@@ -439,7 +439,7 @@
             <span class="att-person-name">{{ s.student_name || '—' }}</span>
             <span>{{ s.subject_name || '—' }}</span>
             <span>{{ s.teacher_name || '—' }}</span>
-            <span class="att-status-readonly">{{ s.status_label }}</span>
+            <span :class="['att-status-readonly', statusToneClass(s.status_label)]">{{ s.status_label }}</span>
             <span v-if="s.status_note" class="att-status-note">{{ s.status_note }}</span>
           </div>
         </div>
@@ -1413,6 +1413,9 @@ const manualMsgType = ref('');
 
 const pendingSessions = ref([]);
 const sessionStatusRows = ref([]);
+// 已標記狀態的色調：只有缺席用紅色，到班不該看起來像錯誤。
+const STATUS_TONE = { 到班: 'is-ok', 遲到: 'is-warn', '請假(待審)': 'is-warn', 請假: 'is-muted', 缺席: 'is-bad' };
+const statusToneClass = (label) => STATUS_TONE[String(label || '').trim()] || 'is-muted';
 const pendingLoading = ref(false);
 const pendingMarkStatus = ref({});
 const pendingMarkSubmitting = ref({});
@@ -2769,11 +2772,17 @@ watch(() => props.branchId, () => {
 .att-status-readonly {
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--ds-danger-wash);
-  color: var(--ds-danger);
+  background: var(--ds-canvas-soft, var(--ds-hairline));
+  color: var(--ds-ink-mute);
   font-weight: 700;
   text-align: center;
 }
+.att-status-readonly.is-ok { background: var(--ds-success-wash); color: var(--ds-success); }
+.att-status-readonly.is-warn { background: var(--ds-warning-wash); color: var(--ds-warning); }
+.att-status-readonly.is-bad { background: var(--ds-danger-wash); color: var(--ds-danger); }
+/* dark theme only overrides the -wash tokens; keep chip text readable on the dark washes */
+:global([data-theme="dark"]) .att-status-readonly.is-ok,
+:global([data-theme="dark"]) .att-status-readonly.is-warn { color: var(--ds-ink); }
 .att-status-note {
   color: var(--ds-warning);
   overflow: hidden;

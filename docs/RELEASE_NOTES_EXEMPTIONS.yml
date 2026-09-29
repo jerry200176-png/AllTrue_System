@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "fix(attendance): harden RFID swipe-as-attendance edge cases (#2809)"
     reason: 刷卡即出席政策本身未變，僅補強邊界情況；尚未部署或於正式環境驗證，不發布教職員公告。
 
+  - id: silent-2026-09-29-tabs-scroll-status-tone
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors"
+    reason: 版面小修正（多餘捲軸、狀態標籤顏色），流程與資料不變，不需另發版本說明。
+
   - id: silent-2026-09-29-counts-loading-ux
     changelog_date: "2026-09-29"
     changelog_title: "fix(ux): one source per dashboard count, loading placeholders"
