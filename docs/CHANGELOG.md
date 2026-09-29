@@ -1,3 +1,7 @@
+## 2026-09-29 — feat(billing): prepare controlled monthly contract correction
+<!-- release-notes: silent_ship=silent-2026-09-29-monthly-contract-correction -->
+- 準備月結分期更正的唯讀預覽、資料變動檢查、交易移轉與回復；執行目錄保持停用，尚未核准或修復正式資料。
+
 ## 2026-09-29 — fix(billing): prepare monthly period payment attribution
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-period-payment -->
 - 準備月結逐期付款顯示與跨分校唯讀盤點，保留帳單明示的非日曆月服務期間；尚未部署或完成正式資料核對，不發布上線公告。

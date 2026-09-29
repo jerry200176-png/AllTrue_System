@@ -532,7 +532,7 @@ final class PopOperationService
     /** @param array<string,mixed> $entry */
     private function assertFounderApprovalReference(array $entry, string $reference): void
     {
-        if (($entry['approval_policy'] ?? null) !== 'founder-explicit-single-repair') {
+        if (($entry['approval_policy'] ?? null) !== 'founder-explicit-single-repair' && ($entry['founder_approval_required'] ?? false) !== true) {
             return;
         }
         if (!str_starts_with(strtolower($reference), 'founder-go-')) {

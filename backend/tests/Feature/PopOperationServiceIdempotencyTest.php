@@ -182,6 +182,18 @@ final class PopOperationServiceIdempotencyTest extends TestCase
         self::assertSame(1, DB::table('pop_execution_records')->where('operation_id', $requestId)->where('phase', 'execute')->count());
     }
 
+    public function test_dual_approval_financial_repair_still_requires_founder_reference(): void
+    {
+        $path = $this->catalogDir . '/catalog.yaml';
+        file_put_contents($path, str_replace(['founder-explicit-single-repair', "approver_roles: ['super_admin']"],
+            ['critical-dual-approval', "approver_roles: ['director', 'super_admin']"], file_get_contents($path)));
+        [$requestId, , $context] = $this->draft();
+        $this->dryRun($requestId, $context);
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Founder-scoped POP approval requires a founder-go reference');
+        $this->service->approve($requestId, 'ordinary-director-reference', 'user:2', 'director', str_repeat('c', 40), 2, [9]);
+    }
+
     /** @return array{0:string,1:string,2:array<string,string>} */
     private function draft(): array
     {
