@@ -97,4 +97,12 @@ describe('sidebar navigation UX contract', () => {
     expect(appSource).toContain('class="more-breadcrumb"');
     expect(appSource).toContain('v-if="role === \'super_admin\'"\n          class="build-stamp-bar"');
   });
+
+  it('refreshes sidebar badges once at a time and in parallel', () => {
+    expect(appSource).toContain('let badgeRefreshInFlight = null;');
+    expect(appSource).toContain('if (badgeRefreshInFlight) {');
+    expect(appSource).toContain('} while (badgeRefreshAgain);');
+    expect(appSource).toMatch(/await Promise\.allSettled\(\[\s*mergeBugUnreadBadge\(\),/);
+    expect(appSource).not.toMatch(/await mergeBugUnreadBadge\(\);\s*await mergeChatUnreadBadge\(\);/);
+  });
 });
