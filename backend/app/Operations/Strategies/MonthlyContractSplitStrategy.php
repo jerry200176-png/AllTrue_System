@@ -15,8 +15,8 @@ final class MonthlyContractSplitStrategy
 
     public function plan(array $parameters): array
     {
-        $source = StudentClass::query()->find((int) ($parameters['source_course_id'] ?? 0));
-        if (!$source || (int) $source->student?->CampusID !== (int) ($parameters['campus_id'] ?? 0)) {
+        $source = StudentClass::query()->where('ID', (int) ($parameters['source_course_id'] ?? 0))->first();
+        if (!$source instanceof StudentClass || (int) $source->student?->CampusID !== (int) ($parameters['campus_id'] ?? 0)) {
             return ['ok' => false, 'errors' => ['source_campus_mismatch']];
         }
         $existing = SessionCorrection::query()->where('decision_reference', $parameters['decision_reference'])->whereNull('rolled_back_at')->orderBy('id')->first();
@@ -40,7 +40,9 @@ final class MonthlyContractSplitStrategy
     {
         if (!$plan['ok']) throw new RuntimeException('Monthly repair preconditions failed');
         $p = $plan['parameters'];
-        $result = $this->service->execute(StudentClass::query()->findOrFail($p['source_course_id']), $p['input'], $p['confirmation_token'], $p['decision_reference']);
+        $source = StudentClass::query()->where('ID', $p['source_course_id'])->first();
+        if (!$source instanceof StudentClass) throw new RuntimeException('Source contract no longer exists');
+        $result = $this->service->execute($source, $p['input'], $p['confirmation_token'], $p['decision_reference']);
         return ['ok' => true, 'snapshot' => $result, 'target_course_id' => $result['target_course_id']];
     }
 

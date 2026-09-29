@@ -32,7 +32,7 @@ final class MonthlyContractCorrectionService
         $this->require(substr((string) $source->getAttribute('StartDate'), 0, 10) === $data['source_start'], '原合約開始日須保留，請核對期間');
         $this->require($source->getAttribute('EndDate') && $data['target_end'] === substr((string) $source->getAttribute('EndDate'), 0, 10), '更正須保留原合約結束日，不可同時擴張或縮減服務期間');
         $this->require(Carbon::parse($data['source_end'])->addDay()->toDateString() === $data['target_start'], '新舊期間必須相鄰且不重疊');
-        $target = !empty($data['target_course_id']) ? StudentClass::query()->find($data['target_course_id']) : null;
+        $target = !empty($data['target_course_id']) ? $this->findCourse((int) $data['target_course_id']) : null;
         if (!empty($data['target_course_id'])) $this->require($target !== null, '找不到目標合約');
         if ($target) {
             $this->require((int) $source->getAttribute('ID') !== (int) $target->getAttribute('ID'), '來源與目標不可相同');
@@ -135,7 +135,7 @@ final class MonthlyContractCorrectionService
     {
         $this->require((bool) preg_match('/^[A-Za-z0-9_.:#-]{3,128}$/', $reference), '修復識別無效');
         return DB::transaction(function () use ($source, $input, $token, $reference) {
-            $source = StudentClass::query()->where('ID', $source->getAttribute('ID'))->lockForUpdate()->firstOrFail();
+            $source = $this->requireCourse((int) $source->getAttribute('ID'), true);
             $existing = SessionCorrection::query()->where('decision_reference', $reference)->whereNull('rolled_back_at')->orderBy('id')->first();
             if ($existing) {
                 $result = $existing->snapshot_before;
@@ -143,11 +143,11 @@ final class MonthlyContractCorrectionService
                 return $result;
             }
             $this->require(!SessionCorrection::query()->where('decision_reference', $reference)->exists(), '已回復的修復識別不可重用，須取得新的核准');
-            if (!empty($input['target_course_id'])) StudentClass::query()->where('ID', $input['target_course_id'])->lockForUpdate()->firstOrFail();
+            if (!empty($input['target_course_id'])) $this->requireCourse((int) $input['target_course_id'], true);
             $plan = $this->preview($source, $input, true);
             $this->require(hash_equals($plan['confirmation_token'], $token), '預覽已過期，資料有變動，請重新預覽');
             $newTarget = empty($input['target_course_id']);
-            $target = $newTarget ? $source->replicate() : StudentClass::query()->findOrFail($input['target_course_id']);
+            $target = $newTarget ? $source->replicate() : $this->requireCourse((int) $input['target_course_id']);
             $target->forceFill(['StartDate' => $input['target_start'], 'EndDate' => $input['target_end'], 'Charge' => $input['target_charge'],
                 'Paid' => 0, 'Pay' => 0, 'PayDate' => null, 'Stop' => 0, 'closed_reason' => null, 'UsedSessions' => 0,
                 'RemainingSessions' => 0, 'RemainingMinutes' => null, 'PurchasedMinutes' => null, 'settlement_locked_at' => null, 'settlement_snapshot' => null, 'Disconunt' => null]);
@@ -184,8 +184,8 @@ final class MonthlyContractCorrectionService
 
     public function verify(array $result): array
     {
-        $source = StudentClass::query()->find($result['source_course_id']);
-        $target = StudentClass::query()->find($result['target_course_id']);
+        $source = $this->findCourse((int) $result['source_course_id']);
+        $target = $this->findCourse((int) $result['target_course_id']);
         $ok = $source && $target && hash_equals($result['after_digest'], $this->digest($this->graph($source, $target)));
         return ['ok' => (bool) $ok, 'errors' => $ok ? [] : ['post_repair_data_drifted']];
     }
@@ -194,8 +194,8 @@ final class MonthlyContractCorrectionService
     {
         return DB::transaction(function () use ($result) {
             StudentClass::query()->whereIn('ID', [$result['source_course_id'], $result['target_course_id']])->orderBy('ID')->lockForUpdate()->get();
-            $source = StudentClass::query()->findOrFail($result['source_course_id']);
-            $target = StudentClass::query()->findOrFail($result['target_course_id']);
+            $source = $this->requireCourse((int) $result['source_course_id']);
+            $target = $this->requireCourse((int) $result['target_course_id']);
             $this->require(hash_equals($result['after_digest'], $this->digest($this->graph($source, $target, true))), '更正後資料已變動，不可自動回復');
             $graph = $result['snapshot']['graph'];
             foreach ($graph['sessions'] as $row) DB::table('ClassSession')->where('id', $row['id'])->update(['StudentClassID' => $row['StudentClassID']]);
@@ -236,6 +236,21 @@ final class MonthlyContractCorrectionService
             'pricing_amendments' => $read(DB::table('student_class_pricing_amendments')->whereIn('student_class_id', $ids)->whereNull('voided_at')->orderBy('id')),
             'group_members' => $read(DB::table('course_contract_group_members')->whereIn('student_class_id', $ids)->orderBy('id')),
             'occurrence_exceptions' => $read(DB::table('schedule_change_log')->whereIn('student_course_id', $ids)->orderBy('id'))];
+    }
+
+
+    private function findCourse(int $id, bool $lock = false): ?StudentClass
+    {
+        $query = StudentClass::query()->where('ID', $id);
+        if ($lock) $query->lockForUpdate();
+        $course = $query->first();
+        return $course instanceof StudentClass ? $course : null;
+    }
+
+    private function requireCourse(int $id, bool $lock = false): StudentClass
+    {
+        return $this->findCourse($id, $lock)
+            ?? throw (new \Illuminate\Database\Eloquent\ModelNotFoundException)->setModel(StudentClass::class, [$id]);
     }
 
     private function recount(StudentClass $course): void
