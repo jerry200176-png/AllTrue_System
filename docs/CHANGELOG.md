@@ -1,7 +1,3 @@
-## 2026-09-29 — chore(ops): prepare one-case contract repair for student 1452
-<!-- release-notes: silent_ship=silent-2026-09-29-yang-1445-repair -->
-- 準備單一學生合約堂次歸屬修復的預設試跑指令與手動工作流程（含快照、稽核與回復）；尚未對正式資料執行，帳務不變，無教職員新操作。
-
 ## 2026-09-29 — fix(courses): prepare next-period monthly booking guidance
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-next-period-booking -->
 - 準備跨期選用或續建未繳合約、重新檢查堂次，以及唯讀更正預覽；已收款期間不可直接延長。尚未部署或核對正式案例，不發布上線公告。
