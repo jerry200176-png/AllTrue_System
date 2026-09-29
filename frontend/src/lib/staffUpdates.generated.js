@@ -218,7 +218,8 @@ export const staffUpdates = [
       }
     ],
     "sourceRefs": [
-      "changelog:2026-09-29:page-header-unify"
+      "changelog:2026-09-29:page-header-unify",
+      "changelog:2026-09-29:page-header-unify-part-2"
     ],
     "date": "2026-09-29",
     "version": "2026.09.29"
