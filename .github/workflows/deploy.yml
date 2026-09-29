@@ -968,6 +968,10 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           PHASE: ${{ inputs.phase || 'application-deploy' }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+          CONFIRM_INPUT: ${{ inputs.confirm }}
+          ACTIVATION_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           REPO="$REPO" GH_TOKEN="$GH_TOKEN" EVENT_NAME="$EVENT_NAME" PHASE="$PHASE" PYTHONPATH=. python3 - <<'PY'
@@ -975,7 +979,8 @@ jobs:
           import os
           import subprocess
 
-          from scripts.governance.autonomy_gate import environment_protection_is_valid
+          from pathlib import Path
+          from scripts.governance.autonomy_gate import environment_protection_is_valid, verified_founder_manual_activation
 
           repo = os.environ["REPO"]
           base = f"/repos/{repo}/environments/production-activation"
@@ -990,11 +995,26 @@ jobs:
           prevent_self_review = all(rule.get("prevent_self_review") is True for rule in reviewers) if reviewers else False
           event_name = os.environ["EVENT_NAME"]
           phase = os.environ.get("PHASE", "")
+          verified_dispatch = False
+          if event_name == "workflow_dispatch" and phase == "application-deploy" and not required_reviewers_configured:
+              target = os.environ["TARGET_SHA"]
+              ci_runs = api(f"/repos/{repo}/actions/workflows/ci.yml/runs?branch=main&head_sha={target}&status=completed&per_page=100").get("workflow_runs") or []
+              verified_dispatch = verified_founder_manual_activation(
+                  profile=json.loads(Path("scripts/governance/deploy-authorizers.json").read_text()),
+                  repository=api(f"/repos/{repo}"),
+                  run=api(f"/repos/{repo}/actions/runs/{os.environ['ACTIVATION_RUN_ID']}"),
+                  run_id=int(os.environ["ACTIVATION_RUN_ID"]), event_name=event_name, phase=phase,
+                  workflow_ref=os.environ["WORKFLOW_REF"], target_sha=target,
+                  current_main_sha=api(f"/repos/{repo}/git/ref/heads/main")["object"]["sha"],
+                  confirmation=os.environ.get("CONFIRM_INPUT", ""),
+                  ci_success=any(run.get("head_sha") == target and run.get("conclusion") == "success" for run in ci_runs),
+              )
           if not environment_protection_is_valid(
               event_name=event_name,
               phase=phase,
               required_reviewers_configured=required_reviewers_configured,
               prevent_self_review=prevent_self_review,
+              verified_founder_dispatch=verified_dispatch,
           ):
               raise SystemExit(
                   "production environment protection is not configured: "
@@ -1013,6 +1033,8 @@ jobs:
               raise SystemExit(f"production environment protection is not configured: expected only main branch, got {names}")
           if event_name in {"workflow_run", "repository_dispatch"}:
               print("production-activation review boundary verified: required reviewer, self-review allowed, no admin bypass, main only")
+          elif verified_dispatch:
+              print("production-activation Founder dispatch verified: registered actor and triggering actor, exact current main SHA, successful CI, typed confirmation, no admin bypass, main only")
           else:
               print("production-activation static Founder boundary verified: required reviewer, self-review allowed, no admin bypass, main only")
           PY
@@ -1082,7 +1104,7 @@ jobs:
         run: |
           {
             echo "## state=approved"
-            echo "Founder/environment approval completed for this exact target; production side effects have not yet been reported as deployed."
+            echo "Founder activation authorization verified for this exact target; production side effects have not yet been reported as deployed."
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:

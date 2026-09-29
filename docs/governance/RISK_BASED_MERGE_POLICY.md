@@ -1,6 +1,6 @@
 # Risk-Based Merge Policy
 
-**Version:** 1.8.0
+**Version:** 1.8.2
 **Effective:** 2026-08-29 (Founder T0–T3 autonomy decision; supersedes the prior solo-mode R2/R3 merge wording)
 **Owner:** Founder / CTO Agent  
 **Status:** Canonical  
@@ -81,6 +81,20 @@ normal approval path. No fake reviewer or admin bypass is introduced.
 
 This governance change itself is T3: it must pass the governance cool-off and
 protected review process before its new capability is used in production.
+
+### Explicit single-Founder application activation
+
+An optional registered-Founder `workflow_dispatch` / `application-deploy` can
+carry the one exact-target activation approval when the Environment has no
+reviewer. The committed deploy-authorizer profile, immutable GitHub run actor and
+triggering actor, canonical repository owner, workflow path/run ID, main-only
+ref, exact current target SHA, successful same-SHA CI and typed confirmation must
+all match. `deploy.yml` verifies this proof before accepting the alternative.
+Automatic events and non-application phases cannot use it. A configured reviewer
+still remains mandatory; no Environment setting or admin bypass is changed.
+
+This protected alternative requires Founder approval before first use; see
+[the concrete activation plan](../plans/2026-09-29-founder-single-activation.md).
 
 ### Activation classification by effect
 

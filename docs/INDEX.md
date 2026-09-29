@@ -520,3 +520,5 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 | `PROFESSIONAL_PERCEPTION_SURVEY.md` | 歷史使用者調研 |
 | `SCHEDULE_DISCREPANCY_REVIEW.md` | 歷史排課差異審查 |
 | `TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md` | 歷史技術報告 |
+
+- [Founder 單次、指定版本的程式啟用提案](plans/2026-09-29-founder-single-activation.md) — R3 待核准；保留版本／身分／CI／執行者與恢復檢查。

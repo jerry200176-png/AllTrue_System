@@ -1155,9 +1155,47 @@ def wait_for_exact_successful_provenance(
     return None
 
 
+def verified_founder_manual_activation(
+    *, profile: Mapping, repository: Mapping, run: Mapping, run_id: int,
+    event_name: str, phase: str, workflow_ref: str, target_sha: str,
+    current_main_sha: str, confirmation: str, ci_success: bool,
+) -> bool:
+    """Verify one registered Founder approval from GitHub's immutable run metadata."""
+    authorizer = profile.get("founder_manual_application_activation") or {}
+    if type(profile.get("schema_version")) is not int or profile.get("schema_version") != 1 or authorizer.get("enabled") is not True:
+        return False
+    identity = authorizer.get("user_id")
+    login = authorizer.get("login")
+    if type(identity) is not int or identity <= 0 or not isinstance(login, str) or not login:
+        return False
+    if event_name != "workflow_dispatch" or phase != "application-deploy":
+        return False
+    if not isinstance(target_sha, str) or not _FULL_SHA_RE.fullmatch(target_sha):
+        return False
+    if confirmation != f"ACTIVATE_PRODUCTION:{target_sha}":
+        return False
+    if (type(run_id) is not int or run_id <= 0 or run.get("id") != run_id
+            or run.get("event") != event_name or run.get("path") != ".github/workflows/deploy.yml"
+            or run.get("head_branch") != "main" or run.get("head_sha") != target_sha):
+        return False
+    if not repository.get("full_name") or (run.get("repository") or {}).get("full_name") != repository.get("full_name"):
+        return False
+    owner = repository.get("owner") or {}
+    if owner.get("type") != "User":
+        return False
+    for principal in (owner, run.get("actor") or {}, run.get("triggering_actor") or {}):
+        if type(principal.get("id")) is not int or principal.get("id") != identity or principal.get("login") != login:
+            return False
+    decision = decide_manual_activation(
+        workflow_ref=workflow_ref, target_sha=target_sha, current_main_sha=current_main_sha,
+        ci_success=ci_success, founder_gate_reached=True,
+    )
+    return decision["decision"] == "activation-gate-reached"
+
+
 def environment_protection_is_valid(
     *, event_name: str, phase: str, required_reviewers_configured: bool,
-    prevent_self_review: bool,
+    prevent_self_review: bool, verified_founder_dispatch: bool = False,
 ) -> bool:
     """Validate the single static Founder production environment boundary.
 
@@ -1178,7 +1216,9 @@ def environment_protection_is_valid(
         "phase1-create", "phase2-cutover", "phase3-lock",
     }:
         return False
-    return required_reviewers_configured and prevent_self_review is False
+    if not required_reviewers_configured:
+        return event_name == "workflow_dispatch" and phase == "application-deploy" and verified_founder_dispatch is True
+    return prevent_self_review is False
 
 
 def effective_tier(

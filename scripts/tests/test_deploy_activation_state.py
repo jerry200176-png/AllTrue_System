@@ -1,6 +1,8 @@
 """Executable policy decisions and regression contracts for Deploy to Pi."""
 
 from pathlib import Path
+import copy
+import json
 import os
 import subprocess
 import tempfile
@@ -28,6 +30,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     decide_activation,
     decide_manual_activation,
     environment_protection_is_valid,
+    verified_founder_manual_activation,
     effective_tier,
     has_rollback_evidence,
     is_founder_approval_eligible,
@@ -1341,6 +1344,75 @@ class BugPhaseATriageWorkflowContractTest(unittest.TestCase):
         self.assertIn("$commentSucceeded = ($comment[\"ok\"] ?? false) || isset($comment[\"id\"]) || ($comment[\"skipped\"] ?? false);", self.workflow)
         self.assertIn("if (!$commentSucceeded)", self.workflow)
         self.assertNotIn('if (!($comment["ok"] ?? false))', self.workflow)
+
+
+
+class FounderManualActivationTest(unittest.TestCase):
+    def setUp(self):
+        self.profile = json.loads((ROOT / 'scripts/governance/deploy-authorizers.json').read_text())
+        principal = self.profile['founder_manual_application_activation']
+        owner = {'id': principal['user_id'], 'login': principal['login'], 'type': 'User'}
+        self.args = dict(
+            profile=self.profile, repository={'full_name': owner['login'] + '/AllTrue_System', 'owner': owner},
+            run={'id': 123, 'event': 'workflow_dispatch', 'path': '.github/workflows/deploy.yml',
+                 'head_branch': 'main', 'head_sha': 'a' * 40, 'actor': owner.copy(),
+                 'triggering_actor': owner.copy(), 'repository': {'full_name': owner['login'] + '/AllTrue_System'}},
+            run_id=123, event_name='workflow_dispatch', phase='application-deploy',
+            workflow_ref='refs/heads/main', target_sha='a' * 40, current_main_sha='a' * 40,
+            confirmation='ACTIVATE_PRODUCTION:' + 'a' * 40, ci_success=True,
+        )
+
+    def test_exact_founder_dispatch_is_one_audited_approval(self):
+        self.assertTrue(verified_founder_manual_activation(**self.args))
+        self.assertTrue(environment_protection_is_valid(
+            event_name='workflow_dispatch', phase='application-deploy',
+            required_reviewers_configured=False, prevent_self_review=False,
+            verified_founder_dispatch=True,
+        ))
+
+    def test_every_unverified_or_different_scope_is_rejected(self):
+        changes = [
+            ('event_name', 'workflow_run'), ('phase', 'pop-bootstrap'), ('phase', 'parent-portal-smoke'),
+            ('workflow_ref', 'refs/heads/feature'), ('target_sha', 'b' * 40),
+            ('current_main_sha', 'b' * 40), ('confirmation', 'ACTIVATE_PRODUCTION:' + 'b' * 40),
+            ('ci_success', False), ('run_id', 124),
+        ]
+        for field, value in changes:
+            with self.subTest(field=field):
+                args = copy.deepcopy(self.args); args[field] = value
+                self.assertFalse(verified_founder_manual_activation(**args))
+        for field, value in [('event', 'workflow_run'), ('head_branch', 'feature'),
+                             ('path', '.github/workflows/other.yml'), ('head_sha', 'b' * 40)]:
+            with self.subTest(run_field=field):
+                args = copy.deepcopy(self.args); args['run'][field] = value
+                self.assertFalse(verified_founder_manual_activation(**args))
+        for subject in ['actor', 'triggering_actor']:
+            for field, value in [('id', 1), ('login', 'someone-else')]:
+                args = copy.deepcopy(self.args); args['run'][subject][field] = value
+                self.assertFalse(verified_founder_manual_activation(**args))
+        for field in ['id', 'login', 'type']:
+            args = copy.deepcopy(self.args); args['repository']['owner'][field] = 'wrong'
+            self.assertFalse(verified_founder_manual_activation(**args))
+        args = copy.deepcopy(self.args); args['run']['repository']['full_name'] = 'other/repo'
+        self.assertFalse(verified_founder_manual_activation(**args))
+        args = copy.deepcopy(self.args); args['profile']['founder_manual_application_activation']['enabled'] = False
+        self.assertFalse(verified_founder_manual_activation(**args))
+
+    def test_registry_identity_is_read_at_runtime(self):
+        args = copy.deepcopy(self.args)
+        args['profile']['founder_manual_application_activation']['user_id'] += 1
+        self.assertFalse(verified_founder_manual_activation(**args))
+        for principal in [args['repository']['owner'], args['run']['actor'], args['run']['triggering_actor']]:
+            principal['id'] = args['profile']['founder_manual_application_activation']['user_id']
+        self.assertTrue(verified_founder_manual_activation(**args))
+
+    def test_dispatch_exception_never_authorizes_automatic_or_data_operations(self):
+        for event, phase in [('workflow_run', 'application-deploy'), ('repository_dispatch', 'application-deploy'),
+                             ('workflow_dispatch', 'pop-bootstrap'), ('workflow_dispatch', 'phase2-cutover')]:
+            self.assertFalse(environment_protection_is_valid(
+                event_name=event, phase=phase, required_reviewers_configured=False,
+                prevent_self_review=False, verified_founder_dispatch=True,
+            ))
 
 
 if __name__ == "__main__":
