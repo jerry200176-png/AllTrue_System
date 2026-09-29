@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "audited monthly receipt correction；controlled monthly contract correction",
+    "summary": "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。；audited monthly receipt correction",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
           "audited monthly receipt correction",
           "controlled monthly contract correction"
         ]
@@ -35,14 +36,14 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
       "audited monthly receipt correction",
       "controlled monthly contract correction",
       "RFID swipe-as-attendance edge cases",
       "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
       "correction into an existing monthly contract",
-      "next-period monthly booking guidance",
-      "monthly period payment attribution"
+      "next-period monthly booking guidance"
     ]
   },
   {

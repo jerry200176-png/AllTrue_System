@@ -1,15 +1,27 @@
 <template>
-  <div class="tc-page">
+  <div class="tc-page at-page">
     <AtPageHeader
       title="帳務中心"
       description="處理應收、已回報待查帳、確認入帳與續課提醒。"
-      icon="account_balance"
+      icon="payments"
       data-guide="tuition-header"
     >
-      <template #meta><span>先確認對象，再回報，最後確認入帳</span></template>
+      <template #help>
+        <AtHelpDisclosure label="帳務處理流程">
+          <OperationsQuickStart
+            compact
+            eyebrow="帳務處理流程"
+            heading="照順序完成，不用記入口"
+            description="先找到對象，再送出回報，最後由主任確認入帳。"
+            :current-id="billingFlowCurrentId"
+            :steps="billingFlowSteps"
+            @select="selectBillingFlowStep"
+          />
+        </AtHelpDisclosure>
+      </template>
       <template #actions>
         <AtButton
-          variant="ghost"
+          variant="secondary"
           shape="rect"
           icon="refresh"
           :loading="activeTabLoading"
@@ -20,30 +32,12 @@
       </template>
     </AtPageHeader>
 
-    <details class="tc-process-disclosure">
-      <summary>
-        <span class="material-symbols-outlined" aria-hidden="true">route</span>
-        <span class="tc-process-disclosure__title">帳務處理流程</span>
-        <span class="tc-process-disclosure__hint">先找到對象，再回報，最後確認入帳</span>
-        <span class="material-symbols-outlined" aria-hidden="true">expand_more</span>
-      </summary>
-      <OperationsQuickStart
-        compact
-        eyebrow="帳務處理流程"
-        heading="照順序完成，不用記入口"
-        description="先找到對象，再送出回報，最後由主任確認入帳。"
-        :current-id="billingFlowCurrentId"
-        :steps="billingFlowSteps"
-        @select="selectBillingFlowStep"
-      />
-    </details>
-
-    <div class="acct-tabs" role="tablist" aria-label="帳務中心分頁">
+    <div class="acct-tabs at-tabs" role="tablist" aria-label="帳務中心分頁">
       <button
         v-for="tab in ACCOUNTING_TABS"
         :key="tab.key"
         type="button"
-        class="acct-tab"
+        class="acct-tab at-tab"
         :class="{ active: activeAccountingTab === tab.key }"
         role="tab"
         :id="`tuition-accounting-tab-${tab.key}`"
@@ -56,6 +50,7 @@
       </button>
     </div>
 
+    <div class="tc-page__body">
     <div v-if="tuitionFocusMessage" class="tc-focus-context" role="status">
       <span class="material-symbols-outlined" aria-hidden="true">my_location</span>
       <span>{{ tuitionFocusMessage }}</span>
@@ -1024,6 +1019,7 @@
 
     <!-- Toast -->
     <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
+    </div>
   </div>
 </template>
 
@@ -1041,6 +1037,7 @@ import AtDialog from '../components/design-system/AtDialog.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
 import AtInlineAlert from '../components/design-system/AtInlineAlert.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
+import AtHelpDisclosure from '../components/design-system/AtHelpDisclosure.vue';
 import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import { adoptionErrorType, trackWorkflowEvent } from '../lib/adoptionTelemetry.js';
 import {
@@ -2381,13 +2378,12 @@ loadAlerts();
 
 <style scoped>
 /* ─── Page ─── */
-.tc-page {
+.tc-page__body {
   background: var(--card-bg);
   border-radius: 14px;
   padding: 24px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
   min-width: 0;
-  width: 100%;
   max-width: 100%;
 }
 .tc-page button,
@@ -2440,37 +2436,6 @@ loadAlerts();
 .tc-summary-disclosure .tc-summary { margin: 0; padding: 0 10px 10px; }
 
 /* ─── Accounting center tabs ─── */
-.acct-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-.acct-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 14px;
-  border: 0;
-  border-bottom: 3px solid transparent;
-  background: transparent;
-  color: var(--text-light);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.acct-tab:hover {
-  color: var(--text);
-  background: var(--bg);
-}
-.acct-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
-  background: var(--primary-light, rgba(37,99,235,0.06));
-}
 .acct-panel {
   display: flex;
   flex-direction: column;
@@ -3485,7 +3450,7 @@ loadAlerts();
 
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
-  .tc-page { padding: 16px; }
+  .tc-page__body { padding: 16px; }
   .tc-summary { gap: 8px; }
   .tc-card { padding: 8px 12px; }
   .tc-card-num { font-size: 18px; }

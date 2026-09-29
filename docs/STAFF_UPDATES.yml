@@ -3,6 +3,22 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-29-page-header-unify
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 頁面頂部更簡潔一致
+    summary: 主要頁面的標題區縮短，資料表格更早出現在畫面上。
+    items:
+      - category: improved
+        text: 流程與 SOP 說明收進標題旁的 ⓘ，點開才顯示；「重新整理」按鈕、分頁樣式與頁首圖示在各頁一致。
+      - category: improved
+        text: 主任總覽移除重複的「接著處理」橫幅，軍階改為標題旁的小標籤。
+    source_refs:
+      - "changelog:2026-09-29:page-header-unify"
+
   - id: staff-2026-09-29-capacity-source-labels
     published_at: "2026-09-29"
     audiences:

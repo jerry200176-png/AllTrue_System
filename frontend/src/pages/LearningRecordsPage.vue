@@ -1,13 +1,23 @@
 <template>
-  <div :class="['lr-page', { 'lr-page--teacher': isTeacher }]">
+  <div :class="['lr-page', 'at-page', { 'lr-page--teacher': isTeacher }]">
     <!-- Page Header -->
     <AtPageHeader
       :title="pageMode === 'parent_messages' ? (isTeacher ? '家長回覆' : '家長留言') : (isTeacher ? '評量待辦' : '學習評量表')"
       :description="pageMode === 'parent_messages' ? (isTeacher ? '先看新留言與尚未回覆；範圍為我的所有分校' : '查看範圍：目前分校（可改）') : (isTeacher ? '先處理未填與需修改；完整評量需要時再展開' : '先處理待審與需修改的評量；已核准僅供查閱')"
-      icon="fact_check"
+      icon="assignment"
       data-guide="learning-header"
     >
       <template #actions>
+        <AtButton
+          v-if="pageMode !== 'parent_messages'"
+          variant="secondary"
+          shape="rect"
+          icon="refresh"
+          :loading="recordsPagination.loading"
+          @click="fetchRecords"
+        >
+          重新整理
+        </AtButton>
         <AtButton
           v-if="isTeacher && pageMode !== 'parent_messages'"
           variant="ghost"
@@ -23,21 +33,21 @@
       </template>
     </AtPageHeader>
 
-    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs card" role="tablist" :aria-label="isTeacher ? '評量待辦與家長回覆' : '學習評量與家長留言'">
-      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">{{ isTeacher ? '評量待辦' : '學習評量' }}</button>
-      <button type="button" role="tab" :class="['lr-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">{{ isTeacher ? '家長回覆' : '家長留言' }}</button>
+    <div v-if="isTeacher || isDirectorRole" class="lr-mode-tabs at-tabs" role="tablist" :aria-label="isTeacher ? '評量待辦與家長回覆' : '學習評量與家長留言'">
+      <button type="button" role="tab" :class="['lr-tab', 'at-tab', { active: pageMode === 'records' }]" :aria-selected="pageMode === 'records'" @click="setPageMode('records')">{{ isTeacher ? '評量待辦' : '學習評量' }}</button>
+      <button type="button" role="tab" :class="['lr-tab', 'at-tab', { active: pageMode === 'parent_messages' }]" :aria-selected="pageMode === 'parent_messages'" @click="setPageMode('parent_messages')">{{ isTeacher ? '家長回覆' : '家長留言' }}</button>
     </div>
 
     <!-- Teacher quick-filter tabs -->
-    <div v-if="isTeacher && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
-      <div class="lr-tabs-row" role="tablist" aria-label="老師評量審核狀態">
+    <div v-if="isTeacher && pageMode === 'records'" class="lr-review-tabs" data-guide="learning-teacher-tabs">
+      <div class="lr-tabs-row at-tabs" role="tablist" aria-label="老師評量審核狀態">
         <button
           id="lr-teacher-tab-all"
           type="button"
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="teacherFilterTab === 'all'"
-          :class="['lr-tab', { active: teacherFilterTab === 'all' }]"
+          :class="['lr-tab', 'at-tab', { active: teacherFilterTab === 'all' }]"
           @click="teacherFilterTab = 'all'"
         >
           全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
@@ -48,7 +58,7 @@
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="teacherFilterTab === 'pending'"
-          :class="['lr-tab', { active: teacherFilterTab === 'pending' }]"
+          :class="['lr-tab', 'at-tab', { active: teacherFilterTab === 'pending' }]"
           @click="teacherFilterTab = 'pending'"
         >
           待審核 <span v-if="kpiPendingOnlyCount > 0" class="lr-tab-count">{{ kpiPendingOnlyCount }}</span>
@@ -59,7 +69,7 @@
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="teacherFilterTab === 'changes_requested'"
-          :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]"
+          :class="['lr-tab', 'at-tab', { active: teacherFilterTab === 'changes_requested' }]"
           @click="teacherFilterTab = 'changes_requested'"
         >
           需修改 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
@@ -70,7 +80,7 @@
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="teacherFilterTab === 'approved'"
-          :class="['lr-tab', { active: teacherFilterTab === 'approved' }]"
+          :class="['lr-tab', 'at-tab', { active: teacherFilterTab === 'approved' }]"
           @click="teacherFilterTab = 'approved'"
         >
           已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
@@ -79,15 +89,15 @@
     </div>
 
     <!-- Director review queue tabs -->
-    <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
-      <div class="lr-tabs-row" role="tablist" aria-label="主任評量審核佇列">
+    <div v-if="isDirectorRole && pageMode === 'records'" class="lr-review-tabs" data-guide="learning-director-review-tabs">
+      <div class="lr-tabs-row at-tabs" role="tablist" aria-label="主任評量審核佇列">
         <button
           id="lr-review-tab-pending"
           type="button"
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="reviewTab === 'pending'"
-          :class="['lr-tab', { active: reviewTab === 'pending' }]"
+          :class="['lr-tab', 'at-tab', { active: reviewTab === 'pending' }]"
           @click="reviewTab = 'pending'; exitSelectionMode()"
         >
           待主任核准 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
@@ -98,7 +108,7 @@
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="reviewTab === 'changes_requested'"
-          :class="['lr-tab', { active: reviewTab === 'changes_requested' }]"
+          :class="['lr-tab', 'at-tab', { active: reviewTab === 'changes_requested' }]"
           @click="reviewTab = 'changes_requested'; exitSelectionMode()"
         >
           老師需修改 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
@@ -109,7 +119,7 @@
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="reviewTab === 'approved'"
-          :class="['lr-tab', { active: reviewTab === 'approved' }]"
+          :class="['lr-tab', 'at-tab', { active: reviewTab === 'approved' }]"
           @click="reviewTab = 'approved'; exitSelectionMode()"
         >
           已核准 <span class="lr-tab-count ok">{{ serverApprovedBadge }}</span>
@@ -120,7 +130,7 @@
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="reviewTab === 'rejected'"
-          :class="['lr-tab', { active: reviewTab === 'rejected' }]"
+          :class="['lr-tab', 'at-tab', { active: reviewTab === 'rejected' }]"
           @click="reviewTab = 'rejected'; exitSelectionMode()"
         >
           已退回
@@ -131,7 +141,7 @@
           role="tab"
           aria-controls="lr-review-panel"
           :aria-selected="reviewTab === 'all'"
-          :class="['lr-tab', { active: reviewTab === 'all' }]"
+          :class="['lr-tab', 'at-tab', { active: reviewTab === 'all' }]"
           @click="reviewTab = 'all'; exitSelectionMode()"
         >
           全部
@@ -4981,10 +4991,6 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 
 <style scoped>
 /* ── Page Layout ── */
-.lr-page {
-  max-width: 1200px;
-}
-
 .lr-header {
   display: flex;
   justify-content: space-between;
@@ -4999,41 +5005,6 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 
 /* ── Review / Filter Tabs ── */
 
-.lr-review-tabs {
-  margin-bottom: 12px;
-  padding: 12px 16px;
-}
-
-.lr-tabs-row {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.lr-tab {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--ds-hairline);
-  background: var(--ds-canvas);
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--ds-ink-secondary);
-  transition: all 0.15s;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.lr-tab:hover {
-  background: var(--ds-canvas-soft);
-  border-color: var(--ds-hairline-input);
-}
-
-.lr-tab.active {
-  background: var(--ds-primary);
-  color: var(--ds-on-primary);
-  border-color: var(--ds-primary);
-}
 
 .lr-tab-count {
   font-size: 11px;
@@ -5078,13 +5049,6 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .lr-filters-bar {
   margin-bottom: 12px;
   padding: 10px 16px;
-}
-
-.lr-mode-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 8px 12px;
 }
 
 .lr-parent-feedback-box--reply-mode {
@@ -8501,39 +8465,6 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 .lr-page--teacher .ts-status-chip.status-locked { background: var(--ios-surface-secondary); color: var(--ios-label-tertiary); }
 
 /* Teacher filter tabs → iOS segmented control */
-.lr-page--teacher .lr-review-tabs {
-  background: var(--ios-surface);
-  border-radius: var(--ios-radius);
-  box-shadow: var(--ios-shadow);
-  border: none;
-  padding: 12px 16px;
-}
-.lr-page--teacher .lr-tabs-row {
-  background: var(--ios-surface-secondary);
-  border-radius: 9px;
-  padding: 2px;
-  display: inline-flex;
-  gap: 0;
-  width: 100%;
-}
-.lr-page--teacher .lr-tab {
-  flex: 1;
-  font-family: var(--ios-font);
-  font-size: 13px;
-  font-weight: 500;
-  padding: 7px 8px;
-  border-radius: 7px;
-  min-height: 34px;
-  color: var(--ios-label-secondary);
-  background: transparent;
-  border: none;
-  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
-}
-.lr-page--teacher .lr-tab.active {
-  background: var(--ios-surface);
-  color: var(--ios-label);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-}
 .lr-page--teacher .lr-tab-count {
   font-size: 11px;
   background: none;
@@ -8690,54 +8621,9 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   box-shadow: none;
   background: transparent;
 }
-.lr-page:not(.lr-page--teacher) .lr-mode-tabs {
-  gap: 22px;
-  margin: 0 0 2px;
-  padding: 0;
-  border-bottom: 1px solid var(--ds-hairline);
-}
-.lr-page:not(.lr-page--teacher) .lr-mode-tabs .lr-tab {
-  min-height: 44px;
-  padding: 10px 2px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ds-ink-mute);
-  font-weight: 800;
-}
-.lr-page:not(.lr-page--teacher) .lr-mode-tabs .lr-tab.active {
-  border-bottom-color: var(--ds-cta);
-  background: transparent;
-  color: var(--ds-ink);
-}
-.lr-page:not(.lr-page--teacher) .lr-review-tabs {
+.lr-review-tabs {
   margin: 0;
-  padding: 0 0 10px;
-  border-bottom: 1px solid var(--ds-hairline);
-}
-.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row {
-  gap: 18px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row::-webkit-scrollbar { display: none; }
-.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab {
-  min-height: 42px;
-  padding: 9px 2px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ds-ink-mute);
-  font-weight: 800;
-  white-space: nowrap;
-}
-.lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab.active {
-  border-bottom-color: var(--ds-cta);
-  background: transparent;
-  color: var(--ds-ink);
+  padding: 0;
 }
 .lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab-count {
   min-width: 20px;
@@ -8836,8 +8722,6 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
   .lr-page:not(.lr-page--teacher) * { transition-duration: 0.01ms !important; }
 }
 @media (max-width: 680px) {
-  .lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tabs-row { gap: 14px; }
-  .lr-page:not(.lr-page--teacher) .lr-review-tabs .lr-tab { padding-inline: 1px; }
   .lr-page:not(.lr-page--teacher) .lr-filters { margin-top: 10px; }
 }
 </style>

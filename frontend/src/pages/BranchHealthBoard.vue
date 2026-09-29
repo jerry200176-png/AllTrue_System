@@ -1,8 +1,8 @@
 <template>
-  <main class="branch-health" data-testid="branch-health-board">
+  <main class="branch-health at-page" data-testid="branch-health-board">
     <AtPageHeader title="分校健康" description="總部查看各分校目前可驗證的營運訊號；這不是總分或排名。" icon="monitor_heart">
       <template #meta><span>資料更新於 <strong>{{ updatedLabel }}</strong></span></template>
-      <template #actions><AtButton shape="rect" variant="ghost" icon="refresh" :disabled="loading" @click="load">重新整理</AtButton></template>
+      <template #actions><AtButton shape="rect" variant="secondary" icon="refresh" :disabled="loading" @click="load">重新整理</AtButton></template>
     </AtPageHeader>
 
     <AtSkeleton v-if="loading" rows="6" />
@@ -104,7 +104,6 @@ onMounted(load);
 </script>
 
 <style scoped>
-.branch-health { max-width: 1280px; margin: 0 auto; }
 .branch-health__note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 18px; padding: 12px 14px; color: var(--ds-ink-secondary); background: var(--ds-info-wash); border: 1px solid color-mix(in srgb, var(--ds-info) 25%, transparent); border-radius: 10px; font-size: 13px; line-height: 1.6; }
 .branch-health__note .material-symbols-outlined { color: var(--ds-info); font-size: 19px; }
 .branch-health__summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }

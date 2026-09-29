@@ -115,6 +115,40 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-page-header-unify",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "頁面頂部更簡潔一致",
+    "summary": "主要頁面的標題區縮短，資料表格更早出現在畫面上。",
+    "items": [
+      "流程與 SOP 說明收進標題旁的 ⓘ，點開才顯示；「重新整理」按鈕、分頁樣式與頁首圖示在各頁一致。",
+      "主任總覽移除重複的「接著處理」橫幅，軍階改為標題旁的小標籤。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "流程與 SOP 說明收進標題旁的 ⓘ，點開才顯示；「重新整理」按鈕、分頁樣式與頁首圖示在各頁一致。",
+          "主任總覽移除重複的「接著處理」橫幅，軍階改為標題旁的小標籤。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-29:page-header-unify"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-29-capacity-source-labels",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,

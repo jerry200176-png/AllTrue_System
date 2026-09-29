@@ -1,10 +1,9 @@
 <template>
-  <div class="teachers-page">
-  <div class="card teachers-card">
+  <div class="teachers-page at-page">
     <AtPageHeader
       title="老師管理"
       description="管理老師資料、分校配置與登入帳號操作。"
-      icon="groups"
+      icon="badge"
       data-guide="teachers-header"
     >
       <template #meta>
@@ -17,11 +16,12 @@
       </template>
     </AtPageHeader>
 
+  <div class="card teachers-card">
     <div class="teachers-view-tabs" role="tablist" aria-label="老師狀態">
-      <div class="tabs">
-        <button id="teachers-tab-active" type="button" role="tab" aria-controls="teachers-panel-active" :aria-selected="tab === 'active'" :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
-        <button id="teachers-tab-pending" type="button" role="tab" aria-controls="teachers-panel-pending" :aria-selected="tab === 'pending'" :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span></button>
-        <button id="teachers-tab-suspended" type="button" role="tab" aria-controls="teachers-panel-suspended" :aria-selected="tab === 'suspended'" :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span></button>
+      <div class="tabs at-tabs">
+        <button id="teachers-tab-active" type="button" role="tab" aria-controls="teachers-panel-active" :aria-selected="tab === 'active'" :class="['at-tab', { active: tab === 'active' }]" @click="tab = 'active'">正式老師</button>
+        <button id="teachers-tab-pending" type="button" role="tab" aria-controls="teachers-panel-pending" :aria-selected="tab === 'pending'" :class="['at-tab', { active: tab === 'pending' }]" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge badge--pending">{{ pendingCount }}</span></button>
+        <button id="teachers-tab-suspended" type="button" role="tab" aria-controls="teachers-panel-suspended" :aria-selected="tab === 'suspended'" :class="['at-tab', { active: tab === 'suspended' }]" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge badge--suspended">{{ suspendedCount }}</span></button>
       </div>
     </div>
 
@@ -1643,8 +1643,9 @@ watch(showBulkModal, (opened) => {
 .teachers-view-tabs {
   display: flex;
   align-items: center;
-  margin-bottom: var(--ds-space-3);
-  border-bottom: 1px solid var(--ds-hairline);
+}
+.teachers-view-tabs > .tabs {
+  flex: 1;
 }
 
 .teacher-summary {
@@ -1985,26 +1986,6 @@ watch(showBulkModal, (opened) => {
 .teachers-insights-disclosure__body { display: grid; gap: 12px; padding: 0 13px 13px; }
 .teachers-insights-disclosure .teacher-chips-row { margin: 0; }
 .teachers-insights-disclosure .teacher-summary { margin: 0; }
-
-.tabs {
-    display: flex;
-    gap: 8px;
-}
-.tabs button {
-    background: var(--ds-canvas-soft);
-    border: 1px solid var(--ds-hairline);
-    border-radius: 10px;
-    padding: 8px 12px;
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--ds-ink-mute);
-}
-.tabs button.active {
-    border-color: var(--ds-primary);
-    color: var(--ds-primary-deep);
-    background: var(--ds-primary-wash);
-    font-weight: 700;
-}
 
 .bulk-result-actions {
   display: flex;

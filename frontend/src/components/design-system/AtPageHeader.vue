@@ -9,15 +9,18 @@ defineProps({
 <template>
   <header class="at-page-header" data-testid="at-page-header">
     <div class="at-page-header__main">
-      <h2 class="at-page-header__title">
-        <span
-          v-if="icon"
-          class="material-symbols-outlined at-page-header__icon"
-          :data-icon="icon"
-          aria-hidden="true"
-        />
-        {{ title }}
-      </h2>
+      <div class="at-page-header__titlerow">
+        <h2 class="at-page-header__title">
+          <span
+            v-if="icon"
+            class="material-symbols-outlined at-page-header__icon"
+            :data-icon="icon"
+            aria-hidden="true"
+          />
+          {{ title }}
+        </h2>
+        <slot name="help" />
+      </div>
       <p v-if="description" class="at-page-header__desc">{{ description }}</p>
       <div v-if="$slots.meta" class="at-page-header__meta">
         <slot name="meta" />
@@ -43,6 +46,14 @@ defineProps({
   min-width: 0;
   flex: 1 1 24rem;
   max-width: 100%;
+}
+
+.at-page-header__titlerow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-width: 0;
 }
 
 .at-page-header__title {
