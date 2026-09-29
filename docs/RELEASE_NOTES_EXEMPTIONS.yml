@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "perf(inbox): paint 待處理收件匣 before the background ops sync"
     reason: 純載入順序調整（清單先顯示、同步移至背景），功能與畫面內容不變；尚未部署，待實測後再決定是否公告。
 
+  - id: silent-2026-09-29-counts-loading-ux
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(ux): one source per dashboard count, loading placeholders"
+    reason: 純前端數字口徑與載入狀態顯示修正，不改流程或權限，教職員不需新操作說明。
+
   - id: silent-2026-09-29-confirmed-monthly-fees
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): prepare confirmed monthly fees and visible renewal periods"
