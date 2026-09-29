@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-ux-followups -->
 - 換頁載入時顯示骨架畫面（延遲 150ms，快速載入不閃爍）；編輯學生視窗可按 Esc 關閉，「LINE 綁定家長」改顯示「已綁定 LINE」與 2026/09/03 格式日期，監護人關係顯示中文；課程查找「上課類型」篩選改為只列出符合類型的課程；意見與建議列表遇自動產生的標題時改顯示說明第一行（後端列表僅新增唯讀摘要欄位）。
 
+## 2026-09-30 — feat(finance): add reference subject-unit totals with and without tutoring
+<!-- release-notes: staff_update=staff-2026-09-30-subject-units-reference-totals -->
+- 科目數統計新增「參考合計（含輔導／不含輔導）÷ 8」兩張卡（in-app #331，Founder 2026-09-30 核准）；由完整加權總分僅在最後一步除以 8，僅供分析，既有數字與薪資計算完全不變。
+
 ## 2026-09-30 — feat(courses): show student school and grade in course lookup
 <!-- release-notes: staff_update=staff-2026-09-30-course-lookup-school-grade -->
 - 課程查找的學生標題列在姓名旁顯示學校與年級（in-app #358，Founder 2026-09-30 核准，僅學校與年級，不含電話與備註）；沿用課程列表既有回傳的學生資料，無後端或資料變更。
