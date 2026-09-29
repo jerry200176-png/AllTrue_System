@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
 - 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
 
+## 2026-09-29 — perf(inbox): paint 待處理收件匣 before the background ops sync
+<!-- release-notes: silent_ship=silent-2026-09-29-inbox-first-paint -->
+- 收件匣開啟時不再等「通知同步」（寫入量大，實測約 11 秒）完成才顯示清單：先載入清單，同步改背景執行、完成後自動重新整理；計數請求也與清單並行。純前端，同步邏輯不變。尚未部署，不發布公告。
+
 ## 2026-09-29 — feat(schedule): director can move a session to another contract
 <!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
 - 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
