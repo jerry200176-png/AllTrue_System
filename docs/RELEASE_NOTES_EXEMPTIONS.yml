@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-existing-monthly-correction
+    changelog_date: "2026-09-29"
+    changelog_title: "fix(billing): prepare correction into an existing monthly contract"
+    reason: 更正能力維持 planned，尚未執行正式收款或堂次移轉；部署及個案驗收後再評估主任操作公告。
+
   - id: silent-2026-09-29-monthly-accounting-correction
     changelog_date: "2026-09-29"
     changelog_title: "feat(billing): prepare audited monthly receipt correction"
