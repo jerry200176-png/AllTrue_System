@@ -440,7 +440,7 @@ jobs:
             $out['payments'] = $iids === [] ? [] : $rowsOf($db::table('Payment')->whereIn('InvoiceID', $iids));
             $out['payment_reports'] = $tbl('payment_reports') ? $rowsOf($db::table('payment_reports')->whereIn('StudentClassID', $classIds)) : null;
             $out['schedule_audit_logs'] = $sids === [] ? [] : $rowsOf($db::table('schedule_audit_logs')->whereIn('session_id', $sids)->where('created_at', '>=', '2026-07-01')->orderBy('id'));
-            $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->where('subject_type', 'student_class')->whereIn('subject_id', $classIds)->where('created_at', '>=', '2026-07-01')->orderBy('id')) : null;
+            $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->whereIn('campus_id', $campuses)->where('occurred_at', '>=', '2026-07-01')->where(fn ($q) => $q->where('event_type', 'like', '%contract%')->orWhere('event_type', 'like', '%settle%')->orWhere('event_type', 'like', '%session%'))->orderBy('id')->limit(300)) : null;
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
