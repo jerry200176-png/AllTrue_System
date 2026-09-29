@@ -112,8 +112,8 @@ class ManualSessionBookingService
         // A stale occurrence outside a paid monthly contract cannot authorize
         // another period by hitting the idempotency shortcut below.
         if ($isMonthly) {
-            $startDate = Carbon::parse($course->StartDate)->toDateString();
-            $endDate = Carbon::parse($course->EndDate)->toDateString();
+            $startDate = Carbon::parse($course->getAttribute('StartDate'))->toDateString();
+            $endDate = Carbon::parse($course->getAttribute('EndDate'))->toDateString();
             if ($date < $startDate) return $this->blocked($base, 'before_course_start', '堂次日期不可早於課程開始日');
             if ($date > $endDate) {
                 $result = $this->blocked($base, 'after_course_end', '此堂屬於下一期，請選用或建立下一期合約');
@@ -122,8 +122,8 @@ class ManualSessionBookingService
                         'source_end' => $endDate,
                         'start_date' => Carbon::parse($endDate)->addDay()->toDateString(),
                         'candidates' => StudentClass::query()->where('StudentID', $studentId)
-                            ->where('SubjectID', $course->SubjectID)->where('TeacherID', $course->TeacherID)
-                            ->where('ScheduleMode', 'date')->where('ID', '!=', $course->ID)
+                            ->where('SubjectID', $course->getAttribute('SubjectID'))->where('TeacherID', $course->getAttribute('TeacherID'))
+                            ->where('ScheduleMode', 'date')->where('ID', '!=', $course->getAttribute('ID'))
                             ->where('Stop', 0)->where(function ($query) { $query->whereNull('PackageID')->orWhere('PackageID', 0); })
                             ->whereDate('StartDate', '<=', $date)->whereDate('EndDate', '>=', $date)->orderBy('ID')->limit(20)
                             ->get(['ID', 'StartDate', 'EndDate'])->map(fn ($row) => ['id' => (int) $row->ID,
