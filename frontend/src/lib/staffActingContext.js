@@ -70,7 +70,18 @@ export function installActingAsFetchBridge(target = globalThis) {
     const headers = new HeadersCtor(input?.headers || undefined);
     new HeadersCtor(init?.headers || undefined).forEach((value, key) => headers.set(key, value));
     if (!headers.has(ACTING_AS_HEADER)) headers.set(ACTING_AS_HEADER, actingAs);
-    return originalFetch(input, { ...init, headers });
+    const pending = originalFetch(input, { ...init, headers });
+    if (typeof pending?.then !== 'function') return pending;
+    // Stale context (e.g. capability revoked): backend answers 403 acting_context_denied.
+    // Drop the stored context and retry once without the header.
+    return pending.then(async (resp) => {
+      if (resp?.status !== 403) return resp;
+      const body = await resp.clone().text().catch(() => '');
+      if (!body.includes('acting_context_denied')) return resp;
+      writeStoredActingAs(null, target.localStorage);
+      headers.delete(ACTING_AS_HEADER);
+      return originalFetch(input, { ...init, headers });
+    });
   };
   target.__alltrueActingAsFetchBridge = true;
 }
