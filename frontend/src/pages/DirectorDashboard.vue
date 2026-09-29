@@ -180,7 +180,7 @@
               </header>
               <dl class="director-summary-list">
                 <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.todaySchedules">今日課程<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ todaySchedules.length }}</dd><small>{{ attendedCount }} 堂已完成</small></div>
-                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations">待審評量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ pendingEvaluations.length }}</dd><small>需要確認的紀錄</small></div>
+                <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.pendingEvaluations">待審評量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ pendingEvaluationsTotal }}</dd><small>需要確認的紀錄</small></div>
                 <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.unreadNotifications">未讀通知<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ unreadNotificationCount }}</dd><small>通知中心待查看</small></div>
                 <div><dt :title="DASHBOARD_SUMMARY_DEFINITIONS.workflowDaily">今日工作量<span class="material-symbols-outlined director-summary-list__info" aria-hidden="true">info</span></dt><dd>{{ workflowDailySummary.due_total }}</dd><small>已完成 {{ workflowDailySummary.done_total }} 件</small></div>
               </dl>
@@ -313,10 +313,10 @@
               </section>
 
               <section id="evals-sec" class="surface-panel" aria-labelledby="director-evals-title">
-                <header class="surface-panel__header"><div><h3 id="director-evals-title">評量待審核</h3><p>確認後，家長才能看到完整回饋。</p></div><span class="surface-panel__count">{{ pendingEvaluations.length }} 筆</span></header>
+                <header class="surface-panel__header"><div><h3 id="director-evals-title">評量待審核</h3><p>確認後，家長才能看到完整回饋。</p></div><span class="surface-panel__count">{{ pendingEvaluationsTotal }} 筆</span></header>
                 <div v-if="!pendingEvaluations.length" class="director-state director-state--compact"><span class="material-symbols-outlined" aria-hidden="true">task_alt</span><span>目前沒有待審核評量。</span></div>
                 <div v-else class="director-evaluation-list"><article v-for="evaluation in pendingEvaluations.slice(0, 8)" :key="evaluation.id" class="director-evaluation-row"><div><strong>{{ evaluation.student_name }}</strong><span>{{ evaluation.student_class_label || evaluation.Subject || '—' }} · {{ evaluation.SessionDate || '未提供日期' }}</span></div><div><button type="button" class="button button--quiet" @click="emit('navigate', { target: 'learning', recordId: evaluation.id })">查看</button><button type="button" class="button button--primary" @click="approveEvaluation(evaluation)">核准</button><button type="button" class="button button--danger" @click="rejectEvaluation(evaluation)">退回</button></div></article></div>
-                <footer v-if="pendingEvaluations.length > 8" class="surface-panel__footer"><span>還有 {{ pendingEvaluations.length - 8 }} 筆</span><button type="button" class="text-action" @click="emit('navigate', { target: 'learning' })">查看全部</button></footer>
+                <footer v-if="pendingEvaluationsTotal > 8" class="surface-panel__footer"><span>還有 {{ pendingEvaluationsTotal - 8 }} 筆</span><button type="button" class="text-action" @click="emit('navigate', { target: 'learning' })">查看全部</button></footer>
               </section>
             </div>
 
@@ -395,6 +395,7 @@ import {
   trustPeopleSlice as trustPeople,
   trustDecisionTitle,
 } from '../lib/trustDecisionDisplay.js';
+import { parseInboxCount } from '../lib/actionInboxContract.js';
 import { buildDirectorDashboardTasks } from '../lib/directorDashboardTasks.js';
 import { runDashboardLoaders } from '../lib/dashboardLoadPlan.js';
 import { isUserEngagementRankDisplayEnabled } from '../lib/userEngagementDisplay';
@@ -416,6 +417,8 @@ const workflowFocusError = ref('');
 
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
+// 伺服器全量筆數（列表只載入前 100 筆，不能用 length 當總數）
+const pendingEvaluationsTotal = ref(0);
 const operationsTrust = ref(null);
 const lowBalanceStudents = ref([]);
 const unreadNotificationCount = ref(0);
@@ -622,8 +625,10 @@ const pendingAttendanceCount = computed(() =>
   todaySchedules.value.filter(s => s.status === 'scheduled').length
 );
 
+// 已完成 = 今日課程中「不是待點名」的堂數；與 pendingAttendanceCount、側欄出缺勤 badge 同一口徑，
+// 避免 total - attended 把 absent/completed 等已結案狀態誤算成待完成。
 const attendedCount = computed(() =>
-  todaySchedules.value.filter(s => s.status === 'attended').length
+  todaySchedules.value.length - pendingAttendanceCount.value
 );
 
 const exceptionWorkflowCount = computed(() => exceptionWorkflows.value.length);
@@ -663,7 +668,7 @@ const dashboardTasks = computed(() => buildDirectorDashboardTasks({
   paymentLabel: paymentActionLaneLabel.value,
   pendingMakeupCount: pendingMakeupCount.value,
   exceptionWorkflowCount: exceptionWorkflowCount.value,
-  pendingEvaluationsCount: pendingEvaluations.value.length,
+  pendingEvaluationsCount: pendingEvaluationsTotal.value,
   unreadFeedbackCount: props.unreadFeedbackCount,
   scheduleDiscrepancyCount: sdSummary.value.pending,
   adoptionTasks: directorTodoCards.value.map((item) => ({
@@ -1128,20 +1133,15 @@ const loadData = async () => {
     if (alertsResp.ok) {
       const alertsJson = await alertsResp.json();
       const alertList = Array.isArray(alertsJson) ? alertsJson : (alertsJson.low_balance || []);
-      const currentBranchId = Number(props.branchId) || 0;
+      // 不再在前端二次過濾：帳務中心顯示 API 全量，主任總覽必須同筆數（API 已依 branch_id 過濾）。
       lowBalanceStudents.value = alertList
-        .filter(c => {
-          if (!c.student_name) return false;
-          const campusId = Number(c.campus_id ?? c.CampusID ?? 0);
-          return !currentBranchId || !campusId || campusId === currentBranchId;
-        })
         .map(c => ({
           id: c.id || c.class_id,
           student_class_id: c.student_class_id || c.id || c.class_id || null,
           invoice_id: c.invoice_id || null,
           student_id: c.student_id || null,
-          raw_name: c.student_name,
-          name: `${c.student_name} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
+          raw_name: c.student_name || '未命名學生',
+          name: `${c.student_name || '未命名學生'} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
           remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0,
           alert_type: c.alert_type || 'unpaid',
           payment_status: c.payment_status || null,
@@ -1253,6 +1253,7 @@ const loadData = async () => {
     if (pendingRes.ok) {
       const pendingJson = await pendingRes.json();
       pendingEvaluations.value = pendingJson.data || [];
+      pendingEvaluationsTotal.value = Number(pendingJson.total ?? pendingEvaluations.value.length);
     }
   } catch (err) {
     console.error('Failed to load pending evaluations:', err);
@@ -1328,7 +1329,17 @@ const loadNotificationSummary = async (token, baseUrl) => {
     });
     if (!res.ok) { unreadNotificationCount.value = 0; notificationSummary.value = []; return; }
     const json = await res.json();
-    unreadNotificationCount.value = Number(json.unread_count || 0);
+    // 數字與側欄／通知中心同源（action-inbox/count）；列表端點只負責摘要清單。
+    try {
+      const countRes = await fetch(`${baseUrl}/v1/action-inbox/count?branch_id=${props.branchId}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+      });
+      unreadNotificationCount.value = countRes.ok
+        ? parseInboxCount(await countRes.json()).notificationsUnread
+        : Number(json.unread_count || 0);
+    } catch {
+      unreadNotificationCount.value = Number(json.unread_count || 0);
+    }
     notificationSummary.value = (json.data || []).map(item => ({
       id: item.id, title: item.Title || '通知', typeLabel: notificationTypeLabel(item.Type),
     }));
@@ -1400,6 +1411,7 @@ const approveEvaluation = async (evalItem) => {
     });
     if (res.ok) {
       pendingEvaluations.value = pendingEvaluations.value.filter(e => e.id !== evalItem.id);
+      pendingEvaluationsTotal.value = Math.max(0, pendingEvaluationsTotal.value - 1);
       loadData();
     } else { const err = await res.json(); alert('核准失敗: ' + (err.message || '')); }
   } catch { alert('核准失敗'); }

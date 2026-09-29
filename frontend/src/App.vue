@@ -813,6 +813,7 @@
 
 <script setup>
 import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import AtSkeleton from './components/design-system/AtSkeleton.vue';
 import { supabase } from './supabase';
 import {
   branches,
@@ -867,7 +868,7 @@ const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/Parttim
 const TeacherEligibilityPage = defineAsyncComponent(() => import('./pages/TeacherEligibilityPage.vue'));
 const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
 const BranchManagementPage  = defineAsyncComponent(() => import('./pages/BranchManagementPage.vue'));
-const BranchHealthBoard     = defineAsyncComponent(() => import('./pages/BranchHealthBoard.vue'));
+const BranchHealthBoard     = defineAsyncComponent({ loader: () => import('./pages/BranchHealthBoard.vue'), loadingComponent: AtSkeleton, delay: 0 });
 const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
 const ProfileCenterPage     = defineAsyncComponent(() => import('./pages/ProfileCenterPage.vue'));
 const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPage.vue'));

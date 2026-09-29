@@ -626,7 +626,7 @@
       :role="pageMode === 'records' ? 'tabpanel' : undefined"
       :tabindex="pageMode === 'records' ? 0 : undefined"
       :aria-labelledby="pageMode === 'records' ? (isDirectorRole ? `lr-review-tab-${reviewTab}` : `lr-teacher-tab-${teacherFilterTab}`) : undefined"
-    >      <div v-if="recordsPagination.loading && records.length === 0" class="lr-record-skeleton-grid" aria-hidden="true">
+    >      <div v-if="(recordsPagination.loading || !recordsSettled) && records.length === 0 && !recordsLoadError" class="lr-record-skeleton-grid" aria-hidden="true">
         <div v-for="i in 5" :key="i" class="lr-record-skeleton-card">
           <div class="lr-skel-line lr-skel-title"></div>
           <div class="lr-skel-line"></div>
@@ -1591,6 +1591,8 @@ const showContentPreview = ref(initialViewDefaults.showContentPreview);
 
 const records = ref([]);
 const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
+// 首次請求完成前（含取 token 的空檔）不可顯示「目前沒有…」的空狀態。
+const recordsSettled = ref(false);
 const viewMode = ref(initialViewDefaults.viewMode);
 watch(viewMode, (mode) => window.localStorage.setItem('lr_view_mode', mode));
 const isNarrowViewport = ref(initialViewportWidth <= 640);
@@ -3448,7 +3450,8 @@ const fetchRecords = async () => {
   const ownerIsCurrent = () => owner === [props.userId, props.branchId].map(String).join(':');
   try {
     const token = await getToken();
-    if (!token || !ownerIsCurrent()) return;
+    if (!token) { recordsSettled.value = true; return; }
+    if (!ownerIsCurrent()) return;
     recordsLoadError.value = '';
     recordsPagination.value = { ...recordsPagination.value, loading: true };
 
@@ -3468,8 +3471,10 @@ const fetchRecords = async () => {
       total: data.total || 0,
       loading: false,
     };
+    recordsSettled.value = true;
   } catch (e) {
     if (!ownerIsCurrent()) return;
+    recordsSettled.value = true;
     console.error(e);
     recordsLoadError.value = '請檢查網路連線後再試一次。原有資料仍會保留。';
     recordsPagination.value = { ...recordsPagination.value, loading: false };

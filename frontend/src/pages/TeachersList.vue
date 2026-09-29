@@ -8,8 +8,8 @@
       data-guide="teachers-header"
     >
       <template #meta>
-        <span>共 {{ teachers.length }} 位</span>
-        <span>目前列表 {{ filteredTeachers.length }} 位</span>
+        <span>共 {{ teachersLoaded ? teachers.length : '—' }} 位</span>
+        <span>目前列表 {{ teachersLoaded ? filteredTeachers.length : '—' }} 位</span>
       </template>
       <template #actions>
         <AtButton variant="ghost" shape="rect" icon="upload_file" @click="openBulkModal">批次新增老師</AtButton>
