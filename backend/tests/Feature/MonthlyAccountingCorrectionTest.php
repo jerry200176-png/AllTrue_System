@@ -254,6 +254,134 @@ class MonthlyAccountingCorrectionTest extends TestCase
         $this->assertSame(422, $controller->accountingPreview($request, $source, $service)->status());
     }
 
+    private function existingTargetFixture(): array
+    {
+        [$source, $ids, $input, $invoice, $report] = $this->fixture();
+        $source->update(['Paid' => 0, 'PayDate' => null]);
+        $invoice->update(['PaidAmount' => 0, 'Status' => 'unpaid']);
+        $report->update(['status' => 'voided', 'voided_at' => now(), 'void_reason' => 'Director correction']);
+        $void = Payment::create(['InvoiceID' => $invoice->id, 'Amount' => -7500, 'Method' => 'void', 'PaidAt' => '2026-09-29', 'payment_report_id' => $report->id]);
+        $target = $source->replicate();
+        $target->forceFill(['StartDate' => '2026-09-11', 'EndDate' => '2026-09-30', 'Charge' => 4500, 'SessionCount' => 3, 'UsedSessions' => 0, 'RemainingSessions' => 1])->save();
+        $bill = Invoice::create(['StudentID' => $source->StudentID, 'StudentClassID' => $target->ID, 'IssueDate' => '2026-09-29', 'DueDate' => '2026-10-01', 'billing_period' => '2026-09', 'TotalAmount' => 4500, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        $item = \App\Models\InvoiceItem::create(['InvoiceID' => $bill->id, 'Amount' => 4500, 'PeriodStart' => '2026-09-11', 'PeriodEnd' => '2026-09-30', 'Description' => 'Forecast']);
+        $pending = [];
+        foreach (['2026-09-16' => 'cancelled', '2026-09-23' => 'cancelled', '2026-09-30' => 'scheduled'] as $date => $status) {
+            $pending[] = ClassSession::create(['StudentClassID' => $target->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => $status])->id;
+        }
+        $input['expected_receipt_status'] = 'voided'; $input['expected_void_payment_id'] = $void->id;
+        $input['split']['target_course_id'] = $target->ID;
+        $input['expected_target'] = ['start' => '2026-09-11', 'end' => '2026-09-30', 'charge' => 4500, 'invoice_id' => $bill->id, 'item_id' => $item->id];
+        return [$source, $ids, $input, $target, $bill, $item, $pending];
+    }
+
+    public function test_existing_target_and_already_voided_receipt_are_corrected_without_duplicates(): void
+    {
+        [$source, $ids, $input, $target, $bill, $item, $pending] = $this->existingTargetFixture();
+        $service = app(MonthlyAccountingCorrectionService::class);
+        $before = app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source, $target);
+        $plan = $service->preview($source, $input);
+        $this->assertSame($before, app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source->fresh(), $target->fresh()));
+        $result = $service->execute($source, $input, $plan['confirmation_token'], 'accounting-existing', 'pop:test');
+        $this->assertTrue($service->verify($result)['ok']);
+        $this->assertSame((int) $target->ID, $result['target_course_id']);
+        $this->assertSame((int) $bill->id, $result['target_invoice_id']);
+        $this->assertSame(2, StudentClass::count()); $this->assertSame(2, Invoice::count());
+        $this->assertSame([7500, -7500, 6000], Payment::orderBy('id')->pluck('Amount')->map(fn ($n) => (int) $n)->all());
+        $this->assertSame(2, PaymentReport::count()); $this->assertSame(11, ClassSession::count());
+        $this->assertSame('2026-09-01', substr((string) $target->fresh()->StartDate, 0, 10));
+        $this->assertSame(6000, (int) $bill->fresh()->TotalAmount); $this->assertSame('unpaid', $bill->fresh()->Status);
+        $this->assertSame('2026-09-30', $bill->fresh()->DueDate);
+        $this->assertSame((int) $target->ID, (int) $item->fresh()->StudentClassID);
+        $this->assertSame(6000, (int) $item->fresh()->Amount);
+        $this->assertSame('cancelled', ClassSession::find($pending[0])->Status);
+        $this->assertSame('scheduled', ClassSession::find($pending[2])->Status);
+        $this->assertSame(4, (int) $target->fresh()->UsedSessions); $this->assertSame(5, (int) $target->fresh()->SessionCount);
+        $this->assertSame(0, (int) $target->fresh()->RemainingSessions); // Monthly counters do not represent future session coverage.
+        $this->assertSame(1, (int) $source->fresh()->Paid);
+        $this->assertSame('2026-09-04', substr((string) $source->fresh()->PayDate, 0, 10));
+        $this->simulateBinaryJsonOrder('accounting-existing');
+        $this->assertSame($result, $service->execute($source, $input, $plan['confirmation_token'], 'accounting-existing', 'pop:test'));
+        $request = \Illuminate\Http\Request::create('/', 'GET');
+        $request->attributes->set('auth_role', 'director'); $request->attributes->set('auth_campus_ids', [1]);
+        $this->assertSame(6000, app(\App\Http\Controllers\AlertController::class)->tuitionSlipData($request, (int) $target->ID)->getData(true)['payable_amount']);
+        $rollback = $service->rollback($result);
+        $this->assertTrue($rollback['verified_cash_correction_preserved']);
+        $this->assertSame(6000, (int) Payment::sum('Amount'));
+        $this->assertSame(0, (int) $target->fresh()->Stop);
+        $this->assertSame('2026-09-11', substr((string) $target->fresh()->StartDate, 0, 10));
+        $this->assertSame('scheduled', ClassSession::find($pending[2])->Status);
+        $this->assertSame((int) $source->ID, (int) ClassSession::find($ids[6])->StudentClassID);
+        $this->assertSame('void', $bill->fresh()->Status);
+    }
+
+    public function test_readonly_preview_resolves_unique_parent_item_for_the_signed_manifest(): void
+    {
+        [$source, , $input, , , $item] = $this->existingTargetFixture();
+        unset($input['expected_target']['item_id']);
+        $plan = app(MonthlyAccountingCorrectionService::class)->preview($source, $input);
+        $this->assertSame((int) $item->id, (int) $plan['input']['expected_target']['item_id']);
+        $this->assertNull($item->fresh()->StudentClassID);
+        $this->assertSame(2, Payment::count()); $this->assertSame(0, (int) Payment::sum('Amount'));
+    }
+
+    public function test_existing_target_drift_rejects_before_correct_receipt_is_registered(): void
+    {
+        [$source, , $input, , $bill] = $this->existingTargetFixture();
+        $service = app(MonthlyAccountingCorrectionService::class); $plan = $service->preview($source, $input);
+        $bill->update(['Note' => 'Changed after approval']);
+        $this->expectException(ValidationException::class);
+        try { $service->execute($source, $input, $plan['confirmation_token'], 'accounting-existing-stale', 'pop:test'); }
+        finally { $this->assertSame(2, Payment::count()); $this->assertSame(0, (int) Payment::sum('Amount')); }
+    }
+
+    /** @dataProvider unsafeExistingTargets */
+    public function test_unreviewed_existing_target_and_voided_cash_states_are_rejected(string $scenario): void
+    {
+        [$source, , $input, $target, $bill, $item, $pending] = $this->existingTargetFixture();
+        if ($scenario === 'active_overlap') ClassSession::find($pending[0])->update(['Status' => 'scheduled']);
+        if ($scenario === 'target_attended') ClassSession::find($pending[2])->update(['Status' => 'attended']);
+        if ($scenario === 'target_paid') $bill->update(['PaidAmount' => 100, 'Status' => 'partial']);
+        if ($scenario === 'extra_payment') Payment::create(['InvoiceID' => $bill->id, 'Amount' => 100, 'Method' => 'cash', 'PaidAt' => '2026-09-29']);
+        if ($scenario === 'wrong_item_owner') $item->update(['StudentClassID' => $source->ID]);
+        if ($scenario === 'wrong_void_owner') Payment::find($input['expected_void_payment_id'])->update(['payment_report_id' => null]);
+        if ($scenario === 'wrong_void_amount') Payment::find($input['expected_void_payment_id'])->update(['Amount' => -6000]);
+        if ($scenario === 'extra_item') \App\Models\InvoiceItem::create(['InvoiceID' => $bill->id, 'Amount' => 100, 'Description' => 'Other fee']);
+        $before = app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source->fresh(), $target->fresh());
+        try { app(MonthlyAccountingCorrectionService::class)->preview($source, $input); $this->fail('Expected bounded review rejection'); }
+        catch (ValidationException) { $this->assertSame($before, app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source->fresh(), $target->fresh())); }
+    }
+
+    public static function unsafeExistingTargets(): array
+    {
+        return array_map(fn ($scenario) => [$scenario], ['active_overlap', 'target_attended', 'target_paid', 'extra_payment', 'wrong_item_owner', 'wrong_void_owner', 'wrong_void_amount', 'extra_item']);
+    }
+
+    public function test_existing_target_transaction_failure_restores_both_original_contracts(): void
+    {
+        [$source, , $input, $target] = $this->existingTargetFixture();
+        $service = app(MonthlyAccountingCorrectionService::class); $plan = $service->preview($source, $input);
+        $before = app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source, $target);
+        SessionCorrection::creating(function () { throw new \RuntimeException('audit failed'); });
+        try { $service->execute($source, $input, $plan['confirmation_token'], 'accounting-existing-atomic', 'pop:test'); $this->fail('Expected transaction abort'); }
+        catch (\RuntimeException $error) {
+            $this->assertSame('audit failed', $error->getMessage());
+            $this->assertSame($before, app(\App\Services\MonthlyContractCorrectionService::class)->snapshotGraph($source->fresh(), $target->fresh()));
+        } finally { SessionCorrection::flushEventListeners(); }
+    }
+
+    public function test_retained_future_session_only_changes_monthly_fee_after_attendance(): void
+    {
+        [$source, , $input, $target, $bill, , $pending] = $this->existingTargetFixture();
+        $service = app(MonthlyAccountingCorrectionService::class); $plan = $service->preview($source, $input);
+        $service->execute($source, $input, $plan['confirmation_token'], 'accounting-existing-next', 'pop:test');
+        $reconciliation = app(\App\Services\InvoiceAmountReconciliationService::class);
+        $this->assertSame(6000, $reconciliation->resolve($bill->fresh(), $target->fresh())['total_amount']);
+        ClassSession::find($pending[2])->update(['Status' => 'attended']);
+        $this->assertSame(7500, $reconciliation->resolve($bill->fresh(), $target->fresh())['total_amount']);
+        $this->assertSame(6000, (int) $bill->fresh()->TotalAmount); // Read-only projection preserves invoice audit value.
+    }
+
     private function simulateBinaryJsonOrder(string $reference): void
     {
         // MySQL JSON storage orders object keys; MariaDB's JSON text preserves them.
