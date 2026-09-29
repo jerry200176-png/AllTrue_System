@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(finance): add reference subject-unit totals with and without tutoring
+<!-- release-notes: staff_update=staff-2026-09-30-subject-units-reference-totals -->
+- 科目數統計新增「參考合計（含輔導／不含輔導）÷ 8」兩張卡（in-app #331，Founder 2026-09-30 核准）；由完整加權總分僅在最後一步除以 8，僅供分析，既有數字與薪資計算完全不變。
+
 ## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
 <!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->
 - 受控月結更正核對完整調課鏈：同一期內連同原堂次保留並移轉，拒絕跨期、斷鏈、循環、學生／分校錯配及範圍外合約關聯；簽章核對也涵蓋新增外部連結。修復仍未啟用，正式個案尚未更正。

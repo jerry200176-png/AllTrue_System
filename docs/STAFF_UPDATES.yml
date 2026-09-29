@@ -51,6 +51,20 @@ updates:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
 
+  - id: staff-2026-09-30-subject-units-reference-totals
+    published_at: "2026-09-30"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 科目數統計新增參考合計
+    summary: 科目數統計新增含輔導與不含輔導兩個參考合計（加權總分 ÷ 8），僅供分析。
+    items:
+      - category: improved
+        text: 新增「參考合計（含輔導）」與「參考合計（不含輔導）」兩張卡，既有數字與薪資不變。
+    source_refs:
+      - "alltrue:bug_report:331"
+
   - id: staff-2026-09-29-row-actions-compact
     published_at: "2026-09-29"
     audiences:

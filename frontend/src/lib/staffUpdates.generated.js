@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-30-subject-units-reference-totals",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "科目數統計新增參考合計",
+    "summary": "科目數統計新增含輔導與不含輔導兩個參考合計（加權總分 ÷ 8），僅供分析。",
+    "items": [
+      "新增「參考合計（含輔導）」與「參考合計（不含輔導）」兩張卡，既有數字與薪資不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新增「參考合計（含輔導）」與「參考合計（不含輔導）」兩張卡，既有數字與薪資不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:331"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-29-void-receipt-trace",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,
