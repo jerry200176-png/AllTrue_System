@@ -27,6 +27,11 @@ exemptions:
     changelog_title: "feat(billing): prepare audited monthly receipt correction"
     reason: 收款更正能力尚未啟用或核准正式清單，沒有修改正式帳務或新主任操作；待部署及個案驗收後再評估公告。
 
+  - id: silent-2026-09-29-move-session-contract
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(schedule): director can move a session to another contract"
+    reason: 權限擴大屬受保護邊界，待 Founder 核准並上線驗證後再發布主任操作公告。
+
   - id: silent-2026-09-29-monthly-next-period-booking
     changelog_date: "2026-09-29"
     changelog_title: "fix(courses): prepare next-period monthly booking guidance"
