@@ -104,6 +104,16 @@ class AdminDuplicateSessionController extends Controller
                 ];
             }
 
+            // In-app #316 (read-only label, never filters): the overlapping courses sit in the same
+            // shared package AND are different subjects — possibly an intended multi-subject plan.
+            // Same-subject pairs in one package stay unlabelled, since those are real duplicates.
+            $sideRows = array_map(fn ($rows) => $rows[0], array_values($bySc));
+            $packageIds = array_unique(array_map(fn ($r) => (int) ($r->PackageID ?? 0), $sideRows));
+            $subjectIds = array_unique(array_map(fn ($r) => (int) ($r->SubjectID ?? 0), $sideRows));
+            $isSharedMultiSubject = count($sideRows) > 1
+                && count($packageIds) === 1 && reset($packageIds) > 0
+                && count($subjectIds) === count($sideRows);
+
             $p2Groups[] = [
                 'id' => $this->encodeGroupId($g['student_id'], $g['date'], $g['hm']),
                 'student_id' => $g['student_id'],
@@ -111,6 +121,7 @@ class AdminDuplicateSessionController extends Controller
                 'session_date' => $g['date'],
                 'start_time' => $g['hm'],
                 'sides' => $sides,
+                'is_shared_package' => $isSharedMultiSubject,
                 'resolved_keeper_sc_id' => null,
             ];
         }
@@ -339,7 +350,7 @@ class AdminDuplicateSessionController extends Controller
             ->when(!empty($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds))
             ->selectRaw('
                 cs.id, cs.StudentClassID, cs.SessionDate, SUBSTRING(cs.StartTime,1,5) as hm,
-                sc.StudentID, sc.SessionCount, sc.Stop, sc.RemainingSessions, sc.ScheduleMode, sc.StartDate,
+                sc.StudentID, sc.SessionCount, sc.Stop, sc.RemainingSessions, sc.ScheduleMode, sc.StartDate, sc.PackageID, sc.SubjectID,
                 s.name as student_name, u.Name as teacher_name, sub.Subject_Name as subject_name,
                 cs.Status as session_status
             ')

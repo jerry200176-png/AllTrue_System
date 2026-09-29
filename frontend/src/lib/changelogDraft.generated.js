@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "reference subject-unit totals with and without tutoring；student school and grade in course lookup",
+    "summary": "新增多科共用堂數與加購分流入口；reference subject-unit totals with and without tutoring",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "新增多科共用堂數與加購分流入口",
           "reference subject-unit totals with and without tutoring",
           "student school and grade in course lookup"
         ]
@@ -30,6 +31,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "新增多科共用堂數與加購分流入口",
       "reference subject-unit totals with and without tutoring",
       "student school and grade in course lookup",
       "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"

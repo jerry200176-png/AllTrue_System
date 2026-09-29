@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-ux-followups -->
 - 換頁載入時顯示骨架畫面（延遲 150ms，快速載入不閃爍）；編輯學生視窗可按 Esc 關閉，「LINE 綁定家長」改顯示「已綁定 LINE」與 2026/09/03 格式日期，監護人關係顯示中文；課程查找「上課類型」篩選改為只列出符合類型的課程；意見與建議列表遇自動產生的標題時改顯示說明第一行（後端列表僅新增唯讀摘要欄位）。
 
+## 2026-09-30 — feat(ux): label shared-package rows in overlapping-course review (in-app #316)
+<!-- release-notes: staff_update=staff-2026-09-30-dup-review-shared-label -->
+- 重疊課程審核的每組資料新增唯讀欄位 `is_shared_package`；屬多科共用堂數套組者仍照常列出，並標示「多科共用」與提示，供主任判斷是否為刻意安排。重複判定、堂數、扣堂與帳務不變。
+
 ## 2026-09-30 — feat(finance): add reference subject-unit totals with and without tutoring
 <!-- release-notes: staff_update=staff-2026-09-30-subject-units-reference-totals -->
 - 科目數統計新增「參考合計（含輔導／不含輔導）÷ 8」兩張卡（in-app #331，Founder 2026-09-30 核准）；由完整加權總分僅在最後一步除以 8，僅供分析，既有數字與薪資計算完全不變。
