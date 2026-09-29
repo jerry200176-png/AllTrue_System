@@ -136,7 +136,7 @@ class NotificationSyncService
      *
      * @return array|null sync result, or null when skipped (cooldown active / another caller syncing)
      */
-    public static function syncThrottled(array $campusIds = [], ?int $branchId = null): ?array
+    public static function syncThrottled(array $campusIds = [], ?int $branchId = null, bool $force = false): ?array
     {
         if (!config('perfflags.throttle_notification_sync', true)) {
             return self::sync($campusIds, $branchId);
@@ -146,17 +146,30 @@ class NotificationSyncService
         $key = 'notif_sync_' . ($branchId ?? 'all') . '_' . implode('_', $campusIds);
         $fresh = static fn (): bool => ($last = Cache::get($key)) && (time() - (int) $last) <= $cooldown;
 
-        if ($fresh()) {
-            return null;
-        }
-
-        $lock = Cache::lock($key . '_lock', 120);
-        if (!$lock->get()) {
+        // A manual refresh (force) ignores the cooldown but still never runs two syncs at once.
+        if (!$force && $fresh()) {
             return null;
         }
 
         try {
-            if ($fresh()) {
+            $lock = Cache::lock($key . '_lock', 120);
+            $acquired = $force ? $lock->block(30) : $lock->get();
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            return null;
+        } catch (\Throwable $e) {
+            // Cache store without lock support: fall back to an unlocked sync instead of failing the request.
+            report($e);
+            $result = self::sync($campusIds, $branchId);
+            Cache::put($key, time(), now()->addMinutes(10));
+
+            return $result;
+        }
+        if (!$acquired) {
+            return null;
+        }
+
+        try {
+            if (!$force && $fresh()) {
                 return null;
             }
             $result = self::sync($campusIds, $branchId);

@@ -630,6 +630,18 @@ class NotificationApiTest extends TestCase
             ->assertJson(['skipped' => true]);
     }
 
+    public function test_manual_post_sync_with_force_runs_despite_cooldown(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-force-sync@example.com');
+        $this->createStudentClass($this->makeSyncStudent()->id, 0, 1);
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($h)->getJson('/api/v1/notifications/unread-count?branch_id=1')->assertOk();
+        $res = $this->withHeaders($h)->postJson('/api/v1/notifications/sync', ['branch_id' => 1, 'force' => true])
+            ->assertOk();
+        $this->assertArrayNotHasKey('skipped', $res->json());
+    }
+
     public function test_learning_review_notification_only_for_started_sessions(): void
     {
         $class = $this->createStudentClass($this->makeSyncStudent()->id, 1, 1, 9);

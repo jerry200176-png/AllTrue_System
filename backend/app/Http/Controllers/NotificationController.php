@@ -90,6 +90,7 @@ class NotificationController extends Controller
     {
         $request->validate([
             'branch_id' => 'nullable|integer',
+            'force' => 'nullable|boolean',
         ]);
 
         [$campusIds, , $branchId] = $this->resolveCampusScope($request);
@@ -98,7 +99,7 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $syncResult = NotificationSyncService::syncThrottled($campusIds, $branchId);
+        $syncResult = NotificationSyncService::syncThrottled($campusIds, $branchId, $request->boolean('force'));
 
         return response()->json([
             ...($syncResult ?? ['created' => 0, 'updated' => 0, 'resolved' => 0, 'active_count' => null, 'skipped' => true]),
