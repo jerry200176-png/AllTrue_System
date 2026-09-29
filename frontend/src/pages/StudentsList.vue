@@ -1496,7 +1496,8 @@ const isCourseNeedsAttention = (course) => {
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
   const courseStatus = String(course?.status || '').toLowerCase();
   return isSessionPaymentLowRemaining(course)
-    || ['overdue', 'unpaid', 'pending'].includes(paymentStatus)
+    || isTutoringBillingAnomaly(course)
+    || (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus))
     || courseStatus === 'inactive'
     || !course?.teacher_name
     || !hasCourseSchedule(course)
@@ -1504,9 +1505,10 @@ const isCourseNeedsAttention = (course) => {
     || !course?.room_name;
 };
 const getCourseAttentionLabel = (course) => {
+  if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
   if (isSessionPaymentLowRemaining(course)) return '需要續報';
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (['overdue', 'unpaid', 'pending'].includes(paymentStatus)) return '付款待確認';
+  if (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus)) return '付款待確認';
   if (String(course?.status || '').toLowerCase() === 'inactive') return '已暫停';
   if (!course?.teacher_name || !hasCourseSchedule(course) || !course?.branch_name || !course?.room_name) {
     return '資料待確認';
@@ -1514,6 +1516,16 @@ const getCourseAttentionLabel = (course) => {
   return '進行中';
 };
 const getCoursePrimaryAction = (course) => {
+  if (isTutoringBillingAnomaly(course)) {
+    return {
+      key: 'payment',
+      icon: 'receipt_long',
+      label: '查看帳務資料',
+      title: '先核對輔導課帳務資料',
+      description: '輔導課無須繳費，請由主任核對帳務異常。',
+      tone: 'warning',
+    };
+  }
   if (isSessionPaymentLowRemaining(course)) {
     return {
       key: 'renew',
@@ -1527,7 +1539,7 @@ const getCoursePrimaryAction = (course) => {
     };
   }
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (['overdue', 'unpaid', 'pending'].includes(paymentStatus)) {
+  if (!isTutoringCourse(course) && ['overdue', 'unpaid', 'pending'].includes(paymentStatus)) {
     return {
       key: 'payment',
       icon: 'receipt_long',

@@ -4,6 +4,46 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-29-tutoring-payment-prompts",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "輔導課付款提示一致",
+    "summary": "正常輔導課不再誤列為待付款，帳務異常仍會提醒主任核對。",
+    "items": [
+      "學生管理的輔導課卡片、待處理數與下一步提示一致，不要求正常輔導課確認付款。",
+      "一般收費課的付款提醒與輔導課續報提示保留；帳務異常仍可前往帳務中心查看。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "學生管理的輔導課卡片、待處理數與下一步提示一致，不要求正常輔導課確認付款。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "一般收費課的付款提醒與輔導課續報提示保留；帳務異常仍可前往帳務中心查看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:351",
+      "changelog:2026-09-29:tutoring-payment-prompts"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-27-homework-hint",
     "publishedAt": "2026-09-27",
     "effectiveAt": null,

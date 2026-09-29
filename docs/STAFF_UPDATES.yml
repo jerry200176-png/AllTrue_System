@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-29-tutoring-payment-prompts
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 輔導課付款提示一致
+    summary: 正常輔導課不再誤列為待付款，帳務異常仍會提醒主任核對。
+    items:
+      - category: fixed
+        text: 學生管理的輔導課卡片、待處理數與下一步提示一致，不要求正常輔導課確認付款。
+      - category: improved
+        text: 一般收費課的付款提醒與輔導課續報提示保留；帳務異常仍可前往帳務中心查看。
+    source_refs:
+      - "alltrue:bug_report:351"
+      - "changelog:2026-09-29:tutoring-payment-prompts"
+
   - id: staff-2026-09-27-homework-hint
     published_at: "2026-09-27"
     audiences:

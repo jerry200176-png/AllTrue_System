@@ -3587,3 +3587,6 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-09-19 — feat(calendar): director week/month print preview (in-app #318 / GitHub #3068)
 <!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
 - 主任可從班級行事曆列印目前有權限查看的週／月課表，包含總覽、每日明細、學生、課程、教師、日期時間、校區教室與異動狀態；僅透過瀏覽器列印，不建立額外檔案或資料來源。
+## 2026-09-29 — fix(students): keep tutoring next steps consistent with no-charge status (in-app #351 / GitHub #3206)
+<!-- release-notes: staff_update=staff-2026-09-29-tutoring-payment-prompts -->
+- 學生管理的正常輔導課不再誤列為待付款；已有帳務異常仍提示主任核對，一般收費課的付款提醒與輔導課續報提示保留。
