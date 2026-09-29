@@ -1,9 +1,10 @@
 <template>
-  <div class="students-page at-ops-page at-page">
+  <div class="students-page at-ops-page">
+    <div class="students-shell">
       <AtPageHeader
         title="學生管理"
         description="搜尋、篩選與管理本分校學生資料與課程安排。"
-        icon="groups"
+        icon="school"
         data-guide="students-header"
       >
         <template #meta>
@@ -27,7 +28,6 @@
         </template>
       </AtPageHeader>
 
-    <div class="students-shell">
       <!-- Bulk Action Toolbar (appears when students selected) -->
       <div v-if="hasSelectedStudents" class="bulk-toolbar">
         <span class="bulk-count">

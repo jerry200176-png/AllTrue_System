@@ -1,9 +1,9 @@
 <template>
-  <div class="tuition-report-page at-page">
+  <div class="card tuition-report-page">
     <AtPageHeader
       title="當月學收"
       description="依已上課堂數 × 費率試算各學生當月學收。"
-      icon="bar_chart"
+      icon="payments"
       data-guide="tuition-report-header"
     >
       <template #actions>
@@ -13,7 +13,7 @@
           <span class="tr-month-label">{{ year }} 年 {{ month }} 月</span>
           <AtIconButton icon="chevron_right" label="下一月" @click="nextMonth" />
         </div>
-        <AtButton variant="secondary" shape="rect" icon="refresh" :disabled="loading" @click="loadData">重新整理</AtButton>
+        <AtButton variant="primary" shape="rect" icon="refresh" :disabled="loading" @click="loadData">重新整理</AtButton>
         <AtButton variant="ghost" shape="rect" icon="download" :disabled="loading || !rows.length" @click="exportCsv">匯出 CSV</AtButton>
         </div>
       </template>
@@ -314,7 +314,7 @@ loadData();
 .tr-stat strong { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .tr-stat--primary { color: var(--primary); font-weight: 600; }
 
-.tr-table-wrap { overflow-x: auto; background: var(--card-bg); border-radius: 14px; box-shadow: var(--ds-shadow-1); }
+.tr-table-wrap { overflow-x: auto; }
 .tr-table {
   width: 100%;
   border-collapse: collapse;

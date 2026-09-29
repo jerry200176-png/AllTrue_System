@@ -59,9 +59,9 @@ describe('operations quick-start UX contract', () => {
     const billing = pageSource('TuitionCollectionPage.vue');
     const calendar = pageSource('SmartCalendar.vue');
 
-    expect(course).toContain('<AtHelpDisclosure label="先看懂這一頁">');
+    expect(course).toContain('class="course-context-disclosure"');
     expect(course).toContain('class="course-stats-disclosure"');
-    expect(billing).toContain('<AtHelpDisclosure label="帳務處理流程">');
+    expect(billing).toContain('class="tc-process-disclosure"');
     expect(billing).toContain('class="tc-summary-disclosure"');
     expect(calendar).toContain('class="calendar-process-disclosure"');
     expect(calendar).toContain('data-guide="calendar-toolbar"');
