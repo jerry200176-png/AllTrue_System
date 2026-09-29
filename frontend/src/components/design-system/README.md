@@ -127,4 +127,6 @@
 
 Pilot 已驗證：`AtPageHeader` `AtSection` `AtToolbar` `AtFilterBar` `AtBadge` `AtInlineAlert` `AtSkeleton` `AtIconButton` `AtEmpty` + `AtButton(shape/loading)`。
 
+頁首規範（2026-09-29）：`AtPageHeader` = 標題 + 一句說明 + `actions`；流程／SOP 說明放 `help` slot 的 `AtHelpDisclosure`（ⓘ，預設收合）；重新整理一律 `AtButton variant="secondary" icon="refresh"`「重新整理」；頁面層級分頁一律 `styles.css` 的 `.at-tabs` / `.at-tab`（底線式）；頁首不放進卡片，頁面根節點用 `.at-page`；圖示需與 `navigationRegistry.js` 側欄一致。
+
 未在 pilot 真實接入的抽象（如 `AtModal` / `AtDataTableShell`）**不進本 PR**；等有使用頁面再建立。

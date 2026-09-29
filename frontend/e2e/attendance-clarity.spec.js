@@ -150,7 +150,7 @@ test.describe('Attendance clarity — real Director workflow', () => {
   test('error state keeps recovery visible', async ({ page }) => {
     const diagnostics = await openAttendance(page, 'error', viewports[3]);
     await expect(page.getByRole('alert')).toContainText('載入待點名堂次失敗');
-    await expect(page.getByRole('button', { name: '重新整理今日堂次' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '重新整理' })).toBeVisible();
     await expectTouchTargets(page);
     await expectNoOverflow(page);
     expect(diagnostics.consoleErrors.filter((message) => !message.includes('status of 503'))).toEqual([]);
