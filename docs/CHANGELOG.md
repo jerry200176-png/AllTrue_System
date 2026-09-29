@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-counts-loading-ux -->
 - 主任總覽的待審評量、未讀通知、繳費提醒、今日課務進度改與側欄／各頁同一口徑；載入中的列表標頭顯示「—」與骨架而非 0／空狀態。純前端顯示調整，無教職員新操作。
 
+## 2026-09-29 — feat(ui): compact sidebar branch switcher and More-page breadcrumb
+<!-- release-notes: staff_update=staff-2026-09-29-sidebar-branch-dropdown -->
+- 側欄分校改為下拉選單並移除重複的使用者卡；「更多功能」內頁面在頂列顯示所在位置；Windows 顯示 Ctrl+K；建置時間只給超級管理員；意見回饋按鈕不再壓到捲軸。
+
 ## 2026-09-29 — feat(ui): unify page headers, part 2 (dashboard, students, courses, billing, teachers, admissions, reports, branch health)
 <!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
 - 補完其餘八頁的頁首統一（同一則版本更新說明）：標題不再包在白卡裡、流程說明收進 ⓘ、「重新整理」統一、圖示與側欄一致；主任總覽移除重複橫幅、軍階改為小標籤。僅版面與文案。

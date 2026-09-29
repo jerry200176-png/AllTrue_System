@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
+    "summary": "修正行事曆課程合併邏輯，避免課程重複出現或突然消失；sidebar branch switcher and More-page breadcrumb",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+          "sidebar branch switcher and More-page breadcrumb",
           "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
           "audited monthly receipt correction",
           "undo of contract amendment",
@@ -39,13 +40,13 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
+      "sidebar branch switcher and More-page breadcrumb",
       "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
       "audited monthly receipt correction",
       "undo of contract amendment",
       "controlled monthly contract correction",
       "complete reschedule chains within reviewed monthly periods",
-      "existing source invoice items during reviewed correction",
-      "source per dashboard count, loading placeholders"
+      "existing source invoice items during reviewed correction"
     ]
   },
   {
