@@ -131,6 +131,11 @@ class StudentClassController extends Controller
             }
         }
 
+        $request->validate(['schedule_mode' => 'sometimes|in:date,count']);
+        if ($request->filled('schedule_mode')) {
+            $query->where('ScheduleMode', $request->input('schedule_mode'));
+        }
+
         if ($request->filled('status')) {
             $statusVal = $request->input('status');
             if ($statusVal === 'inactive') {

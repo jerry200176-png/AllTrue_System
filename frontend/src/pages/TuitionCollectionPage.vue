@@ -51,7 +51,7 @@
         :aria-selected="activeAccountingTab === tab.key"
         @click="activeAccountingTab = tab.key"
       >
-        <span class="material-symbols-outlined" style="font-size:18px">{{ tab.icon }}</span>
+        <span class="material-symbols-outlined" aria-hidden="true" style="font-size:18px">{{ tab.icon }}</span>
         {{ tab.label }}
       </button>
     </div>
@@ -61,6 +61,10 @@
       <span>{{ tuitionFocusMessage }}</span>
       <button type="button" class="tc-focus-context__clear" @click="clearTuitionFocus">清除定位</button>
     </div>
+
+    <section v-if="activeAccountingTab === 'monthly-review'" id="tuition-accounting-panel-monthly-review" role="tabpanel" aria-labelledby="tuition-accounting-tab-monthly-review" tabindex="0">
+      <MonthlyBillingReview ref="monthlyReview" :branch-id="branchId" @ledger="openLedgerForClass" @navigate="emit('navigate', $event)" />
+    </section>
 
     <section
       v-if="activeAccountingTab === 'receivables'"
@@ -1026,6 +1030,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
 import { useToast } from '../composables/useToast';
+import MonthlyBillingReview from '../components/MonthlyBillingReview.vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
@@ -1068,10 +1073,12 @@ const actionLoading = ref(null);
 
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待處理', icon: 'payments' },
+  { key: 'monthly-review', label: '月結待核對', icon: 'fact_check' },
   { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
   { key: 'payments', label: '收據紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
+const monthlyReview = ref(null);
 const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
@@ -1167,7 +1174,7 @@ function exportSelectedAccountingCSV() {
 }
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
+  activeAccountingTab.value === 'monthly-review' ? Boolean(monthlyReview.value?.loading) : activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -1504,7 +1511,9 @@ function openReceiptByReport(reportId) {
 }
 
 function refreshActiveTab() {
-  if (activeAccountingTab.value === 'receivables') {
+  if (activeAccountingTab.value === 'monthly-review') {
+    monthlyReview.value?.reload();
+  } else if (activeAccountingTab.value === 'receivables') {
     loadAlerts();
   } else if (activeAccountingTab.value === 'settled') {
     loadSettledCourses();
@@ -2336,6 +2345,7 @@ watch(() => [props.initialStudentId, props.initialCourseId, rows.value.length], 
 }, { immediate: true });
 
 watch(activeAccountingTab, (tab) => {
+  if (tab === 'monthly-review') return;
   if (tab === 'receivables') {
     if (!rows.value.length) loadAlerts();
   } else if (tab === 'settled') {
