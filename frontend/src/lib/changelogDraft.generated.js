@@ -25,24 +25,24 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。",
           "confirmed monthly fees and visible renewal periods",
           "missing monthly invoice review",
           "correction into an existing monthly contract",
           "next-period monthly booking guidance",
-          "monthly period payment attribution",
-          "capacity occupancy sources"
+          "monthly period payment attribution"
         ]
       }
     ],
     "items": [
       "audited monthly receipt correction",
       "controlled monthly contract correction",
+      "主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。",
       "confirmed monthly fees and visible renewal periods",
       "missing monthly invoice review",
       "correction into an existing monthly contract",
       "next-period monthly booking guidance",
-      "monthly period payment attribution",
-      "capacity occupancy sources"
+      "monthly period payment attribution"
     ]
   },
   {

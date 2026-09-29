@@ -115,6 +115,38 @@ export const staffUpdates = [
     "version": "2026.09.29"
   },
   {
+    "id": "staff-2026-09-29-filters-course-lookup-clarity",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "篩選與課程查找更清楚",
+    "summary": "老師頁狀態篩選不再重複，學習紀錄填寫狀態改為單一選擇，課程查找頁首說明一致。",
+    "items": [
+      "老師頁只保留分頁切換狀態；學習紀錄可在全部／未填／已填間切換；課程查找頁首集中「到學生管理新增課程」入口。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師頁只保留分頁切換狀態；學習紀錄可在全部／未填／已填間切換；課程查找頁首集中「到學生管理新增課程」入口。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-29:filters-course-lookup-clarity"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-29-capacity-source-labels",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,

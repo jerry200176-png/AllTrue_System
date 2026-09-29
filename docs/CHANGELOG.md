@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(ux): de-duplicate filters and align course lookup copy
+<!-- release-notes: staff_update=staff-2026-09-29-filters-course-lookup-clarity -->
+- 老師頁移除與分頁重複的「狀態」下拉；學習紀錄「只看未填／已填」改為單一「全部／未填／已填」選擇；課程查找移除不實的「唯讀營運視圖」標籤，「到學生管理新增課程」集中於頁首並將「前往學生管理」降為次要按鈕。僅前端顯示調整，不改資料、權限或計費。
+
 ## 2026-09-29 — fix(billing): prepare confirmed monthly fees and visible renewal periods
 <!-- release-notes: silent_ship=silent-2026-09-29-confirmed-monthly-fees -->
 - 準備按確認已上堂次顯示月結費用、續約前明列開始日／月份／到期日，並阻止日期外已上課的合約直接續報。未部署或核准正式帳務更正，暫不發布教職員上線公告。
