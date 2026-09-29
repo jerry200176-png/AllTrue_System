@@ -52,12 +52,12 @@ future OIDC identity-model change must be separately designed and Founder
 approved; this adapter deliberately reuses the existing protected SSH path and
 short-lived human session without expanding production authority.
 
-## Proposed reviewed monthly case-owner exception (not activated)
+## Reviewed monthly case-owner exception
 
 `reviewed-monthly-accounting-correction` reuses the monthly correction strategy,
 existing authenticated human routes and Pi-local executor. Its dedicated
-`founder-exact-monthly-manifest` policy is proposed only; this draft has no
-eligible case and has not been deployed or approved for financial execution.
+`founder-exact-monthly-manifest` policy permits at most one exact, expiring
+eligibility tuple. Eligibility does not approve financial execution.
 The original `monthly-accounting-correction` remains planned and dual-role.
 
 Eligibility is read from the catalog's JSON policy. It may contain exactly one
@@ -77,6 +77,6 @@ old catalog-version drafts cannot be reused. Git merge never approves a request.
 
 `reversible=false` is intentional: rollback restores contract ownership and
 preserves the independently verified cash correction. Automatic financial
-rollback is disabled. Final Founder GO must explicitly cover policy activation
-and the immutable case result; preparing this draft grants neither. Remove the
+rollback is disabled. Founder GO must explicitly cover policy activation
+and the immutable case result; the actual authenticated DB approval is still required. Remove the
 eligibility tuple after the completed audit to retire this one-case allowance.

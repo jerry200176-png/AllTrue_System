@@ -40,9 +40,9 @@ Hard-coded approval rules (e.g. all critical → founder) do not scale across st
 - `operations/policies/default.yaml` ships in Phase 1.
 - Policy version pinned at approve time for replay.
 
-## Proposed exact-case monthly exception (2026-09-29; activation pending)
+## Exact-case monthly exception (2026-09-29)
 
-Founder requested preparation of a one-case, actual-owner confirmation path.
+The one-case, actual-owner confirmation path has a separately gated activation.
 A separate `founder-exact-monthly-manifest` policy may allow one authenticated
 human to request and approve an irreversible monthly receipt/contract correction.
 It must bind the full signed parameters, unique idempotency key, same actual
@@ -51,4 +51,4 @@ all requests. This is not the reversible single-repair rule above and does not
 alter critical dual approval for other operations. Git records eligibility,
 never approval state (ADR-POP-002); the actual DB event, short-lived token,
 version pin, Pi-local execution and verification remain required. See
-[authentication boundary](../CONTROL_PLANE_AUTH.md#proposed-reviewed-monthly-case-owner-exception-not-activated).
+[authentication boundary](../CONTROL_PLANE_AUTH.md#reviewed-monthly-case-owner-exception).

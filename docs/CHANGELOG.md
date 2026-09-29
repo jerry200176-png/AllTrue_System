@@ -1,6 +1,6 @@
-## 2026-09-29 — feat(ops): prepare exact-case human review for monthly correction
+## 2026-09-29 — feat(ops): support exact-case human review for monthly correction
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
-- 準備單案本人核對入口：完整簽章參數、冪等鍵、同一實際核准人及期限須完全一致；空白資格拒絕所有請求，核准仍寫入既有 DB。原雙角色入口與執行通道不變。本草案未啟用，也沒有正式帳務更正。
+- 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
 ## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
 <!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->

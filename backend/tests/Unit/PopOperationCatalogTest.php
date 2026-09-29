@@ -70,7 +70,8 @@ final class PopOperationCatalogTest extends TestCase
         self::assertSame(['super_admin'], $method->invoke($service, $entry));
         self::assertSame('planned', $catalog->operation('monthly-accounting-correction')['lifecycle']);
         $policy = json_decode(file_get_contents(dirname(__DIR__, 3) . '/' . $entry['eligibility_policy']), true);
-        self::assertCount(0, $policy['eligible_cases']);
+        self::assertIsArray($policy['eligible_cases']);
+        self::assertLessThanOrEqual(1, count($policy['eligible_cases']));
         $entry['reversible'] = true;
         $this->expectException(RuntimeException::class);
         $method->invoke($service, $entry);
