@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.29",
     "date": "2026-09-29",
     "title": "2026.09.29 草稿（未發布）",
-    "summary": "historical course badges；existing void receipt trace query",
+    "summary": "capacity occupancy sources；historical course badges",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "capacity occupancy sources",
           "historical course badges",
           "existing void receipt trace query",
           "tutoring next steps consistent with no-charge status"
@@ -25,6 +26,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "capacity occupancy sources",
       "historical course badges",
       "existing void receipt trace query",
       "tutoring next steps consistent with no-charge status"

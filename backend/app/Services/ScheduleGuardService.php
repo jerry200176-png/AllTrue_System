@@ -907,13 +907,21 @@ class ScheduleGuardService
             $subjectName = (string) ($row['subject_name'] ?? '');
             $coursePeriod = (string) ($row['course_period'] ?? '');
             $courseLabel = trim($subjectName . ($coursePeriod !== '' ? '・' . $coursePeriod : ''));
+            // Human summary only; overlap_details retains the diagnostic source enum.
+            $source = (string) ($row['source'] ?? '');
+            $sourceLabel = match ($source) {
+                'student_class' => '固定課程',
+                'class_session' => '課堂紀錄',
+                'schedule' => '排課紀錄',
+                default => $source,
+            };
             $segments[] = sprintf(
                 '%s%s(%s-%s,%s)',
                 $studentLabel,
                 $courseLabel !== '' ? "（{$courseLabel}）" : '',
                 (string) ($row['start_time'] ?? ''),
                 (string) ($row['end_time'] ?? ''),
-                (string) ($row['source'] ?? '')
+                $sourceLabel
             );
         }
 
