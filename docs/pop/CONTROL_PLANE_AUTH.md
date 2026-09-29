@@ -12,7 +12,7 @@ existing Pi-local scheduler remain the execution boundary. The
 exception: it requires one authenticated `super_admin` approval carrying a
 `founder-go-...` reference, and remains restricted by its exact
 `single_student_contract`, reversible, snapshot, rollback, and verification
-catalog invariants. All other operations retain their catalog-defined quorum;
+catalog invariants. The proposed reviewed monthly exception below has its own exact-case boundary. All other operations retain their catalog-defined quorum;
 the machine identity still cannot approve or execute.
 
 One-time bootstrap, after deployment, remains host-local. The approved
@@ -51,3 +51,32 @@ OIDC is not introduced here because the application has no OIDC verifier. A
 future OIDC identity-model change must be separately designed and Founder
 approved; this adapter deliberately reuses the existing protected SSH path and
 short-lived human session without expanding production authority.
+
+## Reviewed monthly case-owner exception
+
+`reviewed-monthly-accounting-correction` reuses the monthly correction strategy,
+existing authenticated human routes and Pi-local executor. Its dedicated
+`founder-exact-monthly-manifest` policy permits at most one exact, expiring
+eligibility tuple. Eligibility does not approve financial execution.
+The original `monthly-accounting-correction` remains planned and dual-role.
+
+Eligibility is read from the catalog's JSON policy. It may contain exactly one
+case: canonical parameter digest (including the signed source/target snapshot),
+unique idempotency-key digest, identical requester/approver human actor digests,
+exact Founder reference and UTC expiry. No student identifiers, bearer tokens,
+or operational approval state go in Git. Empty, missing, malformed, multiple,
+expired or nonmatching eligibility denies creation and every later phase.
+
+Only that authenticated `super_admin` can create and approve the bound request,
+including their own draft; no machine identity or borrowed human session is
+accepted. Database approval after a successful dry-run remains mandatory. TTL
+cannot extend beyond eligibility. Execution rechecks the policy, authentic DB
+approval identity, parameter integrity, deployed SHA, snapshot and existing
+transaction/verification boundaries. Source changes require a fresh review;
+old catalog-version drafts cannot be reused. Git merge never approves a request.
+
+`reversible=false` is intentional: rollback restores contract ownership and
+preserves the independently verified cash correction. Automatic financial
+rollback is disabled. Founder GO must explicitly cover policy activation
+and the immutable case result; the actual authenticated DB approval is still required. Remove the
+eligibility tuple after the completed audit to retire this one-case allowance.

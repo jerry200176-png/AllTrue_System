@@ -1,3 +1,7 @@
+## 2026-09-29 — feat(ops): support exact-case human review for monthly correction
+<!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
+- 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
+
 ## 2026-09-29 — fix(billing): preserve complete reschedule chains within reviewed monthly periods
 <!-- release-notes: silent_ship=silent-2026-09-29-contained-monthly-chains -->
 - 受控月結更正核對完整調課鏈：同一期內連同原堂次保留並移轉，拒絕跨期、斷鏈、循環、學生／分校錯配及範圍外合約關聯；簽章核對也涵蓋新增外部連結。修復仍未啟用，正式個案尚未更正。
@@ -6,13 +10,13 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-source-monthly-item -->
 - 受控月結更正支援原帳單已有單一明細的資料形狀：核對父帳單、原金額與期間，簽章綁定明細 ID，沿用原明細補齊合約歸屬，不新增重複項目。多項或歸屬不明仍拒絕；不啟用修復目錄或改變核准權限。
 
-## 2026-09-29 — feat(schedule): director can move a session to another contract
-<!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
-- 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
-
 ## 2026-09-29 — fix(ux): compact row actions on attendance, notifications and students
 <!-- release-notes: staff_update=staff-2026-09-29-row-actions-compact -->
 - 點名列「點名」與「回報出入」同列顯示、未記錄前四個狀態不再預先填色；營運通知每列只留一個主要前往按鈕、其餘收進「更多」選單並去除重複姓名科目、急件區塊改中性樣式；學生列表 RFID「未綁定」不再斷行、刪除收進「更多」選單。僅版面調整，未變更點名、扣堂或帳務邏輯。
+
+## 2026-09-29 — feat(schedule): director can move a session to another contract
+<!-- release-notes: silent_ship=silent-2026-09-29-move-session-contract -->
+- 主任／超級管理員可在行事曆單堂視窗把一堂課改到同學生、同科目的其他合約（含已結束合約）；改派前顯示兩份合約的堂數變化，可改回原合約還原，並留下稽核紀錄。不改堂數上限、金額、帳單與付款；本次不另發公告。
 
 ## 2026-09-29 — fix(ui): no stray scrollbar on tab rows; attendance status chips use status colors
 <!-- release-notes: silent_ship=silent-2026-09-29-tabs-scroll-status-tone -->

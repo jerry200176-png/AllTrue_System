@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-09-29-reviewed-monthly-case
+    changelog_date: "2026-09-29"
+    changelog_title: "feat(ops): support exact-case human review for monthly correction"
+    reason: 僅限受控單案的內部核對入口，部署資格不代表修復完成，不發布教職員完成公告。
+
   - id: silent-2026-09-29-contained-monthly-chains
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): preserve complete reschedule chains within reviewed monthly periods"
