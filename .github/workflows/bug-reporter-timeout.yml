@@ -28,6 +28,11 @@ on:
         required: false
         default: ""
         type: string
+      reviewed_ids:
+        description: "For apply only, comma-separated individually reviewed eligible In-App IDs"
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: bug-reporter-timeout
@@ -74,12 +79,25 @@ jobs:
           DAYS: ${{ inputs.days }}
           ACTOR: ${{ inputs.actor }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          REVIEWED_IDS: ${{ inputs.reviewed_ids }}
+          WORKFLOW_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "main only" >&2; exit 1; }
+          [[ "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "invalid workflow SHA" >&2; exit 1; }
           [[ "$MODE" == "dry-run" || "$MODE" == "apply" ]] || { echo "invalid mode" >&2; exit 1; }
           [[ "$DAYS" =~ ^[1-9][0-9]*$ ]] || { echo "days must be a positive integer" >&2; exit 1; }
-          if [[ "$MODE" == "apply" && "$CONFIRMATION" != "CLOSE_STALE_RESOLVED" ]]; then
-            echo "apply requires confirmation=CLOSE_STALE_RESOLVED" >&2
+          if [[ "$MODE" == "apply" ]]; then
+            [[ "$CONFIRMATION" == "CLOSE_STALE_RESOLVED" ]] || { echo "apply requires confirmation=CLOSE_STALE_RESOLVED" >&2; exit 1; }
+            [[ "$REVIEWED_IDS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]] || { echo "apply requires reviewed_ids=ID[,ID]" >&2; exit 1; }
+            IFS=, read -r -a reviewed_id_list <<< "$REVIEWED_IDS"
+            declare -A seen_reviewed_ids=()
+            for reviewed_id in "${reviewed_id_list[@]}"; do
+              [[ -z "${seen_reviewed_ids[$reviewed_id]:-}" ]] || { echo "duplicate reviewed ID" >&2; exit 1; }
+              seen_reviewed_ids[$reviewed_id]=1
+            done
+          elif [[ -n "$REVIEWED_IDS" ]]; then
+            echo "reviewed_ids is apply-only" >&2
             exit 1
           fi
           if [[ -n "$ACTOR" && ! "$ACTOR" =~ ^[1-9][0-9]*$ ]]; then
@@ -95,15 +113,16 @@ jobs:
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" "MODE='$MODE' DAYS='$DAYS' ACTOR_ARG='$ACTOR_ARG' bash -s" <<'REMOTE' | tee out/timeout.log
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "MODE='$MODE' DAYS='$DAYS' ACTOR_ARG='$ACTOR_ARG' REVIEWED_IDS='$REVIEWED_IDS' WORKFLOW_SHA='$WORKFLOW_SHA' bash -s" <<'REMOTE' | tee out/timeout.log
           set -euo pipefail
           cd /home/admin/backend
           PROD_SHA="$(git rev-parse HEAD)"
           echo "prod_head=$PROD_SHA"
-          # This workflow is operational-only. A workflow/docs-only merge may
-          # intentionally leave the backend checkout at the last deployable
-          # revision, so the workflow commit is not required to be an ancestor
-          # of PROD_SHA. The command and its policy are the production contract.
+          if [[ "$MODE" == "apply" ]]; then
+            git merge-base --is-ancestor "$WORKFLOW_SHA" "$PROD_SHA" || { echo "workflow SHA is not in production" >&2; exit 1; }
+            command_help="$(php artisan bugs:close-stale-resolved --help)"
+            [[ "$command_help" == *--reviewed-ids* ]] || { echo "deployed command lacks reviewed-ID gate" >&2; exit 1; }
+          fi
           php artisan list --format=txt | grep -q 'bugs:close-stale-resolved'
           echo "=== DRY-RUN ==="
           php artisan bugs:close-stale-resolved --dry-run --days="$DAYS" $ACTOR_ARG
@@ -112,7 +131,7 @@ jobs:
             exit 0
           fi
           echo "=== APPLY ==="
-          php artisan bugs:close-stale-resolved --days="$DAYS" $ACTOR_ARG
+          php artisan bugs:close-stale-resolved --days="$DAYS" $ACTOR_ARG --reviewed-ids="$REVIEWED_IDS"
           echo "=== POST-APPLY DRY-RUN ==="
           php artisan bugs:close-stale-resolved --dry-run --days="$DAYS" $ACTOR_ARG
           echo "result=APPLIED_AND_RECHECKED"
