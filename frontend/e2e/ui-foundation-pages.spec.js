@@ -1047,7 +1047,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
         const mocks = await openPilot(page, { pageName: 'calendar', mode, viewport: vp });
 
         if (mode === 'loading') {
-          await expect(page.locator('.calendar-loading-bar')).toBeVisible({ timeout: 10_000 });
+          await expect(page.locator('.calendar-loading-overlay')).toBeVisible({ timeout: 10_000 });
           mocks.releaseHang();
         } else if (mode === 'error') {
           await expect(page.getByRole('alert')).toContainText('課表資料暫時無法載入', { timeout: 10_000 });

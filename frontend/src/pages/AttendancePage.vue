@@ -1,39 +1,38 @@
 <template>
-  <div class="att-page">
+  <div class="att-page at-page">
     <AtPageHeader
       title="出缺勤管理"
       :description="isTeacher ? '查看今日堂次並完成點名，也可補登過去堂次。' : '追蹤學生到班狀態、點名核課與補登過往堂次。'"
       icon="fact_check"
       data-guide="attendance-header"
     >
-      <template #meta><span>{{ isTeacher ? '老師工作台' : '主任工作台' }}</span><span>以今日待處理為主</span></template>
       <template #actions>
-        <AtButton variant="ghost" shape="rect" icon="refresh" @click="refreshAll">重新整理今日堂次</AtButton>
+        <AtButton variant="secondary" shape="rect" icon="refresh" @click="refreshAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
 
     <!-- Tab Switcher（director/super_admin 才顯示） -->
-    <div v-if="!isTeacher" class="att-tabs" role="tablist" aria-label="出缺勤工作區">
+    <div v-if="!isTeacher" class="att-tabs at-tabs" role="tablist" aria-label="出缺勤工作區">
       <button
         id="attendance-tab-student"
         type="button"
-        class="att-tab-btn"
+        class="att-tab-btn at-tab"
         :class="{ active: activeTab === 'student' }"
         role="tab"
         :aria-selected="activeTab === 'student'"
         aria-controls="attendance-student-panel"
         @click="switchTab('student')"
-      >學生點名 <span class="att-tab-note">主任</span></button>
+      >學生點名</button>
       <button
         id="attendance-tab-teacher"
         type="button"
-        class="att-tab-btn"
+        class="att-tab-btn at-tab"
         :class="{ active: activeTab === 'teacher' }"
         role="tab"
         :aria-selected="activeTab === 'teacher'"
         aria-controls="attendance-teacher-panel"
         @click="switchTab('teacher')"
-      >老師打卡 <span class="att-tab-note">主任</span></button>
+      >老師打卡</button>
     </div>
 
     <!-- ═══ Teacher Attendance Tab ═══ -->
@@ -2514,7 +2513,6 @@ watch(() => props.branchId, () => {
 </script>
 
 <style scoped>
-.att-page { max-width: 1200px; }
 
 .att-teacher-snapshot {
   display: flex;
@@ -3237,40 +3235,7 @@ watch(() => props.branchId, () => {
 }
 
 /* ──────── Tab Switcher ──────── */
-.att-tabs {
-  display: flex;
-  border-bottom: 2px solid var(--border);
-  margin-bottom: 16px;
-}
-.att-tab-btn {
-  padding: 10px 20px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ds-ink-mute);
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-  min-height: 44px;
-}
-.att-tab-btn:hover { color: var(--ds-ink); }
-.att-tab-btn:focus-visible,
 .att-status-btn:focus-visible { outline: 3px solid var(--ds-info-wash); outline-offset: 2px; }
-.att-tab-btn.active {
-  color: var(--ds-primary);
-  border-bottom-color: var(--ds-primary);
-  font-weight: 700;
-}
-.att-tab-note {
-  margin-left: 4px;
-  color: var(--ds-ink-mute);
-  font-size: 11px;
-  font-weight: 500;
-}
-.att-tab-btn.active .att-tab-note { color: var(--ds-primary); }
-
 @media (max-width: 640px) {
   .att-workspace-intro { align-items: flex-start; flex-direction: column; gap: 10px; }
   .att-focus-count { align-self: flex-start; }
@@ -3418,9 +3383,6 @@ button.danger:hover:not(:disabled) { background: var(--ds-danger) !important; }
 .att-page input:not([type="checkbox"]),
 .att-page select,
 .att-page textarea {
-  min-height: var(--ds-control-height-touch, 44px);
-}
-.att-page .att-tab-btn {
   min-height: var(--ds-control-height-touch, 44px);
 }
 .att-page .at-btn,

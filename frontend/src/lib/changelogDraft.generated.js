@@ -20,6 +20,7 @@ export const changelogDraftNotes = [
         "items": [
           "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
           "sidebar branch switcher and More-page breadcrumb",
+          "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
           "audited monthly receipt correction",
           "undo of contract amendment",
           "controlled monthly contract correction"
@@ -40,12 +41,12 @@ export const changelogDraftNotes = [
     "items": [
       "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
       "sidebar branch switcher and More-page breadcrumb",
+      "老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。",
       "audited monthly receipt correction",
       "undo of contract amendment",
       "controlled monthly contract correction",
       "existing source invoice items during reviewed correction",
-      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
-      "tuition summary as invoiced-only outstanding"
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
     ]
   },
   {
