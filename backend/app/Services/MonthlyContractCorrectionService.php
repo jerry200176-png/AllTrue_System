@@ -21,6 +21,12 @@ final class MonthlyContractCorrectionService
     public function preview(StudentClass $source, array $input, bool $lock = false): array
     {
         $source->refresh();
+        return $this->previewState($source, $input, null, $lock);
+    }
+
+    /** Advisory projection only; execute always re-reads authoritative rows. */
+    public function previewState(StudentClass $source, array $input, ?array $reviewedGraph = null, bool $lock = false, ?StudentClass $reviewedTarget = null): array
+    {
         $data = Validator::make($input, [
             'source_start' => 'required|date_format:Y-m-d', 'source_end' => 'required|date_format:Y-m-d|after_or_equal:source_start',
             'target_start' => 'required|date_format:Y-m-d|after:source_end', 'target_end' => 'required|date_format:Y-m-d|after_or_equal:target_start',
@@ -32,7 +38,8 @@ final class MonthlyContractCorrectionService
         $this->require(substr((string) $source->getAttribute('StartDate'), 0, 10) === $data['source_start'], '原合約開始日須保留，請核對期間');
         $this->require($source->getAttribute('EndDate') && $data['target_end'] === substr((string) $source->getAttribute('EndDate'), 0, 10), '更正須保留原合約結束日，不可同時擴張或縮減服務期間');
         $this->require(Carbon::parse($data['source_end'])->addDay()->toDateString() === $data['target_start'], '新舊期間必須相鄰且不重疊');
-        $target = !empty($data['target_course_id']) ? $this->findCourse((int) $data['target_course_id']) : null;
+        $target = !empty($data['target_course_id']) ? ($reviewedTarget ?? $this->findCourse((int) $data['target_course_id'])) : null;
+        if ($reviewedTarget) $this->require((int) $reviewedTarget->getKey() === (int) ($data['target_course_id'] ?? 0) && $reviewedGraph !== null, '投影目標識別不符');
         if (!empty($data['target_course_id'])) $this->require($target !== null, '找不到目標合約');
         if ($target) {
             $this->require((int) $source->getAttribute('ID') !== (int) $target->getAttribute('ID'), '來源與目標不可相同');
@@ -49,7 +56,7 @@ final class MonthlyContractCorrectionService
                 ->where('StartDate', '<=', $data['target_end'])->where('EndDate', '>=', $data['target_start'])->exists();
             $this->require(!$duplicates, '已有重疊的下一期合約，請先選用並核對既有合約');
         }
-        $graph = $this->graph($source, $target, $lock);
+        $graph = $reviewedGraph ?? $this->graph($source, $target, $lock);
         $selected = array_values(array_filter($graph['sessions'], fn ($row) => (int) $row['StudentClassID'] === (int) $source->getAttribute('ID')
             && $row['SessionDate'] >= $data['target_start'] && $row['SessionDate'] <= $data['target_end']));
         $this->require($selected !== [], '目標期間內沒有可移轉堂次');
@@ -61,7 +68,7 @@ final class MonthlyContractCorrectionService
             }
         }
         foreach ($selected as $row) foreach ($graph['sessions'] as $other) {
-            if (!$target || (int) $other['StudentClassID'] !== (int) $target->getAttribute('ID')) continue;
+            if (!$target || (int) $other['StudentClassID'] !== (int) $target->getAttribute('ID') || in_array($other['Status'], ['cancelled', 'voided'], true)) continue;
             $overlap = $row['SessionDate'] === $other['SessionDate']
                 && $row['StartTime'] < $other['EndTime'] && $other['StartTime'] < $row['EndTime'];
             $this->require(!$overlap, '目標合約已有重疊時段堂次');
@@ -211,6 +218,11 @@ final class MonthlyContractCorrectionService
             SessionCorrection::query()->where('decision_reference', $result['decision_reference'])->whereNull('rolled_back_at')->update(['rolled_back_at' => now()]);
             return ['ok' => true];
         });
+    }
+
+    public function snapshotGraph(StudentClass $source, ?StudentClass $target = null, bool $lock = false): array
+    {
+        return $this->graph($source, $target, $lock);
     }
 
     private function graph(StudentClass $source, ?StudentClass $target, bool $lock = false): array
