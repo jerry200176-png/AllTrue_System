@@ -199,3 +199,23 @@ describe('CourseManager polish', () => {
     w.unmount()
   })
 })
+
+it('explains missing invoices, recorded cash, and boundary lessons before offering review', async () => {
+  const w = mountCm({ tab: 'billing', course: { ...baseCourse(), monthly_payment: {
+    review_required: true, contract_start: '2026-07-27', contract_end: '2026-09-10', registered_paid_amount: 7500,
+    periods: [{ billing_period: '2026-09', source: 'unattributed', payment_status: 'unknown', outstanding_amount: null }],
+    session_review: [{ calendar_month: '2026-09', completed_sessions: 4, estimated_charge: 6000, uncovered_sessions: 4, outside_contract_sessions: 2,
+      sessions: [{ session_id: 1, date: '2026-09-16', rate: 1500, rate_unit: 'session', estimated_charge: 1500 }] }],
+  } } });
+  const review = w.get('[data-testid="monthly-payment-periods"]');
+  expect(review.text()).toContain('系統登錄收款：NT$ 7,500');
+  expect(review.text()).toContain('4 堂 · NT$ 6,000');
+  expect(review.text()).toContain('4 堂沒有對應帳單服務期間');
+  expect(review.text()).toContain('2 堂超出合約日期');
+  expect(review.text()).toContain('尚無對應帳單');
+  await review.findAll('button').find(b => b.text() === '查看登錄帳單與收款').trigger('click');
+  expect(w.emitted('action').at(-1)[0]).toEqual({ name: 'invoice' });
+  await w.setProps({ tab: 'sessions' });
+  expect(w.find('[data-testid="monthly-payment-periods"]').exists()).toBe(false);
+  w.unmount();
+});

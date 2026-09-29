@@ -115,13 +115,7 @@ class MonthlyBillingService
         } else {
             $charge = (int) round($sessions->sum(function (ClassSession $session) use ($pricingRows): float {
                 $pricing = $pricingRows->get($session->getKey());
-                if ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null) {
-                    return (float) $session->session_charge;
-                }
-
-                $start = self::minutes((string) ($session->StartTime ?? ''));
-                $end = self::minutes((string) ($session->EndTime ?? ''));
-                return (max(0, $end - $start) / 60.0) * (float) $pricing['rate'];
+                return $this->sessionAmount($session, $pricing);
             }));
         }
 
@@ -132,6 +126,38 @@ class MonthlyBillingService
             'period_end' => $periodEnd,
             'source' => 'billable_sessions',
         ];
+    }
+
+    /** Read-only review includes completed lessons outside the stored contract.
+     * These estimates are evidence for review, never an invoice or cash balance.
+     */
+    public function reviewSessions(Model $course, Collection $sessions): array
+    {
+        $completed = $sessions->whereIn('Status', self::BILLABLE_STATUSES)->values();
+        $details = $completed->map(function (ClassSession $session) use ($course): array {
+            $pricing = $this->pricing->forDate($course, (string) $session->SessionDate);
+            $validDuration = self::minutes((string) $session->EndTime) > self::minutes((string) $session->StartTime);
+            $known = $pricing['rate'] > 0 && ($pricing['rate_unit'] === 'session'
+                || ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null) || $validDuration);
+            return ['session_id' => (int) $session->getKey(), 'date' => substr((string) $session->SessionDate, 0, 10),
+                'rate' => $pricing['rate'], 'rate_unit' => $pricing['rate_unit'],
+                'pricing_source' => $pricing['source'], 'amendment_id' => $pricing['amendment_id'],
+                'estimated_charge' => $known ? $this->sessionAmount($session, $pricing) : null];
+        });
+        return ['completed_sessions' => $completed->count(),
+            'estimated_charge' => $details->contains(fn ($row) => $row['estimated_charge'] === null) ? null : max(0, (int) round($details->sum('estimated_charge'))),
+            'sessions' => $details->all()];
+    }
+
+    private function sessionAmount(ClassSession $session, array $pricing): float
+    {
+        if ($pricing['rate_unit'] === 'session') return (float) $pricing['rate'];
+        if ($pricing['source'] === 'student_class_rate' && $session->session_charge !== null) {
+            return (float) $session->session_charge;
+        }
+        $start = self::minutes((string) ($session->StartTime ?? ''));
+        $end = self::minutes((string) ($session->EndTime ?? ''));
+        return (max(0, $end - $start) / 60.0) * (float) $pricing['rate'];
     }
 
     /** @return Collection<int, ClassSession> */
