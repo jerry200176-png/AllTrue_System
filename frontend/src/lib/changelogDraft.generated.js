@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "student school and grade in course lookup",
+    "summary": "student school and grade in course lookup；loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter",
     "audience": [
       "teacher",
       "director"
@@ -20,10 +20,17 @@ export const changelogDraftNotes = [
         "items": [
           "student school and grade in course lookup"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
+        ]
       }
     ],
     "items": [
-      "student school and grade in course lookup"
+      "student school and grade in course lookup",
+      "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
     ]
   },
   {

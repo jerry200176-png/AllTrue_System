@@ -41,3 +41,9 @@ assert.equal(
 assert.equal(statusLogDisplayNote({ note: '[resolution_evidence]{"production_revision":"abc"}' }), '');
 
 console.log('bugReportContext.test.js: all assertions passed');
+
+import { bugListDisplay } from './bugReportContext.js';
+const auto = { title: '[tuition-collect] 2026/9/22 下午2:37:15', page_key: 'tuition-collect' };
+assert.deepEqual(bugListDisplay({ title: '我自己寫的' }), { title: '我自己寫的', pageLabel: '' });
+assert.equal(bugListDisplay(auto, () => '帳務中心').title, '帳務中心（未填標題）');
+assert.deepEqual(bugListDisplay({ ...auto, description: `${'字'.repeat(50)}\n第二行` }, () => '帳務中心'), { title: `${'字'.repeat(40)}…`, pageLabel: '帳務中心' });

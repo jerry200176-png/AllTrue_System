@@ -51,6 +51,24 @@ updates:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
 
+  - id: staff-2026-09-30-ux-followups
+    published_at: "2026-09-30"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 操作體驗小幅改善
+    summary: 換頁不再長時間空白、編輯學生視窗更易關閉與閱讀，課程查找的上課類型篩選更準確。
+    items:
+      - category: improved
+        text: 換頁載入時顯示骨架畫面，不再是空白。
+      - category: improved
+        text: 編輯學生視窗可按 Esc 關閉；LINE 綁定顯示「已綁定 LINE」與日期，監護人關係顯示中文。
+      - category: fixed
+        text: 課程查找選「上課類型」後，只列出符合該類型的課程。
+    source_refs:
+      - "changelog:2026-09-30:ux-followups"
+
   - id: staff-2026-09-30-course-lookup-school-grade
     published_at: "2026-09-30"
     audiences:

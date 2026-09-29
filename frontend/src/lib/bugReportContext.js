@@ -77,3 +77,20 @@ export function statusLogDisplayNote(log) {
   }
   return stripBugStatusMachineMarkers(String(log.note || ''));
 }
+
+const AUTO_TITLE_RE = /^\[[^\]]*\]\s*\d{4}\/\d{1,2}\/\d{1,2}\s/;
+const AUTO_TITLE_PAGE_RE = /^\[([^\]]*)\]/;
+
+/**
+ * 列表標題：自動產生的「[page] 時間」標題改顯示說明第一行（列表 API 若有回傳 description/摘要）。
+ * ponytail: 列表 API 目前不回傳 description，此時只換成頁面名稱，待後端補摘要即自動生效。
+ */
+export function bugListDisplay(bug, pageLabelFor = (k) => k) {
+  const title = String(bug?.title || '');
+  if (!AUTO_TITLE_RE.test(title)) return { title, pageLabel: '' };
+  const key = bug?.page_key || title.match(AUTO_TITLE_PAGE_RE)?.[1] || '';
+  const pageLabel = pageLabelFor(key) || key;
+  const text = String(bug?.description ?? bug?.description_snippet ?? '').trim().split(/\r?\n/)[0].trim();
+  if (!text) return { title: pageLabel ? `${pageLabel}（未填標題）` : title, pageLabel: '' };
+  return { title: text.length > 40 ? `${text.slice(0, 40)}…` : text, pageLabel };
+}
