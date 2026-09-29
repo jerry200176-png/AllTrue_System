@@ -1,6 +1,5 @@
 <template>
   <div>
-    <div v-if="calendarLoading" class="calendar-loading-bar">{{ calendarLoadProgress || '載入中…' }}</div>
     <div v-if="calendarLoadError && !calendarLoading" class="calendar-state-error" role="alert">
       <span class="material-symbols-outlined" aria-hidden="true">error</span>
       <span>{{ calendarLoadError }}</span>
@@ -14,10 +13,9 @@
         icon="calendar_month"
       >
         <template #meta>
-          <span aria-live="polite">{{ currentCalendarViewLabel }} · {{ visibleWeekRangeLabel }} · {{ weekCourseCount }} 堂</span>
+          <span aria-live="polite">{{ currentCalendarViewLabel }} · {{ headerRangeLabel }} · {{ headerCourseCount }} 堂</span>
         </template>
         <template #actions>
-          <AtButton shape="rect" variant="secondary" @click="focusCalendarToday" aria-label="回到今天的課表">今天</AtButton>
           <AtButton v-if="!isTeacher" shape="rect" variant="secondary" icon="print" @click="showCalendarPrint = true">列印課表</AtButton>
           <div class="view-tabs" role="tablist" aria-label="課表檢視方式">
             <button id="calendar-tab-week" type="button" role="tab" aria-controls="calendar-panel-week" :aria-selected="viewMode === 'week'" :class="{ active: viewMode === 'week' }" @click="viewMode = 'week'">課表</button>
@@ -51,27 +49,19 @@
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
         <div class="toolbar-row toolbar-row-primary">
           <div class="toolbar-group">
-            <span id="calendar-month-label" class="toolbar-label">月份</span>
-            <div class="month-nav" role="group" aria-labelledby="calendar-month-label">
-              <button type="button" class="icon-btn" @click="prevMonth" title="上一個月" aria-label="上一個月">‹</button>
-              <span class="month-display" aria-live="polite">{{ displayYear }} / {{ displayMonth }}</span>
-              <button type="button" class="icon-btn" @click="nextMonth" title="下一個月" aria-label="下一個月">›</button>
+            <div class="month-nav" role="group" aria-label="日期導覽">
+              <button type="button" class="icon-btn" @click="stepDate(-1)" :title="isWeekOverview ? '上一週' : '前一天'" :aria-label="isWeekOverview ? '上一週' : '前一天'">‹</button>
+              <button type="button" class="filter-input" @click="focusCalendarToday" aria-label="回到今天的課表">今天</button>
+              <button type="button" class="icon-btn" @click="stepDate(1)" :title="isWeekOverview ? '下一週' : '後一天'" :aria-label="isWeekOverview ? '下一週' : '後一天'">›</button>
+              <input
+                id="calendar-jump-date"
+                v-model="jumpToDate"
+                type="date"
+                class="filter-input jump-date-input"
+                aria-label="選擇日期"
+                @change="jumpToDateWeek()"
+              />
             </div>
-          </div>
-          <div class="toolbar-group" role="group" aria-labelledby="calendar-week-label">
-            <span id="calendar-week-label" class="toolbar-label">週次</span>
-            <!-- #740 Step 4d：週次導航剝離為 presentational 元件 -->
-            <WeekNavBar v-model="displayWeek" :week-options="weekOptions" @prev="prevWeek" @next="nextWeek" />
-          </div>
-          <div class="toolbar-group">
-            <label class="toolbar-label" for="calendar-jump-date">跳至日期</label>
-            <input
-              id="calendar-jump-date"
-              v-model="jumpToDate"
-              type="date"
-              class="filter-input jump-date-input"
-              @change="jumpToDateWeek"
-            />
           </div>
           <div v-if="!isTeacher" class="toolbar-group">
             <div class="view-sub-toggle" role="group" aria-label="日／週檢視">
@@ -181,12 +171,14 @@
 
     <!-- ===== VIEW: Teacher Grid (main view) ===== -->
     <div v-if="viewMode === 'week'" id="calendar-panel-week" class="week-view" role="tabpanel" aria-labelledby="calendar-tab-week" tabindex="0">
+      <!-- 載入中以 overlay 骨架呈現，不推動版面（避免 layout shift） -->
+      <div v-if="calendarLoading" class="calendar-loading-overlay"><AtSkeleton :rows="8" height="28px" /></div>
 
       <!-- ── Day View (default) ── -->
       <template v-if="!isWeekOverview">
         <!-- #740 Step 4b：日分頁列剝離為 presentational 元件 DayTabsBar -->
         <DayTabsBar :tabs="dayTabs" :active-idx="selectedDayIdx" @select="selectedDayIdx = $event" />
-        <div class="teacher-grid-wrapper" data-guide="calendar-grid">
+        <div ref="dayGridScrollEl" class="teacher-grid-wrapper" data-guide="calendar-grid">
           <div v-if="!calendarLoading && visibleTeachers.length === 0" class="teacher-empty">
             <template v-if="hideEmptyTeacherColumns && !isWeekOverview">
               <div style="font-weight:600;margin-bottom:6px;">今日無已排課老師</div>
@@ -458,6 +450,8 @@
       @dismiss-cancel-confirm="cancelState.show = false"
       @confirm-cancel="doConfirmCancelSession"
       @restore-session="restoreCancelledSession"
+      @open-move-contract="openMoveContract"
+      @submit-move-contract="submitMoveContract"
       @delete-exception="deleteException"
       @cancel-makeup="cancelMakeupClass"
       @teacher-change="checkConflict"
@@ -574,6 +568,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import AtButton from '../components/design-system/AtButton.vue';
+import AtSkeleton from '../components/design-system/AtSkeleton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -597,7 +592,6 @@ import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import TeacherColumnHeader from '../components/calendar/TeacherColumnHeader.vue';
 import DayTabsBar from '../components/calendar/DayTabsBar.vue';
 import WeekTeacherChips from '../components/calendar/WeekTeacherChips.vue';
-import WeekNavBar from '../components/calendar/WeekNavBar.vue';
 import CourseBlockContent from '../components/calendar/CourseBlockContent.vue';
 import CalendarSessionEditModal from '../components/calendar/modals/CalendarSessionEditModal.vue';
 import CalendarLeaveModal from '../components/calendar/modals/CalendarLeaveModal.vue';
@@ -635,7 +629,7 @@ import {
 import { resolveCalendarDropAction } from '../lib/calendarDropRouting.js';
 // #740 Step 3：教師配色（有狀態 memo）
 import { getTeacherColor } from '../lib/teacherColor.js';
-import { calendarViewLabel, formatCalendarRange } from '../lib/calendarViewDisplay.js';
+import { calendarViewLabel, formatCalendarRange, dayViewScrollTop } from '../lib/calendarViewDisplay.js';
 import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad.js';
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
 import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
@@ -681,61 +675,6 @@ const getToken = async () => {
 const now = new Date();
 const displayYear = ref(now.getFullYear());
 const displayMonth = ref(now.getMonth() + 1); // 1-12
-
-// 依選定月份計算週選項
-const weekOptions = computed(() => {
-  const year = displayYear.value;
-  const month = displayMonth.value - 1; // 0-based for Date
-  const options = [];
-
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-
-  let currentStart = new Date(firstDay);
-  if (currentStart.getDay() !== 1) {
-    const adj = currentStart.getDay() === 0 ? -6 : 1 - currentStart.getDay();
-    currentStart.setDate(currentStart.getDate() + adj);
-  }
-
-  let weekNum = 1;
-  while (currentStart <= lastDay || weekNum <= 5) {
-    if (weekNum > 5) break;
-    const endOfWeek = new Date(currentStart);
-    endOfWeek.setDate(currentStart.getDate() + 6);
-    const startStr = `${currentStart.getMonth() + 1}/${currentStart.getDate()}`;
-    const endStr = `${endOfWeek.getMonth() + 1}/${endOfWeek.getDate()}`;
-    options.push({
-      value: weekNum,
-      label: `${year}年${month + 1}月 第${weekNum}週 (${startStr} - ${endStr})`,
-      shortLabel: `第${weekNum}週 (${startStr}-${endStr})`
-    });
-    currentStart.setDate(currentStart.getDate() + 7);
-    weekNum++;
-  }
-  return options;
-});
-
-const prevMonth = () => {
-  if (displayMonth.value <= 1) {
-    displayYear.value--;
-    displayMonth.value = 12;
-  } else {
-    displayMonth.value--;
-  }
-  displayWeek.value = 0;
-  weekOffset.value = 0;
-};
-
-const nextMonth = () => {
-  if (displayMonth.value >= 12) {
-    displayYear.value++;
-    displayMonth.value = 1;
-  } else {
-    displayMonth.value++;
-  }
-  displayWeek.value = 0;
-  weekOffset.value = 0;
-};
 
 // #740 Step 1：formatLocalDate / getNextWeekdayYmd / getMondayOfMonthWeek / toYmd /
 // addDays / getWeekNumberOfDate 已剝離至 ../lib/calendarDateUtils.js（純函式 + 單元測試）。
@@ -933,6 +872,7 @@ const schedulerRooms = computed(() => (
 
 const dayNames = ['週一', '週二', '週三', '週四', '週五', '週六', '週日'];
 const hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+const dayGridScrollEl = ref(null);
 
 /** 開始時間選項：08:00, 08:30, 09:00, ... 22:00（拖放調課與選單皆可選半點） */
 const timeOptions30 = Array.from({ length: (22 - 8 + 1) * 2 }, (_, i) => {
@@ -1126,8 +1066,11 @@ async function submitReschedule() {
   }
 }
 
-const prevWeek = () => { weekOffset.value -= 1; };
-const nextWeek = () => { weekOffset.value += 1; };
+// 日檢視以天為單位、週檢視以週為單位切換
+const stepDate = (dir) => {
+  if (isWeekOverview.value) { weekOffset.value += dir; return; }
+  jumpToDateWeek(addDays(selectedDateStr.value, dir));
+};
 
 const jumpToDateWeek = (dateValue = jumpToDate.value) => {
   const ymd = String(dateValue || '').slice(0, 10);
@@ -1182,6 +1125,14 @@ const getCourseAriaLabel = (course, dateStr) => {
 
 const visibleWeekRangeLabel = computed(() => (
   formatCalendarRange(getDisplayDateFull(1), getDisplayDateFull(7))
+));
+// 日檢視顯示「當天＋當天堂數」，週檢視／老師清單維持整週範圍
+const isDayScope = computed(() => viewMode.value === 'week' && !isWeekOverview.value);
+const headerRangeLabel = computed(() => (
+  isDayScope.value ? formatCalendarRange(selectedDateStr.value, selectedDateStr.value) : visibleWeekRangeLabel.value
+));
+const headerCourseCount = computed(() => (
+  isDayScope.value ? getDayCourseCount(selectedDow.value) : weekCourseCount.value
 ));
 const currentCalendarViewLabel = computed(() => calendarViewLabel({
   viewMode: viewMode.value,
@@ -2217,6 +2168,7 @@ const onCourseClick = (course, fullDateStr) => {
   editingException.value = course.is_exception ? course : null;
   const clickedSession = findSessionRowForCell(course, fullDateStr);
   sessionRecovery.value = makeSessionRecovery();
+  moveContract.value = makeMoveContract();
   conflictWarning.value = '';
   const start = normalizeTimeTo30(course.start_time || '16:00');
   const baseCourse = courses.value.find(c => c.id === baseId) || course;
@@ -2472,6 +2424,8 @@ const sessionEditSession = computed(() => {
     canCancelSession: canCancelSelectedSession.value,
     cancelState: cancelState.value,
     recovery: sessionRecovery.value,
+    canMoveContract: ['director', 'super_admin'].includes(props.userRole) && !!cancelTargetSession.value?.id,
+    moveContract: moveContract.value,
     editingException: !!editingException.value,
     editingExceptionIsExtra: editingExceptionIsExtra.value,
     evalRecords: courseEvalRecords.value,
@@ -2558,6 +2512,66 @@ const loadSessionRecovery = async (sessionId) => {
     };
   } catch (e) {
     sessionRecovery.value.loading = false;
+  }
+};
+
+// ===== 改到其他合約（主任／超級管理員；同學生同科目，含已結束合約）=====
+const makeMoveContract = () => ({
+  open: false, loading: false, targets: [], targetId: '', reason: '', submitting: false,
+});
+const moveContract = ref(makeMoveContract());
+
+const moveContractRequest = async (sessionId, body, method = 'POST') => {
+  const token = await getToken();
+  const res = await fetch('/api/v1/class-sessions/' + sessionId + '/reassign-contract' + (method === 'GET' ? '-targets' : ''), {
+    method,
+    headers: {
+      Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json',
+    },
+    ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'HTTP ' + res.status);
+  return data;
+};
+
+const openMoveContract = async () => {
+  const row = cancelTargetSession.value;
+  if (!row?.id) return;
+  moveContract.value = { ...makeMoveContract(), open: true, loading: true };
+  try {
+    const data = await moveContractRequest(row.id, null, 'GET');
+    moveContract.value = { ...moveContract.value, targets: data.data || [], loading: false };
+  } catch (e) {
+    moveContract.value = makeMoveContract();
+    alert(e.message);
+  }
+};
+
+const submitMoveContract = async () => {
+  const row = cancelTargetSession.value;
+  const mc = moveContract.value;
+  if (!row?.id || !mc.targetId || !mc.reason?.trim() || mc.submitting) return;
+  const body = { new_student_class_id: Number(mc.targetId), reason: mc.reason.trim() };
+  mc.submitting = true;
+  try {
+    const preview = await moveContractRequest(row.id, { ...body, dry_run: true });
+    const line = (k, label) => label + ' #' + preview.before[k].id + '：已用 ' + preview.before[k].used_sessions
+      + ' → ' + preview.after[k].used_sessions + '，剩餘 ' + preview.before[k].remaining_sessions
+      + ' → ' + preview.after[k].remaining_sessions;
+    const warn = preview.warnings.length ? '\n\n注意：' + preview.warnings.join('；') : '';
+    if (!confirm('確定把本堂從合約 #' + preview.old_student_class_id + ' 改到 #' + preview.new_student_class_id + '？\n\n'
+      + line('old', '原合約') + '\n' + line('new', '目標合約') + warn + '\n\n如需還原，再改回原合約即可。')) {
+      mc.submitting = false;
+      return;
+    }
+    const data = await moveContractRequest(row.id, body);
+    showModal.value = false;
+    await loadCourses();
+    alert((data.message || '已改派') + (data.warnings?.length ? '\n注意：' + data.warnings.join('；') : ''));
+  } catch (e) {
+    mc.submitting = false;
+    alert(e.message || '改派失敗，請重新整理後再試');
   }
 };
 
@@ -2731,6 +2745,17 @@ watch(visibleTeachers, (list) => {
   }
 });
 watch(() => displayWeek.value, () => { weekOffset.value = 0; });
+// 日檢視：日期／資料載入完成後，捲到當天最早一堂課上方約 1 小時（無課則預設 14:00）
+watch([selectedDateStr, calendarLoading, isWeekOverview, viewMode], async ([, loading]) => {
+  if (loading || isWeekOverview.value || viewMode.value !== 'week') return;
+  await nextTick();
+  const el = dayGridScrollEl.value;
+  if (!el) return;
+  const startHours = filteredCourses.value
+    .filter(c => c.day_of_week === selectedDow.value && !isSessionCancelledOnDate(c, selectedDateStr.value))
+    .map(c => parseHour(c.start_time));
+  el.scrollTop = dayViewScrollTop(startHours, hours[0]);
+}, { immediate: true, flush: 'post' });
 watch(
   [displayYear, displayMonth, displayWeek, weekOffset, selectedDayIdx],
   () => {
@@ -2743,6 +2768,7 @@ watch(showModal, (v) => {
   if (!v) {
     cancelState.value = { show: false, loading: false };
     sessionRecovery.value = makeSessionRecovery();
+    moveContract.value = makeMoveContract();
   }
 });
 
@@ -2771,6 +2797,15 @@ onMounted(() => {
 
 <style scoped>
 /* ----- 字體與排版基底 ----- */
+.week-view { position: relative; }
+.calendar-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  padding: 72px 16px 0;
+  background: color-mix(in srgb, var(--ds-canvas) 85%, transparent);
+  pointer-events: none;
+}
 .calendar-loading-bar {
   text-align: center;
   padding: 8px 16px;
