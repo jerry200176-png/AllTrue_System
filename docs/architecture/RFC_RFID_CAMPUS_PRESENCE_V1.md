@@ -1,9 +1,48 @@
 # RFC: RFID Campus Presence v1
 
-**Status:** Accepted (Founder policy locked 2026-09-16)  
-**Epic:** [#2809](https://github.com/jerry200176-png/AllTrue_System/issues/2809) (in-app #293)  
-**Tier:** T3 product direction (docs/contracts here = RFID-0; code slices RFID-1+)  
-**Supersedes product intent of:** Phase 2 presence-window PRD auto-attend + auto-deduct on door swipe
+**Status:** Superseded 2026-09-29 by Founder decision  
+**Epic:** [#2809](https://github.com/jerry200176-png/AllTrue_System/issues/2809) (in-app #293)
+
+---
+
+## 0. Current policy (2026-09-29) — read this first
+
+The Founder **reversed** the 2026-09-16 presence-only policy. **A student RFID swipe counts as course attendance: same effect as the teacher marking the session 已上, including session deduction.** This is what `SwipeRfidController` already does. The presence-only domain (`FEATURE_RFID_PRESENCE_ONLY`, RFID-1+ slices) is **not** being built.
+
+Rules that keep this safe:
+
+- Attendance / deduction only when the swipe matches a real `ClassSession` (no StudentClass weekly-schedule fallback; otherwise the row is `self_study`, no deduction).
+- Sign-out (second swipe > 60 s) and `student-signin:close-orphans` both run the same presence-window backfill (`StudentPresenceBackfillService`) for later sessions that started inside the on-campus window. Idempotent.
+- A deduction that silently fails is logged (`Log::error`) and raised to staff as a `deduction_failed` Notification (action inbox ops lane); the sign-in is still recorded.
+- `POST /api/v1/swipe-rfid` throttle is 120/min/IP (token-gated).
+
+### Risk register
+
+| # | Case | Status |
+|---|---|---|
+| 1 | Weekly-schedule fallback deducted without a real ClassSession | Fixed in this PR (fallback removed; self_study, no deduction) |
+| 2 | Borrowed / wrong card | Known limit; staff void via existing flow |
+| 3 | Swiped but did not attend, or left early | Known limit; teacher corrects via manual attendance |
+| 4 | Consecutive classes + forgot swipe-out | Fixed in this PR (orphan close now backfills — only from RFID-origin `present` rows within 2 days, and only into still-`scheduled` sessions, so manual/absent rows and teacher decisions are never overridden) |
+| 5 | Second swipe > 60 s is treated as sign-out | Known limit |
+| 6 | Silent deduction failure | Fixed in this PR (Log::error + staff Notification) |
+| 7 | Rate limit dropped real swipes (30/min) | Fixed in this PR (120/min) |
+| 8 | Arrive > 30 min early: self_study until sign-out backfill | Known limit; mitigated by fix 4 |
+| 9 | Reader offline | Known limit; manual attendance |
+| 10 | Leave / cancelled sessions not deducted | Already handled |
+| 11 | Teacher already marked: no double deduct | Already handled |
+| 12 | Other campus reader: not found | Already handled |
+| 13 | Card bound to teacher and student: teacher clock | Already handled |
+| 14 | Overlapping sessions (A 10:00-11:00, B 10:30-11:30, swipe 10:40) → only B counted | Known limit; teacher marks A manually |
+| 15 | Staff voids/undoes a backfilled attendance | Handled: backfill skips any session with a sign-in, voided included |
+
+---
+
+> **HISTORICAL — everything below is the superseded 2026-09-16 RFC. Do not implement.**
+
+## (Historical) RFC v1 header
+
+**Former status:** Accepted (Founder policy locked 2026-09-16)
 
 ---
 

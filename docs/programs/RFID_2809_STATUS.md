@@ -8,9 +8,11 @@ Update this file on every delivery. Do not collapse coded / PR / CI / merged / d
 
 ---
 
-## Locked policy (short)
+## Policy REVERSED 2026-09-29
 
-RFID = campus presence only. Teacher/manual attendance remains course-attendance + deduction authority. Raw swipe must never mark session attended/late, deduct, mutate counters, or billing-backfill.
+The Founder reversed the 2026-09-16 policy: **a student RFID swipe counts as course attendance (same as the teacher marking 已上, including deduction).** The presence-only domain and the RFID-1+ presence slices are **cancelled**. Work is limited to hardening the existing swipe-as-attendance path (weekly-fallback deduct removed, orphan sign-out backfill, deduction-failure alert, throttle 120/min). Risk register: RFC section 0.
+
+Historical (superseded) policy: RFID = campus presence only; raw swipe must never mark attended or deduct.
 
 ---
 
@@ -20,6 +22,7 @@ RFID = campus presence only. Teacher/manual attendance remains course-attendance
 |---|---|---|---|
 | 2026-09-16 | Planning | accepted | Issue comments + Founder locked v1 policy in session |
 | 2026-09-16 | **RFID-0** | coded → PR (this branch) | RFC + cross-links + this status file |
+| 2026-09-29 | Policy reversal + hardening | coded (unpushed) | RFC section 0; RFID-1+ cancelled |
 
 ---
 
