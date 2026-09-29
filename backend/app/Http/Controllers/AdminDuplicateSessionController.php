@@ -3,11 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
-use App\Models\CoursePackage;
 use App\Models\LearningRecord;
 use App\Models\StudentSignIn;
 use App\Services\SessionDeductionService;
-use App\Services\SharedPackagePlanningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -68,15 +66,6 @@ class AdminDuplicateSessionController extends Controller
         $groups = $this->crossScDuplicateGroups($this->effectiveCampusIds($request));
         $p2Groups = [];
 
-        // In-app #316: read-only flag so the director can see a row may be an intended
-        // multi-subject shared-package arrangement. Never filters rows.
-        $packageIds = collect($groups)->flatMap(fn ($g) => array_map(fn ($r) => (int) $r->PackageID, $g['rows']))
-            ->filter()->unique()->values();
-        $planning = app(SharedPackagePlanningService::class);
-        $sharedPackageIds = CoursePackage::query()->whereIn('id', $packageIds)->get()
-            ->filter(fn (CoursePackage $p) => $planning->isSharedPackage($p))
-            ->pluck('id')->map(fn ($id) => (int) $id)->all();
-
         foreach ($groups as $g) {
             $bySc = [];
             foreach ($g['rows'] as $row) {
@@ -106,7 +95,6 @@ class AdminDuplicateSessionController extends Controller
                     'schedule_mode' => (string) ($rows[0]->ScheduleMode ?? ''),
                     'start_date' => (string) ($rows[0]->StartDate ?? ''),
                     'stop' => (int) $rows[0]->Stop,
-                    'is_shared_package' => in_array((int) $rows[0]->PackageID, $sharedPackageIds, true),
                     'session_ids' => $sessionIds,
                     'has_live_lr' => count(array_intersect($sessionIds, $liveLr)) > 0,
                     'statuses' => array_values(array_unique(array_map(
@@ -116,6 +104,16 @@ class AdminDuplicateSessionController extends Controller
                 ];
             }
 
+            // In-app #316 (read-only label, never filters): the overlapping courses sit in the same
+            // shared package AND are different subjects — possibly an intended multi-subject plan.
+            // Same-subject pairs in one package stay unlabelled, since those are real duplicates.
+            $sideRows = array_map(fn ($rows) => $rows[0], array_values($bySc));
+            $packageIds = array_unique(array_map(fn ($r) => (int) ($r->PackageID ?? 0), $sideRows));
+            $subjectIds = array_unique(array_map(fn ($r) => (int) ($r->SubjectID ?? 0), $sideRows));
+            $isSharedMultiSubject = count($sideRows) > 1
+                && count($packageIds) === 1 && reset($packageIds) > 0
+                && count($subjectIds) === count($sideRows);
+
             $p2Groups[] = [
                 'id' => $this->encodeGroupId($g['student_id'], $g['date'], $g['hm']),
                 'student_id' => $g['student_id'],
@@ -123,7 +121,7 @@ class AdminDuplicateSessionController extends Controller
                 'session_date' => $g['date'],
                 'start_time' => $g['hm'],
                 'sides' => $sides,
-                'is_shared_package' => in_array(true, array_column($sides, 'is_shared_package'), true),
+                'is_shared_package' => $isSharedMultiSubject,
                 'resolved_keeper_sc_id' => null,
             ];
         }
@@ -352,7 +350,7 @@ class AdminDuplicateSessionController extends Controller
             ->when(!empty($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds))
             ->selectRaw('
                 cs.id, cs.StudentClassID, cs.SessionDate, SUBSTRING(cs.StartTime,1,5) as hm,
-                sc.StudentID, sc.SessionCount, sc.Stop, sc.RemainingSessions, sc.ScheduleMode, sc.StartDate, sc.PackageID,
+                sc.StudentID, sc.SessionCount, sc.Stop, sc.RemainingSessions, sc.ScheduleMode, sc.StartDate, sc.PackageID, sc.SubjectID,
                 s.name as student_name, u.Name as teacher_name, sub.Subject_Name as subject_name,
                 cs.Status as session_status
             ')

@@ -110,9 +110,10 @@
                   v-if="g.is_shared_package"
                   tone="info"
                   label="多科共用"
-                  title="此學生的課程屬於多科共用堂數套組，重疊時段可能是刻意安排，請自行判斷。"
+                  title="重疊的兩門課屬於同一個共用堂數套組、而且是不同科目，可能是刻意安排，請自行判斷。"
                   data-testid="dsr-shared-package-badge"
                 />
+              <span v-if="g.is_shared_package" class="sr-only">重疊的兩門課屬於同一個共用堂數套組、而且是不同科目，可能是刻意安排。</span>
               </td>
               <td>
                 <div class="dsr-date">{{ formatDate(g.session_date) }}</div>
@@ -315,9 +316,10 @@
                   v-if="g.is_shared_package"
                   tone="info"
                   label="多科共用"
-                  title="此學生的課程屬於多科共用堂數套組，重疊時段可能是刻意安排，請自行判斷。"
+                  title="重疊的兩門課屬於同一個共用堂數套組、而且是不同科目，可能是刻意安排，請自行判斷。"
                   data-testid="dsr-shared-package-badge"
                 />
+              <span v-if="g.is_shared_package" class="sr-only">重疊的兩門課屬於同一個共用堂數套組、而且是不同科目，可能是刻意安排。</span>
             </div>
             <span :class="['dsr-status', `dsr-status-${groupStatus(g)}`]">
               {{ statusLabel(groupStatus(g)) }}

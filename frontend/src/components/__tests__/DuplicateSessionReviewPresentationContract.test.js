@@ -31,7 +31,7 @@ describe('DuplicateSessionReviewPage presentation contract', () => {
 
   it('labels shared-package groups (in-app #316) without hiding any row', () => {
     expect(page).toContain("import AtBadge from '../components/design-system/AtBadge.vue';");
-    expect(page.match(/v-if="g\.is_shared_package"/g)).toHaveLength(2);
+    expect(page.match(/v-if="g\.is_shared_package"/g)).toHaveLength(4); // badge + sr-only text, desktop + mobile
     expect(page).toContain('label="多科共用"');
     expect(page).toContain('可能是刻意安排');
     expect(page).toContain('v-for="g in filteredGroups"');

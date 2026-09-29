@@ -34,29 +34,40 @@ class AdminDuplicateSessionControllerTest extends TestCase
         $this->assertNotEmpty($groups[0]['id']);
     }
 
-    public function test_p2_review_flags_shared_package_rows_but_still_lists_them(): void
+    public function test_p2_review_labels_only_multi_subject_shared_package_pairs(): void
     {
         $campus = Campus::factory()->create();
         $token = $this->directorToken($campus->id);
 
-        $this->seedDuplicatePair(studentId: 91011, campusId: $campus->id); // not shared
-        [, $sharedA, $sharedB] = $this->seedDuplicatePair(studentId: 91012, campusId: $campus->id);
-        $package = CoursePackage::create([
-            'student_id' => 91012, 'campus_id' => $campus->id, 'name' => '共用套組',
-            'billing_mode' => 'count', 'total_sessions' => 12, 'remaining_sessions' => 10,
-            'used_sessions' => 2, 'rate' => 500, 'rate_unit' => 'session',
-            'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
-        ]);
-        DB::table('StudentClass')->whereIn('ID', [$sharedA, $sharedB])->update(['PackageID' => $package->id]);
+        $this->seedDuplicatePair(studentId: 91011, campusId: $campus->id); // no package
+        [, $multiA, $multiB] = $this->seedDuplicatePair(studentId: 91012, campusId: $campus->id);
+        [, $sameA, $sameB] = $this->seedDuplicatePair(studentId: 91013, campusId: $campus->id);
+
+        // 91012: same package, different subjects → possibly an intended multi-subject plan.
+        DB::table('Subject')->insert(['id' => 81102, 'School_id' => 1, 'Grade_no' => 1, 'Subject_Name' => '英文', 'CampusID' => null]);
+        DB::table('StudentClass')->where('ID', $multiB)->update(['SubjectID' => 81102]);
+        DB::table('StudentClass')->whereIn('ID', [$multiA, $multiB])->update(['PackageID' => $this->makePackage(91012, $campus->id)]);
+        // 91013: same package, same subject → a real duplicate, must stay unlabelled.
+        DB::table('StudentClass')->whereIn('ID', [$sameA, $sameB])->update(['PackageID' => $this->makePackage(91013, $campus->id)]);
 
         $res = $this->withToken($token)->getJson('/api/v1/admin/duplicate-sessions/p2-review');
         $res->assertOk();
         $byStudent = collect($res->json('data.groups'))->keyBy('student_id');
 
-        $this->assertCount(2, $byStudent);
+        $this->assertCount(3, $byStudent); // never filters
         $this->assertFalse($byStudent[91011]['is_shared_package']);
         $this->assertTrue($byStudent[91012]['is_shared_package']);
-        $this->assertTrue($byStudent[91012]['sides'][0]['is_shared_package']);
+        $this->assertFalse($byStudent[91013]['is_shared_package']);
+    }
+
+    private function makePackage(int $studentId, int $campusId): int
+    {
+        return (int) CoursePackage::create([
+            'student_id' => $studentId, 'campus_id' => $campusId, 'name' => '共用套組',
+            'billing_mode' => 'count', 'total_sessions' => 12, 'remaining_sessions' => 10,
+            'used_sessions' => 2, 'rate' => 500, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true,
+        ])->id;
     }
 
     public function test_patch_p2_review_cancels_non_kept_side_and_returns_kept_session_ids(): void
