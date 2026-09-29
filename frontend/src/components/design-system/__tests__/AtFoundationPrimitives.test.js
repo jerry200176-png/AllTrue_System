@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AtPageHeader from '../AtPageHeader.vue';
+import AtHelpDisclosure from '../AtHelpDisclosure.vue';
 import AtBadge from '../AtBadge.vue';
 import AtInlineAlert from '../AtInlineAlert.vue';
 import AtSkeleton from '../AtSkeleton.vue';
@@ -25,6 +26,18 @@ describe('At foundation primitives (pilot-used)', () => {
     expect(wrapper.find('.at-page-header__desc').text()).toBe('說明');
     expect(wrapper.find('.at-page-header__meta').text()).toContain('已逾期 2');
     expect(wrapper.find('.act').exists()).toBe(true);
+  });
+
+  it('AtPageHeader hosts a collapsed ⓘ AtHelpDisclosure next to the title', () => {
+    const wrapper = mount(AtPageHeader, {
+      props: { title: '帳務中心' },
+      slots: { help: { components: { AtHelpDisclosure }, template: '<AtHelpDisclosure label="流程"><p>步驟</p></AtHelpDisclosure>' } },
+    });
+    const details = wrapper.find('.at-page-header__titlerow details.at-help');
+    expect(details.exists()).toBe(true);
+    expect(details.attributes('open')).toBeUndefined();
+    expect(details.find('summary').attributes('aria-label')).toBe('流程');
+    expect(details.text()).toContain('步驟');
   });
 
   it('AtBadge exposes text label and tone class', () => {

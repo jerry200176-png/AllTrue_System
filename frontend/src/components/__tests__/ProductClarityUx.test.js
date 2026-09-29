@@ -11,10 +11,9 @@ const tuitionReportSource = readFileSync(resolve(__dirname, '../../pages/Tuition
 describe('Product clarity UX improvements', () => {
   describe('ScheduleDiscrepancyPage', () => {
     it('uses progressive disclosure for the SOP guide banner', () => {
-      expect(discrepancySource).toContain('<details class="sdp-sop-card">');
-      expect(discrepancySource).toContain('<summary>');
+      expect(discrepancySource).toContain('<AtHelpDisclosure label="快速處理 SOP">');
       expect(discrepancySource).toContain('快速處理 SOP（建議流程）');
-      expect(discrepancySource).toContain('sdp-sop-arrow');
+      expect(discrepancySource).not.toContain('sdp-sop-card');
     });
 
     it('avoids raw ID interpolation for missing reporter and branch names', () => {

@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-counts-loading-ux -->
 - 主任總覽的待審評量、未讀通知、繳費提醒、今日課務進度改與側欄／各頁同一口徑；載入中的列表標頭顯示「—」與骨架而非 0／空狀態。純前端顯示調整，無教職員新操作。
 
+## 2026-09-29 — feat(ui): unify page headers, refresh buttons, tabs and icons
+<!-- release-notes: staff_update=staff-2026-09-29-page-header-unify -->
+- 十二個主要頁面的頁首統一：標題、一句說明、右側動作；流程／SOP 說明收進標題旁的 ⓘ；「重新整理」統一為次要按鈕；分頁統一為底線樣式；頁首圖示與側欄一致。主任總覽移除重複的「接著處理」橫幅並把軍階縮成標題旁小標籤。僅版面與文案，資料與操作邏輯不變。
+
 ## 2026-09-29 — fix(ux): label tuition summary as invoiced-only outstanding
 <!-- release-notes: silent_ship=silent-2026-09-29-tuition-summary-label -->
 - 帳務中心收款摘要的金額改稱「已開帳單未結清」，並另列尚未開帳單的筆數，避免把只含已開帳單的金額誤讀成全部未收。計算不變。

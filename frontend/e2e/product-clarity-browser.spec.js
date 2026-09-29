@@ -137,14 +137,14 @@ test.describe('Product Clarity — Real Browser Verification', () => {
       await installUnifiedMocks(page);
 
       await page.goto('/pilot-mount.html?page=discrepancy');
-      await page.waitForSelector('.sdp-sop-card');
+      await page.waitForSelector('.at-help');
 
       // Progressive disclosure of SOP card
-      const sopCard = page.locator('.sdp-sop-card');
+      const sopCard = page.locator('.at-help');
       expect(await sopCard.evaluate((el) => el.hasAttribute('open'))).toBe(false);
-      await page.click('.sdp-sop-card summary');
+      await page.click('.at-help > summary');
       expect(await sopCard.evaluate((el) => el.hasAttribute('open'))).toBe(true);
-      await page.click('.sdp-sop-card summary');
+      await page.click('.at-help > summary');
       expect(await sopCard.evaluate((el) => el.hasAttribute('open'))).toBe(false);
       auditLog.push({ route: 'discrepancy', viewport: vp.name, action: 'Toggle SOP details card', expectedResult: 'Expands/collapses', actualResult: 'PASS', errors: [...errors] });
 
