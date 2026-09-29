@@ -515,6 +515,14 @@
             <input v-model="accountingFilters.subject" type="text" placeholder="全部科目" />
           </label>
           <label>
+            收據狀態
+            <select v-model="accountingFilters.status" aria-label="收據狀態">
+              <option value="confirmed">有效收據</option>
+              <option value="voided">已作廢紀錄</option>
+              <option value="all">全部（含作廢）</option>
+            </select>
+          </label>
+          <label>
             付款方式
             <select v-model="accountingFilters.payment_method">
               <option value="">全部</option>
@@ -582,11 +590,11 @@
           </div>
         </div>
         <p class="tc-summary-note">
-          「已確認收款筆數」是一筆筆收據；「涵蓋課程數」是這些收款對到的不同課程。若同一課程有多筆收款，請逐筆撤銷錯的那筆，不要刪除原紀錄。
+          「已確認收款筆數」是一筆筆收據；「涵蓋課程數」是這些收款對到的不同課程。若同一課程有多筆收款，請逐筆撤銷錯的那筆，不要刪除原紀錄。作廢紀錄不計入收款合計，可開啟繳費明細追蹤。
         </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
-          <AtEmpty icon="receipt_long" title="此區間尚無已核帳收款" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
+          <AtEmpty icon="receipt_long" :title="accountingFilters.status === 'confirmed' ? '此區間尚無已核帳收款' : '此區間尚無符合狀態的收據紀錄'" description="調整日期或篩選條件，或回到待處理查看尚未完成的收款。">
             <template #action>
               <AtButton variant="secondary" shape="rect" @click="activeAccountingTab = 'receivables'">前往待處理</AtButton>
             </template>
@@ -647,7 +655,7 @@
                 :key="row.report_id"
                 class="acct-row-clickable"
                 :class="{ 'acct-row-selected': selectedReportIds.has(row.report_id) }"
-                @click="openReceiptByReport(row.report_id)"
+                @click="row.status === 'voided' ? openLedgerForReport(row) : openReceiptByReport(row.report_id)"
               >
                 <td class="acct-col-check" @click.stop>
                   <input
@@ -674,6 +682,7 @@
                 <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
                 <td>
                   <span v-if="formatAccountingZeroChip(row)" class="acct-chip acct-chip--type">{{ formatAccountingZeroChip(row) }}</span>
+                  <span v-if="row.status === 'voided'" class="acct-chip acct-chip--backfill">已作廢</span>
                   <span v-if="row.is_prepaid" class="acct-chip acct-chip--prepaid">預收</span>
                   <span v-if="row.is_backfilled" class="acct-chip acct-chip--backfill">補建</span>
                   <span v-if="row.course_lifecycle === 'history_completed' || row.course_lifecycle === 'history_settled'" class="acct-chip acct-chip--backfill">{{ row.course_lifecycle_label }}</span>
@@ -686,12 +695,12 @@
                       <span class="material-symbols-outlined">account_balance</span>
                       繳費明細
                     </button>
-                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${humanizeDocumentRef(row.receipt_no)}`">
+                    <button v-if="row.status === 'confirmed'" class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${humanizeDocumentRef(row.receipt_no)}`">
                       <span class="material-symbols-outlined">receipt</span>
                       查看收據
                     </button>
                     <button
-                      v-if="canVoid"
+                      v-if="canVoid && row.status === 'confirmed'"
                       class="tc-btn tc-btn--void"
                       @click="openVoidDialog(row)"
                       :disabled="voidLoading"
@@ -1481,6 +1490,7 @@ function defaultAccountingFilters() {
     student: '',
     subject: '',
     payment_method: '',
+    status: 'confirmed',
   };
 }
 
@@ -1780,6 +1790,7 @@ async function loadAccountingPayments() {
       start: accountingFilters.value.start,
       end: accountingFilters.value.end,
       per_page: '200',
+      status: accountingFilters.value.status,
     });
     if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
     if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
@@ -1840,6 +1851,7 @@ async function fetchAccountingExportRows() {
   const params = new URLSearchParams({
     start: accountingFilters.value.start,
     end: accountingFilters.value.end,
+    status: accountingFilters.value.status,
   });
   if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
   if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());

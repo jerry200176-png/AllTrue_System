@@ -1,3 +1,7 @@
+## 2026-09-29 — fix(billing-ui): expose existing void receipt trace query (in-app #350 / GitHub #3212)
+<!-- release-notes: staff_update=staff-2026-09-29-void-receipt-trace -->
+- 帳務中心收據紀錄可查詢已作廢紀錄，歷史課程仍可開啟原有繳費明細追蹤；作廢狀態在列表及匯出中清楚標示，不計入有效收款合計。
+
 ## 2026-09-29 — fix(students): keep tutoring next steps consistent with no-charge status (in-app #351 / GitHub #3206)
 <!-- release-notes: staff_update=staff-2026-09-29-tutoring-payment-prompts -->
 - 學生管理的正常輔導課不再誤列為待付款；已有帳務異常仍提示主任核對，一般收費課的付款提醒與輔導課續報提示保留。

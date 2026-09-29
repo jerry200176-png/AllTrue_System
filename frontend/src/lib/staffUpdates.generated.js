@@ -4,6 +4,44 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-29-void-receipt-trace",
+    "publishedAt": "2026-09-29",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "作廢收據可追蹤",
+    "summary": "收據紀錄可查詢已作廢項目，歷史課程仍能開啟繳費明細。",
+    "items": [
+      "帳務中心選擇已作廢紀錄或全部，可透過繳費明細核對原有帳務紀錄。",
+      "作廢狀態在列表與匯出中清楚標示，不計入有效收款合計，也不提供再次撤銷。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "帳務中心選擇已作廢紀錄或全部，可透過繳費明細核對原有帳務紀錄。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "作廢狀態在列表與匯出中清楚標示，不計入有效收款合計，也不提供再次撤銷。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:350",
+      "changelog:2026-09-29:void-receipt-trace"
+    ],
+    "date": "2026-09-29",
+    "version": "2026.09.29"
+  },
+  {
     "id": "staff-2026-09-29-tutoring-payment-prompts",
     "publishedAt": "2026-09-29",
     "effectiveAt": null,
