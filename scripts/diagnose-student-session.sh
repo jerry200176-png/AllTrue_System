@@ -4,6 +4,10 @@
 set -euo pipefail
 DATE="${DATE:-$(date +%Y-%m-%d)}"; CAMPUS_ID="${CAMPUS_ID:-9}"
 STUDENT_NAME="${STUDENT_NAME:?STUDENT_NAME required}"; TEACHER_NAME="${TEACHER_NAME:-}"
+# Validate numeric/date scope before opening any database connection.
+[[ "$CAMPUS_ID" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid CAMPUS_ID' >&2; exit 2; }
+[[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo 'Invalid DATE' >&2; exit 2; }
+[[ "$(date -d "$DATE" +%F 2>/dev/null)" == "$DATE" ]] || { echo 'Invalid DATE' >&2; exit 2; }
 ENV_FILE="${ENV_FILE:-/home/admin/backend/.env}"
 DB_USER=$(grep '^DB_USERNAME=' "$ENV_FILE" | cut -d= -f2-)
 DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
@@ -16,23 +20,23 @@ echo "=== diagnose STUDENT=$STUDENT_NAME DATE=$DATE CAMPUS=$CAMPUS_ID generated=
 echo "--- student (exact) ---"
 "${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name='$SN' AND CampusID=$CAMPUS_ID;"
 
-echo "--- student (fuzzy, any campus, in case of name/campus mismatch) ---"
+echo "--- student (fuzzy, same campus) ---"
 LIKE_PART=$(printf "%s" "$STUDENT_NAME" | cut -c1-3)
-"${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name LIKE CONCAT('%','$LIKE_PART','%') LIMIT 20;"
+"${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE CampusID=$CAMPUS_ID AND name LIKE CONCAT('%','$LIKE_PART','%') LIMIT 20;"
 
 echo "--- teacher (if provided) ---"
 if [ -n "$TEACHER_NAME" ]; then
   TN=$(printf "%s" "$TEACHER_NAME" | sed "s/'/\\\\'/g")
-  "${M[@]}" -e "SELECT id,Name,LoginName FROM User WHERE Name='$TN' LIMIT 5;"
+  "${M[@]}" -e "SELECT id,Name FROM User WHERE Name='$TN' LIMIT 5;"
 fi
 
 echo "--- StudentClass rows for this student (all active courses) ---"
-"${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),IFNULL(sc.RemainingSessions,'null'),IFNULL(sc.Rate,'null'),IFNULL(sc.rate_unit,'null'),IFNULL(sc.Charge,'null'),IFNULL(sc.Paid,'null'),s.CampusID)
+"${M[@]}" -e "SELECT CONCAT_WS('|',sc.ID,sc.TeacherID,sc.Stop,sc.ScheduleMode,sc.SessionCount,IFNULL(sc.UsedSessions,'null'),IFNULL(sc.RemainingSessions,'null'),IFNULL(sc.Rate,'null'),IFNULL(sc.rate_unit,'null'),IFNULL(sc.Charge,'null'),IFNULL(sc.Paid,'null'),s.CampusID,IFNULL(sc.StartDate,''),IFNULL(sc.EndDate,''),IFNULL(sc.settlement_day,''),IFNULL(sc.PayDate,''),LEFT(IFNULL(sc.Memo,''),500))
 FROM StudentClass sc JOIN Student s ON s.id=sc.StudentID
 WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID;"
 
 echo "--- ClassSession rows on/near target date ---"
-"${M[@]}" -e "SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),cs.Status,LEFT(IFNULL(cs.Note,''),120),IFNULL(cs.created_at,''),IFNULL(cs.updated_at,''))
+"${M[@]}" -e "SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),cs.Status,IFNULL(cs.session_charge,'null'),LEFT(IFNULL(cs.Note,''),120),IFNULL(cs.created_at,''),IFNULL(cs.updated_at,''))
 FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student s ON s.id=sc.StudentID
 WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
  AND cs.SessionDate BETWEEN DATE_SUB('$DATE', INTERVAL 21 DAY) AND DATE_ADD('$DATE', INTERVAL 7 DAY)
@@ -74,7 +78,7 @@ ORDER BY si.id;"
 
 echo "--- Invoice rows linked to this student's contracts ---"
 "${M[@]}" -e "
-SELECT CONCAT_WS('|',i.id,i.StudentClassID,i.IssueDate,IFNULL(i.DueDate,''),i.TotalAmount,i.PaidAmount,i.Status,LEFT(IFNULL(i.Note,''),120),i.created_at,i.updated_at)
+SELECT CONCAT_WS('|',i.id,i.StudentClassID,IFNULL(i.billing_period,''),i.IssueDate,IFNULL(i.DueDate,''),i.TotalAmount,i.PaidAmount,i.Status,LEFT(IFNULL(i.Note,''),120),i.created_at,i.updated_at)
 FROM Invoice i
 JOIN StudentClass sc ON sc.ID=i.StudentClassID
 JOIN Student s ON s.id=sc.StudentID
@@ -99,6 +103,24 @@ JOIN StudentClass sc ON sc.ID=i.StudentClassID
 JOIN Student s ON s.id=sc.StudentID
 WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
 ORDER BY p.InvoiceID,p.id;"
+
+echo "--- Payment reports (internal registration; not independent bank evidence) ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',pr.id,IFNULL(pr.StudentClassID,''),IFNULL(pr.InvoiceID,''),pr.reported_amount,IFNULL(pr.payment_date,''),IFNULL(pr.payment_method,''),pr.status,IFNULL(pr.payment_id,''),IFNULL(pr.reported_by_name,''),IFNULL(pr.confirmed_by,''),IFNULL(u.Name,''),IFNULL(pr.confirmed_at,''),IFNULL(pr.voided_at,''),LEFT(IFNULL(pr.note,''),500),LEFT(IFNULL(pr.rejection_note,''),120),pr.created_at)
+FROM payment_reports pr
+JOIN Student s ON s.id=pr.StudentID
+LEFT JOIN User u ON u.id=pr.confirmed_by
+WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
+ORDER BY pr.id LIMIT 200;"
+
+echo "--- Effective pricing amendments (including void history) ---"
+"${M[@]}" -e "
+SELECT CONCAT_WS('|',pa.id,pa.student_class_id,pa.effective_from,pa.rate,pa.rate_unit,LEFT(IFNULL(pa.source_reference,''),120),LEFT(IFNULL(pa.reason,''),500),IFNULL(pa.created_by_user_id,''),pa.created_at,IFNULL(pa.voided_at,''))
+FROM student_class_pricing_amendments pa
+JOIN StudentClass sc ON sc.ID=pa.student_class_id
+JOIN Student s ON s.id=sc.StudentID
+WHERE s.name='$SN' AND s.CampusID=$CAMPUS_ID
+ORDER BY pa.student_class_id,pa.effective_from,pa.id LIMIT 200;"
 
 echo "--- Session deduction ledger rows for target-date sessions ---"
 "${M[@]}" -e "
