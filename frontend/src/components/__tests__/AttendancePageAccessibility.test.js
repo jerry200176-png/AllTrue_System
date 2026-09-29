@@ -25,7 +25,7 @@ describe('AttendancePage workspace accessibility', () => {
 
   it('announces pending attendance status controls as pressed buttons', () => {
     expect(source).toContain('type="button"');
-    expect(source).toContain(':aria-pressed="pendingMarkStatus[s.class_session_id] === opt.value"');
+    expect(source).toContain(':aria-pressed="isStatusChosen(s.class_session_id, opt.value)"');
   });
 
   it('names the high-frequency records date and filter controls', () => {
