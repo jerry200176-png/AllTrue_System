@@ -3,20 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-09-29-row-actions-compact
-    published_at: "2026-09-29"
-    audiences:
-      - director
-      - teacher
-    importance: digest
-    title: 列表操作更精簡
-    summary: 點名、營運通知與學生列表的列內按鈕更精簡，次要操作收進「更多」選單。
-    items:
-      - category: improved
-        text: 點名列按鈕同列顯示，未記錄前狀態不預先填色；營運通知每列一個主要動作；學生刪除移入「更多」選單。
-    source_refs:
-      - "changelog:2026-09-29:row-actions-compact"
-
   - id: staff-2026-09-29-calendar-day-nav
     published_at: "2026-09-29"
     audiences:
@@ -64,6 +50,20 @@ updates:
     source_refs:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
+
+  - id: staff-2026-09-29-row-actions-compact
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 列表操作更精簡
+    summary: 點名、營運通知與學生列表的列內按鈕更精簡，次要操作收進「更多」選單。
+    items:
+      - category: improved
+        text: 點名列按鈕同列顯示，未記錄前狀態不預先填色；營運通知每列一個主要動作；學生刪除移入「更多」選單。
+    source_refs:
+      - "changelog:2026-09-29:row-actions-compact"
 
   - id: staff-2026-09-29-void-receipt-trace
     published_at: "2026-09-29"

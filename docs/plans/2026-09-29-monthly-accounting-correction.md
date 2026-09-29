@@ -4,6 +4,10 @@ R3/T3，實作、測試與唯讀清單準備；操作目錄保持 planned，沒�
 
 ## 修訂 v2（2026-09-29）
 
+### 既有來源帳單明細的唯讀核對
+
+正式 authenticated preview 發現來源父帳單已有單一明細，舊 planner 的「來源無明細」前提不成立。修正限定該明細父帳單唯一、金額等於原登錄金額，owner 為來源或 null、期間完整且落在原合約內；由 preview 導出並簽章綁定明細 ID。來源與目標各投影自己的日期、金額和 owner，execute 沿用來源明細 ID，原值保存在既有完整 audit snapshot。多項、其他 owner、金額／期間不符和 preview 後 drift 仍拒絕。修復 lifecycle、核准角色和 executor 不變；本修訂沒有正式資料更正。
+
 來源：本次 Founder 對話、in-app #369 及私有唯讀證據；Planner/Integration Owner：Codex，session ee4392b134a14f1a873a2be71259852c，基準 212e7637f71bbb43c2c4d3f4b995932f4b960262。沿用已批准修正目標；正式資料修復仍未批准執行。修訂原因：使用者已建立九月目標並作廢誤登收款；不新增第二份合約或重複沖銷。
 
 既有目標含取消歷史及一筆月底待上課，保留 ID。四筆九月已上課仍屬來源，移到既有目標。InvoiceItem 可能缺 owner；只有單筆且 parent Invoice 明確時才更正 owner；未提供 item ID 時由唯讀 graph 導出，回傳的已簽章參數必須綁定該 ID。正式欄位與 ID 綁定私有清單。
