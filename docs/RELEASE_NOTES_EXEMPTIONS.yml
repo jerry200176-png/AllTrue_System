@@ -4,7 +4,7 @@
 exemptions:
   - id: silent-2026-09-29-counts-loading-ux
     changelog_date: "2026-09-29"
-    changelog_title: "fix(ux): one source per dashboard count, loading placeholders, invoiced-only outstanding label"
+    changelog_title: "fix(ux): one source per dashboard count, loading placeholders"
     reason: 純前端數字口徑與載入狀態顯示修正，不改流程或權限，教職員不需新操作說明。
 
   - id: silent-2026-09-29-monthly-billing-review
