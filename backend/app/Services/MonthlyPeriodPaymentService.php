@@ -46,6 +46,8 @@ final class MonthlyPeriodPaymentService
             if ($invoice->items->count() !== $items->count() || $items->count() > 1) $ambiguous = true;
             $start = $items->whereNotNull('PeriodStart')->min('PeriodStart') ?: $month->copy()->startOfMonth()->toDateString();
             $end = $items->whereNotNull('PeriodEnd')->max('PeriodEnd') ?: $month->copy()->endOfMonth()->toDateString();
+            if ($start > $end || ($items->isNotEmpty() && ($start < substr((string) $course->StartDate, 0, 10)
+                || $end > substr((string) $course->EndDate, 0, 10)))) $ambiguous = true;
             $amount = $this->amounts->resolve($invoice, $course);
             $paid = $invoice->payments->isEmpty() ? max(0, (int) $invoice->PaidAmount) : $amount['net_applied'];
             $existing = $periods[$period] ?? ['billing_period' => $period, 'period_start' => $start, 'period_end' => $end,
