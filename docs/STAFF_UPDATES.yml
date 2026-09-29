@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-29-capacity-source-labels
+    published_at: "2026-09-29"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 時段衝突來源更清楚
+    summary: 課程時段衝突提示以中文說明紀錄來源，方便核對既有課程與排課。
+    items:
+      - category: improved
+        text: 衝突來源顯示固定課程、課堂紀錄或排課紀錄，學生、科目及時段資訊保留。
+    source_refs:
+      - "alltrue:bug_report:347"
+      - "changelog:2026-09-29:capacity-source-labels"
+
   - id: staff-2026-09-29-student-course-history
     published_at: "2026-09-29"
     audiences:
