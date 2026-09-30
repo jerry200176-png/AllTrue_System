@@ -80,6 +80,51 @@ class LearningRecordController extends Controller
         return $contractTid > 0 ? $contractTid : $recordTeacherId;
     }
 
+    /** Match the same instructor used by resolveEffectiveInstructorUserId before pagination. */
+    private function constrainDisplayedTeacherIds(Builder $query, array $teacherIds): void
+    {
+        $lrTable = (new LearningRecord())->getTable();
+        $placeholders = implode(', ', array_fill(0, count($teacherIds), '?'));
+        // The latest scheduled substitute for this occurrence wins, as in
+        // SubstituteScheduleService::resolveSubstituteUserId().
+        $substituteSql = "(SELECT NULLIF(s.teacher_id, 0) FROM schedules AS s
+            WHERE s.student_course_id = {$lrTable}.StudentClassID
+              AND DATE(s.schedule_date) = DATE({$lrTable}.SessionDate)
+              AND (NULLIF(TRIM({$lrTable}.StartTime), '') IS NULL
+                   OR SUBSTRING(s.start_time, 1, 5) = SUBSTRING({$lrTable}.StartTime, 1, 5))
+              AND s.status = 'scheduled' AND s.original_schedule_id IS NOT NULL
+            ORDER BY s.id DESC LIMIT 1)";
+
+        $query->where(function ($scope) use ($lrTable, $placeholders, $substituteSql, $teacherIds) {
+            $scope->whereRaw("{$substituteSql} IN ({$placeholders})", $teacherIds)
+                ->orWhere(function ($withoutSubstitute) use ($lrTable, $placeholders, $substituteSql, $teacherIds) {
+                    $withoutSubstitute->whereRaw("{$substituteSql} IS NULL")
+                        ->where(function ($owner) use ($lrTable, $placeholders, $teacherIds) {
+                            $owner->where(function ($historical) use ($lrTable, $teacherIds) {
+                                $historical->whereIn("{$lrTable}.TeacherID", $teacherIds);
+                                LearningRecordMutableOwnership::constrainWhereTeacherIdIsHistoricalOwner($historical, $lrTable);
+                            })->orWhere(function ($mutable) use ($lrTable, $placeholders, $teacherIds) {
+                                $mutable->whereExists(function ($sc) use ($lrTable, $placeholders, $teacherIds) {
+                                    $sc->select(DB::raw(1))->from('StudentClass as sc')
+                                        ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
+                                        ->whereRaw("sc.TeacherID IN ({$placeholders})", $teacherIds);
+                                });
+                                LearningRecordMutableOwnership::constrainWhereTeacherIdIsMutableOwner($mutable, $lrTable);
+                            })->orWhere(function ($missingStamp) use ($lrTable, $placeholders, $teacherIds) {
+                                $missingStamp->where(function ($stamp) use ($lrTable) {
+                                    $stamp->whereNull("{$lrTable}.TeacherID")
+                                        ->orWhere("{$lrTable}.TeacherID", 0);
+                                })->whereExists(function ($sc) use ($lrTable, $placeholders, $teacherIds) {
+                                    $sc->select(DB::raw(1))->from('StudentClass as sc')
+                                        ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
+                                        ->whereRaw("sc.TeacherID IN ({$placeholders})", $teacherIds);
+                                });
+                            });
+                        });
+                });
+        });
+    }
+
     private function campusIdForLearningRecord(LearningRecord $learningRecord): int
     {
         $studentClassId = (int) ($learningRecord->StudentClassID ?? 0);
@@ -296,11 +341,24 @@ class LearningRecordController extends Controller
                                 ->from('StudentClass as sc')
                                 ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
                                 ->where('sc.TeacherID', '=', $filterTid);
-                        })->whereNot(function ($hist) use ($lrTable) {
-                            LearningRecordMutableOwnership::constrainWhereTeacherIdIsHistoricalOwner($hist, $lrTable);
                         });
+                        LearningRecordMutableOwnership::constrainWhereTeacherIdIsMutableOwner($mutable, $lrTable);
                     });
             });
+        }
+
+        if ($request->filled('teacher_name')) {
+            $name = Utf8mb3SearchSanitizer::forLike((string) $request->input('teacher_name'));
+            $matchingTeacherIds = $name === '' ? collect() : DB::table('User')
+                ->where('Name', 'like', '%' . $name . '%')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+            if ($matchingTeacherIds->isEmpty()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $this->constrainDisplayedTeacherIds($query, $matchingTeacherIds->all());
+            }
         }
 
         if ($request->filled('student_class_id')) {

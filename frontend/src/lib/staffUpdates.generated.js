@@ -263,6 +263,36 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-learning-teacher-search",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "評量可直接搜尋老師",
+    "summary": "輸入老師姓名並按搜尋或 Enter，即可查看該老師授課的評量紀錄。",
+    "items": [
+      "老師姓名可用部分文字搜尋；代課堂次依實際授課老師顯示與篩選。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "老師姓名可用部分文字搜尋；代課堂次依實際授課老師顯示與篩選。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:learning-teacher-search"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-dup-review-shared-label",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

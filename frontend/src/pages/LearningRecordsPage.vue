@@ -494,12 +494,20 @@
           >
         </div>
         <div v-if="!isTeacher" class="form-group lr-field">
-          <label>篩選老師</label>
-          <SearchableSelect
-            v-model="filters.teacher_id"
-            :options="teacherOptions"
-            placeholder="選擇老師..."
-          />
+          <label for="lr-teacher-name-filter">搜尋老師</label>
+          <input
+            id="lr-teacher-name-filter"
+            v-model="filters.teacher_name"
+            type="search"
+            class="lr-input"
+            list="lr-teacher-name-options"
+            autocomplete="off"
+            placeholder="輸入老師姓名..."
+            @keyup.enter="fetchRecords"
+          >
+          <datalist id="lr-teacher-name-options">
+            <option v-for="name in teacherFilterNames" :key="name" :value="name" />
+          </datalist>
         </div>
         <div class="form-group lr-field lr-field-wide">
           <label>日期範圍</label>
@@ -1642,7 +1650,7 @@ const sessionDatesByClassId = ref({});
 const directorSessionsByClassId = ref({});
 /** Director 新增：時間已由課程／堂次帶入，與 ClassSessionID>0 一併鎖定。 */
 const formTimesFromBinding = ref(false);
-const filters = reactive({ student_name: '', teacher_id: '', start_date: '', end_date: '', subject: '' });
+const filters = reactive({ student_name: '', teacher_name: '', start_date: '', end_date: '', subject: '' });
 
 /**
  * 使用者是否已明確點「查看全部歷史」解除預設時間窗口（近 90 天）。
@@ -1727,14 +1735,14 @@ const loadedOldestDate = computed(() => {
 
 /** 是否有啟用中的篩選條件，供空狀態 CTA 與清除按鈕用。 */
 const hasActiveFilters = computed(() =>
-  !!(filters.student_name || filters.teacher_id || filters.start_date || filters.end_date || filters.subject)
+  !!(filters.student_name || filters.teacher_name.trim() || filters.start_date || filters.end_date || filters.subject)
 );
 
 /** 啟用中的篩選項目數，顯示在標題列 badge（不計 status，已由上方 tab 處理）。 */
 const activeFilterCount = computed(() => {
   let n = 0;
   if (filters.student_name) n++;
-  if (filters.teacher_id) n++;
+  if (filters.teacher_name.trim()) n++;
   if (filters.start_date || filters.end_date) n++;
   if (filters.subject) n++;
   return n;
@@ -2564,6 +2572,10 @@ const isReadOnly = computed(() => {
 const teacherOptions = computed(() =>
   (Array.isArray(teacherList.value) ? teacherList.value : []).map(t => ({ value: t.id, label: t.username || t.T_Name || t.Name || '?' }))
 );
+const teacherFilterNames = computed(() =>
+  [...new Set(teacherOptions.value.map((option) => option.label).filter((name) => name !== '?'))]
+    .sort((a, b) => a.localeCompare(b, 'zh-Hant'))
+);
 
 const studentOptions = computed(() =>
   (Array.isArray(studentList.value) ? studentList.value : []).map(s => {
@@ -2784,9 +2796,6 @@ const fetchTeachers = async () => {
       const dedupById = new Map();
       filteredRows.forEach((teacher) => dedupById.set(String(teacher.id), teacher));
       teacherList.value = Array.from(dedupById.values());
-      if (filters.teacher_id && !dedupById.has(String(filters.teacher_id))) {
-        filters.teacher_id = '';
-      }
     }
   } catch (e) { console.error('fetchTeachers', e); }
 };
@@ -3392,7 +3401,7 @@ const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
   const params = new URLSearchParams();
   if (props.branchId) params.set('branch_id', props.branchId);
   if (filters.student_name) params.set('student_name', filters.student_name);
-  if (filters.teacher_id) params.set('teacher_id', filters.teacher_id);
+  if (filters.teacher_name.trim()) params.set('teacher_name', filters.teacher_name.trim());
   // 起始 > 結束時不送 API，由 dateRangeError 顯示 inline 錯誤
   if (!dateRangeError.value) {
     if (filters.start_date) {
@@ -3437,7 +3446,7 @@ const onDateRangeChange = () => {
 /** 清除所有篩選條件，常用於空狀態 CTA。預設時間窗口一併恢復。 */
 const clearAllFilters = () => {
   filters.student_name = '';
-  filters.teacher_id = '';
+  filters.teacher_name = '';
   filters.start_date = '';
   filters.end_date = '';
   filters.subject = '';

@@ -1,3 +1,7 @@
+## 2026-09-30 — fix(learning): teacher-name search applies to assessment records
+<!-- release-notes: staff_update=staff-2026-09-30-learning-teacher-search -->
+- 學習評量表輸入老師姓名後按搜尋或 Enter，可按實際授課老師查詢跨頁紀錄，包含單堂代課與尚未上課的現任老師；共用學生／老師選單首次點入不再立即關閉。
+
 ## 2026-09-29 — fix(ops): report closed monthly case eligibility explicitly
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-case-closed -->
 - 合法空白單案資格明確拒絕為沒有可執行案例，隨 backend 正常部署帶入已清空清單；不改資料、核准角色或執行通道。
