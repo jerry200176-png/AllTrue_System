@@ -3,6 +3,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Models\UserCapabilityGrant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 /**
  * Campus-aware staff capability resolution (in-app #299 Phase A).
@@ -126,6 +127,61 @@ class StaffCapabilityAuthorizer
         }
         return $map;
     }
+    /**
+     * "Directors of campus X" (or of any campus when $campusId is null).
+     *
+     * Legacy: type-D users (approved on the campus). Flag ON adds users holding an active
+     * `director` grant on the campus, so a type-T survivor is not dropped from director lookups.
+     * Flag OFF is exactly the legacy query.
+     *
+     * @return list<int>
+     */
+    public function directorUserIds(?int $campusId): array
+    {
+        $legacy = User::query()->where('type', 'D');
+        if ($campusId !== null) {
+            $legacy->whereIn('id', UserCampus::query()
+                ->select('UserID')
+                ->where('CampusID', $campusId)
+                ->where('Approved', 1));
+        }
+        $ids = $legacy->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return array_values(array_unique(array_merge($ids, $this->grantedDirectorUserIds($campusId))));
+    }
+
+    /**
+     * Active director-grant holders only (empty when the flag is OFF or the table is absent).
+     *
+     * @return list<int>
+     */
+    public function grantedDirectorUserIds(?int $campusId): array
+    {
+        if (!$this->enabled() || !Schema::hasTable('user_capability_grants')) {
+            return [];
+        }
+
+        return UserCapabilityGrant::query()
+            ->where('capability', self::CAP_DIRECTOR)
+            ->whereNull('revoked_at')
+            ->when($campusId !== null, fn ($q) => $q->where('campus_id', $campusId))
+            // Grant holder must still exist, be a teacher/director account and not be inactive/suspended.
+            ->whereExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('User')
+                    ->whereColumn('User.id', 'user_capability_grants.user_id')
+                    ->whereIn('User.type', ['T', 'D'])
+                    ->where(function ($w) {
+                        $w->whereNull('User.status')->orWhereNotIn('User.status', ['inactive', 'suspended']);
+                    });
+            })
+            ->orderBy('user_id')
+            ->distinct()
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
     private function normalizeActingAs(?string $value): ?string
     {
         if ($value === null || $value === '') {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campus;
 use App\Models\SecurityAuditEvent;
 use App\Models\User;
+use App\Services\StaffCapabilityAuthorizer;
 use App\Models\UserCampus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -181,15 +182,19 @@ class DirectorAccountController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $users = User::where('type', 'D')->get();
+        $authorizer = app(StaffCapabilityAuthorizer::class);
+        $users = User::query()->whereIn('id', $authorizer->directorUserIds(null))->orderBy('id')->get();
         $campuses = Campus::all()->keyBy('id');
 
-        $list = $users->map(function (User $user) use ($campuses) {
-            $campusIds = UserCampus::where('UserID', $user->id)
-                ->where('Approved', true)
-                ->pluck('CampusID')
-                ->map(fn ($id) => (int) $id)
-                ->all();
+        $list = $users->map(function (User $user) use ($campuses, $authorizer) {
+            // Grant-only directors (type T survivor): campuses come from their director grants.
+            $campusIds = (string) $user->getAttribute('type') === 'D'
+                ? UserCampus::where('UserID', $user->id)
+                    ->where('Approved', true)
+                    ->pluck('CampusID')
+                    ->map(fn ($id) => (int) $id)
+                    ->all()
+                : $authorizer->capabilityCampusMap($user)[StaffCapabilityAuthorizer::CAP_DIRECTOR];
 
             $campusNames = collect($campusIds)
                 ->map(fn ($id) => $campuses->get($id)?->name)
@@ -203,6 +208,7 @@ class DirectorAccountController extends Controller
                 'account'      => $user->LoginName,
                 'campus_ids'   => $campusIds,
                 'campus_names' => $campusNames,
+                'type'         => (string) $user->getAttribute('type'),
             ];
         })->values();
 
@@ -305,6 +311,14 @@ class DirectorAccountController extends Controller
             }
 
             UserCampus::where('UserID', $uid)->delete();
+
+            // No revoked_by column exists on user_capability_grants; revoked_at alone marks the revocation.
+            if (Schema::hasTable('user_capability_grants')) {
+                DB::table('user_capability_grants')
+                    ->where('user_id', $uid)
+                    ->whereNull('revoked_at')
+                    ->update(['revoked_at' => now()]);
+            }
 
             if (Schema::hasTable('NotificationReads')) {
                 DB::table('NotificationReads')->where('UserID', $uid)->delete();
