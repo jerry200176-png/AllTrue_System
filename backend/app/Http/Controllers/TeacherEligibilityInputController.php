@@ -783,6 +783,9 @@ class TeacherEligibilityInputController extends Controller
         if (!$record) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         $status = (string) ($record->status ?? '');
         if ($status === 'withdrawn') {
             return response()->json(['message' => $alreadyMessage], 422);
@@ -896,19 +899,9 @@ class TeacherEligibilityInputController extends Controller
         if (!$query->exists()) abort(422, 'teacher is outside the selected branch or is not a teacher');
     }
 
-    /** Founder decision 5 (#2908): the approver/confirmer may not be the subject teacher. */
     private function rejectSelfApproval(Request $request, mixed $subjectTeacherId): ?\Illuminate\Http\JsonResponse
     {
-        $actor = $this->actorId($request);
-        if ($actor === null || $subjectTeacherId === null || (int) $subjectTeacherId !== $actor) {
-            return null;
-        }
-        \App\Models\SecurityAuditEvent::append('approval.self_blocked', 'denied', [
-            'actor_type' => 'user', 'actor_id' => $actor,
-            'subject_type' => 'teacher', 'subject_id' => $subjectTeacherId,
-        ]);
-
-        return response()->json(['message' => '不能核准自己的薪資／資格／堂數更正', 'code' => 'self_approval_forbidden'], 422);
+        return \App\Support\SelfApprovalGuard::reject($request, $subjectTeacherId);
     }
 
     private function actorId(Request $request): ?int

@@ -42,12 +42,19 @@ class StaffAuditContextAndSelfApprovalTest extends TestCase
         return $u;
     }
 
-    private function deduction(int $teacherId): int
+    private function row(string $table, int $teacherId): int
     {
-        return DB::table('teacher_payroll_deductions')->insertGetId([
-            'teacher_id' => $teacherId, 'branch_id' => 1, 'deduction_key' => 'k', 'status' => 'pending',
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        $base = ['teacher_id' => $teacherId, 'branch_id' => 1, 'created_at' => now(), 'updated_at' => now()];
+        $extra = match ($table) {
+            'teacher_payroll_deductions' => ['deduction_key' => 'k', 'status' => 'pending', 'director_confirmed_at' => now()],
+            'teacher_payroll_admin_allowances' => ['role_key' => 'admin_assist', 'rate' => 1, 'status' => 'pending', 'director_confirmed_at' => now()],
+            'teacher_payroll_cash_adjustments' => ['amount' => 100, 'reason' => 'r', 'status' => 'pending', 'director_confirmed_at' => now()],
+            'teacher_payroll_events' => ['event_date' => '2026-08-31', 'event_type' => 'holiday', 'status' => 'pending'],
+            'teacher_payroll_achievements' => ['outcome_key' => 'k', 'status' => 'pending'],
+            'fulltime_salary_profiles' => ['base_salary' => 30000, 'effective_from' => '2099-01-01'],
+        };
+
+        return DB::table($table)->insertGetId($base + $extra);
     }
 
     private function lastMetadata(string $type): array
@@ -59,7 +66,7 @@ class StaffAuditContextAndSelfApprovalTest extends TestCase
     {
         Config::set('staff_capabilities.multi_role_v1_enabled', true);
         $u = $this->dualUser();
-        $id = $this->deduction($u->id);
+        $id = $this->row('teacher_payroll_deductions', $u->id);
 
         $this->withHeaders($this->headers($u, 'director'))
             ->postJson("/api/v1/finance/teacher-eligibility/deductions/{$id}/confirm")
@@ -68,14 +75,71 @@ class StaffAuditContextAndSelfApprovalTest extends TestCase
         $meta = $this->lastMetadata('approval.self_blocked');
         $this->assertSame('director', $meta['acting_as']);
         $this->assertSame(1, $meta['capability_campus_count']);
-        $this->assertNull(DB::table('teacher_payroll_deductions')->where('id', $id)->value('director_confirmed_at'));
+    }
+
+    /** @return array<string, array{0: ?string, 1: string, 2: string, 3: string}> [table, method, uri, actor] */
+    public static function guardedRoutes(): array
+    {
+        $b = 'finance/teacher-eligibility/';
+        $r = [];
+        foreach (['deductions' => 'teacher_payroll_deductions', 'admin-allowances' => 'teacher_payroll_admin_allowances', 'cash-adjustments' => 'teacher_payroll_cash_adjustments'] as $seg => $t) {
+            $r["$seg confirm"] = [$t, 'post', "$b$seg/{id}/confirm", 'director'];
+            $r["$seg approve"] = [$t, 'post', "$b$seg/{id}/approve", 'hq'];
+        }
+        $r['deductions withdraw'] = ['teacher_payroll_deductions', 'post', "{$b}deductions/{id}/withdraw", 'director'];
+        $r['events withdraw'] = ['teacher_payroll_events', 'post', "{$b}events/{id}/withdraw", 'director'];
+        $r['achievements withdraw'] = ['teacher_payroll_achievements', 'post', "{$b}achievements/{id}/withdraw", 'director'];
+        $r['achievements verify'] = ['teacher_payroll_achievements', 'post', "{$b}achievements/{id}/verify", 'director'];
+        $r['events approve'] = ['teacher_payroll_events', 'post', "{$b}events/{id}/approve", 'director'];
+        $r['salary-profile approve'] = ['fulltime_salary_profiles', 'post', "{$b}salary-profiles/{id}/approve", 'hq'];
+        $r['parttime teacher-rules put'] = [null, 'put', 'finance/parttime-payroll/teacher-rules', 'hq'];
+        $r['parttime teacher-rules put (director)'] = [null, 'put', 'finance/parttime-payroll/teacher-rules', 'director'];
+        $r['parttime teacher-rules delete'] = [null, 'delete', 'finance/parttime-payroll/teacher-rules', 'hq'];
+
+        return $r;
+    }
+
+    /** @dataProvider guardedRoutes */
+    public function test_self_action_is_422_and_changes_nothing(?string $table, string $method, string $uri, string $actor): void
+    {
+        $u = $this->user($actor === 'hq' ? 'S' : 'A');
+        if ($actor === 'director') {
+            UserCampus::create(['UserID' => $u->id, 'CampusID' => 1, 'Admin' => 1, 'Approved' => 1]);
+        }
+        $id = $table ? $this->row($table, $u->id) : 0;
+        $before = $table ? (array) DB::table($table)->where('id', $id)->first() : [];
+
+        $res = $this->withHeaders($this->headers($u))->json($method, '/api/v1/'.str_replace('{id}', (string) $id, $uri), [
+            'teacher_id' => $u->id, 'branch_id' => 1, 'base_rates' => [],
+        ]);
+
+        $res->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
+        if ($table) {
+            $this->assertSame($before, (array) DB::table($table)->where('id', $id)->first());
+        }
+    }
+
+    public function test_director_acting_on_a_different_teacher_still_succeeds(): void
+    {
+        $u = $this->user('A');
+        UserCampus::create(['UserID' => $u->id, 'CampusID' => 1, 'Admin' => 1, 'Approved' => 1]);
+        $other = $this->user('T');
+        $id = $this->row('teacher_payroll_deductions', $other->id);
+        DB::table('teacher_payroll_deductions')->where('id', $id)->update(['director_confirmed_at' => null]);
+
+        $this->withHeaders($this->headers($u))
+            ->postJson("/api/v1/finance/teacher-eligibility/deductions/{$id}/confirm")
+            ->assertOk();
+        $this->withHeaders($this->headers($u))
+            ->postJson("/api/v1/finance/teacher-eligibility/deductions/{$id}/withdraw")
+            ->assertOk()->assertJsonPath('status', 'withdrawn');
     }
 
     public function test_audit_acting_as_null_when_flag_off(): void
     {
         $u = $this->user('A');
         UserCampus::create(['UserID' => $u->id, 'CampusID' => 1, 'Admin' => 1, 'Approved' => 1]);
-        $id = $this->deduction($u->id);
+        $id = $this->row('teacher_payroll_deductions', $u->id);
 
         $this->withHeaders($this->headers($u))
             ->postJson("/api/v1/finance/teacher-eligibility/deductions/{$id}/confirm")
@@ -98,28 +162,4 @@ class StaffAuditContextAndSelfApprovalTest extends TestCase
         $this->assertSame('acting_context_denied', $this->lastMetadata('staff.context.denied')['reason_code']);
     }
 
-    public function test_hq_cannot_approve_own_cash_adjustment_or_salary_profile_but_can_approve_others(): void
-    {
-        $hq = $this->user('S');
-        $h = $this->headers($hq);
-        $cash = fn (int $tid) => DB::table('teacher_payroll_cash_adjustments')->insertGetId([
-            'teacher_id' => $tid, 'branch_id' => 1, 'amount' => 100, 'reason' => 'r', 'status' => 'pending',
-            'director_confirmed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $profile = fn (int $tid) => DB::table('fulltime_salary_profiles')->insertGetId([
-            'teacher_id' => $tid, 'branch_id' => 1, 'base_salary' => 30000, 'effective_from' => '2099-01-01',
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
-
-        $c = $cash($hq->id);
-        $this->withHeaders($h)->postJson("/api/v1/finance/teacher-eligibility/cash-adjustments/{$c}/approve")
-            ->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
-        $p = $profile($hq->id);
-        $this->withHeaders($h)->postJson("/api/v1/finance/teacher-eligibility/salary-profiles/{$p}/approve")
-            ->assertStatus(422)->assertJsonPath('code', 'self_approval_forbidden');
-
-        $c2 = $cash($hq->id + 1000);
-        $this->withHeaders($h)->postJson("/api/v1/finance/teacher-eligibility/cash-adjustments/{$c2}/approve")
-            ->assertOk()->assertJsonPath('status', 'approved');
-    }
 }
