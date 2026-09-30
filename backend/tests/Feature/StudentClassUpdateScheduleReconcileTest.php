@@ -120,7 +120,6 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             'payment_type' => 'session',
         ]);
 
-        fwrite(STDERR, "DEBUG422 " . $res->getContent() . "\n");
         $res->assertOk();
         $sync = $res->json('session_sync');
         $this->assertSame('history_exists', $sync['reason'] ?? '');
