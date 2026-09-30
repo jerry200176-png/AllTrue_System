@@ -1,5 +1,11 @@
 # Governance changelog
 
+## 2026-09-30 — Read-only production probe cases are T2
+
+- Founder decision: read-only production probe changes do not need Founder GO; money, production data mutation, deploy and auth still do.
+- Motivation: PRs #3385, #3387, #3388 and #3389 each only added or fixed a read-only case in `production-case-dump.yml` yet were classified R3/T3 by the `.github/workflows/` prefix.
+- `autonomy_gate.is_readonly_probe_only`: a PR touching only that workflow (plus session manifest / its own inventory entry) with no write, trigger, permissions, environment, secret, ssh or artisan marker is T2; anything else, or an uninspectable diff, stays T3. The workflow run's own environment and approval are unchanged.
+
 ## 2026-09-29 — Preserve approval across an authorized task
 
 - Founder requested removal of repeated conversational approvals within an already approved task. Documented scope continuity across merge, deployment, verification, routine integration and pause/resume.
