@@ -3,13 +3,17 @@
 namespace App\Exports;
 
 use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /** 第一張：每位老師一列的月合計 */
-class TeacherMonthlySummarySheet implements FromArray, WithTitle, WithStyles, WithStrictNullComparison
+class TeacherMonthlySummarySheet implements FromArray, ShouldAutoSize, WithTitle, WithStyles, WithStrictNullComparison
 {
     public function __construct(private array $teachers, private string $titlePrefix)
     {
@@ -39,6 +43,32 @@ class TeacherMonthlySummarySheet implements FromArray, WithTitle, WithStyles, Wi
 
     public function styles(Worksheet $sheet): array
     {
-        return [1 => ['font' => ['bold' => true, 'size' => 12]], 2 => ['font' => ['bold' => true]]];
+        $sheet->mergeCells('A1:F1');  // 標題不參與自動欄寬
+        // 整份檔案統一字型（第一張 sheet 設定即套用全 workbook）
+        $sheet->getParent()->getDefaultStyle()->getFont()->setName('Microsoft JhengHei')->setSize(11);
+        $sheet->freezePane('A3');
+        $last = max(3, count($this->teachers) + 2);
+        $sheet->getStyle("A2:F{$last}")->applyFromArray([
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFBFBFBF']]],
+        ]);
+        $sheet->getStyle("B3:F{$last}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("C3:C{$last}")->getNumberFormat()->setFormatCode('0.00');
+        // 有只刷一次的老師：該格紅字粗體底色，主任一眼看到要補登的人
+        foreach (array_values($this->teachers) as $i => $t) {
+            if ($t['totals']['anomaly_days'] > 0) {
+                $cell = 'D' . ($i + 3);
+                $sheet->getStyle($cell)->getFont()->setBold(true)->getColor()->setARGB('FFC00000');
+                $sheet->getStyle($cell)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFF2CC');
+            }
+        }
+
+        return [
+            1 => ['font' => ['bold' => true, 'size' => 12]],
+            2 => [
+                'font'      => ['bold' => true],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFD9E1F2']],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            ],
+        ];
     }
 }

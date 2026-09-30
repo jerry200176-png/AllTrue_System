@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "feat(ops): support exact-case human review for monthly correction"
     reason: 僅限受控單案的內部核對入口，部署資格不代表修復完成，不發布教職員完成公告。
 
+  - id: silent-2026-09-30-teacher-attendance-polish
+    changelog_date: "2026-09-30"
+    changelog_title: "fix(attendance): readable monthly xlsx and clearer single-swipe marking"
+    reason: 同日上線月報的版面微調，已含於當日老師刷卡月報公告，不另發布。
+
   - id: silent-2026-09-30-teacher-month-api
     changelog_date: "2026-09-30"
     changelog_title: "feat(attendance): teacher monthly attendance daily rows + month API"
