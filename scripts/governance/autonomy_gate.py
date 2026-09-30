@@ -328,6 +328,49 @@ def _founder_effects(changed_code: str, *, include_runtime_write: bool = True) -
     return effects
 
 
+_PROBE_WORKFLOW = ".github/workflows/production-case-dump.yml"
+_PROBE_INVENTORY = "docs/governance/PRODUCTION_WORKFLOW_INVENTORY.json"
+_PROBE_COMPANION_PATHS = {".agent-session/manifest.json"}
+# Anything here in a probe diff (added or removed) means it is no longer a pure
+# read-only case edit. Fail closed: a false positive only costs a Founder GO.
+_PROBE_UNSAFE_RE = re.compile(
+    r"(?:->|::)\s*(?:create(?:many)?|update(?:orcreate)?|save|delete|destroy|forcedelete|insert|upsert|"
+    r"attach|detach|sync|increment|decrement|truncate|statement|unprepared|raw|affectingstatement)\b"
+    r"|\b(?:update|insert|delete|drop|alter|truncate|replace|grant|revoke|create\s+table|migrate|migration|"
+    r"artisan|db:|shell_exec|exec|system|passthru|proc_open|popen|file_put_contents|unlink|rename|curl|"
+    r"scp|rsync|ssh|sudo|eval)\b"
+    r"|\$\{\{|secrets\.|^env\s*:|^(?:-\s*)?(?:on|permissions|environment|concurrency|inputs|schedule|push|"
+    r"pull_request\w*|workflow_\w+|repository_dispatch|cron|uses|run)\s*:|\bcron\b"
+)
+
+
+def is_readonly_probe_only(paths: Iterable[str], patch: str) -> bool:
+    """True when the PR only touches the read-only production-case-dump probe.
+
+    Fail closed: needs an inspectable diff for the workflow, no companion path
+    outside the session manifest / this workflow's own inventory entry, and no
+    write/trigger/secret/ssh/env marker in any changed line.
+    """
+
+    files = {str(p).replace("\\", "/") for p in paths if p}
+    if _PROBE_WORKFLOW not in files or "diff --git " not in (patch or ""):
+        return False
+    if files - {_PROBE_WORKFLOW, _PROBE_INVENTORY} - _PROBE_COMPANION_PATHS:
+        return False
+    for chunk in re.split(r"(?=^diff --git )", patch, flags=re.MULTILINE):
+        if not chunk.strip():
+            continue
+        head = chunk.split("\n", 1)[0]
+        if f"diff --git a/{_PROBE_WORKFLOW} b/{_PROBE_WORKFLOW}" in head:
+            code = _changed_code_lines(chunk)
+            if not code or any(_PROBE_UNSAFE_RE.search(line) for line in code.splitlines()):
+                return False
+        elif f"diff --git a/{_PROBE_INVENTORY} b/{_PROBE_INVENTORY}" in head:
+            if any("production-case-dump.yml" not in line for line in _changed_code_lines(chunk).splitlines()):
+                return False
+    return True
+
+
 def is_deployable_path(path: str) -> bool:
     """Return whether a changed path can alter the deployed runtime."""
 
@@ -415,6 +458,12 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     """Derive the minimum safe tier from paths and diff text."""
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
+    if is_readonly_probe_only(normalized, patch):
+        return {
+            "machine_minimum_tier": 2,
+            "tier_name": "T2",
+            "reasons": ["read-only production-case-dump probe change (no write markers)"],
+        }
     # Tests, fixtures, and documentation cannot alter the deployed runtime.
     # Keep them eligible for the lightest path even when their assertions
     # mention a protected domain such as auth or billing.
@@ -1256,6 +1305,7 @@ __all__ = [
     "is_control_plane_only_paths",
     "is_control_plane_path",
     "is_deployable_path",
+    "is_readonly_probe_only",
     "is_production_activation_sensitive_path",
     "parse_declaration",
 ]

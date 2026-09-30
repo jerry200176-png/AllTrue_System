@@ -94,5 +94,31 @@ class PrDeclarationGateTest(unittest.TestCase):
         self.assertEqual(generated["autonomy_tier"], "T2")
 
 
+WF = ".github/workflows/production-case-dump.yml"
+
+
+def _wf_patch(*lines, path=WF):
+    return f"diff --git a/{path} b/{path}\n@@ -1 +1 @@\n" + "\n".join("+" + l for l in lines)
+
+
+class ReadOnlyProbeTierTest(unittest.TestCase):
+    READ = ("if ($case === 'x') {", "$out['n'] = $db::table('Student')->where('id', 1)->count();", "}")
+
+    def test_read_only_probe_is_t2_not_founder(self):
+        r = validate_declaration("Risk-Class: R2\nAutonomy-Tier: T2", [WF, ".agent-session/manifest.json"], _wf_patch(*self.READ))
+        self.assertTrue(r["valid"], r)
+        self.assertEqual(r["generated"]["autonomy_tier"], "T2")
+
+    def test_probe_with_write_stays_t3(self):
+        for line in ("$db::table('Student')->where('id', 1)->update(['a' => 1]);", "DB::statement('x');", "UPDATE Student SET a=1", "permissions:", "run: php artisan migrate"):
+            self.assertEqual(classify_scope([WF], _wf_patch(line))["tier_name"], "T3", line)
+
+    def test_probe_plus_other_workflow_or_no_patch_stays_t3(self):
+        other = ".github/workflows/deploy.yml"
+        patch = _wf_patch(*self.READ) + "\n" + _wf_patch("# x", path=other)
+        self.assertEqual(classify_scope([WF, other], patch)["tier_name"], "T3")
+        self.assertEqual(classify_scope([WF], "")["tier_name"], "T3")
+
+
 if __name__ == "__main__":
     unittest.main()

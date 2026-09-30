@@ -6537,6 +6537,9 @@ class StudentClassController extends Controller
             'Method' => 'transfer_in',
             'Note' => mb_substr("轉課轉入 {$x} 元，來源合約#{$srcId} 帳單#{$invoice->getKey()} 付款#{$out->getKey()}（{$receipt}）", 0, 255),
         ]);
+        $new->setAttribute('Paid', 1);
+        $new->setAttribute('PayDate', $paidAt);
+        $new->save();
         if ((int) ($source->getAttribute('Pay') ?? 0) === (int) $paid['paid_amount']) {
             $source->setAttribute('Pay', $plan['source_charge']);
             $source->save();
