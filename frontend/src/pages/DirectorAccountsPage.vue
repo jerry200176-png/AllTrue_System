@@ -33,7 +33,10 @@
               <td data-label="姓名">{{ item.name }}</td>
               <td data-label="帳號">{{ item.account }}</td>
               <td data-label="分校">{{ item.campus_names.join('、') || '—' }}</td>
-              <td class="actions" data-label="操作">
+              <td v-if="item.type && item.type !== 'D'" class="actions" data-label="操作">
+                <span class="capability-label">由老師帳號授權</span>
+              </td>
+              <td v-else class="actions" data-label="操作">
                 <AtButton shape="rect" size="sm" variant="secondary" @click="openCampusModal(item, $event)" :disabled="actionId === item.id || campusModal.saving">
                   編輯分校
                 </AtButton>
@@ -426,6 +429,7 @@ onMounted(() => loadAll());
   min-width: 300px;
 }
 .pending-table .actions .at-btn { min-height: var(--ds-control-height-touch, 44px); }
+.capability-label { font-size: 0.85rem; opacity: 0.75; }
 .temp-password {
   font-size: 13px;
   color: var(--ds-ink-secondary);
