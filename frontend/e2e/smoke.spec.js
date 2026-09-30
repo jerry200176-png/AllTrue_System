@@ -86,7 +86,8 @@ async function navTo(page, navLabel) {
       }
     }
     await navBtn.click({ force: true });
-    await page.waitForLoadState('networkidle').catch(() => {});
+    // Production keeps background requests open; networkidle can consume the
+    // entire test timeout even after the destination has rendered.
     // The destination heading is the user-visible outcome. In production the
     // course page can render before the sidebar's active class settles.
     if (await page.getByRole('heading', { name: navLabel, exact: true }).isVisible().catch(() => false)) {
