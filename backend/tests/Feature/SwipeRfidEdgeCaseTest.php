@@ -6,6 +6,7 @@ use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
 use App\Models\Subject;
 use App\Models\TeacherSignIn;
@@ -365,6 +366,17 @@ class SwipeRfidEdgeCaseTest extends TestCase
         TeacherSignIn::where('TeacherID', $teacherId)->update(['SignInDT' => "{$today} 08:55:00", 'SignOutDT' => "{$today} 09:30:00"]);
         $this->swipe('EDGE-RUNNER')->assertStatus(201);
         $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->orderByDesc('id')->value('Status'));
+    }
+
+    public function test_student_swipe_returns_only_verified_line_ids(): void
+    {
+        $student = $this->makeStudent();
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Upending', 'campus_id' => $this->campus->id]);
+
+        $this->swipe($student->RFID)
+            ->assertStatus(201)
+            ->assertJsonPath('student.LineIDs', ['Uverified']);
     }
 
     /** @test */

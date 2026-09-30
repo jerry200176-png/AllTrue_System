@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\TempRfid;
 use App\Models\StudentClass;
+use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
 use App\Models\TeacherSignIn;
 use App\Models\User;
@@ -150,13 +151,7 @@ class SwipeRfidController extends Controller
                         'type'   => 'student',
                         'action' => 'duplicate_ignored',
                         'record' => $openRecord,
-                        'student' => [
-                            'id'          => $student->id,
-                            'name'        => $student->name,
-                            'TelegramID'  => $student->TelegramID,
-                            'TelegramID1' => $student->TelegramID1,
-                            'TelegramID2' => $student->TelegramID2,
-                        ],
+                        'student' => $this->studentPayload($student),
                         'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
                     ], 200);
                 }
@@ -177,13 +172,7 @@ class SwipeRfidController extends Controller
                     'type'     => 'student',
                     'action'   => 'sign_out',
                     'record'   => $openRecord,
-                    'student'  => [
-                        'id' => $student->id,
-                        'name' => $student->name,
-                        'TelegramID' => $student->TelegramID,
-                        'TelegramID1' => $student->TelegramID1,
-                        'TelegramID2' => $student->TelegramID2,
-                    ],
+                    'student'  => $this->studentPayload($student),
                     'campus'   => ['TelegramToken' => $campus->TelegramToken ?? null],
                 ], 200);
             }
@@ -203,13 +192,7 @@ class SwipeRfidController extends Controller
                         'type'   => 'student',
                         'action' => 'duplicate_ignored',
                         'record' => $existingSignIn,
-                        'student' => [
-                            'id'          => $student->id,
-                            'name'        => $student->name,
-                            'TelegramID'  => $student->TelegramID,
-                            'TelegramID1' => $student->TelegramID1,
-                            'TelegramID2' => $student->TelegramID2,
-                        ],
+                        'student' => $this->studentPayload($student),
                         'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
                     ], 200);
                 }
@@ -271,13 +254,7 @@ class SwipeRfidController extends Controller
                 'type'     => 'student',
                 'action'   => 'sign_in',
                 'record'   => $signIn,
-                'student'  => [
-                    'id' => $student->id,
-                    'name' => $student->name,
-                    'TelegramID' => $student->TelegramID,
-                    'TelegramID1' => $student->TelegramID1,
-                    'TelegramID2' => $student->TelegramID2,
-                ],
+                'student'  => $this->studentPayload($student),
                 'class'    => $studentClass ? [
                     'id'       => $studentClass->ID,
                     'teacher_id' => $studentClass->TeacherID,
@@ -285,6 +262,25 @@ class SwipeRfidController extends Controller
                 'campus'   => ['TelegramToken' => $campus->TelegramToken ?? null],
             ], 201);
         });
+    }
+
+    /**
+     * 刷卡回應的學生資訊。LineIDs = 已驗證綁定的家長 LINE userId，供讀卡機用 LINE Bot 推播。
+     */
+    private function studentPayload(Student $student): array
+    {
+        return [
+            'id'          => $student->id,
+            'name'        => $student->name,
+            'TelegramID'  => $student->TelegramID,
+            'TelegramID1' => $student->TelegramID1,
+            'TelegramID2' => $student->TelegramID2,
+            'LineIDs'     => StudentLineBinding::query()->where('student_id', $student->id)
+                ->whereNotNull('verified_at')
+                ->pluck('line_user_id')
+                ->values()
+                ->all(),
+        ];
     }
 
     /**

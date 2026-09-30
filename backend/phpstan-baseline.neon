@@ -5796,25 +5796,25 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID\.$#'
 			identifier: property.notFound
-			count: 4
+			count: 1
 			path: app/Http/Controllers/SwipeRfidController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID1\.$#'
 			identifier: property.notFound
-			count: 4
+			count: 1
 			path: app/Http/Controllers/SwipeRfidController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$TelegramID2\.$#'
 			identifier: property.notFound
-			count: 4
+			count: 1
 			path: app/Http/Controllers/SwipeRfidController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 9
+			count: 7
 			path: app/Http/Controllers/SwipeRfidController.php
 
 		-
