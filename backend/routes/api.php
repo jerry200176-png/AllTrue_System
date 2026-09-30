@@ -638,6 +638,8 @@ Route::prefix('v1')->group(function () {
         Route::get('teacher-attendance/monthly', [\App\Http\Controllers\TeacherAttendanceController::class, 'monthly'])->middleware('role:teacher,director,super_admin');
         Route::get('teacher-attendance/export-monthly', [\App\Http\Controllers\TeacherAttendanceController::class, 'exportMonthly'])->middleware('role:director,super_admin');
         Route::get('teacher-attendance', [\App\Http\Controllers\TeacherAttendanceController::class, 'index'])->middleware('role:director,super_admin');
+        Route::post('teacher-attendance/month-close', [\App\Http\Controllers\TeacherAttendanceController::class, 'closeMonth'])->middleware('role:director,super_admin');
+        Route::post('teacher-attendance/month-reopen', [\App\Http\Controllers\TeacherAttendanceController::class, 'reopenMonth'])->middleware('role:director,super_admin');
         Route::post('teacher-attendance/{id}/adjust', [\App\Http\Controllers\TeacherAttendanceController::class, 'adjust'])->middleware('role:director,super_admin')->whereNumber('id');
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
         Route::get('finance/subject-units/timeline', [FinanceController::class, 'subjectUnitsTimeline']);

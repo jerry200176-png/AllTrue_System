@@ -110,7 +110,7 @@
       <details class="att-secondary-summary att-records-disclosure">
         <summary>查看月出勤表 <span>每天上下班、工時、只刷一次</span></summary>
         <div class="card att-checkin-card">
-          <TeacherMonthlyAttendance :campus-id="props.branchId" />
+          <TeacherMonthlyAttendance :campus-id="props.branchId" :can-close="isDirectorOrAdmin" />
         </div>
       </details>
 
@@ -170,6 +170,7 @@
                   <span class="att-status-badge" :class="teacherStatusClass(r.status)">
                     {{ teacherStatusLabel(r.status) }}
                   </span>
+                  <span v-if="r.latest_adjustment && r.status !== 'adjusted'" class="att-status-badge ts-badge-muted">已補卡</span>
                 </td>
                 <td class="ta-cell-muted">{{ r.latest_adjustment?.adjust_reason ?? '' }}</td>
                 <td>

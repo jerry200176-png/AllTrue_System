@@ -46,7 +46,6 @@ class CloseOrphanTeacherSignIns extends Command
             }
 
             $orphan->SignOutDT = $signOutDT->toDateTimeString();
-            $orphan->Status    = 'adjusted';
             $orphan->Memo      = TeacherAttendanceMonth::AUTO_CLOSE_MEMO;
             $orphan->MDT       = now()->toDateTimeString();
             $orphan->save();

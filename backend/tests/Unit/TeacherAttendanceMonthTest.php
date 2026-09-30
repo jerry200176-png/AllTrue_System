@@ -105,4 +105,22 @@ class TeacherAttendanceMonthTest extends TestCase
         $t = TeacherAttendanceMonth::totals($days);
         $this->assertSame([2, 2, 1], [$t['late_days'], $t['missed_days'], $t['admin_days']]);
     }
+
+    /** 補卡改了時間：狀態依新時間算，但保留「原本遲到幾分」；跨校自動簽退算異常。 */
+    public function test_correction_keeps_original_late_and_cross_campus_close_is_anomaly(): void
+    {
+        $fixed = self::rec(1, '2026-09-01 10:00:00', '2026-09-01 12:00:00');
+        $fixed->original_sign_in_dt = '2026-09-01 10:40:00';
+        $cross = self::rec(2, '2026-09-02 09:00:00', '2026-09-02 13:00:00', TeacherAttendanceMonth::CROSS_CAMPUS_MEMO);
+
+        $days = TeacherAttendanceMonth::days(collect([$fixed, $cross]), '2026-09', [1 => true], [], '2026-09-30 12:00:00', [
+            '2026-09-01' => [['start' => '10:00', 'campus_id' => 1]],
+        ]);
+
+        $d = self::day($days, '2026-09-01');
+        $this->assertSame(['on_time', 40, true], [$d['status'], $d['original_late_minutes'], $d['corrected']]);
+
+        $d = self::day($days, '2026-09-02');
+        $this->assertSame([true, null, '跨校未簽退 09:00'], [$d['anomaly'], $d['minutes'], $d['note']]);
+    }
 }

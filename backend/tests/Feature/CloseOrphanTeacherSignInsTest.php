@@ -11,7 +11,7 @@ use Tests\TestCase;
  * teacher-signin:close-orphans command 驗收測試
  *
  * AC 對應：
- *   AC-001  正常補登前日孤兒（SignOutDT = 23:59, Status = adjusted）
+ *   AC-001  正常補登前日孤兒（SignOutDT = 23:59，Status 不變）
  *   AC-002  當日記錄不動
  *   AC-003  已有 SignOutDT 的記錄不重複處理
  *   AC-004  SignInDT >= 23:59 時 fallback SignInDT + 1hr
@@ -44,7 +44,7 @@ class CloseOrphanTeacherSignInsTest extends TestCase
 
         $record = DB::table('TeacherSingIn')->where('id', $id)->first();
         $this->assertEquals('2026-04-22 23:59:00', $record->SignOutDT);
-        $this->assertEquals('adjusted', $record->Status);
+        $this->assertEquals('source_only', $record->Status, '自動補簽退不蓋掉刷卡當下的狀態');
         $this->assertEquals('系統自動補登簽退', $record->Memo);
 
         Carbon::setTestNow();
@@ -96,7 +96,7 @@ class CloseOrphanTeacherSignInsTest extends TestCase
 
         $record = DB::table('TeacherSingIn')->where('id', $id)->first();
         $this->assertEquals('2026-04-23 00:59:30', $record->SignOutDT);
-        $this->assertEquals('adjusted', $record->Status);
+        $this->assertEquals('source_only', $record->Status, '自動補簽退不蓋掉刷卡當下的狀態');
 
         Carbon::setTestNow();
     }

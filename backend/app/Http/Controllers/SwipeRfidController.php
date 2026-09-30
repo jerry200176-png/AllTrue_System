@@ -372,6 +372,15 @@ class SwipeRfidController extends Controller
             ->orderBy('id', 'desc')
             ->first();
 
+        // 還沒簽退就到別間分校刷卡：前一筆標「跨校自動簽退」（月表算異常讓主任確認），這裡開新的上班
+        if ($openRecord && (int) $openRecord->CampusID !== (int) $campusId) {
+            $openRecord->SignOutDT = $swipeAt;
+            $openRecord->Memo = TeacherAttendanceMonth::CROSS_CAMPUS_MEMO;
+            $openRecord->MDT = $swipeAt;
+            $openRecord->save();
+            $openRecord = null;
+        }
+
         if ($openRecord) {
             // NFR-003: RF bounce debounce — 60 秒內重複訊號直接忽略，不自動簽退
             $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
