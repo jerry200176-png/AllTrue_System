@@ -22,12 +22,19 @@ export const changelogDraftNotes = [
           "reference subject-unit totals with and without tutoring",
           "student school and grade in course lookup"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "from a stale acting context instead of failing every request"
+        ]
       }
     ],
     "items": [
       "新增多科共用堂數與加購分流入口",
       "reference subject-unit totals with and without tutoring",
-      "student school and grade in course lookup"
+      "student school and grade in course lookup",
+      "from a stale acting context instead of failing every request"
     ]
   },
   {

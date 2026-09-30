@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — fix(auth): recover from a stale acting context instead of failing every request
+<!-- release-notes: silent_ship=silent-2026-09-30-acting-context-retry -->
+- 雙身分切換（預設關閉）的防呆：若瀏覽器記住的身分已不適用，後端回傳明確代碼，前端清除後重試一次，不會整頁持續被拒。未開啟功能前無任何行為改變。
+
 ## 2026-09-30 — feat(ux): label shared-package rows in overlapping-course review (in-app #316)
 <!-- release-notes: staff_update=staff-2026-09-30-dup-review-shared-label -->
 - 重疊課程審核的每組資料新增唯讀欄位 `is_shared_package`；屬多科共用堂數套組者仍照常列出，並標示「多科共用」與提示，供主任判斷是否為刻意安排。重複判定、堂數、扣堂與帳務不變。
