@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\TeacherSignIn;
+use App\Services\TeacherAttendanceMonth;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -46,7 +47,7 @@ class CloseOrphanTeacherSignIns extends Command
 
             $orphan->SignOutDT = $signOutDT->toDateTimeString();
             $orphan->Status    = 'adjusted';
-            $orphan->Memo      = '系統自動補登簽退';
+            $orphan->Memo      = TeacherAttendanceMonth::AUTO_CLOSE_MEMO;
             $orphan->MDT       = now()->toDateTimeString();
             $orphan->save();
 

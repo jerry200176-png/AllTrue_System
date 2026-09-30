@@ -107,6 +107,42 @@ class TeacherMonthlyExportTest extends TestCase
         );
     }
 
+    // ── AC-7: 月檢視 API：老師只看得到自己 ─────────────────────────────────────
+
+    public function test_monthly_api_teacher_sees_only_self(): void
+    {
+        [$token, $campusId, $teacherId] = $this->scaffold('teacher');
+        DB::table('TeacherSingIn')->insert([
+            ['TeacherID' => $teacherId, 'CampusID' => $campusId, 'SignInDT' => '2026-08-01 09:00:00', 'SignOutDT' => '2026-08-01 12:00:00', 'MDT' => now()],
+            ['TeacherID' => 999999, 'CampusID' => $campusId, 'SignInDT' => '2026-08-01 09:00:00', 'SignOutDT' => '2026-08-01 18:00:00', 'MDT' => now()],
+        ]);
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/teacher-attendance/monthly?year_month=2026-08&teacher_id=999999');
+
+        $res->assertOk()
+            ->assertJsonCount(1, 'teachers')
+            ->assertJsonPath('teachers.0.teacher_id', $teacherId)
+            ->assertJsonPath('teachers.0.totals.minutes', 180)
+            ->assertJsonPath('teachers.0.days.0.sign_out', '12:00');
+    }
+
+    public function test_monthly_api_director_sees_campus_teachers(): void
+    {
+        [$token, $campusId] = $this->scaffold('director');
+        DB::table('TeacherSingIn')->insert([
+            ['TeacherID' => 10, 'CampusID' => $campusId, 'SignInDT' => '2026-08-01 09:00:00', 'SignOutDT' => null, 'MDT' => now()],
+            ['TeacherID' => 20, 'CampusID' => 424242, 'SignInDT' => '2026-08-01 09:00:00', 'SignOutDT' => null, 'MDT' => now()],
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/teacher-attendance/monthly?year_month=2026-08')
+            ->assertOk()
+            ->assertJsonCount(1, 'teachers')
+            ->assertJsonPath('teachers.0.teacher_id', 10)
+            ->assertJsonPath('teachers.0.totals.anomaly_days', 1);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private function scaffold(string $role): array
@@ -139,6 +175,6 @@ class TeacherMonthlyExportTest extends TestCase
         $raw = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
 
-        return [$raw, 1];
+        return [$raw, 1, $user->id];
     }
 }

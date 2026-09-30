@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Exports\TeacherMonthlyAttendanceExport;
 use App\Models\TeacherSignIn;
 use App\Models\TeacherSignInAdjustment;
+use App\Services\TeacherAttendanceMonth;
 use App\Support\TeacherProfileDirectory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
@@ -346,6 +348,43 @@ class TeacherAttendanceController extends Controller
     }
 
     /**
+     * GET /api/v1/teacher-attendance/monthly?year_month=YYYY-MM[&teacher_id=]
+     * 月檢視：每位老師每天一列（上班／下班／工時／註記）。老師只看得到自己（勞基法 §30 出勤紀錄副本）。
+     */
+    public function monthly(Request $request)
+    {
+        $request->validate(['year_month' => 'required|date_format:Y-m']);
+        $yearMonth = $request->query('year_month');
+
+        if ($request->attributes->get('auth_role') === 'teacher') {
+            $teacherId = (int) $request->attributes->get('auth_teacher_id');
+            if (! $teacherId) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            $campusIds = null;
+        } else {
+            $campusIds = $this->resolveEffectiveCampusIds($request);
+            if ($campusIds instanceof \Illuminate\Http\JsonResponse) {
+                return $campusIds;
+            }
+            $teacherId = $request->query('teacher_id') ? (int) $request->query('teacher_id') : null;
+        }
+
+        $month = $this->loadMonth($yearMonth, $campusIds, $teacherId);
+
+        return response()->json([
+            'year_month' => $yearMonth,
+            'teachers'   => array_map(fn ($t) => [
+                'teacher_id'   => $t['teacher_id'],
+                'teacher_name' => $t['teacher_name'],
+                'days'         => $t['days'],
+                'totals'       => $t['totals'],
+            ], $month['teachers']),
+            'adjustments' => $month['adjustments'],
+        ]);
+    }
+
+    /**
      * GET /api/v1/teacher-attendance/export-monthly?year_month=YYYY-MM
      * 主任匯出整月老師出缺勤 XLSX（每位老師獨立 Sheet，格式對應刷卡清單參考檔）
      */
@@ -444,5 +483,86 @@ class TeacherAttendanceController extends Controller
             new TeacherMonthlyAttendanceExport($records, $yearMonth, $campusName),
             $filename
         );
+    }
+
+    /**
+     * 撈一個月的刷卡並算好每天一列。$campusIds = null 表示不限分校。
+     *
+     * @return array{teachers: list<array{teacher_id:int,teacher_name:string,swipes:Collection,days:array,totals:array}>, adjustments: list<array>}
+     */
+    private function loadMonth(string $yearMonth, ?array $campusIds, ?int $teacherId): array
+    {
+        $from = Carbon::createFromFormat('Y-m-d', $yearMonth . '-01')->startOfDay();
+        $to   = $from->copy()->endOfMonth();
+
+        $query = DB::table('TeacherSingIn as ts')
+            ->leftJoin('User as u', 'u.id', '=', 'ts.TeacherID')
+            ->select([
+                'ts.id',
+                'ts.TeacherID as teacher_id',
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
+                'ts.CampusID as campus_id',
+                'ts.SignInDT as sign_in_dt',
+                'ts.SignOutDT as sign_out_dt',
+                'ts.Source as source',
+                'ts.Memo as memo',
+            ])
+            ->whereBetween('ts.SignInDT', [$from, $to])
+            ->orderBy('ts.SignInDT');
+        if ($campusIds !== null) {
+            $query->whereIn('ts.CampusID', $campusIds);
+        }
+        if ($teacherId) {
+            $query->where('ts.TeacherID', $teacherId);
+        }
+        $records = $query->get();
+
+        $adjustments = DB::table('teacher_signin_adjustments as a')
+            ->join('TeacherSingIn as ts', 'ts.id', '=', 'a.teacher_signin_id')
+            ->leftJoin('User as t', 't.id', '=', 'ts.TeacherID')
+            ->leftJoin('User as e', 'e.id', '=', 'a.adjusted_by_user_id')
+            ->whereIn('a.teacher_signin_id', $records->pluck('id')->all())
+            ->orderBy('a.id')
+            ->get([
+                'a.teacher_signin_id', 'ts.TeacherID as teacher_id',
+                DB::raw("COALESCE(t.Name, '') as teacher_name"),
+                DB::raw("COALESCE(e.Name, '') as adjusted_by"),
+                'a.adjust_reason', 'a.original_signin_dt', 'a.original_signout_dt',
+                'a.new_signin_dt', 'a.new_signout_dt', 'a.created_at',
+            ]);
+        $adjustedIds = array_fill_keys($adjustments->pluck('teacher_signin_id')->all(), true);
+
+        // 跑校：同一天在 2 間以上分校刷卡（看老師全部分校，不受目前分校篩選）
+        $runDates = [];
+        if ($records->isNotEmpty()) {
+            DB::table('TeacherSingIn')
+                ->selectRaw('TeacherID, DATE(SignInDT) as d')
+                ->whereIn('TeacherID', $records->pluck('teacher_id')->unique()->all())
+                ->whereBetween('SignInDT', [$from, $to])
+                ->groupBy('TeacherID', DB::raw('DATE(SignInDT)'))
+                ->havingRaw('COUNT(DISTINCT CampusID) > 1')
+                ->get()
+                ->each(function ($r) use (&$runDates) {
+                    $runDates[$r->TeacherID][$r->d] = true;
+                });
+        }
+
+        $teachers = $records->groupBy('teacher_id')->map(function ($rows, $id) use ($yearMonth, $adjustedIds, $runDates) {
+            $days = TeacherAttendanceMonth::days($rows, $yearMonth, $adjustedIds, $runDates[$id] ?? []);
+            $name = $rows->first()->teacher_name;
+
+            return [
+                'teacher_id'   => (int) $id,
+                'teacher_name' => $name !== '' ? $name : "老師{$id}",
+                'swipes'       => $rows,
+                'days'         => $days,
+                'totals'       => TeacherAttendanceMonth::totals($days),
+            ];
+        })->sortBy('teacher_name')->values()->all();
+
+        return [
+            'teachers'    => $teachers,
+            'adjustments' => $adjustments->map(fn ($a) => (array) $a)->all(),
+        ];
     }
 }
