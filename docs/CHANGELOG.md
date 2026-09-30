@@ -12,7 +12,7 @@
 
 ## 2026-09-30 — fix(course): subject change requires transfer; teacher change keeps past lessons
 <!-- release-notes: staff_update=staff-2026-09-30-course-history-guard -->
-- `PUT student-classes/{id}` 已有上過／過去堂次的合約改科目回 422 `subject_change_requires_transfer`（寫 `student_class.edit_blocked` 稽核），改走 `split-contract`，該端點新增選填 `subject_id`/`teacher_id`（此時 `session_ids` 可省略：舊約保留全部已上堂次，剩餘堂數轉新約）。換老師新增選填 `teacher_effective_date`（不可晚於今天，預設今天）：該日前所有非取消堂次釘回原老師，不再限於有點名證據者；該日起才跟隨新老師；未點名過去堂次隨新老師需明確填較早日期（取代 #312 預設）。改固定時段時，已有過去／已上堂次的合約一律只調整未來堂次，不再刪除重建。編輯表單換老師時多一個「新老師從哪天開始教」日期欄。
+- `PUT student-classes/{id}` 已有上過／過去堂次的合約改科目回 422 `subject_change_requires_transfer`（寫 `student_class.edit_blocked` 稽核），改走 `split-contract`，該端點新增選填 `subject_id`/`teacher_id`（此時 `session_ids` 可省略：舊約保留全部已上堂次，剩餘堂數轉新約）。換老師新增選填 `teacher_effective_date`（不可晚於今天，預設今天）：該日前所有非取消堂次釘回原老師，不再限於有點名證據者；該日起才跟隨新老師；未點名過去堂次隨新老師需明確填較早日期（取代 #312 預設）。改固定時段時，已有過去／已上堂次的合約一律只調整未來堂次，不再刪除重建。編輯表單換老師時多一個「新老師從哪天開始教」日期欄。 已繳費合約也可轉課：`split-contract` 新增選填 `subject`/`subject_id`、`teacher_id`、`slots`（新時段），僅支援單張帳單且已收 = 堂數×單價的單純情況，舊帳單改為已用堂數金額，新合約建立已繳帳單，並以 `transfer_out`(−X)／`transfer_in`(+X) 兩筆連動付款紀錄承接餘額（原收款、收據、繳費回報不動，非現金）；新舊合約以 `replacement` 關聯，寫 `student_class.contract_transfer` 稽核。課程管理儲存被擋時出現「改用轉課」視窗（含試算金額）。
 
 ## 2026-09-30 — fix(attendance): readable monthly xlsx and clearer single-swipe marking
 <!-- release-notes: silent_ship=silent-2026-09-30-teacher-attendance-polish -->
