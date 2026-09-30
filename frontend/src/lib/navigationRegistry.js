@@ -121,6 +121,7 @@ function cloneGroups(groups) {
     ...group,
     items: group.items.map(item => ({
       ...item,
+      requiredContext: requiredContextForPage(item.page),
       ...(item.badgeTypes ? { badgeTypes: [...item.badgeTypes] } : {}),
     })),
   }));
@@ -154,4 +155,18 @@ export function getMobileTabItems(role) {
     ];
   }
   return [];
+}
+
+/**
+ * Route-implied acting context (#2908): pages exposed only in one role's menu.
+ * Derived from the menus above so it cannot drift; shared pages need no context.
+ */
+const pagesOf = (groups) => new Set(groups.flatMap((g) => g.items.map((i) => i.page)));
+// Director-capability pages only: super_admin-only pages (director-accounts, branch-*) must never trigger an auto-switch.
+const DIRECTOR_PAGES = pagesOf(directorGroups('director'));
+const TEACHER_PAGES = pagesOf(teacherGroups({ truefitEnabled: true }));
+export function requiredContextForPage(page) {
+  if (DIRECTOR_PAGES.has(page) && !TEACHER_PAGES.has(page)) return 'director';
+  if (TEACHER_PAGES.has(page) && !DIRECTOR_PAGES.has(page)) return 'teacher';
+  return null;
 }

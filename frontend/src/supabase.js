@@ -7,6 +7,7 @@
  * the Docker backend by vite.config.js.
  * In production, /api resolves to the same origin (Nginx on port 80).
  */
+import { actingAsHeaders } from './lib/staffActingContext.js';
 import { humanizeApiErrorMessage } from './lib/humanizeApiErrorMessage.js';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
@@ -246,13 +247,7 @@ class QueryBuilder {
         // Read session token from localStorage and include in all requests
         const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
         const token = session?.access_token;
-        let actingHeaders = {};
-        try {
-            const acting = localStorage.getItem('alltrue_acting_as');
-            if (acting === 'director' || acting === 'teacher') {
-                actingHeaders = { 'X-Acting-As': acting };
-            }
-        } catch { /* ignore */ }
+        const actingHeaders = actingAsHeaders();
         const authHeaders = token
             ? { 'Authorization': `Bearer ${token}`, ...actingHeaders }
             : { ...actingHeaders };

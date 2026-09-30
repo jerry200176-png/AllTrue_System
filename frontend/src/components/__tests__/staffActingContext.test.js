@@ -115,3 +115,40 @@ describe('staffActingContext', () => {
     expect(store.has('alltrue_acting_as')).toBe(false);
   });
 });
+
+describe('bridge with per-tab sessionStorage', () => {
+  const mk = (local) => ({
+    getItem: (k) => (k in local ? local[k] : null),
+    removeItem: (k) => { delete local[k]; },
+    setItem: (k, v) => { local[k] = String(v); },
+  });
+  it('prefers sessionStorage over localStorage', () => {
+    const local = { alltrue_session: '{"a":1}', alltrue_acting_as: 'director' };
+    const tab = { alltrue_acting_as: 'teacher' };
+    const calls = [];
+    const target = {
+      Headers, location: { origin: 'https://app.test', href: 'https://app.test/' },
+      localStorage: mk(local), sessionStorage: mk(tab),
+      fetch: (...a) => { calls.push(a); return a; },
+    };
+    installActingAsFetchBridge(target);
+    target.fetch('/api/v1/students', {});
+    expect(calls[0][1].headers.get(ACTING_AS_HEADER)).toBe('teacher');
+  });
+  it('403 acting_context_denied retry clears both storages', async () => {
+    const local = { alltrue_session: '{"a":1}', alltrue_acting_as: 'teacher' };
+    const tab = { alltrue_acting_as: 'teacher' };
+    let n = 0;
+    const target = {
+      Headers, location: { origin: 'https://app.test', href: 'https://app.test/' },
+      localStorage: mk(local), sessionStorage: mk(tab),
+      fetch: async () => (++n === 1
+        ? new Response('{"code":"acting_context_denied"}', { status: 403 })
+        : new Response('{}', { status: 200 })),
+    };
+    installActingAsFetchBridge(target);
+    expect((await target.fetch('/api/v1/me', {})).status).toBe(200);
+    expect(local.alltrue_acting_as).toBeUndefined();
+    expect(tab.alltrue_acting_as).toBeUndefined();
+  });
+});
