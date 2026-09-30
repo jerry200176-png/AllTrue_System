@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createApp, nextTick } from 'vue';
 import ActingContextChip from '../ActingContextChip.vue';
@@ -74,5 +75,19 @@ describe('ActingContextChip', () => {
     await nextTick();
     host.querySelectorAll('.acting-chip-option')[0].click();
     expect(seen).toEqual(['director']);
+  });
+});
+
+describe('App manual switch', () => {
+  it('syncs the URL to the new context before reloading /me (no snap-back, no toast)', () => {
+    const src = readFileSync('src/App.vue', 'utf8');
+    const body = src.slice(src.indexOf('async function switchStaffMode'), src.indexOf('const isPasswordChangeLocked'));
+    const sync = body.indexOf("syncAppPageUrl(active.value, { mode: page ? 'push' : 'replace' })");
+    expect(sync).toBeGreaterThan(-1);
+    expect(sync).toBeLessThan(body.indexOf('await fetchProfile'));
+    expect(body).not.toContain('toast');
+    // after the sync the URL page is the new home, which needs no further switch
+    expect(resolveRouteContext({ required: requiredContextForPage('director'), active: 'director', capabilities: BOTH })).toEqual({ action: 'none' });
+    expect(resolveRouteContext({ required: requiredContextForPage('teacher-home'), active: 'teacher', capabilities: BOTH })).toEqual({ action: 'none' });
   });
 });

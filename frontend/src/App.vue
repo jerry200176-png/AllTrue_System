@@ -2068,7 +2068,9 @@ async function switchStaffMode(nextMode, { page = null } = {}) {
   }
   const home = normalized === 'teacher' ? 'teacher-home' : 'director';
   active.value = page && authorizedNavigationPages().has(page) ? page : home;
-  if (page) syncAppPageUrl(active.value, { mode: 'push' });
+  // URL must match the new context before /me reload re-reads it, or the deep-link
+  // handler would see a page from the old mode and switch straight back.
+  syncAppPageUrl(active.value, { mode: page ? 'push' : 'replace' });
   await fetchProfile(getSessionUserId(session.value));
 }
 

@@ -1,24 +1,26 @@
 <template>
-  <div class="acting-chip-wrap">
+  <div ref="root" class="acting-chip-wrap" @keydown.esc="open = false">
+    <span class="acting-chip-live" role="status" aria-live="polite">{{ label }}</span>
     <button
       type="button"
       class="acting-chip"
       :class="`acting-chip--${context}`"
       data-guide="app-acting-context-chip"
       :aria-expanded="String(open)"
-      aria-haspopup="true"
+      aria-haspopup="menu"
       @click="open = !open"
     >
-      <span role="status" aria-live="polite">{{ label }}</span>
+      <span aria-hidden="true">{{ label }}</span>
       <span class="material-symbols-outlined" aria-hidden="true">swap_horiz</span>
     </button>
-    <div v-if="open" class="acting-chip-menu" role="group" aria-label="切換工作身分">
+    <div v-if="open" class="acting-chip-menu" role="menu" aria-label="切換工作身分">
       <button
         v-for="opt in options"
         :key="opt.value"
         type="button"
         class="acting-chip-option"
-        :aria-pressed="String(opt.value === context)"
+        role="menuitemradio"
+        :aria-checked="String(opt.value === context)"
         @click="pick(opt.value)"
       >{{ opt.label }}</button>
     </div>
@@ -26,7 +28,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { formatContextChipLabel } from '../lib/staffActingContext.js';
 
 const props = defineProps({
@@ -36,6 +38,10 @@ const props = defineProps({
 });
 const emit = defineEmits(['switch']);
 const open = ref(false);
+const root = ref(null);
+const onOutside = (e) => { if (root.value && !root.value.contains(e.target)) open.value = false; };
+onMounted(() => document.addEventListener('click', onOutside));
+onBeforeUnmount(() => document.removeEventListener('click', onOutside));
 const options = [{ value: 'director', label: '主任' }, { value: 'teacher', label: '老師' }];
 const label = computed(() => formatContextChipLabel(props.context, props.campusMap?.[props.context], props.campusNames));
 function pick(value) {
@@ -52,7 +58,8 @@ function pick(value) {
   font-size: 0.85rem; font-weight: 600; cursor: pointer;
 }
 .acting-chip--director { background: var(--ds-ink); color: var(--ds-canvas); }
-.acting-chip--teacher { background: var(--ds-primary-wash); color: var(--ds-on-brand); border-color: var(--ds-primary); }
+.acting-chip--teacher { background: var(--ds-primary-wash); color: var(--ds-ink); border-color: var(--ds-primary); }
+.acting-chip-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .acting-chip .material-symbols-outlined { font-size: 1rem; }
 .acting-chip-menu {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column;
@@ -61,5 +68,5 @@ function pick(value) {
 .acting-chip-option {
   padding: 6px 14px; border: 0; background: transparent; color: var(--ds-ink); text-align: left; cursor: pointer;
 }
-.acting-chip-option[aria-pressed='true'] { font-weight: 700; background: var(--ds-canvas-soft); }
+.acting-chip-option[aria-checked='true'] { font-weight: 700; background: var(--ds-canvas-soft); }
 </style>
