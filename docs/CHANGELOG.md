@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-case-closed -->
 - 合法空白單案資格明確拒絕為沒有可執行案例，隨 backend 正常部署帶入已清空清單；不改資料、核准角色或執行通道。
 
+## 2026-09-30 — feat(attendance): teacher attendance month close, correction audit, cross-campus swipe
+<!-- release-notes: staff_update=staff-2026-09-30-teacher-month-close -->
+- 新表 `teacher_attendance_month_closes`：主任 `POST /teacher-attendance/month-close` 確認分校某月，之後 `adjust` 回 423；`month-reopen` 需原因、留列不刪。補卡與系統自動補簽退不再把 `Status` 蓋成 `adjusted`；月表用第一次補卡前的原始上班時間算出 `original_late_minutes`。老師還沒簽退就到別校刷卡：前一筆寫 `跨校自動簽退` 並算異常，本校開新上班（以前會把本校上班當成前一校的下班）。
+
 ## 2026-09-29 — fix(ops): unblock local approved repair scheduling
 <!-- release-notes: silent_ship=silent-2026-09-29-pop-local-claim -->
 - POP 排程沿用 MySQL claim lock，不再依賴可能由 FPM 持有的檔案快取鎖；自動取件只選正式版本且未過期的簽章核准，保留所有舊核准及拒絕條件。指定單案依原清單重新試算／核准，不代表帳務已執行。
