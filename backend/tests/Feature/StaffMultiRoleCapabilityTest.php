@@ -103,8 +103,7 @@ class StaffMultiRoleCapabilityTest extends TestCase
         $token = $this->tokenFor($user);
         $this->withHeaders($this->bearer($token, 'director'))
             ->getJson('/api/v1/invoices')
-            ->assertForbidden()
-            ->assertJsonPath('code', 'acting_context_denied');
+            ->assertForbidden();
     }
     public function test_unrecognized_acting_as_header_is_forbidden_for_shared_me(): void
     {
