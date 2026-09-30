@@ -6723,7 +6723,7 @@ class StudentClassController extends Controller
             $classId = (int) $studentClass->ID;
 
             // If immutable history exists, do a safe partial sync (times only).
-            if ($this->hasImmutableSessionHistory($classId)) {
+            if ($this->hasImmutableSessionHistory($classId) || $this->hasAttendanceMarkedSessions($classId)) {
                 $updatedCount = $this->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
@@ -8224,8 +8224,12 @@ class StudentClassController extends Controller
         if (LearningRecord::where('StudentClassID', $studentClassId)->where('Status', 'approved')->whereNull('VoidedAt')->exists()) {
             return true;
         }
-        // Attendance-marked sessions are history too: a schedule edit must never
-        // delete-and-rebuild them (only future rows may be re-timed).
+        return false;
+    }
+
+    /** Attendance-marked sessions are history: a slot-only edit must never delete-and-rebuild them. */
+    private function hasAttendanceMarkedSessions(int $studentClassId): bool
+    {
         return DB::table('ClassSession')
             ->where('StudentClassID', $studentClassId)
             ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'absent'])
