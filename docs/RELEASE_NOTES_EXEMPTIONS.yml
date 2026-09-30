@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "feat(ux): per-tab acting context, context chip, route-implied switch (#2908 step 4)"
     reason: 雙身分功能預設關閉，僅持有兩種身分者才會看到，教職員目前看不到任何變化，不發布公告。
 
+  - id: silent-2026-09-30-staff-identity-merge-dryrun
+    changelog_date: "2026-09-30"
+    changelog_title: "feat(ops): staff identity merge phase 1 (read-only candidates and dry-run)"
+    reason: 內部唯讀試算工具，不改資料、無套用路徑，教職員無感，不發布公告。
+
   - id: silent-2026-09-30-director-capability-lookups
     changelog_date: "2026-09-30"
     changelog_title: "feat(auth): capability-aware director lookups behind STAFF_MULTI_ROLE_V1 (#2908 step 2)"

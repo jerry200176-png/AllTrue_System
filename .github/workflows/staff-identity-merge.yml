@@ -1,0 +1,118 @@
+# governance-capability: read-only-probe
+name: Staff Identity Merge (read-only, phase 1)
+
+# PHASE 1 ONLY (read-only): `candidates` lists duplicate director/teacher pairs, `dry_run` prints the plan for one pair
+# (ids/counts only). No apply/execute/revert exists; phases 2-4 are not built. No cache-clearing artisan (incident B).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "candidates | dry_run"
+        required: true
+        type: choice
+        options:
+          - candidates
+          - dry_run
+      survivor_user_id: {description: "dry_run: teacher account id (type T) that survives"}
+      retired_user_id: {description: "dry_run: director account id (type D) to retire"}
+      cutover_date: {description: "dry_run: YYYY-MM-DD"}
+
+concurrency:
+  group: staff-identity-merge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Validate action + inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Require well-formed inputs
+        env:
+          ACTION: ${{ github.event.inputs.action }}
+          SURVIVOR: ${{ github.event.inputs.survivor_user_id }}
+          RETIRED: ${{ github.event.inputs.retired_user_id }}
+          CUTOVER: ${{ github.event.inputs.cutover_date }}
+        run: |
+          set -euo pipefail
+          case "$ACTION" in
+            candidates)
+              [ -z "$SURVIVOR$RETIRED$CUTOVER" ] || { echo "::error::candidates takes no survivor/retired/cutover inputs"; exit 1; }
+              ;;
+            dry_run)
+              printf '%s' "$SURVIVOR" | grep -Eq '^[1-9][0-9]{0,9}$' || { echo "::error::survivor_user_id must be a positive integer"; exit 1; }
+              printf '%s' "$RETIRED" | grep -Eq '^[1-9][0-9]{0,9}$' || { echo "::error::retired_user_id must be a positive integer"; exit 1; }
+              printf '%s' "$CUTOVER" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || { echo "::error::cutover_date must be YYYY-MM-DD"; exit 1; }
+              date -d "$CUTOVER" +%F > /dev/null || { echo "::error::cutover_date is not a real date"; exit 1; }
+              ;;
+            *) echo "::error::Unknown action: $ACTION"; exit 1 ;;
+          esac
+
+  run:
+    name: Read-only artisan run over pinned SSH
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: Run staff:identity-merge (read-only)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          ACTION: ${{ github.event.inputs.action }}
+          SURVIVOR: ${{ github.event.inputs.survivor_user_id }}
+          RETIRED: ${{ github.event.inputs.retired_user_id }}
+          CUTOVER: ${{ github.event.inputs.cutover_date }}
+        run: |
+          set -uo pipefail
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env ACTION SURVIVOR RETIRED CUTOVER
+            cat << 'ENDSSH'
+          set -uo pipefail
+          echo "production-head=$(git -C /home/admin rev-parse HEAD)"
+          cd /home/admin/backend
+          if [ "$ACTION" = candidates ]; then
+            php artisan staff:identity-merge --candidates 2>&1
+          else
+            php artisan staff:identity-merge --dry-run --survivor="$SURVIVOR" --retired="$RETIRED" --cutover="$CUTOVER" 2>&1
+          fi
+          ENDSSH
+          } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes "$PI_SSH_USER@$PI_SSH_HOST" bash -s \
+            | grep -viE 'password|secret|passwd|PSW=|bearer|private key|DB_PASS' | tee /tmp/audit.txt
+          grep -q '^READ_ONLY=true$' /tmp/audit.txt || { echo "::error::no READ_ONLY marker -- command did not run."; exit 1; }
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-identity-merge-${{ github.run_id }}
+          path: /tmp/audit.txt
+          retention-days: 90
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-30-multirole-context-ui -->
 - 雙身分（`STAFF_MULTI_ROLE_V1`，預設關閉）前端：工作身分改存每個分頁（sessionStorage，開分頁時取上次使用值），A 分頁切換不影響 B 分頁；頂列顯示「老師／主任 · 分校」身分標籤（含切換）；直接開啟需另一身分的頁面時自動切換並顯示提示。僅持有兩種身分者可見，單一身分與旗標關閉時無任何變化。
 
+## 2026-09-30 — feat(ops): staff identity merge phase 1 (read-only candidates and dry-run)
+<!-- release-notes: silent_ship=silent-2026-09-30-staff-identity-merge-dryrun -->
+- 雙帳號（主任＋老師）合併第一階段：保留老師帳號、停用主任帳號；新增唯讀 `staff:identity-merge --candidates|--dry-run` 與唯讀 workflow，只列出疑似同人帳號與合併試算（僅 id／筆數），不改任何資料、不含 migration、無套用路徑；階段 2–4 尚未建置，不發布教職員公告。
+
 ## 2026-09-30 — feat(auth): acting_as in security audit + self-approval hard block (in-app #299 / #2908 step 3)
 <!-- release-notes: staff_update=staff-2026-09-30-no-self-approval -->
 - 資安稽核事件自動帶 `acting_as` 與 `capability_campus_count`（旗標關閉為 null），被拒的身分切換寫 `staff.context.denied`；薪資／資格（扣除、行政加給、現金加扣、底薪、成果）確認與核准，核准人等於當事老師時回 422 `self_approval_forbidden`。無資料變更。
