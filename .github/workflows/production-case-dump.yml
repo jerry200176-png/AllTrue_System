@@ -451,7 +451,7 @@ jobs:
             $out['campus_ids'] = $campuses;
             $out['student_ids'] = $studentIds;
             $out['subjects'] = $rowsOf($db::table('Subject')->where(fn ($q) => $q->where('Subject_Name', 'like', '%英%')->orWhere('Subject_Name', 'like', '%數學%')));
-            $out['teachers'] = $db::table('Teacher')->whereIn('CampusID', $campuses)->where(fn ($q) => $q->where('name', 'like', '%Ruth%')->orWhere('name', 'like', '%李維%'))->get(['id', 'name'])->map(fn ($r) => (array)$r)->all();
+            $out['teachers'] = $db::table('Teacher')->whereIn('CampusID', $campuses)->where(fn ($q) => $q->where('T_Name', 'like', '%Ruth%')->orWhere('T_Name', 'like', '%李維%'))->get(['id', 'T_Name'])->map(fn ($r) => (array)$r)->all();
             $classes = $rowsOf($db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID'));
             $classIds = array_map(fn ($r) => (int)$r['ID'], $classes);
             $out['student_classes'] = $classes;
