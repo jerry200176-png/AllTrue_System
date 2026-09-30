@@ -51,6 +51,23 @@ updates:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
 
+  - id: staff-2026-09-30-course-history-guard
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: major
+    title: 改科目、換老師不再改寫過去的課
+    summary: 已上過課的合約不能直接改科目；換老師時，指定日期之前的堂次會保留原老師。
+    items:
+      - category: fixed
+        text: 已有上課紀錄的合約若直接改科目，系統會擋下並提示改用轉課（合約拆分），舊合約保留已上堂次。
+      - category: improved
+        text: 編輯課程換老師時可選「新老師從哪天開始教」，預設今天，該日前的堂次維持原老師。
+      - category: fixed
+        text: 調整固定上課時段只會更動未來堂次，過去的堂次不會被刪除或重排。
+    source_refs:
+      - "changelog:2026-09-30:course-history-guard"
+
   - id: staff-2026-09-30-teacher-month-web
     published_at: "2026-09-30"
     audiences:

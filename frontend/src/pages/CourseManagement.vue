@@ -5349,6 +5349,10 @@ const submitEdit = async () => {
         const body = {
           subject: form.subject,
           teacher_id: form.teacher_id || null,
+          // Past sessions keep the former teacher; default effective date = today.
+          ...(String(form.original_teacher_id || '') !== String(form.teacher_id || '') && form.teacher_id
+            ? { teacher_effective_date: form.teacher_effective_date || new Date().toLocaleDateString('sv-SE') }
+            : {}),
           class_type: form.class_type,
           rate_per_30min: form.rate_per_30min,
           rate_unit: form.rate_unit || 'session',

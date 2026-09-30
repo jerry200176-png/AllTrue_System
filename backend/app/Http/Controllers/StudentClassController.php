@@ -1771,6 +1771,25 @@ class StudentClassController extends Controller
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
         unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['by1']);
 
+        // Past lessons are history: a subject change mid-contract must go through
+        // the split (轉課) flow, otherwise taught sessions would be relabelled.
+        if (array_key_exists('SubjectID', $mapped)
+            && (int) $mapped['SubjectID'] !== (int) $studentClass->SubjectID
+            && $this->subjectLabelForGuard((int) $mapped['SubjectID']) !== $this->subjectLabelForGuard((int) $studentClass->SubjectID)
+            && $this->courseHasPastOrTaughtSessions((int) $studentClass->getKey())
+        ) {
+            $this->auditEditBlocked($studentClass, 'subject_change_requires_transfer', 422);
+            return response()->json([
+                'message' => '此課程已有上過的堂次，直接改科目會讓過去的堂次也變成新科目。'
+                    . '請改用「轉課／合約拆分」：舊合約保留已上堂次，剩餘堂數轉到新科目的新合約。',
+                'code' => 'subject_change_requires_transfer',
+                'suggested_actions' => ['split_contract'],
+            ], 422);
+        }
+        $teacherEffectiveDate = $request->validate([
+            'teacher_effective_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
+        ])['teacher_effective_date'] ?? null;
+
         if ($studentClass->isPartOfPackage()) {
             unset($mapped['RemainingSessions']);
         }
@@ -1904,7 +1923,8 @@ class StudentClassController extends Controller
             $previousStartDate,
             $scheduleSlotsForRebuild,
             $previousScheduleSlots,
-            $scheduleFieldsPresent
+            $scheduleFieldsPresent,
+            $teacherEffectiveDate
         ) {
         $studentClass->update($mapped);
         $studentClass->refresh();
@@ -1960,7 +1980,8 @@ class StudentClassController extends Controller
                 $this->pinPastSessionsToFormerTeacherAfterContractTeacherChange(
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
-                    $newTeacherId
+                    $newTeacherId,
+                    $teacherEffectiveDate
                 );
                 $this->syncFutureScheduleTeachersAfterContractTeacherChange(
                     $courseIdForTeacherSync,
@@ -1971,7 +1992,12 @@ class StudentClassController extends Controller
             if ($newTeacherId > 0) {
                 // in-app #312: drop false #207 pins on untaught past slots so
                 // calendar follows the live contract teacher (real substitutes kept).
-                $this->clearUntaughtPastFalseHistoryPins($courseIdForTeacherSync, $newTeacherId);
+                // A teacher change made now keeps pins before the effective date.
+                $this->clearUntaughtPastFalseHistoryPins(
+                    $courseIdForTeacherSync,
+                    $newTeacherId,
+                    $newTeacherId !== $oldTeacherSnapshot ? ($teacherEffectiveDate ?: Carbon::today()->toDateString()) : null
+                );
             }
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
                 // in-app #314 Option 2B: after false pins are cleared, align mutable
@@ -1985,7 +2011,8 @@ class StudentClassController extends Controller
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
                     $newTeacherId,
-                    $actorId
+                    $actorId,
+                    $teacherEffectiveDate ?: Carbon::today()->toDateString()
                 );
             }
         }
@@ -3041,11 +3068,15 @@ class StudentClassController extends Controller
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
             return $accessError;
         }
+        $isTransfer = $request->filled('subject_id') || $request->filled('teacher_id');
         $data = $request->validate([
-            'session_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'session_ids' => [$isTransfer ? 'nullable' : 'required', 'array', $isTransfer ? 'min:0' : 'min:1', 'max:100'],
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
+            'subject_id' => ['nullable', 'integer', 'exists:Subject,id'],
+            'teacher_id' => ['nullable', 'integer', 'exists:User,id'],
         ]);
+        $data['session_ids'] = $data['session_ids'] ?? [];
         return response()->json($this->splitContractPreviewPayload(
             $this->prepareSplitContractPlan($studentClass, $data)
         ));
@@ -3055,12 +3086,18 @@ class StudentClassController extends Controller
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
             return $accessError;
         }
+        // 轉課: with a new subject/teacher, no used session needs to move; the old
+        // contract keeps every used session and only the remainder is transferred.
+        $isTransfer = $request->filled('subject_id') || $request->filled('teacher_id');
         $data = $request->validate([
-            'session_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'session_ids' => [$isTransfer ? 'nullable' : 'required', 'array', $isTransfer ? 'min:0' : 'min:1', 'max:100'],
             'session_ids.*' => ['integer'],
             'start_date' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:255'],
+            'subject_id' => ['nullable', 'integer', 'exists:Subject,id'],
+            'teacher_id' => ['nullable', 'integer', 'exists:User,id'],
         ]);
+        $data['session_ids'] = $data['session_ids'] ?? [];
         return DB::transaction(function () use ($studentClass, $data) {
             $source = StudentClass::query()->where('ID', $studentClass->getAttribute('ID'))
                 ->lockForUpdate()
@@ -6035,6 +6072,8 @@ class StudentClassController extends Controller
             'session_ids' => $sessionIds,
             'selected_session_count' => count($sessionIds),
             'start_date' => Carbon::parse($data['start_date'])->toDateString(),
+            'subject_id' => !empty($data['subject_id']) ? (int) $data['subject_id'] : null,
+            'teacher_id' => !empty($data['teacher_id']) ? (int) $data['teacher_id'] : null,
             'observed_used_sessions' => $observedUsed,
             'old_session_count' => $oldSessionCount,
             'old_charge' => (int) ($studentClass->getAttribute('Charge') ?? 0),
@@ -6072,8 +6111,8 @@ class StudentClassController extends Controller
         return [
             'StudentID' => (int) $source->getAttribute('StudentID'),
             'GradeID' => (int) ($source->getAttribute('GradeID') ?? 1),
-            'SubjectID' => (int) ($source->getAttribute('SubjectID') ?? 1),
-            'TeacherID' => (int) ($source->getAttribute('TeacherID') ?? 0),
+            'SubjectID' => $plan['subject_id'] ?? (int) ($source->getAttribute('SubjectID') ?? 1),
+            'TeacherID' => $plan['teacher_id'] ?? (int) ($source->getAttribute('TeacherID') ?? 0),
             'by1' => (int) ($source->getAttribute('by1') ?? 1),
             'Period' => (int) ($source->getAttribute('Period') ?? 4),
             'StartDate' => $plan['start_date'],
@@ -7828,11 +7867,14 @@ class StudentClassController extends Controller
     private function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
         int $courseId,
         int $oldTeacherId,
-        int $newTeacherId
+        int $newTeacherId,
+        ?string $effectiveDate = null
     ): void {
         if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
             return;
         }
+        // Sessions before this date keep the former teacher (default: today).
+        $effectiveDate = $effectiveDate ?: Carbon::today()->toDateString();
 
         $course = DB::table('StudentClass')->where('ID', $courseId)->first();
         if (!$course) {
@@ -7858,8 +7900,13 @@ class StudentClassController extends Controller
         $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
         $pastSessions = DB::table('ClassSession as cs')
             ->where('cs.StudentClassID', $courseId)
-            ->where(function ($q) use ($today, $taughtStatuses) {
-                $q->whereIn('cs.Status', $taughtStatuses)
+            ->where(function ($q) use ($today, $taughtStatuses, $effectiveDate) {
+                // Past lessons are history regardless of attendance evidence.
+                $q->where(function ($before) use ($effectiveDate) {
+                    $before->whereDate('cs.SessionDate', '<', $effectiveDate)
+                        ->whereRaw("COALESCE(cs.Status, '') != 'cancelled'");
+                })
+                    ->orWhereIn('cs.Status', $taughtStatuses)
                     ->orWhere(function ($q2) use ($today) {
                         $q2->whereDate('cs.SessionDate', '<', $today)
                             ->whereExists(function ($sub) {
@@ -8026,7 +8073,8 @@ class StudentClassController extends Controller
         int $courseId,
         int $oldTeacherId,
         int $newTeacherId,
-        int $changedBy
+        int $changedBy,
+        ?string $fromDate = null
     ): void {
         if ($courseId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
             return;
@@ -8034,6 +8082,7 @@ class StudentClassController extends Controller
 
         $records = LearningRecord::query()
             ->where('StudentClassID', $courseId)
+            ->when($fromDate, fn ($q) => $q->whereDate('SessionDate', '>=', $fromDate))
             ->whereNull('VoidedAt')
             ->where('TeacherID', '!=', $newTeacherId)
             ->get();
@@ -8073,7 +8122,7 @@ class StudentClassController extends Controller
      * Remove false history pins created for untaught past ClassSessions.
      * Real substitutes and taught-session #207 pins are retained.
      */
-    private function clearUntaughtPastFalseHistoryPins(int $courseId, int $currentTeacherId): void
+    private function clearUntaughtPastFalseHistoryPins(int $courseId, int $currentTeacherId, ?string $fromDate = null): void
     {
         if ($courseId <= 0 || $currentTeacherId <= 0) {
             return;
@@ -8087,6 +8136,7 @@ class StudentClassController extends Controller
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id')
             ->whereDate('schedule_date', '<', $today)
+            ->when($fromDate, fn ($q) => $q->whereDate('schedule_date', '>=', $fromDate))
             ->where('teacher_id', '<>', $currentTeacherId)
             ->get(['id', 'original_schedule_id', 'schedule_date', 'start_time']);
 
@@ -8174,7 +8224,31 @@ class StudentClassController extends Controller
         if (LearningRecord::where('StudentClassID', $studentClassId)->where('Status', 'approved')->whereNull('VoidedAt')->exists()) {
             return true;
         }
-        return false;
+        // Past / taught sessions are history too: a schedule edit must never
+        // delete-and-rebuild them (only future rows may be re-timed).
+        return $this->courseHasPastOrTaughtSessions($studentClassId);
+    }
+
+    /** Any non-cancelled past session, taught status, sign-in or deducted LR. */
+    private function courseHasPastOrTaughtSessions(int $courseId): bool
+    {
+        if ($courseId <= 0) {
+            return false;
+        }
+        $taught = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
+        return DB::table('ClassSession')
+                ->where('StudentClassID', $courseId)
+                ->whereRaw("COALESCE(Status, '') != 'cancelled'")
+                ->where(fn ($q) => $q->whereDate('SessionDate', '<', Carbon::today()->toDateString())
+                    ->orWhereIn('Status', $taught))
+                ->exists()
+            || StudentSignIn::where('StudentClassID', $courseId)->whereNull('VoidedAt')->exists()
+            || LearningRecord::where('StudentClassID', $courseId)->whereNull('VoidedAt')->where('SessionDeducted', 1)->exists();
+    }
+
+    private function subjectLabelForGuard(int $subjectId): string
+    {
+        return (string) (DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? "#{$subjectId}");
     }
 
     /**

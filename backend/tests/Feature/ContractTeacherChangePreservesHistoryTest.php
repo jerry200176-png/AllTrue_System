@@ -157,7 +157,8 @@ class ContractTeacherChangePreservesHistoryTest extends TestCase
 
     /**
      * in-app #312: past ClassSessions that were never taught must not become
-     * false substitute pins; calendar/API should follow the new contract teacher.
+     * false substitute pins; calendar/API should follow the new contract teacher
+     * when staff pick an effective date covering them.
      */
     public function test_untaught_past_session_follows_new_contract_teacher_after_change(): void
     {
@@ -212,6 +213,9 @@ class ContractTeacherChangePreservesHistoryTest extends TestCase
                 'Accept' => 'application/json',
             ])->putJson("/api/v1/student-classes/{$course->ID}", [
                 'teacher_id' => $newTeacherId,
+                // Staff explicitly says the new teacher applies from the start
+                // of the contract (correcting a wrongly assigned teacher).
+                'teacher_effective_date' => '2026-08-01',
             ]);
             $res->assertOk();
 
