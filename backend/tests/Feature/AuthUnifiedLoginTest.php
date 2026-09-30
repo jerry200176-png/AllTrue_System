@@ -59,10 +59,14 @@ class AuthUnifiedLoginTest extends TestCase
         $this->makeUser('T');
         $this->makeUser('D');
 
-        $this->postJson('/api/v1/auth/login', ['account' => 'dual@example.com', 'password' => 'nope'])
-            ->assertStatus(401)->assertJsonPath('message', '帳號或密碼錯誤')->assertJsonMissingPath('data');
-        $this->postJson('/api/v1/auth/login', ['account' => 'ghost@example.com', 'password' => 'nope'])
-            ->assertStatus(401)->assertJsonPath('message', '帳號或密碼錯誤')->assertJsonMissingPath('data');
+        // Laravel 8 TestResponse has no assertJsonMissingPath.
+        $wrong = $this->postJson('/api/v1/auth/login', ['account' => 'dual@example.com', 'password' => 'nope'])
+            ->assertStatus(401)->assertJsonPath('message', '帳號或密碼錯誤');
+        $this->assertArrayNotHasKey('data', $wrong->json());
+        $unknown = $this->postJson('/api/v1/auth/login', ['account' => 'ghost@example.com', 'password' => 'nope'])
+            ->assertStatus(401)->assertJsonPath('message', '帳號或密碼錯誤');
+        $this->assertArrayNotHasKey('data', $unknown->json());
+        $this->assertSame($wrong->json(), $unknown->json());
     }
 
     public function test_two_accounts_require_choice_and_choose_issues_token_once(): void
@@ -170,10 +174,10 @@ class AuthUnifiedLoginTest extends TestCase
         $a->forceFill(['Name' => 'Same Name'])->save();
         $b->forceFill(['Name' => 'Same Name'])->save();
 
-        $this->postJson('/api/v1/auth/login', ['account' => 'Same Name', 'password' => self::PASSWORD])
+        $res = $this->postJson('/api/v1/auth/login', ['account' => 'Same Name', 'password' => self::PASSWORD])
             ->assertOk()
-            ->assertJsonMissingPath('data.requires_account_choice')
             ->assertJsonPath('data.session.user.id', $b->id); // legacy priority: director first
+        $this->assertNull($res->json('data.requires_account_choice'));
     }
 
     public function test_account_suspended_between_steps_is_rejected(): void
