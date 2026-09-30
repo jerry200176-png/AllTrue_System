@@ -13,6 +13,10 @@ use App\Models\ClassSession;
 use App\Models\StudentClass;
 use Illuminate\Support\Facades\DB;
 
+// Laravel's CLI exception handler can render an uncaught exception while
+// returning exit code 0. The protected workflow must see precondition drift
+// as a failed process, including during its read-only preflight.
+try {
 $mode = getenv('MUZHA_MODE');
 $expectedConfirm = match ($mode) {
     'dry-run' => 'DRY_RUN_MUZHA_FIXED_SCHEDULE_20260930',
@@ -180,3 +184,8 @@ $result = DB::transaction(function () use ($cases, $mode) {
 }, 3);
 
 echo json_encode($result, JSON_THROW_ON_ERROR), PHP_EOL;
+} catch (\Throwable $e) {
+    $reason = $e instanceof \RuntimeException ? $e->getMessage() : 'Unexpected repair error';
+    fwrite(STDERR, "::error::{$reason}" . PHP_EOL);
+    exit(1);
+}

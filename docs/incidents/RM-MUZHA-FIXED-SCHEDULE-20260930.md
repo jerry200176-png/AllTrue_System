@@ -61,6 +61,18 @@ charges, invoices, payments, packages, teachers, subjects or rooms. Eloquent
 ClassSession updates emit the existing schedule audit log. Postconditions are
 checked before commit.
 
+## 2026-10-01 production preflight hold
+
+The first production dry-run, [Actions run 36748360106](https://github.com/jerry200176-png/AllTrue_System/actions/runs/36748360106),
+printed `Occurrence precondition drift: 19267` but its job was incorrectly
+marked successful. No apply run was started. Read-only authenticated course
+details confirmed that the 2026-10-03 exception rows 19267 and 19324 are now
+17:00–19:00, whereas this manifest expects 15:00–17:00; the other 30 future
+rows still match. The protected workflow and executor must fail nonzero and
+require a valid result payload, and the exact row plan must be revised after
+the Founder decides whether those two exceptions move or remain. This
+document's earlier counts and row list describe the original, blocked plan.
+
 ## Recovery and verification
 
 Any failed precondition or postcondition rolls back the entire transaction.
