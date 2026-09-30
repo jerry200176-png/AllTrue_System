@@ -84,8 +84,17 @@ jobs:
           cd /home/admin/backend
           manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
           [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo '::error::production SHA drift' >&2; exit 1; }
-          MUZHA_MODE=dry-run MUZHA_CONFIRM=DRY_RUN_MUZHA_FIXED_SCHEDULE_20260930 \
-            php scripts/ops/muzha_fixed_schedule_20260930.php
+          result="$(MUZHA_MODE=dry-run MUZHA_CONFIRM=DRY_RUN_MUZHA_FIXED_SCHEDULE_20260930 \
+            php scripts/ops/muzha_fixed_schedule_20260930.php)"
+          printf '%s\n' "$result" | python3 -c '
+          import json, sys
+          result = json.load(sys.stdin)
+          assert result["mode"] == "dry-run"
+          assert result["class_ids"] == [3428, 3429, 2332, 2335]
+          assert result["cancelled_rows_preserved"] == 8
+          assert isinstance(result["time_updates"], int)
+          assert isinstance(result["matching_exceptions_adopted"], int)
+          print(json.dumps(result, separators=(",", ":")))'
           REMOTE
 
   apply:
@@ -128,6 +137,15 @@ jobs:
           cd /home/admin/backend
           manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
           [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo '::error::production SHA drift' >&2; exit 1; }
-          MUZHA_MODE=apply MUZHA_CONFIRM=APPROVE_MUZHA_FIXED_SCHEDULE_20260930 \
-            php scripts/ops/muzha_fixed_schedule_20260930.php
+          result="$(MUZHA_MODE=apply MUZHA_CONFIRM=APPROVE_MUZHA_FIXED_SCHEDULE_20260930 \
+            php scripts/ops/muzha_fixed_schedule_20260930.php)"
+          printf '%s\n' "$result" | python3 -c '
+          import json, sys
+          result = json.load(sys.stdin)
+          assert result["mode"] == "apply"
+          assert result["class_ids"] == [3428, 3429, 2332, 2335]
+          assert result["cancelled_rows_preserved"] == 8
+          assert isinstance(result["time_updates"], int)
+          assert isinstance(result["matching_exceptions_adopted"], int)
+          print(json.dumps(result, separators=(",", ":")))'
           REMOTE
