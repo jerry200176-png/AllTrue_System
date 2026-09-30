@@ -57,7 +57,7 @@
     "test:release-notes-coverage": "node ../scripts/check-release-notes-coverage.mjs --self-test && node ../scripts/check-release-notes-coverage.mjs --base origin/main --head HEAD",
     "test:pin-gate": "node src/lib/pinGate.test.js",
     "test:teacher-eligibility-display": "node src/lib/teacherEligibilityDisplay.test.js",
-    "test:bug-report-context": "node src/lib/bugReportContext.test.js",
+    "test:bug-report-context": "node src/lib/bugReportContext.test.js && node src/lib/guardianDisplay.test.js && node src/lib/asyncPageAndCourseTypeFilter.test.js",
     "test:bug-reports-list-a11y": "node src/lib/bugReportsListA11y.test.js",
     "sync-release-notes": "node ../scripts/changelog-to-release-notes.mjs && node ../scripts/staff-updates-to-js.mjs && node ../scripts/parent-updates-to-js.mjs",
     "metrics:design-hex": "bash ../scripts/design-hex-count.sh",

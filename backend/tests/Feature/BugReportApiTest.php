@@ -356,6 +356,34 @@ class BugReportApiTest extends TestCase
         $this->assertNotContains('Bug from B', $titles);
     }
 
+    public function test_list_returns_truncated_description_snippet_only_for_visible_rows(): void
+    {
+        [$tokenA, $userA] = $this->createUserToken([1], 'snipA@test.com', 'T');
+        [, $userB] = $this->createUserToken([1], 'snipB@test.com', 'T');
+
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $userA->id,
+            'title' => '[bugs] 2026/9/22 下午2:37:15',
+            'description' => "\n" . str_repeat('字', 80) . "\n第二行不應出現",
+            'severity' => 'low', 'status' => 'new',
+        ]);
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $userB->id,
+            'title' => 'other', 'description' => 'SECRET-OTHER-USER', 'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenA}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1');
+
+        $res->assertOk();
+        $this->assertCount(1, $res->json('data'));
+        $this->assertSame(str_repeat('字', 60) . '…', $res->json('data.0.description_snippet'));
+        $this->assertStringNotContainsString('SECRET-OTHER-USER', $res->getContent());
+        $this->assertStringNotContainsString('第二行', $res->getContent());
+    }
+
     public function test_super_admin_sees_all_bugs_in_campus(): void
     {
         [$tokenAdmin, $admin] = $this->createUserToken([1], 'admin@test.com', 'S');
