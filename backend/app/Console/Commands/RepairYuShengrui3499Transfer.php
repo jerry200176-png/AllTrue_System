@@ -208,8 +208,6 @@ class RepairYuShengrui3499Transfer extends Command
         $data = ['start_date' => self::START, 'subject_id' => 66, 'teacher_id' => 29, 'slots' => self::SLOTS, 'reason' => self::REASON];
         $result = (fn () => $this->applyTransfer($source, $data, $preview))->call(app(StudentClassController::class));
         $newId = (int) $result['new_course']['id'];
-        // ponytail: applyTransfer leaves the new contract Paid=0 although its invoice is paid; set it here (no-op once fixed upstream)
-        DB::table('StudentClass')->where('ID', $newId)->where('Paid', 0)->update(['Paid' => 1, 'Pay' => (int) $result['new_course']['charge'], 'PayDate' => '2026-09-09']);
         $errors = $this->postErrors($newId);
         if ($errors !== []) {
             throw new RuntimeException('post-verify failed: ' . implode('; ', $errors));

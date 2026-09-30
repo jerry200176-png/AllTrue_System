@@ -79,8 +79,9 @@ class RepairYuShengrui3499TransferTest extends TestCase
     {
         $before = $this->state();
         $code = Artisan::call(self::CMD, ['--execute' => true, '--actor' => 'phpunit']);
-        $this->assertSame(0, $code, Artisan::output());
-        $this->assertStringContainsString('REPAIR_STATE=APPLIED_AND_VERIFIED', Artisan::output());
+        $out = Artisan::output();
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('REPAIR_STATE=APPLIED_AND_VERIFIED', $out);
 
         $sc = DB::table('StudentClass')->where('ID', 3499)->first();
         $this->assertSame([65, 146, 3, '13:00', 4, 6000], [(int) $sc->SubjectID, (int) $sc->TeacherID, (int) $sc->week, substr($sc->time, 0, 5), (int) $sc->SessionCount, (int) $sc->Charge]);
