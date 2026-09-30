@@ -1274,7 +1274,7 @@ test.describe('UI foundation — real Vue page evidence', () => {
     await expect(page.locator('#attendance-teacher-panel')).toHaveAttribute('tabindex', '0');
     await expect(page.getByRole('heading', { name: '先處理課表異常', exact: true })).toBeVisible();
     await expect(page.getByText('課表異常待處理', { exact: true })).toBeVisible();
-    await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary')).toHaveCount(2);
+    await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary')).toHaveCount(3);
     await expect(page.locator('#attendance-teacher-panel > .att-secondary-summary').first()).not.toHaveAttribute('open', '');
   });
 
