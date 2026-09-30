@@ -6,6 +6,7 @@ use App\Exports\TeacherMonthlyAttendanceExport;
 use App\Models\TeacherSignIn;
 use App\Models\TeacherSignInAdjustment;
 use App\Services\TeacherAttendanceMonth;
+use App\Services\TeacherClassCalendar;
 use App\Support\TeacherProfileDirectory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -164,6 +165,7 @@ class TeacherAttendanceController extends Controller
             $query->where('ts.Status', $status);
         }
 
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $records */
         $records = $query->orderBy('ts.SignInDT', 'desc')->paginate($perPage);
 
         // 附加最後補卡資訊
@@ -180,7 +182,16 @@ class TeacherAttendanceController extends Controller
             return $row;
         });
 
-        return response()->json($records);
+        // 當天每位老師一列（依課表重算，跟月出勤表同一套）；有課沒刷的老師也在裡面
+        $days = [];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date)) {
+            foreach ($this->loadMonth(substr($date, 0, 7), $effectiveCampusIds, $teacherId)['teachers'] as $t) {
+                $days[] = ['teacher_id' => $t['teacher_id'], 'teacher_name' => $t['teacher_name']]
+                    + collect($t['days'])->firstWhere('date', $date);
+            }
+        }
+
+        return response()->json($records->toArray() + ['days' => $days]);
     }
 
     /**
@@ -484,9 +495,16 @@ class TeacherAttendanceController extends Controller
                 });
         }
 
-        $teachers = $records->groupBy('teacher_id')->map(function ($rows, $id) use ($yearMonth, $adjustedIds, $runDates) {
-            $days = TeacherAttendanceMonth::days($rows, $yearMonth, $adjustedIds, $runDates[$id] ?? []);
-            $name = $rows->first()->teacher_name;
+        // 有課的老師就算整月沒刷卡也要列出來（才看得到缺卡）
+        $classes = TeacherClassCalendar::load($from->toDateString(), $to->toDateString(), $campusIds, $teacherId);
+        $byTeacher = $records->groupBy('teacher_id');
+        $ids = collect(array_keys($classes))->merge($byTeacher->keys())->map(fn ($id) => (int) $id)->unique();
+        $names = DB::table('User')->whereIn('id', $ids->all())->pluck('Name', 'id');
+
+        $teachers = $ids->map(function ($id) use ($byTeacher, $classes, $names, $yearMonth, $adjustedIds, $runDates) {
+            $rows = $byTeacher->get($id, collect());
+            $days = TeacherAttendanceMonth::days($rows, $yearMonth, $adjustedIds, $runDates[$id] ?? [], null, $classes[$id] ?? []);
+            $name = (string) ($names[$id] ?? '');
 
             return [
                 'teacher_id'   => (int) $id,
