@@ -578,10 +578,12 @@ class AdoptionInsightsController extends Controller
             ->map(fn ($id) => (int) $id)
             ->all();
         // Multi-role (flag ON): type-T survivors holding an active director grant count as directors.
-        $directorUserIds = array_values(array_unique(array_merge(
-            $directorUserIds,
-            app(StaffCapabilityAuthorizer::class)->grantedDirectorUserIds((int) $branchId)
-        )));
+        // Flag OFF -> empty list -> legacy computation untouched. Flag ON: the same user id may also be in
+        // the teacher set (teacher+director counts in both cohorts, by design of the single-account model).
+        $grantedDirectorIds = app(StaffCapabilityAuthorizer::class)->grantedDirectorUserIds((int) $branchId);
+        if ($grantedDirectorIds !== []) {
+            $directorUserIds = array_values(array_unique(array_merge($directorUserIds, $grantedDirectorIds)));
+        }
 
         $teacherOpened = 0;
         $directorOpened = 0;

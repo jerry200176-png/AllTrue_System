@@ -208,6 +208,7 @@ class DirectorAccountController extends Controller
                 'account'      => $user->LoginName,
                 'campus_ids'   => $campusIds,
                 'campus_names' => $campusNames,
+                'type'         => (string) $user->getAttribute('type'),
             ];
         })->values();
 
@@ -310,6 +311,14 @@ class DirectorAccountController extends Controller
             }
 
             UserCampus::where('UserID', $uid)->delete();
+
+            // No revoked_by column exists on user_capability_grants; revoked_at alone marks the revocation.
+            if (Schema::hasTable('user_capability_grants')) {
+                DB::table('user_capability_grants')
+                    ->where('user_id', $uid)
+                    ->whereNull('revoked_at')
+                    ->update(['revoked_at' => now()]);
+            }
 
             if (Schema::hasTable('NotificationReads')) {
                 DB::table('NotificationReads')->where('UserID', $uid)->delete();

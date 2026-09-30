@@ -3,6 +3,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Models\UserCapabilityGrant;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 /**
  * Campus-aware staff capability resolution (in-app #299 Phase A).
@@ -164,6 +165,16 @@ class StaffCapabilityAuthorizer
             ->where('capability', self::CAP_DIRECTOR)
             ->whereNull('revoked_at')
             ->when($campusId !== null, fn ($q) => $q->where('campus_id', $campusId))
+            // Grant holder must still exist, be a teacher/director account and not be inactive/suspended.
+            ->whereExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('User')
+                    ->whereColumn('User.id', 'user_capability_grants.user_id')
+                    ->whereIn('User.type', ['T', 'D'])
+                    ->where(function ($w) {
+                        $w->whereNull('User.status')->orWhereNotIn('User.status', ['inactive', 'suspended']);
+                    });
+            })
             ->orderBy('user_id')
             ->distinct()
             ->pluck('user_id')
