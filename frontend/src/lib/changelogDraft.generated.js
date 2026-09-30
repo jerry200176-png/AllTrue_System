@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "tab acting context, context chip, route-implied switch；entry staff login (no role picker)",
+    "summary": "tab acting context, context chip, route-implied switch；as in security audit + self-approval hard block",
     "audience": [
       "teacher",
       "director"
@@ -19,11 +19,11 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "tab acting context, context chip, route-implied switch",
+          "as in security audit + self-approval hard block",
           "entry staff login (no role picker)",
           "aware director lookups behind STAFF_MULTI_ROLE_V1",
           "新增多科共用堂數與加購分流入口",
-          "reference subject-unit totals with and without tutoring",
-          "student school and grade in course lookup"
+          "reference subject-unit totals with and without tutoring"
         ]
       },
       {
@@ -36,11 +36,11 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "tab acting context, context chip, route-implied switch",
+      "as in security audit + self-approval hard block",
       "entry staff login (no role picker)",
       "aware director lookups behind STAFF_MULTI_ROLE_V1",
       "新增多科共用堂數與加購分流入口",
       "reference subject-unit totals with and without tutoring",
-      "student school and grade in course lookup",
       "from a stale acting context instead of failing every request",
       "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
     ]

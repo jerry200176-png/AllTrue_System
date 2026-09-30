@@ -25,6 +25,7 @@ final class SecurityAuditEvent
         'reason_code', 'row_count', 'source', 'student_count',
         'verification_method',
         'transferred_session_count', 'recovered_session_count', 'reason_hash',
+        'acting_as', 'capability_campus_count',
     ];
 
     public static function ref(string $kind, int|string|null $value): ?string
@@ -53,6 +54,25 @@ final class SecurityAuditEvent
         return $safe;
     }
 
+    /**
+     * #2908: authenticated-request context (null values when the multi-role flag is off).
+     *
+     * @return array{acting_as: ?string, capability_campus_count: ?int}|array{}
+     */
+    private static function requestContext(): array
+    {
+        $attrs = app()->bound('request') ? request()->attributes : null;
+        if (!$attrs || !$attrs->has('auth_user')) {
+            return [];
+        }
+        $byCap = $attrs->get('auth_capability_campus_ids');
+
+        return [
+            'acting_as' => $attrs->get('auth_acting_as'),
+            'capability_campus_count' => is_array($byCap) ? count(array_unique(array_merge(...array_values($byCap) ?: [[]]))) : null,
+        ];
+    }
+
     public static function append(
         string $eventType,
         string $outcome,
@@ -74,7 +94,7 @@ final class SecurityAuditEvent
                 'subject_ref' => self::ref((string) ($context['subject_type'] ?? 'subject'), $context['subject_id'] ?? null),
                 'binding_ref' => self::ref('binding', $context['binding_id'] ?? null),
                 'outcome' => substr($outcome, 0, 32),
-                'metadata' => json_encode(self::metadata($metadata), JSON_THROW_ON_ERROR),
+                'metadata' => json_encode(array_merge(self::metadata($metadata), self::requestContext()), JSON_THROW_ON_ERROR),
                 'retention_until' => now()->addDays((int) config('audit.retention_days', self::RETENTION_DAYS)),
             ]);
         } catch (Throwable $e) {

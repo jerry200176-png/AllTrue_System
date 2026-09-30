@@ -111,6 +111,36 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-no-self-approval",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "不能核准自己的薪資與資格",
+    "summary": "同一人不能確認或核准與自己有關的薪資、資格款項，系統會直接擋下並提示。",
+    "items": [
+      "不能核准自己的薪資／資格／堂數更正；請由其他主任或總部處理。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "不能核准自己的薪資／資格／堂數更正；請由其他主任或總部處理。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:no-self-approval"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-dup-review-shared-label",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-30-multirole-context-ui -->
 - 雙身分（`STAFF_MULTI_ROLE_V1`，預設關閉）前端：工作身分改存每個分頁（sessionStorage，開分頁時取上次使用值），A 分頁切換不影響 B 分頁；頂列顯示「老師／主任 · 分校」身分標籤（含切換）；直接開啟需另一身分的頁面時自動切換並顯示提示。僅持有兩種身分者可見，單一身分與旗標關閉時無任何變化。
 
+## 2026-09-30 — feat(auth): acting_as in security audit + self-approval hard block (in-app #299 / #2908 step 3)
+<!-- release-notes: staff_update=staff-2026-09-30-no-self-approval -->
+- 資安稽核事件自動帶 `acting_as` 與 `capability_campus_count`（旗標關閉為 null），被拒的身分切換寫 `staff.context.denied`；薪資／資格（扣除、行政加給、現金加扣、底薪、成果）確認與核准，核准人等於當事老師時回 422 `self_approval_forbidden`。無資料變更。
+
 ## 2026-09-30 — feat(auth): single-entry staff login (no role picker)
 <!-- release-notes: staff_update=staff-2026-09-30-unified-login -->
 - 登入畫面只填帳號與密碼，不再先選「老師／主任櫃台」。後端不帶 `role` 時依 LoginName 找出啟用中的員工帳號並逐一驗密碼：僅一筆符合直接登入；同帳號密碼有兩個帳號（未合併的雙帳號）時回 `data.requires_account_choice`、5 分鐘單次有效的 `choice_token` 與僅含身分標籤的 `choices`，再由新增的 `POST /auth/login/choose` 發 token（選項綁定候選帳號、用過即失效）。節流沿用登入鎖定規則、選擇成功寫入 `login.account_choice` 稽核（僅雜湊 id），查無帳號補做一次假密碼驗證以縮小時間差。舊版前端仍可帶 `role`，語意不變。忘記密碼仍保留身分選單（後續再統一）。無 migration、旗標不變。

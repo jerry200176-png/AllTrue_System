@@ -2159,6 +2159,9 @@ class FinanceController extends Controller
         if (!$branchId || !$teacherId) {
             return response()->json(['error' => 'branch_id and teacher_id required'], 422);
         }
+        if ($blocked = \App\Support\SelfApprovalGuard::reject($request, $teacherId)) {
+            return $blocked;
+        }
 
         $role = $request->attributes->get('auth_role');
         if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
@@ -2257,6 +2260,9 @@ class FinanceController extends Controller
         $teacherId = (int) $request->input('teacher_id');
         if (!$branchId || !$teacherId) {
             return response()->json(['error' => 'branch_id and teacher_id required'], 422);
+        }
+        if ($blocked = \App\Support\SelfApprovalGuard::reject($request, $teacherId)) {
+            return $blocked;
         }
 
         $role = $request->attributes->get('auth_role');
