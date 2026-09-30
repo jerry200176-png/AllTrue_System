@@ -3590,7 +3590,13 @@ const submitRenewMonthly = async (endDate) => {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount }),
+      // Only financial roles may send `discount`; a NONE discount must be omitted or admin gets 403.
+      body: JSON.stringify({
+        end_date: endDate,
+        ...(renewMonthlyForm.value.discount?.type && renewMonthlyForm.value.discount.type !== 'NONE'
+          ? { discount: renewMonthlyForm.value.discount }
+          : {}),
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {

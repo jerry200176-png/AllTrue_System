@@ -33,6 +33,19 @@ updates:
     source_refs:
       - "changelog:2026-09-30:learning-teacher-search"
 
+  - id: staff-2026-09-30-monthly-renew-admin
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 月結課程可以正常續約了
+    summary: 修正行政帳號在學生管理按月結續約時，被誤擋「沒有折扣權限」的問題。
+    items:
+      - category: fixed
+        text: 月結續約選「無折扣」時可直接送出，行政帳號不再被擋。
+    source_refs:
+      - "changelog:2026-09-30:monthly-renew-admin"
+
   - id: staff-2026-09-29-calendar-day-nav
     published_at: "2026-09-29"
     audiences:
