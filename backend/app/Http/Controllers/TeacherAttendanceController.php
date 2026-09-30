@@ -181,7 +181,16 @@ class TeacherAttendanceController extends Controller
             return $row;
         });
 
-        return response()->json($records);
+        // 當天每位老師一列（依課表重算，跟月出勤表同一套）；有課沒刷的老師也在裡面
+        $days = [];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date)) {
+            foreach ($this->loadMonth(substr($date, 0, 7), $effectiveCampusIds, $teacherId)['teachers'] as $t) {
+                $days[] = ['teacher_id' => $t['teacher_id'], 'teacher_name' => $t['teacher_name']]
+                    + collect($t['days'])->firstWhere('date', $date);
+            }
+        }
+
+        return response()->json($records->toArray() + ['days' => $days]);
     }
 
     /**

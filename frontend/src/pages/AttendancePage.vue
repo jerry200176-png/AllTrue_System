@@ -1348,32 +1348,22 @@ async function fetchTeacherRecords() {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
-    const [recRes, unclosedRes, monthRes] = await Promise.all([
+    const [recRes, unclosedRes] = await Promise.all([
       fetch(`/api/v1/teacher-attendance?date=${teacherDate.value}&campus_id=${props.branchId}&per_page=100`, {
         headers: { Authorization: `Bearer ${token}` },
       }),
       fetch(`/api/v1/teacher-attendance/unclosed?date=${teacherDate.value}&campus_id=${props.branchId}`, {
         headers: { Authorization: `Bearer ${token}` },
       }),
-      fetch(`/api/v1/teacher-attendance/monthly?year_month=${teacherDate.value.slice(0, 7)}&campus_id=${props.branchId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
     ]);
     if (recRes.ok) {
       const json = await recRes.json();
       teacherRecords.value = json.data ?? [];
+      teacherDays.value = json.days ?? [];
     }
     if (unclosedRes.ok) {
       const json = await unclosedRes.json();
       teacherUnclosed.value = json.data ?? [];
-    }
-    if (monthRes.ok) {
-      const json = await monthRes.json();
-      teacherDays.value = (json.teachers ?? []).map(t => ({
-        teacher_id: t.teacher_id,
-        teacher_name: t.teacher_name,
-        ...t.days.find(d => d.date === teacherDate.value),
-      }));
     }
   } catch (_) { /* silent */ } finally {
     teacherLoading.value = false;

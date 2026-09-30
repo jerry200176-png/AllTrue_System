@@ -68,6 +68,14 @@ class TeacherAttendanceDerivedStatusTest extends TestCase
         $this->assertSame(['late', 20], [$day('代課老師', '2026-08-04')['status'], $day('代課老師', '2026-08-04')['late_minutes']]);
         $this->assertSame(1, $teachers['正班老師']['totals']['missed_days']);
         $this->assertSame(1, $teachers['代課老師']['totals']['late_days']);
+
+        // 今日頁：沒刷卡但有課的老師也要回來
+        $days = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/teacher-attendance?date=2026-08-03&campus_id=1')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->json('days');
+        $this->assertSame('missed', collect($days)->firstWhere('teacher_name', '正班老師')['status']);
     }
 
     private function schedule(int $studentId, int $teacherId, int $courseId, int $campusId, string $status): array
