@@ -890,7 +890,7 @@ import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
 import { useToast } from './composables/useToast';
 import { fetchChatUnreadCount } from './lib/chatApi';
-import { buildInboxDeepLinkQuery, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';
+import { buildInboxDeepLinkQuery, deepLinkTargetPage, hasInboxDeepLink, inboxScopeKey, mergeInboxCountState, parseInboxCount, parseInboxDeepLinkSearch, resolveAuthorizedBranchId } from './lib/actionInboxContract.js';
 import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
@@ -904,7 +904,7 @@ import {
 } from './lib/pinGate';
 import { getMobileTabItems, getNavigationGroups, requiredContextForPage } from './lib/navigationRegistry';
 import ActingContextChip from './components/ActingContextChip.vue';
-import { APP_PAGE_QUERY_KEY, buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
+import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
@@ -1704,7 +1704,7 @@ function applyDeepLinkFromUrl() {
       if (safe) currentBranch.value = safe;
     }
     const authorizedPages = authorizedNavigationPages();
-    const requestedPage = new URLSearchParams(window.location.search).get(APP_PAGE_QUERY_KEY);
+    const requestedPage = deepLinkTargetPage(window.location.search);
     if (requestedPage && !authorizedPages.has(requestedPage)) {
       const ctx = routeContextSwitch(requestedPage);
       if (ctx.action === 'switch') {
@@ -2070,7 +2070,10 @@ async function switchStaffMode(nextMode, { page = null } = {}) {
   active.value = page && authorizedNavigationPages().has(page) ? page : home;
   // URL must match the new context before /me reload re-reads it, or the deep-link
   // handler would see a page from the old mode and switch straight back.
-  syncAppPageUrl(active.value, { mode: page ? 'push' : 'replace' });
+  syncAppPageUrl(active.value, {
+    mode: page ? 'push' : 'replace',
+    preserveInboxContext: Boolean(page) && hasInboxDeepLink(window.location.search),
+  });
   await fetchProfile(getSessionUserId(session.value));
 }
 

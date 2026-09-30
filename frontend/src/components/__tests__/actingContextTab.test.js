@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createApp, nextTick } from 'vue';
+import { buildAppPageUrl } from '../../lib/appNavigationHistory.js';
+import { deepLinkTargetPage, hasInboxDeepLink } from '../../lib/actionInboxContract.js';
 import ActingContextChip from '../ActingContextChip.vue';
 import {
   formatContextChipLabel,
@@ -82,12 +84,30 @@ describe('App manual switch', () => {
   it('syncs the URL to the new context before reloading /me (no snap-back, no toast)', () => {
     const src = readFileSync('src/App.vue', 'utf8');
     const body = src.slice(src.indexOf('async function switchStaffMode'), src.indexOf('const isPasswordChangeLocked'));
-    const sync = body.indexOf("syncAppPageUrl(active.value, { mode: page ? 'push' : 'replace' })");
+    const sync = body.indexOf("mode: page ? 'push' : 'replace'");
     expect(sync).toBeGreaterThan(-1);
     expect(sync).toBeLessThan(body.indexOf('await fetchProfile'));
     expect(body).not.toContain('toast');
     // after the sync the URL page is the new home, which needs no further switch
     expect(resolveRouteContext({ required: requiredContextForPage('director'), active: 'director', capabilities: BOTH })).toEqual({ action: 'none' });
     expect(resolveRouteContext({ required: requiredContextForPage('teacher-home'), active: 'teacher', capabilities: BOTH })).toEqual({ action: 'none' });
+  });
+});
+
+describe('inbox deep links', () => {
+  it('derives the target page from page/workflow_id as well as app_page', () => {
+    expect(deepLinkTargetPage('?page=director&workflow_id=7')).toBe('director');
+    expect(deepLinkTargetPage('?workflow_id=7')).toBe('director');
+    expect(deepLinkTargetPage('?page=notifications')).toBe('notifications');
+    expect(deepLinkTargetPage('?app_page=tuition-collect&page=director')).toBe('tuition-collect');
+    expect(deepLinkTargetPage('?page=other')).toBe(null);
+    expect(resolveRouteContext({ required: requiredContextForPage(deepLinkTargetPage('?page=director&workflow_id=7')), active: 'teacher', capabilities: BOTH }))
+      .toEqual({ action: 'switch', context: 'director' });
+  });
+  it('flags inbox context for preservation, and buildAppPageUrl keeps the params', () => {
+    expect(hasInboxDeepLink('?page=director&section=x&workflow_id=7')).toBe(true);
+    expect(hasInboxDeepLink('?app_page=students')).toBe(false);
+    expect(buildAppPageUrl({ pathname: '/', search: 'page=director&section=x&workflow_id=7', page: 'director' }))
+      .toBe('/?page=director&section=x&workflow_id=7&app_page=director');
   });
 });

@@ -90,6 +90,21 @@ export function parseInboxDeepLinkSearch(search) {
   };
 }
 
+/** True when the URL carries inbox/notification deep-link context (page=director|notifications or workflow_id). */
+export function hasInboxDeepLink(search) {
+  const { page, workflowId } = parseInboxDeepLinkSearch(search);
+  return page === 'notifications' || page === 'director' || Boolean(workflowId);
+}
+
+/** Page a deep link asks for: explicit app_page, else inbox links (workflow_id => director, page=director|notifications). */
+export function deepLinkTargetPage(search) {
+  const explicit = new URLSearchParams(typeof search === 'string' ? search : '').get('app_page');
+  if (explicit) return explicit;
+  const { page, workflowId } = parseInboxDeepLinkSearch(search);
+  if (workflowId) return 'director';
+  return page === 'notifications' || page === 'director' ? page : null;
+}
+
 /** Clamp URL branch_id to authorized campuses (non-super_admin). */
 export function resolveAuthorizedBranchId(requestedId, authorizedIds = [], { allowAny = false } = {}) {
   const id = Number(requestedId || 0);
