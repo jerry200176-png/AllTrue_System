@@ -58,13 +58,15 @@
           今日無課表異常 ✓
         </div>
         <div v-else class="ta-anomaly-list">
-          <div v-for="r in teacherAnomalies" :key="r.id" class="ta-anomaly-row">
+          <div v-for="r in teacherAnomalies" :key="r.teacher_id" class="ta-anomaly-row">
             <div class="ta-row-info">
               <span class="ta-name">{{ r.teacher_name }}</span>
-              <span class="ta-time">{{ r.sign_in_dt?.slice(11, 16) ?? '—' }}</span>
-              <span class="att-status-badge" :class="teacherStatusClass(r.status)">{{ teacherStatusLabel(r.status) }}</span>
+              <span class="ta-time">第一堂 {{ r.first_class ?? '—' }} · 刷卡 {{ r.sign_in ?? '—' }}</span>
+              <span class="att-status-badge" :class="teacherStatusClass(r.status)">
+                {{ r.status === 'late' ? `遲到 ${r.late_minutes} 分` : teacherStatusLabel(r.status) }}
+              </span>
             </div>
-            <button type="button" class="primary small" @click="openAdjust(r)">補卡</button>
+            <button v-if="r.record" type="button" class="primary small" @click="openAdjust(r.record)">補卡</button>
           </div>
         </div>
 
@@ -84,12 +86,12 @@
       </div>
 
       <details class="att-secondary-summary">
-        <summary>查看今日打卡摘要 <span>到班 {{ teacherStats.total }} · 行政出勤 {{ teacherOnDuty.length }} · 系統待比對 {{ teacherSystemPending.length }}</span></summary>
+        <summary>查看今日打卡摘要 <span>到班 {{ teacherStats.total }} · 行政出勤 {{ teacherOnDuty.length }} · 缺卡 {{ teacherStats.missed }}</span></summary>
         <div class="att-stats" aria-label="老師打卡摘要">
           <AtMetric label="今日到班" :value="teacherStats.total" accent="var(--ds-success)" />
           <AtMetric label="行政出勤" :value="teacherOnDuty.length" accent="var(--ds-primary)" />
           <AtMetric label="遲到" :value="teacherStats.late" accent="var(--ds-warning)" />
-          <AtMetric label="課表異常" :value="teacherStats.anomaly" accent="var(--ds-danger)" />
+          <AtMetric label="有課未刷卡" :value="teacherStats.missed" accent="var(--ds-danger)" />
         </div>
         <!-- 行政出勤區：有刷卡但無排課，正常到班，不需處理 -->
         <div v-if="!teacherLoading && teacherOnDuty.length" class="ta-onduty-section">
@@ -98,15 +100,10 @@
             行政出勤（{{ teacherOnDuty.length }} 人，無排課，自動記錄）
           </div>
           <div class="ta-onduty-list">
-            <span v-for="r in teacherOnDuty" :key="r.id" class="ta-onduty-chip">
-              {{ r.teacher_name }} {{ r.sign_in_dt?.slice(11, 16) }}
+            <span v-for="r in teacherOnDuty" :key="r.teacher_id" class="ta-onduty-chip">
+              {{ r.teacher_name }} {{ r.sign_in }}
             </span>
           </div>
-        </div>
-        <!-- 系統待確認：排課資料查詢失敗，不是人工缺失 -->
-        <div v-if="!teacherLoading && teacherSystemPending.length" class="ta-sys-pending">
-          <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">info</span>
-          {{ teacherSystemPending.length }} 筆排課資料待比對（系統自動確認，無需人工操作）
         </div>
       </details>
 
@@ -1140,25 +1137,27 @@ const teacherUnclosed = ref([]);
 const teacherLoading  = ref(false);
 const teacherDate     = ref(new Date().toISOString().slice(0, 10));
 
-// 真正需要人工介入的異常：有課表但遲到 / 有課表但完全未刷
+// 當天每位老師一列（後端依課表重算，跟月出勤表同一套規則）；有課沒刷的老師也在裡面
+const teacherDays = ref([]);
+const teacherDayRows = computed(() => teacherDays.value.map(d => ({
+  ...d,
+  record: teacherRecords.value.find(r => r.teacher_id === d.teacher_id) ?? null,
+})));
+
+// 真正需要人工介入的異常：有課遲到 / 有課沒刷
 const teacherAnomalies = computed(() =>
-  teacherRecords.value.filter(r => ['late', 'missed'].includes(r.status))
+  teacherDayRows.value.filter(r => r.status === 'late' || r.status === 'missed')
 );
 
 // 行政出勤：有刷卡但當天無排課，屬正常到班，不需人工處理
 const teacherOnDuty = computed(() =>
-  teacherRecords.value.filter(r => r.status === 'source_only')
-);
-
-// 系統待確認：排課查詢失敗（資料問題），與人工異常分開顯示
-const teacherSystemPending = computed(() =>
-  teacherRecords.value.filter(r => r.status === 'pending_review')
+  teacherDayRows.value.filter(r => r.status === 'admin')
 );
 
 const teacherStats = computed(() => ({
-  total:   teacherRecords.value.length,
-  late:    teacherRecords.value.filter(r => r.status === 'late').length,
-  anomaly: teacherAnomalies.value.length,   // 課表異常（需人工確認）
+  total:  teacherRecords.value.length,
+  late:   teacherDayRows.value.filter(r => r.status === 'late').length,
+  missed: teacherDayRows.value.filter(r => r.status === 'missed').length,
 }));
 
 const adjustModal = reactive({ visible: false, record: null });
@@ -1167,7 +1166,7 @@ const TEACHER_STATUS_LABEL = {
   normal:         '準時到班',
   late:           '遲到',
   early_leave:    '早退',
-  missed:         '漏刷',
+  missed:         '有課未刷卡',
   adjusted:       '已補卡',
   pending_review: '系統待確認',
   source_only:    '行政出勤',
@@ -1349,11 +1348,14 @@ async function fetchTeacherRecords() {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
-    const [recRes, unclosedRes] = await Promise.all([
+    const [recRes, unclosedRes, monthRes] = await Promise.all([
       fetch(`/api/v1/teacher-attendance?date=${teacherDate.value}&campus_id=${props.branchId}&per_page=100`, {
         headers: { Authorization: `Bearer ${token}` },
       }),
       fetch(`/api/v1/teacher-attendance/unclosed?date=${teacherDate.value}&campus_id=${props.branchId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fetch(`/api/v1/teacher-attendance/monthly?year_month=${teacherDate.value.slice(0, 7)}&campus_id=${props.branchId}`, {
         headers: { Authorization: `Bearer ${token}` },
       }),
     ]);
@@ -1364,6 +1366,14 @@ async function fetchTeacherRecords() {
     if (unclosedRes.ok) {
       const json = await unclosedRes.json();
       teacherUnclosed.value = json.data ?? [];
+    }
+    if (monthRes.ok) {
+      const json = await monthRes.json();
+      teacherDays.value = (json.teachers ?? []).map(t => ({
+        teacher_id: t.teacher_id,
+        teacher_name: t.teacher_name,
+        ...t.days.find(d => d.date === teacherDate.value),
+      }));
     }
   } catch (_) { /* silent */ } finally {
     teacherLoading.value = false;
@@ -2632,8 +2642,7 @@ watch(() => props.branchId, () => {
 }
 .att-secondary-summary[open] > summary { border-bottom: 1px solid var(--ds-hairline); }
 .att-secondary-summary > .att-stats { margin: 14px; }
-.att-secondary-summary .ta-onduty-section,
-.att-secondary-summary .ta-sys-pending { margin: 0 14px 14px; }
+.att-secondary-summary .ta-onduty-section { margin: 0 14px 14px; }
 .att-records-disclosure .att-checkin-card {
   margin: 0;
   border: 0;
@@ -3320,17 +3329,6 @@ watch(() => props.branchId, () => {
   color: var(--ds-success);
   padding: 2px 10px;
   border-radius: 20px;
-}
-
-/* 系統待確認提示（pending_review — 資料問題，非人工缺失） */
-.ta-sys-pending {
-  margin-top: 10px;
-  padding: 8px 12px;
-  background: var(--ds-canvas-soft);
-  border-radius: 8px;
-  border: 1px solid var(--ds-hairline);
-  font-size: 12px;
-  color: var(--ds-ink-mute);
 }
 
 /* ── DeleteDialog / ConvertModal 共用 overlay ── */

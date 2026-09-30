@@ -1,24 +1,26 @@
 <template>
   <section class="tma" aria-labelledby="tma-title">
     <div class="tma-toolbar">
-      <h3 id="tma-title" class="tma-title">{{ title }}</h3>
+      <h3 id="tma-title" class="tma-title">{{ current ? `${current.teacher_name} · ${month} ${title}` : title }}</h3>
       <input v-model="month" type="month" class="att-date-input" aria-label="選擇月份" @change="load" />
       <select v-if="teachers.length > 1" v-model="teacherId" class="att-date-input" aria-label="選擇老師">
         <option v-for="t in teachers" :key="t.teacher_id" :value="t.teacher_id">
-          {{ t.teacher_name }}{{ t.totals.anomaly_days ? `（${t.totals.anomaly_days} 天只刷一次）` : '' }}
+          {{ t.teacher_name }}{{ issueSummary(t.totals) }}
         </option>
       </select>
-      <label class="tma-check"><input v-model="onlyAnomaly" type="checkbox" /> 只看只刷一次</label>
+      <label class="tma-check"><input v-model="onlyAnomaly" type="checkbox" /> 只看異常</label>
       <button type="button" class="ghost small" @click="print">列印</button>
     </div>
 
     <div v-if="loading" class="att-empty enterprise-empty enterprise-loading" role="status" aria-live="polite">載入中…</div>
     <div v-else-if="error" class="att-empty enterprise-empty" role="alert">{{ error }}</div>
-    <div v-else-if="!current" class="att-empty enterprise-empty" role="status">這個月沒有刷卡紀錄</div>
+    <div v-else-if="!current" class="att-empty enterprise-empty" role="status">這個月沒有刷卡或排課紀錄</div>
     <template v-else>
       <div class="tma-metrics" :aria-label="`${current.teacher_name} 本月合計`">
         <AtMetric label="出勤天數" :value="current.totals.days_present" />
         <AtMetric label="總工時（時）" :value="hours(current.totals.minutes).toFixed(2)" />
+        <AtMetric label="遲到" :value="current.totals.late_days" :accent="current.totals.late_days ? 'var(--ds-warning)' : ''" />
+        <AtMetric label="有課未刷卡" :value="current.totals.missed_days" :accent="current.totals.missed_days ? 'var(--ds-danger)' : ''" />
         <AtMetric
           label="只刷一次（待補登）"
           :value="current.totals.anomaly_days"
@@ -29,15 +31,17 @@
       <div class="att-table-scroll">
         <table class="tma-table">
           <thead>
-            <tr><th>日期</th><th>跑校</th><th>上班</th><th>下班</th><th class="tma-num">工時(時)</th><th>註記</th></tr>
+            <tr><th>日期</th><th>第一堂</th><th>狀態</th><th>跑校</th><th>上班</th><th>下班</th><th class="tma-num">工時(時)</th><th>註記</th></tr>
           </thead>
           <tbody>
             <tr
               v-for="d in rows"
               :key="d.date"
-              :class="{ 'tma-anomaly': d.anomaly, 'tma-weekend': isWeekend(d.date) && !d.anomaly, 'tma-empty': !d.sign_in && !d.anomaly }"
+              :class="{ 'tma-anomaly': isIssue(d), 'tma-weekend': isWeekend(d.date) && !isIssue(d), 'tma-empty': !d.sign_in && !isIssue(d) && !d.status }"
             >
               <td>{{ d.label }}</td>
+              <td>{{ d.first_class ?? '' }}</td>
+              <td><AtBadge v-if="STATUS[d.status]" :label="statusLabel(d)" :tone="STATUS[d.status].tone" /></td>
               <td>{{ d.run_school ? '是' : '' }}</td>
               <td>{{ d.sign_in ?? '' }}</td>
               <td>{{ d.sign_out ?? '' }}</td>
@@ -75,7 +79,23 @@ const loading = ref(false);
 const error = ref('');
 
 const current = computed(() => teachers.value.find(t => t.teacher_id === teacherId.value) ?? null);
-const rows = computed(() => (current.value?.days ?? []).filter(d => !onlyAnomaly.value || d.anomaly));
+const STATUS = {
+  on_time: { label: '準時', tone: 'success' },
+  late: { label: '遲到', tone: 'warning' },
+  missed: { label: '有課未刷卡', tone: 'danger' },
+  admin: { label: '行政出勤', tone: 'info' },
+};
+const statusLabel = d => (d.status === 'late' ? `遲到 ${d.late_minutes} 分` : STATUS[d.status].label);
+const isIssue = d => d.anomaly || d.status === 'late' || d.status === 'missed';
+const issueSummary = t => {
+  const parts = [
+    t.late_days && `遲到 ${t.late_days}`,
+    t.missed_days && `缺卡 ${t.missed_days}`,
+    t.anomaly_days && `只刷一次 ${t.anomaly_days}`,
+  ].filter(Boolean);
+  return parts.length ? `（${parts.join('、')}）` : '';
+};
+const rows = computed(() => (current.value?.days ?? []).filter(d => !onlyAnomaly.value || isIssue(d)));
 const hours = m => Math.round(m / 60 * 100) / 100;
 const notes = note => (note ? note.split('、') : []);
 const noteTone = n => (n.startsWith('只刷一次') ? 'warning' : n === '上班中' ? 'success' : 'info');

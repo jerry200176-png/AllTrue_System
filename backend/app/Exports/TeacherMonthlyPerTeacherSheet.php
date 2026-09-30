@@ -75,7 +75,7 @@ class TeacherMonthlyPerTeacherSheet implements FromArray, ShouldAutoSize, WithTi
         foreach ($this->teacher['days'] as $i => $d) {
             $row = $i + 3;
             $dow = Carbon::parse($d['date'])->dayOfWeek;
-            if ($d['anomaly']) {
+            if ($d['anomaly'] || in_array($d['status'], ['late', 'missed'], true)) {
                 $sheet->getStyle("G{$row}:L{$row}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFF2CC');
                 $sheet->getStyle("L{$row}")->getFont()->setBold(true)->getColor()->setARGB('FFC00000');
             } elseif ($dow === Carbon::SATURDAY || $dow === Carbon::SUNDAY) {
@@ -134,7 +134,7 @@ class TeacherMonthlyPerTeacherSheet implements FromArray, ShouldAutoSize, WithTi
             $d['sign_in'],
             $d['sign_out'],
             $d['minutes'] !== null ? round($d['minutes'] / 60, 2) : null,
-            $d['note'] !== '' ? $d['note'] : null,
+            self::note($d),
         ], $this->teacher['days']);
 
         $t = $this->teacher['totals'];
@@ -144,9 +144,24 @@ class TeacherMonthlyPerTeacherSheet implements FromArray, ShouldAutoSize, WithTi
             null,
             null,
             '=SUM(K3:K' . (count($rows) + 2) . ')',  // 公式：主任改工時會自動重算
-            "出勤 {$t['days_present']} 天、只刷一次 {$t['anomaly_days']} 天、修正 {$t['corrected_days']} 天",
+            "出勤 {$t['days_present']} 天、遲到 {$t['late_days']} 天、有課未刷卡 {$t['missed_days']} 天、只刷一次 {$t['anomaly_days']} 天、修正 {$t['corrected_days']} 天",
         ];
 
         return $rows;
+    }
+
+    /** 註記：遲到／有課未刷卡放最前面，再接原本的只刷一次、上班中、已修正 */
+    private static function note(array $d): ?string
+    {
+        $parts = array_filter([
+            match ($d['status']) {
+                'late'   => "遲到 {$d['late_minutes']} 分（第一堂 {$d['first_class']}）",
+                'missed' => "有課未刷卡（第一堂 {$d['first_class']}）",
+                default  => '',
+            },
+            $d['note'],
+        ], fn ($p) => $p !== '');
+
+        return $parts ? implode('、', $parts) : null;
     }
 }

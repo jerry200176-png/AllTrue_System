@@ -28,11 +28,11 @@ class TeacherMonthlySummarySheet implements FromArray, ShouldAutoSize, WithTitle
     {
         $rows = [
             ["{$this->titlePrefix} 老師出勤摘要（匯出時間 " . now()->format('Y-m-d H:i') . '）'],
-            ['老師', '出勤天數', '總工時(時)', '只刷一次天數', '修正天數', '跑校天數'],
+            ['老師', '出勤天數', '總工時(時)', '只刷一次天數', '修正天數', '跑校天數', '遲到天數', '有課未刷卡天數'],
         ];
         foreach ($this->teachers as $t) {
             $x = $t['totals'];
-            $rows[] = [$t['teacher_name'], $x['days_present'], round($x['minutes'] / 60, 2), $x['anomaly_days'], $x['corrected_days'], $x['run_days']];
+            $rows[] = [$t['teacher_name'], $x['days_present'], round($x['minutes'] / 60, 2), $x['anomaly_days'], $x['corrected_days'], $x['run_days'], $x['late_days'], $x['missed_days']];
         }
         if (! $this->teachers) {
             $rows[] = ['本月無刷卡資料'];
@@ -43,15 +43,15 @@ class TeacherMonthlySummarySheet implements FromArray, ShouldAutoSize, WithTitle
 
     public function styles(Worksheet $sheet): array
     {
-        $sheet->mergeCells('A1:F1');  // 標題不參與自動欄寬
+        $sheet->mergeCells('A1:H1');  // 標題不參與自動欄寬
         // 整份檔案統一字型（第一張 sheet 設定即套用全 workbook）
         $sheet->getParent()->getDefaultStyle()->getFont()->setName('Microsoft JhengHei')->setSize(11);
         $sheet->freezePane('A3');
         $last = max(3, count($this->teachers) + 2);
-        $sheet->getStyle("A2:F{$last}")->applyFromArray([
+        $sheet->getStyle("A2:H{$last}")->applyFromArray([
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['argb' => 'FFBFBFBF']]],
         ]);
-        $sheet->getStyle("B3:F{$last}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("B3:H{$last}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle("C3:C{$last}")->getNumberFormat()->setFormatCode('0.00');
         // 有只刷一次的老師：該格紅字粗體底色，主任一眼看到要補登的人
         foreach (array_values($this->teachers) as $i => $t) {

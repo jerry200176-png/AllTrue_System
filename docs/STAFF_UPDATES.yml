@@ -3,6 +3,23 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-30-teacher-late-missed
+    published_at: "2026-09-30"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 老師出勤看得到遲到和有課未刷卡
+    summary: 老師打卡改用實際課表判斷遲到；有課卻沒刷卡的老師也會列出來。
+    items:
+      - category: fixed
+        text: 「課表異常待處理」現在會列出有課卻沒刷卡的老師（以前完全不會出現）。
+      - category: fixed
+        text: 跑校老師到第二間分校刷卡，只跟該分校的第一堂課比，不再被誤判成遲到。
+      - category: improved
+        text: 月出勤表顯示老師名字，新增「第一堂」和「狀態」欄，可只看異常；匯出也有遲到天數。
+    source_refs:
+      - "changelog:2026-09-30:teacher-late-missed"
   - id: staff-2026-09-29-calendar-day-nav
     published_at: "2026-09-29"
     audiences:

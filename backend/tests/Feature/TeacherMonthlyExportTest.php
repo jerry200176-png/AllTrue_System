@@ -156,7 +156,7 @@ class TeacherMonthlyExportTest extends TestCase
             $sheet->getCell('I5')->getValue(), $sheet->getCell('J5')->getValue(), $sheet->getCell('L5')->getValue(),
         ]);
         $this->assertSame('合計', $sheet->getCell('G34')->getValue());
-        $this->assertSame('出勤 2 天、只刷一次 1 天、修正 1 天', $sheet->getCell('L34')->getValue());
+        $this->assertSame('出勤 2 天、遲到 0 天、有課未刷卡 0 天、只刷一次 1 天、修正 1 天', $sheet->getCell('L34')->getValue());
 
         $adj = $book->getSheetByName('修正紀錄');
         $this->assertSame(['2026-08-01', '潘老師', '08-01 10:30 → 08-01 09:59', '忘記刷卡'], [

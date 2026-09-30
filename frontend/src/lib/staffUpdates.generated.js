@@ -157,6 +157,47 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-teacher-late-missed",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師出勤看得到遲到和有課未刷卡",
+    "summary": "老師打卡改用實際課表判斷遲到；有課卻沒刷卡的老師也會列出來。",
+    "items": [
+      "「課表異常待處理」現在會列出有課卻沒刷卡的老師（以前完全不會出現）。",
+      "跑校老師到第二間分校刷卡，只跟該分校的第一堂課比，不再被誤判成遲到。",
+      "月出勤表顯示老師名字，新增「第一堂」和「狀態」欄，可只看異常；匯出也有遲到天數。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "「課表異常待處理」現在會列出有課卻沒刷卡的老師（以前完全不會出現）。",
+          "跑校老師到第二間分校刷卡，只跟該分校的第一堂課比，不再被誤判成遲到。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "月出勤表顯示老師名字，新增「第一堂」和「狀態」欄，可只看異常；匯出也有遲到天數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:teacher-late-missed"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-subject-units-reference-totals",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,
