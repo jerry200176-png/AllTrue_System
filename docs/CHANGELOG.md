@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-30-director-capability-lookups -->
 - 「某分校主任」查詢（主任帳號清單、催繳提醒收件、採用度統計）改走單一 helper；旗標關閉時與原本 type=D 結果完全相同，旗標開啟才額外納入持有有效 director grant 的老師帳號。不改登入與授權解析、不改資料。
 
+## 2026-09-30 — fix(auth): recover from a stale acting context instead of failing every request
+<!-- release-notes: silent_ship=silent-2026-09-30-acting-context-retry -->
+- 雙身分切換（預設關閉）的防呆：若瀏覽器記住的身分已不適用，後端回傳明確代碼，前端清除後重試一次，不會整頁持續被拒。未開啟功能前無任何行為改變。
+
 ## 2026-09-30 — feat(ops): Founder-gated activation path for staff multi-role pilot (in-app #299)
 <!-- release-notes: silent_ship=silent-2026-09-30-staff-multirole-activation -->
 - 新增 `staff-multirole-activation` 手動工作流（preflight 唯讀角色解析差異、單人單分校 grant/revoke、enable/disable 旗標）與 Founder 操作手冊；僅新增受核准的啟用路徑，`STAFF_MULTI_ROLE_V1` 維持關閉，未執行任何正式環境動作。

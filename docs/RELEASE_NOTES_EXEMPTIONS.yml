@@ -22,6 +22,11 @@ exemptions:
     changelog_title: "feat(auth): capability-aware director lookups behind STAFF_MULTI_ROLE_V1 (#2908 step 2)"
     reason: 旗標關閉時行為完全不變的內部查詢重構，不發布教職員公告。
 
+  - id: silent-2026-09-30-acting-context-retry
+    changelog_date: "2026-09-30"
+    changelog_title: "fix(auth): recover from a stale acting context instead of failing every request"
+    reason: 雙身分功能預設關閉，此為啟用前的安全防呆，教職員目前看不到任何變化。
+
   - id: silent-2026-09-30-staff-multirole-activation
     changelog_date: "2026-09-30"
     changelog_title: "feat(ops): Founder-gated activation path for staff multi-role pilot (in-app #299)"
