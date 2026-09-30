@@ -42,10 +42,8 @@ export const changelogDraftNotes = [
       "tab acting context, context chip, route-implied switch",
       "as in security audit + self-approval hard block",
       "entry staff login (no role picker)",
-      "from a stale acting context instead of failing every request",
-      "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter",
-      "aware director lookups behind STAFF_MULTI_ROLE_V1",
-      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗"
+      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+      "from a stale acting context instead of failing every request"
     ]
   },
   {
