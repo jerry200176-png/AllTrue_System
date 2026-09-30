@@ -145,14 +145,14 @@ watch(() => props.show, (open) => {
 <style scoped>
 .batch-renew-modal { width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
 .batch-renew-list { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
-.batch-renew-row { border: 1px solid var(--ds-hairline, #e5e7eb); border-radius: 10px; padding: 10px 12px; }
-.batch-renew-row--blocked, .batch-renew-row--error { border-color: #f5b5b5; background: #fff6f6; }
-.batch-renew-row--done { border-color: #a7e3b8; background: #f3fcf6; }
+.batch-renew-row { border: 1px solid var(--ds-hairline); border-radius: 10px; padding: 10px 12px; }
+.batch-renew-row--blocked, .batch-renew-row--error { border-color: var(--ds-danger); background: var(--ds-danger-wash); }
+.batch-renew-row--done { border-color: var(--ds-success); background: var(--ds-success-wash); }
 .batch-renew-row--covered { opacity: 0.65; }
 .batch-renew-row__main { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
-.batch-renew-row__teacher { color: #64748b; font-weight: 400; }
+.batch-renew-row__teacher { color: var(--ds-ink-mute); font-weight: 400; }
 .batch-renew-row__detail { margin: 4px 0 0 26px; font-size: 14px; }
-.batch-renew-row__msg { margin: 4px 0 0 26px; font-size: 13px; color: #92400e; }
-.batch-renew-row__msg--error { color: #b91c1c; }
+.batch-renew-row__msg { margin: 4px 0 0 26px; font-size: 13px; color: var(--ds-warning-ink); }
+.batch-renew-row__msg--error { color: var(--ds-danger); }
 .actions { display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: inherit; padding-top: 8px; }
 </style>
