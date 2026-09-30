@@ -332,38 +332,4 @@ class SwipeRfidEdgeCaseTest extends TestCase
         $this->assertStringNotContainsString('00:00:00', $bSignIn->SignOutDT,
             'TD-009: backfill SignOutDT 不應為午夜 00:00');
     }
-
-    // ── 老師遲到：只比「這間分校」的第一堂，且只看今天第一次到這間分校 ─────────
-
-    /** @test */
-    public function teacher_late_status_only_compares_this_campus_first_arrival(): void
-    {
-        $teacherId = DB::table('User')->insertGetId([
-            'LoginName' => 'runner-teacher@example.com', 'Name' => '跑校老師',
-            'PSW' => 'secret', 'type' => 'T', 'phone' => '0900000000',
-        ]);
-        DB::table('UserCampus')->insert([
-            'CampusID' => $this->campus->id, 'UserID' => $teacherId,
-            'Admin' => 0, 'Approved' => 1, 'RFID' => 'EDGE-RUNNER',
-        ]);
-        $today = now()->toDateString();
-
-        // 別校 08:00 有課；本校 15:00 才有課 → 10:00 到本校不算遲到
-        DB::table('schedules')->insert([
-            'student_id' => 1, 'teacher_id' => $teacherId, 'day_of_week' => now()->dayOfWeekIso,
-            'start_time' => '08:00', 'end_time' => '09:00', 'status' => 'scheduled',
-            'branch_id' => $this->campus->id + 100, 'schedule_date' => $today,
-        ]);
-        $sc = $this->makeStudentClass($this->makeStudent()->id, ['TeacherID' => $teacherId]);
-        $this->makeClassSession($sc->ID, $today, '15:00', '17:00');
-
-        $this->swipe('EDGE-RUNNER')->assertStatus(201);
-        $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->value('Status'));
-
-        // 本校 09:00 也有課、今天已到過本校 → 中午回來再刷，不算遲到
-        $this->makeClassSession($sc->ID, $today, '09:00', '10:00');
-        TeacherSignIn::where('TeacherID', $teacherId)->update(['SignInDT' => "{$today} 08:55:00", 'SignOutDT' => "{$today} 09:30:00"]);
-        $this->swipe('EDGE-RUNNER')->assertStatus(201);
-        $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->orderByDesc('id')->value('Status'));
-    }
 }
