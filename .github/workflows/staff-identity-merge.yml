@@ -15,11 +15,8 @@ on:
           - candidates
           - dry_run
       survivor_user_id:
-        description: "dry_run: id of the director account (type D) that survives"
       retired_user_id:
-        description: "dry_run: id of the teacher account (type T) that would be retired"
       cutover_date:
-        description: "dry_run: YYYY-MM-DD, only work on/after this date would move"
 
 concurrency:
   group: staff-identity-merge

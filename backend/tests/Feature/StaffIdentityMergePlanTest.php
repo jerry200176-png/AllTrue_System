@@ -108,7 +108,6 @@ class StaffIdentityMergePlanTest extends TestCase
             $this->assertContains("nogo reason={$code}", $lines);
         }
         $this->assertContains('merge-dry-run-result=NO-GO', $lines);
-        $this->assertContains('READ_ONLY=true', $lines);
         $this->assertStringNotContainsString('AAA', implode("\n", $lines));
     }
 

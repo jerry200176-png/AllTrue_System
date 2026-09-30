@@ -11,8 +11,7 @@ for (const m of wf.slice(wf.indexOf('\njobs:\n')).matchAll(/^  ([a-z_]+):\n([\s\
 assert.deepEqual(Object.keys(jobs).sort(), ['guard', 'run'], 'exact job set');
 assert.equal((wf.match(/^          - [a-z_]+$/gm) || []).length, 2, 'exactly candidates + dry_run');
 assert.ok(!/execute|apply|revert|--force|environment:/i.test(wf.replace(/^#.*$/gm, '')), 'no write path, no approval env');
-assert.ok(!/--execute|--apply/.test(cmd), 'artisan command has no write option');
-assert.ok(!/config:clear|cache:clear|optimize/.test(wf), 'no cache-clearing artisan command');
+assert.ok(!/--execute|--apply/.test(cmd) && !/config:clear|cache:clear|optimize/.test(wf), 'no write option, no cache clearing');
 assert.match(wf, /^# governance-capability: read-only-probe/);
 assert.match(wf, /concurrency:\n  group: staff-identity-merge\n  cancel-in-progress: false/);
 
