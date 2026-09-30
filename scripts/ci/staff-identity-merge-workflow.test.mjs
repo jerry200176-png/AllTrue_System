@@ -16,13 +16,11 @@ assert.match(wf, /^# governance-capability: read-only-probe/);
 assert.match(wf, /concurrency:\n  group: staff-identity-merge\n  cancel-in-progress: false/);
 
 const { guard, run } = jobs;
-assert.match(guard, /candidates\)\n\s+\[ -z "\$SURVIVOR\$RETIRED\$CUTOVER" \]/, 'candidates requires empty inputs');
-assert.ok(guard.includes("'^[1-9][0-9]{0,9}$'") && guard.includes("'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'") && /Unknown action/.test(guard));
+assert.match(guard, /candidates\)\n\s+\[ -z "\$SURVIVOR\$RETIRED\$CUTOVER" \]/, 'candidates requires empty inputs');assert.ok(guard.includes("'^[1-9][0-9]{0,9}$'") && guard.includes("'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'") && /Unknown action/.test(guard));
 for (const re of [/needs: guard/, /uses: \.\/\.github\/actions\/production-ssh-trust/, /Remove local key material/, /READ_ONLY=true/, /retention-days: 90/,
   /staff:identity-merge --candidates/, /staff:identity-merge --dry-run --survivor="\$SURVIVOR" --retired="\$RETIRED" --cutover="\$CUTOVER"/]) assert.match(run, re);
 assert.ok(/\} \| ssh [^\n]*bash -s \\\n\s+\| grep -viE 'password\|secret\|passwd\|PSW=\|bearer\|private key\|DB_PASS' \| tee \/tmp\/audit\.txt/.test(run), 'secrets filtered before log + artifact');
-assert.match(run, /send_env ACTION SURVIVOR RETIRED CUTOVER/);
-assert.ok(!/ssh [^\n]*(\$SURVIVOR|\$RETIRED|\$CUTOVER|\$ACTION|env )/.test(run), 'no input values on the ssh command line');
+assert.match(run, /send_env ACTION SURVIVOR RETIRED CUTOVER/);assert.ok(!/ssh [^\n]*(\$SURVIVOR|\$RETIRED|\$CUTOVER|\$ACTION|env )/.test(run), 'no input values on the ssh command line');
 const heredoc = run.slice(run.indexOf("<< 'ENDSSH'"), run.indexOf('\n          ENDSSH'));
 assert.ok(heredoc.length > 10 && !heredoc.includes('${{'), 'no Actions expression in remote script');
 for (const body of Object.values(jobs)) {

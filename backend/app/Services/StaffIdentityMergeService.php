@@ -87,7 +87,6 @@ final class StaffIdentityMergeService
         $this->copies();
         $this->identity($r);
         $this->conflicts($moved);
-        $this->out[] = "decision employment_type R={$r->employment_type} S={$s->employment_type}";
         foreach (['multi-role-flag-off' => !config('staff_capabilities.multi_role_v1_enabled'),
             'merge-journal-table-missing' => !Schema::hasTable('staff_identity_merges'),
             'scope-teachers-prerequisite-missing' => !method_exists(User::class, 'scopeTeachers')] as $code => $bad) {

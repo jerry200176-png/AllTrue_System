@@ -14,9 +14,9 @@ on:
         options:
           - candidates
           - dry_run
-      survivor_user_id:
-      retired_user_id:
-      cutover_date:
+      survivor_user_id: {description: "dry_run: director account id (type D)"}
+      retired_user_id: {description: "dry_run: teacher account id (type T)"}
+      cutover_date: {description: "dry_run: YYYY-MM-DD"}
 
 concurrency:
   group: staff-identity-merge
