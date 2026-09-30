@@ -51,7 +51,6 @@ async function seedOnboardingCompleted(page) {
 async function login(page) {
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('alltrue.director_dashboard_view_mode.v1'));
-  await page.locator('.role-btn', { hasText: '主任/櫃台' }).first().click();
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
   await page.locator('button.login-btn').click();

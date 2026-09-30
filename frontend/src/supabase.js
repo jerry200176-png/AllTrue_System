@@ -382,14 +382,23 @@ const auth = {
 
     async signInWithPassword({ account, email, password, role = null }) {
         const loginAccount = (account ?? email ?? '').trim();
-        const resp = await fetch(`${API_BASE}/auth/login`, {
+        return this._postLogin('/auth/login', {
+            account: loginAccount,
+            password,
+            ...(role ? { role } : {})
+        });
+    },
+
+    /** Second step when signInWithPassword returned data.requires_account_choice. */
+    async chooseAccount({ choiceToken, choiceId }) {
+        return this._postLogin('/auth/login/choose', { choice_token: choiceToken, choice_id: choiceId });
+    },
+
+    async _postLogin(path, payload) {
+        const resp = await fetch(`${API_BASE}${path}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...JSON_ACCEPT_HEADER },
-            body: JSON.stringify({
-                account: loginAccount,
-                password,
-                ...(role ? { role } : {})
-            })
+            body: JSON.stringify(payload)
         });
         const text = await resp.text();
         let json = {};

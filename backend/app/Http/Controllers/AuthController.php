@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\SecurityAuditEvent;
 use App\Models\User;
 use App\Models\UserLoginActivity;
 use App\Models\UserNotificationPreference;
@@ -13,6 +14,7 @@ use App\Support\UserEngagementPresenter;
 use App\Services\TeacherScopeService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
@@ -23,6 +25,9 @@ class AuthController extends Controller
 {
     private const LOGIN_MAX_ATTEMPTS = 5;
     private const LOGIN_DECAY_SECONDS = 900; // 15 minutes
+    private const CHOICE_TTL_SECONDS = 300; // 5 minutes, single use
+    // Valid bcrypt hash of a throwaway string: burns the same time as a real check when no account matches.
+    private const DUMMY_PASSWORD_HASH = '$2y$10$b17umLbKC1QYXWFM3iw3BusRTwRaBV2PRB.S/QfyxN.UktkNQdAeS';
 
     public function login(Request $request)
     {
@@ -60,6 +65,8 @@ class AuthController extends Controller
             ->get();
 
         if ($users->isEmpty()) {
+            password_verify($password, self::DUMMY_PASSWORD_HASH);
+
             return $this->invalidLoginResponse($throttleKey);
         }
 
@@ -74,6 +81,18 @@ class AuthController extends Controller
             return $this->invalidLoginResponse($throttleKey);
         }
 
+        // No explicit role (unified entry) and several accounts share this LoginName+password:
+        // let the person choose. Legacy `role` requests are already filtered to one type above.
+        // Only true LoginName duplicates qualify; Name matches keep the legacy priority pick.
+        $allSameLoginName = $matchingUsers->every(
+            fn (User $u) => mb_strtolower(trim((string) $u->getAttribute('LoginName'))) === mb_strtolower($input)
+        );
+        if ($typeFilter === null && $matchingUsers->count() > 1 && $allSameLoginName) {
+            RateLimiter::clear($throttleKey);
+
+            return $this->accountChoiceResponse($matchingUsers);
+        }
+
         $user = $matchingUsers->first();
         if ($this->teacherAwaitingDirectorApproval($user)) {
             return response()->json([
@@ -84,6 +103,100 @@ class AuthController extends Controller
 
         RateLimiter::clear($throttleKey);
 
+        return $this->issueSession($request, $user);
+    }
+
+    /**
+     * POST /auth/login/choose — second step after `requires_account_choice`.
+     * The token was minted only after the password matched every listed account.
+     */
+    public function chooseAccount(Request $request)
+    {
+        $data = $request->validate([
+            'choice_token' => 'required|string|max:128',
+            'choice_id' => 'required|string|max:64',
+        ]);
+
+        $tokenHash = hash('sha256', $data['choice_token']);
+        $cacheKey = 'login_choice:'.$tokenHash;
+        $throttleKey = 'login-choose|'.$request->ip().'|'.$tokenHash;
+        if (RateLimiter::tooManyAttempts($throttleKey, self::LOGIN_MAX_ATTEMPTS)) {
+            return $this->lockedLoginResponse($throttleKey);
+        }
+
+        $expired = fn () => response()->json(['message' => '選擇已失效，請重新登入'], 401);
+
+        // Unknown/expired tokens are not counted as failures (nothing to brute-force).
+        $choices = Cache::get($cacheKey);
+        // add() is atomic on every store: exactly one request can claim a token, even on a wrong choice_id.
+        if (!is_array($choices) || !Cache::add($cacheKey.':used', 1, self::CHOICE_TTL_SECONDS)) {
+            return $expired();
+        }
+        Cache::forget($cacheKey);
+
+        $userId = $choices[$data['choice_id']] ?? null;
+        $user = $userId === null ? null : User::query()
+            ->whereKey($userId)
+            ->where(function ($query) {
+                $query->whereNull('status')
+                    ->orWhereNotIn('status', ['inactive', 'suspended']);
+            })
+            ->first();
+
+        if (!$user) {
+            RateLimiter::hit($throttleKey, self::LOGIN_DECAY_SECONDS);
+            SecurityAuditEvent::append('login.account_choice', 'denied', [], ['reason_code' => 'invalid_choice']);
+
+            return $expired();
+        }
+        if ($this->teacherAwaitingDirectorApproval($user)) {
+            return response()->json([
+                'message' => '此帳號尚未通過主任審核，請聯繫分校主任完成審核後再行登入。',
+                'code' => 'teacher_pending_approval',
+            ], 403);
+        }
+
+        RateLimiter::clear($throttleKey);
+        SecurityAuditEvent::append('login.account_choice', 'success', ['actor_id' => $user->getKey()]);
+
+        return $this->issueSession($request, $user);
+    }
+
+    private function accountChoiceResponse($users)
+    {
+        $token = Str::random(64);
+        $map = [];
+        $choices = [];
+        foreach ($users as $candidate) {
+            $choiceId = Str::random(16);
+            $map[$choiceId] = (int) $candidate->id;
+            $choices[] = ['choice_id' => $choiceId, 'role_label' => $this->roleLabel($candidate)];
+        }
+        Cache::put('login_choice:'.hash('sha256', $token), $map, self::CHOICE_TTL_SECONDS);
+
+        return response()->json([
+            'data' => [
+                'requires_account_choice' => true,
+                'choice_token' => $token,
+                'choices' => $choices,
+            ],
+        ]);
+    }
+
+    private function roleLabel(User $user): string
+    {
+        // Labels say what the account is; duplicate director accounts are being merged into teacher accounts.
+        return match ($user->getAttribute('type')) {
+            'T' => '老師帳號',
+            'D' => '主任帳號（即將合併）',
+            'S', 'A' => '管理員帳號',
+            'U' => '待審帳號',
+            default => '員工帳號',
+        };
+    }
+
+    private function issueSession(Request $request, $user)
+    {
         $role = $this->resolveRole($user);
 
         $this->revokeSameDeviceActiveTokens((int) $user->id, (string) $request->userAgent());

@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "tab acting context, context chip, route-implied switch；aware director lookups behind STAFF_MULTI_ROLE_V1",
+    "summary": "tab acting context, context chip, route-implied switch；entry staff login (no role picker)",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "tab acting context, context chip, route-implied switch",
+          "entry staff login (no role picker)",
           "aware director lookups behind STAFF_MULTI_ROLE_V1",
           "新增多科共用堂數與加購分流入口",
           "reference subject-unit totals with and without tutoring",
@@ -35,6 +36,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "tab acting context, context chip, route-implied switch",
+      "entry staff login (no role picker)",
       "aware director lookups behind STAFF_MULTI_ROLE_V1",
       "新增多科共用堂數與加購分流入口",
       "reference subject-unit totals with and without tutoring",
