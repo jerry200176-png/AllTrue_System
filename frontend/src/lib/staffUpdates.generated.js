@@ -79,6 +79,43 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-teacher-monthly-xlsx",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師刷卡月報更好讀",
+    "summary": "月報沿用原本版型，加上每天工時、只刷一次標示、摘要與修正紀錄。",
+    "items": [
+      "時間改成「21:05」這種寫法，每天多了工時與註記，底部有合計；第一張是每位老師的摘要，最後一張是修正紀錄。",
+      "一天只刷一次卡時，不再當成上班時間，改標「只刷一次」，主任補登後才算工時。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "時間改成「21:05」這種寫法，每天多了工時與註記，底部有合計；第一張是每位老師的摘要，最後一張是修正紀錄。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "一天只刷一次卡時，不再當成上班時間，改標「只刷一次」，主任補登後才算工時。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:teacher-monthly-xlsx"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-subject-units-reference-totals",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,
