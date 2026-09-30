@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — fix(auth): recover from a stale acting context instead of failing every request
+<!-- release-notes: silent_ship=silent-2026-09-30-acting-context-retry -->
+- 雙身分切換（預設關閉）的防呆：若瀏覽器記住的身分已不適用，後端回傳明確代碼，前端清除後重試一次，不會整頁持續被拒。未開啟功能前無任何行為改變。
+
 ## 2026-09-30 — feat(ops): Founder-gated activation path for staff multi-role pilot (in-app #299)
 <!-- release-notes: silent_ship=silent-2026-09-30-staff-multirole-activation -->
 - 新增 `staff-multirole-activation` 手動工作流（preflight 唯讀角色解析差異、單人單分校 grant/revoke、enable/disable 旗標）與 Founder 操作手冊；僅新增受核准的啟用路徑，`STAFF_MULTI_ROLE_V1` 維持關閉，未執行任何正式環境動作。
