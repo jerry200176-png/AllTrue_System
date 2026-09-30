@@ -18,9 +18,9 @@
 - **REFUSED**：輸入不對（id 相同、找不到人、S 不是主任、R 不是老師、R 已停用…），看 `refuse-check ...=FAIL`。
 - **NO-GO**：能試算但目前不能合併，原因在 `nogo reason=`：`multi-role-flag-off`、`survivor-missing-director-grant`／`-teacher-grant`、`slot-overlap`（未來課撞時間）、
   `rfid-collision`（刷卡卡號衝突）、`rate-overlap`（薪資設定重疊）、`retired-has-pending-past-learning-records`。
-  **階段 1 一定是 NO-GO**（`merge-journal-table-missing`、`scope-teachers-prerequisite-missing`：紀錄表與前置作業還沒建），這是預期的。
+  **階段 1 一定是 NO-GO**（`merge-journal-table-missing`、`scope-teachers-prerequisite-missing`、`history-impact-not-computed`：紀錄表、前置作業與歷史影響筆數都還沒做），這是預期的。核心表缺少時另有 `schema-missing-<表名>`。
 - **GO**：全部通過；階段 1 不會出現。
 
-其他行：`move`＝會搬給 S 的未來項目（筆數＋最多 20 個 id）；`copy`＝複製薪資設定；`decision`＝要創辦人決定；`skip ... reason=missing`＝此環境沒有該表。歷史清單（keep）與舊報表警示（warn）留待階段 2。
+其他行：`move`＝會搬給 S 的未來項目（筆數＋最多 20 個 id）；`copy`＝複製薪資設定；`decision`＝要創辦人決定；`skip ... reason=missing`＝此環境沒有該表。歷史影響筆數（keep／warn）階段 2 才會加入。
 
 安全邊界：只有 `--candidates`／`--dry-run`（沒有 `--execute`），階段 1 沒寫過資料，不需要還原。

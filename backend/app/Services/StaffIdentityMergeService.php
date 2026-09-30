@@ -93,9 +93,13 @@ final class StaffIdentityMergeService
             'scope-teachers-prerequisite-missing' => !method_exists(User::class, 'scopeTeachers')] as $code => $bad) {
             $bad && $this->nogo[] = $code;
         }
+        foreach (['StudentClass', 'ClassSession', 'LearningRecord', 'UserCampus', 'user_capability_grants', 'User'] as $core) {
+            Schema::hasTable($core) || $this->nogo[] = "schema-missing-{$core}";
+        }
+        $this->nogo[] = 'history-impact-not-computed'; // always NO-GO in phase 1: phase 2 adds history counts and a real GO path
         ksort($this->fp);
         $fingerprint = hash('sha256', (string) json_encode([$survivorId, $retiredId, $cutover, $this->fp]));
-        return $this->finish($this->nogo === [] ? 'GO' : 'NO-GO', $fingerprint, $cutover);
+        return $this->finish('NO-GO', $fingerprint, $cutover);
     }
 
     /** @return array{result:string,fingerprint:string,lines:list<string>} */
@@ -167,8 +171,7 @@ final class StaffIdentityMergeService
         $q = DB::table($table)->where($col, $this->r);
         $scope($q);
         $ids = $q->pluck($pk)->map('intval')->sort()->values()->all();
-        $key = $table . '.' . $col . ($kind !== '' ? ".{$kind}" : '');
-        $this->fp[$key] = $ids;
+        $this->fp[$table . '.' . $col . ($kind !== '' ? ".{$kind}" : '')] = $ids;
         $this->out[] = "move table={$table} col={$col}" . ($kind !== '' ? " kind={$kind}" : '') . ' count=' . count($ids) . ' sample=' . implode(',', array_slice($ids, 0, 20));
         return $ids;
     }
@@ -255,7 +258,7 @@ final class StaffIdentityMergeService
     {
         if ($this->has('ClassSession', ['StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status'])) {
             $sessions = fn ($cond) => DB::table('ClassSession')->where('SessionDate', '>=', $this->cut)->whereIn('Status', self::OPEN)
-                ->whereIn('StudentClassID', $cond)->get(['id', 'SessionDate', 'StartTime', 'EndTime']);
+                ->whereIn('StudentClassID', $cond)->orderBy('id')->get(['id', 'SessionDate', 'StartTime', 'EndTime']);
             $sideS = $sessions(DB::table('StudentClass')->where('TeacherID', $this->s)->pluck('ID'))->groupBy('SessionDate');
             $ra = $sb = [];
             foreach ($sessions($moved) as $a) {
@@ -266,8 +269,6 @@ final class StaffIdentityMergeService
                 }
             }
             if ($ra !== []) {
-                ksort($ra);
-                ksort($sb);
                 $this->out[] = 'conflict slot-overlap retired_session_ids=' . implode(',', array_slice(array_keys($ra), 0, 20))
                     . ' survivor_session_ids=' . implode(',', array_slice(array_keys($sb), 0, 20));
                 $this->nogo[] = 'slot-overlap';

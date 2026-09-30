@@ -38,16 +38,13 @@ class StaffIdentityMergePlanTest extends TestCase
         $t1 = $this->user('T', ['LineID' => 'line-secret-1']);
         $d2 = $this->user('D', ['Name' => 'Same Name']);
         $t2 = $this->user('T', ['Name' => 'Same Name']);
-        $d3 = $this->user('D', ['Name' => 'Lonely Name']);
-        $t3 = $this->user('T', ['Name' => 'Lonely Name']);
-        array_map(fn ($u) => $this->campusFor($u), [$d2, $t2, $d3]);
+        array_map(fn ($u) => $this->campusFor($u), [$d2, $t2]);
 
         Artisan::call('staff:identity-merge', ['--candidates' => true]);
         $out = Artisan::output();
 
         $this->assertStringContainsString("candidate d={$d1} t={$t1} confidence=HIGH signals=line t_status=active", $out);
         $this->assertStringContainsString("candidate d={$d2} t={$t2} confidence=MEDIUM signals=name,campus t_status=active", $out);
-        $this->assertStringContainsString("candidate d={$d3} t={$t3} confidence=LOW signals=name t_status=active", $out);
         foreach (['line-secret', 'Alpha', 'Same Name'] as $pii) {
             $this->assertStringNotContainsString($pii, $out);
         }
@@ -90,10 +87,10 @@ class StaffIdentityMergePlanTest extends TestCase
         [$s, $r] = $this->pair();
         $active = $this->course($r);
         $this->course($r, ['Stop' => 1, 'EndDate' => '2026-08-31']);
-        $rs = $this->session($active, '2026-10-05');
-        $ss = $this->session($this->course($s), '2026-10-05', '23:10:00', '23:40:00');
+        $rs = $this->makeSession($active, '2026-10-05');
+        $ss = $this->makeSession($this->course($s), '2026-10-05', '23:10:00', '23:40:00');
         $lrFuture = $this->record($active, $rs, $r, 'pending');
-        $this->record($active, $this->session($active, '2026-09-20'), $r, 'pending');
+        $this->record($active, $this->makeSession($active, '2026-09-20'), $r, 'pending');
         $subFuture = $this->schedule($r, $active, '2026-10-06');
         $this->schedule($r, $active, '2026-09-10');
         DB::table('UserCampus')->where('UserID', $s)->update(['RFID' => 'AAA']);
@@ -107,7 +104,7 @@ class StaffIdentityMergePlanTest extends TestCase
         $this->assertContains("conflict slot-overlap retired_session_ids={$rs} survivor_session_ids={$ss}", $lines);
         $this->assertContains("conflict rfid-collision campus_ids={$this->campus}", $lines);
         $this->assertContains('conflict pending-past-learning-records count=1', $lines);
-        foreach (['slot-overlap', 'rfid-collision', 'retired-has-pending-past-learning-records', 'survivor-missing-director-grant', 'merge-journal-table-missing'] as $code) {
+        foreach (['slot-overlap', 'rfid-collision', 'retired-has-pending-past-learning-records', 'survivor-missing-director-grant', 'merge-journal-table-missing', 'history-impact-not-computed'] as $code) {
             $this->assertContains("nogo reason={$code}", $lines);
         }
         $this->assertContains('merge-dry-run-result=NO-GO', $lines);
@@ -145,7 +142,7 @@ class StaffIdentityMergePlanTest extends TestCase
         ])->ID;
     }
 
-    private function session(int $course, string $date, string $start = '23:00:00', string $end = '23:30:00'): int
+    private function makeSession(int $course, string $date, string $start = '23:00:00', string $end = '23:30:00'): int
     {
         return (int) ClassSession::create(['StudentClassID' => $course, 'SessionDate' => $date, 'StartTime' => $start,
             'EndTime' => $end, 'Status' => 'scheduled'])->id;

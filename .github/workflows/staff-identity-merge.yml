@@ -43,7 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           case "$ACTION" in
-            candidates) ;;
+            candidates)
+              [ -z "$SURVIVOR$RETIRED$CUTOVER" ] || { echo "::error::candidates takes no survivor/retired/cutover inputs"; exit 1; }
+              ;;
             dry_run)
               printf '%s' "$SURVIVOR" | grep -Eq '^[1-9][0-9]{0,9}$' || { echo "::error::survivor_user_id must be a positive integer"; exit 1; }
               printf '%s' "$RETIRED" | grep -Eq '^[1-9][0-9]{0,9}$' || { echo "::error::retired_user_id must be a positive integer"; exit 1; }
@@ -87,10 +89,14 @@ jobs:
           CUTOVER: ${{ github.event.inputs.cutover_date }}
         run: |
           set -uo pipefail
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
-            "$PI_SSH_USER@$PI_SSH_HOST" \
-            env ACTION="$ACTION" SURVIVOR="$SURVIVOR" RETIRED="$RETIRED" CUTOVER="$CUTOVER" \
-            bash -s << 'ENDSSH' | grep -viE 'password|secret|passwd|PSW=|bearer|private key|DB_PASS' | tee /tmp/audit.txt
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env ACTION SURVIVOR RETIRED CUTOVER
+            cat << 'ENDSSH'
           set -uo pipefail
           echo "production-head=$(git -C /home/admin rev-parse HEAD)"
           cd /home/admin/backend
@@ -100,6 +106,8 @@ jobs:
             php artisan staff:identity-merge --dry-run --survivor="$SURVIVOR" --retired="$RETIRED" --cutover="$CUTOVER" 2>&1
           fi
           ENDSSH
+          } | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes "$PI_SSH_USER@$PI_SSH_HOST" bash -s \
+            | grep -viE 'password|secret|passwd|PSW=|bearer|private key|DB_PASS' | tee /tmp/audit.txt
           grep -q '^READ_ONLY=true$' /tmp/audit.txt || { echo "::error::no READ_ONLY marker -- command did not run."; exit 1; }
       - name: Upload audit artifact
         if: always()
