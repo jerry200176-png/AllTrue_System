@@ -31,10 +31,10 @@ export const changelogDraftNotes = [
         "items": [
           "late / missed judged from real class sessions",
           "name search applies to assessment records",
+          "修正超級管理員看不到版本更新內容的問題",
           "change requires transfer; teacher change keeps past lessons",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "from a stale acting context instead of failing every request",
-          "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
+          "from a stale acting context instead of failing every request"
         ]
       }
     ],

@@ -348,6 +348,36 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-monthly-renew-admin",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結課程可以正常續約了",
+    "summary": "修正行政帳號在學生管理按月結續約時，被誤擋「沒有折扣權限」的問題。",
+    "items": [
+      "月結續約選「無折扣」時可直接送出，行政帳號不再被擋。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "月結續約選「無折扣」時可直接送出，行政帳號不再被擋。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:monthly-renew-admin"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-learning-teacher-search",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-learning-teacher-search -->
 - 學習評量表輸入老師姓名後按搜尋或 Enter，可按實際授課老師查詢跨頁紀錄，包含單堂代課與尚未上課的現任老師；共用學生／老師選單首次點入不再立即關閉。
 
+## 2026-09-30 — fix(students): monthly renewal no longer blocked for admin
+<!-- release-notes: staff_update=staff-2026-09-30-monthly-renew-admin -->
+- 學生管理「月結續約」送出時，選「無折扣」就不再帶 `discount` 欄位。以前每次都帶，後端交易折扣權限檢查（只限 director / super_admin）把行政（admin）的續約全擋成 403（#3168 起）。堂數加購與課程管理頁原本就只在有折扣時帶，不受影響。
+
 ## 2026-09-29 — fix(ops): report closed monthly case eligibility explicitly
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-case-closed -->
 - 合法空白單案資格明確拒絕為沒有可執行案例，隨 backend 正常部署帶入已清空清單；不改資料、核准角色或執行通道。
