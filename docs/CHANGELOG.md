@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-no-self-approval -->
 - 資安稽核事件自動帶 `acting_as` 與 `capability_campus_count`（旗標關閉為 null），被拒的身分切換寫 `staff.context.denied`；薪資／資格（扣除、行政加給、現金加扣、底薪、成果）確認與核准，核准人等於當事老師時回 422 `self_approval_forbidden`。無資料變更。
 
+## 2026-09-30 — feat(auth): capability-aware director lookups behind STAFF_MULTI_ROLE_V1 (#2908 step 2)
+<!-- release-notes: silent_ship=silent-2026-09-30-director-capability-lookups -->
+- 「某分校主任」查詢（主任帳號清單、催繳提醒收件、採用度統計）改走單一 helper；旗標關閉時與原本 type=D 結果完全相同，旗標開啟才額外納入持有有效 director grant 的老師帳號。不改登入與授權解析、不改資料。
+
 ## 2026-09-30 — fix(auth): recover from a stale acting context instead of failing every request
 <!-- release-notes: silent_ship=silent-2026-09-30-acting-context-retry -->
 - 雙身分切換（預設關閉）的防呆：若瀏覽器記住的身分已不適用，後端回傳明確代碼，前端清除後重試一次，不會整頁持續被拒。未開啟功能前無任何行為改變。

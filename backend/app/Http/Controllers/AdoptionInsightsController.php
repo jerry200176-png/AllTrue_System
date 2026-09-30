@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\LearningRecord;
 use App\Models\ScheduleDiscrepancy;
 use App\Models\User;
+use App\Services\StaffCapabilityAuthorizer;
 use App\Models\UserLoginActivity;
 use App\Models\UserCampus;
 use Carbon\Carbon;
@@ -576,6 +577,13 @@ class AdoptionInsightsController extends Controller
             ->pluck('u.id')
             ->map(fn ($id) => (int) $id)
             ->all();
+        // Multi-role (flag ON): type-T survivors holding an active director grant count as directors.
+        // Flag OFF -> empty list -> legacy computation untouched. Flag ON: the same user id may also be in
+        // the teacher set (teacher+director counts in both cohorts, by design of the single-account model).
+        $grantedDirectorIds = app(StaffCapabilityAuthorizer::class)->grantedDirectorUserIds((int) $branchId);
+        if ($grantedDirectorIds !== []) {
+            $directorUserIds = array_values(array_unique(array_merge($directorUserIds, $grantedDirectorIds)));
+        }
 
         $teacherOpened = 0;
         $directorOpened = 0;
