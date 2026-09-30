@@ -66,8 +66,9 @@ class RepairYuShengrui3499TransferTest extends TestCase
     public function test_dry_run_is_default_and_writes_nothing(): void
     {
         $before = $this->state();
-        $this->assertSame(0, Artisan::call(self::CMD));
+        $code = Artisan::call(self::CMD);
         $out = Artisan::output();
+        $this->assertSame(0, $code, $out);
         $this->assertStringContainsString('DRY RUN', $out);
         $this->assertStringContainsString('AFTER (simulated', $out);
         $this->assertEquals($before, $this->state());
@@ -77,7 +78,8 @@ class RepairYuShengrui3499TransferTest extends TestCase
     public function test_execute_verify_idempotent_and_rollback(): void
     {
         $before = $this->state();
-        $this->assertSame(0, Artisan::call(self::CMD, ['--execute' => true, '--actor' => 'phpunit']));
+        $code = Artisan::call(self::CMD, ['--execute' => true, '--actor' => 'phpunit']);
+        $this->assertSame(0, $code, Artisan::output());
         $this->assertStringContainsString('REPAIR_STATE=APPLIED_AND_VERIFIED', Artisan::output());
 
         $sc = DB::table('StudentClass')->where('ID', 3499)->first();
