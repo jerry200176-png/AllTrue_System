@@ -26,7 +26,8 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "from a stale acting context instead of failing every request"
+          "from a stale acting context instead of failing every request",
+          "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
         ]
       }
     ],
@@ -34,7 +35,8 @@ export const changelogDraftNotes = [
       "新增多科共用堂數與加購分流入口",
       "reference subject-unit totals with and without tutoring",
       "student school and grade in course lookup",
-      "from a stale acting context instead of failing every request"
+      "from a stale acting context instead of failing every request",
+      "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
     ]
   },
   {
