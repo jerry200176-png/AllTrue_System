@@ -29,6 +29,7 @@ class TeacherAttendanceMonthTest extends TestCase
             self::rec(5, '2026-08-05 20:10:00', '2026-08-05 23:59:00', $auto), // 系統補簽退
             self::rec(6, '2026-08-06 13:00:00', '2026-08-06 21:00:00', $auto), // 補簽退後主任修正
             self::rec(7, '2026-08-31 14:00:00', null),                      // 今天，上班中
+            self::rec(8, '2026-08-10 18:00:00', '2026-08-10 09:00:00'),     // 壞資料：下班早於上班
         ]), '2026-08', [6 => true], ['2026-08-04' => true], '2026-08-31');
 
         $this->assertCount(31, $days);
@@ -52,10 +53,13 @@ class TeacherAttendanceMonthTest extends TestCase
         $d = self::day($days, '2026-08-31');
         $this->assertSame(['14:00', null, null, '上班中', false], [$d['sign_in'], $d['sign_out'], $d['minutes'], $d['note'], $d['anomaly']]);
 
+        $d = self::day($days, '2026-08-10');
+        $this->assertSame([null, '只刷一次 18:00', true], [$d['minutes'], $d['note'], $d['anomaly']]);
+
         $this->assertSame([
-            'days_present'   => 6,
+            'days_present'   => 7,
             'minutes'        => 474 + 330 + 480,
-            'anomaly_days'   => 2,
+            'anomaly_days'   => 3,
             'corrected_days' => 1,
             'run_days'       => 1,
         ], TeacherAttendanceMonth::totals($days));

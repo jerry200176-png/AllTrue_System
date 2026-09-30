@@ -47,8 +47,9 @@ class TeacherAttendanceMonth
                 $corrected = $corrected || isset($adjustedIds[$rec->id]);
                 $in = Carbon::parse($rec->sign_in_dt)->startOfMinute();
                 $autoClosed = ($rec->memo ?? null) === self::AUTO_CLOSE_MEMO && ! isset($adjustedIds[$rec->id]);
-                if ($rec->sign_out_dt && ! $autoClosed) {
-                    $pairs[] = [$in, Carbon::parse($rec->sign_out_dt)->startOfMinute()];
+                $out = $rec->sign_out_dt && ! $autoClosed ? Carbon::parse($rec->sign_out_dt)->startOfMinute() : null;
+                if ($out && $out->gte($in)) {
+                    $pairs[] = [$in, $out];
                 } elseif (! $rec->sign_out_dt && $date === $today) {
                     $openIn = $in;
                 } else {
