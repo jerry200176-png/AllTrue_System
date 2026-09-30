@@ -168,8 +168,15 @@
             <span v-if="fieldWarnings.settlement_day" class="field-warning">{{ fieldWarnings.settlement_day }}</span>
           </div>
           <div class="form-group">
-            <label>每月堂數（選填）</label>
-            <input v-model.number="form.monthly_sessions" type="number" min="0" placeholder="依學生個案" />
+            <label>本月規劃堂數</label>
+            <template v-if="monthlyPlan && form.scheduling_policy !== 'manual_occurrence'">
+              <span class="field-hint field-hint--info monthly-plan-count">{{ monthlyPlan.month }} 固定時段估計 {{ monthlyPlan.count }} 堂</span>
+              <span class="field-hint">此為規劃估計；實際收費依確認已上堂數。</span>
+              <button v-if="monthlyOverride" type="button" class="monthly-plan-action" @click="useMonthlyPlan">改用固定時段估計</button>
+              <button v-else type="button" class="monthly-plan-action" @click="monthlyOverride = true">手動修正例外</button>
+            </template>
+            <span v-else class="field-hint">無法依固定時段估計，請填寫規劃堂數；實際收費依確認已上堂數。</span>
+            <input v-if="monthlyOverride || !monthlyPlan || form.scheduling_policy === 'manual_occurrence'" v-model.number="form.monthly_sessions" type="number" min="0" :aria-label="monthlyOverride ? '手動修正本月規劃堂數' : '本月規劃堂數'" placeholder="依學生個案" />
           </div>
         </template>
 
@@ -298,6 +305,7 @@ import { checkTeacherScope, STUDENT_CLASS_MEMO_MAX_LENGTH } from '../lib/constan
 import { fetchTeacherAvailability } from '../lib/substituteApi.js';
 import TeacherAvailabilityPlanner from './TeacherAvailabilityPlanner.vue';
 import CoursePaymentDateField from './CoursePaymentDateField.vue';
+import { monthlyScheduleEstimate } from '../lib/monthlyScheduleEstimate.js';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -347,6 +355,15 @@ const defaultForm = {
 };
 
 const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });
+const monthlyOverride = ref(false);
+const monthlyPlan = computed(() => form.payment_type === 'monthly' && form.scheduling_policy !== 'manual_occurrence'
+  ? monthlyScheduleEstimate({ startDate: form.first_class_date, endDate: form.end_date, slots: form.day_time_slots || [], weekdays: form.days_of_week || [] })
+  : null);
+function useMonthlyPlan() {
+  if (!monthlyPlan.value) return;
+  monthlyOverride.value = false;
+  form.monthly_sessions = monthlyPlan.value.count;
+}
 let syncingFromParent = false;
 let lastEmittedModel = null;
 
@@ -473,12 +490,20 @@ watch(
     if (!Array.isArray(form.days_of_week)) form.days_of_week = [];
     if (!Array.isArray(form.day_time_slots)) form.day_time_slots = [];
     syncDayTimeSlotsFromSelection();
+    monthlyOverride.value = form.monthly_sessions != null && form.monthly_sessions !== monthlyPlan.value?.count;
     nextTick(() => {
       syncingFromParent = false;
+      if (!monthlyOverride.value && monthlyPlan.value && form.monthly_sessions !== monthlyPlan.value.count) {
+        form.monthly_sessions = monthlyPlan.value.count;
+      }
     });
   },
   { immediate: true }
 );
+
+watch(monthlyPlan, (plan) => {
+  if (!syncingFromParent && !monthlyOverride.value && plan) form.monthly_sessions = plan.count;
+});
 
 watch(
   () => form.days_of_week,
@@ -888,6 +913,18 @@ function computeEndTime(startRaw, durHours) {
 .field-hint--success { color: var(--ds-success); }
 .field-hint--warning { color: var(--ds-warning); }
 .field-hint--info { color: var(--ds-ink-mute); font-style: italic; }
+.monthly-plan-count { display: block; font-variant-numeric: tabular-nums; }
+.monthly-plan-action {
+  align-self: flex-start;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 9999px;
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
+  padding: 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.monthly-plan-action:focus-visible { outline: 2px solid var(--ds-primary); outline-offset: 2px; }
 
 @media (max-width: 720px) {
   .form-section-grid {

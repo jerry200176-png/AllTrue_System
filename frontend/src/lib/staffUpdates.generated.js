@@ -141,6 +141,37 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-monthly-plan",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結課程規劃堂數自動估計",
+    "summary": "編輯月結課程時，系統依固定上課時段顯示本月規劃堂數；特殊情況仍可手動修正。",
+    "items": [
+      "固定時段有資料時自動帶入規劃估計，既有手動例外保留；實際收費仍依確認已上堂數。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "固定時段有資料時自動帶入規劃估計，既有手動例外保留；實際收費仍依確認已上堂數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:370",
+      "changelog:2026-09-30:monthly-plan"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-dup-review-shared-label",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

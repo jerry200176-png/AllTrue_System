@@ -1,3 +1,7 @@
+## 2026-09-30 — feat(courses): 月結課程依固定時段估計規劃堂數 (in-app #370)
+<!-- release-notes: staff_update=staff-2026-09-30-monthly-plan -->
+- 編輯月結課程時顯示所屬月份固定時段的規劃估計堂數，無例外值時自動帶入；可手動修正，既有不同堂數保留並可改回推算。逐堂手動排課維持手填。實際收費仍依確認已上堂數；未改後端帳務、歷史資料或 schema。
+
 ## 2026-09-29 — fix(ops): report closed monthly case eligibility explicitly
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-case-closed -->
 - 合法空白單案資格明確拒絕為沒有可執行案例，隨 backend 正常部署帶入已清空清單；不改資料、核准角色或執行通道。
