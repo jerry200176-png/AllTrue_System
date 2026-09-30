@@ -1,0 +1,751 @@
+name: Staff Multi-Role Activation (Founder-gated)
+
+# Founder-gated control plane for in-app #299 (issue #2908) STAFF_MULTI_ROLE_V1.
+# Code + migration are already deployed. The runtime flag stays OFF until an
+# authorized run of THIS workflow flips it. Enabling changes auth resolution
+# (identity/authz, T3): the flag is environment-wide, but only users holding
+# active user_capability_grants for BOTH director and teacher are meant to change.
+#
+# Actions:
+#   preflight     read-only: HEAD, effective flag, grants summary, role-resolution diff
+#   grant_pilot_dry_run  read-only rehearsal of grant_pilot (no writes, no approval needed)
+#   grant_pilot   insert director+teacher grants for ONE user on ONE campus (idempotent, transactional)
+#   revoke_pilot  soft-revoke those two grants (transactional)
+#   enable        STAFF_MULTI_ROLE_V1=true (refuses if the diff has any unexpected user)
+#   disable       STAFF_MULTI_ROLE_V1=false (primary rollback)
+#
+# Only manages one .env line + two grant rows. Never any cache-clearing artisan command
+# (CLAUDE.md incident B); uses `php artisan optimize` + opcache reset.
+# Mutating jobs run in the `production-activation` environment (required reviewers).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preflight | grant_pilot_dry_run | grant_pilot | revoke_pilot | enable | disable"
+        required: true
+        type: choice
+        options:
+          - preflight
+          - grant_pilot_dry_run
+          - grant_pilot
+          - revoke_pilot
+          - enable
+          - disable
+      confirm:
+        description: 'enable: ENABLE_STAFF_MULTI_ROLE_V1:<expected_head_sha>. disable: DISABLE_STAFF_MULTI_ROLE_V1. grant_pilot: GRANT_PILOT:user=<id>:campus=<id>[:narrow_from=<sorted,campus,ids>][:flag=on]. revoke_pilot: REVOKE_PILOT:user=<id>:campus=<id>[:flag=on]. Blank for preflight / grant_pilot_dry_run.'
+        required: false
+      expected_head_sha:
+        description: "enable only: full 40-char production HEAD SHA (shown by preflight). Refuses on any other HEAD."
+        required: false
+      user_id:
+        description: "grant_pilot_dry_run / grant_pilot / revoke_pilot only: numeric User id"
+        required: false
+      campus_id:
+        description: "grant_pilot_dry_run / grant_pilot / revoke_pilot only: numeric Campus id"
+        required: false
+      expected_pilot_user_id:
+        description: "enable only: numeric User id; the dual-capability holder set must equal exactly this one user"
+        required: false
+      acknowledge_narrowing:
+        description: "enable only: set true to accept that a pilot user's campus scope gets smaller when the flag is ON"
+        type: boolean
+        default: false
+
+concurrency:
+  group: staff-multirole-activation
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Validate action + confirmation
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      narrow_from: ${{ steps.check.outputs.narrow_from }}
+      flag_ack: ${{ steps.check.outputs.flag_ack }}
+    steps:
+      - name: Require exact confirmation phrase and well-formed inputs
+        id: check
+        env:
+          ACTION: ${{ github.event.inputs.action }}
+          CONFIRM: ${{ github.event.inputs.confirm }}
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          USER_ID: ${{ github.event.inputs.user_id }}
+          CAMPUS_ID: ${{ github.event.inputs.campus_id }}
+          EXPECTED_PILOT_USER_ID: ${{ github.event.inputs.expected_pilot_user_id }}
+        run: |
+          set -euo pipefail
+          NARROW=""
+          FLAG=0
+          need_ids() {
+            printf '%s' "$USER_ID" | grep -Eq '^[1-9][0-9]{0,9}$' || { echo "::error::user_id must be a positive integer"; exit 1; }
+            printf '%s' "$CAMPUS_ID" | grep -Eq '^[1-9][0-9]{0,9}$' || { echo "::error::campus_id must be a positive integer"; exit 1; }
+          }
+          case "$ACTION" in
+            enable)
+              printf '%s' "$EXPECTED_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::expected_head_sha must be the exact 40-char hex SHA. Nothing touched."; exit 1; }
+              printf '%s' "$EXPECTED_PILOT_USER_ID" | grep -Eq '^[1-9][0-9]{0,9}$' || { echo "::error::expected_pilot_user_id must be a positive integer. Nothing touched."; exit 1; }
+              [ "$CONFIRM" = "ENABLE_STAFF_MULTI_ROLE_V1:${EXPECTED_HEAD_SHA}" ] || { echo "::error::confirm must be exactly ENABLE_STAFF_MULTI_ROLE_V1:<expected_head_sha>. Nothing touched."; exit 1; }
+              ;;
+            disable)
+              [ "$CONFIRM" = "DISABLE_STAFF_MULTI_ROLE_V1" ] || { echo "::error::confirm must be exactly DISABLE_STAFF_MULTI_ROLE_V1. Nothing touched."; exit 1; }
+              ;;
+            grant_pilot)
+              need_ids
+              BASE="GRANT_PILOT:user=${USER_ID}:campus=${CAMPUS_ID}"
+              REST="${CONFIRM#"$BASE"}"
+              [ "$REST" != "$CONFIRM" ] || { echo "::error::confirm must start with GRANT_PILOT:user=<id>:campus=<id>. Nothing touched."; exit 1; }
+              if [[ "$REST" =~ ^(:narrow_from=([0-9]+(,[0-9]+)*))?(:flag=on)?$ ]]; then
+                NARROW="${BASH_REMATCH[2]}"
+                if [ -n "${BASH_REMATCH[4]}" ]; then FLAG=1; fi
+              else
+                echo "::error::unknown confirm suffix. Allowed: [:narrow_from=<sorted,campus,ids>][:flag=on]. Nothing touched."; exit 1
+              fi
+              ;;
+            revoke_pilot)
+              need_ids
+              BASE="REVOKE_PILOT:user=${USER_ID}:campus=${CAMPUS_ID}"
+              REST="${CONFIRM#"$BASE"}"
+              [ "$REST" != "$CONFIRM" ] || { echo "::error::confirm must start with REVOKE_PILOT:user=<id>:campus=<id>. Nothing touched."; exit 1; }
+              case "$REST" in
+                "") ;;
+                ":flag=on") FLAG=1 ;;
+                *) echo "::error::unknown confirm suffix. Allowed: [:flag=on]. Nothing touched."; exit 1 ;;
+              esac
+              ;;
+            grant_pilot_dry_run)
+              need_ids
+              echo "Read-only rehearsal -- no confirmation required."
+              ;;
+            preflight)
+              echo "Read-only action -- no confirmation required."
+              ;;
+            *)
+              echo "::error::Unknown action: $ACTION"
+              exit 1
+              ;;
+          esac
+          echo "narrow_from=$NARROW" >> "$GITHUB_OUTPUT"
+          echo "flag_ack=$FLAG" >> "$GITHUB_OUTPUT"
+          echo "guard passed for action=$ACTION"
+
+  preflight:
+    name: Read-only preflight + role-resolution diff
+    needs: guard
+    if: github.event.inputs.action == 'preflight'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper and read-only scripts
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            scripts/ops/staff-multirole-role-diff.php
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "DIFF_B64=$(tail -n +2 scripts/ops/staff-multirole-role-diff.php | base64 -w0)" >> "$GITHUB_ENV"
+
+      - name: Read HEAD, effective flag, grants and role-resolution diff (read-only)
+        run: |
+          set -uo pipefail
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env DIFF_B64
+            cat << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin
+          echo "production-head=$(git rev-parse HEAD)"
+          cd backend
+          EFFECTIVE="$(php artisan tinker --execute="echo config('staff_capabilities.multi_role_v1_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-config-value=$EFFECTIVE"
+          HEALTH="$(curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          echo "=== role-resolution diff (flag OFF legacy vs flag ON resolver; ids only) ==="
+          php artisan tinker --execute="$(echo "$DIFF_B64" | base64 -d)" 2>&1
+          echo "READ_ONLY=true"
+          ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/preflight-output.txt
+          if ! grep -q '^diff-result=' /tmp/preflight-output.txt; then
+            echo "::error::preflight produced no diff-result marker -- diff did not run."
+            exit 1
+          fi
+
+      - name: Compose audit artifact
+        if: always()
+        run: |
+          {
+            echo "action=preflight"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- output ----"
+            grep -vE 'DB_PASS|password' /tmp/preflight-output.txt 2>/dev/null || true
+          } > /tmp/preflight-audit.txt
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-multirole-preflight-${{ github.run_id }}
+          path: /tmp/preflight-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  pilot_dry_run:
+    name: Rehearse grant_pilot (read-only, no writes)
+    needs: guard
+    if: github.event.inputs.action == 'grant_pilot_dry_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper and grant script
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            scripts/ops/staff-multirole-pilot-grant.php
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "GRANT_B64=$(tail -n +2 scripts/ops/staff-multirole-pilot-grant.php | base64 -w0)" >> "$GITHUB_ENV"
+
+      - name: Dry-run the grant script (PILOT_DRY_RUN=1, never writes)
+        env:
+          PILOT_MODE: grant
+          PILOT_DRY_RUN: "1"
+          PILOT_USER_ID: ${{ github.event.inputs.user_id }}
+          PILOT_CAMPUS_ID: ${{ github.event.inputs.campus_id }}
+          PILOT_ACTOR: ${{ github.actor }}
+        run: |
+          set -uo pipefail
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env GRANT_B64 PILOT_MODE PILOT_DRY_RUN PILOT_USER_ID PILOT_CAMPUS_ID PILOT_ACTOR
+            cat << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute="$(echo "$GRANT_B64" | base64 -d)" 2>&1
+          echo "READ_ONLY=true"
+          ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/pilot-result.txt
+          # A REFUSED decision is a valid rehearsal outcome (it shows what the real run would need).
+          if ! grep -Eq '^pilot-result=(DRY-RUN-OK|REFUSED)' /tmp/pilot-result.txt; then
+            echo "::error::dry-run did not produce a decision -- see log above."
+            exit 1
+          fi
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-multirole-pilot-dryrun-${{ github.run_id }}
+          path: /tmp/pilot-result.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  pilot_grant:
+    name: Grant / revoke pilot capabilities (one user, one campus)
+    needs: guard
+    if: github.event.inputs.action == 'grant_pilot' || github.event.inputs.action == 'revoke_pilot'
+    environment: production-activation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper and grant script
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            scripts/ops/staff-multirole-pilot-grant.php
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "GRANT_B64=$(tail -n +2 scripts/ops/staff-multirole-pilot-grant.php | base64 -w0)" >> "$GITHUB_ENV"
+
+      - name: Apply grant/revoke (idempotent, transactional, audited)
+        env:
+          PILOT_MODE: ${{ github.event.inputs.action == 'grant_pilot' && 'grant' || 'revoke' }}
+          PILOT_DRY_RUN: "0"
+          PILOT_USER_ID: ${{ github.event.inputs.user_id }}
+          PILOT_CAMPUS_ID: ${{ github.event.inputs.campus_id }}
+          PILOT_ACTOR: ${{ github.actor }}
+          PILOT_NARROW_FROM: ${{ needs.guard.outputs.narrow_from }}
+          PILOT_FLAG_ON_ACK: ${{ needs.guard.outputs.flag_ack }}
+        run: |
+          set -uo pipefail
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env GRANT_B64 PILOT_MODE PILOT_DRY_RUN PILOT_USER_ID PILOT_CAMPUS_ID PILOT_ACTOR PILOT_NARROW_FROM PILOT_FLAG_ON_ACK
+            cat << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute="$(echo "$GRANT_B64" | base64 -d)" 2>&1
+          ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/pilot-result.txt
+          if ! grep -q '^pilot-result=SUCCESS$' /tmp/pilot-result.txt; then
+            echo "::error::pilot grant/revoke did not report SUCCESS -- see log above (nothing committed unless SUCCESS)."
+            exit 1
+          fi
+
+      - name: Compose audit artifact
+        if: always()
+        run: |
+          {
+            echo "action=${{ github.event.inputs.action }}"
+            echo "user_id=${{ github.event.inputs.user_id }}"
+            echo "campus_id=${{ github.event.inputs.campus_id }}"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- output ----"
+            grep -vE 'DB_PASS|password' /tmp/pilot-result.txt 2>/dev/null || true
+          } > /tmp/pilot-audit.txt
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-multirole-pilot-${{ github.run_id }}
+          path: /tmp/pilot-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  enable:
+    name: Enable STAFF_MULTI_ROLE_V1 (audited, reversible)
+    needs: guard
+    if: github.event.inputs.action == 'enable'
+    environment: production-activation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pinned SSH trust helper and diff script
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+            scripts/ops/staff-multirole-role-diff.php
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo "DIFF_B64=$(tail -n +2 scripts/ops/staff-multirole-role-diff.php | base64 -w0)" >> "$GITHUB_ENV"
+
+      - name: Diff gate, enable, verify effective config + health/smoke, auto-restore on any failure
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          EXPECTED_PILOT_USER_ID: ${{ github.event.inputs.expected_pilot_user_id }}
+          ACK_NARROWING: ${{ github.event.inputs.acknowledge_narrowing }}
+          SMOKE_TEACHER_LOGIN: ${{ secrets.SMOKE_TEACHER_LOGIN }}
+          SMOKE_TEACHER_PASSWORD: ${{ secrets.SMOKE_TEACHER_PASSWORD }}
+          SMOKE_BRANCH_ID: ${{ secrets.SMOKE_BRANCH_ID }}
+          SMOKE_BASE_URL: https://daan.lifenet.com.tw
+          SMOKE_ON_PI: "1"
+        run: |
+          set -uo pipefail
+          # Values travel base64-encoded on stdin, never on the ssh command line.
+          send_env() {
+            for v in "$@"; do
+              printf 'export %s="$(printf %%s '"'"'%s'"'"' | base64 -d)"\n' "$v" "$(printf %s "${!v}" | base64 -w0)"
+            done
+          }
+          {
+            send_env EXPECTED_HEAD_SHA EXPECTED_PILOT_USER_ID ACK_NARROWING DIFF_B64 SMOKE_TEACHER_LOGIN SMOKE_TEACHER_PASSWORD SMOKE_BRANCH_ID SMOKE_BASE_URL SMOKE_ON_PI
+            cat << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin
+
+          echo "=== [1/9] Confirm production HEAD matches the approved SHA ==="
+          ACTUAL_HEAD="$(git rev-parse HEAD)" || { echo "enable-result=REFUSED-NO-HEAD"; exit 1; }
+          if [ "$ACTUAL_HEAD" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "❌ production HEAD ($ACTUAL_HEAD) != expected_head_sha ($EXPECTED_HEAD_SHA) -- refusing to touch .env"
+            echo "enable-result=REFUSED-WRONG-HEAD"
+            exit 1
+          fi
+          echo "✅ production HEAD == expected ($ACTUAL_HEAD)"
+
+          cd /home/admin/backend || { echo "enable-result=REFUSED-NO-BACKEND-DIR"; exit 1; }
+
+          effective() {
+            php artisan tinker --execute="echo config('staff_capabilities.multi_role_v1_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1
+          }
+          health() {
+            curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error
+          }
+
+          echo "=== [2/9] Role-resolution diff gate (read-only, before any edit) ==="
+          DIFF_OUT="$(php artisan tinker --execute="$(echo "$DIFF_B64" | base64 -d)" 2>&1)"
+          echo "$DIFF_OUT" | grep -E '^(diff-|grants-table-exists|grant-summary)'
+          if ! echo "$DIFF_OUT" | grep -q '^diff-unexpected=0$'; then
+            echo "❌ diff gate: missing marker or users outside the dual-capability grant holders would change"
+            echo "enable-result=REFUSED-UNEXPECTED-DIFF"
+            exit 1
+          fi
+          DUAL_IDS="$(echo "$DIFF_OUT" | sed -n 's/^diff-dual-user-ids=//p' | tail -1)"
+          if [ -z "$DUAL_IDS" ] || [ "$DUAL_IDS" != "$EXPECTED_PILOT_USER_ID" ]; then
+            echo "❌ diff gate: dual-capability holder set [$DUAL_IDS] != expected_pilot_user_id [$EXPECTED_PILOT_USER_ID] (must be exactly that one user)"
+            echo "enable-result=REFUSED-PILOT-SET-MISMATCH"
+            exit 1
+          fi
+          NARROWED="$(echo "$DIFF_OUT" | sed -n 's/^diff-narrowed-dual=//p' | tail -1)"
+          if [ -z "$NARROWED" ]; then
+            echo "enable-result=REFUSED-UNEXPECTED-DIFF"
+            exit 1
+          fi
+          if [ "$NARROWED" -gt 0 ] && [ "$ACK_NARROWING" != "true" ]; then
+            echo "❌ diff gate: a pilot user's campus scope would get SMALLER; re-run with acknowledge_narrowing=true if intended"
+            echo "enable-result=REFUSED-NARROWING-NOT-ACKNOWLEDGED"
+            exit 1
+          fi
+          echo "✅ diff gate passed (pilot=$DUAL_IDS, narrowed=$NARROWED, unexpected=0)"
+
+          PRE_EFFECTIVE="$(effective)"
+          echo "pre-effective-config-value=$PRE_EFFECTIVE"
+
+          echo "=== [3/9] Backup .env (timestamp + checksum, verified) ==="
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/staffmultirole-activation"
+          BACKUP_FILE="$BACKUP_DIR/env_pre_staff_multirole_enable_${STAMP}.bak"
+          mkdir -p "$BACKUP_DIR" || { echo "enable-result=REFUSED-BACKUP-FAILED"; exit 1; }
+          cp .env "$BACKUP_FILE" || { echo "❌ backup copy failed"; echo "enable-result=REFUSED-BACKUP-FAILED"; exit 1; }
+          chmod 600 "$BACKUP_FILE" || { echo "enable-result=REFUSED-BACKUP-FAILED"; exit 1; }
+          BACKUP_CHECKSUM="$(sha256sum "$BACKUP_FILE" | cut -d' ' -f1)"
+          ENV_CHECKSUM="$(sha256sum .env | cut -d' ' -f1)"
+          if [ -z "$BACKUP_CHECKSUM" ] || [ "$BACKUP_CHECKSUM" != "$ENV_CHECKSUM" ]; then
+            echo "❌ backup checksum does not match .env"
+            echo "enable-result=REFUSED-BACKUP-FAILED"
+            exit 1
+          fi
+          echo "backup-file=$(basename "$BACKUP_FILE")"
+          echo "backup-checksum=$BACKUP_CHECKSUM"
+
+          EDITED=0
+          FINISHED=0
+          rollback() {
+            # Restore FIRST, before any echo: a closed stdout (dropped SSH) must not kill us before the copy.
+            trap '' PIPE
+            cp "$BACKUP_FILE" .env
+            RB_REASON="$1"
+            EDITED=0
+            echo "=== ROLLBACK ($RB_REASON): restored $BACKUP_FILE ==="
+            RB_ENV_SUM="$(sha256sum .env | cut -d' ' -f1)"
+            rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+            php artisan optimize
+            php artisan opcache:reset 2>/dev/null || true
+            RB_EFFECTIVE="$(effective)"
+            RB_HEALTH="$(health)"
+            echo "rollback-performed=true"
+            echo "post-rollback-env-checksum-matches=$([ "$RB_ENV_SUM" = "$BACKUP_CHECKSUM" ] && echo true || echo false)"
+            echo "post-rollback-effective=$RB_EFFECTIVE (expected $PRE_EFFECTIVE)"
+            echo "post-rollback-health=$RB_HEALTH"
+            if [ "$RB_ENV_SUM" = "$BACKUP_CHECKSUM" ] && [ "$RB_EFFECTIVE" = "$PRE_EFFECTIVE" ] && [ "$RB_HEALTH" = "ok" ]; then
+              echo "enable-result=$RB_REASON"
+            else
+              echo "❌ ROLLBACK-FAILED: production is NOT verified restored -- escalate immediately"
+              echo "enable-result=ROLLBACK-FAILED"
+            fi
+          }
+          # A dropped SSH session or unexpected exit after the edit must not leave the flag half-applied.
+          # Signals become a normal exit so the EXIT trap runs; the trap logs to a file because stdout may be gone.
+          trap 'exit 1' HUP TERM PIPE
+          trap 'if [ "$EDITED" = 1 ] && [ "$FINISHED" != 1 ]; then trap "" PIPE; exec >>"$BACKUP_DIR/enable_${STAMP}.log" 2>&1; rollback FAILED-UNEXPECTED-EXIT-ROLLED-BACK; fi' EXIT
+
+          echo "=== [4/9] Idempotent single-line edit (never truncate, never duplicate) ==="
+          KEY_COUNT_BEFORE="$(grep -c '^STAFF_MULTI_ROLE_V1=' .env || true)"
+          if [ "$KEY_COUNT_BEFORE" -gt 1 ]; then
+            echo "❌ found $KEY_COUNT_BEFORE existing STAFF_MULTI_ROLE_V1 lines before edit -- refusing to proceed"
+            echo "enable-result=REFUSED-DIRTY-ENV"
+            exit 1
+          fi
+          EDITED=1
+          if [ "$KEY_COUNT_BEFORE" -eq 1 ]; then
+            sed -i 's|^STAFF_MULTI_ROLE_V1=.*|STAFF_MULTI_ROLE_V1=true|' .env || { rollback FAILED-EDIT-ROLLED-BACK; exit 1; }
+            echo "edit-action=replaced-existing-key"
+          else
+            { [ -z "$(tail -c1 .env)" ] || echo >> .env; echo 'STAFF_MULTI_ROLE_V1=true' >> .env; } || { rollback FAILED-EDIT-ROLLED-BACK; exit 1; }
+            echo "edit-action=appended-new-key"
+          fi
+          KEY_COUNT_AFTER="$(grep -c '^STAFF_MULTI_ROLE_V1=' .env || true)"
+          if [ "$KEY_COUNT_AFTER" -ne 1 ]; then
+            echo "❌ after edit, key appears $KEY_COUNT_AFTER times (expected exactly 1)"
+            rollback FAILED-DUPLICATE-KEY-ROLLED-BACK
+            exit 1
+          fi
+          echo "✅ exactly one STAFF_MULTI_ROLE_V1 line present"
+
+          echo "=== [5/9] Rebuild cache the repo-approved way ==="
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          if ! php artisan optimize; then
+            rollback FAILED-OPTIMIZE-ROLLED-BACK
+            exit 1
+          fi
+          php artisan opcache:reset 2>/dev/null && echo "✅ OPcache reset" || echo "⚠️ OPcache reset failed (non-fatal, TTL will clear it)"
+
+          echo "=== [6/9] Verify the EFFECTIVE Laravel config value (not just .env text) ==="
+          EFFECTIVE="$(effective)"
+          echo "effective-config-value=$EFFECTIVE"
+          if [ "$EFFECTIVE" != "true" ]; then
+            echo "❌ effective config did not become true after cache rebuild"
+            rollback FAILED-CONFIG-NOT-EFFECTIVE-ROLLED-BACK
+            exit 1
+          fi
+          echo "✅ effective config confirmed true"
+
+          echo "=== [7/9] Health check ==="
+          HEALTH="$(health)"
+          echo "health-status=$HEALTH"
+          if [ "$HEALTH" != "ok" ]; then
+            echo "❌ health check failed after enabling flag"
+            rollback FAILED-HEALTH-ROLLED-BACK
+            exit 1
+          fi
+
+          echo "=== [8/9] Full authenticated smoke suite (auth path changed, 5 min cap) ==="
+          if ! timeout 300 bash /home/admin/scripts/post-merge-smoke.sh; then
+            echo "❌ smoke suite failed or timed out after enabling flag"
+            rollback FAILED-SMOKE-ROLLED-BACK
+            exit 1
+          fi
+          echo "✅ smoke suite passed"
+
+          echo "=== [9/9] Post-enable diff re-check (read-only) ==="
+          php artisan tinker --execute="$(echo "$DIFF_B64" | base64 -d)" 2>&1 | grep -E '^diff-(changed|unexpected|result)='
+
+          FINISHED=1
+          echo "enable-result=SUCCESS"
+          ENDSSH
+          } | ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s | tee /tmp/enable-result.txt
+          RESULT=$?
+          if ! grep -q '^enable-result=SUCCESS$' /tmp/enable-result.txt; then
+            echo "::error::enable did not report SUCCESS -- see log above. Check for ROLLBACK-FAILED."
+            exit 1
+          fi
+          exit "$RESULT"
+
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=enable"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
+            echo "expected_pilot_user_id=${{ github.event.inputs.expected_pilot_user_id }}"
+            echo "acknowledge_narrowing=${{ github.event.inputs.acknowledge_narrowing }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- redacted result log ----"
+            grep -vE 'DB_PASS|SMOKE_TEACHER_PASSWORD|password' /tmp/enable-result.txt 2>/dev/null || true
+          } > /tmp/enable-audit.txt
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-multirole-enable-${{ github.run_id }}
+          path: /tmp/enable-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
+
+  disable:
+    name: Disable STAFF_MULTI_ROLE_V1 (primary runtime rollback)
+    needs: guard
+    if: github.event.inputs.action == 'disable'
+    environment: production-activation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Disable and verify
+        run: |
+          set -uo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" bash -s \
+            << 'ENDSSH' | tee /tmp/disable-result.txt
+          set -uo pipefail
+          cd /home/admin/backend || { echo "disable-result=REFUSED-NO-BACKEND-DIR"; exit 1; }
+
+          echo "=== [1/5] Backup .env (timestamp + checksum, verified) ==="
+          STAMP="$(date -u '+%Y-%m-%d_%H%M%SZ')"
+          BACKUP_DIR="/home/admin/backups/staffmultirole-activation"
+          BACKUP_FILE="$BACKUP_DIR/env_pre_staff_multirole_disable_${STAMP}.bak"
+          mkdir -p "$BACKUP_DIR" || { echo "disable-result=REFUSED-BACKUP-FAILED"; exit 1; }
+          cp .env "$BACKUP_FILE" || { echo "disable-result=REFUSED-BACKUP-FAILED"; exit 1; }
+          chmod 600 "$BACKUP_FILE" || { echo "disable-result=REFUSED-BACKUP-FAILED"; exit 1; }
+          BACKUP_CHECKSUM="$(sha256sum "$BACKUP_FILE" | cut -d' ' -f1)"
+          if [ -z "$BACKUP_CHECKSUM" ] || [ "$BACKUP_CHECKSUM" != "$(sha256sum .env | cut -d' ' -f1)" ]; then
+            echo "disable-result=REFUSED-BACKUP-FAILED"
+            exit 1
+          fi
+          echo "backup-file=$(basename "$BACKUP_FILE")"
+          echo "backup-checksum=$BACKUP_CHECKSUM"
+
+          echo "=== [2/5] Idempotent single-line edit ==="
+          KEY_COUNT_BEFORE="$(grep -c '^STAFF_MULTI_ROLE_V1=' .env || true)"
+          if [ "$KEY_COUNT_BEFORE" -gt 1 ]; then
+            echo "❌ found $KEY_COUNT_BEFORE existing STAFF_MULTI_ROLE_V1 lines -- refusing to proceed"
+            echo "disable-result=REFUSED-DIRTY-ENV"
+            exit 1
+          fi
+          if [ "$KEY_COUNT_BEFORE" -eq 1 ]; then
+            sed -i 's|^STAFF_MULTI_ROLE_V1=.*|STAFF_MULTI_ROLE_V1=false|' .env || { cp "$BACKUP_FILE" .env; echo "disable-result=FAILED-EDIT-RESTORED"; exit 1; }
+            echo "edit-action=replaced-existing-key"
+          else
+            { [ -z "$(tail -c1 .env)" ] || echo >> .env; echo 'STAFF_MULTI_ROLE_V1=false' >> .env; } || { cp "$BACKUP_FILE" .env; echo "disable-result=FAILED-EDIT-RESTORED"; exit 1; }
+            echo "edit-action=appended-new-key (was absent, which already meant false by default)"
+          fi
+          KEY_COUNT_AFTER="$(grep -c '^STAFF_MULTI_ROLE_V1=' .env || true)"
+          if [ "$KEY_COUNT_AFTER" -ne 1 ]; then
+            echo "❌ after edit, key appears $KEY_COUNT_AFTER times -- restoring backup"
+            cp "$BACKUP_FILE" .env
+            echo "disable-result=FAILED-DUPLICATE-KEY-ROLLED-BACK"
+            exit 1
+          fi
+
+          echo "=== [3/5] Rebuild cache the repo-approved way ==="
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize || { echo "disable-result=FAILED-OPTIMIZE"; exit 1; }
+          php artisan opcache:reset 2>/dev/null && echo "✅ OPcache reset" || echo "⚠️ OPcache reset failed (non-fatal)"
+
+          echo "=== [4/5] Verify the EFFECTIVE Laravel config value ==="
+          EFFECTIVE="$(php artisan tinker --execute="echo config('staff_capabilities.multi_role_v1_enabled') ? 'true' : 'false';" 2>/dev/null | tail -1)"
+          echo "effective-config-value=$EFFECTIVE"
+          if [ "$EFFECTIVE" != "false" ]; then
+            echo "❌ effective config did not become false -- rollback path itself failing, treat as urgent"
+            echo "disable-result=FAILED-CONFIG-STILL-TRUE"
+            exit 1
+          fi
+
+          echo "=== [5/5] Health check ==="
+          HEALTH="$(curl -sk --max-time 20 https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin).get('status','?'))" 2>/dev/null || echo error)"
+          echo "health-status=$HEALTH"
+          if [ "$HEALTH" != "ok" ]; then
+            echo "❌ health check failed after disabling flag -- rollback path itself failing, treat as urgent"
+            echo "disable-result=FAILED-HEALTH"
+            exit 1
+          fi
+
+          echo "disable-result=SUCCESS"
+          ENDSSH
+          RESULT=$?
+          if ! grep -q '^disable-result=SUCCESS$' /tmp/disable-result.txt; then
+            echo "::error::disable did not report SUCCESS -- see log above. This is the rollback path; escalate immediately."
+            exit 1
+          fi
+          exit "$RESULT"
+
+      - name: Compose audit artifact (redacted)
+        if: always()
+        run: |
+          {
+            echo "action=disable"
+            echo "workflow_run_id=${{ github.run_id }}"
+            echo "triggered_by=${{ github.actor }}"
+            echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "---- redacted result log ----"
+            grep -vE 'DB_PASS|password' /tmp/disable-result.txt 2>/dev/null || true
+          } > /tmp/disable-audit.txt
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-multirole-disable-${{ github.run_id }}
+          path: /tmp/disable-audit.txt
+          retention-days: 90
+
+      - name: Remove local key material
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
