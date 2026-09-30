@@ -101,8 +101,8 @@ onMounted(load);
 .tma-title { margin: 0 auto 0 0; font-size: 1rem; }
 .tma-check { display: inline-flex; gap: 4px; align-items: center; font-size: 0.875rem; }
 .tma-totals { margin: 0 0 8px; font-weight: 600; }
-.tma-anomaly td { color: var(--ds-warning, #b45309); }
-.tma-empty td { color: var(--ds-text-muted, #9ca3af); }
+.tma-anomaly td { color: var(--ds-warning-ink); }
+.tma-empty td { color: var(--ds-text-tertiary); }
 @media print {
   .tma-toolbar select, .tma-toolbar input, .tma-toolbar button, .tma-check { display: none; }
 }
