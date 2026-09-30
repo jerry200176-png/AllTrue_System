@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(ops): staff identity merge phase 1 (read-only candidates and dry-run)
+<!-- release-notes: silent_ship=silent-2026-09-30-staff-identity-merge-dryrun -->
+- 雙帳號（主任＋老師）合併第一階段：保留老師帳號、停用主任帳號；新增唯讀 `staff:identity-merge --candidates|--dry-run` 與唯讀 workflow，只列出疑似同人帳號與合併試算（僅 id／筆數），不改任何資料、不含 migration、無套用路徑；階段 2–4 尚未建置，不發布教職員公告。
+
 ## 2026-09-30 — feat(auth): acting_as in security audit + self-approval hard block (in-app #299 / #2908 step 3)
 <!-- release-notes: staff_update=staff-2026-09-30-no-self-approval -->
 - 資安稽核事件自動帶 `acting_as` 與 `capability_campus_count`（旗標關閉為 null），被拒的身分切換寫 `staff.context.denied`；薪資／資格（扣除、行政加給、現金加扣、底薪、成果）確認與核准，核准人等於當事老師時回 422 `self_approval_forbidden`。無資料變更。
