@@ -753,6 +753,19 @@ class BugReportService
         return '/storage/' . ltrim(str_replace('\\', '/', $storedPath), '/');
     }
 
+    /** 列表用摘要：說明第一個非空行、純文字、最多 60 字。 */
+    private static function descriptionSnippet(?string $description): string
+    {
+        foreach (preg_split('/\R/u', strip_tags((string) $description)) ?: [] as $line) {
+            $line = trim($line);
+            if ($line !== '') {
+                return mb_strlen($line) > 60 ? mb_substr($line, 0, 60) . '…' : $line;
+            }
+        }
+
+        return '';
+    }
+
     private static function formatPaginated($rows): array
     {
         $payload = $rows->toArray();
@@ -764,6 +777,7 @@ class BugReportService
             'severity' => $r['severity'],
             'status' => $r['status'],
             'page_key' => $r['page_key'],
+            'description_snippet' => self::descriptionSnippet($r['description'] ?? null),
             'attachments_count' => (int) ($r['attachments_count'] ?? 0),
             'comments_count' => (int) ($r['comments_count'] ?? 0),
             'created_at' => $r['created_at'],

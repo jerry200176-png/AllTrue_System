@@ -4,6 +4,47 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-30-ux-followups",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "操作體驗小幅改善",
+    "summary": "換頁不再長時間空白、編輯學生視窗更易關閉與閱讀，課程查找的上課類型篩選更準確。",
+    "items": [
+      "換頁載入時顯示骨架畫面，不再是空白。",
+      "編輯學生視窗可按 Esc 關閉；LINE 綁定顯示「已綁定 LINE」與日期，監護人關係顯示中文。",
+      "課程查找選「上課類型」後，只列出符合該類型的課程。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "換頁載入時顯示骨架畫面，不再是空白。",
+          "編輯學生視窗可按 Esc 關閉；LINE 綁定顯示「已綁定 LINE」與日期，監護人關係顯示中文。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "課程查找選「上課類型」後，只列出符合該類型的課程。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:ux-followups"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-subject-units-reference-totals",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

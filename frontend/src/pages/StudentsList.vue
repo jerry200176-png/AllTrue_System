@@ -636,8 +636,8 @@
           <div v-else-if="lineBindings.length === 0" class="line-bindings-empty">尚未有家長透過 LINE 綁定此學生</div>
           <div v-else class="line-bindings-list">
             <div v-for="b in lineBindings" :key="b.id" class="line-binding-row">
-              <span class="line-binding-id">{{ b.line_user_id_masked }}</span>
-              <span class="line-binding-time">{{ b.bound_at }}</span>
+              <span class="line-binding-id">{{ lineBindingDisplay(b).label }}</span>
+              <span class="line-binding-time">{{ lineBindingDisplay(b).date }}</span>
             </div>
           </div>
           <button type="button" class="small ghost" style="margin-top:8px;" @click="goToBindingManagement(students.find((s) => s.id === editingStudentId))">
@@ -659,7 +659,7 @@
           </div>
           <div v-else class="line-bindings-list">
             <div v-for="g in guardians" :key="g.id" class="line-binding-row">
-              <span class="line-binding-id">{{ g.display_name || '未命名' }} · {{ g.role }}{{ g.is_primary ? ' · 主要聯絡人' : '' }}</span>
+              <span class="line-binding-id">{{ g.display_name || '未命名' }} · {{ guardianRoleLabel(g.role) }}{{ g.is_primary ? ' · 主要聯絡人' : '' }}</span>
               <span class="line-binding-time">{{ g.phone || g.line_user_id_masked || '—' }}</span>
               <button type="button" class="line-binding-remove" @click="removeGuardian(g.id)">解除</button>
             </div>
@@ -1015,11 +1015,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed, nextTick, reactive } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick, reactive } from 'vue';
 import { supabase } from '../supabase';
 import { closeCourseNoRenew as runCloseCourseNoRenew } from '../lib/closeCourseNoRenew.js';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
+import { guardianRoleLabel, lineBindingDisplay } from '../lib/guardianDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import {
   calculateTransactionDiscountPreview,
@@ -2350,6 +2351,15 @@ const closeStudentModal = () => {
   guardianError.value = '';
   multiGuardianEnabled.value = false;
 };
+
+// Esc 等同「取消」（此 modal 無未儲存確認，行為與取消鈕一致）
+const onStudentModalKeydown = (event) => {
+  if (event.key === 'Escape' && !event.defaultPrevented && showStudentModal.value) closeStudentModal();
+};
+watch(showStudentModal, (open) => {
+  window[open ? 'addEventListener' : 'removeEventListener']('keydown', onStudentModalKeydown);
+});
+onBeforeUnmount(() => window.removeEventListener('keydown', onStudentModalKeydown));
 
 const fetchLineBindings = async (studentId) => {
   if (!studentId) return;

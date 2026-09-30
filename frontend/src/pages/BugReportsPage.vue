@@ -271,7 +271,8 @@
               <span class="severity-dot" :class="bug.severity"></span>
               <span class="bug-item-info">
                 <span class="bug-title">
-                  {{ bug.title }}
+                  {{ listDisplay(bug).title }}
+                  <span v-if="listDisplay(bug).pageLabel" class="bug-page-label">{{ listDisplay(bug).pageLabel }}</span>
                   <span v-if="isUnread(bug)" class="unread-dot" title="有新動態"></span>
                 </span>
                 <span class="bug-meta">
@@ -534,7 +535,8 @@ import {
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
   getToken,
 } from '../lib/bugReportsApi';
-import { parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
+import { bugListDisplay, parseBugReportClientInfo, PRODUCT_DISPOSITION_OPTIONS, dispositionLabel, productLoopPhaseLabel, statusLogDisplayNote } from '../lib/bugReportContext';
+import { getNavigationGroups } from '../lib/navigationRegistry';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
@@ -544,6 +546,10 @@ const props = defineProps({
 });
 
 const bugs = ref([]);
+const PAGE_LABELS = Object.fromEntries(
+  ['director', 'teacher'].flatMap((role) => getNavigationGroups(role).flatMap((g) => g.items.map((i) => [i.page, i.label]))),
+);
+const listDisplay = (bug) => bugListDisplay(bug, (key) => PAGE_LABELS[key]);
 const activeBug = ref(null);
 const detailCardEl = ref(null);
 const detailTitleEl = ref(null);
@@ -1295,6 +1301,7 @@ function formatDate(iso) {
 .bug-item.unread { border-left: 3px solid var(--primary); padding-left: 9px; }
 
 .bug-item-info { display: block; flex: 1; min-width: 0; }
+.bug-page-label { font-weight: 400; font-size: 12px; color: var(--ds-text-secondary); }
 .bug-title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
 
 /* Unread dot — inline with title */
