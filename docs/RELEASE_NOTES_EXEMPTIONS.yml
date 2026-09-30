@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "feat(ops): support exact-case human review for monthly correction"
     reason: 僅限受控單案的內部核對入口，部署資格不代表修復完成，不發布教職員完成公告。
 
+  - id: silent-2026-09-30-staff-identity-merge-dryrun
+    changelog_date: "2026-09-30"
+    changelog_title: "feat(ops): staff identity merge phase 1 (read-only candidates and dry-run)"
+    reason: 內部唯讀試算工具，不改資料、無套用路徑，教職員無感，不發布公告。
+
   - id: silent-2026-09-29-contained-monthly-chains
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): preserve complete reschedule chains within reviewed monthly periods"

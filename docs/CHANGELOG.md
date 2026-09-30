@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(ops): staff identity merge phase 1 (read-only candidates and dry-run)
+<!-- release-notes: silent_ship=silent-2026-09-30-staff-identity-merge-dryrun -->
+- 雙帳號（主任＋老師）合併第一階段：新增唯讀 `staff:identity-merge --candidates|--dry-run` 與唯讀 workflow，只列出疑似同人帳號與合併試算（僅 id／筆數），不改任何資料、不含 migration、無套用路徑；階段 2–4 尚未建置，不發布教職員公告。
+
 ## 2026-09-30 — feat(ux): label shared-package rows in overlapping-course review (in-app #316)
 <!-- release-notes: staff_update=staff-2026-09-30-dup-review-shared-label -->
 - 重疊課程審核的每組資料新增唯讀欄位 `is_shared_package`；屬多科共用堂數套組者仍照常列出，並標示「多科共用」與提示，供主任判斷是否為刻意安排。重複判定、堂數、扣堂與帳務不變。
