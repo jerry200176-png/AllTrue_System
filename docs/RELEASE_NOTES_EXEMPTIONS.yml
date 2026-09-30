@@ -17,6 +17,16 @@ exemptions:
     changelog_title: "feat(ops): support exact-case human review for monthly correction"
     reason: 僅限受控單案的內部核對入口，部署資格不代表修復完成，不發布教職員完成公告。
 
+  - id: silent-2026-09-30-acting-context-retry
+    changelog_date: "2026-09-30"
+    changelog_title: "fix(auth): recover from a stale acting context instead of failing every request"
+    reason: 雙身分功能預設關閉，此為啟用前的安全防呆，教職員目前看不到任何變化。
+
+  - id: silent-2026-09-30-staff-multirole-activation
+    changelog_date: "2026-09-30"
+    changelog_title: "feat(ops): Founder-gated activation path for staff multi-role pilot (in-app #299)"
+    reason: 僅新增 Founder 核准後才能使用的啟用工作流與手冊，旗標仍關閉、未啟用任何權限，不發布教職員公告。
+
   - id: silent-2026-09-29-contained-monthly-chains
     changelog_date: "2026-09-29"
     changelog_title: "fix(billing): preserve complete reschedule chains within reviewed monthly periods"

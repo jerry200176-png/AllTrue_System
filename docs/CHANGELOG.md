@@ -14,6 +14,14 @@
 <!-- release-notes: staff_update=staff-2026-09-30-unified-login -->
 - 登入畫面只填帳號與密碼，不再先選「老師／主任櫃台」。後端不帶 `role` 時依 LoginName 找出啟用中的員工帳號並逐一驗密碼：僅一筆符合直接登入；同帳號密碼有兩個帳號（未合併的雙帳號）時回 `data.requires_account_choice`、5 分鐘單次有效的 `choice_token` 與僅含身分標籤的 `choices`，再由新增的 `POST /auth/login/choose` 發 token（選項綁定候選帳號、用過即失效）。節流沿用登入鎖定規則、選擇成功寫入 `login.account_choice` 稽核（僅雜湊 id），查無帳號補做一次假密碼驗證以縮小時間差。舊版前端仍可帶 `role`，語意不變。忘記密碼仍保留身分選單（後續再統一）。無 migration、旗標不變。
 
+## 2026-09-30 — fix(auth): recover from a stale acting context instead of failing every request
+<!-- release-notes: silent_ship=silent-2026-09-30-acting-context-retry -->
+- 雙身分切換（預設關閉）的防呆：若瀏覽器記住的身分已不適用，後端回傳明確代碼，前端清除後重試一次，不會整頁持續被拒。未開啟功能前無任何行為改變。
+
+## 2026-09-30 — feat(ops): Founder-gated activation path for staff multi-role pilot (in-app #299)
+<!-- release-notes: silent_ship=silent-2026-09-30-staff-multirole-activation -->
+- 新增 `staff-multirole-activation` 手動工作流（preflight 唯讀角色解析差異、單人單分校 grant/revoke、enable/disable 旗標）與 Founder 操作手冊；僅新增受核准的啟用路徑，`STAFF_MULTI_ROLE_V1` 維持關閉，未執行任何正式環境動作。
+
 ## 2026-09-30 — fix(ux): page loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter
 <!-- release-notes: staff_update=staff-2026-09-30-ux-followups -->
 - 換頁載入時顯示骨架畫面（延遲 150ms，快速載入不閃爍）；編輯學生視窗可按 Esc 關閉，「LINE 綁定家長」改顯示「已綁定 LINE」與 2026/09/03 格式日期，監護人關係顯示中文；課程查找「上課類型」篩選改為只列出符合類型的課程；意見與建議列表遇自動產生的標題時改顯示說明第一行（後端列表僅新增唯讀摘要欄位）。
