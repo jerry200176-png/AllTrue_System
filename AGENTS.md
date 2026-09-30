@@ -19,7 +19,7 @@
 
 **SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。
 
-**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。T0/T1 在 required checks、風險適當 review 與證據通過後可自行 merge／關 issue；T2 另需 independent review、rollback boundary 與完整 CI。T3 / protected 工作可研究、實作、測試並準備 evidence package，但在 production activation、production data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
+**操作者權限（適用於每一次任務，不是要讀的檔案，是規則本身）**：操作者是 **Agent**。T0/T1 在 required checks、風險適當 review 與證據通過後可自行 merge／關 issue；T2 另需 independent review、rollback boundary 與完整 CI。read-only production-case-dump probe（`.github/workflows/production-case-dump.yml` 僅新增/修正唯讀 case，diff 無寫入標記）為 T2，Agent 於 CI 綠燈 + review 後自行 merge；寫入仍為 T3 Founder GO。T3 / protected 工作可研究、實作、測試並準備 evidence package，但在 production activation、production data repair、migration/schema cutover、billing／entitlement、identity/authz、破壞性動作、backup restore、security-sensitive credential 或重大產品方向前停下等 Founder GO。機器禁令：Pi SSH / artisan / phpunit、印 secrets、force-push、`--admin`、Gmail 刪信。產品 P0 與 Control Plane I1 仍有效。Capabilities 詳見 `docs/governance/AGENT_CAPABILITY_REGISTRY.md`，勿假設權限。
 
 ### 必讀（3 份，每次任務都讀）
 
