@@ -1774,8 +1774,8 @@ class StudentClassController extends Controller
         // Past lessons are history: a subject change mid-contract must go through
         // the split (轉課) flow, otherwise taught sessions would be relabelled.
         if (array_key_exists('SubjectID', $mapped)
-            && (int) $mapped['SubjectID'] !== (int) $studentClass->SubjectID
-            && $this->subjectLabelForGuard((int) $mapped['SubjectID']) !== $this->subjectLabelForGuard((int) $studentClass->SubjectID)
+            && (int) $mapped['SubjectID'] !== (int) $studentClass->getAttribute('SubjectID')
+            && $this->subjectLabelForGuard((int) $mapped['SubjectID']) !== $this->subjectLabelForGuard((int) $studentClass->getAttribute('SubjectID'))
             && $this->courseHasPastOrTaughtSessions((int) $studentClass->getKey())
         ) {
             $this->auditEditBlocked($studentClass, 'subject_change_requires_transfer', 422);
@@ -8242,8 +8242,8 @@ class StudentClassController extends Controller
                 ->where(fn ($q) => $q->whereDate('SessionDate', '<', Carbon::today()->toDateString())
                     ->orWhereIn('Status', $taught))
                 ->exists()
-            || StudentSignIn::where('StudentClassID', $courseId)->whereNull('VoidedAt')->exists()
-            || LearningRecord::where('StudentClassID', $courseId)->whereNull('VoidedAt')->where('SessionDeducted', 1)->exists();
+            || StudentSignIn::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')->exists()
+            || LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')->where('SessionDeducted', 1)->exists();
     }
 
     private function subjectLabelForGuard(int $subjectId): string

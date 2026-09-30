@@ -32,7 +32,7 @@ class CourseSubjectChangeGuardTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
         [$token, $course] = $this->fixture(2); // English
-        $this->session($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-09-23', 'attended');
 
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", ['subject' => 'Math'])
             ->assertStatus(422)
@@ -49,11 +49,11 @@ class CourseSubjectChangeGuardTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
         [$token, $course] = $this->fixture(2);
-        $this->session($course, '2026-09-23', 'attended');
+        $this->makeSession($course, '2026-09-23', 'attended');
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", ['subject' => 'English'])->assertOk();
 
         [$token2, $fresh] = $this->fixture(2);
-        $this->session($fresh, '2026-10-07', 'scheduled'); // future only
+        $this->makeSession($fresh, '2026-10-07', 'scheduled'); // future only
         $this->withToken($token2)->putJson("/api/v1/student-classes/{$fresh->ID}", ['subject' => 'Math'])->assertOk();
         $this->assertSame(3, (int) $fresh->fresh()->SubjectID);
     }
@@ -62,7 +62,7 @@ class CourseSubjectChangeGuardTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
         [$token, $course, $old, $new] = $this->fixture(2);
-        $past = $this->session($course, '2026-09-23', 'scheduled'); // no attendance evidence
+        $past = $this->makeSession($course, '2026-09-23', 'scheduled'); // no attendance evidence
 
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", ['teacher_id' => $new])->assertOk();
 
@@ -73,8 +73,8 @@ class CourseSubjectChangeGuardTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
         [$token, $course, $old, $new] = $this->fixture(2);
-        $before = $this->session($course, '2026-09-16', 'scheduled');
-        $onAfter = $this->session($course, '2026-09-23', 'scheduled');
+        $before = $this->makeSession($course, '2026-09-16', 'scheduled');
+        $onAfter = $this->makeSession($course, '2026-09-23', 'scheduled');
 
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", [
             'teacher_id' => $new,
@@ -99,7 +99,7 @@ class CourseSubjectChangeGuardTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
         [$token, $course] = $this->fixture(2);
-        $past = $this->session($course, '2026-09-23', 'scheduled'); // Wed, no sign-in / LR
+        $past = $this->makeSession($course, '2026-09-23', 'scheduled'); // Wed, no sign-in / LR
 
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", [
             'StudentID' => $course->StudentID,
@@ -121,7 +121,7 @@ class CourseSubjectChangeGuardTest extends TestCase
         return (int) collect($res->json('data'))->firstWhere('id', $sessionId)['teacher_id'];
     }
 
-    private function session(StudentClass $course, string $date, string $status): ClassSession
+    private function makeSession(StudentClass $course, string $date, string $status): ClassSession
     {
         return ClassSession::create([
             'StudentClassID' => $course->ID,
