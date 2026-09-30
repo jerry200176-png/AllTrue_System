@@ -29,12 +29,12 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "schedule edits sync future lessons in one save",
           "late / missed judged from real class sessions",
           "name search applies to assessment records",
           "修正超級管理員看不到版本更新內容的問題",
           "change requires transfer; teacher change keeps past lessons",
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "from a stale acting context instead of failing every request"
+          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗"
         ]
       }
     ],
@@ -45,8 +45,8 @@ export const changelogDraftNotes = [
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "tab acting context, context chip, route-implied switch",
       "as in security audit + self-approval hard block",
-      "late / missed judged from real class sessions",
-      "name search applies to assessment records"
+      "schedule edits sync future lessons in one save",
+      "late / missed judged from real class sessions"
     ]
   },
   {

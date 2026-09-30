@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-30-fixed-schedule-save
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 固定調課會同步未來堂次
+    summary: 調整課程固定時段後，可修改的未來堂次會在同一次儲存中同步；未同步的堂次會顯示警示。
+    items:
+      - category: fixed
+        text: 已點名、已核准與單堂例外會保留；固定調課不再只改課程設定而漏掉未來堂次。
+      - category: improved
+        text: 儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。
+    source_refs:
+      - "changelog:2026-09-30:fixed-schedule-save"
   - id: staff-2026-09-30-teacher-late-missed
     published_at: "2026-09-30"
     audiences:

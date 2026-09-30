@@ -3109,6 +3109,21 @@ const parseApiErrorMessage = (err, fallback = '操作失敗') => {
   return (generic || details || fallback) + actionLine;
 };
 
+const courseScheduleFingerprint = (form) => {
+  const slots = (form?.day_time_slots || []).map((slot) => [
+    Number(slot?.day || 0),
+    normalizeTo30Min(slot?.start_time || form?.start_time || '16:00'),
+    Number(slot?.duration_hours || form?.duration_hours || 2),
+  ]).sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1]));
+  return JSON.stringify({
+    slots,
+    days: [...new Set((form?.days_of_week || []).map(Number))].sort((a, b) => a - b),
+    duration: Number(form?.duration_hours || 2),
+    start: normalizeTo30Min(form?.start_time || '16:00'),
+    first: String(form?.first_class_date || '').slice(0, 10),
+  });
+};
+
 const submitCourse = async () => {
   const form = courseForm.value;
   const student = selectedStudent.value;
@@ -3194,34 +3209,42 @@ const submitCourse = async () => {
         return;
       }
       const isPackageCourse = !!editingCourseRaw.value?.PackageID;
+      const originalForm = courseFormSnapshot.value ? JSON.parse(courseFormSnapshot.value) : null;
+      const scheduleChanged = !originalForm || courseScheduleFingerprint(form) !== courseScheduleFingerprint(originalForm);
       const body = {
         subject: form.subject,
         teacher_id: form.teacher_id || null,
         class_type: form.class_type,
         rate_per_30min: form.rate_per_30min,
         rate_unit: form.rate_unit || 'session',
-        duration_hours: form.duration_hours,
         payment_type: form.payment_type,
         sessions_purchased: form.sessions_purchased,
-        days_of_week: form.days_of_week?.length ? form.days_of_week : (form.day_of_week ? [form.day_of_week] : []),
-        start_time: form.start_time,
-        day_time_slots: (form.day_time_slots || [])
-          .map((slot) => ({
-            day: Number(slot?.day || 0),
-            start_time: normalizeTo30Min(slot?.start_time || form.start_time || '16:00'),
-            duration_minutes: Number(slot?.duration_hours || 0) > 0 ? Math.round(Number(slot.duration_hours) * 60) : undefined,
-          }))
-          .filter((slot) => slot.day >= 1 && slot.day <= 7),
-        end_time: computeEndTime(form.start_time, form.duration_hours),
-        first_class_date: form.first_class_date || null,
-        force_rebuild_if_mismatch: true,
+        ...(scheduleChanged ? {
+          duration_hours: form.duration_hours,
+          days_of_week: form.days_of_week?.length ? form.days_of_week : (form.day_of_week ? [form.day_of_week] : []),
+          start_time: form.start_time,
+          day_time_slots: (form.day_time_slots || [])
+            .map((slot) => ({
+              day: Number(slot?.day || 0),
+              start_time: normalizeTo30Min(slot?.start_time || form.start_time || '16:00'),
+              duration_minutes: Number(slot?.duration_hours || 0) > 0 ? Math.round(Number(slot.duration_hours) * 60) : undefined,
+            }))
+            .filter((slot) => slot.day >= 1 && slot.day <= 7),
+          end_time: computeEndTime(form.start_time, form.duration_hours),
+          first_class_date: form.first_class_date || null,
+          force_rebuild_if_mismatch: true,
+        } : {}),
         room_id: form.room_id || null,
         settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
         monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
         Memo: form.memo || null
       };
       if (isPackageCourse) delete body.remaining_sessions;
-      body.paid_at = form.paid_at ? form.paid_at : null;
+      // A schedule edit must not send an unchanged payment field. An empty
+      // paid_at can otherwise be interpreted as a request to undo a payment.
+      if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
+        body.paid_at = form.paid_at || null;
+      }
       const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
         method: 'PUT',
         credentials: 'include',
@@ -3258,7 +3281,11 @@ const submitCourse = async () => {
           successMsg += `\n\n⚠️ 學段提示：${payload.scope_warning}`;
         }
         closeCourseModal();
-        toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+        if (sync?.warning) {
+          toastRef.value?.show?.({ title: '部分堂次未同步', description: sync.warning, variant: 'warning', durationMs: 8000 });
+        } else {
+          toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+        }
         await loadAllStudentCourses();
         await loadStudentCourses(student.id);
         return;
@@ -3266,7 +3293,17 @@ const submitCourse = async () => {
       const err = await res.json().catch(() => ({}));
       toastRef.value?.show?.({ title: '儲存失敗', description: parseApiErrorMessage(err, '更新課程失敗'), variant: 'error', durationMs: 5000 });
       return;
-    } catch (_) {}
+    } catch (error) {
+      // A Laravel course must never silently fall through to the legacy
+      // Supabase writer after a network or parsing failure.
+      toastRef.value?.show?.({
+        title: '儲存失敗',
+        description: error?.message || '連線失敗，請稍後再試。',
+        variant: 'error',
+        durationMs: 5000,
+      });
+      return;
+    }
   }
   const base = {
     student_id: student.id,
