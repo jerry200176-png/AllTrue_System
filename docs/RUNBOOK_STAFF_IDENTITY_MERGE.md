@@ -15,12 +15,12 @@
 
 ## 怎麼看結果（最後一行 `merge-dry-run-result=`）
 
-- **REFUSED**：輸入不對（id 相同、找不到人、S 不是老師、R 不是主任、R 是超級管理員、帳號已停用…），看 `refuse-check ...=FAIL`。
+- **REFUSED**：輸入不對（id 相同、找不到人、S 不是老師、R 不是主任、帳號已停用…），看 `refuse-check ...=FAIL`。
 - **NO-GO**：階段 1 **一定是 NO-GO**（`phase1-read-only`、`merge-journal-table-missing`：還沒有套用功能），這是預期的。其他原因也會列出：
-  `multi-role-flag-off`、`rfid-collision`（刷卡卡號衝突）、`pending-approvals-with-survivor-as-subject`（老師本人有待核准項目，合併後可能自己核准自己）、`schema-missing-<表名>`。
+  `multi-role-flag-off`、`rfid-collision`（刷卡卡號衝突）、`pending-approvals-with-survivor-as-subject`（老師本人有待核准項目，合併後可能自己核准自己）、`no-director-campuses`（主任帳號沒有可授權的分校）、`schema-missing-<表名>`。
 - **GO**：階段 1 不會出現。
 
-重點行：`grant ... create=director campuses=`＝要替 S 建立的主任權限分校（操作者需確認）；`union table=UserCampus`＝S 缺少的分校；
+重點行：`grant-source`＝主任帳號的分校來源（UserCampus／既有權限），操作者需確認；`grant ... create=director`＝要替 S 新建的主任權限分校，`reactivate`＝S 曾被撤銷、改為恢復的分校；`dedupe`＝S 已有同一筆（不搬）；`union table=UserCampus`＝S 缺少的分校；
 `move`＝主任帳號名下進行中的事項（筆數＋最多 20 個 id）；`keep`＝歷史核准／建立紀錄留在 R（只給筆數）；`alias retired_login=`＝舊登入名是否相同（舊名稱之後仍可登入）；
 `revoke auth_tokens`、`disable user`；`skip ... reason=missing`＝此環境沒有該表。
 

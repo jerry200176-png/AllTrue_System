@@ -85,11 +85,20 @@ class StaffIdentityMergePlanTest extends TestCase
         UserCampus::create(['UserID' => $r, 'CampusID' => $extra, 'Admin' => 1, 'Approved' => 1]);
         $open = $this->workflow($r, null);
         $this->workflow($r, now());
+        $grant = ['capability' => 'director', 'campus_id' => $this->campus, 'granted_at' => now()];
+        DB::table('user_capability_grants')->insert([['user_id' => $s, 'revoked_at' => now()] + $grant, ['user_id' => $r, 'revoked_at' => null] + $grant]);
+        foreach ([$r, $s] as $u) {
+            DB::table('NotificationReads')->insert(['NotificationID' => 7, 'UserID' => $u, 'created_at' => now(), 'updated_at' => now()]);
+        }
 
         $lines = app(StaffIdentityMergeService::class)->plan($s, $r, self::CUT)['lines'];
 
         $this->assertContains("move table=exception_workflows col=owner_user_id count=1 sample={$open}", $lines);
-        $this->assertContains("grant table=user_capability_grants create=director campuses={$this->campus},{$extra}", $lines);
+        $this->assertContains("grant-source usercampus={$this->campus},{$extra} explicit-grants={$this->campus}", $lines);
+        $this->assertContains("grant table=user_capability_grants create=director campuses={$extra}", $lines);
+        $this->assertContains("reactivate table=user_capability_grants capability=director campuses={$this->campus}", $lines);
+        $this->assertContains('dedupe table=NotificationReads count=1', $lines);
+        $this->assertContains('move table=NotificationReads col=UserID count=0 sample=', $lines);
         $this->assertContains("union table=UserCampus add_campuses={$extra} rfid_copy_rows=0", $lines);
         $this->assertContains('keep table=exception_workflows col=created_by_user_id count=2', $lines);
         $this->assertContains('alias retired_login=different', $lines);
@@ -106,14 +115,21 @@ class StaffIdentityMergePlanTest extends TestCase
         DB::table('UserCampus')->where('UserID', $s)->update(['RFID' => 'AAA']);
         DB::table('UserCampus')->where('UserID', $r)->update(['RFID' => 'BBB']);
         DB::table('teacher_payroll_deductions')->insert(['teacher_id' => $s, 'deduction_key' => 'k', 'status' => 'pending']);
+        DB::table('teacher_payroll_events')->insert(['teacher_id' => $s, 'event_date' => '2026-10-02', 'event_type' => 'leave', 'status' => 'pending']);
 
         $lines = app(StaffIdentityMergeService::class)->plan($s, $r, self::CUT)['lines'];
 
         $this->assertContains("conflict rfid-collision campus_ids={$this->campus}", $lines);
-        $this->assertContains('conflict self-approval pending_rows=1', $lines);
+        $this->assertContains('conflict self-approval pending_rows=2', $lines);
         $this->assertContains('nogo reason=rfid-collision', $lines);
         $this->assertContains('nogo reason=pending-approvals-with-survivor-as-subject', $lines);
         $this->assertStringNotContainsString('AAA', implode("\n", $lines));
+    }
+
+    public function test_no_approved_campuses_on_retired_director_is_no_go(): void
+    {
+        $lines = app(StaffIdentityMergeService::class)->plan($this->user('T'), $this->user('D'), self::CUT)['lines'];
+        $this->assertContains('nogo reason=no-director-campuses', $lines);
     }
 
     /** @return array{0:int,1:int} survivor teacher, retired director */

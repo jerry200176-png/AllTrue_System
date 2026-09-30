@@ -69,7 +69,6 @@ final class StaffIdentityMergeService
             'users-exist' => $s !== null && $r !== null,
             'survivor-is-teacher' => $s !== null && $s->type === 'T',
             'retired-is-director' => $r !== null && $r->type === 'D',
-            'retired-not-super-admin' => $r !== null && $r->type !== 'S',
             'survivor-active' => $s !== null && !in_array($s->status, ['inactive', 'suspended'], true),
             'retired-not-already-inactive' => $r !== null && $r->status !== 'inactive',
         ];
@@ -127,8 +126,8 @@ final class StaffIdentityMergeService
         $this->move('admission_inquiries', 'assigned_to', fn (Builder $q) => $q->whereNotIn('status', ['enrolled', 'lost']), ['status']);
         $this->move('exception_workflow_candidates', 'teacher_id', fn (Builder $q) => $q->where('status', 'available')
             ->where('expires_at', '>', now()->toDateTimeString()), ['status', 'expires_at']);
-        $this->move('NotificationReads', 'UserID', fn (Builder $q) => $q->whereNull('ReadAt'), ['ReadAt']);
-        $this->move('bug_report_user_reads', 'user_id', fn (Builder $q) => $q);
+        $this->move('NotificationReads', 'UserID', fn (Builder $q) => $q->whereNull('ReadAt'), ['ReadAt', 'NotificationID'], 'NotificationID');
+        $this->move('bug_report_user_reads', 'user_id', fn (Builder $q) => $q, ['bug_report_id'], 'bug_report_id');
         $this->move('user_notification_preferences', 'user_id', fn (Builder $q) => $q->whereNotExists(
             fn ($x) => $x->select(DB::raw(1))->from('user_notification_preferences as p')->where('p.user_id', $this->s)));
         if ($this->has('chat_thread_members', ['thread_id', 'user_id', 'left_at'])) {
@@ -143,14 +142,21 @@ final class StaffIdentityMergeService
     /**
      * @param callable(Builder):mixed $scope
      * @param list<string> $need
+     * @param string|null $dupKey rows whose ($col=S, $dupKey) already exist are deduped, not moved
      */
-    private function move(string $table, string $col, callable $scope, array $need = []): void
+    private function move(string $table, string $col, callable $scope, array $need = [], ?string $dupKey = null): void
     {
         if (!$this->has($table, array_merge([$col, 'id'], $need))) {
             return;
         }
         $q = DB::table($table)->where($col, $this->r);
         $scope($q);
+        if ($dupKey !== null) {
+            $held = fn ($x) => $x->select(DB::raw(1))->from("{$table} as d")->where("d.{$col}", $this->s)->whereColumn("d.{$dupKey}", "{$table}.{$dupKey}");
+            $dupes = (clone $q)->whereExists($held)->count();
+            $this->out[] = "dedupe table={$table} count={$dupes}";
+            $q->whereNotExists($held);
+        }
         $ids = $q->pluck('id')->map('intval')->sort()->values()->all();
         $this->fp["{$table}.{$col}"] = $ids;
         $this->out[] = "move table={$table} col={$col} count=" . count($ids) . ' sample=' . implode(',', array_slice($ids, 0, 20));
@@ -176,16 +182,24 @@ final class StaffIdentityMergeService
                 ($sf === '' || $sf === $rf) ? $move++ : $conflict[] = (int) $campus;
             }
         }
-        $granted = $this->has('user_capability_grants', ['user_id', 'capability', 'campus_id', 'revoked_at'])
-            ? DB::table('user_capability_grants')->where('user_id', $this->s)->where('capability', 'director')->whereNull('revoked_at')
-                ->pluck('campus_id')->map('intval')->all() : [];
-        $grant = array_values(array_diff($theirs->keys()->map('intval')->all(), $granted));
+        $grants = fn (int $u) => $this->has('user_capability_grants', ['user_id', 'capability', 'campus_id', 'revoked_at'])
+            ? DB::table('user_capability_grants')->where('user_id', $u)->where('capability', 'director')->get(['campus_id', 'revoked_at']) : collect();
+        $sGrants = $grants($this->s);
+        $active = $sGrants->whereNull('revoked_at')->pluck('campus_id')->map('intval')->all();
+        $revoked = $sGrants->whereNotNull('revoked_at')->pluck('campus_id')->map('intval')->all();
+        $explicit = $grants($this->r)->whereNull('revoked_at')->pluck('campus_id')->map('intval')->sort()->values()->all();
+        $target = $theirs->keys()->map('intval')->sort()->values()->all();
+        $reactivate = array_values(array_intersect(array_diff($target, $active), $revoked));
+        $grant = array_values(array_diff($target, $active, $revoked));
         sort($add);
-        sort($grant);
         sort($conflict);
         $this->fp['union.UserCampus'] = $add;
         $this->fp['grant.director'] = $grant;
+        $this->fp['reactivate.director'] = $reactivate;
+        $this->out[] = 'grant-source usercampus=' . implode(',', $target) . ' explicit-grants=' . implode(',', $explicit);
         $this->out[] = 'grant table=user_capability_grants create=director campuses=' . implode(',', $grant);
+        $this->out[] = 'reactivate table=user_capability_grants capability=director campuses=' . implode(',', $reactivate);
+        $target === [] && $this->nogo[] = 'no-director-campuses';
         $this->out[] = 'union table=UserCampus add_campuses=' . implode(',', $add) . " rfid_copy_rows={$move}";
         if ($conflict !== []) {
             $this->out[] = 'conflict rfid-collision campus_ids=' . implode(',', $conflict);
@@ -213,7 +227,7 @@ final class StaffIdentityMergeService
     private function selfApproval(): void
     {
         $n = 0;
-        foreach (['fulltime_salary_profiles', 'teacher_payroll_deductions', 'teacher_payroll_achievements'] as $t) {
+        foreach (['fulltime_salary_profiles', 'teacher_payroll_deductions', 'teacher_payroll_achievements', 'teacher_payroll_events'] as $t) {
             $this->has($t, ['teacher_id', 'status']) && $n += DB::table($t)->where('teacher_id', $this->s)->where('status', 'pending')->count();
         }
         if ($n > 0) {
