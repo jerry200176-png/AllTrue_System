@@ -12,7 +12,7 @@
 
 ## 2026-09-30 — fix(course): subject change requires transfer; teacher change keeps past lessons
 <!-- release-notes: staff_update=staff-2026-09-30-course-history-guard -->
-- 已有過去／已上堂次的合約改科目回 422 `subject_change_requires_transfer`（稽核 `student_class.edit_blocked`），改用 `split-contract` 轉課：帶 `subject`/`subject_id`、`teacher_id`、`slots` 時依 `start_date` 切分，之前的堂次留舊合約，之後的堂次連同紀錄轉新合約（未收款合約；已收款另案）。換老師新增選填 `teacher_effective_date`（≤今天，預設今天）：該日前的堂次保留原老師。改固定時段不再刪除重建已點名堂次。
+- 已有過去／已上堂次的合約改科目回 422 `subject_change_requires_transfer`（稽核 `student_class.edit_blocked`），改用 `split-contract` 轉課：帶 `subject`/`subject_id`、`teacher_id`、`slots` 時依 `start_date` 切分，之前的堂次留舊合約，之後的堂次連同紀錄轉新合約。已繳費合約（單張已繳清帳單、無折扣）餘額轉入：舊帳單降為已用金額並記 `transfer_out`(−X)，新合約建立已繳帳單並記 `transfer_in`(+X)，原收款／收據／繳費回報不動、非現金；新舊合約以 `replacement` 關聯；其餘情況回 422 `transfer_paid_not_simple`。課程管理儲存被擋時出現「改用轉課」視窗（含試算金額）。換老師新增選填 `teacher_effective_date`（≤今天，預設今天）：該日前的堂次保留原老師。改固定時段不再刪除重建已點名堂次。
 
 ## 2026-09-30 — fix(attendance): readable monthly xlsx and clearer single-swipe marking
 <!-- release-notes: silent_ship=silent-2026-09-30-teacher-attendance-polish -->

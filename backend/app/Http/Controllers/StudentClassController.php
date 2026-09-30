@@ -6247,9 +6247,11 @@ class StudentClassController extends Controller
             ->where('Invoice.StudentClassID', $id)
             ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
             ->where('Payment.Amount', '>', 0)->exists();
-        if ((int) ($c->getAttribute('Paid') ?? 0) === 1 || $hasPayment
-            || PaymentReport::query()->where('StudentClassID', $id)->whereIn('status', ['pending', 'confirmed'])->exists()) {
-            $fail('split_contract_paid_locked', '此課程已收款，目前僅支援未收款課程轉課，請先走帳務更正流程。', 409);
+        if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
+            $fail('split_contract_paid_locked', '此課程有待處理的繳費回報，請先完成或作廢該筆回報。', 409);
+        }
+        if ($hasPayment && (int) ($c->getAttribute('Paid') ?? 0) !== 1) {
+            $fail('transfer_paid_not_simple', '課程未標記已繳但有收款紀錄，請改用帳務更正流程。');
         }
     }
 
@@ -6322,6 +6324,9 @@ class StudentClassController extends Controller
         $newCharge = (int) round($rate * $remaining);
         $plan = ['source_charge' => $sourceCharge, 'new_session_count' => $remaining, 'new_charge' => $newCharge, 'start_date' => $start];
 
+        if ((int) ($source->getAttribute('Paid') ?? 0) === 1) {
+            $plan['paid'] = $this->paidTransferPlan($source, $oldCount, $sourceCharge, $newCharge, $rate);
+        }
         $source->setAttribute('SessionCount', $used);
         $source->setAttribute('Charge', $sourceCharge);
         $source->save();
@@ -6364,7 +6369,8 @@ class StudentClassController extends Controller
                 'subject_before' => (int) $source->getAttribute('SubjectID'), 'subject_after' => $newSubjectId,
                 'teacher_before' => $oldTeacher, 'teacher_after' => $newTeacher,
                 'reason_hash' => hash('sha256', (string) ($data['reason'] ?? '')),
-            ]);
+                'transfer_amount' => (int) ($plan['paid']['transfer_amount'] ?? 0),
+            ] + ($plan['paid_result'] ?? []));
         }
         $new->refresh();
 
@@ -6374,12 +6380,18 @@ class StudentClassController extends Controller
             'source_correction' => ['session_count' => $used, 'charge' => $sourceCharge],
             'source_course' => ['id' => $cid, 'session_count' => $used, 'charge' => $sourceCharge],
             'new_course' => ['id' => $newId, 'session_count' => $remaining, 'charge' => $newCharge, 'moved_session_count' => count($movingIds)],
+            'paid_transfer' => isset($plan['paid']) ? ['transfer_amount' => $plan['paid']['transfer_amount'], 'receipt_no' => $plan['paid']['receipt_no']] : null,
         ];
     }
 
-    /** Unpaid contracts: shrink the open invoice to the used part. */
+    /** Paid: carry the balance over with linked transfer rows; unpaid: shrink the open invoice to the used part. */
     private function afterTransferMoney(StudentClass $source, StudentClass $new, array &$plan, array $data): void
     {
+        if (!empty($plan['paid'])) {
+            $this->recordPaidContractTransfer($source, $new, $plan);
+
+            return;
+        }
         $invoices = Invoice::query()->where('StudentClassID', $source->getAttribute('ID'))
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
         foreach ($invoices as $invoice) {
@@ -6417,6 +6429,120 @@ class StudentClassController extends Controller
                 'members' => [['student_class_id' => $srcId, 'relation_type' => 'original'], $row],
             ], $actorId, $scope);
         }
+    }
+
+    /**
+     * Strict eligibility for carrying a PAID balance across a 轉課. Only the plain
+     * case (one paid invoice == full contract price, no discount) is supported;
+     * everything else must use billing correction.
+     */
+    private function paidTransferPlan(StudentClass $course, int $oldCount, int $sourceCharge, int $newCharge, float $rate): array
+    {
+        $refuse = fn (string $why) => abort(response()->json([
+            'message' => '此課程的收款情況較特殊（' . $why . '），無法自動轉課，請改用帳務更正流程。',
+            'code' => 'transfer_paid_not_simple',
+        ], 422));
+        $classId = (int) $course->getAttribute('ID');
+        $fullCharge = (int) round($rate * $oldCount);
+        if ((int) ($course->getAttribute('Paid') ?? 0) !== 1) {
+            $refuse('課程未標記已繳但有收款紀錄');
+        }
+        if ((int) ($course->getAttribute('Disconunt') ?? 0) !== 0 || (int) ($course->getAttribute('Charge') ?? 0) !== $fullCharge) {
+            $refuse('有折扣或金額與堂數×單價不符');
+        }
+        $invoices = Invoice::query()->where('StudentClassID', $classId)
+            ->where(function ($q) { $q->whereNull('Status')->orWhere('Status', '!=', 'void'); })
+            ->lockForUpdate()->get();
+        if ($invoices->count() !== 1) {
+            $refuse('帳單數量不是一張');
+        }
+        $invoice = $invoices->first();
+        $payments = Payment::query()->where('InvoiceID', $invoice->getKey())->orderBy('id')->get();
+        $net = (int) $payments->sum(fn ($p) => (int) $p->Amount);
+        if ((int) $invoice->TotalAmount !== $fullCharge || (int) $invoice->PaidAmount !== $fullCharge
+            || $net !== $fullCharge || $payments->contains(fn ($p) => (string) $p->Method === 'void' || (int) $p->Amount < 0)) {
+            $refuse('帳單金額、已收金額與課程總價不一致或有沖銷紀錄');
+        }
+        if ($fullCharge - $sourceCharge !== $newCharge) {
+            $refuse('金額無法平均切分');
+        }
+        $report = PaymentReport::query()->where('StudentClassID', $classId)->where('status', 'confirmed')->orderByDesc('id')->first();
+        $receipt = $report
+            ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->getKey(), 6, '0', STR_PAD_LEFT)
+            : null;
+
+        return [
+            'invoice_id' => (int) $invoice->getKey(),
+            'paid_amount' => $fullCharge,
+            'transfer_amount' => $newCharge,
+            'receipt_no' => $receipt,
+            'pay_date' => $this->normalizeDateString($course->getAttribute('PayDate')),
+        ];
+    }
+
+    /**
+     * Paid 轉課 money flow. The original Payment / receipt / payment_report are never
+     * edited; the carry-over is a linked pair of non-cash ledger rows:
+     *   source invoice: Payment -X 'transfer_out'   (reads as a reversal in existing ledgers)
+     *   new invoice   : Payment +X 'transfer_in'    (invoice created already paid)
+     * Both invoices then balance: source total = paid = used*rate, new total = paid = remaining*rate.
+     */
+    private function recordPaidContractTransfer(StudentClass $source, StudentClass $new, array &$plan): void
+    {
+        $paid = $plan['paid'];
+        $x = (int) $paid['transfer_amount'];
+        $srcId = (int) $source->getAttribute('ID');
+        $newId = (int) $new->getAttribute('ID');
+        $paidAt = $paid['pay_date'] ?: Carbon::today()->toDateString();
+        $receipt = $paid['receipt_no'] ? '原收據 ' . $paid['receipt_no'] : '原收據無編號';
+
+        $invoice = Invoice::query()->where('id', (int) $paid['invoice_id'])->lockForUpdate()->first();
+        if (!$invoice) {
+            abort(404);
+        }
+        $invoice->setAttribute('TotalAmount', $plan['source_charge']);
+        $invoice->setAttribute('PaidAmount', $plan['source_charge']);
+        $invoice->save();
+        InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->where('StudentClassID', $srcId)
+            ->update(['Amount' => $plan['source_charge']]);
+        $out = Payment::query()->create([
+            'InvoiceID' => $invoice->getKey(),
+            'Amount' => -$x,
+            'PaidAt' => $paidAt,
+            'Method' => 'transfer_out',
+            'Note' => mb_substr("轉課轉出 {$x} 元至新合約#{$newId}（{$receipt}；轉課日 {$plan['start_date']}）", 0, 255),
+        ]);
+
+        $newInvoice = Invoice::query()->create([
+            'StudentID' => (int) $new->getAttribute('StudentID'),
+            'StudentClassID' => $newId,
+            'IssueDate' => Carbon::today()->toDateString(),
+            'DueDate' => Carbon::today()->toDateString(),
+            'TotalAmount' => $x,
+            'PaidAmount' => $x,
+            'ScheduleModeAtIssue' => 'count',
+            'Status' => 'paid',
+            'Note' => mb_substr("轉課轉入：自合約#{$srcId}（{$receipt}）", 0, 255),
+        ]);
+        InvoiceItem::query()->create([
+            'InvoiceID' => $newInvoice->getKey(),
+            'StudentClassID' => $newId,
+            'Description' => '轉課轉入：剩餘 ' . (int) $plan['new_session_count'] . ' 堂',
+            'Amount' => $x,
+        ]);
+        $in = Payment::query()->create([
+            'InvoiceID' => $newInvoice->getKey(),
+            'Amount' => $x,
+            'PaidAt' => $paidAt,
+            'Method' => 'transfer_in',
+            'Note' => mb_substr("轉課轉入 {$x} 元，來源合約#{$srcId} 帳單#{$invoice->getKey()} 付款#{$out->getKey()}（{$receipt}）", 0, 255),
+        ]);
+        if ((int) ($source->getAttribute('Pay') ?? 0) === (int) $paid['paid_amount']) {
+            $source->setAttribute('Pay', $plan['source_charge']);
+            $source->save();
+        }
+        $plan['paid_result'] = ['source_invoice_id' => (int) $invoice->getKey(), 'new_invoice_id' => (int) $newInvoice->getKey(),
+            'transfer_out_payment_id' => (int) $out->getKey(), 'transfer_in_payment_id' => (int) $in->getKey()];
     }
 
     /** Fixed-slot columns (week/time[/durationN]) for an explicit 轉課 slot list. */

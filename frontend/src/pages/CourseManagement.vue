@@ -920,6 +920,7 @@
           <p>{{ editSaveError.message }}</p>
           <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
           <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
+          <button v-if="editSaveError.code === 'subject_change_requires_transfer'" type="button" class="small primary" data-testid="open-course-transfer" @click="showCourseTransfer = true">改用轉課</button>
         </AtInlineAlert>
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro">
@@ -1144,6 +1145,14 @@
       @submit="submitRenewMonthly"
     />
 
+    <CourseTransferModal
+      :show="showCourseTransfer"
+      :course-id="editingId"
+      :subjects="subjectOptions"
+      :teachers="editTeacherOptions"
+      @close="showCourseTransfer = false"
+      @done="onCourseTransferDone"
+    />
     <TransferSessionsModal
       :show="showTransferSessionsModal"
       :source-course="transferSessionsCourse"
@@ -1575,6 +1584,7 @@ import {
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
+import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
@@ -2282,6 +2292,14 @@ const editFormRef = ref(null);
 const editForm = ref({});
 const editFormSnapshot = ref('');
 const editSaveError = ref(null);
+const showCourseTransfer = ref(false);
+const onCourseTransferDone = async () => {
+  showCourseTransfer.value = false;
+  showEditModal.value = false;
+  editSaveError.value = null;
+  await loadCourses();
+  toastRef.value?.show?.({ title: '轉課完成', description: '轉課日之前的堂次留在舊合約，之後的堂次已轉到新合約。', variant: 'success', durationMs: 4000 });
+};
 const editability = ref(null);
 const editabilityLoading = ref(false);
 const editabilityError = ref('');
@@ -5445,6 +5463,7 @@ const submitEdit = async () => {
           ? Object.values(err.errors).flat().filter(Boolean).join(' ')
           : '';
         editSaveError.value = {
+          code: err?.code || '',
           message: err?.message || '更新失敗，請檢查欄位後再試。',
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
