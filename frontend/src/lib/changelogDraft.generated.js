@@ -29,6 +29,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "late / missed judged from real class sessions",
           "name search applies to assessment records",
           "change requires transfer; teacher change keeps past lessons",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
@@ -44,8 +45,8 @@ export const changelogDraftNotes = [
       "as in security audit + self-approval hard block",
       "entry staff login (no role picker)",
       "aware director lookups behind STAFF_MULTI_ROLE_V1",
-      "name search applies to assessment records",
-      "change requires transfer; teacher change keeps past lessons"
+      "late / missed judged from real class sessions",
+      "name search applies to assessment records"
     ]
   },
   {
