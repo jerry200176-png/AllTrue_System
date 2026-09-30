@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campus;
 use App\Models\SecurityAuditEvent;
 use App\Models\User;
+use App\Services\StaffCapabilityAuthorizer;
 use App\Models\UserCampus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -181,15 +182,19 @@ class DirectorAccountController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $users = User::where('type', 'D')->get();
+        $authorizer = app(StaffCapabilityAuthorizer::class);
+        $users = User::query()->whereIn('id', $authorizer->directorUserIds(null))->orderBy('id')->get();
         $campuses = Campus::all()->keyBy('id');
 
-        $list = $users->map(function (User $user) use ($campuses) {
-            $campusIds = UserCampus::where('UserID', $user->id)
-                ->where('Approved', true)
-                ->pluck('CampusID')
-                ->map(fn ($id) => (int) $id)
-                ->all();
+        $list = $users->map(function (User $user) use ($campuses, $authorizer) {
+            // Grant-only directors (type T survivor): campuses come from their director grants.
+            $campusIds = (string) $user->getAttribute('type') === 'D'
+                ? UserCampus::where('UserID', $user->id)
+                    ->where('Approved', true)
+                    ->pluck('CampusID')
+                    ->map(fn ($id) => (int) $id)
+                    ->all()
+                : $authorizer->capabilityCampusMap($user)[StaffCapabilityAuthorizer::CAP_DIRECTOR];
 
             $campusNames = collect($campusIds)
                 ->map(fn ($id) => $campuses->get($id)?->name)

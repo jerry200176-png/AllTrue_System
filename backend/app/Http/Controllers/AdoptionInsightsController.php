@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\LearningRecord;
 use App\Models\ScheduleDiscrepancy;
 use App\Models\User;
+use App\Services\StaffCapabilityAuthorizer;
 use App\Models\UserLoginActivity;
 use App\Models\UserCampus;
 use Carbon\Carbon;
@@ -576,6 +577,11 @@ class AdoptionInsightsController extends Controller
             ->pluck('u.id')
             ->map(fn ($id) => (int) $id)
             ->all();
+        // Multi-role (flag ON): type-T survivors holding an active director grant count as directors.
+        $directorUserIds = array_values(array_unique(array_merge(
+            $directorUserIds,
+            app(StaffCapabilityAuthorizer::class)->grantedDirectorUserIds((int) $branchId)
+        )));
 
         $teacherOpened = 0;
         $directorOpened = 0;

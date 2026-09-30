@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "feat(ops): support exact-case human review for monthly correction"
     reason: 僅限受控單案的內部核對入口，部署資格不代表修復完成，不發布教職員完成公告。
 
+  - id: silent-2026-09-30-director-capability-lookups
+    changelog_date: "2026-09-30"
+    changelog_title: "feat(auth): capability-aware director lookups behind STAFF_MULTI_ROLE_V1 (#2908 step 2)"
+    reason: 旗標關閉時行為完全不變的內部查詢重構，不發布教職員公告。
+
   - id: silent-2026-09-30-staff-multirole-activation
     changelog_date: "2026-09-30"
     changelog_title: "feat(ops): Founder-gated activation path for staff multi-role pilot (in-app #299)"
