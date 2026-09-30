@@ -633,6 +633,11 @@ exemptions:
     changelog_title: "feat(courses): director undo of contract amendment"
     reason: 主任操作選單新增「撤銷調整」，屬既有提前結束流程的補救入口，待部署與主任驗收後再評估公告。
 
+  - id: silent-2026-10-01-deploy-skip-superseded
+    changelog_date: "2026-10-01"
+    changelog_title: "fix(ci): late CI for an older commit no longer asks for deploy approval"
+    reason: 只改部署流程，教職員畫面無變化。
+
   - id: silent-2026-09-30-swipe-rfid-line-ids
     changelog_date: "2026-09-30"
     changelog_title: "feat(rfid): swipe-rfid returns student LINE ids"

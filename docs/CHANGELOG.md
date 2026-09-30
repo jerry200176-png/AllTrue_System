@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-learning-teacher-search -->
 - 學習評量表輸入老師姓名後按搜尋或 Enter，可按實際授課老師查詢跨頁紀錄，包含單堂代課與尚未上課的現任老師；共用學生／老師選單首次點入不再立即關閉。
 
+## 2026-10-01 — fix(ci): late CI for an older commit no longer asks for deploy approval
+<!-- release-notes: silent_ship=silent-2026-10-01-deploy-skip-superseded -->
+- `Deploy to Pi` 由較舊 commit 的遲到 CI 觸發時，`resolve-target` 先比對目前 main；不是最新就標 `superseded` 並跳過後續（不再先請 Founder 核准、核准後才因 exact-main gate 取消）。最新 main 的 CI 會自己觸發部署。手動 dispatch 行為不變。
+
 ## 2026-09-30 — fix(students): monthly renewal submit stays enabled after preview
 <!-- release-notes: staff_update=staff-2026-09-30-monthly-renew-admin -->
 - #3333 起 `RenewMonthlyModal` 需要 `preview_status=ready` 才能送出，但學生管理頁（目前唯一續約入口）的預覽只更新金額、從未設定預覽狀態，所以「建立新一期」永遠是灰的。學生管理改用與課程管理相同的 `invalidate/applyMonthlyRenewalPreview`，並顯示警告／擋件。學生管理課程列表補上 `end_date`（以前沒帶，舊期到期日顯示「無到期日」、改用今天 +1 月）。新增 `addMonthsToPeriodEnd`：月底到期續月仍到月底（09-30 → 10-31）。
