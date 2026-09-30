@@ -120,7 +120,7 @@ flowchart TD
 | `type` | `"student"` |
 | `action` | `"sign_in"` |
 | `record` | 新建的 `StudentSignIn` 模型序列化 |
-| `student` | `id`, `name`, `TelegramID`, `TelegramID1`, `TelegramID2` |
+| `student` | `id`, `name`, `TelegramID`, `TelegramID1`, `TelegramID2`, `LineIDs`（已驗證綁定的家長 LINE userId 陣列，可能為 `[]`） |
 | `class` | 若有對應課程：`id`（`StudentClass.ID`）、`teacher_id`；否則 `null` |
 | `campus` | `TelegramToken`（可能為 `null`） |
 

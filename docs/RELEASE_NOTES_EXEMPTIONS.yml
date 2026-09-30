@@ -632,3 +632,8 @@ exemptions:
     changelog_date: "2026-09-29"
     changelog_title: "feat(courses): director undo of contract amendment"
     reason: 主任操作選單新增「撤銷調整」，屬既有提前結束流程的補救入口，待部署與主任驗收後再評估公告。
+
+  - id: silent-2026-09-30-swipe-rfid-line-ids
+    changelog_date: "2026-09-30"
+    changelog_title: "feat(rfid): swipe-rfid returns student LINE ids"
+    reason: 只給讀卡機的 API 回應多一個欄位，教職員畫面無變化。

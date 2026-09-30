@@ -1,3 +1,7 @@
+## 2026-09-30 — feat(rfid): swipe-rfid returns student LINE ids
+<!-- release-notes: silent_ship=silent-2026-09-30-swipe-rfid-line-ids -->
+- `POST /api/v1/swipe-rfid` 學生回應（到班／離班／重複忽略）的 `student` 新增 `LineIDs`：該生已驗證綁定（`student_line_bindings.verified_at` 非空）的家長 LINE userId 陣列，供讀卡機用 LINE Bot 推播；未驗證綁定不回傳。老師回應不變。
+
 ## 2026-09-30 — fix(attendance): teacher late / missed judged from real class sessions
 <!-- release-notes: staff_update=staff-2026-09-30-teacher-late-missed -->
 - 老師出勤狀態改成讀取時依課表重算（`TeacherAttendanceMonth` + 新 `TeacherClassCalendar`，規則同 `SubstituteService::collectTeacherBusySlots`：ClassSession 為準、扣掉被代課堂次、加上代課／加課 schedules）。每間分校第一次刷卡比該分校第一堂，晚超過 10 分鐘＝遲到；有課沒刷且已過第一堂＋10 分＝有課未刷卡；沒課有刷＝行政出勤。有課整月沒刷卡的老師也會出現在月表。今日頁「課表異常」改用同一套結果（以前 `missed` 從未產生、`pending_review` 永遠卡住）。月出勤表標題帶老師名字、新增第一堂／狀態欄；月報匯出註記與摘要加遲到、有課未刷卡。
