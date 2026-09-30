@@ -165,6 +165,7 @@ class TeacherAttendanceController extends Controller
             $query->where('ts.Status', $status);
         }
 
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $records */
         $records = $query->orderBy('ts.SignInDT', 'desc')->paginate($perPage);
 
         // 附加最後補卡資訊
