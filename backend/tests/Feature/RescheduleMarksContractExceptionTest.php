@@ -28,7 +28,7 @@ class RescheduleMarksContractExceptionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Support\Facades\DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']); // fixtures send subject=Math
+        \Illuminate\Support\Facades\DB::table('Subject')->where('Subject_Name', 'Math')->where('id', '<>', 1)->update(['Subject_Name' => 'Math (legacy)']); \Illuminate\Support\Facades\DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']); // fixtures send subject=Math; make it resolve to SubjectID 1
     }
 
     public function test_atomic_same_day_reschedule_marks_contract_exception_and_survives_rebuild(): void

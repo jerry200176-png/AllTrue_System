@@ -23,7 +23,7 @@ class StudentClassRemoveFixedSlotConflictTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Support\Facades\DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']); // fixtures send subject=Math
+        \Illuminate\Support\Facades\DB::table('Subject')->where('Subject_Name', 'Math')->where('id', '<>', 1)->update(['Subject_Name' => 'Math (legacy)']); \Illuminate\Support\Facades\DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']); // fixtures send subject=Math; make it resolve to SubjectID 1
         Carbon::setTestNow(Carbon::parse('2026-04-12 08:00:00', 'Asia/Taipei'));
     }
 
