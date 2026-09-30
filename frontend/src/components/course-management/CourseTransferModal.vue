@@ -110,7 +110,7 @@ async function run(previewOnly) {
     }
     if (previewOnly) preview.value = payload;
     else emit('done', payload);
-  } catch (e) {
+  } catch {
     error.value = '連線失敗，請稍後再試。';
   } finally {
     busy.value = false;

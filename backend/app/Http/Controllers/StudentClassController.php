@@ -6267,13 +6267,13 @@ class StudentClassController extends Controller
         $paidAt = $paid['pay_date'] ?: Carbon::today()->toDateString();
         $receipt = $paid['receipt_no'] ? '原收據 ' . $paid['receipt_no'] : '原收據無編號';
 
-        $invoice = Invoice::query()->whereKey($paid['invoice_id'])->lockForUpdate()->firstOrFail();
+        $invoice = Invoice::query()->lockForUpdate()->findOrFail((int) $paid['invoice_id']);
         $invoice->TotalAmount = $plan['source_charge'];
         $invoice->PaidAmount = $plan['source_charge'];
         $invoice->save();
         InvoiceItem::query()->where('InvoiceID', $invoice->id)->where('StudentClassID', $srcId)
             ->update(['Amount' => $plan['source_charge']]);
-        $out = Payment::create([
+        $out = Payment::query()->create([
             'InvoiceID' => $invoice->id,
             'Amount' => -$x,
             'PaidAt' => $paidAt,
@@ -6281,7 +6281,7 @@ class StudentClassController extends Controller
             'Note' => mb_substr("轉課轉出 {$x} 元至新合約#{$newId}（{$receipt}；轉課日 " . Carbon::today()->toDateString() . '）', 0, 255),
         ]);
 
-        $newInvoice = Invoice::create([
+        $newInvoice = Invoice::query()->create([
             'StudentID' => (int) $new->getAttribute('StudentID'),
             'StudentClassID' => $newId,
             'IssueDate' => Carbon::today()->toDateString(),
@@ -6292,13 +6292,13 @@ class StudentClassController extends Controller
             'Status' => 'paid',
             'Note' => mb_substr("轉課轉入：自合約#{$srcId}（{$receipt}）", 0, 255),
         ]);
-        InvoiceItem::create([
+        InvoiceItem::query()->create([
             'InvoiceID' => $newInvoice->id,
             'StudentClassID' => $newId,
             'Description' => '轉課轉入：剩餘 ' . (int) $plan['new_session_count'] . ' 堂',
             'Amount' => $x,
         ]);
-        $in = Payment::create([
+        $in = Payment::query()->create([
             'InvoiceID' => $newInvoice->id,
             'Amount' => $x,
             'PaidAt' => $paidAt,
@@ -6319,13 +6319,19 @@ class StudentClassController extends Controller
         ];
         $member = \App\Models\CourseContractGroupMember::query()->where('student_class_id', $srcId)->first();
         $group = $member ? \App\Models\CourseContractGroup::query()->whereKey($member->group_id)->lockForUpdate()->first() : null;
+        $subjectChanged = (int) $new->getAttribute('SubjectID') !== (int) $source->getAttribute('SubjectID');
         if ($group) {
+            if ($subjectChanged && $group->subject_id) {
+                // A group is per-subject; a 轉課 across subjects widens it to mixed.
+                $group->subject_id = null;
+                $group->save();
+            }
             $continuity->addMember($group, $row, $actorId ? (int) $actorId : null, $scope);
         } else {
             $continuity->createGroup([
                 'student_id' => (int) $source->getAttribute('StudentID'),
                 'campus_id' => (int) (DB::table('Student')->where('id', (int) $source->getAttribute('StudentID'))->value('CampusID') ?? 0),
-                'subject_id' => (int) $source->getAttribute('SubjectID'),
+                'subject_id' => $subjectChanged ? null : (int) $source->getAttribute('SubjectID'),
                 'members' => [['student_class_id' => $srcId, 'relation_type' => 'original'], $row],
             ], $actorId ? (int) $actorId : null, $scope);
         }
