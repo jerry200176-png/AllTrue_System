@@ -25,10 +25,10 @@ class TeacherMonthlyAttendanceExport implements WithMultipleSheets
         $prefix = trim("{$this->campusName} {$this->yearMonth}");
         $sheets = [new TeacherMonthlySummarySheet($this->teachers, $prefix)];
 
-        $used = ['摘要' => true, '修正紀錄' => true];
+        $used = ['摘要' => true, '修正紀錄' => true];  // key = 小寫名稱
         foreach ($this->teachers as $teacher) {
             $title = $this->uniqueSheetName($teacher['teacher_name'], $used);
-            $used[$title] = true;
+            $used[mb_strtolower($title)] = true;
             $sheets[] = new TeacherMonthlyPerTeacherSheet($teacher, $title, $prefix);
         }
 
@@ -37,17 +37,16 @@ class TeacherMonthlyAttendanceExport implements WithMultipleSheets
         return $sheets;
     }
 
+    /** Excel sheet 名稱：≤31 字、不分大小寫唯一、不可含 / \\ ? * : [ ] */
     private function uniqueSheetName(string $name, array $used): string
     {
         $name  = preg_replace('/[\/\\\\?\*:\[\]]/', '', $name);
         $name  = $name !== '' ? $name : 'Sheet';
-        $base  = mb_substr($name, 0, 29);
         $final = mb_substr($name, 0, 31);
 
-        $i = 2;
-        while (isset($used[$final])) {
-            $final = $base . "-{$i}";
-            $i++;
+        for ($i = 2; isset($used[mb_strtolower($final)]); $i++) {
+            $suffix = "-{$i}";
+            $final  = mb_substr($name, 0, 31 - mb_strlen($suffix)) . $suffix;
         }
 
         return $final;
