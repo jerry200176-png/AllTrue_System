@@ -408,6 +408,43 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-fixed-schedule-save",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "固定調課會同步未來堂次",
+    "summary": "調整課程固定時段後，可修改的未來堂次會在同一次儲存中同步；未同步的堂次會顯示警示。",
+    "items": [
+      "已點名、已核准與單堂例外會保留；固定調課不再只改課程設定而漏掉未來堂次。",
+      "儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已點名、已核准與單堂例外會保留；固定調課不再只改課程設定而漏掉未來堂次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:fixed-schedule-save"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-dup-review-shared-label",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

@@ -893,6 +893,7 @@
             <button type="button" class="ghost" data-testid="course-manager-settings-back" @click="leaveCourseManagerSettings">返回總覽</button>
             <button type="button" class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存課程設定</button>
           </div>
+          <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
           <details class="cm-settings-more">
             <summary>其他操作</summary>
             <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">複製為新課程並更換老師</button>
@@ -975,6 +976,7 @@
           <button class="ghost" @click="showEditModal = false">取消</button>
           <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
         </div>
+        <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
       </div>
     </div>
 
@@ -2464,7 +2466,7 @@ function continuePackageConversionFromPreview() {
   closePackageConversionPreview();
   if (course) openPackageConversion(course);
 }
-/** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
+/** 開啟編輯時的排課指紋；變更時由同一次更新交易同步未上堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
 const rooms = ref([]);
@@ -5396,33 +5398,15 @@ const submitEdit = async () => {
         if (res.ok) {
           const payload = await res.json().catch(() => ({}));
           const sync = payload?.session_sync || {};
-          let scheduleAutoRebuildOk = false;
-          if (scheduleChanged) {
-            const rbRes = await fetch(`/api/v1/student-classes/${id}`, {
-              method: 'PUT',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ force_partial_rebuild: true }),
-            });
-            const rbPayload = await rbRes.json().catch(() => ({}));
-            if (rbRes.ok) {
-              scheduleAutoRebuildOk = true;
-              sync._auto_rebuild_updated = Number(rbPayload?.session_sync?.updated_future_sessions ?? 0);
-            } else {
-              sync._auto_rebuild_failed = rbPayload?.message || rbRes.statusText;
-            }
-          }
           editScheduleBaseline.value = null;
           let successMsg = '課程已更新。';
-          if (scheduleChanged && scheduleAutoRebuildOk) {
-            const u = Number(sync._auto_rebuild_updated ?? 0) + Number(sync.updated_future_sessions ?? 0);
+          if (scheduleChanged) {
+            const u = Number(sync.updated_future_sessions ?? 0);
             if (u > 0) {
               successMsg += ` 已依新固定排課同步 ${u} 筆未上堂次（已點名／已核准堂次維持不變）。`;
             } else {
               successMsg += ' 未上預排堂次已與新固定排課對齊（無需變更或已無未上堂次）。';
             }
-          } else if (sync?._auto_rebuild_failed) {
-            successMsg += ` 未上堂次未自動同步：${sync._auto_rebuild_failed}。請稍後再開啟編輯並按儲存重試；若仍失敗請洽技術支援。`;
           }
           if (sync?.rebuilt) {
             successMsg += ` 已依新開課日重排 ${Number(sync.created_sessions || 0)} 堂。`;
@@ -5437,14 +5421,14 @@ const submitEdit = async () => {
             } else {
               successMsg += ' 已鎖定已點名／已核准堂次；未來堂次日期無需調整。';
             }
-          } else if (sync?.reason === 'history_exists' && !(scheduleChanged && scheduleAutoRebuildOk)) {
+          } else if (sync?.reason === 'history_exists' && !scheduleChanged) {
             // 開課日無變動但有歷史記錄阻擋（或 slots 無法解析）
             if (sync?.reconcile_skipped) {
               successMsg += ' 課程時段已更新，但部分未來堂次因狀態鎖定未同步時間，請至堂次列表確認。';
             } else {
               successMsg += ' 本課已有出缺勤/核准紀錄，為保留歷史資料未重排堂次。';
             }
-          } else if (sync?.reason === 'start_date_unchanged' && !(scheduleChanged && scheduleAutoRebuildOk)) {
+          } else if (sync?.reason === 'start_date_unchanged' && !scheduleChanged) {
             successMsg += ' 開課日未變更，故未重排堂次。';
           } else if (sync?.reason === 'start_date_not_updated') {
             successMsg += ' 本次未更新開課日，故未重排堂次。';
@@ -5455,7 +5439,16 @@ const submitEdit = async () => {
           if (courseManagerOpen.value && courseManagerCourse.value) {
             editCourse(courseManagerCourse.value, { openModal: false });
           }
-          toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+          if (sync?.warning) {
+            toastRef.value?.show?.({
+              title: '部分堂次未同步',
+              description: sync.warning,
+              variant: 'warning',
+              durationMs: 8000,
+            });
+          } else {
+            toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+          }
           return;
         }
         const err = await res.json().catch(() => ({}));
@@ -5468,6 +5461,12 @@ const submitEdit = async () => {
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
         };
+        toastRef.value?.show?.({
+          title: '儲存失敗',
+          description: [editSaveError.value.message, details, editSaveError.value.hint].filter(Boolean).join(' '),
+          variant: 'error',
+          durationMs: 8000,
+        });
         return;
       }
     } catch (e) {
@@ -5475,6 +5474,12 @@ const submitEdit = async () => {
         message: '連線失敗，請稍後再試。',
         details: e?.message || '',
       };
+      toastRef.value?.show?.({
+        title: '儲存失敗',
+        description: [editSaveError.value.message, editSaveError.value.details].filter(Boolean).join(' '),
+        variant: 'error',
+        durationMs: 8000,
+      });
       return;
     }
   }

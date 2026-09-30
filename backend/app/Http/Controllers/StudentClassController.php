@@ -2120,7 +2120,12 @@ class StudentClassController extends Controller
         // be sparse near the end of a course (e.g. only one Wednesday remains),
         // so reverse-reconciling from them would erase newly edited weekdays.
         if ($scheduleFieldsPresent) {
-            if (($sessionSync['reason'] ?? '') === 'history_exists'
+            $unalignedFuture = $this->countUnalignedFutureContractSessions($studentClass);
+            $sessionSync['unaligned_future_sessions'] = $unalignedFuture;
+            if ($unalignedFuture > 0) {
+                $sessionSync['reconcile_skipped'] = true;
+                $sessionSync['warning'] = "固定時段已儲存，但仍有 {$unalignedFuture} 筆未來堂次與新時段不同。請在堂次列表確認狀態。";
+            } elseif (($sessionSync['reason'] ?? '') === 'history_exists'
                 && (
                     !array_key_exists('updated_future_sessions', $sessionSync)
                     || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
@@ -7086,6 +7091,42 @@ class StudentClassController extends Controller
         return false;
     }
 
+    private function countUnalignedFutureContractSessions(StudentClass $studentClass): int
+    {
+        $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+        $contractKeys = [];
+        $defaultDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
+        foreach ($slots as $slot) {
+            $day = (int) data_get($slot, 'weekday', 0);
+            $start = substr((string) data_get($slot, 'time', ''), 0, 5);
+            if ($day < 1 || $day > 7 || $start === '') {
+                continue;
+            }
+            $duration = max(30, (int) (data_get($slot, 'duration_minutes') ?: $defaultDuration));
+            $end = Carbon::createFromFormat('H:i', $start)->addMinutes($duration)->format('H:i');
+            $contractKeys["{$day}|{$start}|{$end}"] = true;
+        }
+
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            $query->where(function ($q) {
+                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
+            });
+        }
+        return $query->get(['SessionDate', 'StartTime', 'EndTime'])->filter(function ($session) use ($contractKeys) {
+            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            if (!$date) {
+                return false;
+            }
+            $day = (int) Carbon::parse($date)->dayOfWeekIso;
+            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+            $end = substr((string) ($session->EndTime ?? ''), 0, 5);
+            return !isset($contractKeys["{$day}|{$start}|{$end}"]);
+        })->count();
+    }
+
     /**
      * Rebuild upcoming class sessions when first class date is edited and no immutable history exists.
      *
@@ -7269,30 +7310,31 @@ class StudentClassController extends Controller
         }
         $startDateChanged = $newStartDate !== $previousStartDate;
         if (!$startDateChanged) {
-            if (
-                !$forceRebuildIfMismatch
-                || !$this->hasSessionStartDateMismatch((int) $studentClass->ID, $newStartDate)
-            ) {
-                // Start date unchanged — but if schedule fields (week/time)
-                // changed, still sync future session times rather than doing
-                // nothing (which lets reconcile overwrite the new values).
-                if ($scheduleUpdated) {
-                    $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
-                    if (!empty($slots)) {
-                        $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
-                        $updatedCount = $this->syncFutureScheduledSessionTimes(
-                            (int) $studentClass->ID,
-                            $slots,
-                            $durationMinutes,
-                            $previousScheduleSlots
-                        );
-                        return [
-                            'rebuilt' => false,
-                            'reason' => 'history_exists',
-                            'updated_future_sessions' => $updatedCount,
-                        ];
-                    }
+            $startDateMismatch = $forceRebuildIfMismatch
+                && $this->hasSessionStartDateMismatch((int) $studentClass->ID, $newStartDate);
+            // Editing the recurring slot must sync mutable occurrences even when
+            // an older course's first materialized lesson does not equal its
+            // StartDate. That mismatch concerns the start-date rebuild only;
+            // letting it bypass this branch left the new contract beside old
+            // future times (and made the UI issue a second, non-atomic PUT).
+            if ($scheduleUpdated && (!$startDateMismatch || $this->hasImmutableSessionHistory((int) $studentClass->getKey()))) {
+                $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+                if (!empty($slots)) {
+                    $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
+                    $updatedCount = $this->syncFutureScheduledSessionTimes(
+                        (int) $studentClass->ID,
+                        $slots,
+                        $durationMinutes,
+                        $previousScheduleSlots
+                    );
+                    return [
+                        'rebuilt' => false,
+                        'reason' => 'history_exists',
+                        'updated_future_sessions' => $updatedCount,
+                    ];
                 }
+            }
+            if (!$startDateMismatch) {
                 return ['rebuilt' => false, 'reason' => 'start_date_unchanged'];
             }
         }
