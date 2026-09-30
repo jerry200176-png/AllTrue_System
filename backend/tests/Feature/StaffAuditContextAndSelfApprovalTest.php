@@ -87,6 +87,7 @@ class StaffAuditContextAndSelfApprovalTest extends TestCase
             $r["$seg approve"] = [$t, 'post', "$b$seg/{id}/approve", 'hq'];
         }
         $r['deductions withdraw'] = ['teacher_payroll_deductions', 'post', "{$b}deductions/{id}/withdraw", 'director'];
+        $r['cash-adjustments withdraw'] = ['teacher_payroll_cash_adjustments', 'post', "{$b}cash-adjustments/{id}/withdraw", 'director'];
         $r['events withdraw'] = ['teacher_payroll_events', 'post', "{$b}events/{id}/withdraw", 'director'];
         $r['achievements withdraw'] = ['teacher_payroll_achievements', 'post', "{$b}achievements/{id}/withdraw", 'director'];
         $r['achievements verify'] = ['teacher_payroll_achievements', 'post', "{$b}achievements/{id}/verify", 'director'];

@@ -561,6 +561,10 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_cash_adjustments', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        // A cash adjustment can be a deduction; withdrawing one against yourself is self-approval.
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         if ($record->director_confirmed_at || ($record->status ?? '') === 'approved') {
             return response()->json(['message' => '已進入審核的現金加扣款不能撤回。'], 422);
         }
