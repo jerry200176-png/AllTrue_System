@@ -7107,7 +7107,7 @@ class StudentClassController extends Controller
             $contractKeys["{$day}|{$start}|{$end}"] = true;
         }
 
-        $query = ClassSession::where('StudentClassID', (int) $studentClass->ID)
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
             ->where('Status', 'scheduled')
             ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
         if (Schema::hasColumn('ClassSession', 'IsContractException')) {
@@ -7317,7 +7317,7 @@ class StudentClassController extends Controller
             // StartDate. That mismatch concerns the start-date rebuild only;
             // letting it bypass this branch left the new contract beside old
             // future times (and made the UI issue a second, non-atomic PUT).
-            if ($scheduleUpdated && (!$startDateMismatch || $this->hasImmutableSessionHistory((int) $studentClass->ID))) {
+            if ($scheduleUpdated && (!$startDateMismatch || $this->hasImmutableSessionHistory((int) $studentClass->getKey()))) {
                 $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
                 if (!empty($slots)) {
                     $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
