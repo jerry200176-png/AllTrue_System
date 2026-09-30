@@ -83,7 +83,11 @@ class AuthController extends Controller
 
         // No explicit role (unified entry) and several accounts share this LoginName+password:
         // let the person choose. Legacy `role` requests are already filtered to one type above.
-        if ($typeFilter === null && $matchingUsers->count() > 1) {
+        // Only true LoginName duplicates qualify; Name matches keep the legacy priority pick.
+        $allSameLoginName = $matchingUsers->every(
+            fn (User $u) => mb_strtolower(trim((string) $u->getAttribute('LoginName'))) === mb_strtolower($input)
+        );
+        if ($typeFilter === null && $matchingUsers->count() > 1 && $allSameLoginName) {
             RateLimiter::clear($throttleKey);
 
             return $this->accountChoiceResponse($matchingUsers);
@@ -113,14 +117,24 @@ class AuthController extends Controller
             'choice_id' => 'required|string|max:64',
         ]);
 
-        $throttleKey = 'login-choose|'.$request->ip();
+        $tokenHash = hash('sha256', $data['choice_token']);
+        $cacheKey = 'login_choice:'.$tokenHash;
+        $throttleKey = 'login-choose|'.$request->ip().'|'.$tokenHash;
         if (RateLimiter::tooManyAttempts($throttleKey, self::LOGIN_MAX_ATTEMPTS)) {
             return $this->lockedLoginResponse($throttleKey);
         }
 
-        // pull = read and delete: a token can never be used twice, even on a wrong choice_id.
-        $choices = Cache::pull('login_choice:'.hash('sha256', $data['choice_token']));
-        $userId = is_array($choices) ? ($choices[$data['choice_id']] ?? null) : null;
+        $expired = fn () => response()->json(['message' => '選擇已失效，請重新登入'], 401);
+
+        // Unknown/expired tokens are not counted as failures (nothing to brute-force).
+        $choices = Cache::get($cacheKey);
+        // add() is atomic on every store: exactly one request can claim a token, even on a wrong choice_id.
+        if (!is_array($choices) || !Cache::add($cacheKey.':used', 1, self::CHOICE_TTL_SECONDS)) {
+            return $expired();
+        }
+        Cache::forget($cacheKey);
+
+        $userId = $choices[$data['choice_id']] ?? null;
         $user = $userId === null ? null : User::query()
             ->whereKey($userId)
             ->where(function ($query) {
@@ -131,9 +145,9 @@ class AuthController extends Controller
 
         if (!$user) {
             RateLimiter::hit($throttleKey, self::LOGIN_DECAY_SECONDS);
-            SecurityAuditEvent::append('login.account_choice', 'denied', [], ['reason_code' => 'invalid_or_expired']);
+            SecurityAuditEvent::append('login.account_choice', 'denied', [], ['reason_code' => 'invalid_choice']);
 
-            return response()->json(['message' => '選擇已失效，請重新登入'], 401);
+            return $expired();
         }
         if ($this->teacherAwaitingDirectorApproval($user)) {
             return response()->json([
@@ -171,12 +185,13 @@ class AuthController extends Controller
 
     private function roleLabel(User $user): string
     {
-        return match ($this->resolveRole($user)) {
-            // Labels say what the account is, since duplicate director accounts are being merged into teacher accounts.
-            'teacher' => '老師帳號',
-            'director' => '主任帳號（即將合併）',
-            'super_admin' => '管理員帳號',
-            default => '待審帳號',
+        // Labels say what the account is; duplicate director accounts are being merged into teacher accounts.
+        return match ($user->getAttribute('type')) {
+            'T' => '老師帳號',
+            'D' => '主任帳號（即將合併）',
+            'S', 'A' => '管理員帳號',
+            'U' => '待審帳號',
+            default => '員工帳號',
         };
     }
 

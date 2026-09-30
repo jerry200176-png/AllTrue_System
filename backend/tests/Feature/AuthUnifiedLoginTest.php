@@ -111,10 +111,6 @@ class AuthUnifiedLoginTest extends TestCase
         $stranger = $this->makeUser('D', 'other@example.com');
         [$token, $choices] = $this->startChoice();
 
-        foreach ([(string) $stranger->id, 'forged'] as $bad) {
-            $this->postJson('/api/v1/auth/login/choose', ['choice_token' => 'x'.$bad, 'choice_id' => $bad])
-                ->assertStatus(401);
-        }
         $this->postJson('/api/v1/auth/login/choose', ['choice_token' => $token, 'choice_id' => (string) $stranger->id])
             ->assertStatus(401);
         // token consumed by the failed attempt
@@ -144,7 +140,7 @@ class AuthUnifiedLoginTest extends TestCase
             ->assertOk()->assertJsonPath('data.session.user.id', $teacher->id);
     }
 
-    public function test_throttle_applies_to_login_and_choose(): void
+    public function test_throttle_applies_to_login(): void
     {
         $this->makeUser('T');
         $this->makeUser('D');
@@ -155,9 +151,54 @@ class AuthUnifiedLoginTest extends TestCase
         $this->postJson('/api/v1/auth/login', ['account' => 'dual@example.com', 'password' => 'bad'])->assertStatus(429);
         $this->postJson('/api/v1/auth/login', ['account' => 'dual@example.com', 'password' => self::PASSWORD])->assertStatus(429);
 
-        for ($i = 0; $i < 5; $i++) {
-            $this->postJson('/api/v1/auth/login/choose', ['choice_token' => 'bad', 'choice_id' => 'bad'])->assertStatus(401);
-        }
-        $this->postJson('/api/v1/auth/login/choose', ['choice_token' => 'bad', 'choice_id' => 'bad'])->assertStatus(429);
+    }
+
+    public function test_second_choose_with_same_token_fails_even_with_other_choice_id(): void
+    {
+        $this->makeUser('T');
+        $this->makeUser('D');
+        [$token, $choices] = $this->startChoice();
+
+        $this->postJson('/api/v1/auth/login/choose', ['choice_token' => $token, 'choice_id' => $choices[0]['choice_id']])->assertOk();
+        $this->postJson('/api/v1/auth/login/choose', ['choice_token' => $token, 'choice_id' => $choices[1]['choice_id']])->assertStatus(401);
+    }
+
+    public function test_name_matches_from_different_people_get_no_chooser(): void
+    {
+        $a = $this->makeUser('T', 'a@example.com');
+        $b = $this->makeUser('D', 'b@example.com');
+        $a->forceFill(['Name' => 'Same Name'])->save();
+        $b->forceFill(['Name' => 'Same Name'])->save();
+
+        $this->postJson('/api/v1/auth/login', ['account' => 'Same Name', 'password' => self::PASSWORD])
+            ->assertOk()
+            ->assertJsonMissingPath('data.requires_account_choice')
+            ->assertJsonPath('data.session.user.id', $b->id); // legacy priority: director first
+    }
+
+    public function test_account_suspended_between_steps_is_rejected(): void
+    {
+        $this->makeUser('T');
+        $director = $this->makeUser('D');
+        [$token, $choices] = $this->startChoice();
+        $director->forceFill(['status' => 'suspended'])->save();
+
+        $this->postJson('/api/v1/auth/login/choose', [
+            'choice_token' => $token,
+            'choice_id' => $this->choiceIdFor($choices, '主任帳號（即將合併）'),
+        ])->assertStatus(401);
+    }
+
+    public function test_pending_teacher_chosen_is_forbidden(): void
+    {
+        $teacher = $this->makeUser('T');
+        $this->makeUser('D');
+        [$token, $choices] = $this->startChoice();
+        UserCampus::where('UserID', $teacher->id)->update(['Approved' => false]);
+
+        $this->postJson('/api/v1/auth/login/choose', [
+            'choice_token' => $token,
+            'choice_id' => $this->choiceIdFor($choices, '老師帳號'),
+        ])->assertStatus(403)->assertJsonPath('code', 'teacher_pending_approval');
     }
 }

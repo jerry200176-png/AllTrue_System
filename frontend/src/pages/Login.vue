@@ -185,9 +185,9 @@ const openForgotPassword = () => {
   mode.value = 'forgot-password';
 };
 
-const finishLogin = (result) => {
+const finishLogin = (result, cooldown = true) => {
   if (result.error) {
-    if (Number(result.error?.retry_after_seconds) > 0) {
+    if (cooldown && Number(result.error?.retry_after_seconds) > 0) {
       startCooldown(result.error.retry_after_seconds);
     }
     throw new Error(result.error?.message || '登入失敗');
@@ -231,7 +231,7 @@ const handleChoose = async (choiceId) => {
   loading.value = true;
   error.value = '';
   try {
-    finishLogin(await supabase.auth.chooseAccount({ choiceToken: choice.value.token, choiceId }));
+    finishLogin(await supabase.auth.chooseAccount({ choiceToken: choice.value.token, choiceId }), false);
   } catch (err) {
     choice.value = null; // token is single-use; start over
     error.value = err.message || '登入失敗';
