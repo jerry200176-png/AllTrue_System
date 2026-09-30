@@ -36,15 +36,30 @@ describe('StudentsList monthly renewal preview', () => {
   });
 });
 
-import { nextRenewalMonth, periodEndInMonth } from '../../lib/monthlyRenewalPreview';
+import { batchRenewalEnd, nextPeriodEnd, nextRenewalMonth, renewalErrorMessage } from '../../lib/monthlyRenewalPreview';
 
 describe('batch monthly renewal periods', () => {
-  it('renews each course into the chosen month and skips courses already there', () => {
-    expect(periodEndInMonth('2026-09-30', '2026-10')).toBe('2026-10-31');
-    expect(periodEndInMonth('2026-09-14', '2026-10')).toBe('2026-10-14');
-    expect(periodEndInMonth('2026-08-31', '2026-10')).toBe('2026-10-31');
-    expect(periodEndInMonth('2026-10-31', '2026-10')).toBeNull();
-    expect(nextRenewalMonth(['2026-10-31', '2026-09-30'])).toBe('2026-10');
+  const today = new Date(2026, 9, 1);
+  it('ends the next period on the settlement day', () => {
+    expect(nextPeriodEnd('2026-09-30', 31, today)).toBe('2026-10-31');
+    expect(nextPeriodEnd('2026-10-01', 31, today)).toBe('2026-10-31'); // 化學: 10-02..10-31, not 11-01
+    expect(nextPeriodEnd('2026-09-09', 9, today)).toBe('2026-10-09');
+    expect(nextPeriodEnd('2026-10-31', 31, today)).toBe('2026-11-30');
+    expect(nextPeriodEnd('2026-12-31', 31, today)).toBe('2027-01-31');
+    expect(nextPeriodEnd('2026-09-30', null, today)).toBe('2026-10-31');
+  });
+
+  it('renews one cycle when it starts in or before the chosen month', () => {
+    expect(batchRenewalEnd('2026-09-30', 31, '2026-10', today)).toBe('2026-10-31');
+    expect(batchRenewalEnd('2026-10-01', 31, '2026-10', today)).toBe('2026-10-31'); // was wrongly "covered"
+    expect(batchRenewalEnd('2026-10-31', 31, '2026-10', today)).toBeNull();
+    expect(nextRenewalMonth(['2026-10-31', '2026-09-30'], today)).toBe('2026-10');
+    expect(nextRenewalMonth(['2026-10-31'], today)).toBe('2026-11');
+  });
+
+  it('prefers Laravel validation text over the generic English message', () => {
+    expect(renewalErrorMessage({ message: 'The given data was invalid.', errors: { end_date: ['新的結束日必須晚於今天。'] } }, 'x')).toBe('新的結束日必須晚於今天。');
+    expect(renewalErrorMessage({}, '續報失敗')).toBe('續報失敗');
   });
 
   it('students page offers one-dialog renewal and deep links monthly renew into it', () => {

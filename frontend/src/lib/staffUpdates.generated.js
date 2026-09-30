@@ -4,6 +4,45 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-01-monthly-renew-polish",
+    "publishedAt": "2026-10-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結續報日期更準",
+    "summary": "新一期結束日會對齊結算日；已過期很久的期別會先提醒，不會自動勾選。",
+    "items": [
+      "10/1 到期、31 號結算的課，續報會是 10/2～10/31，不再跳過或排到 11/1。",
+      "新一期起始日早已過去時，續報視窗會提醒並預設不勾，避免補錯期。",
+      "日期填錯時改顯示中文原因；續報視窗的科目與老師名稱排版修正。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "10/1 到期、31 號結算的課，續報會是 10/2～10/31，不再跳過或排到 11/1。",
+          "日期填錯時改顯示中文原因；續報視窗的科目與老師名稱排版修正。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "新一期起始日早已過去時，續報視窗會提醒並預設不勾，避免補錯期。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-01:monthly-renew-polish"
+    ],
+    "date": "2026-10-01",
+    "version": "2026.10.01"
+  },
+  {
     "id": "staff-2026-09-30-course-history-guard",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

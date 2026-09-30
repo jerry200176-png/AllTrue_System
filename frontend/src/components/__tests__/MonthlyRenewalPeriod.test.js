@@ -4,7 +4,7 @@ import RenewMonthlyModal from '../course-management/RenewMonthlyModal.vue';
 
 const form = () => ({ student_name: '學生', subject: 'Math', current_end_date: '2026-09-10', end_date: '2026-09-30', months: 1,
   settlement_day: 31, original_amount: 4500, discount: { type: 'NONE', value: '0', reason: '' }, preview_status: 'ready',
-  preview_end_date: '2026-10-10', preview_start_date: '2026-09-11', preview_billing_period: '2026-09', preview_due_date: '2026-09-30', preview_blocked: false });
+  preview_end_date: '2026-09-30', preview_start_date: '2026-09-11', preview_billing_period: '2026-09', preview_due_date: '2026-09-30', preview_blocked: false });
 
 describe('monthly renewal period review', () => {
   it('shows the actual new start, billing month and due date and labels the fee as an estimate', () => {

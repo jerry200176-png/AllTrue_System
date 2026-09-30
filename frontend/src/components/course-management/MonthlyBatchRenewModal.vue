@@ -46,7 +46,7 @@ import { computed, ref, watch } from 'vue';
 import { supabase } from '../../supabase';
 import { getSubjectLabel } from '../../lib/constants';
 import { getRenewalPreviewAmount } from '../../lib/coursePricing';
-import { nextRenewalMonth, periodEndInMonth } from '../../lib/monthlyRenewalPreview';
+import { batchRenewalEnd, nextRenewalMonth, renewalErrorMessage } from '../../lib/monthlyRenewalPreview';
 
 const props = defineProps({
   show: Boolean,
@@ -61,6 +61,11 @@ const submitting = ref(false);
 const finished = ref(false);
 let loadId = 0;
 
+const todayMinus = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 const subjectOf = (c) => c.subject_name || getSubjectLabel(c.subject);
 const selectable = (row) => row.state === 'ready';
 const selectedRows = computed(() => rows.value.filter((r) => r.selected && selectable(r)));
@@ -82,13 +87,16 @@ async function previewRow(row, headers, id) {
     const blocked = json.severity === 'blocked';
     row.messages = [...(json.warnings || []), ...(json.blockers || [])].map((w) => w.message).filter(Boolean);
     if (!res.ok && !blocked) {
-      Object.assign(row, { state: 'error', messages: [json.message || '無法預覽，請重試。'] });
+      Object.assign(row, { state: 'error', messages: [renewalErrorMessage(json, '無法預覽，請重試。')] });
       return;
     }
     row.start = json.proposed_course?.start_date || '';
     row.amount = getRenewalPreviewAmount(json);
     row.state = blocked || !row.start ? 'blocked' : 'ready';
-    row.selected = row.state === 'ready';
+    // A period that began weeks ago is usually stale data, not this month's renewal: ask, don't default.
+    const late = row.state === 'ready' && row.start < todayMinus(7);
+    if (late) row.messages.unshift(`新一期從 ${row.start} 開始（已過），確認真的要補這一期再勾選。`);
+    row.selected = row.state === 'ready' && !late;
   } catch {
     if (id === loadId) Object.assign(row, { state: 'error', messages: ['無法預覽，請檢查連線後重試。'] });
   }
@@ -98,7 +106,7 @@ async function loadPreviews() {
   const id = ++loadId;
   finished.value = false;
   rows.value = props.courses.map((course) => {
-    const end = periodEndInMonth(course.end_date, targetMonth.value);
+    const end = batchRenewalEnd(course.end_date, course.settlement_day, targetMonth.value);
     return { course, end, start: '', amount: null, messages: [], selected: false, state: end ? 'loading' : 'covered' };
   });
   let headers;
@@ -122,8 +130,7 @@ async function submit() {
       const json = await res.json().catch(() => ({}));
       if (res.ok) Object.assign(row, { state: 'done', selected: false, messages: [] });
       else {
-        const details = json?.errors ? Object.values(json.errors).flat().join(' ') : '';
-        Object.assign(row, { state: 'error', selected: false, messages: [details || json?.message || '續報失敗'] });
+        Object.assign(row, { state: 'error', selected: false, messages: [renewalErrorMessage(json, '續報失敗')] });
       }
     }
   } catch (e) {
@@ -149,7 +156,9 @@ watch(() => props.show, (open) => {
 .batch-renew-row--blocked, .batch-renew-row--error { border-color: var(--ds-danger); background: var(--ds-danger-wash); }
 .batch-renew-row--done { border-color: var(--ds-success); background: var(--ds-success-wash); }
 .batch-renew-row--covered { opacity: 0.65; }
-.batch-renew-row__main { display: flex; align-items: center; gap: 10px; font-weight: 600; cursor: pointer; }
+.batch-renew-row__main { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; font-weight: 600; cursor: pointer; margin: 0; }
+.batch-renew-row__main input { width: auto; flex: 0 0 auto; margin: 0; }
+.batch-renew-row__main span { white-space: nowrap; }
 .batch-renew-row__teacher { color: var(--ds-ink-mute); font-weight: 400; }
 .batch-renew-row__detail { margin: 4px 0 0 26px; font-size: 14px; }
 .batch-renew-row__msg { margin: 4px 0 0 26px; font-size: 13px; color: var(--ds-warning-ink); }

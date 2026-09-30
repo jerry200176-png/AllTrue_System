@@ -14,6 +14,10 @@
 <!-- release-notes: staff_update=staff-2026-09-30-learning-teacher-search -->
 - 學習評量表輸入老師姓名後按搜尋或 Enter，可按實際授課老師查詢跨頁紀錄，包含單堂代課與尚未上課的現任老師；共用學生／老師選單首次點入不再立即關閉。
 
+## 2026-10-01 — fix(students): monthly renewal follows settlement day; flags late periods
+<!-- release-notes: staff_update=staff-2026-10-01-monthly-renew-polish -->
+- 實際操作續報發現：批次續報把「舊期 10-01 到期」誤判成「已續到十月」而跳過；單科預設新期到 11-01。改用 `nextPeriodEnd`：新期結束日對齊課程結算日（10-01 到期、31 號結算 → 10-02～10-31）。批次改成「下一期開始日落在所選月份（或更早）就續一期」，預設月份為本月。新期開始日已過 7 天以上的列預設不勾並提示（多半是舊資料）。預覽／續報錯誤優先顯示中文驗證訊息（不再出現 "The given data was invalid."）。批次列科目／老師名字不再被擠成直排。
+
 ## 2026-10-01 — fix(ci): late CI for an older commit no longer asks for deploy approval
 <!-- release-notes: silent_ship=silent-2026-10-01-deploy-skip-superseded -->
 - `Deploy to Pi` 由較舊 commit 的遲到 CI 觸發時，`resolve-target` 先比對目前 main；不是最新就標 `superseded` 並跳過後續（不再先請 Founder 核准、核准後才因 exact-main gate 取消）。最新 main 的 CI 會自己觸發部署。手動 dispatch 行為不變。

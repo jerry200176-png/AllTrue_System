@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.01",
     "date": "2026-10-01",
     "title": "2026.10.01 草稿（未發布）",
-    "summary": "for an older commit no longer asks for deploy approval",
+    "summary": "renewal follows settlement day; flags late periods；for an older commit no longer asks for deploy approval",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "renewal follows settlement day; flags late periods",
           "for an older commit no longer asks for deploy approval"
         ]
       }
     ],
     "items": [
+      "renewal follows settlement day; flags late periods",
       "for an older commit no longer asks for deploy approval"
     ]
   },
