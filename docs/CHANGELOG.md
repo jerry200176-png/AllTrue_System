@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(auth): single-entry staff login (no role picker)
+<!-- release-notes: staff_update=staff-2026-09-30-unified-login -->
+- 登入畫面只填帳號與密碼，不再先選「老師／主任櫃台」。後端不帶 `role` 時依 LoginName 找出啟用中的員工帳號並逐一驗密碼：僅一筆符合直接登入；同帳號密碼有兩個帳號（未合併的雙帳號）時回 `data.requires_account_choice`、5 分鐘單次有效的 `choice_token` 與僅含身分標籤的 `choices`，再由新增的 `POST /auth/login/choose` 發 token（選項綁定候選帳號、用過即失效）。節流沿用登入鎖定規則、選擇成功寫入 `login.account_choice` 稽核（僅雜湊 id），查無帳號補做一次假密碼驗證以縮小時間差。舊版前端仍可帶 `role`，語意不變。忘記密碼仍保留身分選單（後續再統一）。無 migration、旗標不變。
+
 ## 2026-09-30 — fix(ux): page loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter
 <!-- release-notes: staff_update=staff-2026-09-30-ux-followups -->
 - 換頁載入時顯示骨架畫面（延遲 150ms，快速載入不閃爍）；編輯學生視窗可按 Esc 關閉，「LINE 綁定家長」改顯示「已綁定 LINE」與 2026/09/03 格式日期，監護人關係顯示中文；課程查找「上課類型」篩選改為只列出符合類型的課程；意見與建議列表遇自動產生的標題時改顯示說明第一行（後端列表僅新增唯讀摘要欄位）。

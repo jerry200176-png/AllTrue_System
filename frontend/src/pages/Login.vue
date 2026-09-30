@@ -14,54 +14,41 @@
         <span v-if="lockSeconds > 0" class="login-error-hint">系統已暫時鎖定，請待倒數結束後再嘗試。</span>
       </div>
 
-      <form class="login-form" @submit.prevent="handleLogin">
-        <div class="form-group">
-          <label>登入身分</label>
-          <div class="login-role-switch" role="radiogroup" aria-label="登入身分">
-            <button
-              type="button"
-              class="role-btn"
-              :class="{ active: selectedRole === 'teacher' }"
-              :aria-pressed="selectedRole === 'teacher'"
-              @click="selectedRole = 'teacher'"
-            >
-              <span class="role-icon">👩‍🏫</span>
-              <span class="role-title">老師</span>
-              <span class="role-subtitle">課表與評量</span>
-            </button>
-            <button
-              type="button"
-              class="role-btn"
-              :class="{ active: selectedRole === 'director' }"
-              :aria-pressed="selectedRole === 'director'"
-              @click="selectedRole = 'director'"
-            >
-              <span class="role-icon role-icon-dual" aria-hidden="true">
-                <span class="role-icon-part">🧑‍💼</span>
-                <span class="role-icon-part">🖥️</span>
-              </span>
-              <span class="role-title">主任/櫃台</span>
-              <span class="role-subtitle">含管理員 · 同入口</span>
-            </button>
-          </div>
+      <div v-if="choice" class="login-form" data-testid="account-choice">
+        <p class="choice-prompt">你有兩個身分，要用哪一個登入？</p>
+        <div class="login-role-switch" role="group" aria-label="選擇登入身分">
+          <button
+            v-for="c in choice.choices"
+            :key="c.choice_id"
+            type="button"
+            class="role-btn"
+            :disabled="loading"
+            @click="handleChoose(c.choice_id)"
+          >
+            <span class="role-title">{{ c.role_label }}</span>
+          </button>
         </div>
+        <button type="button" class="login-footer-btn" @click="choice = null">返回</button>
+      </div>
+
+      <form v-else class="login-form" @submit.prevent="handleLogin">
         <div class="form-group">
-          <label for="login-account">{{ accountLabel }}</label>
+          <label for="login-account">帳號</label>
           <input
             id="login-account"
             v-model="account"
             type="text"
-            :placeholder="accountPlaceholder"
+            placeholder="請輸入登入帳號或姓名"
             autocomplete="username"
           />
         </div>
         <div class="form-group">
-          <label for="login-password">{{ passwordLabel }}</label>
+          <label for="login-password">密碼</label>
           <input
             id="login-password"
             v-model="password"
             type="password"
-            :placeholder="passwordPlaceholder"
+            placeholder="請輸入密碼"
             autocomplete="current-password"
           />
         </div>
@@ -141,7 +128,6 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { supabase } from '../supabase';
-import { parentLogin } from '../api';
 import Register from './Register.vue';
 import DirectorRegister from './DirectorRegister.vue';
 import logoUrl from '../assets/logo.png';
@@ -149,7 +135,7 @@ import logoUrl from '../assets/logo.png';
 const mode = ref('login');
 const account = ref('');
 const password = ref('');
-const selectedRole = ref('director');
+const choice = ref(null); // { token, choices } in memory only; never persisted
 const loading = ref(false);
 const error = ref('');
 const lockSeconds = ref(0);
@@ -165,11 +151,6 @@ const emit = defineEmits(['login-success']);
 let cooldownTimer = null;
 
 const isLoginDisabled = computed(() => loading.value || lockSeconds.value > 0);
-const isParentRole = computed(() => selectedRole.value === 'parent');
-const accountLabel = computed(() => (isParentRole.value ? '帳號（學生姓名或學號）' : '帳號'));
-const accountPlaceholder = computed(() => (isParentRole.value ? '請輸入學生姓名或學號' : '請輸入登入帳號或姓名'));
-const passwordLabel = computed(() => (isParentRole.value ? '密碼（手機號碼）' : '密碼'));
-const passwordPlaceholder = computed(() => (isParentRole.value ? '請輸入家長聯絡手機號碼' : '請輸入密碼'));
 const loginButtonText = computed(() => {
   if (loading.value) return '登入中...';
   if (lockSeconds.value > 0) return `請稍候 ${lockSeconds.value} 秒`;
@@ -198,11 +179,24 @@ const startCooldown = (seconds) => {
 
 const openForgotPassword = () => {
   forgotAccount.value = account.value.trim();
-  forgotRole.value = selectedRole.value === 'director' ? 'director' : 'teacher';
   forgotNote.value = '';
   forgotError.value = '';
   forgotSuccess.value = '';
   mode.value = 'forgot-password';
+};
+
+const finishLogin = (result) => {
+  if (result.error) {
+    if (Number(result.error?.retry_after_seconds) > 0) {
+      startCooldown(result.error.retry_after_seconds);
+    }
+    throw new Error(result.error?.message || '登入失敗');
+  }
+  const session = result.data?.session;
+  if (!session?.user) throw new Error('登入回應異常');
+  choice.value = null;
+  // 後端已在 session.user 帶入 role（主任/老師/super_admin），不 bypass、不另查 profiles
+  emit('login-success', { user: session.user, profile: session.user });
 };
 
 const handleLogin = async () => {
@@ -211,9 +205,7 @@ const handleLogin = async () => {
   const accountText = account.value.trim();
   const passwordText = password.value.trim();
   if (!accountText || !passwordText) {
-    error.value = isParentRole.value
-      ? '請輸入學生姓名（或學號）與手機號碼'
-      : '請輸入帳號與密碼';
+    error.value = '請輸入帳號與密碼';
     return;
   }
 
@@ -221,50 +213,27 @@ const handleLogin = async () => {
   error.value = '';
 
   try {
-    if (isParentRole.value) {
-      const payload = { Phone: passwordText };
-      if (/^\d+$/.test(accountText) && Number(accountText) > 0) {
-        payload.StudentID = Number(accountText);
-      } else {
-        payload.Name = accountText;
-      }
-
-      const result = await parentLogin(payload);
-      if (!result?.token) throw new Error('家長登入回應異常');
-      localStorage.setItem('parent_portal_token', result.token);
-      const target = `${window.location.pathname}#/parent`;
-      window.location.assign(target);
+    const result = await supabase.auth.signInWithPassword({ account: accountText, password: passwordText });
+    if (!result.error && result.data?.requires_account_choice) {
+      choice.value = { token: result.data.choice_token, choices: result.data.choices || [] };
+      password.value = '';
       return;
     }
-
-    const result = await supabase.auth.signInWithPassword({
-      account: accountText,
-      password: passwordText,
-      // 主任入口同時允許 director / super_admin
-      role: selectedRole.value === 'teacher' ? 'teacher' : null,
-    });
-
-    if (result.error) {
-      if (Number(result.error?.retry_after_seconds) > 0) {
-        startCooldown(result.error.retry_after_seconds);
-      }
-      throw new Error(result.error?.message || '登入失敗');
-    }
-    const session = result.data?.session;
-    if (!session?.user) throw new Error('登入回應異常');
-    const resolvedRole = String(session.user.role || '');
-    if (selectedRole.value === 'director' && !['director', 'super_admin', 'admin'].includes(resolvedRole)) {
-      await supabase.auth.signOut();
-      throw new Error('此帳號不是主任或管理員，請切換「老師」登入');
-    }
-    if (selectedRole.value === 'teacher' && resolvedRole !== 'teacher') {
-      await supabase.auth.signOut();
-      throw new Error('此帳號不是老師，請切換「主任/櫃台」登入');
-    }
-
-    // 後端已在 session.user 帶入 role（主任/老師/super_admin），不 bypass、不另查 profiles
-    emit('login-success', { user: session.user, profile: session.user });
+    finishLogin(result);
   } catch (err) {
+    error.value = err.message || '登入失敗';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleChoose = async (choiceId) => {
+  loading.value = true;
+  error.value = '';
+  try {
+    finishLogin(await supabase.auth.chooseAccount({ choiceToken: choice.value.token, choiceId }));
+  } catch (err) {
+    choice.value = null; // token is single-use; start over
     error.value = err.message || '登入失敗';
   } finally {
     loading.value = false;
@@ -431,6 +400,12 @@ onBeforeUnmount(() => {
 .login-form .form-group {
   margin-bottom: 22px;
 }
+.choice-prompt {
+  margin: 0 0 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
 .login-role-switch {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
