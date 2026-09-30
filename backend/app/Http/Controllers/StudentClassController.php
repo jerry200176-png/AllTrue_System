@@ -6161,7 +6161,7 @@ class StudentClassController extends Controller
             $refuse('帳單數量不是一張');
         }
         $invoice = $invoices->first();
-        $payments = Payment::query()->where('InvoiceID', $invoice->id)->orderBy('id')->get();
+        $payments = Payment::query()->where('InvoiceID', $invoice->getKey())->orderBy('id')->get();
         $net = (int) $payments->sum(fn ($p) => (int) $p->Amount);
         if ((int) $invoice->TotalAmount !== $fullCharge || (int) $invoice->PaidAmount !== $fullCharge
             || $net !== $fullCharge || $payments->contains(fn ($p) => (string) $p->Method === 'void' || (int) $p->Amount < 0)) {
@@ -6180,11 +6180,11 @@ class StudentClassController extends Controller
         }
         $report = PaymentReport::query()->where('StudentClassID', $classId)->where('status', 'confirmed')->orderByDesc('id')->first();
         $receipt = $report
-            ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT)
+            ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->getKey(), 6, '0', STR_PAD_LEFT)
             : null;
 
         return [
-            'invoice_id' => (int) $invoice->id,
+            'invoice_id' => (int) $invoice->getKey(),
             'paid_amount' => $fullCharge,
             'transfer_amount' => $newCharge,
             'receipt_no' => $receipt,
@@ -6267,14 +6267,17 @@ class StudentClassController extends Controller
         $paidAt = $paid['pay_date'] ?: Carbon::today()->toDateString();
         $receipt = $paid['receipt_no'] ? '原收據 ' . $paid['receipt_no'] : '原收據無編號';
 
-        $invoice = Invoice::query()->lockForUpdate()->findOrFail((int) $paid['invoice_id']);
-        $invoice->TotalAmount = $plan['source_charge'];
-        $invoice->PaidAmount = $plan['source_charge'];
+        $invoice = Invoice::query()->where('id', (int) $paid['invoice_id'])->lockForUpdate()->first();
+        if (!$invoice) {
+            abort(404);
+        }
+        $invoice->setAttribute('TotalAmount', $plan['source_charge']);
+        $invoice->setAttribute('PaidAmount', $plan['source_charge']);
         $invoice->save();
-        InvoiceItem::query()->where('InvoiceID', $invoice->id)->where('StudentClassID', $srcId)
+        InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->where('StudentClassID', $srcId)
             ->update(['Amount' => $plan['source_charge']]);
         $out = Payment::query()->create([
-            'InvoiceID' => $invoice->id,
+            'InvoiceID' => $invoice->getKey(),
             'Amount' => -$x,
             'PaidAt' => $paidAt,
             'Method' => 'transfer_out',
@@ -6293,17 +6296,17 @@ class StudentClassController extends Controller
             'Note' => mb_substr("轉課轉入：自合約#{$srcId}（{$receipt}）", 0, 255),
         ]);
         InvoiceItem::query()->create([
-            'InvoiceID' => $newInvoice->id,
+            'InvoiceID' => $newInvoice->getKey(),
             'StudentClassID' => $newId,
             'Description' => '轉課轉入：剩餘 ' . (int) $plan['new_session_count'] . ' 堂',
             'Amount' => $x,
         ]);
         $in = Payment::query()->create([
-            'InvoiceID' => $newInvoice->id,
+            'InvoiceID' => $newInvoice->getKey(),
             'Amount' => $x,
             'PaidAt' => $paidAt,
             'Method' => 'transfer_in',
-            'Note' => mb_substr("轉課轉入 {$x} 元，來源合約#{$srcId} 帳單#{$invoice->id} 付款#{$out->id}（{$receipt}）", 0, 255),
+            'Note' => mb_substr("轉課轉入 {$x} 元，來源合約#{$srcId} 帳單#{$invoice->getKey()} 付款#{$out->getKey()}（{$receipt}）", 0, 255),
         ]);
         if ((int) ($source->getAttribute('Pay') ?? 0) === (int) $plan['old_charge']) {
             $source->setAttribute('Pay', $plan['source_charge']);
@@ -6349,10 +6352,10 @@ class StudentClassController extends Controller
             [
                 'source_course_id' => $srcId,
                 'new_course_id' => $newId,
-                'source_invoice_id' => (int) $invoice->id,
-                'new_invoice_id' => (int) $newInvoice->id,
-                'transfer_out_payment_id' => (int) $out->id,
-                'transfer_in_payment_id' => (int) $in->id,
+                'source_invoice_id' => (int) $invoice->getKey(),
+                'new_invoice_id' => (int) $newInvoice->getKey(),
+                'transfer_out_payment_id' => (int) $out->getKey(),
+                'transfer_in_payment_id' => (int) $in->getKey(),
                 'transfer_amount' => $x,
                 'used_session_count' => (int) $plan['source_session_count'],
                 'transferred_remaining_sessions' => (int) $plan['new_session_count'],
