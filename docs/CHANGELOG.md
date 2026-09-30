@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(attendance): teacher monthly attendance daily rows + month API
+<!-- release-notes: silent_ship=silent-2026-09-30-teacher-month-api -->
+- 新增 `TeacherAttendanceMonth`：把老師刷卡轉成每天一列（上班＝第一筆、下班＝最後一筆、工時為各組上下班相加）；只刷一次（含系統 23:59 自動補簽退）標「只刷一次 HH:mm」且不計工時，人工修正後照新時間計；同日兩間分校刷卡標跑校。新增 `GET /teacher-attendance/monthly`（主任依分校、老師只能看自己）。月報 xlsx 與網頁將在後續 PR 改用此計算。唯讀，無 migration。
+
 ## 2026-09-30 — feat(ux): per-tab acting context, context chip, route-implied switch (#2908 step 4)
 <!-- release-notes: silent_ship=silent-2026-09-30-multirole-context-ui -->
 - 雙身分（`STAFF_MULTI_ROLE_V1`，預設關閉）前端：工作身分改存每個分頁（sessionStorage，開分頁時取上次使用值），A 分頁切換不影響 B 分頁；頂列顯示「老師／主任 · 分校」身分標籤（含切換）；直接開啟需另一身分的頁面時自動切換並顯示提示。僅持有兩種身分者可見，單一身分與旗標關閉時無任何變化。

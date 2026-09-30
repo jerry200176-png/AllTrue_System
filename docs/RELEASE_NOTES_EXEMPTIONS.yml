@@ -17,6 +17,11 @@ exemptions:
     changelog_title: "feat(ops): support exact-case human review for monthly correction"
     reason: 僅限受控單案的內部核對入口，部署資格不代表修復完成，不發布教職員完成公告。
 
+  - id: silent-2026-09-30-teacher-month-api
+    changelog_date: "2026-09-30"
+    changelog_title: "feat(attendance): teacher monthly attendance daily rows + month API"
+    reason: 後端計算與新查詢入口，畫面與月報尚未改版，改版上線時再發布公告。
+
   - id: silent-2026-09-30-multirole-context-ui
     changelog_date: "2026-09-30"
     changelog_title: "feat(ux): per-tab acting context, context chip, route-implied switch (#2908 step 4)"
