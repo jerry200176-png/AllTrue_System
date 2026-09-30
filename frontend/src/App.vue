@@ -375,6 +375,13 @@
           {{ dashboardReturnContext.label }}
         </button>
         <div class="main-topbar-spacer"></div>
+        <ActingContextChip
+          v-if="showStaffModeSwitch && (role === 'director' || role === 'teacher')"
+          :context="role"
+          :campus-map="userProfile?.capability_campuses"
+          :campus-names="branchNameById"
+          @switch="switchStaffMode"
+        />
         <AmbientMusicPlayer
           v-if="perfFlags.AMBIENT_MUSIC_ENABLED && (isDirector || isTeacher)"
         />
@@ -895,8 +902,9 @@ import {
   PIN_UNLOCK_TTL_MS,
   PIN_IDLE_LOCK_MS,
 } from './lib/pinGate';
-import { getMobileTabItems, getNavigationGroups } from './lib/navigationRegistry';
-import { buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
+import { getMobileTabItems, getNavigationGroups, requiredContextForPage } from './lib/navigationRegistry';
+import ActingContextChip from './components/ActingContextChip.vue';
+import { APP_PAGE_QUERY_KEY, buildAppPageUrl, parseAppPage } from './lib/appNavigationHistory.js';
 import { resolveActiveAfterProfileLoad } from './lib/resolveActiveAfterProfileLoad';
 import { createDashboardReturnContext } from './lib/dashboardReturnContext';
 import { isUserEngagementRankDisplayEnabled } from './lib/userEngagementDisplay';
@@ -905,10 +913,11 @@ import { createLatestRequestGuard, fetchGlobalSearch, MIN_QUERY_LENGTH } from '.
 import { getSessionUserId, isCurrentAuthRevision, shouldClearLocalIdentity } from './lib/authSessionIdentity';
 import {
   actingAsHeaders,
+  readActingAs,
+  resolveRouteContext,
+  writeActingAs,
   canSwitchStaffMode,
   installActingAsFetchBridge,
-  readStoredActingAs,
-  writeStoredActingAs,
 } from './lib/staffActingContext';
 import { parseTrueFitRoute, buildTrueFitWorkspaceUrl, buildAdminReturnUrl } from './lib/truefitRoute.js';
 import { isTrueFitHost } from './lib/truefitHost.js';
@@ -1004,7 +1013,7 @@ async function clearLocalIdentity(revision, { clearAuthStorage = false } = {}) {
   userProfile.value = null;
   staffCapabilities.value = [];
   localStorage.removeItem('alltrue_session');
-  writeStoredActingAs(null);
+  writeActingAs(null);
   if (!clearAuthStorage && !hadInMemorySession) return;
   try {
     await supabase.auth.signOut({ scope: 'local' });
@@ -1695,6 +1704,14 @@ function applyDeepLinkFromUrl() {
       if (safe) currentBranch.value = safe;
     }
     const authorizedPages = authorizedNavigationPages();
+    const requestedPage = new URLSearchParams(window.location.search).get(APP_PAGE_QUERY_KEY);
+    if (requestedPage && !authorizedPages.has(requestedPage)) {
+      const ctx = routeContextSwitch(requestedPage);
+      if (ctx.action === 'switch') {
+        void autoSwitchForPage(requestedPage, ctx.context);
+        return;
+      }
+    }
     const appPage = parseAppPage(window.location.search, authorizedPages);
     let resolvedPage = appPage;
     if ((page === 'notifications' || page === 'director') && authorizedPages.has(page)) resolvedPage = page;
@@ -1917,6 +1934,11 @@ function setActivePage(page, { history = 'push', preserveInboxContext = false } 
     openTrueFitWorkspace();
     return;
   }
+  const routeCtx = routeContextSwitch(page);
+  if (routeCtx.action === 'switch') {
+    void autoSwitchForPage(page, routeCtx.context);
+    return;
+  }
   closeSidebarMore(false);
   closeMoreMenu(false);
   dashboardReturnContext.value = null;
@@ -2015,9 +2037,27 @@ const isDirector = computed(() => role.value === 'director' || role.value === 'a
 const isTeacher = computed(() => role.value === 'teacher');
 const showStaffModeSwitch = computed(() => canSwitchStaffMode(staffCapabilities.value));
 
-async function switchStaffMode(nextMode) {
+const branchNameById = computed(() => Object.fromEntries(
+  (branches.value || []).map((b) => [b.id, String(b.name || '').split('(')[0].trim()]),
+));
+
+// Route-implied context (#2908): a page that needs a held-but-inactive context switches
+// automatically with a visible toast. Users without both capabilities never get here.
+function routeContextSwitch(page) {
+  return resolveRouteContext({
+    required: requiredContextForPage(page),
+    active: isDirector.value ? 'director' : role.value,
+    capabilities: staffCapabilities.value,
+  });
+}
+async function autoSwitchForPage(page, context) {
+  await switchStaffMode(context, { page });
+  toast.info(`已切換為${context === 'director' ? '主任' : '老師'}模式`);
+}
+
+async function switchStaffMode(nextMode, { page = null } = {}) {
   if (!canSwitchStaffMode(staffCapabilities.value)) return;
-  const normalized = writeStoredActingAs(nextMode);
+  const normalized = writeActingAs(nextMode);
   if (!normalized || normalized === role.value) return;
   if (session.value?.user) {
     session.value.user.role = normalized;
@@ -2026,7 +2066,9 @@ async function switchStaffMode(nextMode) {
   if (userProfile.value) {
     userProfile.value = { ...userProfile.value, role: normalized };
   }
-  active.value = normalized === 'teacher' ? 'teacher-home' : 'director';
+  const home = normalized === 'teacher' ? 'teacher-home' : 'director';
+  active.value = page && authorizedNavigationPages().has(page) ? page : home;
+  if (page) syncAppPageUrl(active.value, { mode: 'push' });
   await fetchProfile(getSessionUserId(session.value));
 }
 
@@ -2546,7 +2588,7 @@ const fetchProfile = async (_uid, revision = authRevision) => {
             headers: {
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/json',
-                ...actingAsHeaders(readStoredActingAs()),
+                ...actingAsHeaders(readActingAs()),
             },
         });
 
@@ -2566,7 +2608,7 @@ const fetchProfile = async (_uid, revision = authRevision) => {
         const caps = Array.isArray(me?.capabilities) ? me.capabilities : [];
         staffCapabilities.value = caps;
         if (me?.acting_as) {
-          writeStoredActingAs(me.acting_as);
+          writeActingAs(me.acting_as);
         }
         userProfile.value = {
             id: me.id,

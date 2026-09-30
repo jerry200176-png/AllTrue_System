@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(ux): per-tab acting context, context chip, route-implied switch (#2908 step 4)
+<!-- release-notes: silent_ship=silent-2026-09-30-multirole-context-ui -->
+- 雙身分（`STAFF_MULTI_ROLE_V1`，預設關閉）前端：工作身分改存每個分頁（sessionStorage，開分頁時取上次使用值），A 分頁切換不影響 B 分頁；頂列顯示「老師／主任 · 分校」身分標籤（含切換）；直接開啟需另一身分的頁面時自動切換並顯示提示。僅持有兩種身分者可見，單一身分與旗標關閉時無任何變化。
+
 ## 2026-09-30 — fix(auth): recover from a stale acting context instead of failing every request
 <!-- release-notes: silent_ship=silent-2026-09-30-acting-context-retry -->
 - 雙身分切換（預設關閉）的防呆：若瀏覽器記住的身分已不適用，後端回傳明確代碼，前端清除後重試一次，不會整頁持續被拒。未開啟功能前無任何行為改變。

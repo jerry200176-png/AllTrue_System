@@ -10,6 +10,23 @@ export function normalizeActingAs(value) {
   const v = String(value).trim().toLowerCase();
   return VALID.has(v) ? v : null;
 }
+/**
+ * Per-tab context (#2908 step 4): sessionStorage is the source of truth for this tab,
+ * seeded from localStorage last-used on first read. Writes update both, so a switch in
+ * tab A never changes tab B's requests. `tab === null` disables the per-tab layer.
+ */
+export function readActingAs(tab = globalThis.sessionStorage, last = globalThis.localStorage) {
+  const own = tab ? readStoredActingAs(tab) : null;
+  if (own) return own;
+  const seeded = readStoredActingAs(last);
+  if (seeded && tab) writeStoredActingAs(seeded, tab);
+  return seeded;
+}
+export function writeActingAs(value, tab = globalThis.sessionStorage, last = globalThis.localStorage) {
+  const next = writeStoredActingAs(value, last);
+  if (tab) writeStoredActingAs(next, tab);
+  return next;
+}
 export function readStoredActingAs(storage = globalThis.localStorage) {
   try {
     return normalizeActingAs(storage?.getItem?.(ACTING_AS_STORAGE_KEY));
@@ -32,7 +49,7 @@ export function writeStoredActingAs(value, storage = globalThis.localStorage) {
  * Prefer explicit dual-capability context; omit header when absent so shared APIs
  * can resolve without failing merely because acting_as is missing.
  */
-export function actingAsHeaders(actingAs = readStoredActingAs()) {
+export function actingAsHeaders(actingAs = readActingAs()) {
   const normalized = normalizeActingAs(actingAs);
   return normalized ? { [ACTING_AS_HEADER]: normalized } : {};
 }
@@ -41,6 +58,28 @@ export function canSwitchStaffMode(capabilities) {
   const caps = new Set(capabilities.map((c) => String(c).toLowerCase()));
   return caps.has('director') && caps.has('teacher');
 }
+/**
+ * Route-implied context. Pure: only users holding both capabilities ever get a switch;
+ * everyone else gets 'none' and keeps the existing (unchanged) route handling.
+ * @returns {{action: 'none'|'switch', context?: string}}
+ */
+export function resolveRouteContext({ required, active, capabilities }) {
+  const need = normalizeActingAs(required);
+  if (!need || !canSwitchStaffMode(capabilities) || need === normalizeActingAs(active)) {
+    return { action: 'none' };
+  }
+  return { action: 'switch', context: need };
+}
+
+/** Chip text such as 「主任 · 大安、信義」; campus part omitted when unknown. */
+export function formatContextChipLabel(context, campusIds, nameById = {}) {
+  const c = normalizeActingAs(context);
+  if (!c) return '';
+  const names = (Array.isArray(campusIds) ? campusIds : [])
+    .map((id) => nameById[id]).filter(Boolean);
+  return `${c === 'director' ? '主任' : '老師'}${names.length ? ` · ${names.join('、')}` : ''}`;
+}
+
 /**
  * Add the selected acting context to direct same-origin API calls too.
  * The query-builder client already does this itself, but several legacy
@@ -65,7 +104,7 @@ export function installActingAsFetchBridge(target = globalThis) {
       && url.pathname.startsWith('/api/v1/')
       && !url.pathname.startsWith('/api/v1/auth/');
     const hasSession = Boolean(target.localStorage?.getItem?.('alltrue_session'));
-    const actingAs = hasSession ? readStoredActingAs(target.localStorage) : null;
+    const actingAs = hasSession ? readActingAs(target.sessionStorage ?? null, target.localStorage) : null;
     if (!isApiRequest || !actingAs) return originalFetch(input, init);
     const headers = new HeadersCtor(input?.headers || undefined);
     new HeadersCtor(init?.headers || undefined).forEach((value, key) => headers.set(key, value));
@@ -78,7 +117,7 @@ export function installActingAsFetchBridge(target = globalThis) {
       if (resp?.status !== 403) return resp;
       const body = await resp.clone().text().catch(() => '');
       if (!body.includes('acting_context_denied')) return resp;
-      writeStoredActingAs(null, target.localStorage);
+      writeActingAs(null, target.sessionStorage ?? null, target.localStorage);
       // Only replay requests that can be re-sent: string/URL input and no stream body
       // (a Request object or ReadableStream body may already be consumed).
       const replayable = (typeof input === 'string' || (typeof URL === 'function' && input instanceof URL))
