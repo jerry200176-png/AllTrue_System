@@ -41,7 +41,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { supabase } from '../supabase';
 
 const props = defineProps({
@@ -49,7 +49,8 @@ const props = defineProps({
   title: { type: String, default: '月出勤表' },
 });
 
-const month = ref(new Date().toISOString().slice(0, 7));
+const now = new Date();
+const month = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
 const teachers = ref([]);
 const teacherId = ref(null);
 const onlyAnomaly = ref(false);
@@ -60,7 +61,9 @@ const current = computed(() => teachers.value.find(t => t.teacher_id === teacher
 const rows = computed(() => (current.value?.days ?? []).filter(d => !onlyAnomaly.value || d.anomaly));
 const hours = m => Math.round(m / 60 * 100) / 100;
 
+let seq = 0;
 async function load() {
+  const my = ++seq;
   loading.value = true;
   error.value = '';
   try {
@@ -70,17 +73,22 @@ async function load() {
       headers: { Authorization: `Bearer ${session?.access_token}`, Accept: 'application/json' },
     });
     if (!res.ok) throw new Error(String(res.status));
-    teachers.value = (await res.json()).teachers ?? [];
+    const data = await res.json();
+    if (my !== seq) return;
+    teachers.value = data.teachers ?? [];
     if (!current.value) teacherId.value = teachers.value[0]?.teacher_id ?? null;
   } catch {
+    if (my !== seq) return;
     teachers.value = [];
     error.value = '讀取失敗，請稍後再試';
   } finally {
-    loading.value = false;
+    if (my === seq) loading.value = false;
   }
 }
 
-function print() {
+async function print() {
+  onlyAnomaly.value = false; // 列印一定是整月完整紀錄（§30 副本）
+  await nextTick();
   window.print();
 }
 
