@@ -3,10 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Campus;
-use App\Models\ClassSession;
-use App\Models\LearningRecord;
-use App\Models\Student;
-use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\StaffIdentityMergeService;
@@ -15,7 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
-/** Phase 1 (read-only): candidates + dry-run plan. Fixed dates only; 23:00 start times (Y2). */
+/** Phase 1 (read-only): survivor = teacher (T), retired = director (D). Candidates + dry-run plan. */
 class StaffIdentityMergePlanTest extends TestCase
 {
     use RefreshDatabase;
@@ -23,29 +19,30 @@ class StaffIdentityMergePlanTest extends TestCase
     private const CUT = '2026-10-01';
 
     private int $campus;
-    private int $student;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->campus = (int) Campus::factory()->create()->getKey();
-        $this->student = (int) Student::factory()->create(['CampusID' => $this->campus])->getKey();
     }
 
     public function test_candidate_confidence_and_signals_without_pii(): void
     {
-        $d1 = $this->user('D', ['LineID' => 'line-secret-1', 'Name' => 'Alpha Person']);
-        $t1 = $this->user('T', ['LineID' => 'line-secret-1']);
-        $d2 = $this->user('D', ['Name' => 'Same Name']);
-        $t2 = $this->user('T', ['Name' => 'Same Name']);
-        array_map(fn ($u) => $this->campusFor($u), [$d2, $t2]);
+        $t1 = $this->user('T', ['LineID' => 'line-secret-1', 'Name' => 'Alpha Person']);
+        $d1 = $this->user('D', ['LineID' => 'line-secret-1']);
+        $t2 = $this->user('T', ['Name' => 'Same Name', 'phone' => '0911111111']);
+        $d2 = $this->user('D', ['Name' => 'Same Name', 'phone' => '0922222222']);
+        $t3 = $this->user('T', ['Name' => 'Ph One', 'phone' => '0933-333-333']);
+        $d3 = $this->user('D', ['Name' => 'Ph Two', 'phone' => '0933333333']);
+        array_map(fn ($u) => $this->campusFor($u), [$t2, $d2]);
 
         Artisan::call('staff:identity-merge', ['--candidates' => true]);
         $out = Artisan::output();
 
-        $this->assertStringContainsString("candidate d={$d1} t={$t1} confidence=HIGH signals=line t_status=active", $out);
-        $this->assertStringContainsString("candidate d={$d2} t={$t2} confidence=MEDIUM signals=name,campus t_status=active", $out);
-        foreach (['line-secret', 'Alpha', 'Same Name'] as $pii) {
+        $this->assertStringContainsString("candidate teacher={$t1} director={$d1} confidence=HIGH signals=line", $out);
+        $this->assertStringContainsString("candidate teacher={$t2} director={$d2} confidence=MEDIUM signals=name,campus", $out);
+        $this->assertStringContainsString("candidate teacher={$t3} director={$d3} confidence=MEDIUM signals=phone", $out);
+        foreach (['line-secret', 'Alpha', 'Same Name', '0911', '0933'] as $pii) {
             $this->assertStringNotContainsString($pii, $out);
         }
     }
@@ -53,7 +50,6 @@ class StaffIdentityMergePlanTest extends TestCase
     public function test_plan_issues_no_writes_and_fingerprint_tracks_data(): void
     {
         [$s, $r] = $this->pair();
-        $this->course($r);
         $sql = [];
         DB::listen(function ($q) use (&$sql) {
             $sql[] = $q->sql;
@@ -67,7 +63,7 @@ class StaffIdentityMergePlanTest extends TestCase
             $this->assertDoesNotMatchRegularExpression('/^\s*(insert|update|delete|replace|alter|drop|create|truncate)\b/i', $statement);
         }
         $this->assertSame($a, $svc->plan($s, $r, self::CUT)['fingerprint']);
-        $this->course($r);
+        $this->workflow($r, null);
         $this->assertNotSame($a, $svc->plan($s, $r, self::CUT)['fingerprint']);
     }
 
@@ -75,45 +71,55 @@ class StaffIdentityMergePlanTest extends TestCase
     {
         [$s, $r] = $this->pair();
         $svc = app(StaffIdentityMergeService::class);
-        foreach ([[$s, $this->user('D')], [$this->user('T'), $r], [$s, $s], [$s, 999999], [$s, $r, 'not-a-date']] as $c) {
+        foreach ([[$r, $s], [$s, $this->user('T')], [$this->user('D'), $r], [$s, $s], [$s, 999999], [$s, $r, 'not-a-date']] as $c) {
             $plan = $svc->plan($c[0], $c[1], $c[2] ?? self::CUT);
             $this->assertSame('REFUSED', $plan['result']);
-            $this->assertSame([], preg_grep('/^move /', $plan['lines']));
+            $this->assertSame([], preg_grep('/^(move|grant) /', $plan['lines']));
         }
     }
 
-    public function test_classification_conflicts_and_no_go(): void
+    public function test_open_objects_move_history_stays_and_phase1_is_always_no_go(): void
     {
         [$s, $r] = $this->pair();
-        $active = $this->course($r);
-        $this->course($r, ['Stop' => 1, 'EndDate' => '2026-08-31']);
-        $rs = $this->makeSession($active, '2026-10-05');
-        $ss = $this->makeSession($this->course($s), '2026-10-05', '23:10:00', '23:40:00');
-        $lrFuture = $this->record($active, $rs, $r, 'pending');
-        $this->record($active, $this->makeSession($active, '2026-09-20'), $r, 'pending');
-        $subFuture = $this->schedule($r, $active, '2026-10-06');
-        $this->schedule($r, $active, '2026-09-10');
-        DB::table('UserCampus')->where('UserID', $s)->update(['RFID' => 'AAA']);
-        DB::table('UserCampus')->where('UserID', $r)->update(['RFID' => 'BBB']);
+        $extra = (int) Campus::factory()->create()->getKey();
+        UserCampus::create(['UserID' => $r, 'CampusID' => $extra, 'Admin' => 1, 'Approved' => 1]);
+        $open = $this->workflow($r, null);
+        $this->workflow($r, now());
 
         $lines = app(StaffIdentityMergeService::class)->plan($s, $r, self::CUT)['lines'];
 
-        $this->assertContains("move table=StudentClass col=TeacherID count=1 sample={$active}", $lines);
-        $this->assertContains("move table=LearningRecord col=TeacherID count=1 sample={$lrFuture}", $lines);
-        $this->assertContains("move table=schedules col=teacher_id kind=substitute count=1 sample={$subFuture}", $lines);
-        $this->assertContains("conflict slot-overlap retired_session_ids={$rs} survivor_session_ids={$ss}", $lines);
-        $this->assertContains("conflict rfid-collision campus_ids={$this->campus}", $lines);
-        $this->assertContains('conflict pending-past-learning-records count=1', $lines);
-        foreach (['slot-overlap', 'rfid-collision', 'retired-has-pending-past-learning-records', 'survivor-missing-director-grant', 'merge-journal-table-missing', 'history-impact-not-computed'] as $code) {
-            $this->assertContains("nogo reason={$code}", $lines);
-        }
+        $this->assertContains("move table=exception_workflows col=owner_user_id count=1 sample={$open}", $lines);
+        $this->assertContains("grant table=user_capability_grants create=director campuses={$this->campus},{$extra}", $lines);
+        $this->assertContains("union table=UserCampus add_campuses={$extra} rfid_copy_rows=0", $lines);
+        $this->assertContains('keep table=exception_workflows col=created_by_user_id count=2', $lines);
+        $this->assertContains('alias retired_login=different', $lines);
+        $this->assertContains("disable user={$r} status=active->inactive", $lines);
+        $this->assertSame([], preg_grep('/^move table=(StudentClass|schedules|LearningRecord)/', $lines), 'teaching data untouched');
+        $this->assertContains('nogo reason=phase1-read-only', $lines);
         $this->assertContains('merge-dry-run-result=NO-GO', $lines);
+        $this->assertContains('READ_ONLY=true', $lines);
+    }
+
+    public function test_rfid_collision_and_self_approval_are_no_go(): void
+    {
+        [$s, $r] = $this->pair();
+        DB::table('UserCampus')->where('UserID', $s)->update(['RFID' => 'AAA']);
+        DB::table('UserCampus')->where('UserID', $r)->update(['RFID' => 'BBB']);
+        DB::table('teacher_payroll_deductions')->insert(['teacher_id' => $s, 'deduction_key' => 'k', 'status' => 'pending']);
+
+        $lines = app(StaffIdentityMergeService::class)->plan($s, $r, self::CUT)['lines'];
+
+        $this->assertContains("conflict rfid-collision campus_ids={$this->campus}", $lines);
+        $this->assertContains('conflict self-approval pending_rows=1', $lines);
+        $this->assertContains('nogo reason=rfid-collision', $lines);
+        $this->assertContains('nogo reason=pending-approvals-with-survivor-as-subject', $lines);
         $this->assertStringNotContainsString('AAA', implode("\n", $lines));
     }
 
+    /** @return array{0:int,1:int} survivor teacher, retired director */
     private function pair(): array
     {
-        $ids = [$this->user('D'), $this->user('T')];
+        $ids = [$this->user('T'), $this->user('D')];
         array_map(fn ($u) => $this->campusFor($u), $ids);
         return $ids;
     }
@@ -131,33 +137,11 @@ class StaffIdentityMergePlanTest extends TestCase
         ])->id;
     }
 
-    private function course(int $teacher, array $over = []): int
+    private function workflow(int $owner, mixed $closedAt): int
     {
-        return (int) StudentClass::create($over + [
-            'StudentID' => $this->student, 'TeacherID' => $teacher, 'GradeID' => 1, 'SubjectID' => 1, 'ClassType' => 'one_on_one',
-            'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 30, 'RemainingSessions' => 8, 'UsedSessions' => 0,
-            'Rate' => 500, 'TotalHours' => 4, 'Charge' => 4000, 'Pay' => 4000, 'Paid' => 0, 'Stop' => 0, 'by1' => 0, 'MDate' => now(),
-            'StartDate' => '2026-08-01', 'EndDate' => '2027-01-31',
-        ])->ID;
-    }
-
-    private function makeSession(int $course, string $date, string $start = '23:00:00', string $end = '23:30:00'): int
-    {
-        return (int) ClassSession::create(['StudentClassID' => $course, 'SessionDate' => $date, 'StartTime' => $start,
-            'EndTime' => $end, 'Status' => 'scheduled'])->id;
-    }
-
-    private function record(int $course, int $session, int $teacher, string $status): int
-    {
-        return (int) LearningRecord::create(['StudentClassID' => $course, 'ClassSessionID' => $session, 'TeacherID' => $teacher,
-            'Content' => 'x', 'Subject' => 'Math', 'SessionDate' => '2026-09-01', 'StartTime' => '23:00:00', 'EndTime' => '23:30:00',
-            'Status' => $status])->id;
-    }
-
-    private function schedule(int $teacher, int $course, string $date): int
-    {
-        return (int) DB::table('schedules')->insertGetId(['student_id' => $this->student, 'teacher_id' => $teacher, 'day_of_week' => 1,
-            'branch_id' => $this->campus, 'start_time' => '23:00', 'end_time' => '23:30', 'status' => 'scheduled',
-            'schedule_date' => $date, 'student_course_id' => $course, 'original_schedule_id' => 99]);
+        return (int) DB::table('exception_workflows')->insertGetId([
+            'source_key' => 'k-' . uniqid(), 'campus_id' => $this->campus, 'type' => 'student_leave', 'owner_user_id' => $owner,
+            'created_by_user_id' => $owner, 'closed_at' => $closedAt, 'created_at' => now(), 'updated_at' => now(),
+        ]);
     }
 }

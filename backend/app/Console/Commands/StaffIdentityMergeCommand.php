@@ -24,7 +24,7 @@ class StaffIdentityMergeCommand extends Command
         $lines = [];
         if ($this->option('candidates')) {
             foreach ($service->candidates() as $c) {
-                $lines[] = "candidate d={$c['d']} t={$c['t']} confidence={$c['confidence']} signals=" . implode(',', $c['signals']) . " t_status={$c['t_status']}";
+                $lines[] = "candidate teacher={$c['teacher']} director={$c['director']} confidence={$c['confidence']} signals=" . implode(',', $c['signals']);
             }
             $lines[] = 'candidates-total=' . count($lines);
             $lines[] = 'READ_ONLY=true';

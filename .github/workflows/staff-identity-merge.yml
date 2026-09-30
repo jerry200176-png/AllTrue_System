@@ -14,8 +14,8 @@ on:
         options:
           - candidates
           - dry_run
-      survivor_user_id: {description: "dry_run: director account id (type D)"}
-      retired_user_id: {description: "dry_run: teacher account id (type T)"}
+      survivor_user_id: {description: "dry_run: teacher account id (type T) that survives"}
+      retired_user_id: {description: "dry_run: director account id (type D) to retire"}
       cutover_date: {description: "dry_run: YYYY-MM-DD"}
 
 concurrency:
