@@ -116,6 +116,47 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-teacher-month-web",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "網頁可以看整個月的打卡",
+    "summary": "主任在出缺勤頁可看每位老師整月上下班與工時；老師在首頁可看自己的本月打卡紀錄。",
+    "items": [
+      "出缺勤頁「老師打卡」可展開月出勤表，選月份與老師，也能只看只刷一次的日子，並可列印。",
+      "老師首頁新增「我的本月打卡紀錄」，只看得到自己的紀錄。",
+      "老師刷卡月報只匯出目前選的分校，不再混入其他分校的老師。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "出缺勤頁「老師打卡」可展開月出勤表，選月份與老師，也能只看只刷一次的日子，並可列印。",
+          "老師首頁新增「我的本月打卡紀錄」，只看得到自己的紀錄。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "老師刷卡月報只匯出目前選的分校，不再混入其他分校的老師。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:teacher-month-web"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-subject-units-reference-totals",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

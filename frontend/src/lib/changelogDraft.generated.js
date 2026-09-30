@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "月結課程依固定時段估計規劃堂數；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+    "summary": "月結課程依固定時段估計規劃堂數；month view for teacher attendance (director + teacher self)",
     "audience": [
       "teacher",
       "director"
@@ -19,11 +19,11 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "月結課程依固定時段估計規劃堂數",
+          "month view for teacher attendance (director + teacher self)",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
           "tab acting context, context chip, route-implied switch",
           "as in security audit + self-approval hard block",
-          "entry staff login (no role picker)",
-          "aware director lookups behind STAFF_MULTI_ROLE_V1"
+          "entry staff login (no role picker)"
         ]
       },
       {
@@ -36,11 +36,11 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "月結課程依固定時段估計規劃堂數",
+      "month view for teacher attendance (director + teacher self)",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "tab acting context, context chip, route-implied switch",
       "as in security audit + self-approval hard block",
       "entry staff login (no role picker)",
-      "aware director lookups behind STAFF_MULTI_ROLE_V1",
       "from a stale acting context instead of failing every request",
       "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
     ]

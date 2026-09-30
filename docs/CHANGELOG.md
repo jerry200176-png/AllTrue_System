@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(attendance): web month view for teacher attendance (director + teacher self)
+<!-- release-notes: staff_update=staff-2026-09-30-teacher-month-web -->
+- 出缺勤頁「老師打卡」新增「查看月出勤表」：選月份與老師，每天一列（日期／跑校／上班／下班／工時／註記），可只看只刷一次、可列印；老師首頁新增「我的本月打卡紀錄」，只看得到自己（勞基法 §30 出勤紀錄副本）。單日表永遠空白的「第一堂」欄改為顯示修正原因。修正月報匯出未帶 `campus_id`：原本主任會拿到自己所有分校、超級管理員拿到全部分校混在同一份，現在只匯出目前選的分校。資料來自 `GET /teacher-attendance/monthly`。
+
 ## 2026-09-30 — feat(attendance): teacher monthly xlsx with summary, hours and correction log
 <!-- release-notes: staff_update=staff-2026-09-30-teacher-monthly-xlsx -->
 - 老師刷卡月報沿用「每位老師一張、左刷卡右日曆」版型，改用 `TeacherAttendanceMonth` 計算：時間 24 小時、左側加「來源」（刷卡／手動／系統補登）、右側加工時與註記並有合計列；新增第一張「摘要」與最後一張「修正紀錄」（原始→修正、修正人、時間、原因）；只刷一次不再填進「上班」；「加班」欄移除（無排班基準）。修正重名老師 sheet 名稱未套用的問題，移除未使用的遲到分鐘查詢。唯讀，無 migration。

@@ -110,6 +110,13 @@
         </div>
       </details>
 
+      <details class="att-secondary-summary att-records-disclosure">
+        <summary>查看月出勤表 <span>每天上下班、工時、只刷一次</span></summary>
+        <div class="card att-checkin-card">
+          <TeacherMonthlyAttendance :campus-id="props.branchId" />
+        </div>
+      </details>
+
       <!-- Full Records Table -->
       <details class="att-secondary-summary att-records-disclosure">
         <summary>查看完整打卡紀錄與匯出 <span>今日 {{ teacherRecords.length }} 筆</span></summary>
@@ -151,7 +158,7 @@
                 <th>簽到</th>
                 <th>簽退</th>
                 <th>狀態</th>
-                <th>第一堂</th>
+                <th>修正原因</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -167,7 +174,7 @@
                     {{ teacherStatusLabel(r.status) }}
                   </span>
                 </td>
-                <td class="ta-cell-muted">{{ r.first_class_start_time ?? '—' }}</td>
+                <td class="ta-cell-muted">{{ r.latest_adjustment?.adjust_reason ?? '' }}</td>
                 <td>
                   <button type="button" class="ghost small" @click="openAdjust(r)">補卡</button>
                 </td>
@@ -1091,6 +1098,7 @@ import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
+import TeacherMonthlyAttendance from '../components/TeacherMonthlyAttendance.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtMetric from '../components/design-system/AtMetric.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -1208,7 +1216,7 @@ async function exportTeacherMonthly() {
   try {
     const token = await getToken();
     if (!token) return;
-    const url = `/api/v1/teacher-attendance/export-monthly?year_month=${exportMonthRef.value}`;
+    const url = `/api/v1/teacher-attendance/export-monthly?year_month=${exportMonthRef.value}&campus_id=${props.branchId}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       showAttToast('匯出失敗，請稍後再試', 'error');

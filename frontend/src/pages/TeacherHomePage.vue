@@ -68,6 +68,11 @@
       </div>
     </button>
 
+    <details class="card th-month-attendance">
+      <summary>我的本月打卡紀錄</summary>
+      <TeacherMonthlyAttendance title="我的月出勤表" />
+    </details>
+
     <!-- Single source of truth for today's work. Secondary metrics stay below the fold. -->
     <section
       id="teacher-work-queue"
@@ -345,6 +350,7 @@ import { branches, campusIdFrom, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions, fetchClassSessionsProjection } from '../lib/classSessionsApi';
 import { dedupeSessionsByStudentSlot } from '../lib/classSessionPick';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
+import TeacherMonthlyAttendance from '../components/TeacherMonthlyAttendance.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import AtButton from '../components/design-system/AtButton.vue';
 import AtPageHeader from '../components/design-system/AtPageHeader.vue';
@@ -1443,6 +1449,9 @@ onBeforeUnmount(() => {
   width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: inline-flex; align-items: center; justify-content: center;
   padding: 0; font-size: 18px; font-weight: 700; border-radius: 8px;
 }
+
+.th-month-attendance { padding: 12px 16px; }
+.th-month-attendance > summary { cursor: pointer; font-weight: 600; margin-bottom: 8px; }
 
 /* ──────── Clock-in Card ──────── */
 .th-clockin-card {

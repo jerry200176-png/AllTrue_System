@@ -65,6 +65,24 @@ updates:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
 
+  - id: staff-2026-09-30-teacher-month-web
+    published_at: "2026-09-30"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 網頁可以看整個月的打卡
+    summary: 主任在出缺勤頁可看每位老師整月上下班與工時；老師在首頁可看自己的本月打卡紀錄。
+    items:
+      - category: added
+        text: 出缺勤頁「老師打卡」可展開月出勤表，選月份與老師，也能只看只刷一次的日子，並可列印。
+      - category: added
+        text: 老師首頁新增「我的本月打卡紀錄」，只看得到自己的紀錄。
+      - category: fixed
+        text: 老師刷卡月報只匯出目前選的分校，不再混入其他分校的老師。
+    source_refs:
+      - "changelog:2026-09-30:teacher-month-web"
+
   - id: staff-2026-09-30-teacher-monthly-xlsx
     published_at: "2026-09-30"
     audiences:
