@@ -18,6 +18,7 @@ on:
           - course_2817_incident
           - laravel_2833_preflight
           - contract_yang_binghe
+          - contract_yu_shengrui
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -91,9 +92,9 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui'}:
               raise SystemExit('unsupported case')
-          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else '林奕安'))))
+          target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
@@ -441,6 +442,42 @@ jobs:
             $out['payment_reports'] = $tbl('payment_reports') ? $rowsOf($db::table('payment_reports')->whereIn('StudentClassID', $classIds)) : null;
             $out['schedule_audit_logs'] = $sids === [] ? [] : $rowsOf($db::table('schedule_audit_logs')->whereIn('session_id', $sids)->where('created_at', '>=', '2026-07-01')->orderBy('id'));
             $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->whereIn('campus_id', $campuses)->where('occurred_at', '>=', '2026-07-01')->where(fn ($q) => $q->where('event_type', 'like', '%contract%')->orWhere('event_type', 'like', '%settle%')->orWhere('event_type', 'like', '%session%'))->orderBy('id')->limit(300)) : null;
+          }} elseif ($case === 'contract_yu_shengrui') {{
+            $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
+            $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
+            $rowsOf = fn ($q) => $q->get()->map($redact)->values()->all();
+            $campuses = $db::table('Campus')->where('name', 'like', '%木柵%')->pluck('id')->map(fn ($i) => (int)$i)->all();
+            $studentIds = $db::table('Student')->whereIn('CampusID', $campuses)->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($i) => (int)$i)->all();
+            $out['campus_ids'] = $campuses;
+            $out['student_ids'] = $studentIds;
+            $out['subjects'] = $rowsOf($db::table('Subject')->where(fn ($q) => $q->where('Subject_Name', 'like', '%英%')->orWhere('Subject_Name', 'like', '%數學%')));
+            $out['teachers'] = $db::table('Teacher')->whereIn('CampusID', $campuses)->where(fn ($q) => $q->where('T_Name', 'like', '%Ruth%')->orWhere('T_Name', 'like', '%李維%'))->get(['id', 'T_Name'])->map(fn ($r) => (array)$r)->all();
+            $classes = $rowsOf($db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID'));
+            $classIds = array_map(fn ($r) => (int)$r['ID'], $classes);
+            $out['student_classes'] = $classes;
+            if ($tbl('course_contract_group_members')) {{
+              $out['group_members'] = $rowsOf($db::table('course_contract_group_members')->whereIn('student_class_id', $classIds));
+              $gids = array_values(array_unique(array_map(fn ($r) => (int)($r['group_id'] ?? 0), $out['group_members'])));
+              $out['groups'] = $gids === [] ? [] : $rowsOf($db::table('course_contract_groups')->whereIn('id', $gids));
+              $out['group_all_members'] = $gids === [] ? [] : $rowsOf($db::table('course_contract_group_members')->whereIn('group_id', $gids));
+            }}
+            $sessions = $rowsOf($db::table('ClassSession')->whereIn('StudentClassID', $classIds)->orderBy('SessionDate')->orderBy('id'));
+            $sids = array_map(fn ($r) => (int)$r['id'], $sessions);
+            $out['sessions'] = $sessions;
+            $out['session_status_counts'] = $rowsOf($db::table('ClassSession')->whereIn('StudentClassID', $classIds)->selectRaw('StudentClassID, Status, COUNT(*) as n')->groupBy('StudentClassID', 'Status'));
+            $out['schedules'] = $tbl('schedules') ? $rowsOf($db::table('schedules')->whereIn('student_course_id', $classIds)->orderBy('schedule_date')) : null;
+            $out['sign_ins'] = $sids === [] ? [] : $rowsOf($db::table('StudentSingIn')->whereIn('ClassSessionID', $sids));
+            $out['learning_records'] = $sids === [] ? [] : $rowsOf($db::table('LearningRecord')->whereIn('ClassSessionID', $sids));
+            $out['deduction_ledger'] = $tbl('session_deduction_ledger') ? $rowsOf($db::table('session_deduction_ledger')->where(fn ($q) => $q->whereIn('student_class_id', $classIds)->orWhereIn('class_session_id', $sids ?: [0]))) : null;
+            $invoices = $rowsOf($db::table('Invoice')->whereIn('StudentClassID', $classIds));
+            $iids = array_map(fn ($r) => (int)$r['id'], $invoices);
+            $out['invoices'] = $invoices;
+            $out['invoice_items'] = $iids === [] ? [] : $rowsOf($db::table('InvoiceItem')->whereIn('InvoiceID', $iids));
+            $out['payments'] = $iids === [] ? [] : $rowsOf($db::table('Payment')->whereIn('InvoiceID', $iids));
+            $out['payment_reports'] = $tbl('payment_reports') ? $rowsOf($db::table('payment_reports')->whereIn('StudentClassID', $classIds)) : null;
+            $out['schedule_audit_logs'] = $sids === [] ? [] : $rowsOf($db::table('schedule_audit_logs')->whereIn('session_id', $sids)->orderBy('id'));
+            $out['session_corrections'] = $tbl('session_corrections') && $sids !== [] ? $rowsOf($db::table('session_corrections')->whereIn('session_id', $sids)) : null;
+            $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->where('subject_type', 'student_class')->whereIn('subject_id', $classIds ?: [0])->orderBy('id')->limit(300)) : null;
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
