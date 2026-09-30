@@ -43,7 +43,7 @@
           <span v-if="fieldErrors.teacher_id" class="field-error">{{ fieldErrors.teacher_id }}</span>
           <label v-if="teacherChanged" class="teacher-effective-date">
             新老師從哪天開始教（此日之前的堂次保留原老師）
-            <input v-model="form.teacher_effective_date" type="date" :max="todayIso" data-testid="teacher-effective-date" />
+            <input v-model="form.teacher_effective_date" type="date" data-testid="teacher-effective-date" />
           </label>
           <div v-if="form.teacher_id" class="teacher-schedule-hint">
             <span v-if="teacherScheduleLoading" class="teacher-schedule-meta">載入排課中…</span>
@@ -407,7 +407,6 @@ const effectiveRateUnit = computed(() => {
   if (hasPerDayDuration.value) return 'hour';
   return form.rate_unit === 'hour' ? 'hour' : 'session';
 });
-const todayIso = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD, local
 const teacherChanged = computed(() => {
   if (!form.original_teacher_id || !form.teacher_id) return false;
   return String(form.original_teacher_id) !== String(form.teacher_id);

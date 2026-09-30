@@ -25,6 +25,12 @@ class RescheduleMarksContractExceptionTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        \Illuminate\Support\Facades\DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']); // fixtures send subject=Math
+    }
+
     public function test_atomic_same_day_reschedule_marks_contract_exception_and_survives_rebuild(): void
     {
         if (!Schema::hasColumn('ClassSession', 'IsContractException')) {
@@ -137,7 +143,7 @@ class RescheduleMarksContractExceptionTest extends TestCase
         $course = StudentClass::create([
             'StudentID' => $student->id,
             'GradeID' => 1,
-            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+            'SubjectID' => 1,
             'TeacherID' => $teacher->id,
             'ClassType' => 'one_on_one',
             'by1' => 1,

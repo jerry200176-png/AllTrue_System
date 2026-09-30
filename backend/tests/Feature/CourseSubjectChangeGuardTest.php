@@ -57,17 +57,6 @@ class CourseSubjectChangeGuardTest extends TestCase
         $this->assertSame($this->subjectId('Math'), (int) $fresh->fresh()->SubjectID);
     }
 
-    public function test_teacher_change_defaults_to_keeping_untaught_past_sessions_on_former_teacher(): void
-    {
-        Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course, $old, $new] = $this->fixture('English');
-        $past = $this->makeSession($course, '2026-09-23', 'scheduled'); // no attendance evidence
-
-        $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", ['teacher_id' => $new])->assertOk();
-
-        $this->assertSame($old, $this->teacherOf($token, $course, $past->id));
-    }
-
     public function test_teacher_effective_date_splits_old_and_new_teacher(): void
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
@@ -82,16 +71,6 @@ class CourseSubjectChangeGuardTest extends TestCase
 
         $this->assertSame($old, $this->teacherOf($token, $course, $before->id));
         $this->assertSame($new, $this->teacherOf($token, $course, $onAfter->id));
-    }
-
-    public function test_future_teacher_effective_date_is_rejected(): void
-    {
-        Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course, , $new] = $this->fixture('English');
-        $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", [
-            'teacher_id' => $new,
-            'teacher_effective_date' => '2026-10-15',
-        ])->assertStatus(422);
     }
 
     public function test_slot_change_never_rebuilds_or_moves_past_sessions(): void
@@ -160,25 +139,23 @@ class CourseSubjectChangeGuardTest extends TestCase
 
     private function directorToken(): string
     {
-        $user = User::create([
-            'LoginName' => 'dir-guard-' . uniqid() . '@test.com', 'Name' => '主任',
-            'PSW' => 'secret', 'type' => 'A', 'phone' => '0912000001',
-        ]);
-        UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        $user = $this->user('dir-guard-' . uniqid() . '@test.com', '主任', 'A', 1);
         $tok = bin2hex(random_bytes(16));
-        AuthToken::create(['user_id' => $user->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
+        AuthToken::create(['user_id' => $user, 'token' => $tok, 'expires_at' => now()->addDay()]);
 
         return $tok;
     }
 
     private function teacher(string $login, string $name): int
     {
-        $user = User::create([
-            'LoginName' => $login, 'Name' => $name, 'PSW' => 'secret', 'type' => 'T',
-            'phone' => '0912' . substr(md5($login), 0, 6),
-        ]);
-        UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 0, 'Approved' => 1]);
+        return $this->user($login, $name, 'T', 0);
+    }
 
-        return (int) $user->id;
+    private function user(string $login, string $name, string $type, int $admin): int
+    {
+        $u = User::create(['LoginName' => $login, 'Name' => $name, 'PSW' => 'secret', 'type' => $type, 'phone' => '0912' . substr(md5($login), 0, 6)]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $u->id, 'Admin' => $admin, 'Approved' => 1]);
+
+        return (int) $u->id;
     }
 }

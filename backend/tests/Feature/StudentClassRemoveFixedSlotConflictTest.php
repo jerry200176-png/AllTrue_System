@@ -23,6 +23,7 @@ class StudentClassRemoveFixedSlotConflictTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']); // fixtures send subject=Math
         Carbon::setTestNow(Carbon::parse('2026-04-12 08:00:00', 'Asia/Taipei'));
     }
 
@@ -161,7 +162,7 @@ class StudentClassRemoveFixedSlotConflictTest extends TestCase
         $course = StudentClass::create([
             'StudentID' => $student->id,
             'GradeID' => 1,
-            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+            'SubjectID' => 1,
             'TeacherID' => 99,
             'by1' => 1,
             'Period' => 4,
@@ -196,7 +197,7 @@ class StudentClassRemoveFixedSlotConflictTest extends TestCase
             'StudentID' => $student->id,
             'TeacherID' => 99,
             'GradeID' => 1,
-            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+            'SubjectID' => 1,
             'CampusID' => 1,
             'SignInDT' => '2026-04-08 16:00:00',
             'MDT' => now(),

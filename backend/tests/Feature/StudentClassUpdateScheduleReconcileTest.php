@@ -22,6 +22,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\DB::table('Subject')->where('id', 1)->update(['Subject_Name' => 'Math']); // fixtures send subject=Math
         // seedCourseWithHistory() 把「未來」sessions 放在 2026-04-19 起，
         // 若執行日期已經跨過 4/19，那筆 session 會被 sync 視為過去而不更新，
         // 導致 scheduled 集合裡仍出現舊時間。統一凍結到 4/12。
@@ -53,7 +54,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         $occupiedCourse = StudentClass::create([
             'StudentID' => $occupiedStudent->id,
             'GradeID' => 1,
-            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+            'SubjectID' => 1,
             'TeacherID' => 100,
             'ClassType' => 'one_on_one',
             'by1' => 1,
@@ -252,7 +253,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         $course = StudentClass::create([
             'StudentID' => $student->id,
             'GradeID' => 1,
-            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+            'SubjectID' => 1,
             'TeacherID' => 99,
             'by1' => 1,
             'Period' => 4,
@@ -378,7 +379,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID'   => $student->id,
                 'GradeID'     => 1,
-                'SubjectID'   => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID'   => 1,
                 'TeacherID'   => 99,
                 'by1'         => 1,
                 'Period'      => 4,
@@ -416,7 +417,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID'      => $student->id,
                 'TeacherID'      => 99,
                 'GradeID'        => 1,
-                'SubjectID'      => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID'      => 1,
                 'CampusID'       => 1,
                 'SignInDT'       => '2026-04-07 16:30:00',
                 'MDT'            => now(),
@@ -531,7 +532,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID'        => $student->id,
                 'GradeID'          => 1,
-                'SubjectID'        => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID'        => 1,
                 'TeacherID'        => 99,
                 'by1'              => 1,
                 'Period'           => 4,
@@ -566,7 +567,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID'      => $student->id,
                 'TeacherID'      => 99,
                 'GradeID'        => 1,
-                'SubjectID'      => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID'      => 1,
                 'CampusID'       => 1,
                 'SignInDT'       => '2026-04-07 16:30:00',
                 'MDT'            => now(),
@@ -613,7 +614,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 99,
                 'by1' => 1,
                 'Period' => 4,
@@ -646,7 +647,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID' => $student->id,
                 'TeacherID' => 99,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'CampusID' => 1,
                 'SignInDT' => '2026-03-14 13:00:00',
                 'MDT' => now(),
@@ -716,7 +717,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 99,
                 'by1' => 1,
                 'Period' => 4,
@@ -786,7 +787,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 99,
                 'by1' => 1,
                 'Period' => 4,
@@ -821,7 +822,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID' => $student->id,
                 'TeacherID' => 99,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'CampusID' => 1,
                 'SignInDT' => '2026-03-16 16:30:00',
                 'MDT' => now(),
@@ -907,7 +908,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 99,
                 'by1' => 1,
                 'Period' => 4,
@@ -940,7 +941,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID' => $student->id,
                 'TeacherID' => 99,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'CampusID' => 1,
                 'SignInDT' => '2026-03-14 13:00:00',
                 'MDT' => now(),
@@ -1020,7 +1021,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 99,
                 'by1' => 1,
                 'Period' => 4,
@@ -1063,7 +1064,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID' => $student->id,
                 'TeacherID' => 99,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'CampusID' => 1,
                 'SignInDT' => '2026-05-03 18:30:00',
                 'MDT' => now(),
@@ -1117,7 +1118,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 91,
                 'by1' => 1,
                 'Period' => 4,
@@ -1293,7 +1294,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 99,
                 'by1' => 1,
                 'Period' => 4,
@@ -1326,7 +1327,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID' => $student->id,
                 'TeacherID' => 99,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'CampusID' => 1,
                 'SignInDT' => '2026-04-02 16:00:00',
                 'MDT' => now(),
@@ -1396,7 +1397,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             $course = StudentClass::create([
                 'StudentID' => $student->id,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'TeacherID' => 99,
                 'by1' => 1,
                 'Period' => 4,
@@ -1431,7 +1432,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'StudentID' => $student->id,
                 'TeacherID' => 99,
                 'GradeID' => 1,
-                'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+                'SubjectID' => 1,
                 'CampusID' => 1,
                 'SignInDT' => '2026-04-02 16:00:00',
                 'MDT' => now(),
@@ -1505,7 +1506,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         $course = StudentClass::create([
             'StudentID' => $student->id,
             'GradeID' => 1,
-            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+            'SubjectID' => 1,
             'TeacherID' => 99,
             'by1' => 1,
             'Period' => 4,
@@ -1539,7 +1540,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             'StudentID' => $student->id,
             'TeacherID' => 99,
             'GradeID' => 1,
-            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
+            'SubjectID' => 1,
             'CampusID' => 1,
             'SignInDT' => '2026-03-08 15:00:00',
             'MDT' => now(),
