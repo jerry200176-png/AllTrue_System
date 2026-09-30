@@ -162,7 +162,8 @@ export function getMobileTabItems(role) {
  * Derived from the menus above so it cannot drift; shared pages need no context.
  */
 const pagesOf = (groups) => new Set(groups.flatMap((g) => g.items.map((i) => i.page)));
-const DIRECTOR_PAGES = pagesOf(directorGroups('super_admin'));
+// Director-capability pages only: super_admin-only pages (director-accounts, branch-*) must never trigger an auto-switch.
+const DIRECTOR_PAGES = pagesOf(directorGroups('director'));
 const TEACHER_PAGES = pagesOf(teacherGroups({ truefitEnabled: true }));
 export function requiredContextForPage(page) {
   if (DIRECTOR_PAGES.has(page) && !TEACHER_PAGES.has(page)) return 'director';

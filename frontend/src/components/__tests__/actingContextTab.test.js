@@ -52,7 +52,7 @@ describe('navigation requiredContext', () => {
   it('derives director-only, teacher-only and shared pages', () => {
     expect(requiredContextForPage('tuition-collect')).toBe('director');
     expect(requiredContextForPage('teachers')).toBe('director');
-    expect(requiredContextForPage('branch-management')).toBe('director');
+    expect(requiredContextForPage('branch-management')).toBe(null); // super_admin-only: never auto-switch
     expect(requiredContextForPage('teacher-home')).toBe('teacher');
     expect(requiredContextForPage('calendar')).toBe(null);
     const item = getNavigationGroups('director').flatMap((g) => g.items).find((i) => i.page === 'students');
