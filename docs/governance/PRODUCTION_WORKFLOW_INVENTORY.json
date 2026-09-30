@@ -247,6 +247,18 @@
       "required": "Founder-gated case-specific activation",
       "future_state": "Founder-approved controlled operation or retire after activation"
     },
+    "staff-multirole-activation.yml": {
+      "classification": "legacy-case-specific-mutation",
+      "production_mutation": "confirmed",
+      "trigger": "workflow_dispatch",
+      "production_command_or_path": "production-activation environment; edit /home/admin/backend/.env STAFF_MULTI_ROLE_V1, optimize/opcache, and insert/soft-revoke two user_capability_grants rows for one pilot user via tinker",
+      "authorization": "Founder-gated environment, exact ENABLE_STAFF_MULTI_ROLE_V1:<sha> / DISABLE_STAFF_MULTI_ROLE_V1 / GRANT_PILOT / REVOKE_PILOT confirmations, read-only role-resolution diff gate before enable",
+      "concurrency": "staff-multirole-activation; cancel-in-progress=false",
+      "rollback": "Backed-up .env restored on failure; explicit disable and revoke_pilot paths",
+      "canonical": false,
+      "required": "Founder-gated in-app #299 pilot activation",
+      "future_state": "Keep explicit or migrate to Founder-approved controlled flag operation"
+    },
     "ops-attendance-root-fix-826.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:attendance-root-fix-826 --execute --force","authorization":"Bundle/manifest, exact environment and confirmation, pinned SSH trust","concurrency":"repair-attendance-root-fix-826; cancel-in-progress=false","rollback":"mysqldump/snapshot and after verification; manual restore if needed","canonical":false,"required":"One-off repair","future_state":"Retire after case closure or migrate through Founder-approved POP"},
     "ops-founder-student9-attendance-repair.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:founder-student9-attendance --execute --force or --rollback --force","authorization":"Founder GO, immutable manifest, exact production confirmation, pinned SSH trust","concurrency":"founder-student9-attendance-repair; cancel-in-progress=false","rollback":"mysqldump/snapshot, command rollback, and post-dry-run verification","canonical":false,"required":"One-off Founder-approved StudentID=9 attendance repair","future_state":"Retire after case closure"},
     "ops-chinese-renewal-unpaid.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch plus guarded PR-label fallback","production_command_or_path":"Reviewed PHP script creates unpaid official purchase batches after dry-run","authorization":"Exact student allowlist, apply label/body confirmation, pinned SSH trust","concurrency":"chinese-renewal-unpaid-production; cancel-in-progress=false","rollback":"Script-level idempotency and evidence; manual billing correction","canonical":false,"required":"Case-specific billing operation","future_state":"Founder-approved POP/data-operation migration or retire"},

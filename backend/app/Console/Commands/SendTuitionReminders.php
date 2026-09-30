@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
+use App\Services\StaffCapabilityAuthorizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -121,12 +122,7 @@ class SendTuitionReminders extends Command
             }
 
             // Find directors for this campus
-            $directorIds = DB::table('UserCampus')
-                ->where('CampusID', $campusId)
-                ->where('Approved', 1)
-                ->join('User', 'User.id', '=', 'UserCampus.UserID')
-                ->where('User.type', 'D')
-                ->pluck('UserCampus.UserID');
+            $directorIds = $this->directorRecipientIds((int) $campusId);
 
             foreach ($directorIds as $directorId) {
                 Notification::create([
@@ -147,6 +143,12 @@ class SendTuitionReminders extends Command
 
         $this->info($dryRun ? 'Dry-run complete.' : 'Reminders sent.');
         return self::SUCCESS;
+    }
+
+    /** @return list<int> */
+    protected function directorRecipientIds(int $campusId): array
+    {
+        return app(StaffCapabilityAuthorizer::class)->directorUserIds($campusId);
     }
 
     private function pushLine(string $lineUserId, string $text, string $token, string $campusName): bool
