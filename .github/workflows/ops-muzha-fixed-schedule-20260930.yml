@@ -1,0 +1,133 @@
+name: Muzha fixed schedule four-course repair (protected)
+# governance-capability: legacy-case-specific-mutation
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only dry-run or Founder-approved apply
+        required: true
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+      confirm:
+        description: Exact case confirmation
+        required: true
+        type: string
+      deployed_backend_sha:
+        description: Full backend SHA currently deployed
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alltrue-production-side-effects-v2
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate exact case and deployment input
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOYED_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          if [[ "$MODE" == dry-run ]]; then
+            [[ "$CONFIRM" == DRY_RUN_MUZHA_FIXED_SCHEDULE_20260930 ]] || exit 1
+          elif [[ "$MODE" == apply ]]; then
+            [[ "$CONFIRM" == APPROVE_MUZHA_FIXED_SCHEDULE_20260930 ]] || exit 1
+          else
+            exit 1
+          fi
+
+  preflight:
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Read-only exact case preflight
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          ssh_dir="$RUNNER_TEMP/muzha-fixed-preflight"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
+          [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo '::error::production SHA drift' >&2; exit 1; }
+          MUZHA_MODE=dry-run MUZHA_CONFIRM=DRY_RUN_MUZHA_FIXED_SCHEDULE_20260930 \
+            php scripts/ops/muzha_fixed_schedule_20260930.php
+          REMOTE
+
+  apply:
+    needs: [guard, preflight]
+    if: ${{ inputs.mode == 'apply' }}
+    environment:
+      name: production-activation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Apply exact case in one database transaction
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DEPLOYED_SHA: ${{ inputs.deployed_backend_sha }}
+        run: |
+          set -euo pipefail
+          ssh_dir="$RUNNER_TEMP/muzha-fixed-apply"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" "DEPLOYED_SHA='$DEPLOYED_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          manifest_sha="$(curl -fsSL --proto '=https' --tlsv1.2 https://daan.lifenet.com.tw/deployment.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_sha"])')"
+          [[ "$manifest_sha" == "$DEPLOYED_SHA" ]] || { echo '::error::production SHA drift' >&2; exit 1; }
+          MUZHA_MODE=apply MUZHA_CONFIRM=APPROVE_MUZHA_FIXED_SCHEDULE_20260930 \
+            php scripts/ops/muzha_fixed_schedule_20260930.php
+          REMOTE
