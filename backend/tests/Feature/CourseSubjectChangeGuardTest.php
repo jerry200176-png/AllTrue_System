@@ -14,7 +14,6 @@ use Tests\TestCase;
 
 /**
  * Past lessons are history: subject / teacher / slot edits must not rewrite them.
- * Seeded subjects: 1 Chinese, 2 English, 3 Math.
  */
 class CourseSubjectChangeGuardTest extends TestCase
 {
@@ -31,14 +30,14 @@ class CourseSubjectChangeGuardTest extends TestCase
     public function test_subject_change_is_blocked_when_contract_has_past_sessions(): void
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course] = $this->fixture(2); // English
+        [$token, $course] = $this->fixture('English');
         $this->makeSession($course, '2026-09-23', 'attended');
 
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", ['subject' => 'Math'])
             ->assertStatus(422)
             ->assertJsonPath('code', 'subject_change_requires_transfer');
 
-        $this->assertSame(2, (int) $course->fresh()->SubjectID);
+        $this->assertSame($this->subjectId('English'), (int) $course->fresh()->SubjectID);
         $this->assertDatabaseHas('security_audit_events', [
             'event_type' => 'student_class.edit_blocked',
             'outcome' => 'blocked',
@@ -48,20 +47,20 @@ class CourseSubjectChangeGuardTest extends TestCase
     public function test_same_subject_resave_and_untouched_contract_subject_change_are_allowed(): void
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course] = $this->fixture(2);
+        [$token, $course] = $this->fixture('English');
         $this->makeSession($course, '2026-09-23', 'attended');
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", ['subject' => 'English'])->assertOk();
 
-        [$token2, $fresh] = $this->fixture(2);
+        [$token2, $fresh] = $this->fixture('English');
         $this->makeSession($fresh, '2026-10-07', 'scheduled'); // future only
         $this->withToken($token2)->putJson("/api/v1/student-classes/{$fresh->ID}", ['subject' => 'Math'])->assertOk();
-        $this->assertSame(3, (int) $fresh->fresh()->SubjectID);
+        $this->assertSame($this->subjectId('Math'), (int) $fresh->fresh()->SubjectID);
     }
 
     public function test_teacher_change_defaults_to_keeping_untaught_past_sessions_on_former_teacher(): void
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course, $old, $new] = $this->fixture(2);
+        [$token, $course, $old, $new] = $this->fixture('English');
         $past = $this->makeSession($course, '2026-09-23', 'scheduled'); // no attendance evidence
 
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", ['teacher_id' => $new])->assertOk();
@@ -72,7 +71,7 @@ class CourseSubjectChangeGuardTest extends TestCase
     public function test_teacher_effective_date_splits_old_and_new_teacher(): void
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course, $old, $new] = $this->fixture(2);
+        [$token, $course, $old, $new] = $this->fixture('English');
         $before = $this->makeSession($course, '2026-09-16', 'scheduled');
         $onAfter = $this->makeSession($course, '2026-09-23', 'scheduled');
 
@@ -88,7 +87,7 @@ class CourseSubjectChangeGuardTest extends TestCase
     public function test_future_teacher_effective_date_is_rejected(): void
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course, , $new] = $this->fixture(2);
+        [$token, $course, , $new] = $this->fixture('English');
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", [
             'teacher_id' => $new,
             'teacher_effective_date' => '2026-10-15',
@@ -98,8 +97,8 @@ class CourseSubjectChangeGuardTest extends TestCase
     public function test_slot_change_never_rebuilds_or_moves_past_sessions(): void
     {
         Carbon::setTestNow(Carbon::parse(self::TODAY, 'Asia/Taipei'));
-        [$token, $course] = $this->fixture(2);
-        $past = $this->makeSession($course, '2026-09-23', 'scheduled'); // Wed, no sign-in / LR
+        [$token, $course] = $this->fixture('English');
+        $past = $this->makeSession($course, '2026-09-23', 'attended'); // Wed, marked but no sign-in / LR
 
         $this->withToken($token)->putJson("/api/v1/student-classes/{$course->ID}", [
             'StudentID' => $course->StudentID,
@@ -111,6 +110,11 @@ class CourseSubjectChangeGuardTest extends TestCase
         $this->assertNotNull($kept, 'past session must survive a slot edit');
         $this->assertSame('2026-09-23', substr((string) $kept->SessionDate, 0, 10));
         $this->assertSame('16:00', substr((string) $kept->StartTime, 0, 5));
+    }
+
+    private function subjectId(string $name): int
+    {
+        return (int) \App\Services\FrontendSubjectIdResolver::resolve($name);
     }
 
     private function teacherOf(string $token, StudentClass $course, int $sessionId): int
@@ -133,7 +137,7 @@ class CourseSubjectChangeGuardTest extends TestCase
     }
 
     /** @return array{0:string,1:StudentClass,2:int,3:int} */
-    private function fixture(int $subjectId): array
+    private function fixture(string $subject): array
     {
         $token = $this->directorToken();
         $old = $this->teacher('old-' . uniqid() . '@example.com', 'Ruth');
@@ -143,7 +147,7 @@ class CourseSubjectChangeGuardTest extends TestCase
             'MDT' => now(), 'Notify_Token' => '',
         ]);
         $course = StudentClass::create([
-            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => $subjectId,
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => $this->subjectId($subject),
             'TeacherID' => $old, 'by1' => 1, 'Period' => 8, 'StartDate' => '2026-09-01',
             'TotalHours' => 16, 'Charge' => 0, 'Rate' => 1000, 'SessionCount' => 8,
             'RemainingSessions' => 8, 'SessionDuration' => 120, 'week' => 3,

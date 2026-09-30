@@ -8224,9 +8224,12 @@ class StudentClassController extends Controller
         if (LearningRecord::where('StudentClassID', $studentClassId)->where('Status', 'approved')->whereNull('VoidedAt')->exists()) {
             return true;
         }
-        // Past / taught sessions are history too: a schedule edit must never
+        // Attendance-marked sessions are history too: a schedule edit must never
         // delete-and-rebuild them (only future rows may be re-timed).
-        return $this->courseHasPastOrTaughtSessions($studentClassId);
+        return DB::table('ClassSession')
+            ->where('StudentClassID', $studentClassId)
+            ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'absent'])
+            ->exists();
     }
 
     /** Any non-cancelled past session, taught status, sign-in or deducted LR. */

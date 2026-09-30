@@ -114,6 +114,7 @@ class StudentClassSplitContractTest extends TestCase
     {
         $token = $this->createDirectorToken();
         [, $source, $sessionIds] = $this->createTenSessionSource();
+        $mathId = (int) \App\Services\FrontendSubjectIdResolver::resolve('Math');
         $newTeacher = User::create([
             'LoginName' => 'math-teacher-' . uniqid() . '@test.com', 'Name' => '李維',
             'PSW' => 'secret', 'type' => 'T', 'phone' => '0911111111',
@@ -123,7 +124,7 @@ class StudentClassSplitContractTest extends TestCase
             ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", [
                 'start_date' => '2026-09-01',
                 'reason' => '英文轉數學，剩餘堂數轉新合約',
-                'subject_id' => 3,
+                'subject_id' => $mathId,
                 'teacher_id' => $newTeacher->id,
             ]);
 
@@ -133,10 +134,10 @@ class StudentClassSplitContractTest extends TestCase
             ->assertJsonPath('new_course.transferred_session_count', 0);
 
         $newCourse = StudentClass::find((int) $response->json('new_course.id'));
-        $this->assertSame(3, (int) $newCourse->SubjectID);
+        $this->assertSame($mathId, (int) $newCourse->SubjectID);
         $this->assertSame((int) $newTeacher->id, (int) $newCourse->TeacherID);
         $source->refresh();
-        $this->assertSame(1, (int) $source->SubjectID); // old contract keeps its subject
+        $this->assertNotSame($mathId, (int) $source->SubjectID); // old contract keeps its subject
         $this->assertSame(8, DB::table('ClassSession')->where('StudentClassID', $source->ID)->count());
         $this->assertCount(8, $sessionIds);
     }

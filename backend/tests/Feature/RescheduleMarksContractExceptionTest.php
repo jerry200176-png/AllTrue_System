@@ -137,7 +137,7 @@ class RescheduleMarksContractExceptionTest extends TestCase
         $course = StudentClass::create([
             'StudentID' => $student->id,
             'GradeID' => 1,
-            'SubjectID' => 1,
+            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Math'),
             'TeacherID' => $teacher->id,
             'ClassType' => 'one_on_one',
             'by1' => 1,
