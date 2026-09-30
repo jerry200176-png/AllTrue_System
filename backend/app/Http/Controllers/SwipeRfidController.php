@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Services\AttendanceEffectsService;
 use App\Services\SessionDeductionService;
 use App\Services\StudentPresenceBackfillService;
+use App\Services\TeacherAttendanceMonth;
+use App\Services\TeacherClassCalendar;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -404,7 +406,7 @@ class SwipeRfidController extends Controller
             ], 200);
         }
 
-        $status = $this->resolveTeacherSignInStatus($teacher->id, $swipeAt);
+        $status = $this->resolveTeacherSignInStatus($teacher->id, $campusId, $swipeAt);
 
         $record = TeacherSignIn::create([
             'TeacherID'  => $teacher->id,
@@ -430,27 +432,31 @@ class SwipeRfidController extends Controller
     }
 
     /**
-     * 計算老師簽到的異常狀態。
+     * 計算老師簽到的異常狀態：只比「這間分校」今天第一堂，且只看今天第一次到這間分校（跑校不誤判）。
+     * 月表／今日頁會用 TeacherAttendanceMonth 重算；這裡只是刷卡當下的快照。
      * 失敗時 fallback 為 pending_review，不中斷打卡流程。
      */
-    private function resolveTeacherSignInStatus(int $teacherId, Carbon $swipeAt): string
+    private function resolveTeacherSignInStatus(int $teacherId, int $campusId, Carbon $swipeAt): string
     {
         try {
             $today = $swipeAt->toDateString();
 
-            $firstClass = DB::table('schedules')
-                ->where('teacher_id', $teacherId)
-                ->where('schedule_date', $today)
-                ->where('status', '!=', 'cancelled')
-                ->orderBy('start_time')
-                ->first();
-
-            if (! $firstClass) {
+            $classes = TeacherClassCalendar::load($today, $today, [$campusId], $teacherId)[$teacherId][$today] ?? [];
+            if ($classes === []) {
                 return 'source_only';
             }
 
-            $classStart = Carbon::parse("{$today} {$firstClass->start_time}");
-            $threshold  = $classStart->copy()->addMinutes(10);
+            $arrivedEarlier = TeacherSignIn::query()->where('TeacherID', $teacherId)
+                ->where('CampusID', $campusId)
+                ->whereDate('SignInDT', $today)
+                ->where('SignInDT', '<', $swipeAt)
+                ->exists();
+            if ($arrivedEarlier) {
+                return 'normal';
+            }
+
+            $classStart = Carbon::parse("{$today} " . min(array_column($classes, 'start')));
+            $threshold  = $classStart->copy()->addMinutes(TeacherAttendanceMonth::LATE_GRACE_MINUTES);
 
             return $swipeAt->lte($threshold) ? 'normal' : 'late';
         } catch (\Throwable $e) {
