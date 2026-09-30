@@ -45,6 +45,40 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-unified-login",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "登入不用再先選身分",
+    "summary": "登入畫面只要輸入帳號與密碼；若同一組帳密對應兩個身分，登入後再選一次即可。",
+    "items": [
+      "移除登入前的「老師／主任櫃台」選擇，只填帳號與密碼。",
+      "同一組帳密有兩個身分時，登入後會問「要用哪一個登入」。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "移除登入前的「老師／主任櫃台」選擇，只填帳號與密碼。",
+          "同一組帳密有兩個身分時，登入後會問「要用哪一個登入」。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:unified-login"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-subject-units-reference-totals",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

@@ -30,9 +30,6 @@ const PARENT = { name: process.env.SMOKE_PARENT_STUDENT_NAME, phone: process.env
 /** 以登入頁完成登入；role: 'teacher' | 'director'。 */
 async function login(page, role, creds) {
   await page.goto('/');
-  const roleTitle = role === 'teacher' ? '老師' : '主任/櫃台';
-  // 角色切換（radiogroup 內的 .role-btn）
-  await page.locator('.role-btn', { hasText: roleTitle }).first().click({ trial: false }).catch(() => {});
   await page.locator('#login-account').fill(creds.account);
   await page.locator('#login-password').fill(creds.password);
   await page.locator('button.login-btn').click({ force: true });

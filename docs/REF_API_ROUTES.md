@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 483 api/* routes · generated 2026-09-29
+> Source: `php artisan route:list --json` · 484 api/* routes · generated 2026-09-30
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -172,12 +172,13 @@
 | DELETE | `api/v1/attendance/{id}` | `AttendanceController@destroy` | role+campus |
 | POST | `api/v1/attendance/{id}/convert-to-attended` | `AttendanceController@convertToAttended` | role+campus |
 
-## /api/v1/auth (3)
+## /api/v1/auth (4)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | POST | `api/v1/auth/forgot-password` | `PasswordResetRequestController@store` | public |
 | POST | `api/v1/auth/login` | `AuthController@login` | public |
+| POST | `api/v1/auth/login/choose` | `AuthController@chooseAccount` | public |
 | POST | `api/v1/auth/register` | `AuthController@register` | public |
 
 ## /api/v1/backfill (1)

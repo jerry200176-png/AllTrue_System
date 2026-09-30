@@ -64,6 +64,22 @@ updates:
     source_refs:
       - "changelog:2026-09-30:no-self-approval"
 
+  - id: staff-2026-09-30-unified-login
+    published_at: "2026-09-30"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 登入不用再先選身分
+    summary: 登入畫面只要輸入帳號與密碼；若同一組帳密對應兩個身分，登入後再選一次即可。
+    items:
+      - category: improved
+        text: 移除登入前的「老師／主任櫃台」選擇，只填帳號與密碼。
+      - category: improved
+        text: 同一組帳密有兩個身分時，登入後會問「要用哪一個登入」。
+    source_refs:
+      - "changelog:2026-09-30:unified-login"
+
   - id: staff-2026-09-30-ux-followups
     published_at: "2026-09-30"
     audiences:

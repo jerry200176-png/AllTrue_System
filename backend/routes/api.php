@@ -167,6 +167,7 @@ Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) 
 Route::prefix('v1')->group(function () {
     // ── Auth (public) ───────────────────────────────────────────────
     Route::post('auth/login', [AuthController::class, 'login']);
+    Route::post('auth/login/choose', [AuthController::class, 'chooseAccount']);
     // SEC-003: 5 req/IP/60 min — prevents email bombing & account enumeration.
     Route::post('auth/forgot-password', [PasswordResetRequestController::class, 'store'])
         ->middleware('throttle:5,60');

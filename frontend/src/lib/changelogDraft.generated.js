@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "as in security audit + self-approval hard block；aware director lookups behind STAFF_MULTI_ROLE_V1",
+    "summary": "as in security audit + self-approval hard block；entry staff login (no role picker)",
     "audience": [
       "teacher",
       "director"
@@ -19,6 +19,7 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "as in security audit + self-approval hard block",
+          "entry staff login (no role picker)",
           "aware director lookups behind STAFF_MULTI_ROLE_V1",
           "新增多科共用堂數與加購分流入口",
           "reference subject-unit totals with and without tutoring",
@@ -35,6 +36,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "as in security audit + self-approval hard block",
+      "entry staff login (no role picker)",
       "aware director lookups behind STAFF_MULTI_ROLE_V1",
       "新增多科共用堂數與加購分流入口",
       "reference subject-unit totals with and without tutoring",
