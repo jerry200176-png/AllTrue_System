@@ -136,6 +136,11 @@ class StudentClassController extends Controller
             $query->where('ScheduleMode', $request->input('schedule_mode'));
         }
 
+        $request->validate(['class_type' => 'sometimes|nullable|in:one_on_one,one_on_two,one_on_three,tutoring,trial']);
+        if ($request->filled('class_type')) {
+            $query->where('ClassType', (string) $request->input('class_type'));
+        }
+
         if ($request->filled('status')) {
             $statusVal = $request->input('status');
             if ($statusVal === 'inactive') {
