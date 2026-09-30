@@ -6,8 +6,10 @@ use App\Models\AuthToken;
 use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\TeacherAttendanceMonth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 /**
@@ -105,6 +107,61 @@ class TeacherMonthlyExportTest extends TestCase
             'spreadsheetml',
             $res->headers->get('Content-Type', '')
         );
+    }
+
+    // ── AC-6: xlsx 內容：摘要 / 老師 sheet（24h、工時、只刷一次、合計）/ 修正紀錄 ─────
+
+    public function test_export_cells_follow_daily_rules(): void
+    {
+        [$token, $campusId, $directorId] = $this->scaffold('director');
+        $teacher = User::create([
+            'LoginName' => 'monthly-cells-' . uniqid() . '@example.com', 'Name' => '潘老師', 'PSW' => 'secret',
+            'type' => 'T', 'phone' => '0900000002', 'MustChangePassword' => false,
+        ]);
+        $base = ['TeacherID' => $teacher->id, 'CampusID' => $campusId, 'MDT' => now(), 'Source' => 'rfid', 'Status' => 'normal'];
+        DB::table('TeacherSingIn')->insert([
+            $base + ['SignInDT' => '2026-08-01 09:59:24', 'SignOutDT' => '2026-08-01 17:53:20', 'Memo' => null],
+            $base + ['SignInDT' => '2026-08-03 21:31:15', 'SignOutDT' => '2026-08-03 23:59:00', 'Memo' => TeacherAttendanceMonth::AUTO_CLOSE_MEMO],
+        ]);
+        $signinId = DB::table('TeacherSingIn')->where('SignInDT', '2026-08-01 09:59:24')->value('id');
+        DB::table('teacher_signin_adjustments')->insert([
+            'teacher_signin_id' => $signinId, 'adjusted_by_user_id' => $directorId, 'adjust_reason' => '忘記刷卡',
+            'original_signin_dt' => '2026-08-01 10:30:00', 'original_signout_dt' => null,
+            'new_signin_dt' => '2026-08-01 09:59:24', 'new_signout_dt' => '2026-08-01 17:53:20', 'created_at' => '2026-08-02 10:00:00',
+        ]);
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => '*/*'])
+            ->get('/api/v1/teacher-attendance/export-monthly?year_month=2026-08');
+        $res->assertOk();
+
+        $book = IOFactory::load($res->baseResponse->getFile()->getPathname());
+
+        $this->assertSame(['摘要', '潘老師', '修正紀錄'], $book->getSheetNames());
+
+        $summary = $book->getSheetByName('摘要');
+        $this->assertSame(['潘老師', 2, 7.9, 1, 1, 0], [
+            $summary->getCell('A3')->getValue(), $summary->getCell('B3')->getValue(), $summary->getCell('C3')->getValue(),
+            $summary->getCell('D3')->getValue(), $summary->getCell('E3')->getValue(), $summary->getCell('F3')->getValue(),
+        ]);
+
+        $sheet = $book->getSheetByName('潘老師');
+        $this->assertSame('09:59', $sheet->getCell('D3')->getValue());
+        $this->assertSame('系統補登', $sheet->getCell('E6')->getValue());
+        // 右側：08-01 有上下班、08-03 只刷一次
+        $this->assertSame(['2026-08-01(六)', '09:59', '17:53', 7.9, '已修正'], [
+            $sheet->getCell('G3')->getValue(), $sheet->getCell('I3')->getValue(), $sheet->getCell('J3')->getValue(),
+            $sheet->getCell('K3')->getValue(), $sheet->getCell('L3')->getValue(),
+        ]);
+        $this->assertSame([null, null, '只刷一次 21:31'], [
+            $sheet->getCell('I5')->getValue(), $sheet->getCell('J5')->getValue(), $sheet->getCell('L5')->getValue(),
+        ]);
+        $this->assertSame('合計', $sheet->getCell('G34')->getValue());
+        $this->assertSame('出勤 2 天、只刷一次 1 天、修正 1 天', $sheet->getCell('L34')->getValue());
+
+        $adj = $book->getSheetByName('修正紀錄');
+        $this->assertSame(['2026-08-01', '潘老師', '08-01 10:30 → 08-01 09:59', '忘記刷卡'], [
+            $adj->getCell('A3')->getValue(), $adj->getCell('B3')->getValue(), $adj->getCell('C3')->getValue(), $adj->getCell('G3')->getValue(),
+        ]);
     }
 
     // ── AC-7: 月檢視 API：老師只看得到自己 ─────────────────────────────────────

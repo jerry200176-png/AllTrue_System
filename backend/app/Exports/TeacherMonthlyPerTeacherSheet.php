@@ -3,8 +3,8 @@
 namespace App\Exports;
 
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -12,43 +12,20 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /**
- * 每位老師獨立 Sheet（格式對應 新莊中平分校_2025-12_刷卡清單.xlsx）
+ * 每位老師一張 Sheet（沿用 刷卡清單.xlsx 左右兩塊版型）
  *
- * 欄位佈局（10 欄，A-J）：
- *   A  老師名
- *   B  刷卡時間（YYYY-MM-DD HH:MM:SS）
- *   C  日期（YYYY-MM-DD）
- *   D  時間（hh:MM AM/PM）
- *   E  ─── 分隔 ───
- *   F  日期（YYYY-MM-DD(星期)）
- *   G  跑校（本版空白）
- *   H  上班（當日 min SignInDT）
- *   I  下班（當日 max SignOutDT）
- *   J  加班（本版空白）
+ *   A 老師名  B 刷卡時間  C 日期  D 時間(24h)  E 來源  | F 空白 |
+ *   G 日期(星期)  H 跑校  I 上班  J 下班  K 工時(時)  L 註記
+ * 右側最後一列是合計。
  */
-class TeacherMonthlyPerTeacherSheet implements FromArray, WithTitle, WithStyles
+class TeacherMonthlyPerTeacherSheet implements FromArray, WithTitle, WithStyles, WithStrictNullComparison
 {
-    private static array $weekdayMap = ['日', '一', '二', '三', '四', '五', '六'];
+    private const SOURCE_LABELS = ['rfid' => '刷卡', 'manual' => '手動'];
 
-    private string $teacherName;
-    private Collection $records;  // teacher's TeacherSingIn rows for the month
-    private string $yearMonth;    // "YYYY-MM"
-    private string $campusName;
-    private string $sheetTitle;
+    private int $calendarRows = 0;
 
-    public function __construct(
-        string $teacherName,
-        Collection $records,
-        string $yearMonth,
-        string $campusName
-    ) {
-        $this->teacherName = $teacherName;
-        $this->records     = $records;
-        $this->yearMonth   = $yearMonth;
-        $this->campusName  = $campusName;
-        // Excel sheet name ≤ 31 chars, strip forbidden chars; must not be empty
-        $sanitized = $this->sanitizeSheetName($teacherName);
-        $this->sheetTitle = $sanitized !== '' ? $sanitized : 'Sheet';
+    public function __construct(private array $teacher, private string $sheetTitle, private string $titlePrefix)
+    {
     }
 
     public function title(): string
@@ -58,21 +35,16 @@ class TeacherMonthlyPerTeacherSheet implements FromArray, WithTitle, WithStyles
 
     public function array(): array
     {
-        $title = "{$this->campusName} {$this->yearMonth} 老師刷卡清單";
-
         $rows = [
-            [$title, null, null, null, null, null, null, null, null, null],
-            ['老師名', '刷卡時間', '日期', '時間', null, '日期', '跑校', '上班', '下班', '加班'],
+            ["{$this->titlePrefix} {$this->teacher['teacher_name']} 刷卡清單"],
+            ['老師名', '刷卡時間', '日期', '時間', '來源', null, '日期', '跑校', '上班', '下班', '工時(時)', '註記'],
         ];
 
-        $leftRows  = $this->buildSwipeRows();
-        $rightRows = $this->buildCalendarRows();
-
-        $total = max(count($leftRows), count($rightRows));
-        for ($i = 0; $i < $total; $i++) {
-            $left  = $leftRows[$i]  ?? [null, null, null, null];
-            $right = $rightRows[$i] ?? [null, null, null, null, null];
-            $rows[] = array_merge($left, [null], $right);
+        $left  = $this->swipeRows();
+        $right = $this->calendarRows();
+        $this->calendarRows = count($right);
+        for ($i = 0, $n = max(count($left), count($right)); $i < $n; $i++) {
+            $rows[] = array_merge($left[$i] ?? array_fill(0, 5, null), [null], $right[$i] ?? array_fill(0, 6, null));
         }
 
         return $rows;
@@ -80,108 +52,68 @@ class TeacherMonthlyPerTeacherSheet implements FromArray, WithTitle, WithStyles
 
     public function styles(Worksheet $sheet): array
     {
-        // Merge title row
-        $sheet->mergeCells('A1:J1');
+        $sheet->mergeCells('A1:L1');
+        $totalRow = $this->calendarRows + 2;
 
         return [
             1 => [
                 'font'      => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF'], 'size' => 12],
                 'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF2F5496']],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER,
-                                'vertical'   => Alignment::VERTICAL_CENTER],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
             ],
             2 => [
                 'font' => ['bold' => true],
                 'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFD9E1F2']],
             ],
+            "G{$totalRow}:L{$totalRow}" => ['font' => ['bold' => true]],
         ];
     }
 
-    // ─── Private helpers ──────────────────────────────────────────
-
-    /**
-     * 左側流水帳：每筆 TeacherSingIn → SignInDT 行 + SignOutDT 行（若不為 null）
-     */
-    private function buildSwipeRows(): array
+    /** 左側：每次刷卡一列（上班、下班各一列）。系統自動補的下班不是真的刷卡，來源標「系統補登」。 */
+    private function swipeRows(): array
     {
         $rows = [];
-        foreach ($this->records as $rec) {
-            if (! $rec->sign_in_dt) {
-                continue;
+        foreach ($this->teacher['swipes'] as $rec) {
+            $source = self::SOURCE_LABELS[$rec->source ?? ''] ?? '刷卡';
+            $rows[] = $this->swipeRow($rec->sign_in_dt, $source);
+            if ($rec->sign_out_dt) {
+                $auto = ($rec->memo ?? null) === \App\Services\TeacherAttendanceMonth::AUTO_CLOSE_MEMO;
+                $rows[] = $this->swipeRow($rec->sign_out_dt, $auto ? '系統補登' : $source);
             }
-            $signIn = Carbon::parse($rec->sign_in_dt);
-            $rows[] = [
-                $this->teacherName,
-                $signIn->format('Y-m-d H:i:s'),
-                $signIn->format('Y-m-d'),
-                $signIn->format('h:i A'),
-            ];
-
-            if (! empty($rec->sign_out_dt)) {
-                $signOut = Carbon::parse($rec->sign_out_dt);
-                $rows[]  = [
-                    $this->teacherName,
-                    $signOut->format('Y-m-d H:i:s'),
-                    $signOut->format('Y-m-d'),
-                    $signOut->format('h:i A'),
-                ];
-            }
-        }
-        return $rows;
-    }
-
-    /**
-     * 右側月曆摘要：每日一行，上班 = min(SignInDT)，下班 = max(SignOutDT)
-     */
-    private function buildCalendarRows(): array
-    {
-        // Aggregate per-day sign-in / sign-out
-        $daySignIn  = [];  // date => earliest SignInDT string
-        $daySignOut = [];  // date => latest SignOutDT string
-
-        foreach ($this->records as $rec) {
-            if (! $rec->sign_in_dt) {
-                continue;
-            }
-            $date = substr((string) $rec->sign_in_dt, 0, 10);
-
-            if (! isset($daySignIn[$date]) || $rec->sign_in_dt < $daySignIn[$date]) {
-                $daySignIn[$date] = $rec->sign_in_dt;
-            }
-            if (! empty($rec->sign_out_dt)) {
-                if (! isset($daySignOut[$date]) || $rec->sign_out_dt > $daySignOut[$date]) {
-                    $daySignOut[$date] = $rec->sign_out_dt;
-                }
-            }
-        }
-
-        $rows    = [];
-        $current = Carbon::createFromFormat('Y-m', $this->yearMonth)->startOfMonth();
-        $end     = $current->copy()->endOfMonth();
-
-        while ($current->lte($end)) {
-            $dateStr    = $current->format('Y-m-d');
-            $weekday    = self::$weekdayMap[$current->dayOfWeek];
-            $dateLabel  = "{$dateStr}({$weekday})";
-
-            $signInTime  = isset($daySignIn[$dateStr])
-                ? Carbon::parse($daySignIn[$dateStr])->format('h:i A')
-                : null;
-            $signOutTime = isset($daySignOut[$dateStr])
-                ? Carbon::parse($daySignOut[$dateStr])->format('h:i A')
-                : null;
-
-            $rows[] = [$dateLabel, null, $signInTime, $signOutTime, null];
-            $current->addDay();
         }
 
         return $rows;
     }
 
-    private function sanitizeSheetName(string $name): string
+    private function swipeRow(string $dt, string $source): array
     {
-        // Remove Excel-forbidden chars
-        $name = preg_replace('/[\/\\\\?\*:\[\]]/', '', $name);
-        return mb_substr($name, 0, 31);
+        $at = Carbon::parse($dt);
+
+        return [$this->teacher['teacher_name'], $at->format('Y-m-d H:i:s'), $at->format('Y-m-d'), $at->format('H:i'), $source];
+    }
+
+    /** 右側：每天一列 + 合計 */
+    private function calendarRows(): array
+    {
+        $rows = array_map(fn ($d) => [
+            $d['label'],
+            $d['run_school'] ? '是' : null,
+            $d['sign_in'],
+            $d['sign_out'],
+            $d['minutes'] !== null ? round($d['minutes'] / 60, 2) : null,
+            $d['note'] !== '' ? $d['note'] : null,
+        ], $this->teacher['days']);
+
+        $t = $this->teacher['totals'];
+        $rows[] = [
+            '合計',
+            $t['run_days'] ? "{$t['run_days']} 天" : null,
+            null,
+            null,
+            round($t['minutes'] / 60, 2),
+            "出勤 {$t['days_present']} 天、只刷一次 {$t['anomaly_days']} 天、修正 {$t['corrected_days']} 天",
+        ];
+
+        return $rows;
     }
 }
