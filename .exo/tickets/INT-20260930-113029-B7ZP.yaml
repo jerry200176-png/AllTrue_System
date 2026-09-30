@@ -1,0 +1,36 @@
+id: INT-20260930-113029-B7ZP
+title: UI smoke accepts loaded course page
+intent: UI smoke accepts loaded course page
+kind: intent
+brain_dump: 'Production smoke rerun 36662600001: 12 passed; course lookup heading
+  visible but nav helper waits for active class until timeout'
+boundary: Only production read-only smoke navigation assertion; no app/runtime/auth/credential
+  changes
+success_condition: Smoke navigation accepts the exact visible destination heading
+  while retaining active class and aria-current fallbacks
+risk: low
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/e2e/smoke.spec.js
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+type: feature
+status: review
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-30T11:30:29+08:00'
+children: []
+resource_profile: default

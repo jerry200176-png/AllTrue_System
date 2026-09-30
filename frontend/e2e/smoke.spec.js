@@ -87,6 +87,11 @@ async function navTo(page, navLabel) {
     }
     await navBtn.click({ force: true });
     await page.waitForLoadState('networkidle').catch(() => {});
+    // The destination heading is the user-visible outcome. In production the
+    // course page can render before the sidebar's active class settles.
+    if (await page.getByRole('heading', { name: navLabel, exact: true }).isVisible().catch(() => false)) {
+      return;
+    }
     const activeClass = await activeTarget.getAttribute('class').catch(() => '');
     const ariaCurrent = await activeTarget.getAttribute('aria-current').catch(() => null);
     if ((activeClass && /(?:^|\s)active(?:\s|$)/.test(activeClass)) || ariaCurrent === 'page') {

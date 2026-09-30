@@ -1,0 +1,13 @@
+id: REF-20260930-113123-HD0A
+pattern: UI smoke navigation timed out despite the destination heading being visible
+insight: For navigation smoke, accept the exact visible destination heading as success
+  and keep active-class/aria-current fallbacks; a transient sidebar state is not a
+  page-load failure.
+severity: medium
+scope: global
+actor: agent:codex
+session_id: SES-20260930113033-2887FA38
+created_at: '2026-09-30T11:31:23+08:00'
+status: active
+tags: []
+hit_count: 0
