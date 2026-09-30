@@ -1544,7 +1544,7 @@ import {
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
 } from '../lib/coursePricing';
-import { addMonthsToPeriodEnd, applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
+import { applyMonthlyRenewalPreview, nextPeriodEnd, renewalErrorMessage, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -3347,7 +3347,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
     }
     const currentEnd = course?.end_date || course?.EndDate || null;
     let endDate = requestedEndDate;
-    if (!endDate) endDate = addMonthsToPeriodEnd(currentEnd, 1);
+    if (!endDate) endDate = nextPeriodEnd(currentEnd, course?.settlement_day);
     invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
@@ -3372,7 +3372,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
         renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
         applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
       } else {
-        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: json.message || '無法取得期間預覽，請重試。' });
+        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: renewalErrorMessage(json, '無法取得期間預覽，請重試。') });
       }
     }
   } catch {
