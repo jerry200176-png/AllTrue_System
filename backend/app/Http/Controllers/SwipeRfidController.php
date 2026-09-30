@@ -275,8 +275,8 @@ class SwipeRfidController extends Controller
             'TelegramID'  => $student->TelegramID,
             'TelegramID1' => $student->TelegramID1,
             'TelegramID2' => $student->TelegramID2,
-            'LineIDs'     => StudentLineBinding::where('student_id', $student->id)
-                ->verified()
+            'LineIDs'     => StudentLineBinding::query()->where('student_id', $student->id)
+                ->whereNotNull('verified_at')
                 ->pluck('line_user_id')
                 ->values()
                 ->all(),
