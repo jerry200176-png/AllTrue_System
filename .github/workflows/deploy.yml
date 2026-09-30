@@ -90,6 +90,7 @@ jobs:
     timeout-minutes: 3
     outputs:
       target_sha: ${{ steps.resolve.outputs.target_sha }}
+      superseded: ${{ steps.resolve.outputs.superseded }}
     steps:
       - name: Validate target SHA and CI evidence
         id: resolve
@@ -113,6 +114,17 @@ jobs:
           fi
 
           gh api "/repos/${REPO}/commits/${TARGET_SHA}" >/dev/null
+
+          # A late CI run for an older commit must not ask for Founder approval that the
+          # exact-main gate will refuse anyway; the newer main commit's own CI deploys it.
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
+            if [[ "$TARGET_SHA" != "$MAIN_SHA" ]]; then
+              echo "::notice::Superseded: CI finished for ${TARGET_SHA} but main is ${MAIN_SHA}; skipping without an approval request."
+              echo "superseded=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "repository_dispatch" ]]; then
             MAIN_SHA="$(gh api "/repos/${REPO}/git/ref/heads/main" --jq '.object.sha')"
@@ -142,7 +154,7 @@ jobs:
   detect-deployable:
     name: Detect deployable changes
     needs: resolve-target
-    if: ${{ needs.resolve-target.result == 'success' }}
+    if: ${{ needs.resolve-target.result == 'success' && needs.resolve-target.outputs.superseded != 'true' }}
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 3

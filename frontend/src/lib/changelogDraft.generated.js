@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.10.01",
+    "date": "2026-10-01",
+    "title": "2026.10.01 草稿（未發布）",
+    "summary": "for an older commit no longer asks for deploy approval",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "for an older commit no longer asks for deploy approval"
+        ]
+      }
+    ],
+    "items": [
+      "for an older commit no longer asks for deploy approval"
+    ]
+  },
+  {
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
@@ -652,48 +674,6 @@ export const changelogDraftNotes = [
       "未付款堂數更正只在安全條件下開放",
       "課程繳費下一步更容易辨識",
       "未安排堂次的日期清單說明"
-    ]
-  },
-  {
-    "version": "2026.09.10",
-    "date": "2026-09-10",
-    "title": "2026.09.10 草稿（未發布）",
-    "summary": "回復正班老師會清掉殘留代課列；評量評語視窗更清楚、更容易操作",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "回復正班老師會清掉殘留代課列",
-          "評量評語視窗更清楚、更容易操作",
-          "評量表授課老師顯示實際填寫老師"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "出缺勤紀錄更容易閱讀",
-          "進度中心更容易理解",
-          "需要留意事項更容易處理",
-          "家長入口標頭更容易操作",
-          "家長學習分頁更容易操作",
-          "版本更新頁更容易閱讀"
-        ]
-      }
-    ],
-    "items": [
-      "回復正班老師會清掉殘留代課列",
-      "評量評語視窗更清楚、更容易操作",
-      "評量表授課老師顯示實際填寫老師",
-      "出缺勤紀錄更容易閱讀",
-      "進度中心更容易理解",
-      "需要留意事項更容易處理",
-      "家長入口標頭更容易操作",
-      "家長學習分頁更容易操作"
     ]
   }
 ];
