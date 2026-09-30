@@ -10,7 +10,6 @@ const DIRECTOR = {
 
 async function loginAsDirector(page) {
   await page.goto('/');
-  await page.locator('.role-btn', { hasText: '主任/櫃台' }).first().click({ trial: false }).catch(() => {});
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
   await page.locator('button.login-btn').click({ force: true });

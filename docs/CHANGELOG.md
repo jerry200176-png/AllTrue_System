@@ -14,6 +14,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-30-staff-identity-merge-dryrun -->
 - 雙帳號（主任＋老師）合併第一階段：保留老師帳號、停用主任帳號；新增唯讀 `staff:identity-merge --candidates|--dry-run` 與唯讀 workflow，只列出疑似同人帳號與合併試算（僅 id／筆數），不改任何資料、不含 migration、無套用路徑；階段 2–4 尚未建置，不發布教職員公告。
 
+## 2026-09-30 — feat(auth): single-entry staff login (no role picker)
+<!-- release-notes: staff_update=staff-2026-09-30-unified-login -->
+- 登入畫面只填帳號與密碼，不再先選「老師／主任櫃台」。後端不帶 `role` 時依 LoginName 找出啟用中的員工帳號並逐一驗密碼：僅一筆符合直接登入；同帳號密碼有兩個帳號（未合併的雙帳號）時回 `data.requires_account_choice`、5 分鐘單次有效的 `choice_token` 與僅含身分標籤的 `choices`，再由新增的 `POST /auth/login/choose` 發 token（選項綁定候選帳號、用過即失效）。節流沿用登入鎖定規則、選擇成功寫入 `login.account_choice` 稽核（僅雜湊 id），查無帳號補做一次假密碼驗證以縮小時間差。舊版前端仍可帶 `role`，語意不變。忘記密碼仍保留身分選單（後續再統一）。無 migration、旗標不變。
+
 ## 2026-09-30 — feat(auth): capability-aware director lookups behind STAFF_MULTI_ROLE_V1 (#2908 step 2)
 <!-- release-notes: silent_ship=silent-2026-09-30-director-capability-lookups -->
 - 「某分校主任」查詢（主任帳號清單、催繳提醒收件、採用度統計）改走單一 helper；旗標關閉時與原本 type=D 結果完全相同，旗標開啟才額外納入持有有效 director grant 的老師帳號。不改登入與授權解析、不改資料。
