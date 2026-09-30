@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /** One-case repair student 2175: restore 3499 to 英文/Ruth, then paid 轉課 9/30+ to 數學/李維. */
@@ -31,7 +32,7 @@ class RepairYuShengrui3499TransferTest extends TestCase
             'by1' => 1, 'Period' => 4, 'StartDate' => '2026-09-02', 'TotalHours' => 16, 'Charge' => 12000, 'Pay' => 12000, 'Disconunt' => 0,
             'Paid' => 1, 'PayDate' => '2026-09-09', 'Rate' => 1500, 'rate_unit' => 'session', 'MDate' => now(), 'Stop' => 0,
             'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 4, 'UsedSessions' => 4,
-            'ClassType' => 'one_on_two', 'RoomID' => '0', 'week' => 3, 'time' => '15:00:00']);
+            'ClassType' => 'one_on_two', 'week' => 3, 'time' => '15:00:00'] + (Schema::hasColumn('StudentClass', 'RoomID') ? ['RoomID' => '0'] : []));
         foreach ([33693 => ['2026-09-02', 'attended'], 33694 => ['2026-09-09', 'attended'], 33695 => ['2026-09-16', 'attended'],
             33696 => ['2026-09-23', 'late']] as $id => [$d, $st]) {
             $this->cs($id, $d, '13:00:00', '15:00:00', $st);
