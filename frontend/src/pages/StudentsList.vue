@@ -218,10 +218,16 @@
                     <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">menu_book</span>
                     {{ student.name }} 的課程安排
                   </h4>
-                  <button type="button" class="primary small" @click="openAddCourse(student)">
-                    <span class="material-symbols-outlined btn-icon">add</span>
-                    新增課程
-                  </button>
+                  <div class="course-panel-header__actions">
+                    <button v-if="getRenewableMonthlyCourses(student.id).length" type="button" class="small ghost" data-testid="batch-monthly-renew" @click="openBatchRenew(student)">
+                      <span class="material-symbols-outlined btn-icon">autorenew</span>
+                      月結續報下月（{{ getRenewableMonthlyCourses(student.id).length }} 科）
+                    </button>
+                    <button type="button" class="primary small" @click="openAddCourse(student)">
+                      <span class="material-symbols-outlined btn-icon">add</span>
+                      新增課程
+                    </button>
+                  </div>
                 </div>
                 <div class="student-note-line">
                   <span class="student-note-label">學生備註：</span>
@@ -458,7 +464,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -763,6 +769,14 @@
       @duplicate-course="handleSchedulerDuplicate"
     />
 
+    <MonthlyBatchRenewModal
+      :show="!!batchRenewStudent"
+      :student-name="batchRenewStudent?.name || ''"
+      :courses="batchRenewStudent ? getRenewableMonthlyCourses(batchRenewStudent.id) : []"
+      @close="batchRenewStudent = null"
+      @done="loadAllStudentCourses"
+    />
+
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
@@ -1062,6 +1076,7 @@ import {
   normalizeActiveCourseConflicts,
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
+import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildTuitionCollectNav,
@@ -1273,6 +1288,7 @@ const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlyPreviewRequestId = ref(0);
 const renewMonthlySubmitting = ref(false);
+const batchRenewStudent = ref(null);
 const renewMonthlyWarnings = ref([]);
 
 // --- Monthly Invoice Modal ---
@@ -1487,6 +1503,13 @@ const isHistoryCourseByReason = (course) => {
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
 };
+/** Active, billable monthly courses: what the one-dialog 月結續報 offers. */
+const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
+  String(c?.payment_type || '').toLowerCase() === 'monthly'
+  && !isTutoringCourse(c)
+  && String(c?.status || '').toLowerCase() !== 'inactive'
+));
+const openBatchRenew = (student) => { batchRenewStudent.value = student; };
 const getHistoryStudentCourses = (id) => {
   // History is a detail disclosure inside an expanded student, so it must remain
   // available even when the top-level list is showing active courses only.
@@ -2308,6 +2331,8 @@ const focusInitialStudent = async () => {
     if (targetCourse) {
       selectStudentCourse(student.id, targetCourse.id);
       if (props.initialStudentIntent === 'edit') editCourse(targetCourse);
+      else if ((props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew')
+        && getRenewableMonthlyCourses(student.id).some((c) => c.id === targetCourse.id)) openBatchRenew(student);
       else if (props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew') openAddSessionsForCourse(targetCourse);
       else if (props.initialStudentIntent === 'close') closeCourseNoRenew(targetCourse, student.name);
     }
@@ -4303,6 +4328,7 @@ table th { font-size: 12.5px; }
   align-items: center;
   margin-bottom: 16px;
 }
+.course-panel-header__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .course-panel-header h4 {
   display: flex;
   align-items: center;

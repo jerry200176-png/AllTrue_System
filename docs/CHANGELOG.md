@@ -17,6 +17,7 @@
 ## 2026-09-30 — fix(students): monthly renewal submit stays enabled after preview
 <!-- release-notes: staff_update=staff-2026-09-30-monthly-renew-admin -->
 - #3333 起 `RenewMonthlyModal` 需要 `preview_status=ready` 才能送出，但學生管理頁（目前唯一續約入口）的預覽只更新金額、從未設定預覽狀態，所以「建立新一期」永遠是灰的。學生管理改用與課程管理相同的 `invalidate/applyMonthlyRenewalPreview`，並顯示警告／擋件。學生管理課程列表補上 `end_date`（以前沒帶，舊期到期日顯示「無到期日」、改用今天 +1 月）。新增 `addMonthsToPeriodEnd`：月底到期續月仍到月底（09-30 → 10-31）。
+- 新增 `MonthlyBatchRenewModal`：學生管理展開學生後「月結續報下月（N 科）」一次列出該生所有進行中月結課，逐科呼叫 `renewal-preview` 顯示新期間／預估金額／擋件，勾選後依序呼叫 `renew-monthly`（不帶折扣；折扣仍走單科）。課程查找的月結續約深連結直接開這個視窗。單科按鈕在月結課顯示「結算 / 續約下月」（原「加購」）。
 
 ## 2026-09-30 — fix(students): monthly renewal no longer blocked for admin
 <!-- release-notes: staff_update=staff-2026-09-30-monthly-renew-admin -->

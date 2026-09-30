@@ -32,3 +32,18 @@ export function addMonthsToPeriodEnd(ymd, months = 1, today = new Date()) {
   const day = d >= lastDay(y, mo) ? lastDay(ty, tm) : Math.min(d, lastDay(ty, tm));
   return `${ty}-${String(tm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
+
+/** Period end that lands in `targetYm` (YYYY-MM), or null when `ymd` already reaches that month. */
+export function periodEndInMonth(ymd, targetYm) {
+  const e = /^(\d{4})-(\d{2})/.exec(String(ymd || ''));
+  const t = /^(\d{4})-(\d{2})/.exec(String(targetYm || ''));
+  if (!e || !t) return null;
+  const months = (Number(t[1]) - Number(e[1])) * 12 + (Number(t[2]) - Number(e[2]));
+  return months > 0 ? addMonthsToPeriodEnd(ymd, months) : null;
+}
+
+/** Earliest month any course would renew into (YYYY-MM); used as the batch default. */
+export function nextRenewalMonth(endDates, today = new Date()) {
+  const months = endDates.map((d) => addMonthsToPeriodEnd(d, 1, today).slice(0, 7)).sort();
+  return months[0] || addMonthsToPeriodEnd('', 1, today).slice(0, 7);
+}

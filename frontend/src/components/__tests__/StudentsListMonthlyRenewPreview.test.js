@@ -35,3 +35,20 @@ describe('StudentsList monthly renewal preview', () => {
     expect(source.match(/end_date: c\.end_date \|\| \(c\.EndDate/g)?.length).toBe(2);
   });
 });
+
+import { nextRenewalMonth, periodEndInMonth } from '../../lib/monthlyRenewalPreview';
+
+describe('batch monthly renewal periods', () => {
+  it('renews each course into the chosen month and skips courses already there', () => {
+    expect(periodEndInMonth('2026-09-30', '2026-10')).toBe('2026-10-31');
+    expect(periodEndInMonth('2026-09-14', '2026-10')).toBe('2026-10-14');
+    expect(periodEndInMonth('2026-08-31', '2026-10')).toBe('2026-10-31');
+    expect(periodEndInMonth('2026-10-31', '2026-10')).toBeNull();
+    expect(nextRenewalMonth(['2026-10-31', '2026-09-30'])).toBe('2026-10');
+  });
+
+  it('students page offers one-dialog renewal and deep links monthly renew into it', () => {
+    expect(source).toContain('data-testid="batch-monthly-renew"');
+    expect(source).toContain('getRenewableMonthlyCourses(student.id).some((c) => c.id === targetCourse.id)) openBatchRenew(student)');
+  });
+});
