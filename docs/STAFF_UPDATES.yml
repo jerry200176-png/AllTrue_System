@@ -66,6 +66,8 @@ updates:
         text: 老師首頁新增「我的本月打卡紀錄」，只看得到自己的紀錄。
       - category: improved
         text: 單日打卡表改為顯示修正原因。
+      - category: fixed
+        text: 老師刷卡月報只匯出目前選的分校，不再混入其他分校的老師。
     source_refs:
       - "changelog:2026-09-30:teacher-month-web"
 

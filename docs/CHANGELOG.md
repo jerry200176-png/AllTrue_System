@@ -12,7 +12,7 @@
 
 ## 2026-09-30 — feat(attendance): web month view for teacher attendance (director + teacher self)
 <!-- release-notes: staff_update=staff-2026-09-30-teacher-month-web -->
-- 出缺勤頁「老師打卡」新增「查看月出勤表」：選月份與老師，每天一列（日期／跑校／上班／下班／工時／註記），可只看只刷一次、可列印；老師首頁新增「我的本月打卡紀錄」，只看得到自己（勞基法 §30 出勤紀錄副本）。單日表永遠空白的「第一堂」欄改為顯示修正原因。資料來自 `GET /teacher-attendance/monthly`。
+- 出缺勤頁「老師打卡」新增「查看月出勤表」：選月份與老師，每天一列（日期／跑校／上班／下班／工時／註記），可只看只刷一次、可列印；老師首頁新增「我的本月打卡紀錄」，只看得到自己（勞基法 §30 出勤紀錄副本）。單日表永遠空白的「第一堂」欄改為顯示修正原因。修正月報匯出未帶 `campus_id`：原本主任會拿到自己所有分校、超級管理員拿到全部分校混在同一份，現在只匯出目前選的分校。資料來自 `GET /teacher-attendance/monthly`。
 
 ## 2026-09-30 — feat(attendance): teacher monthly attendance daily rows + month API
 <!-- release-notes: silent_ship=silent-2026-09-30-teacher-month-api -->

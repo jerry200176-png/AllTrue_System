@@ -1216,7 +1216,7 @@ async function exportTeacherMonthly() {
   try {
     const token = await getToken();
     if (!token) return;
-    const url = `/api/v1/teacher-attendance/export-monthly?year_month=${exportMonthRef.value}`;
+    const url = `/api/v1/teacher-attendance/export-monthly?year_month=${exportMonthRef.value}&campus_id=${props.branchId}`;
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       showAttToast('匯出失敗，請稍後再試', 'error');
