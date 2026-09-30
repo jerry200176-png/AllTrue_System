@@ -51,6 +51,19 @@ updates:
       - "alltrue:bug_report:353"
       - "changelog:2026-09-29:student-course-history"
 
+  - id: staff-2026-09-30-no-self-approval
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 不能核准自己的薪資與資格
+    summary: 同一人不能確認或核准與自己有關的薪資、資格款項，系統會直接擋下並提示。
+    items:
+      - category: improved
+        text: 不能核准自己的薪資／資格／堂數更正；請由其他主任或總部處理。
+    source_refs:
+      - "changelog:2026-09-30:no-self-approval"
+
   - id: staff-2026-09-30-ux-followups
     published_at: "2026-09-30"
     audiences:

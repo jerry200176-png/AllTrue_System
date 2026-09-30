@@ -312,6 +312,9 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_events', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         $blocked = $this->rejectUnlessPending($record->status ?? '', '已撤回的假日資料不能核准。');
         if ($blocked) {
             return $blocked;
@@ -327,6 +330,9 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_achievements', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         $blocked = $this->rejectUnlessPending($record->status ?? '', '已確認或已撤回的成果不能再確認。');
         if ($blocked) {
             return $blocked;
@@ -342,6 +348,9 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_deductions', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         if (($record->status ?? '') === 'withdrawn' || ($record->status ?? '') === 'approved' || $record->director_confirmed_at) {
             return response()->json(['message' => '已撤回或已進入審核的扣除案件不能再確認。'], 422);
         }
@@ -359,6 +368,9 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_deductions', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);
         }
@@ -456,6 +468,9 @@ class TeacherEligibilityInputController extends Controller
         if (!$record) {
             return response()->json(['message' => 'Not found'], 404);
         }
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         if (($record->status ?? '') === 'withdrawn' || ($record->status ?? '') === 'approved' || $record->director_confirmed_at) {
             return response()->json(['message' => '已撤回或已進入審核的行政加給不能再確認。'], 422);
         }
@@ -477,6 +492,9 @@ class TeacherEligibilityInputController extends Controller
         $record = $this->recordForScope($request, 'teacher_payroll_admin_allowances', $id);
         if (!$record) {
             return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
         }
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);
@@ -555,6 +573,9 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_cash_adjustments', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         if (($record->status ?? '') === 'withdrawn' || ($record->status ?? '') === 'approved' || $record->director_confirmed_at) {
             return response()->json(['message' => '已撤回或已進入審核的現金加扣款不能再確認。'], 422);
         }
@@ -572,6 +593,9 @@ class TeacherEligibilityInputController extends Controller
         $this->ensureTables();
         $record = $this->recordForScope($request, 'teacher_payroll_cash_adjustments', $id);
         if (!$record) return response()->json(['message' => 'Not found'], 404);
+        if ($blocked = $this->rejectSelfApproval($request, $record->teacher_id ?? null)) {
+            return $blocked;
+        }
         if (!$record->director_confirmed_at) {
             return response()->json(['message' => 'Director confirmation is required first'], 422);
         }
@@ -668,6 +692,9 @@ class TeacherEligibilityInputController extends Controller
         $profile = \App\Models\FulltimeSalaryProfile::find($id);
         if (!$profile) {
             return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($blocked = $this->rejectSelfApproval($request, $profile->teacher_id ?? null)) {
+            return $blocked;
         }
         if ($profile->status === 'approved') {
             return response()->json(['message' => '此底薪已核准，無需重複核准。'], 422);
@@ -867,6 +894,21 @@ class TeacherEligibilityInputController extends Controller
             ->where('u.id', $teacherId)->where('u.type', 'T');
         if ($branchId !== null) $query->where('uc.CampusID', $branchId);
         if (!$query->exists()) abort(422, 'teacher is outside the selected branch or is not a teacher');
+    }
+
+    /** Founder decision 5 (#2908): the approver/confirmer may not be the subject teacher. */
+    private function rejectSelfApproval(Request $request, mixed $subjectTeacherId): ?\Illuminate\Http\JsonResponse
+    {
+        $actor = $this->actorId($request);
+        if ($actor === null || $subjectTeacherId === null || (int) $subjectTeacherId !== $actor) {
+            return null;
+        }
+        \App\Models\SecurityAuditEvent::append('approval.self_blocked', 'denied', [
+            'actor_type' => 'user', 'actor_id' => $actor,
+            'subject_type' => 'teacher', 'subject_id' => $subjectTeacherId,
+        ]);
+
+        return response()->json(['message' => '不能核准自己的薪資／資格／堂數更正', 'code' => 'self_approval_forbidden'], 422);
     }
 
     private function actorId(Request $request): ?int

@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — feat(auth): acting_as in security audit + self-approval hard block (in-app #299 / #2908 step 3)
+<!-- release-notes: staff_update=staff-2026-09-30-no-self-approval -->
+- 資安稽核事件自動帶 `acting_as` 與 `capability_campus_count`（旗標關閉為 null），被拒的身分切換寫 `staff.context.denied`；薪資／資格（扣除、行政加給、現金加扣、底薪、成果）確認與核准，核准人等於當事老師時回 422 `self_approval_forbidden`。無資料變更。
+
 ## 2026-09-30 — fix(auth): recover from a stale acting context instead of failing every request
 <!-- release-notes: silent_ship=silent-2026-09-30-acting-context-retry -->
 - 雙身分切換（預設關閉）的防呆：若瀏覽器記住的身分已不適用，後端回傳明確代碼，前端清除後重試一次，不會整頁持續被拒。未開啟功能前無任何行為改變。

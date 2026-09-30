@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\AuthToken;
+use App\Models\SecurityAuditEvent;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\StaffCapabilityAuthorizer;
@@ -50,6 +51,9 @@ class AttachAuthUser
                     $actingHeader = $request->header((string) config('staff_capabilities.acting_as_header', 'X-Acting-As'));
                     $resolved = $authorizer->resolve($user, is_string($actingHeader) ? $actingHeader : null);
                     if ($resolved['context_denied'] === true) {
+                        SecurityAuditEvent::append('staff.context.denied', 'denied', [
+                            'actor_type' => 'user', 'actor_id' => $user->id,
+                        ], ['reason_code' => 'acting_context_denied', 'method' => $request->method()]);
                         return response()->json(['message' => 'Forbidden', 'code' => 'acting_context_denied'], 403);
                     }
                     $role = $resolved['role'];

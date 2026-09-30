@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "新增多科共用堂數與加購分流入口；reference subject-unit totals with and without tutoring",
+    "summary": "as in security audit + self-approval hard block；新增多科共用堂數與加購分流入口",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "as in security audit + self-approval hard block",
           "新增多科共用堂數與加購分流入口",
           "reference subject-unit totals with and without tutoring",
           "student school and grade in course lookup"
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "as in security audit + self-approval hard block",
       "新增多科共用堂數與加購分流入口",
       "reference subject-unit totals with and without tutoring",
       "student school and grade in course lookup",
