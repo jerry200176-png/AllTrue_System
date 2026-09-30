@@ -52,11 +52,15 @@ updates:
     audiences:
       - director
     importance: digest
-    title: 月結課程可以正常續約了
-    summary: 修正行政帳號在學生管理按月結續約時，被誤擋「沒有折扣權限」的問題。
+    title: 月結續報一次搞定
+    summary: 學生管理展開學生，按「月結續報下月」，勾科目、確認一次就續好全部科目。
     items:
+      - category: improved
+        text: 新增「月結續報下月」：列出所有月結科目、新一期日期與預估金額，一次送出。
       - category: fixed
-        text: 月結續約選「無折扣」時可直接送出，行政帳號不再被擋。
+        text: 續約按鈕不再一直是灰色；行政帳號選「無折扣」也能送出。
+      - category: fixed
+        text: 9/30 到期續一個月會到 10/31（以前會變成 10/30）。
     source_refs:
       - "changelog:2026-09-30:monthly-renew-admin"
 

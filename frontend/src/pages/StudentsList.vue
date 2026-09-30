@@ -218,10 +218,16 @@
                     <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">menu_book</span>
                     {{ student.name }} 的課程安排
                   </h4>
-                  <button type="button" class="primary small" @click="openAddCourse(student)">
-                    <span class="material-symbols-outlined btn-icon">add</span>
-                    新增課程
-                  </button>
+                  <div class="course-panel-header__actions">
+                    <button v-if="getRenewableMonthlyCourses(student.id).length" type="button" class="small ghost" data-testid="batch-monthly-renew" @click="openBatchRenew(student)">
+                      <span class="material-symbols-outlined btn-icon">autorenew</span>
+                      月結續報下月（{{ getRenewableMonthlyCourses(student.id).length }} 科）
+                    </button>
+                    <button type="button" class="primary small" @click="openAddCourse(student)">
+                      <span class="material-symbols-outlined btn-icon">add</span>
+                      新增課程
+                    </button>
+                  </div>
                 </div>
                 <div class="student-note-line">
                   <span class="student-note-label">學生備註：</span>
@@ -458,7 +464,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -763,9 +769,19 @@
       @duplicate-course="handleSchedulerDuplicate"
     />
 
+    <MonthlyBatchRenewModal
+      :show="!!batchRenewStudent"
+      :student-name="batchRenewStudent?.name || ''"
+      :courses="batchRenewStudent ? getRenewableMonthlyCourses(batchRenewStudent.id) : []"
+      @close="batchRenewStudent = null"
+      @done="loadAllStudentCourses"
+    />
+
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
+      :submitting="renewMonthlySubmitting"
+      :warnings="renewMonthlyWarnings"
       @close="closeRenewMonthlyModal"
       @preview-change="loadRenewMonthlyPreview"
       @submit="submitRenewMonthly"
@@ -1022,12 +1038,12 @@ import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/cons
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
 import { guardianRoleLabel, lineBindingDisplay } from '../lib/guardianDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
+import { addMonthsToPeriodEnd, applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview } from '../lib/monthlyRenewalPreview';
 import {
   calculateTransactionDiscountPreview,
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
   estimatePurchaseBatchCharge,
-  getRenewalPreviewAmount,
   getPerSessionFee,
 } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
@@ -1060,6 +1076,7 @@ import {
   normalizeActiveCourseConflicts,
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
+import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildTuitionCollectNav,
@@ -1270,6 +1287,9 @@ const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlyPreviewRequestId = ref(0);
+const renewMonthlySubmitting = ref(false);
+const batchRenewStudent = ref(null);
+const renewMonthlyWarnings = ref([]);
 
 // --- Monthly Invoice Modal ---
 const showInvoiceModal = ref(false);
@@ -1483,6 +1503,13 @@ const isHistoryCourseByReason = (course) => {
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
 };
+/** Active, billable monthly courses: what the one-dialog 月結續報 offers. */
+const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
+  String(c?.payment_type || '').toLowerCase() === 'monthly'
+  && !isTutoringCourse(c)
+  && String(c?.status || '').toLowerCase() !== 'inactive'
+));
+const openBatchRenew = (student) => { batchRenewStudent.value = student; };
 const getHistoryStudentCourses = (id) => {
   // History is a detail disclosure inside an expanded student, so it must remain
   // available even when the top-level list is showing active courses only.
@@ -2121,6 +2148,7 @@ const loadStudentCourses = async (studentId) => {
           rate_per_30min: c.rate_per_30min,
           duration_hours: c.duration_hours,
           payment_type: c.payment_type,
+          end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
           sessions_purchased: c.sessions_purchased,
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
           sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
@@ -2207,6 +2235,7 @@ const loadAllStudentCourses = async () => {
             rate_per_30min: c.rate_per_30min,
             duration_hours: c.duration_hours,
             payment_type: c.payment_type,
+            end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
             sessions_purchased: c.sessions_purchased,
             remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
             sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
@@ -2302,6 +2331,8 @@ const focusInitialStudent = async () => {
     if (targetCourse) {
       selectStudentCourse(student.id, targetCourse.id);
       if (props.initialStudentIntent === 'edit') editCourse(targetCourse);
+      else if ((props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew')
+        && getRenewableMonthlyCourses(student.id).some((c) => c.id === targetCourse.id)) openBatchRenew(student);
       else if (props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew') openAddSessionsForCourse(targetCourse);
       else if (props.initialStudentIntent === 'close') closeCourseNoRenew(targetCourse, student.name);
     }
@@ -3381,6 +3412,7 @@ const openAddSessionsForCourse = (course) => {
       original_amount: estimateMonthlyRenewalCharge(course),
       preview_end_date: '',
     };
+    renewMonthlyWarnings.value = [];
     showRenewMonthlyModal.value = true;
     loadRenewMonthlyPreview();
     return;
@@ -3407,6 +3439,7 @@ const openAddSessionsForCourse = (course) => {
 };
 
 const closeRenewMonthlyModal = () => {
+  if (renewMonthlySubmitting.value) return;
   renewMonthlyPreviewRequestId.value += 1;
   showRenewMonthlyModal.value = false;
   renewMonthlyTargetCourse.value = null;
@@ -3420,15 +3453,12 @@ async function loadRenewMonthlyPreview(endDate = '') {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (!token) return;
-    const currentEnd = course?.end_date || course?.EndDate || null;
-    let targetEnd = endDate;
-    if (!targetEnd) {
-      const d = currentEnd ? new Date(currentEnd) : new Date();
-      d.setMonth(d.getMonth() + 1);
-      targetEnd = d.toISOString().slice(0, 10);
+    if (!token) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
+      return;
     }
-    renewMonthlyForm.value.preview_end_date = targetEnd;
+    const targetEnd = endDate || addMonthsToPeriodEnd(course?.end_date || course?.EndDate, 1);
+    invalidateMonthlyRenewalPreview(renewMonthlyForm.value, targetEnd);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
@@ -3444,10 +3474,16 @@ async function loadRenewMonthlyPreview(endDate = '') {
       requestedEndDate: targetEnd,
       currentEndDate: renewMonthlyForm.value.preview_end_date,
     })) return;
-    const amount = getRenewalPreviewAmount(json);
-    if (amount != null) renewMonthlyForm.value.original_amount = amount;
+    if (res.ok || json.severity === 'blocked') {
+      renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
+      applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
+    } else {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: json.message || '無法取得期間預覽，請重試。' });
+    }
   } catch {
-    /* preview is advisory only */
+    if (requestId === renewMonthlyPreviewRequestId.value && courseId === renewMonthlyTargetCourse.value?.id) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '無法取得期間預覽，請檢查連線後重試。' });
+    }
   }
 }
 
@@ -3615,6 +3651,8 @@ const submitRenewMonthly = async (endDate) => {
   const course = renewMonthlyTargetCourse.value;
   if (!course?.id) return;
   if (!endDate) { alert('請選擇新到期日或延長月數'); return; }
+  if (renewMonthlySubmitting.value) return;
+  renewMonthlySubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -3650,6 +3688,8 @@ const submitRenewMonthly = async (endDate) => {
     await loadAllStudentCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    renewMonthlySubmitting.value = false;
   }
 };
 
@@ -4288,6 +4328,7 @@ table th { font-size: 12.5px; }
   align-items: center;
   margin-bottom: 16px;
 }
+.course-panel-header__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .course-panel-header h4 {
   display: flex;
   align-items: center;
