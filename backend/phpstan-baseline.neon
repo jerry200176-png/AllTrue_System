@@ -4329,11 +4329,6 @@ parameters:
 			count: 1
 			path: app/Http/Controllers/TeacherAttendanceController.php
 
-		-
-			message: '#^Using nullsafe property access "\?\-\>campus_name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: app/Http/Controllers/TeacherAttendanceController.php
 
 		-
 			message: '#^Using nullsafe property access "\?\-\>start_time" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
