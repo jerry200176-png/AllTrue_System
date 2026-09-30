@@ -1544,7 +1544,7 @@ import {
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
 } from '../lib/coursePricing';
-import { applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
+import { addMonthsToPeriodEnd, applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
 import { courseRowWarningSummary } from '../lib/courseRowWarnings';
 import {
@@ -3347,17 +3347,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
     }
     const currentEnd = course?.end_date || course?.EndDate || null;
     let endDate = requestedEndDate;
-    if (!endDate) {
-      if (currentEnd) {
-        const d = new Date(currentEnd);
-        d.setMonth(d.getMonth() + 1);
-        endDate = d.toISOString().slice(0, 10);
-      } else {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        endDate = d.toISOString().slice(0, 10);
-      }
-    }
+    if (!endDate) endDate = addMonthsToPeriodEnd(currentEnd, 1);
     invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',

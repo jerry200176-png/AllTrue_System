@@ -766,6 +766,8 @@
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
+      :submitting="renewMonthlySubmitting"
+      :warnings="renewMonthlyWarnings"
       @close="closeRenewMonthlyModal"
       @preview-change="loadRenewMonthlyPreview"
       @submit="submitRenewMonthly"
@@ -1022,12 +1024,12 @@ import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/cons
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
 import { guardianRoleLabel, lineBindingDisplay } from '../lib/guardianDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
+import { addMonthsToPeriodEnd, applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview } from '../lib/monthlyRenewalPreview';
 import {
   calculateTransactionDiscountPreview,
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
   estimatePurchaseBatchCharge,
-  getRenewalPreviewAmount,
   getPerSessionFee,
 } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
@@ -1270,6 +1272,8 @@ const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlyPreviewRequestId = ref(0);
+const renewMonthlySubmitting = ref(false);
+const renewMonthlyWarnings = ref([]);
 
 // --- Monthly Invoice Modal ---
 const showInvoiceModal = ref(false);
@@ -2121,6 +2125,7 @@ const loadStudentCourses = async (studentId) => {
           rate_per_30min: c.rate_per_30min,
           duration_hours: c.duration_hours,
           payment_type: c.payment_type,
+          end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
           sessions_purchased: c.sessions_purchased,
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
           sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
@@ -2207,6 +2212,7 @@ const loadAllStudentCourses = async () => {
             rate_per_30min: c.rate_per_30min,
             duration_hours: c.duration_hours,
             payment_type: c.payment_type,
+            end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
             sessions_purchased: c.sessions_purchased,
             remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
             sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
@@ -3381,6 +3387,7 @@ const openAddSessionsForCourse = (course) => {
       original_amount: estimateMonthlyRenewalCharge(course),
       preview_end_date: '',
     };
+    renewMonthlyWarnings.value = [];
     showRenewMonthlyModal.value = true;
     loadRenewMonthlyPreview();
     return;
@@ -3407,6 +3414,7 @@ const openAddSessionsForCourse = (course) => {
 };
 
 const closeRenewMonthlyModal = () => {
+  if (renewMonthlySubmitting.value) return;
   renewMonthlyPreviewRequestId.value += 1;
   showRenewMonthlyModal.value = false;
   renewMonthlyTargetCourse.value = null;
@@ -3420,15 +3428,12 @@ async function loadRenewMonthlyPreview(endDate = '') {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (!token) return;
-    const currentEnd = course?.end_date || course?.EndDate || null;
-    let targetEnd = endDate;
-    if (!targetEnd) {
-      const d = currentEnd ? new Date(currentEnd) : new Date();
-      d.setMonth(d.getMonth() + 1);
-      targetEnd = d.toISOString().slice(0, 10);
+    if (!token) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
+      return;
     }
-    renewMonthlyForm.value.preview_end_date = targetEnd;
+    const targetEnd = endDate || addMonthsToPeriodEnd(course?.end_date || course?.EndDate, 1);
+    invalidateMonthlyRenewalPreview(renewMonthlyForm.value, targetEnd);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
@@ -3444,10 +3449,16 @@ async function loadRenewMonthlyPreview(endDate = '') {
       requestedEndDate: targetEnd,
       currentEndDate: renewMonthlyForm.value.preview_end_date,
     })) return;
-    const amount = getRenewalPreviewAmount(json);
-    if (amount != null) renewMonthlyForm.value.original_amount = amount;
+    if (res.ok || json.severity === 'blocked') {
+      renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
+      applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
+    } else {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: json.message || '無法取得期間預覽，請重試。' });
+    }
   } catch {
-    /* preview is advisory only */
+    if (requestId === renewMonthlyPreviewRequestId.value && courseId === renewMonthlyTargetCourse.value?.id) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '無法取得期間預覽，請檢查連線後重試。' });
+    }
   }
 }
 
@@ -3615,6 +3626,8 @@ const submitRenewMonthly = async (endDate) => {
   const course = renewMonthlyTargetCourse.value;
   if (!course?.id) return;
   if (!endDate) { alert('請選擇新到期日或延長月數'); return; }
+  if (renewMonthlySubmitting.value) return;
+  renewMonthlySubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -3650,6 +3663,8 @@ const submitRenewMonthly = async (endDate) => {
     await loadAllStudentCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    renewMonthlySubmitting.value = false;
   }
 };
 
