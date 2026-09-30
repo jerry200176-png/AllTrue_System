@@ -4,6 +4,43 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-09-30-course-history-guard",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "改科目、換老師不再改寫過去的課",
+    "summary": "已上過課的合約不能直接改科目；換老師時，指定日期之前的堂次會保留原老師。",
+    "items": [
+      "已有上課紀錄的合約若直接改科目，系統會擋下並提示改用轉課（合約拆分），舊合約保留已上堂次。",
+      "編輯課程換老師時可選「新老師從哪天開始教」，預設今天，該日前的堂次維持原老師。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已有上課紀錄的合約若直接改科目，系統會擋下並提示改用轉課（合約拆分），舊合約保留已上堂次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "編輯課程換老師時可選「新老師從哪天開始教」，預設今天，該日前的堂次維持原老師。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:course-history-guard"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-ux-followups",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

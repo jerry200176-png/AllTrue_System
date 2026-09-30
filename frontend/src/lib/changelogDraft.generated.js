@@ -29,6 +29,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "change requires transfer; teacher change keeps past lessons",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
           "from a stale acting context instead of failing every request",
           "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
@@ -42,8 +43,8 @@ export const changelogDraftNotes = [
       "as in security audit + self-approval hard block",
       "entry staff login (no role picker)",
       "aware director lookups behind STAFF_MULTI_ROLE_V1",
-      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-      "from a stale acting context instead of failing every request"
+      "change requires transfer; teacher change keeps past lessons",
+      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗"
     ]
   },
   {

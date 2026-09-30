@@ -110,6 +110,69 @@ class StudentClassSplitContractTest extends TestCase
         $this->assertCount(8, $sessionIds);
     }
 
+    public function test_transfer_cuts_over_by_start_date_and_moves_later_sessions_with_history(): void
+    {
+        $token = $this->createDirectorToken();
+        [, $source, $sessionIds] = $this->createTenSessionSource(); // 8 attended, 2026-08-01..08
+        $mathId = (int) \App\Services\FrontendSubjectIdResolver::resolve('Math');
+        $teacher = User::create([
+            'LoginName' => 'math-teacher-' . uniqid() . '@test.com', 'Name' => '李維',
+            'PSW' => 'secret', 'type' => 'T', 'phone' => '0911111111',
+        ]);
+        $this->createLearningRecord((int) $source->ID, $sessionIds[0]); // stays
+        $this->createLearningRecord((int) $source->ID, $sessionIds[6]); // moves (2026-08-07)
+        $this->createSignIn((int) $source->ID, $sessionIds[6]);
+        $body = [
+            'subject' => 'Math', 'teacher_id' => $teacher->id, 'start_date' => '2026-08-07', 'reason' => '英文轉數學',
+            'slots' => [['weekday' => 3, 'time' => '15:00', 'duration_minutes' => 120]],
+        ];
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/student-classes/{$source->ID}/split-contract/preview", $body)
+            ->assertOk()->assertJsonPath('moved_session_count', 2)
+            ->assertJsonPath('source_correction.session_count', 6)->assertJsonPath('new_course.charge', 2000);
+        $this->assertSame(1, StudentClass::where('StudentID', $source->StudentID)->count());
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", $body);
+        $res->assertCreated();
+        $newId = (int) $res->json('new_course.id');
+        $new = StudentClass::find($newId);
+
+        $this->assertSame($mathId, (int) $new->SubjectID);
+        $this->assertSame((int) $teacher->id, (int) $new->TeacherID);
+        $this->assertSame([4, 2000], [(int) $new->SessionCount, (int) $new->Charge]);
+        $source->refresh();
+        $this->assertNotSame($mathId, (int) $source->SubjectID);
+        $this->assertSame([6, 3000], [(int) $source->SessionCount, (int) $source->Charge]);
+        $this->assertSame((int) $source->ID, (int) DB::table('ClassSession')->where('id', $sessionIds[5])->value('StudentClassID'));
+        $this->assertSame($newId, (int) DB::table('ClassSession')->where('id', $sessionIds[6])->value('StudentClassID'));
+        $this->assertSame($newId, (int) DB::table('LearningRecord')->where('ClassSessionID', $sessionIds[6])->value('StudentClassID'));
+        $this->assertSame($newId, (int) DB::table('StudentSingIn')->where('ClassSessionID', $sessionIds[6])->value('StudentClassID'));
+        $this->assertSame(2, DB::table('course_contract_group_members')->whereIn('student_class_id', [$source->ID, $newId])->count());
+        $this->assertDatabaseHas('security_audit_events', ['event_type' => 'student_class.contract_transfer']);
+    }
+
+    public function test_transfer_refuses_unmarked_session_before_cutover_and_paid_contracts(): void
+    {
+        $token = $this->createDirectorToken();
+        [, $source, $sessionIds] = $this->createTenSessionSource();
+        DB::table('ClassSession')->where('id', $sessionIds[2])->update(['Status' => 'scheduled']);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", [
+                'subject' => 'Math', 'start_date' => '2026-08-07', 'reason' => 'x',
+            ])->assertStatus(422)->assertJsonPath('code', 'transfer_unmarked_sessions_before_cutover');
+
+        DB::table('ClassSession')->where('id', $sessionIds[2])->update(['Status' => 'attended']);
+        $source->update(['Paid' => 1]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/student-classes/{$source->ID}/split-contract", [
+                'subject' => 'Math', 'start_date' => '2026-08-07', 'reason' => 'x',
+            ])->assertStatus(409)->assertJsonPath('code', 'split_contract_paid_locked');
+        $this->assertSame(1, StudentClass::where('StudentID', $source->StudentID)->count());
+    }
+
     private function createTenSessionSource(): array
     {
         $student = Student::create([

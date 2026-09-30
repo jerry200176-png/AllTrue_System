@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
 
+## 2026-09-30 — fix(course): subject change requires transfer; teacher change keeps past lessons
+<!-- release-notes: staff_update=staff-2026-09-30-course-history-guard -->
+- 已有過去／已上堂次的合約改科目回 422 `subject_change_requires_transfer`（稽核 `student_class.edit_blocked`），改用 `split-contract` 轉課：帶 `subject`/`subject_id`、`teacher_id`、`slots` 時依 `start_date` 切分，之前的堂次留舊合約，之後的堂次連同紀錄轉新合約（未收款合約；已收款另案）。換老師新增選填 `teacher_effective_date`（≤今天，預設今天）：該日前的堂次保留原老師。改固定時段不再刪除重建已點名堂次。
+
 ## 2026-09-30 — fix(attendance): readable monthly xlsx and clearer single-swipe marking
 <!-- release-notes: silent_ship=silent-2026-09-30-teacher-attendance-polish -->
 - 老師刷卡月報外觀：自動欄寬、框線、表頭凍結、統一字型（微軟正黑體）、時間置中、工時兩位小數；只刷一次整列淡黃＋紅字、週末淡灰、合計列改 `=SUM()` 公式；摘要表只刷一次天數 >0 標紅。網頁月出勤表上方改為四格合計（出勤天數／總工時／只刷一次待補登／已修正），只刷一次整列警示底色＋標籤，月份選擇器改一般寬度。沿用 AllTrue 設計元件 AtMetric／AtBadge 與 xlsx 格式慣例。

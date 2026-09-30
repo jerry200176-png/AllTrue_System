@@ -22,6 +22,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\DB::table('Subject')->where('Subject_Name', 'Math')->where('id', '<>', 1)->update(['Subject_Name' => 'Math (legacy)']); \Illuminate\Support\Facades\DB::table('Subject')->updateOrInsert(['id' => 1], ['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => 'Math']); // fixtures use SubjectID 1 + subject=Math (ids are not reset between tests)
         // seedCourseWithHistory() 把「未來」sessions 放在 2026-04-19 起，
         // 若執行日期已經跨過 4/19，那筆 session 會被 sync 視為過去而不更新，
         // 導致 scheduled 集合裡仍出現舊時間。統一凍結到 4/12。
