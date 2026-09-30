@@ -42,8 +42,10 @@
               <td>{{ d.sign_in ?? '' }}</td>
               <td>{{ d.sign_out ?? '' }}</td>
               <td class="tma-num">{{ d.minutes != null ? hours(d.minutes).toFixed(2) : '' }}</td>
-              <td class="tma-notes">
-                <AtBadge v-for="n in notes(d.note)" :key="n" :label="n" :tone="noteTone(n)" />
+              <td>
+                <div class="tma-notes">
+                  <AtBadge v-for="(n, i) in notes(d.note)" :key="i" :label="n" :tone="noteTone(n)" />
+                </div>
               </td>
             </tr>
           </tbody>
