@@ -133,6 +133,14 @@ class LearningRecordCourseTeacherOwnershipTest extends TestCase
         DB::table('LearningRecord')->where('id', $lr->id)->update(['TeacherID' => $old]);
         $lr->refresh();
         $this->assertEffective($dir, $lr->id, $neu, '新正班');
+        $newNameIds = collect($this->withHeaders($this->auth($dir))
+            ->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('新正班'))
+            ->json('data'))->pluck('id')->all();
+        $oldNameIds = collect($this->withHeaders($this->auth($dir))
+            ->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('舊正班'))
+            ->json('data'))->pluck('id')->all();
+        $this->assertContains($lr->id, $newNameIds);
+        $this->assertNotContains($lr->id, $oldNameIds);
         $this->assertTeacherSees($old, $lr->id, false);
         $this->assertTeacherSees($neu, $lr->id, true);
         $newRes = $this->withHeaders($this->auth($this->tokenFor($neu)))

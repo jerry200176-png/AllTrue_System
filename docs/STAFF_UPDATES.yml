@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-09-30-learning-teacher-search
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 評量可直接搜尋老師
+    summary: 輸入老師姓名並按搜尋或 Enter，即可查看該老師授課的評量紀錄。
+    items:
+      - category: fixed
+        text: 老師姓名可用部分文字搜尋；代課堂次依實際授課老師顯示與篩選。
+    source_refs:
+      - "changelog:2026-09-30:learning-teacher-search"
+
   - id: staff-2026-09-29-calendar-day-nav
     published_at: "2026-09-29"
     audiences:

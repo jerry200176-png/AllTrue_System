@@ -1,6 +1,6 @@
 <template>
   <div class="searchable-select" :class="{ open: isOpen, disabled: disabled }" ref="container">
-    <div class="ss-input-wrap" @click="toggleOpen">
+    <div class="ss-input-wrap" @click="onWrapClick">
       <input
         ref="inputEl"
         type="text"
@@ -75,6 +75,15 @@ function toggleOpen() {
   } else {
     open();
   }
+}
+
+function onWrapClick(event) {
+  // Focusing the input already opens the menu. Its subsequent click must not close it.
+  if (event.target === inputEl.value) {
+    if (!isOpen.value) toggleOpen();
+    return;
+  }
+  toggleOpen();
 }
 
 function open() {

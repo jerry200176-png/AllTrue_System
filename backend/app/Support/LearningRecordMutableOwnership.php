@@ -177,6 +177,17 @@ final class LearningRecordMutableOwnership
         });
     }
 
+    /** Laravel 8 has no whereNot(Closure); correlate the existing evidence predicate instead. */
+    public static function constrainWhereTeacherIdIsMutableOwner($query, string $lrTable): void
+    {
+        $query->whereNotExists(function ($historical) use ($lrTable) {
+            $historical->select(DB::raw(1))
+                ->from('LearningRecord as lr_owner_evidence')
+                ->whereColumn('lr_owner_evidence.id', "{$lrTable}.id");
+            self::constrainWhereTeacherIdIsHistoricalOwner($historical, 'lr_owner_evidence');
+        });
+    }
+
     private static function resolveSession(LearningRecord $record): ?ClassSession
     {
         $sessionId = (int) ($record->getAttribute('ClassSessionID') ?? 0);
