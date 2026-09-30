@@ -477,7 +477,7 @@ jobs:
             $out['payment_reports'] = $tbl('payment_reports') ? $rowsOf($db::table('payment_reports')->whereIn('StudentClassID', $classIds)) : null;
             $out['schedule_audit_logs'] = $sids === [] ? [] : $rowsOf($db::table('schedule_audit_logs')->whereIn('session_id', $sids)->orderBy('id'));
             $out['session_corrections'] = $tbl('session_corrections') && $sids !== [] ? $rowsOf($db::table('session_corrections')->whereIn('session_id', $sids)) : null;
-            $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->where('subject_type', 'student_class')->whereIn('subject_id', $classIds ?: [0])->orderBy('id')->limit(300)) : null;
+            $out['security_audit_events'] = $tbl('security_audit_events') ? $rowsOf($db::table('security_audit_events')->whereIn('subject_ref', array_map(fn ($i) => \\App\\Models\\SecurityAuditEvent::ref('student_class', $i), $classIds ?: [0]))->orderBy('id')->limit(300)) : null;
           }} elseif ($case === 'billing_huang') {{
             $campusId = 9;
             $studentQuery = $db::table('Student')->where('CampusID', $campusId);
