@@ -64,6 +64,8 @@ unapproved capability and changes no production, security or money-path gate.
 | Capability Registry | Who may merge / dispatch |
 | This policy + Merge SOP | Human/Agent behavior contract |
 
+Read-only `production-case-dump` probe cases (a PR touching only `.github/workflows/production-case-dump.yml` with no write, trigger, secret, ssh or env change in the diff) are T2 (Agent merges after green CI + review); writes remain T3 Founder GO.
+
 **Not required:** GitHub “all PRs need Founder approving review.” T0–T2 use risk-appropriate review and required checks; T3 uses a Founder decision at the protected action boundary, not a blanket PR approval rule.
 
 ## Autonomous delivery path
