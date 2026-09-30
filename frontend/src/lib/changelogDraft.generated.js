@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "month view for teacher attendance (director + teacher self)；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+    "summary": "rfid returns student LINE ids；month view for teacher attendance (director + teacher self)",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,12 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "rfid returns student LINE ids",
           "month view for teacher attendance (director + teacher self)",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
           "tab acting context, context chip, route-implied switch",
           "as in security audit + self-approval hard block",
-          "entry staff login (no role picker)",
-          "aware director lookups behind STAFF_MULTI_ROLE_V1"
+          "entry staff login (no role picker)"
         ]
       },
       {
@@ -39,12 +39,12 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "rfid returns student LINE ids",
       "month view for teacher attendance (director + teacher self)",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "tab acting context, context chip, route-implied switch",
       "as in security audit + self-approval hard block",
       "entry staff login (no role picker)",
-      "aware director lookups behind STAFF_MULTI_ROLE_V1",
       "late / missed judged from real class sessions",
       "name search applies to assessment records"
     ]
