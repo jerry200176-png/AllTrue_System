@@ -339,3 +339,14 @@ failure_modes:
       legacy exceptions until reset, and leaves confirmed attendance as billing authority.
   severity: medium
   frequency: recurring
+- id: FM-20260930-113123-9GBE
+  name: UI smoke navigation timed out despite the destination heading being visible
+  detection:
+    signal: UI smoke navigation timed out despite the destination heading being visible
+    source: reflection:REF-20260930-113123-HD0A
+  mitigation:
+    practice: For navigation smoke, accept the exact visible destination heading as
+      success and keep active-class/aria-current fallbacks; a transient sidebar state
+      is not a page-load failure.
+  severity: medium
+  frequency: recurring
