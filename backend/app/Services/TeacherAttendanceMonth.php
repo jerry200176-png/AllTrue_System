@@ -25,6 +25,9 @@ class TeacherAttendanceMonth
     /** CloseOrphanTeacherSignIns 寫入的 Memo */
     public const AUTO_CLOSE_MEMO = '系統自動補登簽退';
 
+    /** 還沒簽退就到別間分校刷卡，SwipeRfidController 自動關掉前一筆時寫入的 Memo */
+    public const CROSS_CAMPUS_MEMO = '跨校自動簽退';
+
     public const LATE_GRACE_MINUTES = 10;
 
     private const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
@@ -54,22 +57,25 @@ class TeacherAttendanceMonth
             $openIn = null;
             $corrected = false;
             $firstIn = [];
+            $originalIn = [];
             foreach ($byDate->get($date, collect())->sortBy('sign_in_dt') as $rec) {
                 $corrected = $corrected || isset($adjustedIds[$rec->id]);
                 $in = Carbon::parse($rec->sign_in_dt)->startOfMinute();
                 $firstIn[(int) ($rec->campus_id ?? 0)] ??= $in;
-                $autoClosed = ($rec->memo ?? null) === self::AUTO_CLOSE_MEMO && ! isset($adjustedIds[$rec->id]);
+                $originalIn[(int) ($rec->campus_id ?? 0)] ??= Carbon::parse($rec->original_sign_in_dt ?? $rec->sign_in_dt)->startOfMinute();
+                $memo = $rec->memo ?? null;
+                $autoClosed = in_array($memo, [self::AUTO_CLOSE_MEMO, self::CROSS_CAMPUS_MEMO], true) && ! isset($adjustedIds[$rec->id]);
                 $out = $rec->sign_out_dt && ! $autoClosed ? Carbon::parse($rec->sign_out_dt)->startOfMinute() : null;
                 if ($out && $out->gte($in)) {
                     $pairs[] = [$in, $out];
                 } elseif (! $rec->sign_out_dt && $date === $today) {
                     $openIn = $in;
                 } else {
-                    $lone[] = $in->format('H:i');
+                    $lone[] = ($memo === self::CROSS_CAMPUS_MEMO && $autoClosed ? '跨校未簽退 ' : '只刷一次 ') . $in->format('H:i');
                 }
             }
 
-            $notes = array_map(fn ($t) => "只刷一次 {$t}", $lone);
+            $notes = $lone;
             if ($openIn) {
                 $notes[] = '上班中';
             }
@@ -78,6 +84,9 @@ class TeacherAttendanceMonth
             }
 
             [$status, $late, $firstClass] = self::status($date, $classes[$date] ?? [], $firstIn, $now);
+            // 補卡改過時間：用原始刷卡時間再算一次，留下「原本遲到幾分」
+            [$origStatus, $origLate] = $corrected ? self::status($date, $classes[$date] ?? [], $originalIn, $now) : [null, null];
+            $originalLate = $origStatus === 'late' && $origLate !== $late ? $origLate : null;
 
             $days[] = [
                 'date'       => $date,
@@ -92,6 +101,7 @@ class TeacherAttendanceMonth
                 'status'       => $status,
                 'late_minutes' => $late,
                 'first_class'  => $firstClass,
+                'original_late_minutes' => $originalLate,
             ];
         }
 

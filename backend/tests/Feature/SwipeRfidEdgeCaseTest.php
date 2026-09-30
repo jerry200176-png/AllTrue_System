@@ -378,4 +378,29 @@ class SwipeRfidEdgeCaseTest extends TestCase
             ->assertStatus(201)
             ->assertJsonPath('student.LineIDs', ['Uverified']);
     }
+
+    /** @test */
+    public function teacher_swipe_at_other_campus_closes_previous_as_cross_campus_and_opens_new(): void
+    {
+        $teacherId = DB::table('User')->insertGetId([
+            'LoginName' => 'cross-teacher@example.com', 'Name' => '跨校老師',
+            'PSW' => 'secret', 'type' => 'T', 'phone' => '0900000000',
+        ]);
+        DB::table('UserCampus')->insert([
+            'CampusID' => $this->campus->id, 'UserID' => $teacherId,
+            'Admin' => 0, 'Approved' => 1, 'RFID' => 'EDGE-CROSS',
+        ]);
+        $otherCampus = $this->campus->id + 100;
+        $earlier = TeacherSignIn::create([
+            'TeacherID' => $teacherId, 'CampusID' => $otherCampus,
+            'SignInDT' => now()->setTime(8, 0), 'SignOutDT' => null, 'MDT' => now(), 'Source' => 'rfid', 'Status' => 'normal',
+        ]);
+
+        $this->swipe('EDGE-CROSS')->assertStatus(201)->assertJsonPath('action', 'sign_in');
+
+        $earlier->refresh();
+        $this->assertSame(now()->format('Y-m-d H:i:s'), Carbon::parse($earlier->SignOutDT)->format('Y-m-d H:i:s'));
+        $this->assertSame(\App\Services\TeacherAttendanceMonth::CROSS_CAMPUS_MEMO, $earlier->Memo);
+        $this->assertSame(1, TeacherSignIn::where('TeacherID', $teacherId)->where('CampusID', $this->campus->id)->whereNull('SignOutDT')->count());
+    }
 }

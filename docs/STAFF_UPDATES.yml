@@ -51,6 +51,22 @@ updates:
     source_refs:
       - "changelog:2026-09-29:calendar-day-nav"
 
+  - id: staff-2026-09-30-teacher-month-close
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 老師出勤可以月底確認
+    summary: 主任核對完可按「確認本月出勤」；補卡與跨校刷卡的紀錄也更清楚。
+    items:
+      - category: added
+        text: 月出勤表可按「確認本月出勤」；確認後不能補卡，要先重新開啟並寫原因。
+      - category: improved
+        text: 補卡不再蓋掉原本狀態，月表會顯示原本遲到幾分與「已修正」。
+      - category: fixed
+        text: 沒簽退就到別校刷卡，前一校會標「跨校未簽退」，不再把別校上班算成下班。
+    source_refs:
+      - "changelog:2026-09-30:teacher-month-close"
   - id: staff-2026-09-29-capacity-source-labels
     published_at: "2026-09-29"
     audiences:

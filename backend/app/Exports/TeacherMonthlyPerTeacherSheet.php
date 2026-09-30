@@ -159,6 +159,7 @@ class TeacherMonthlyPerTeacherSheet implements FromArray, ShouldAutoSize, WithTi
                 'missed' => "有課未刷卡（第一堂 {$d['first_class']}）",
                 default  => '',
             },
+            ($d['original_late_minutes'] ?? null) ? "原本遲到 {$d['original_late_minutes']} 分（已修正）" : '',
             $d['note'],
         ], fn ($p) => $p !== '');
 

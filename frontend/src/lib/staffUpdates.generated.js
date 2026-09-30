@@ -201,6 +201,50 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-teacher-month-close",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師出勤可以月底確認",
+    "summary": "主任核對完可按「確認本月出勤」；補卡與跨校刷卡的紀錄也更清楚。",
+    "items": [
+      "月出勤表可按「確認本月出勤」；確認後不能補卡，要先重新開啟並寫原因。",
+      "補卡不再蓋掉原本狀態，月表會顯示原本遲到幾分與「已修正」。",
+      "沒簽退就到別校刷卡，前一校會標「跨校未簽退」，不再把別校上班算成下班。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "月出勤表可按「確認本月出勤」；確認後不能補卡，要先重新開啟並寫原因。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "補卡不再蓋掉原本狀態，月表會顯示原本遲到幾分與「已修正」。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "沒簽退就到別校刷卡，前一校會標「跨校未簽退」，不再把別校上班算成下班。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:teacher-month-close"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-teacher-late-missed",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,

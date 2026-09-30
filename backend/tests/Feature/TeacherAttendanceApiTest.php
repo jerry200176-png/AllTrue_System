@@ -309,11 +309,11 @@ class TeacherAttendanceApiTest extends TestCase
 
         $res->assertOk()
             ->assertJsonPath('ok', true)
-            ->assertJsonPath('new_status', 'adjusted');
+            ->assertJsonPath('new_status', 'late');
 
-        // 主表改為補卡後有效值（原始值保留在 audit 表）
+        // 主表改為補卡後有效時間，但刷卡當下的狀態不蓋掉（原始時間保留在 audit 表）
         $fresh = TeacherSignIn::find($signin->id);
-        $this->assertSame('adjusted', $fresh->Status);
+        $this->assertSame('late', $fresh->Status);
         $this->assertNotNull($fresh->SignOutDT, 'SignOutDT should be set after adjustment');
 
         // FR-009: audit record preserves originals
@@ -603,5 +603,53 @@ class TeacherAttendanceApiTest extends TestCase
         $this->withHeaders($this->authHeaders($director['token']))
             ->getJson('/api/v1/attendance')
             ->assertOk();
+    }
+
+    // ──────────────────────────────────────────────
+    //  月底確認：確認後不能補卡，要先重新開啟（需原因）
+    // ──────────────────────────────────────────────
+
+    /** @test */
+    public function closed_month_blocks_adjust_until_reopened_with_reason(): void
+    {
+        $director = $this->makeDirector(1);
+        $teacher  = $this->makeTeacherUser(1);
+        $signin   = $this->makeSignIn($teacher['user']->id, 1, ['SignInDT' => '2026-08-05 10:30:00']);
+        $h = $this->authHeaders($director['token']);
+        $adjust = fn () => $this->withHeaders($h)->postJson("/api/v1/teacher-attendance/{$signin->id}/adjust", [
+            'new_signin_dt' => '2026-08-05 10:00:00', 'new_signout_dt' => '2026-08-05 12:00:00', 'adjust_reason' => '忘記刷卡',
+        ]);
+
+        $this->withHeaders($h)->postJson('/api/v1/teacher-attendance/month-close', ['year_month' => '2026-08', 'campus_id' => 1])
+            ->assertOk();
+        $this->withHeaders($h)->postJson('/api/v1/teacher-attendance/month-close', ['year_month' => '2026-08', 'campus_id' => 1])
+            ->assertStatus(409);
+        $this->withHeaders($h)->getJson('/api/v1/teacher-attendance/monthly?year_month=2026-08&campus_id=1')
+            ->assertOk()
+            ->assertJsonPath('month_close.closed_by', $director['user']->Name);
+
+        $adjust()->assertStatus(423);
+
+        $this->withHeaders($h)->postJson('/api/v1/teacher-attendance/month-reopen', ['year_month' => '2026-08', 'campus_id' => 1])
+            ->assertStatus(422);
+        $this->withHeaders($h)->postJson('/api/v1/teacher-attendance/month-reopen', ['year_month' => '2026-08', 'campus_id' => 1, 'reason' => '老師補請假單'])
+            ->assertOk();
+
+        $adjust()->assertOk();
+        $this->assertDatabaseHas('teacher_attendance_month_closes', ['campus_id' => 1, 'year_month' => '2026-08', 'reopen_reason' => '老師補請假單']);
+    }
+
+    /** @test */
+    public function teacher_cannot_close_month_and_director_cannot_close_other_campus(): void
+    {
+        $teacher  = $this->makeTeacherUser(1);
+        $director = $this->makeDirector(1);
+
+        $this->withHeaders($this->authHeaders($teacher['token']))
+            ->postJson('/api/v1/teacher-attendance/month-close', ['year_month' => '2026-08', 'campus_id' => 1])
+            ->assertStatus(403);
+        $this->withHeaders($this->authHeaders($director['token']))
+            ->postJson('/api/v1/teacher-attendance/month-close', ['year_month' => '2026-08', 'campus_id' => 2])
+            ->assertStatus(403);
     }
 }
