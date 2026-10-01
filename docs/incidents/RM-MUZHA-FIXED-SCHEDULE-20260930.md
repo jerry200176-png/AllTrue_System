@@ -1,9 +1,7 @@
 # Repair Manifest — 木柵固定數學課 2026-09-30
 
-Status: prepared; **production apply is not authorized by this document**.
-Risk: R3/T3. The Founder must approve the exact protected action after reviewing
-the dry-run. The reporter's requested schedule and identity confirmation are
-business evidence, not a substitute for the production Data Repair Gate.
+Status: POP migration prepared; production execution requires a successful POP dry-run and authenticated database approval.
+Risk: R3/T3. The Founder approved the four exact course changes in this conversation; the POP approval event remains a separate runtime gate.
 
 ## Business truth and exact targets
 
@@ -23,13 +21,13 @@ contract times are already correct, but most of their regular future
 ClassSession times are stale.
 
 The original report spelled 正甯 as 正寗 and 宏逸 as 弘毅. The Founder confirmed
-on 2026-09-30 that these four exact production identities are the intended
-targets. This identity confirmation does not itself authorize the protected
-production apply action.
+these four exact production identities and later approved the fixed Saturday
+times, including both 10/03 afternoon exceptions. Runtime POP approval remains
+required for production execution.
 
 ## Exact preconditions
 
-The case executor in `backend/scripts/ops/muzha_fixed_schedule_20260930.php`
+The POP strategy `backend/app/Operations/Strategies/MuzhaFixedScheduleStrategy.php`
 checks student identity/campus, contract keys, counts, dates, state, teacher,
 subject and duration. It locks and compares **all 32 future ClassSession IDs**
 with exact date, start/end, status and exception flag. Any additional or
@@ -42,24 +40,23 @@ Expected future rows are encoded in the immutable executor and grouped below:
   33783/42412/42472 (scheduled at old 19:30).
 - `3429`: 32870 (10/03 10–12 exception), 32881 (cancelled),
   32871/32872/41621 (scheduled at old 19:00).
-- `2332`: 19267 (10/03 15–17 exception), 19268–19275 and
+- `2332`: 19267 (10/03 17–19 exception), 19268–19275 and
   32735/33815/35545 (scheduled at old 10:00).
-- `2335`: 19324/19325/19326 (scheduled 15–17 exceptions),
+- `2335`: 19324 (10/03 17–19 exception), 19325/19326 (15–17 exceptions),
   19328/19329/19320/19321/19322 (cancelled),
   33814 (12/05 scheduled at old 10:00).
 
-## Authorized mutation after Founder GO
+## Authorized POP mutation after dry-run and database approval
 
-The workflow `.github/workflows/ops-muzha-fixed-schedule-20260930.yml` is
-the Data Repair Gate. `dry-run` performs the preconditions without a write.
-`apply` repeats the same preconditions under locks inside one DB transaction,
-then sets only contract `time` on 3428/3429, moves **18 scheduled regular
-ClassSession rows** to the new time, and adopts six matching scheduled
-exceptions as regular rows. It does not change dates, statuses, cancelled
-rows, attendance, learning records, purchased/used/remaining counts, rates,
-charges, invoices, payments, packages, teachers, subjects or rooms. Eloquent
-ClassSession updates emit the existing schedule audit log. Postconditions are
-checked before commit.
+The application POP API creates an authenticated draft and read-only dry-run.
+An authenticated super_admin approval through the same API must bind the deployed
+SHA. The Pi-local POP scheduler alone executes and verifies the catalog strategy. The strategy checks
+all four contracts and 32 future occurrences under locks in one transaction,
+updates contract `time` only for 3428/3429, moves **20 scheduled occurrences**
+to the intended time, and adopts four already matching exceptions as regular.
+It preserves eight cancelled rows, all dates and statuses, attendance, learning
+records, counters, charges, payments, teachers, subjects and rooms. The POP
+execution record stores a rollback snapshot and verification outcome.
 
 ## 2026-10-01 production preflight hold
 
@@ -67,20 +64,19 @@ The first production dry-run, [Actions run 36748360106](https://github.com/jerry
 printed `Occurrence precondition drift: 19267` but its job was incorrectly
 marked successful. No apply run was started. Read-only authenticated course
 details confirmed that the 2026-10-03 exception rows 19267 and 19324 are now
-17:00–19:00, whereas this manifest expects 15:00–17:00; the other 30 future
-rows still match. The protected workflow and executor must fail nonzero and
-require a valid result payload, and the exact row plan must be revised after
-the Founder decides whether those two exceptions move or remain. This
-document's earlier counts and row list describe the original, blocked plan.
+17:00–19:00, whereas the original manifest expected 15:00–17:00; the other 30 future
+rows still match. The protected workflow and executor were fixed to fail nonzero. The Founder
+clarified that both 10/03 exception rows must move to 15:00–17:00, and this
+POP manifest now expects their observed 17:00–19:00 state before applying.
 
 ## Recovery and verification
 
 Any failed precondition or postcondition rolls back the entire transaction.
-If the transaction commits but a later problem is found, stop and prepare a
-new Founder-approved inverse operation using the exact old times and exception
-flags above; first verify no new attendance, approval or booking has appeared.
-Reverting deployed code alone does not reverse a committed data correction.
+If verification fails after a commit, use the stored POP snapshot and its
+rollback strategy after confirming the exact after-state and obtaining the
+required rollback approval. Reverting deployed code alone does not reverse
+a committed data correction.
 
-Attach the protected workflow run URL, sanitized dry-run and apply output,
+Attach the POP request ID, sanitized dry-run, execute and verify records,
 deployed SHA, and read-only postcondition audit to closeout. Verify both
 course lookup and student management show the two intended Saturday pairs.

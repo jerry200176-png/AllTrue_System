@@ -2,7 +2,7 @@
 
 /**
  * RM-MUZHA-FIXED-SCHEDULE-20260930: exact four-course repair.
- * Run only through the protected workflow; stdout contains IDs/counts only.
+ * Retired legacy executor. The POP strategy owns the protected write path.
  */
 
 require dirname(__DIR__, 2) . '/vendor/autoload.php';
@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\DB;
 // as a failed process, including during its read-only preflight.
 try {
 $mode = getenv('MUZHA_MODE');
+if ($mode === 'apply') {
+    throw new RuntimeException('Legacy apply is retired; use the approved POP operation');
+}
 $expectedConfirm = match ($mode) {
     'dry-run' => 'DRY_RUN_MUZHA_FIXED_SCHEDULE_20260930',
     'apply' => 'APPROVE_MUZHA_FIXED_SCHEDULE_20260930',
@@ -57,7 +60,7 @@ $cases = [
         'student' => 155, 'name' => '吳宏逸', 'old' => '15:00', 'new' => '15:00',
         'count' => 16, 'used' => 4, 'remaining' => 12, 'start' => '2026-08-15', 'end' => '2026-12-26',
         'rows' => [
-            19267 => ['2026-10-03', '15:00', 'scheduled', 1],
+            19267 => ['2026-10-03', '17:00', 'scheduled', 1],
             19268 => ['2026-10-10', '10:00', 'scheduled', 0],
             19269 => ['2026-10-17', '10:00', 'scheduled', 0],
             19270 => ['2026-10-24', '10:00', 'scheduled', 0],
@@ -75,7 +78,7 @@ $cases = [
         'student' => 156, 'name' => '吳宛庭', 'old' => '15:00', 'new' => '15:00',
         'count' => 16, 'used' => 13, 'remaining' => 3, 'start' => '2026-08-08', 'end' => '2026-12-05',
         'rows' => [
-            19324 => ['2026-10-03', '15:00', 'scheduled', 1],
+            19324 => ['2026-10-03', '17:00', 'scheduled', 1],
             19325 => ['2026-10-10', '15:00', 'scheduled', 1],
             19326 => ['2026-10-17', '15:00', 'scheduled', 1],
             19328 => ['2026-10-31', '10:00', 'cancelled', 0],

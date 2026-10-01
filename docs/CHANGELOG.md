@@ -3824,3 +3824,6 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-09-19 — feat(calendar): director week/month print preview (in-app #318 / GitHub #3068)
 <!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
 - 主任可從班級行事曆列印目前有權限查看的週／月課表，包含總覽、每日明細、學生、課程、教師、日期時間、校區教室與異動狀態；僅透過瀏覽器列印，不建立額外檔案或資料來源。
+## 2026-10-01 — fix(ops): route exact Muzha fixed schedule repair through POP
+<!-- release-notes: silent_ship=silent-2026-10-01-muzha-pop-schedule -->
+- 木柵四門數學課的舊資料修正改由受控 POP 預演、資料庫核准、Pi 本機執行與驗證。精確核對四門合約及 32 筆未來堂次，包含 10/3 兩筆 17:00–19:00 單次例外；舊工作流程已移除、直接套用腳本已停用。此版只備妥受控修復，正式課程資料須在 POP 執行並驗證後才算更正完成。
