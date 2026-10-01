@@ -55,6 +55,22 @@ jobs:
               ->where('event_type', 'approved')->get(['approver_role', 'commit_sha', 'expires_at']);
           $plan = app(\App\Operations\Strategies\MuzhaFixedScheduleStrategy::class)
               ->plan(['campus_id' => 16, 'decision_reference' => 'rm-muzha-fixed-schedule-20260930']);
+          $slotFailures = [];
+          $lockedCourses = [];
+          $slotGuard = app(\App\Services\ClassSessionMaterializationService::class);
+          foreach (\App\Operations\Strategies\MuzhaFixedScheduleManifest::cases() as $classId => $case) {
+              $course = \App\Models\StudentClass::query()->find($classId);
+              if ($course?->isUsageSettlementLocked()) $lockedCourses[] = $classId;
+              foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
+                  if ($status !== 'scheduled' || $start === $case['new']) continue;
+                  $session = \App\Models\ClassSession::query()->find($sessionId);
+                  if (!$session) { $slotFailures[] = ['id' => $sessionId, 'error' => 'missing']; continue; }
+                  $session->setAttribute('StartTime', $case['new'] . ':00');
+                  $session->setAttribute('EndTime', \Carbon\Carbon::createFromFormat('H:i', $case['new'])->addHours(2)->format('H:i:s'));
+                  try { $slotGuard->assertStudentSlotAvailableForSession($session); }
+                  catch (\Throwable $e) { $slotFailures[] = ['id' => $sessionId, 'error' => class_basename($e)]; }
+              }
+          }
           $manifest = json_decode((string) file_get_contents('public/deployment.json'), true);
           echo json_encode([
               'request_id' => $id, 'deployed_sha' => $manifest['backend_sha'] ?? null,
@@ -66,6 +82,7 @@ jobs:
                   'phase' => $r->phase, 'result' => $r->result,
                   'actor' => $r->actor, 'commit_sha' => $r->commit_sha,
               ])->all(),
+              'diagnostic' => ['locked_courses' => $lockedCourses, 'slot_failures' => $slotFailures],
               'schedule' => [
                   'ok' => $plan['ok'], 'state' => $plan['state'], 'errors' => $plan['errors'],
                   'class_ids' => $plan['class_ids'], 'occurrences' => $plan['occurrence_count'],
