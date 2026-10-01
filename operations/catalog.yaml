@@ -1,8 +1,37 @@
 # AllTrue Production Operations Catalog
 # Authority: ADR-POP-005 | Phase 2: approved catalog operations execute via Pi-local POP
-version: 3
+version: 4
 
 operations:
+  muzha-fixed-schedule-20261001:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-ops
+    approver_roles: [super_admin]
+    approval_policy: founder-exact-muzha-schedule
+    founder_approval_required: true
+    runbook: docs/incidents/RM-MUZHA-FIXED-SCHEDULE-20260930.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, dry_run, verify, rollback, snapshot, audit]
+    risk: critical
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    execution_authority: pop-pi-local
+    blast_radius: four_exact_student_classes
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\MuzhaFixedScheduleStrategy
+    parameter_keys: [campus_id, decision_reference]
+    tags: [repair, session, scheduling, muzha]
+    notes: Exact four-course case. The strategy embeds all 32 occurrence preconditions and aborts on drift. Pi-local POP only.
+
   reviewed-monthly-accounting-correction:
     lifecycle: active
     domain: billing-entitlement

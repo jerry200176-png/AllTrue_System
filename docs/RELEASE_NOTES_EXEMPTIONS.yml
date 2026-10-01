@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-01-muzha-pop-schedule
+    changelog_date: "2026-10-01"
+    changelog_title: "fix(ops): route exact Muzha fixed schedule repair through POP"
+    reason: 僅備妥受控個案修復；四門課正式資料尚須預演、核准與驗證，不提前公告完成。
+
   - id: silent-2026-09-29-monthly-case-closed
     changelog_date: "2026-09-29"
     changelog_title: "fix(ops): report closed monthly case eligibility explicitly"
