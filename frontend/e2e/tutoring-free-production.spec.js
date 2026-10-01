@@ -296,7 +296,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await disclosure.click({ timeout: 10_000 });
     console.log('tutoring acceptance: course details expanded');
     const detail = page.locator(`#student-course-detail-${selectedStudentId}`);
-    const addCourse = detail.getByRole('button', { name: '新增課程', exact: true });
+    const addCourse = detail.locator('.course-panel-header__actions').getByRole('button', { name: /新增課程/ });
     await expect(addCourse).toBeVisible({ timeout: 10_000 });
     await addCourse.click({ timeout: 10_000 });
     console.log('tutoring acceptance: course chooser opened');
