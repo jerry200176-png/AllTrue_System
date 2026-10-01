@@ -48,10 +48,9 @@ Expected future rows are encoded in the immutable executor and grouped below:
 
 ## Authorized POP mutation after dry-run and database approval
 
-The workflow `.github/workflows/ops-muzha-fixed-schedule-20260930.yml`
-creates a POP machine draft and read-only dry-run. An authenticated super_admin
-approval through the application POP API must bind the deployed SHA. The Pi-local POP
-scheduler alone executes and verifies the catalog strategy. The strategy checks
+The application POP API creates an authenticated draft and read-only dry-run.
+An authenticated super_admin approval through the same API must bind the deployed
+SHA. The Pi-local POP scheduler alone executes and verifies the catalog strategy. The strategy checks
 all four contracts and 32 future occurrences under locks in one transaction,
 updates contract `time` only for 3428/3429, moves **20 scheduled occurrences**
 to the intended time, and adopts four already matching exceptions as regular.
@@ -78,6 +77,6 @@ rollback strategy after confirming the exact after-state and obtaining the
 required rollback approval. Reverting deployed code alone does not reverse
 a committed data correction.
 
-Attach the protected workflow run URL, sanitized dry-run and apply output,
+Attach the POP request ID, sanitized dry-run, execute and verify records,
 deployed SHA, and read-only postcondition audit to closeout. Verify both
 course lookup and student management show the two intended Saturday pairs.
