@@ -86,6 +86,7 @@ jobs:
               ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime',
                   'cs.Status', 'cs.IsContractException', 'sc.StudentID', 'sc.SubjectID',
                   'sc.TeacherID', 'sc.ClassType', 'sc.PackageID', 'sc.Stop', 'sc.time']);
+          $subjectNames = $db::table('Subject')->whereIn('id', [64, 66])->pluck('Subject_Name', 'id');
           $manifest = json_decode((string) file_get_contents('public/deployment.json'), true);
           echo json_encode([
               'request_id' => $id, 'deployed_sha' => $manifest['backend_sha'] ?? null,
@@ -99,6 +100,7 @@ jobs:
               ])->all(),
               'diagnostic' => ['locked_courses' => $lockedCourses, 'slot_failures' => $slotFailures,
                   'conflicting_sessions' => $conflictingSessions],
+              'subject_names' => $subjectNames,
               'schedule' => [
                   'ok' => $plan['ok'], 'state' => $plan['state'], 'errors' => $plan['errors'],
                   'class_ids' => $plan['class_ids'], 'occurrences' => $plan['occurrence_count'],
