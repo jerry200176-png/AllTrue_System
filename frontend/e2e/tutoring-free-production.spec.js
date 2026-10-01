@@ -345,7 +345,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       .filter((element) => element.required && !element.checkValidity())
       .map((element) => element.tagName));
     expect(invalidRequired, 'visible required scheduler controls must be valid').toEqual([]);
-    const readinessButton = scheduler.getByRole('button', { name: '建立課程並寫入堂次', exact: true });
+    const readinessButton = page.locator('.universal-scheduler-modal .modal-actions').getByRole('button', { name: '建立課程並寫入堂次', exact: true });
     await expect(readinessButton).toBeVisible();
     await expect(readinessButton).toBeEnabled();
     await expect(readinessButton).toHaveAttribute('type', 'button');
