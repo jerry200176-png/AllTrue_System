@@ -204,6 +204,14 @@ Route::prefix('v1')->group(function () {
     // token guessing infeasible.
     Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe'])
         ->middleware('throttle:120,1');
+    // 刷卡拍照 → LINE 推家長。同 swipe-rfid 的分校 Bearer Token。
+    Route::post('swipe-photo', [SwipeRfidController::class, 'photo'])
+        ->middleware('throttle:120,1');
+    // 公開但需簽章（給 LINE 伺服器抓圖），7 天過期。
+    Route::get('swipe-photo/{campus}/{file}', [SwipeRfidController::class, 'showPhoto'])
+        ->whereNumber('campus')
+        ->where('file', '[0-9a-f-]{36}\.(jpg|png)')
+        ->name('swipe-photo.show');
     // SEC-002: 10 req/IP/10 min — prevents bulk account creation.
     Route::post('auth/register', [AuthController::class, 'register'])
         ->middleware('throttle:10,10');
