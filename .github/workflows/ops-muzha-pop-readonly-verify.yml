@@ -68,7 +68,16 @@ jobs:
                   $session->setAttribute('StartTime', $case['new'] . ':00');
                   $session->setAttribute('EndTime', \Carbon\Carbon::createFromFormat('H:i', $case['new'])->addHours(2)->format('H:i:s'));
                   try { $slotGuard->assertStudentSlotAvailableForSession($session); }
-                  catch (\Throwable $e) { $slotFailures[] = ['id' => $sessionId, 'error' => class_basename($e)]; }
+                  catch (\Throwable $e) {
+                      $failure = ['id' => $sessionId, 'error' => class_basename($e)];
+                      if ($e instanceof \App\Exceptions\SlotOccupiedException) {
+                          $failure += ['source' => $e->conflictSource,
+                              'conflict_session_id' => $e->conflictSessionId,
+                              'conflict_course_id' => $e->conflictCourseId,
+                              'conflict_schedule_id' => $e->conflictScheduleId];
+                      }
+                      $slotFailures[] = $failure;
+                  }
               }
           }
           $manifest = json_decode((string) file_get_contents('public/deployment.json'), true);
