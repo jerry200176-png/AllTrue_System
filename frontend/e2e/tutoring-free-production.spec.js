@@ -2,6 +2,8 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { assertDirectorDashboardTelemetry } from './fixtures/directorDashboardTelemetry.js';
+import { assertTutoringReceivableControls } from './fixtures/tutoringReceivableControls.js';
 
 /** Authenticated, read-only production acceptance for In-App #325. */
 test.use({ serviceWorkers: 'block', trace: 'off', screenshot: 'off', video: 'off' });
@@ -214,55 +216,7 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
       expect(body.event.trim()).not.toBe('');
       expect(body.event).toMatch(/^[a-z0-9_]+$/);
       expect(Array.isArray(body.meta)).toBe(false);
-      const schemas = {
-        dashboard_opened: { keys: ['page', 'role', 'telem_day', 'telem_session'], role: 'director', page: 'director-dashboard' },
-        director_trust_decision_impression: { keys: ['has_drilldown', 'key', 'people_total', 'severity', 'target', 'telem_day', 'telem_session', 'viewport'] },
-        director_trust_decision_click: { keys: ['from', 'has_drilldown', 'key', 'people_shown', 'severity', 'target', 'telem_day', 'telem_session'] },
-        director_trust_score_shown: { keys: ['critical_count', 'decision_count', 'decision_keys', 'score', 'status', 'telem_day', 'telem_session', 'warning_count'] },
-      };
-      const schema = schemas[body.event];
-      expect(schema, `unexpected telemetry event ${body.event}`).toBeDefined();
-      expect(Object.keys(body.meta).sort()).toEqual(schema.keys);
-      if (schema.role) expect(body.meta.role).toBe(schema.role);
-      if (schema.page) expect(body.meta.page).toBe(schema.page);
-      if (body.event === 'director_trust_decision_impression' || body.event === 'director_trust_decision_click') {
-        expect(body.meta.key).toMatch(/^[a-z0-9_-]{1,80}$/i);
-        expect(['critical', 'warning', '']).toContain(body.meta.severity);
-        expect(['calendar', 'duplicate-review', 'course-mgmt', 'tuition', '']).toContain(body.meta.target);
-        expect(typeof body.meta.has_drilldown).toBe('boolean');
-        if (body.event.endsWith('impression')) {
-          expect(Number.isInteger(body.meta.people_total)).toBe(true);
-          expect(body.meta.people_total).toBeGreaterThanOrEqual(0);
-          expect(body.meta.people_total).toBeLessThanOrEqual(100000);
-          expect(body.meta.viewport).toBe(1);
-        } else {
-          expect(body.meta.from).toBe('decision_cta');
-          expect(Number.isInteger(body.meta.people_shown)).toBe(true);
-          expect(body.meta.people_shown).toBeGreaterThanOrEqual(0);
-          expect(body.meta.people_shown).toBeLessThanOrEqual(100000);
-        }
-      }
-      if (body.event === 'director_trust_score_shown') {
-        for (const key of ['critical_count', 'warning_count', 'decision_count']) {
-          expect(Number.isInteger(body.meta[key])).toBe(true);
-          expect(body.meta[key]).toBeGreaterThanOrEqual(0);
-          expect(body.meta[key]).toBeLessThanOrEqual(100000);
-        }
-        expect(body.meta.score).toBeGreaterThanOrEqual(0);
-        expect(body.meta.score).toBeLessThanOrEqual(100);
-        expect(['red', 'yellow', 'green']).toContain(body.meta.status);
-        expect(body.meta.decision_keys.length).toBe(body.meta.decision_count);
-      }
-      const allowedMeta = new Set(schema.keys);
-      expect(Object.keys(body.meta).every((key) => allowedMeta.has(key))).toBe(true);
-      expect(Object.entries(body.meta).every(([key, value]) => key === 'decision_keys'
-        ? Array.isArray(value) && value.every((item) => typeof item === 'string' && /^[a-z0-9_-]{1,80}$/i.test(item))
-        : ['string', 'number', 'boolean'].includes(typeof value))).toBe(true);
-      if (body.meta.workflow !== undefined) expect(['billing', 'calendar']).toContain(body.meta.workflow);
-      if (body.meta.phase !== undefined) expect(['started', 'completed', 'returned', 'error']).toContain(body.meta.phase);
-      if (body.meta.duration_ms !== undefined) expect(body.meta.duration_ms).toBeGreaterThanOrEqual(0);
-      if (body.meta.telem_session !== undefined) expect(body.meta.telem_session).toMatch(/^t_[a-z0-9_]+$/);
-      if (body.meta.telem_day !== undefined) expect(body.meta.telem_day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      assertDirectorDashboardTelemetry(body);
       expect(containsForbiddenData(body)).toBe(false);
       telemetry.push(body);
       await route.fulfill({ status: 204, body: '' });
@@ -293,25 +247,23 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     const regularOutstanding = regularUnpaid.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);
     const activeTutoring = tutoring.filter(active);
     const tutoringOutstanding = activeTutoring.reduce((sum, row) => sum + Math.max(0, amount(row, 'Charge', 'charge') - amount(row, 'Pay', 'paid')), 0);
-    expect(activeTutoring.length, 'production branch must provide a non-empty tutoring control').toBeGreaterThan(0);
-    expect(regularUnpaid.length, 'production branch must provide a non-empty regular unpaid control').toBeGreaterThan(0);
     const alerts = rows(await getJson(request, `/api/v1/alerts/tuition?branch_id=${BRANCH_ID}`, token));
     const alertIds = new Set(alerts.map((row) => String(field(row, 'id', 'class_id', 'student_class_id', 'StudentClassID') || '')));
-    const tutoringIds = new Set(activeTutoring.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')));
-    const regularIds = new Set(regularUnpaid.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')));
-    expect(tutoringIds.size).toBe(activeTutoring.length);
-    expect([...tutoringIds].every(Boolean), 'tutoring paired control must expose stable class IDs').toBe(true);
-    for (const row of activeTutoring) {
-      const id = String(field(row, 'id', 'ID', 'class_id') || '');
-      if (id) expect(alertIds.has(id), `tutoring course ${id} leaked into alerts`).toBe(false);
-    }
-    if (regularUnpaid.length > 0) {
-      expect([...alertIds].some((id) => regularIds.has(id)), 'regular unpaid paired control should remain visible').toBe(true);
-    }
-
     const aging = await getJson(request, `/api/v1/finance/ar-aging?branch_id=${BRANCH_ID}`, token);
     expect(aging).toHaveProperty('totals');
-    expect(Number(aging.totals.grand_total || 0), 'AR total must equal regular unpaid control only').toBe(regularOutstanding);
+    const coverage = assertTutoringReceivableControls({
+      branchId: BRANCH_ID,
+      tutoringIds: activeTutoring.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')),
+      regularIds: regularUnpaid.map((row) => String(field(row, 'id', 'ID', 'class_id') || '')),
+      alertIds,
+      agingTotal: Number(aging.totals.grand_total || 0),
+      regularOutstanding,
+      tutoringOutstanding,
+    });
+    await test.info().attach('live-tutoring-control-coverage.json', {
+      body: Buffer.from(JSON.stringify(coverage)),
+      contentType: 'application/json',
+    });
     const agingByStudent = new Map((Array.isArray(aging.students) ? aging.students : []).map((row) => [String(row.student_id), Number(row.total || 0)]));
     const expectedByStudent = new Map();
     for (const row of regularUnpaid) {
@@ -324,10 +276,6 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     for (const [student, total] of agingByStudent) {
       expect(total).toBe(expectedByStudent.get(student) || 0);
     }
-    if (tutoringOutstanding > 0) {
-      expect(Number(aging.totals.grand_total || 0)).not.toBe(regularOutstanding + tutoringOutstanding);
-    }
-
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
     await dismissOverlays(page);
