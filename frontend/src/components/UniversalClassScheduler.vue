@@ -1337,6 +1337,17 @@ const teacherOptions = computed(() => (
   }).filter((teacher) => Number.isFinite(teacher.value) && teacher.value > 0 && teacher.label)
 ));
 
+watch(() => props.teachers, (teachers) => {
+  const available = new Set((teachers || []).map((teacher) => String(teacher.id)));
+  if (form.teacher_id && !available.has(String(form.teacher_id))) form.teacher_id = '';
+  for (const slot of form.day_time_slots || []) {
+    if (slot.teacher_id && !available.has(String(slot.teacher_id))) slot.teacher_id = null;
+  }
+  for (const subject of pkgForm.subjects || []) {
+    if (subject.teacher_id && !available.has(String(subject.teacher_id))) subject.teacher_id = '';
+  }
+});
+
 function teacherBranchIds(teacher) {
   const ids = Array.isArray(teacher?.branch_ids)
     ? teacher.branch_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
@@ -2339,15 +2350,17 @@ async function submit() {
     return;
   }
   const selectedTeacher = (props.teachers || []).find((teacher) => String(teacher.id) === String(form.teacher_id || ''));
-  if (selectedTeacher) {
-    const branchIds = Array.isArray(selectedTeacher.branch_ids)
-      ? selectedTeacher.branch_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
-      : [];
-    const teacherBranch = Number(selectedTeacher.branch_id || 0);
-    if (branchIds.length > 0 && !branchIds.includes(branchId) && teacherBranch !== branchId) {
-      alert('所選老師未綁定目前分校，請改選其他老師');
-      return;
-    }
+  if (!selectedTeacher) {
+    alert('所選老師已無法指派，請重新選擇');
+    return;
+  }
+  const branchIds = Array.isArray(selectedTeacher.branch_ids)
+    ? selectedTeacher.branch_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    : [];
+  const teacherBranch = Number(selectedTeacher.branch_id || 0);
+  if (branchIds.length > 0 && !branchIds.includes(branchId) && teacherBranch !== branchId) {
+    alert('所選老師未綁定目前分校，請改選其他老師');
+    return;
   }
   const slotDurList = (form.day_time_slots || []).length
     ? (form.day_time_slots || []).map((s) => durationHoursToMinutes(Number(s.duration_hours) || form.duration_hours))

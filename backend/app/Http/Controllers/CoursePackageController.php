@@ -327,6 +327,17 @@ class CoursePackageController extends Controller
             return response()->json(['message' => '學生不屬於該分校'], 422);
         }
 
+        $teacherAssignments = [];
+        foreach ($data['subjects'] as $index => $subject) {
+            $teacherAssignments["subjects.{$index}.teacher_id"] = (int) $subject['teacher_id'];
+        }
+        if ($teacherErrors = EnrollmentService::teacherAssignmentErrors($teacherAssignments)) {
+            return response()->json([
+                'message' => '請選擇在職老師。',
+                'errors' => $teacherErrors,
+            ], 422);
+        }
+
         return DB::transaction(function () use ($data, $branchId, $isMonthly, $totalSessions, $pkgEndDate) {
             $pkg = CoursePackage::create([
                 'student_id'         => (int) $data['student_id'],

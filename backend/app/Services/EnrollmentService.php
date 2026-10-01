@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\Scheduling\DeductionBasis;
@@ -25,6 +26,23 @@ use App\Services\TransactionDiscountCalculator;
 
 class EnrollmentService
 {
+    /** @param array<string, int> $assignments Request field path => teacher ID. */
+    public static function teacherAssignmentErrors(array $assignments): array
+    {
+        $ids = array_values(array_unique(array_filter(array_values($assignments), fn ($id) => $id > 0)));
+        $users = User::query()->whereIn('id', $ids)->get(['id', 'type', 'status'])->keyBy('id');
+        $errors = [];
+
+        foreach ($assignments as $field => $id) {
+            $user = $users->get($id);
+            if (!$user || $user->type !== 'T' || !in_array($user->status, [null, 'active'], true)) {
+                $errors[$field] = ['所選老師已停用、尚未核准或不是老師，請改選在職老師。'];
+            }
+        }
+
+        return $errors;
+    }
+
     private const GRADE_TO_CLASS = [
         'P1' => 1, 'P2' => 2, 'P3' => 3, 'P4' => 4, 'P5' => 5, 'P6' => 6,
         'J1' => 7, 'J2' => 8, 'J3' => 9, 'H1' => 10, 'H2' => 11, 'H3' => 12,
@@ -409,6 +427,19 @@ class EnrollmentService
 
         if ($role === 'teacher' && ($authTeacherId <= 0 || (int) $data['teacher_id'] !== $authTeacherId)) {
             return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $teacherAssignments = ['teacher_id' => (int) $data['teacher_id']];
+        foreach ($data['day_time_slots'] ?? [] as $index => $slot) {
+            if (!empty($slot['teacher_id'])) {
+                $teacherAssignments["day_time_slots.{$index}.teacher_id"] = (int) $slot['teacher_id'];
+            }
+        }
+        if ($teacherErrors = self::teacherAssignmentErrors($teacherAssignments)) {
+            return response()->json([
+                'message' => '請選擇在職老師。',
+                'errors' => $teacherErrors,
+            ], 422);
         }
 
         $studentId = !empty($data['student_id']) ? (int) $data['student_id'] : 0;

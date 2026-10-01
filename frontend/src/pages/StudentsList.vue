@@ -726,7 +726,7 @@
         <CourseEditForm
           ref="editFormRef"
           v-model="courseForm"
-          :teachers="teachers"
+          :teachers="editTeacherOptions"
           :rooms="rooms"
           :subjects="subjectOptions"
           :day-options="dayOptions"
@@ -1067,6 +1067,7 @@ import {
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
+import { buildEditTeacherOptions, isAssignableTeacher } from '../lib/courseTeacherOptions.js';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import {
@@ -1188,6 +1189,7 @@ const showCourseModal = ref(false);
 const editingCourseId = ref(null);
 const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);
+const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
 const editFormRef = ref(null);
 const toastRef = ref(null);
 const selectedStudent = ref(null);
@@ -2038,6 +2040,7 @@ const loadTeachers = async () => {
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     const normalized = list
+      .filter(isAssignableTeacher)
       .map((t) => {
         const id = Number(t?.id ?? 0);
         if (!Number.isFinite(id) || id <= 0) return null;

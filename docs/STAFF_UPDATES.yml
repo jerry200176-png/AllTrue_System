@@ -3,6 +3,18 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-01-active-teachers-only
+    published_at: "2026-10-01"
+    audiences:
+      - director
+    importance: digest
+    title: 建課只可選在職老師
+    summary: 新增課程時不再列出停用或待審核老師。
+    items:
+      - category: fixed
+        text: 若選擇後老師狀態有變，儲存時會提醒重新選擇；既有課程紀錄仍可查看。
+    source_refs:
+      - "changelog:2026-10-01:active-teachers-only"
   - id: staff-2026-10-01-monthly-usage-warning
     published_at: "2026-10-01"
     audiences:

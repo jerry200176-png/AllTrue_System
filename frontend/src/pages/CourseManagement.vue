@@ -1556,7 +1556,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { convertSingleCourseToPackage, previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
-import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
+import { buildEditTeacherOptions, isAssignableTeacher, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import {
   editabilityActionDescription,
@@ -5162,7 +5162,6 @@ const loadTeachers = async () => {
     if (!token) { teachers.value = []; return; }
     const params = new URLSearchParams({
       per_page: 'all',
-      status: 'active',
       branch_id: currentBranchId,
     });
     const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
@@ -5171,7 +5170,7 @@ const loadTeachers = async () => {
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     const filteredRows = (Array.isArray(list) ? list : []).filter((teacher) => {
-      if ((teacher?.status || 'active') !== 'active') return false;
+      if (!isAssignableTeacher(teacher)) return false;
       const branchIds = Array.isArray(teacher?.branch_ids)
         ? teacher.branch_ids.map((id) => String(id))
         : [];
