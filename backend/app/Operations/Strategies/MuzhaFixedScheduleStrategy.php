@@ -53,16 +53,16 @@ final class MuzhaFixedScheduleStrategy
             }
             foreach (MuzhaFixedScheduleManifest::cases() as $classId => $case) {
                 if ($case['old'] !== $case['new']) {
-                    $course = StudentClass::findOrFail($classId);
-                    $course->time = $case['new'] . ':00';
+                    $course = StudentClass::query()->findOrFail($classId);
+                    $course->setAttribute('time', $case['new'] . ':00');
                     $course->save();
                 }
                 foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
                     if ($status !== 'scheduled' || ($start === $case['new'] && !$exception)) continue;
-                    $row = ClassSession::findOrFail($sessionId);
-                    $row->StartTime = $case['new'] . ':00';
-                    $row->EndTime = $this->end($case['new']) . ':00';
-                    $row->IsContractException = 0;
+                    $row = ClassSession::query()->findOrFail($sessionId);
+                    $row->setAttribute('StartTime', $case['new'] . ':00');
+                    $row->setAttribute('EndTime', $this->end($case['new']) . ':00');
+                    $row->setAttribute('IsContractException', 0);
                     $row->save();
                 }
             }
@@ -105,9 +105,9 @@ final class MuzhaFixedScheduleStrategy
             $this->inspect('after', true, $errors);
             if ($errors !== []) throw new RuntimeException('muzha_rollback_drift:' . implode(',', array_unique($errors)));
             foreach (MuzhaFixedScheduleManifest::cases() as $classId => $case) {
-                $course = StudentClass::findOrFail($classId);
+                $course = StudentClass::query()->findOrFail($classId);
                 if ($case['old'] !== $case['new']) {
-                    $course->time = $snapshot['contracts'][$classId]['time'];
+                    $course->setAttribute('time', $snapshot['contracts'][$classId]['time']);
                     $course->save();
                 }
                 foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
