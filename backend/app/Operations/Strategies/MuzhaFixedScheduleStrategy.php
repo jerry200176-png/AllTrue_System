@@ -5,9 +5,12 @@ namespace App\Operations\Strategies;
 use App\Models\ClassSession;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
+use App\Exceptions\SlotOccupiedException;
+use App\Services\ClassSessionMaterializationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Throwable;
 
 /** Exact-case POP strategy. The manifest is a closed allowlist, not user input. */
 final class MuzhaFixedScheduleStrategy
@@ -30,12 +33,33 @@ final class MuzhaFixedScheduleStrategy
                 $phase = 'after';
             }
         }
+        if ($phase === 'before' && $errors === []) {
+            $slotGuard = app(ClassSessionMaterializationService::class);
+            foreach (MuzhaFixedScheduleManifest::cases() as $case) {
+                foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
+                    if ($status !== 'scheduled' || $start === $case['new']
+                        || $this->preservesConflict($sessionId)) continue;
+                    $session = ClassSession::query()->find($sessionId);
+                    if (!$session) { $errors[] = "occurrence_missing_{$sessionId}"; continue; }
+                    $session->setAttribute('StartTime', $case['new'] . ':00');
+                    $session->setAttribute('EndTime', $this->end($case['new']) . ':00');
+                    try {
+                        $slotGuard->assertStudentSlotAvailableForSession($session);
+                    } catch (SlotOccupiedException $e) {
+                        $errors[] = "student_slot_conflict_{$sessionId}";
+                    } catch (Throwable $e) {
+                        $errors[] = "slot_check_failed_{$sessionId}";
+                    }
+                }
+            }
+        }
         return [
             'ok' => $errors === [], 'errors' => array_values(array_unique($errors)),
             'state' => $phase,
             'class_ids' => array_keys(MuzhaFixedScheduleManifest::cases()),
-            'occurrence_count' => 32, 'time_updates' => 20,
+            'occurrence_count' => 32, 'time_updates' => 18,
             'matching_exceptions_adopted' => 4, 'cancelled_rows_preserved' => 8,
+            'conflicting_exceptions_preserved' => 2,
             'snapshot' => $errors === [] ? $before : [],
         ];
     }
@@ -58,7 +82,8 @@ final class MuzhaFixedScheduleStrategy
                     $course->save();
                 }
                 foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
-                    if ($status !== 'scheduled' || ($start === $case['new'] && !$exception)) continue;
+                    if ($status !== 'scheduled' || ($start === $case['new'] && !$exception)
+                        || $this->preservesConflict($sessionId)) continue;
                     $row = ClassSession::query()->findOrFail($sessionId);
                     $row->setAttribute('StartTime', $case['new'] . ':00');
                     $row->setAttribute('EndTime', $this->end($case['new']) . ':00');
@@ -81,7 +106,8 @@ final class MuzhaFixedScheduleStrategy
                 'outcome' => 'success',
             ]);
             return ['ok' => true, 'snapshot' => $snapshot, 'class_ids' => array_keys(MuzhaFixedScheduleManifest::cases()),
-                'time_updates' => 20, 'matching_exceptions_adopted' => 4, 'cancelled_rows_preserved' => 8];
+                'time_updates' => 18, 'matching_exceptions_adopted' => 4,
+                'cancelled_rows_preserved' => 8, 'conflicting_exceptions_preserved' => 2];
         }, 3);
     }
 
@@ -91,7 +117,8 @@ final class MuzhaFixedScheduleStrategy
         if (!($result['ok'] ?? false)) $errors[] = 'execution_result_missing';
         $this->inspect('after', false, $errors);
         return ['ok' => $errors === [], 'errors' => array_values(array_unique($errors)),
-            'checks' => ['four_course_contracts', 'exact_32_occurrences', 'cancelled_rows', 'counters', 'exception_flags']];
+            'checks' => ['four_course_contracts', 'exact_32_occurrences', 'cancelled_rows',
+                'counters', 'exception_flags', 'two_conflicting_exceptions_preserved']];
     }
 
     public function rollback(array $snapshot, array $context): array
@@ -111,7 +138,8 @@ final class MuzhaFixedScheduleStrategy
                     $course->save();
                 }
                 foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
-                    if ($status !== 'scheduled' || ($start === $case['new'] && !$exception)) continue;
+                    if ($status !== 'scheduled' || ($start === $case['new'] && !$exception)
+                        || $this->preservesConflict($sessionId)) continue;
                     $original = $snapshot['sessions'][$sessionId];
                     // The observer deliberately recomputes exception flags on
                     // normal edits. Restoring this verified legacy snapshot
@@ -167,8 +195,10 @@ final class MuzhaFixedScheduleStrategy
             foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
                 $row = $rows->get($sessionId);
                 if (!$row) { $errors[] = "occurrence_missing_{$sessionId}"; continue; }
-                $expectedRowStart = $phase === 'after' && $status === 'scheduled' ? $case['new'] : $start;
-                $expectedException = $phase === 'after' && $status === 'scheduled' ? 0 : $exception;
+                $changeAfter = $phase === 'after' && $status === 'scheduled'
+                    && !$this->preservesConflict($sessionId);
+                $expectedRowStart = $changeAfter ? $case['new'] : $start;
+                $expectedException = $changeAfter ? 0 : $exception;
                 if (substr((string) $row->SessionDate, 0, 10) !== $date
                     || substr((string) $row->StartTime, 0, 5) !== $expectedRowStart
                     || substr((string) $row->EndTime, 0, 5) !== $this->end($expectedRowStart)
@@ -176,7 +206,8 @@ final class MuzhaFixedScheduleStrategy
                     || (int) $row->IsContractException !== $expectedException) {
                     $errors[] = "occurrence_{$sessionId}";
                 }
-                if ($phase === 'before' && $status === 'scheduled' && $start !== $case['new']) {
+                if ($phase === 'before' && $status === 'scheduled' && $start !== $case['new']
+                    && !$this->preservesConflict($sessionId)) {
                     if (DB::table('StudentSingIn')->where('ClassSessionID', $sessionId)->exists()
                         || DB::table('LearningRecord')->where('ClassSessionID', $sessionId)->where('Status', 'approved')->exists()) {
                         $errors[] = "immutable_{$sessionId}";
@@ -194,5 +225,10 @@ final class MuzhaFixedScheduleStrategy
     private function end(string $start): string
     {
         return Carbon::createFromFormat('H:i', $start)->addHours(2)->format('H:i');
+    }
+
+    private function preservesConflict(int $sessionId): bool
+    {
+        return in_array($sessionId, MuzhaFixedScheduleManifest::preservedConflictSessionIds(), true);
     }
 }
