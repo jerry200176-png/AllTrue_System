@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-01-monthly-usage-warning",
+    "publishedAt": "2026-10-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結課不再誤顯示堂數待對帳",
+    "summary": "月結課改上課星期後，預排堂數不會再被當成包堂餘額而誤報。",
+    "items": [
+      "真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-01:monthly-usage-warning"
+    ],
+    "date": "2026-10-01",
+    "version": "2026.10.01"
+  },
+  {
     "id": "staff-2026-10-01-monthly-renew-polish",
     "publishedAt": "2026-10-01",
     "effectiveAt": null,

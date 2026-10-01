@@ -6,6 +6,14 @@ last_reviewed: 2026-09-05
 
 # AI／工程師防再犯紀錄（必讀）
 
+### R140. 月結預排堂數不可當成包堂餘額對帳（2026-10-01）
+
+- **現象**：木柵化學月結課由週四改週一，10/05 起的新一期有 4 個預排堂次、`SessionCount=4`、`UsedSessions=0`、`RemainingSessions=0`，課程查找誤標「⚠ 堂數待對帳」。
+- **根因**：列表將所有課程的 `SessionCount` 當作已購買額度，拿 `SessionCount - expected_used` 比對 `RemainingSessions`，並把這個差額投影到畫面。`ScheduleMode=date` 的堂數是當期預排數，沒有包堂餘額語義。
+- **強制規則**：對帳判定以課程模式分流並由列表與編輯前檢共用。只有 `ScheduleMode=count` 比對購買堂數與剩餘堂數；所有模式仍檢查已用堂數與取消堂次的扣堂／出席殘留。月結的 `expected_remaining_sessions` 回傳 `null`，前端不可把 `null` 轉成 0。讀取列表不可改寫資料庫。
+- **測試必補**：月結正 `SessionCount`、新週一預排且零已用時不報錯；月結真實已用異常與取消殘留仍報錯；包堂餘額漂移及部分時數原有行為不變；前端提示對 `null` 不顯示包堂餘額文案。
+- **參考**：Stripe recurring pricing 與 usage credits 分開；Lago subscription period 與 wallet balance 分開；Frappe Education 排課與收費結構分開。此處是依本系統 `ScheduleMode` 語義採用分流，未移植外部程式碼。
+
 ### R139. 固定調課與未來堂次必須同次提交並驗證（2026-09-30）
 
 - **現象**：木柵固定數學課調到週六新時段後，10/03 只留下單堂例外，固定時段及後續堂次仍是舊時間；學生管理可能顯示儲存成功，但課表未對齊。

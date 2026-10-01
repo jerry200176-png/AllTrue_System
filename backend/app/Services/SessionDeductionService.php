@@ -14,6 +14,34 @@ use Illuminate\Support\Facades\DB;
 class SessionDeductionService
 {
     /**
+     * A date-mode SessionCount describes planned occurrences, not prepaid credit.
+     * Keep usage evidence checks for both modes; only count contracts have a
+     * purchased-minus-used remaining balance.
+     *
+     * @param array<string, mixed> $diagnostic
+     * @return array{expected_remaining:?int, review_required:bool}
+     */
+    public static function usageBalanceAssessment(
+        StudentClass $course,
+        array $diagnostic,
+        ?int $storedUsed = null,
+        ?int $storedRemaining = null
+    ): array
+    {
+        $isCountMode = (string) ($course->ScheduleMode ?? 'count') === 'count';
+        $expectedRemaining = $isCountMode
+            ? max(0, (int) ($course->SessionCount ?? 0) - (int) $diagnostic['expected_used'])
+            : null;
+
+        return [
+            'expected_remaining' => $expectedRemaining,
+            'review_required' => (int) $diagnostic['cancelled_usage_artifacts'] > 0
+                || ($storedUsed ?? (int) ($course->UsedSessions ?? 0)) !== (int) $diagnostic['expected_used']
+                || ($isCountMode && ($storedRemaining ?? (int) ($course->RemainingSessions ?? 0)) !== $expectedRemaining),
+        ];
+    }
+
+    /**
      * Observable "已用堂數" per course: max of (扣點出缺勤、已完成堂次狀態、無綁定堂次之已核准評量筆數)。
      * 已核准但綁定 ClassSession 的評量不計入：堂次仍 scheduled 時須以點名／核課為準，避免與出缺勤待點名矛盾。
      *
