@@ -1,6 +1,6 @@
 ## 2026-10-01 — fix(qa): production calendar and tutoring acceptance follow actual contracts
 <!-- release-notes: silent_ship=silent-2026-10-01-calendar-tutoring-acceptance -->
-- 行事曆列印驗收將主任首頁既有的營運信任事件納入嚴格格式檢查，未知或洩漏資料的事件仍失敗。輔導課驗收不再假設每分校都有進行中的輔導課；保留一般未繳課與應收金額的正向控制，並在報告中明列當次是否觀察到真實輔導課樣本。未改收費規則或 production 資料。
+- 行事曆列印驗收將主任首頁既有的營運信任事件納入嚴格格式檢查，未知或洩漏資料的事件仍失敗。輔導課驗收不再假設每分校都有進行中的輔導課；保留一般未繳課與應收金額的正向控制，並在報告中明列當次是否觀察到真實輔導課樣本。完整 API 加 UI 路徑使用有界時限，UI 學生從授權分校內選取。未改收費規則或 production 資料。
 
 ## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
