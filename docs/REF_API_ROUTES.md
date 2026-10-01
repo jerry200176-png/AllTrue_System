@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 487 api/* routes · generated 2026-09-30
+> Source: `php artisan route:list --json` · 489 api/* routes · generated 2026-10-01
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -799,6 +799,13 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/substitutes/recent` | `SubstituteController@recent` | role+campus |
+
+## /api/v1/swipe-photo (2)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| POST | `api/v1/swipe-photo` | `SwipeRfidController@photo` | public |
+| GET | `api/v1/swipe-photo/{campus}/{file}` | `SwipeRfidController@showPhoto` | public |
 
 ## /api/v1/swipe-rfid (1)
 
