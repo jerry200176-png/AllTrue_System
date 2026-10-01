@@ -8,6 +8,10 @@ function teacherNameOf(row) {
   return String(row?.username ?? row?.name ?? row?.Name ?? row?.teacher_name ?? '').trim();
 }
 
+export function isAssignableTeacher(teacher) {
+  return teacher?.status == null || teacher.status === 'active';
+}
+
 export function buildEditTeacherOptions(teachers = [], course = null) {
   const normalized = (Array.isArray(teachers) ? teachers : [])
     .map((teacher) => ({

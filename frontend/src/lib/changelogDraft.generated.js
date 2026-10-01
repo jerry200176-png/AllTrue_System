@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.01",
     "date": "2026-10-01",
     "title": "2026.10.01 草稿（未發布）",
-    "summary": "photo pushes swipe photo to parents via LINE；calendar and tutoring acceptance follow actual contracts",
+    "summary": "photo pushes swipe photo to parents via LINE；teachers cannot be assigned to new courses",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "teachers cannot be assigned to new courses",
           "calendar and tutoring acceptance follow actual contracts",
           "renewal follows settlement day; flags late periods",
           "for an older commit no longer asks for deploy approval",
@@ -33,6 +34,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "photo pushes swipe photo to parents via LINE",
+      "teachers cannot be assigned to new courses",
       "calendar and tutoring acceptance follow actual contracts",
       "renewal follows settlement day; flags late periods",
       "for an older commit no longer asks for deploy approval",

@@ -73,6 +73,36 @@ export const staffUpdates = [
     "version": "2026.10.01"
   },
   {
+    "id": "staff-2026-10-01-active-teachers-only",
+    "publishedAt": "2026-10-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "建課只可選在職老師",
+    "summary": "新增課程時不再列出停用或待審核老師。",
+    "items": [
+      "若選擇後老師狀態有變，儲存時會提醒重新選擇；既有課程紀錄仍可查看。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "若選擇後老師狀態有變，儲存時會提醒重新選擇；既有課程紀錄仍可查看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-01:active-teachers-only"
+    ],
+    "date": "2026-10-01",
+    "version": "2026.10.01"
+  },
+  {
     "id": "staff-2026-09-30-course-history-guard",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,
