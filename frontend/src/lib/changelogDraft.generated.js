@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.10.01",
     "date": "2026-10-01",
     "title": "2026.10.01 草稿（未發布）",
-    "summary": "renewal follows settlement day; flags late periods；for an older commit no longer asks for deploy approval",
+    "summary": "photo pushes swipe photo to parents via LINE；renewal follows settlement day; flags late periods",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "photo pushes swipe photo to parents via LINE"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -24,6 +30,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "photo pushes swipe photo to parents via LINE",
       "renewal follows settlement day; flags late periods",
       "for an older commit no longer asks for deploy approval"
     ]
