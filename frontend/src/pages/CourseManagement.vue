@@ -1546,7 +1546,7 @@ import {
 } from '../lib/coursePricing';
 import { applyMonthlyRenewalPreview, nextPeriodEnd, renewalErrorMessage, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
-import { courseRowWarningSummary } from '../lib/courseRowWarnings';
+import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings';
 import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
@@ -2554,17 +2554,6 @@ function isBillingCorrectionStructureEligible(course) {
 
 function isUnpaidCountCourse(course) {
   return isBillingCorrectionStructureEligible(course) && course?.payment_status === 'unpaid';
-}
-
-function usageBalanceWarningTitle(course) {
-  const diagnostic = course?.usage_balance_diagnostic;
-  if (!diagnostic) return '課堂狀態與扣堂紀錄不一致，請先完成重複堂次／扣堂對帳。';
-  const storedRemaining = Number(diagnostic.stored_remaining_sessions);
-  const expectedRemaining = Number(diagnostic.expected_remaining_sessions);
-  if (Number.isFinite(storedRemaining) && Number.isFinite(expectedRemaining) && storedRemaining !== expectedRemaining) {
-    return `課程原始記錄為剩 ${storedRemaining} 堂，目前畫面依出席與扣堂證據顯示剩 ${expectedRemaining} 堂；請先完成對帳，再作為收費依據。`;
-  }
-  return `課堂狀態顯示已上 ${diagnostic.class_session_used_sessions} 堂，但扣堂紀錄為 ${diagnostic.ledger_used_sessions} 堂；請先完成對帳，再作為收費依據。`;
 }
 
 function openContractAdjustmentModal(course) {

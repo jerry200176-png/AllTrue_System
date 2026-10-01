@@ -276,6 +276,79 @@ class AttendanceRemainingSessionsRegressionTest extends TestCase
         $this->assertSame(1, (int) DB::table('StudentClass')->where('ID', $courseId)->value('RemainingSessions'));
     }
 
+    public function test_monthly_monday_replacement_does_not_treat_four_planned_dates_as_prepaid_balance(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-monthly-monday@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-monthly-monday@example.com');
+        $student = $this->createStudent(1, '月結化學週一測試');
+        $courseId = $this->bootstrapCourse($token, $student->id, $teacherId, 4);
+        DB::table('StudentClass')->where('ID', $courseId)->update([
+            'ScheduleMode' => 'date', 'StartDate' => '2026-10-02', 'EndDate' => '2026-10-31',
+            'SessionCount' => 4, 'UsedSessions' => 0, 'RemainingSessions' => 0,
+        ]);
+        foreach (['2026-10-05', '2026-10-12'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $courseId, 'SessionDate' => $date,
+                'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'scheduled', 'Note' => '',
+            ]);
+        }
+
+        $hit = collect($this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $student->id . '&per_page=100')
+            ->assertOk()->json('data'))->firstWhere('id', $courseId);
+
+        $this->assertNotNull($hit);
+        $this->assertSame('ok', $hit['usage_balance_status']);
+        $this->assertSame(0, $hit['remaining_sessions']);
+        $this->assertNull($hit['usage_balance_diagnostic']['expected_remaining_sessions']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/student-classes/{$courseId}/editability")
+            ->assertOk()->assertJsonPath('status', 'ready');
+    }
+
+    public function test_monthly_course_still_flags_real_used_counter_drift(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-monthly-drift@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-monthly-drift@example.com');
+        $student = $this->createStudent(1, '月結已上堂數異常測試');
+        $courseId = $this->bootstrapCourse($token, $student->id, $teacherId, 4);
+        DB::table('StudentClass')->where('ID', $courseId)->update([
+            'ScheduleMode' => 'date', 'SessionCount' => 4, 'UsedSessions' => 0, 'RemainingSessions' => 0,
+        ]);
+        $this->pastClassSession($courseId);
+
+        $hit = collect($this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $student->id . '&per_page=100')
+            ->assertOk()->json('data'))->firstWhere('id', $courseId);
+
+        $this->assertSame('review_required', $hit['usage_balance_status']);
+        $this->assertNull($hit['usage_balance_diagnostic']['expected_remaining_sessions']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/student-classes/{$courseId}/editability")
+            ->assertOk()->assertJsonPath('status', 'review_required');
+
+        // Even after the used counter is reconciled, cancelled usage evidence
+        // must keep the monthly course in review.
+        DB::table('StudentClass')->where('ID', $courseId)->update(['UsedSessions' => 1]);
+        $cancelled = ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'cancelled', 'Note' => '',
+        ]);
+        DB::table('session_deduction_ledger')->insert([
+            'student_class_id' => $courseId, 'class_session_id' => $cancelled->id,
+            'event_type' => 'deduct', 'source' => 'attendance',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $withArtifact = collect($this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/student-classes?branch_id=1&student_id=' . $student->id . '&per_page=100')
+            ->assertOk()->json('data'))->firstWhere('id', $courseId);
+        $this->assertSame('review_required', $withArtifact['usage_balance_status']);
+        $this->assertSame(1, $withArtifact['usage_balance_diagnostic']['cancelled_usage_artifacts']);
+    }
+
     private function bootstrapCourse(string $token, int $studentId, int $teacherId, int $remaining): int
     {
         unset($token);

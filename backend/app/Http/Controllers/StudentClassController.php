@@ -495,7 +495,7 @@ class StudentClassController extends Controller
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
             $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
-            // Remaining = 購買堂數 − 實際已上（扣點、已完成堂次、已核准評量取最大後再與購買數取 cap）
+            // 堂數制 Remaining = 購買堂數 − 實際已上；月結 SessionCount 是預排數，不作餘額投影。
 
             // #613 A1：若課程有「部分時數」事件（RemainingMinutes 非整堂倍數），分鐘為權威，
             // 不可用 count-based observed 覆寫 recomputeCounters 已寫入的衍生值；否則沿用既有 self-heal。
@@ -504,7 +504,8 @@ class StudentClassController extends Controller
             $hasFractionalBalance = $storedRemainingMinutes !== null
                 && ((int) $storedRemainingMinutes % $perSessionMin !== 0);
 
-            if ($class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
+            if ($class->getAttribute('payment_type') === 'session'
+                && $class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
                 $observedUsedSessions = min($class->getAttribute('sessions_purchased'), $observedUsedSessions);
                 $class->UsedSessions = $observedUsedSessions;
                 $class->RemainingSessions = max(0, $class->getAttribute('sessions_purchased') - $observedUsedSessions);
@@ -512,15 +513,10 @@ class StudentClassController extends Controller
             $class->setAttribute('sessions_used', (int) ($class->UsedSessions ?? 0));
             $class->setAttribute('remaining_sessions', (int) ($class->RemainingSessions ?? 0));
             if ($usageDiagnostic !== null) {
-                $expectedRemaining = max(
-                    0,
-                    (int) $class->getAttribute('sessions_purchased') - (int) $usageDiagnostic['expected_used']
+                $assessment = SessionDeductionService::usageBalanceAssessment(
+                    $class, $usageDiagnostic, $storedUsedSessions, $storedRemainingSessions
                 );
-                $class->setAttribute('usage_balance_status', (
-                    (int) $usageDiagnostic['cancelled_usage_artifacts'] > 0
-                    || $storedUsedSessions !== (int) $usageDiagnostic['expected_used']
-                    || $storedRemainingSessions !== $expectedRemaining
-                ) ? 'review_required' : 'ok');
+                $class->setAttribute('usage_balance_status', $assessment['review_required'] ? 'review_required' : 'ok');
                 $class->setAttribute('usage_balance_diagnostic', [
                     'stored_used_sessions' => $storedUsedSessions,
                     'stored_remaining_sessions' => $storedRemainingSessions,
@@ -529,7 +525,7 @@ class StudentClassController extends Controller
                     'cancelled_usage_artifacts' => (int) $usageDiagnostic['cancelled_usage_artifacts'],
                     'ledger_used_sessions' => (int) $usageDiagnostic['ledger_used'],
                     'expected_used_sessions' => (int) $usageDiagnostic['expected_used'],
-                    'expected_remaining_sessions' => $expectedRemaining,
+                    'expected_remaining_sessions' => $assessment['expected_remaining'],
                 ]);
             }
             // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。

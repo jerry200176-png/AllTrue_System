@@ -29,9 +29,9 @@ describe('CourseManagement lens UX', () => {
     expect(activeSection).toContain('點擊查看對帳明細');
   });
 
-  it('explains stored versus canonical remaining-session drift', () => {
-    expect(source).toContain('diagnostic.stored_remaining_sessions');
-    expect(source).toContain('diagnostic.expected_remaining_sessions');
-    expect(source).toContain('目前畫面依出席與扣堂證據顯示');
+  it('uses the shared warning helper for active and history cards', () => {
+    expect(source).toContain("import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings'");
+    expect(source).toContain('usageBalanceWarningTitle(c)');
+    expect(source).toContain('usageBalanceWarningTitle(hc)');
   });
 });

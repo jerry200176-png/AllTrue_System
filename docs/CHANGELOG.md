@@ -3827,3 +3827,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-10-01 — fix(ops): route exact Muzha fixed schedule repair through POP
 <!-- release-notes: silent_ship=silent-2026-10-01-muzha-pop-schedule -->
 - 木柵四門數學課的舊資料修正改由受控 POP 預演、資料庫核准、Pi 本機執行與驗證。精確核對四門合約及 32 筆未來堂次，包含 10/3 兩筆 17:00–19:00 單次例外；舊工作流程已移除、直接套用腳本已停用。此版只備妥受控修復，正式課程資料須在 POP 執行並驗證後才算更正完成。
+
+## 2026-10-01 — fix(course): monthly courses no longer show prepaid balance reconciliation warnings
+<!-- release-notes: staff_update=staff-2026-10-01-monthly-usage-warning -->
+- 課程查找與編輯前檢依課程模式判定堂數對帳：月結課的預排堂數不再當作包堂購買額度，因此新一期週一課在尚未上課時不會因剩餘堂數為 0 被誤標「堂數待對帳」。已用堂數不符或取消堂次殘留扣堂證據仍會提示對帳；包堂課的剩餘堂數檢查與部分時數計算維持原規則。未更動歷史課表、收款或扣堂資料。
