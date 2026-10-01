@@ -107,6 +107,7 @@ jobs:
                   'time_updates' => $plan['time_updates'],
                   'adopted' => $plan['matching_exceptions_adopted'],
                   'cancelled_preserved' => $plan['cancelled_rows_preserved'],
+                  'conflicting_exceptions_preserved' => $plan['conflicting_exceptions_preserved'] ?? null,
               ],
           ], JSON_THROW_ON_ERROR) . PHP_EOL;
           PHP

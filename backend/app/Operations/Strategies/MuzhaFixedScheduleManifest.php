@@ -5,6 +5,12 @@ namespace App\Operations\Strategies;
 /** Immutable, production-observed 2026-10-01 preconditions for four course IDs. */
 final class MuzhaFixedScheduleManifest
 {
+    /** The 10/3 math exceptions remain at 17:00 because Chinese is booked at 15:00. */
+    public static function preservedConflictSessionIds(): array
+    {
+        return [19267, 19324];
+    }
+
     public static function cases(): array
     {
         $cases = [

@@ -39,12 +39,29 @@ final class MuzhaFixedScheduleStrategyTest extends TestCase
                 ]);
             }
         }
+        foreach ([[999998, 999997, 155], [999996, 999995, 156]] as [$courseId, $sessionId, $studentId]) {
+            DB::table('StudentClass')->insert([
+                'ID' => $courseId, 'StudentID' => $studentId, 'GradeID' => 1,
+                'SubjectID' => 64, 'TeacherID' => 36, 'by1' => 1, 'TotalHours' => 16,
+                'StartDate' => '2026-08-01', 'EndDate' => '2026-12-31',
+                'week' => 6, 'time' => '10:00', 'ClassType' => 'one_on_two',
+                'ScheduleMode' => 'count', 'Stop' => 0, 'SessionDuration' => 120,
+                'SessionCount' => 16, 'UsedSessions' => 0, 'RemainingSessions' => 16,
+            ]);
+            DB::table('ClassSession')->insert([
+                'id' => $sessionId, 'StudentClassID' => $courseId,
+                'SessionDate' => '2026-10-03', 'StartTime' => '15:00', 'EndTime' => '17:00',
+                'Status' => 'scheduled', 'IsContractException' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
         $strategy = new MuzhaFixedScheduleStrategy();
         $parameters = ['campus_id' => 16, 'decision_reference' => 'rm-muzha-fixed-schedule-20260930'];
         $plan = $strategy->plan($parameters);
         self::assertTrue($plan['ok'], implode(',', $plan['errors']));
         self::assertSame('before', $plan['state']);
-        self::assertSame(20, $plan['time_updates']);
+        self::assertSame(18, $plan['time_updates']);
+        self::assertSame(2, $plan['conflicting_exceptions_preserved']);
         self::assertSame(32, $plan['occurrence_count']);
 
         $pop = app(PopOperationService::class);
@@ -60,7 +77,9 @@ final class MuzhaFixedScheduleStrategyTest extends TestCase
         self::assertTrue($result['ok']);
         self::assertSame('after', $strategy->plan($parameters)['state']);
         self::assertTrue($strategy->verify($strategy->plan($parameters), $result)['ok']);
-        self::assertSame('15:00:00', DB::table('ClassSession')->where('id', 19267)->value('StartTime'));
+        self::assertSame('17:00:00', DB::table('ClassSession')->where('id', 19267)->value('StartTime'));
+        self::assertSame('17:00:00', DB::table('ClassSession')->where('id', 19324)->value('StartTime'));
+        self::assertSame('15:00:00', DB::table('ClassSession')->where('id', 19268)->value('StartTime'));
         self::assertSame('10:00:00', DB::table('StudentClass')->where('ID', 3428)->value('time'));
         self::assertTrue($strategy->rollback($result['snapshot'], ['operation_id' => 'test-muzha'])['ok']);
         self::assertSame('before', $strategy->plan($parameters)['state']);
@@ -75,22 +94,9 @@ final class MuzhaFixedScheduleStrategyTest extends TestCase
         ]);
         self::assertContains('occurrence_set_2332', $strategy->plan($parameters)['errors']);
         DB::table('ClassSession')->where('id', 999999)->delete();
-        DB::table('StudentClass')->insert([
-            'ID' => 999998, 'StudentID' => 155, 'GradeID' => 1,
-            'SubjectID' => 64, 'TeacherID' => 36, 'by1' => 1, 'TotalHours' => 16,
-            'StartDate' => '2026-08-01', 'EndDate' => '2026-12-31',
-            'week' => 6, 'time' => '10:00', 'ClassType' => 'one_on_two',
-            'ScheduleMode' => 'count', 'Stop' => 0, 'SessionDuration' => 120,
-            'SessionCount' => 16, 'UsedSessions' => 0, 'RemainingSessions' => 16,
-        ]);
-        DB::table('ClassSession')->insert([
-            'id' => 999997, 'StudentClassID' => 999998,
-            'SessionDate' => '2026-10-03', 'StartTime' => '15:00', 'EndTime' => '17:00',
-            'Status' => 'scheduled', 'IsContractException' => 1,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        DB::table('ClassSession')->where('id', 999997)->update(['SessionDate' => '2026-10-10']);
         $conflictedPlan = $strategy->plan($parameters);
         self::assertFalse($conflictedPlan['ok']);
-        self::assertContains('student_slot_conflict_19267', $conflictedPlan['errors']);
+        self::assertContains('student_slot_conflict_19268', $conflictedPlan['errors']);
     }
 }
