@@ -300,7 +300,13 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     await expect(addCourse).toBeVisible({ timeout: 10_000 });
     await addCourse.click({ timeout: 10_000 });
     console.log('tutoring acceptance: course chooser opened');
-    await page.getByRole('button', { name: /^一般課程/ }).click({ timeout: 10_000 });
+    const conflict = page.getByRole('dialog', { name: '此學生已有進行中的課程' });
+    await expect(page.locator('.usw-step1-cards, .enrollment-conflict-modal').first()).toBeVisible({ timeout: 10_000 });
+    if (await conflict.isVisible()) {
+      await conflict.getByRole('button', { name: '建立下一期續報' }).click({ timeout: 10_000 });
+      console.log('tutoring acceptance: existing-course entry resolved');
+    }
+    await page.locator('.usw-step1-cards .usw-type-card--general').click({ timeout: 10_000 });
     const scheduler = page.locator('.scheduler-layout');
     await expect(scheduler).toBeVisible({ timeout: 15_000 });
     console.log('tutoring acceptance: scheduler opened');
