@@ -49,6 +49,9 @@ jobs:
           $id = '915702fa-c185-4537-9e1f-975e0bf61dde';
           $db = \Illuminate\Support\Facades\DB::class;
           $request = $db::table('pop_operation_requests')->where('id', $id)->first();
+          $matchingRequests = $db::table('pop_operation_requests')
+              ->where('idempotency_key', 'founder-muzha-conflictfree-20261001-v2')
+              ->get(['id', 'status', 'operation_id', 'created_at']);
           $records = $db::table('pop_execution_records')->where('operation_id', $id)
               ->orderBy('created_at')->get(['phase', 'result', 'actor', 'commit_sha']);
           $approvals = $db::table('pop_approval_events')->where('operation_id', $id)
@@ -91,6 +94,7 @@ jobs:
           echo json_encode([
               'request_id' => $id, 'deployed_sha' => $manifest['backend_sha'] ?? null,
               'request_status' => $request->status ?? 'missing',
+              'matching_requests' => $matchingRequests,
               'catalog_version' => $request->catalog_version ?? null,
               'approval_roles' => $approvals->pluck('approver_role')->all(),
               'approval_shas' => $approvals->pluck('commit_sha')->all(),
