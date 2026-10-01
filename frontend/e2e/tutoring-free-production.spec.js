@@ -322,11 +322,11 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     expect(Number.isInteger(selectedTeacherId) && selectedTeacherId > 0, 'selected teacher option must map to a numeric teacher').toBe(true);
     await teacherOption.click({ timeout: 10_000 });
     console.log('tutoring acceptance: teacher selected');
-    const type = scheduler.locator('select').filter({ has: scheduler.locator('option[value="tutoring"]') }).first();
+    const type = scheduler.locator('select:has(option[value="tutoring"])').first();
     await type.selectOption('tutoring', { timeout: 10_000 });
     console.log('tutoring acceptance: tutoring selected');
-    await scheduler.locator('select').filter({ has: scheduler.locator('option[value="session"]') }).first().selectOption('session', { timeout: 10_000 });
-    await scheduler.locator('select').filter({ has: scheduler.locator('option[value="manual_occurrence"]') }).first().selectOption('manual_occurrence', { timeout: 10_000 });
+    await scheduler.locator('select:has(option[value="session"])').first().selectOption('session', { timeout: 10_000 });
+    await scheduler.locator('select:has(option[value="manual_occurrence"])').first().selectOption('manual_occurrence', { timeout: 10_000 });
     await scheduler.locator('.form-group').filter({ hasText: '購買總堂數' }).locator('input[type="number"]').fill('1', { timeout: 10_000 });
     await scheduler.locator('.form-group').filter({ hasText: '開課日 *' }).locator('input[type="date"]').fill(new Date().toISOString().slice(0, 10), { timeout: 10_000 });
     console.log('tutoring acceptance: tutoring form populated');
