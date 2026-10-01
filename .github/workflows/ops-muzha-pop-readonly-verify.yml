@@ -80,6 +80,12 @@ jobs:
                   }
               }
           }
+          $conflictingSessions = $db::table('ClassSession as cs')
+              ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+              ->whereIn('cs.id', [19301, 19345])
+              ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime',
+                  'cs.Status', 'cs.IsContractException', 'sc.StudentID', 'sc.SubjectID',
+                  'sc.TeacherID', 'sc.ClassType', 'sc.PackageID', 'sc.Stop', 'sc.time']);
           $manifest = json_decode((string) file_get_contents('public/deployment.json'), true);
           echo json_encode([
               'request_id' => $id, 'deployed_sha' => $manifest['backend_sha'] ?? null,
@@ -91,7 +97,8 @@ jobs:
                   'phase' => $r->phase, 'result' => $r->result,
                   'actor' => $r->actor, 'commit_sha' => $r->commit_sha,
               ])->all(),
-              'diagnostic' => ['locked_courses' => $lockedCourses, 'slot_failures' => $slotFailures],
+              'diagnostic' => ['locked_courses' => $lockedCourses, 'slot_failures' => $slotFailures,
+                  'conflicting_sessions' => $conflictingSessions],
               'schedule' => [
                   'ok' => $plan['ok'], 'state' => $plan['state'], 'errors' => $plan['errors'],
                   'class_ids' => $plan['class_ids'], 'occurrences' => $plan['occurrence_count'],
