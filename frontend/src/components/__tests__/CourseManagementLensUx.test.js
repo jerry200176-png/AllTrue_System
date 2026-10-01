@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { usageBalanceWarningTitle } from '../../lib/courseRowWarnings';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pagePath = resolve(__dirname, '../../pages/CourseManagement.vue'), source = readFileSync(pagePath, 'utf8');
 describe('CourseManagement lens UX', () => {
@@ -33,5 +34,28 @@ describe('CourseManagement lens UX', () => {
     expect(source).toContain("import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings'");
     expect(source).toContain('usageBalanceWarningTitle(c)');
     expect(source).toContain('usageBalanceWarningTitle(hc)');
+  });
+
+  it('does not turn a monthly null balance into a prepaid balance warning', () => {
+    const monthly = {
+      usage_balance_diagnostic: {
+        stored_remaining_sessions: 0,
+        expected_remaining_sessions: null,
+        class_session_used_sessions: 1,
+        ledger_used_sessions: 0,
+        cancelled_usage_artifacts: 0,
+      },
+    };
+    expect(usageBalanceWarningTitle(monthly)).not.toContain('原始記錄為剩');
+    expect(usageBalanceWarningTitle(monthly)).toContain('已用堂數或扣堂紀錄不一致');
+    expect(usageBalanceWarningTitle({ usage_balance_diagnostic: {
+      ...monthly.usage_balance_diagnostic,
+      cancelled_usage_artifacts: 1,
+    } })).toContain('已取消課堂');
+    expect(usageBalanceWarningTitle({ usage_balance_diagnostic: {
+      ...monthly.usage_balance_diagnostic,
+      stored_remaining_sessions: 1,
+      expected_remaining_sessions: 0,
+    } })).toContain('原始記錄為剩 1 堂');
   });
 });

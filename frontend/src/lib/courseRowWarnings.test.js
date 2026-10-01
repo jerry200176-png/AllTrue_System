@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { courseRowWarningItems, courseRowWarningSummary, usageBalanceWarningTitle as realUsageBalanceWarningTitle } from './courseRowWarnings.js';
+import { courseRowWarningItems, courseRowWarningSummary } from './courseRowWarnings.js';
 
 const usageBalanceWarningTitle = () => '堂數對帳提示';
 
@@ -40,19 +40,3 @@ assert.equal(multiSummary[0].label, '⚠ 3 個提醒');
 assert.match(multiSummary[0].title, /另一門課仍在同時段/);
 assert.match(multiSummary[0].title, /補課例外/);
 assert.match(multiSummary[0].title, /堂數對帳提示/);
-
-const monthlyDiagnostic = {
-  stored_remaining_sessions: 0,
-  expected_remaining_sessions: null,
-  class_session_used_sessions: 1,
-  ledger_used_sessions: 0,
-  cancelled_usage_artifacts: 0,
-};
-assert.doesNotMatch(realUsageBalanceWarningTitle({ usage_balance_diagnostic: monthlyDiagnostic }), /原始記錄為剩/);
-assert.match(realUsageBalanceWarningTitle({ usage_balance_diagnostic: monthlyDiagnostic }), /已用堂數或扣堂紀錄不一致/);
-assert.match(realUsageBalanceWarningTitle({ usage_balance_diagnostic: {
-  ...monthlyDiagnostic, cancelled_usage_artifacts: 1,
-} }), /已取消課堂/);
-assert.match(realUsageBalanceWarningTitle({ usage_balance_diagnostic: {
-  ...monthlyDiagnostic, stored_remaining_sessions: 1, expected_remaining_sessions: 0,
-} }), /原始記錄為剩 1 堂/);

@@ -25,14 +25,16 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "renewal follows settlement day; flags late periods",
-          "for an older commit no longer asks for deploy approval"
+          "for an older commit no longer asks for deploy approval",
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
         ]
       }
     ],
     "items": [
       "photo pushes swipe photo to parents via LINE",
       "renewal follows settlement day; flags late periods",
-      "for an older commit no longer asks for deploy approval"
+      "for an older commit no longer asks for deploy approval",
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
     ]
   },
   {
