@@ -4,6 +4,7 @@ namespace Tests\Feature\Ops;
 
 use App\Operations\Strategies\MuzhaFixedScheduleManifest;
 use App\Operations\Strategies\MuzhaFixedScheduleStrategy;
+use App\Operations\PopOperationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -45,6 +46,15 @@ final class MuzhaFixedScheduleStrategyTest extends TestCase
         self::assertSame('before', $plan['state']);
         self::assertSame(20, $plan['time_updates']);
         self::assertSame(32, $plan['occurrence_count']);
+
+        $pop = app(PopOperationService::class);
+        $draft = $pop->createDraft('muzha-fixed-schedule-20261001', $parameters,
+            'test-muzha-exact-case', 'user:1', 'super_admin', [], 1);
+        $dryRun = $pop->runDryRun((string) $draft['id'], 'user:1', 1, 'super_admin');
+        self::assertSame('succeeded', $dryRun['result']);
+        $approval = $pop->approve((string) $draft['id'], 'founder-go-muzha-test',
+            'user:1', 'super_admin', str_repeat('a', 40), 1);
+        self::assertTrue($approval['ready']);
 
         $result = $strategy->execute($plan, ['operation_id' => 'test-muzha']);
         self::assertTrue($result['ok']);
