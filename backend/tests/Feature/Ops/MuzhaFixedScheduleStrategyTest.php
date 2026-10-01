@@ -74,5 +74,23 @@ final class MuzhaFixedScheduleStrategyTest extends TestCase
             'IsContractException' => 0, 'created_at' => now(), 'updated_at' => now(),
         ]);
         self::assertContains('occurrence_set_2332', $strategy->plan($parameters)['errors']);
+        DB::table('ClassSession')->where('id', 999999)->delete();
+        DB::table('StudentClass')->insert([
+            'ID' => 999998, 'StudentID' => 155, 'GradeID' => 1,
+            'SubjectID' => 64, 'TeacherID' => 36, 'by1' => 1, 'TotalHours' => 16,
+            'StartDate' => '2026-08-01', 'EndDate' => '2026-12-31',
+            'week' => 6, 'time' => '10:00', 'ClassType' => 'one_on_two',
+            'ScheduleMode' => 'count', 'Stop' => 0, 'SessionDuration' => 120,
+            'SessionCount' => 16, 'UsedSessions' => 0, 'RemainingSessions' => 16,
+        ]);
+        DB::table('ClassSession')->insert([
+            'id' => 999997, 'StudentClassID' => 999998,
+            'SessionDate' => '2026-10-03', 'StartTime' => '15:00', 'EndTime' => '17:00',
+            'Status' => 'scheduled', 'IsContractException' => 1,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $conflictedPlan = $strategy->plan($parameters);
+        self::assertFalse($conflictedPlan['ok']);
+        self::assertContains('student_slot_conflict_19267', $conflictedPlan['errors']);
     }
 }

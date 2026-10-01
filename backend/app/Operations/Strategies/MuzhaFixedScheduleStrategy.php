@@ -5,9 +5,12 @@ namespace App\Operations\Strategies;
 use App\Models\ClassSession;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentClass;
+use App\Exceptions\SlotOccupiedException;
+use App\Services\ClassSessionMaterializationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Throwable;
 
 /** Exact-case POP strategy. The manifest is a closed allowlist, not user input. */
 final class MuzhaFixedScheduleStrategy
@@ -28,6 +31,25 @@ final class MuzhaFixedScheduleStrategy
             if ($afterErrors === []) {
                 $errors = $parameterErrors;
                 $phase = 'after';
+            }
+        }
+        if ($phase === 'before' && $errors === []) {
+            $slotGuard = app(ClassSessionMaterializationService::class);
+            foreach (MuzhaFixedScheduleManifest::cases() as $case) {
+                foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
+                    if ($status !== 'scheduled' || $start === $case['new']) continue;
+                    $session = ClassSession::query()->find($sessionId);
+                    if (!$session) { $errors[] = "occurrence_missing_{$sessionId}"; continue; }
+                    $session->setAttribute('StartTime', $case['new'] . ':00');
+                    $session->setAttribute('EndTime', $this->end($case['new']) . ':00');
+                    try {
+                        $slotGuard->assertStudentSlotAvailableForSession($session);
+                    } catch (SlotOccupiedException $e) {
+                        $errors[] = "student_slot_conflict_{$sessionId}";
+                    } catch (Throwable $e) {
+                        $errors[] = "slot_check_failed_{$sessionId}";
+                    }
+                }
             }
         }
         return [
