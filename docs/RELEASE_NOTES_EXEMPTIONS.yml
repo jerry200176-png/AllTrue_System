@@ -5,7 +5,7 @@ exemptions:
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
-    reason: 僅修正內部正式站驗收的事件、樣本前提與有界 UI 時限，不改教職員操作或收費規則。
+    reason: 僅修正內部正式站驗收的事件、樣本前提、學生明細定位與有界 UI 時限，不改教職員操作或收費規則。
 
   - id: silent-2026-10-01-muzha-pop-schedule
     changelog_date: "2026-10-01"
