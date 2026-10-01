@@ -94,6 +94,9 @@ async function getPagedRows(request, path, token) {
 
 test.describe('production acceptance — tutoring free/non-receivable', () => {
   test('director read-only API and real UI acceptance', async ({ page, request }) => {
+    // Bounded pagination plus a real UI journey can exceed the default 45s
+    // suite timeout; individual locators retain their shorter fail-fast limits.
+    test.setTimeout(120_000);
     test.skip(!BASE || !SESSION?.access_token, 'missing controlled production director session');
     expect(SESSION_CONTRACT, 'session must satisfy the exact bounded read-only contract').toBe(true);
     const token = SESSION.access_token;
@@ -276,20 +279,24 @@ test.describe('production acceptance — tutoring free/non-receivable', () => {
     for (const [student, total] of agingByStudent) {
       expect(total).toBe(expectedByStudent.get(student) || 0);
     }
+    console.log('tutoring acceptance: API controls passed');
     await page.goto('/');
     await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 20_000 });
     await dismissOverlays(page);
     await page.getByRole('button', { name: '學生管理', exact: true }).click();
     await expect(page.getByRole('heading', { name: /學生管理/ }).first()).toBeVisible({ timeout: 20_000 });
-    selectedStudentId = Number(field(courses.find((course) => field(course, 'StudentID', 'student_id')), 'StudentID', 'student_id'));
+    console.log('tutoring acceptance: student management opened');
+    selectedStudentId = Number(field(scopedCourses.find((course) => field(course, 'StudentID', 'student_id')), 'StudentID', 'student_id'));
     expect(Number.isInteger(selectedStudentId) && selectedStudentId > 0, 'production course data must provide a numeric student key').toBe(true);
     const row = page.locator(`tr.student-row[data-student-id="${selectedStudentId}"]`);
     await expect(row).toBeVisible({ timeout: 20_000 });
+    console.log('tutoring acceptance: branch student visible');
     await row.locator('.btn-course-disclosure').click();
     await page.getByRole('button', { name: '新增課程', exact: true }).first().click();
     await page.getByRole('button', { name: /^一般課程/ }).click();
     const scheduler = page.locator('.scheduler-layout');
     await expect(scheduler).toBeVisible({ timeout: 15_000 });
+    console.log('tutoring acceptance: scheduler opened');
     const teacherField = scheduler.locator('.form-group').filter({ hasText: '老師 *' }).first();
     await teacherField.locator('.ss-input').click();
     const teacherOption = page.locator('.ss-option:visible').first();
