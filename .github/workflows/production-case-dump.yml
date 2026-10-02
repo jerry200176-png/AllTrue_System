@@ -19,6 +19,7 @@ on:
           - laravel_2833_preflight
           - contract_yang_binghe
           - contract_yu_shengrui
+          - swipe_line_path
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -92,7 +93,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -777,6 +778,125 @@ jobs:
               ],
               'denied_guardian_statuses' => $deniedVerification,
             ];
+          }} elseif ($case === 'swipe_line_path') {{
+            // Aggregate-only: does any reader call swipe-rfid / swipe-photo? No names, RFIDs or LINE ids.
+            $since = now()->subDays(14);
+            // Group by the campus recorded at swipe time (StudentSingIn.CampusID), not the student's current campus.
+            $signIns = $db::table('StudentSingIn as si')
+              ->where('si.SignInDT', '>=', $since)->groupBy('si.CampusID')
+              ->selectRaw("si.CampusID as campus_id, COUNT(*) as n, MAX(si.SignInDT) as last_at, SUM(si.Memo IN ('swipe-rfid', 'self_study')) as n_api, MAX(CASE WHEN si.Memo IN ('swipe-rfid', 'self_study') THEN si.SignInDT END) as last_api_at")
+              ->get()->keyBy('campus_id');
+            $photoAudit = $db::table('security_audit_events')->where('event_type', 'notification.delivery')
+              ->where('occurred_at', '>=', $since)->where('metadata', 'like', '%swipe_photo%')
+              ->groupBy('campus_id', 'outcome')
+              ->selectRaw('campus_id, outcome, COUNT(*) as n, MAX(occurred_at) as last_at')->get();
+            $bindings = $db::table('student_line_bindings')->whereNotNull('verified_at')
+              ->groupBy('campus_id')->selectRaw('campus_id, COUNT(*) as n')->pluck('n', 'campus_id');
+            $settings = $db::table('system_settings')->where('key', 'like', 'line_notify.campus.%')->pluck('value', 'key');
+            $out['campuses'] = $db::table('Campus')->orderBy('id')
+              ->get(['id', 'code', 'messaging_channel_token', 'TelegramToken', 'is_test'])
+              ->map(function ($c) use ($signIns, $bindings, $settings, $since) {{
+                $dir = storage_path('app/swipe-photos/' . (int) $c->id);
+                $files = is_dir($dir) ? array_values(array_filter(glob($dir . '/*') ?: [], 'is_file')) : [];
+                $files14 = array_values(array_filter($files, fn ($f) => filemtime($f) >= $since->getTimestamp()));
+                $si = $signIns->get($c->id);
+                return ['campus_id'=>(int)$c->id, 'code'=>(string)$c->code, 'is_test'=>(bool)$c->is_test,
+                  'has_line_channel_token'=>!empty($c->messaging_channel_token),
+                  'has_telegram_token'=>!empty($c->TelegramToken),
+                  'verified_line_bindings'=>(int)($bindings[$c->id] ?? 0),
+                  'student_sign_ins_14d_all_sources'=>$si ? (int)$si->n : 0,
+                  'swipe_rfid_api_sign_ins_14d'=>$si ? (int)$si->n_api : 0,
+                  'last_swipe_rfid_api_sign_in'=>$si ? $si->last_api_at : null,
+                  'swipe_photo_files_14d'=>count($files14),
+                  'swipe_photo_files_retained_total'=>count($files),
+                  'newest_swipe_photo_at'=>$files === [] ? null : date('Y-m-d H:i:s', max(array_map('filemtime', $files))),
+                  'line_notify_setting_present'=>isset($settings['line_notify.campus.' . (int)$c->id])];
+              }})->values()->all();
+            // Pre-controller evidence: Apache combined access log (request line + status only; no IPs/UA leave prod).
+            // Identity guard: file/audit counts are evidence only on a revision whose photo() stores before any push/switch.
+            $preSwitchSha = '44ab1b3698cccfa1d12f367c65e12d3e53f1d3fe';
+            $preSwitchControllerSha256 = '81104cd2d5fe6f6f89ca13a37222cf7b80aa3a122d953b2782347c0a43681016';
+            $manifest = json_decode((string) @file_get_contents(public_path('deployment.json')), true) ?: [];
+            $controllerPath = base_path('app/Http/Controllers/SwipeRfidController.php');
+            $controllerHash = is_file($controllerPath) ? hash_file('sha256', $controllerPath) : null;
+            $out['runtime_identity'] = ['deployment_backend_sha' => $manifest['backend_sha'] ?? null,
+              'swipe_controller_sha256' => $controllerHash,
+              'expected_pre_switch_backend_sha' => $preSwitchSha,
+              'expected_pre_switch_controller_sha256' => $preSwitchControllerSha256];
+            $out['file_audit_evidence_valid'] = ($manifest['backend_sha'] ?? null) === $preSwitchSha
+              && $controllerHash === $preSwitchControllerSha256;
+            $access = [];
+            $logFiles = glob('/var/log/apache2/*access.log*') ?: [];
+            $eligible = 0; $fullyRead = 0; $readFailures = 0; $inventory = [];
+            $budget = 268435456;
+            foreach ($logFiles as $lf) {{
+              // mtime = last write; a file last written before the window holds no in-window lines.
+              if (@filemtime($lf) !== false && filemtime($lf) < $since->getTimestamp()) {{ continue; }}
+              $eligible++;
+              if ($budget <= 0) {{ continue; }}
+              $h = @gzopen($lf, 'rb');
+              if (!$h) {{ $readFailures++; $inventory[basename($lf)] = 'open_failed'; continue; }}
+              $ok = true; $isGz = str_ends_with($lf, '.gz'); $crc = hash_init('crc32b'); $size = 0;
+              while (!gzeof($h)) {{
+                if ($budget <= 0) {{ $ok = false; break; }}
+                $line = gzgets($h, 65536);
+                if ($line === false) {{ $ok = gzeof($h); break; }}
+                $budget -= strlen($line); $size += strlen($line);
+                if ($isGz) {{ hash_update($crc, $line); }}
+                if (!preg_match('#\\[(\\d{{2}}/\\w{{3}}/\\d{{4}}:\\d{{2}}:\\d{{2}}:\\d{{2}} [+-]\\d{{4}})\\] "(POST|GET) /api/v1/(swipe-rfid|swipe-photo)[ ?/][^"]*" (\\d{{3}})#', $line, $m)) {{ continue; }}
+                // Full combined-log timestamp incl. offset; exact cutoff, same instant as the DB/file metrics.
+                $day = \\DateTime::createFromFormat('d/M/Y:H:i:s O', $m[1]);
+                if (!$day || $day->getTimestamp() < $since->getTimestamp()) {{ continue; }}
+                $k = $m[2] . ' ' . $m[3] . ' ' . $m[4];
+                $access[$k][$day->format('Y-m-d')] = ($access[$k][$day->format('Y-m-d')] ?? 0) + 1;
+              }}
+              @gzclose($h);
+              if ($ok && $isGz) {{
+                // zlib reads a truncated .gz without error; verify the gzip trailer (CRC32 + ISIZE, single member).
+                $fh = @fopen($lf, 'rb');
+                $trailer = ($fh && fseek($fh, -8, SEEK_END) === 0) ? fread($fh, 8) : '';
+                if ($fh) {{ fclose($fh); }}
+                $t = strlen($trailer) === 8 ? unpack('Vcrc/Visize', $trailer) : null;
+                $ok = $t !== null && $t['isize'] === ($size & 0xFFFFFFFF)
+                  && $t['crc'] === hexdec(hash_final($crc));
+              }}
+              $ok ? $fullyRead++ : $readFailures++;
+              $inventory[basename($lf)] = $ok ? 'fully_read' : 'read_failed';
+            }}
+            ksort($access);
+            // Positive control: every DB sign-in created by swipe-rfid was a 201 POST, so on each day the log must show
+            // at least that many. Fails if the active vhost log is missing from the glob or the regex misses the format.
+            $apiSignInsByDay = $db::table('StudentSingIn')->where('SignInDT', '>=', $since)
+              ->whereIn('Memo', ['swipe-rfid', 'self_study'])
+              ->groupByRaw('DATE(SignInDT)')->selectRaw('DATE(SignInDT) as d, COUNT(*) as n')->pluck('n', 'd');
+            $controlDays = [];
+            foreach ($apiSignInsByDay as $d => $n) {{
+              $logged = (int) ($access['POST swipe-rfid 201'][$d] ?? 0);
+              $controlDays[$d] = ['db_api_sign_ins' => (int) $n, 'log_post_swipe_rfid_201' => $logged, 'ok' => $logged >= (int) $n];
+            }}
+            ksort($controlDays);
+            $controlPassed = $controlDays !== [] && !in_array(false, array_column($controlDays, 'ok'), true);
+            ksort($inventory);
+            $out['access_log'] = ['files_found' => count($logFiles), 'eligible_files_14d' => $eligible,
+              'eligible_file_inventory' => $inventory,
+              'positive_control' => ['passed' => $controlPassed, 'by_day' => $controlDays],
+              'eligible_files_fully_read' => $fullyRead, 'read_failures' => $readFailures,
+              'byte_budget_exhausted' => $budget <= 0,
+              'complete' => $eligible > 0 && $fullyRead === $eligible && $readFailures === 0,
+              'negative_evidence_usable' => $eligible > 0 && $fullyRead === $eligible && $readFailures === 0 && $controlPassed,
+              'requests_14d_by_endpoint_status_day' => $access];
+            $out['evidence_limits'] = [
+              'student_sign_ins_14d_all_sources includes manual/approval/backfill attendance; it does NOT prove reader calls.',
+              'swipe_rfid_api_sign_ins_14d counts sign-ins created by SwipeRfidController (Memo swipe-rfid/self_study); sign-outs and duplicate swipes are not counted, and later Memo edits would hide a row.',
+              'swipe_photo_files_14d uses file mtime; swipe_photo_files_retained_total spans all retained files (pruned after 7 days only when that campus uploads again).',
+              'swipe_photo_delivery_audit_14d only exists when the campus has a LINE token and the student has verified bindings; zero rows does not prove zero uploads.',
+              'Reader-side LINE text pushes (from LineIDs) go straight to LINE and leave no trace in AllTrue.',
+              'FAIL CLOSED: file/audit counts count as evidence only when file_audit_evidence_valid is true (deployment backend_sha AND SwipeRfidController sha256 equal 44ab1b36, whose photo() stores every valid upload before pushing). Otherwise zero files/audit = INCONCLUSIVE; use access_log only. Files kept from an older revision still show uploads happened.',
+              'access_log is the only pre-controller evidence. It has no campus (branch_code is in the body). Negative access_log evidence requires access_log.negative_evidence_usable = true: complete AND positive_control.passed (each day with DB swipe-rfid sign-ins has at least as many logged POST swipe-rfid 201; no DB API sign-ins => control cannot pass). This guards against a missing vhost log or an unmatched log format. Timezone or day-edge skew fails closed. complete means (every eligible file opened and read to EOF, .gz trailer CRC32/size verified, no failures, budget not exhausted); otherwise INCONCLUSIVE.',
+              'Conclusion rule: only successful uploads count as support. "POST swipe-photo 200" > 0 in access_log, or swipe_photo_files_14d > 0 when file_audit_evidence_valid (44ab1b36 stores only after token/RFID/validation pass), => some reader completed the photo path. 401/404/422 POSTs prove nothing. "Readers call swipe-rfid only" needs ALL of: file_audit_evidence_valid, swipe_rfid_api_sign_ins_14d > 0, swipe_photo_files_14d = 0, and access_log.negative_evidence_usable = true with zero "POST swipe-photo 200". Even then it is aggregate across campuses; per-campus activation still needs reader code/test or direct evidence. Otherwise INCONCLUSIVE; the reader code/test is required.',
+            ];
+            $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
+              'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int)$parentCampus->id : null;
