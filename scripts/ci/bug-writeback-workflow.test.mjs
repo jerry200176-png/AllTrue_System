@@ -401,6 +401,37 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '352 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '352 must give a no-names reopen path');
   }
+// Shipped batch 4 closeout 2026-10-02 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            364 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 364 must exist');
+    assert.ok(entry[1].includes('"rev" => "44ab1b3698cccfa1d12f367c65e12d3e53f1d3fe"'), '364 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36961012794"'), '364 deploy binding');
+    assert.ok(entry[1].includes('issues/3228'), '364 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '364 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境'), '364 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '364 must give a no-names reopen path');
+  }
+  {
+    const entry = phaseCSource.match(/\n            322 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 322 must exist');
+    assert.ok(entry[1].includes('"rev" => "a98a6c9c374f54eecbc9e112c63662832f813883"'), '322 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36961012794"'), '322 deploy binding');
+    assert.ok(entry[1].includes('issues/3072'), '322 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '322 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境'), '322 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '322 must give a no-names reopen path');
+  }
+  {
+    const entry = phaseCSource.match(/\n            300 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 300 must exist');
+    assert.ok(entry[1].includes('"rev" => "54330988218646a4707e8af3a3f4cc53c1c1ecd4"'), '300 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36961012794"'), '300 deploy binding');
+    assert.ok(entry[1].includes('issues/2909'), '300 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '300 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境'), '300 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '300 must give a no-names reopen path');
+  }
 
 console.log('bug-writeback-workflow.test.mjs: ok');
 
