@@ -17,6 +17,7 @@ use App\Services\SessionDeductionService;
 use App\Services\StudentPresenceBackfillService;
 use App\Services\TeacherAttendanceMonth;
 use App\Services\TeacherClassCalendar;
+use App\Support\LineNotifySettings;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,6 +37,7 @@ class SwipeRfidController extends Controller
 {
     private const PHOTO_DIR = 'swipe-photos';
     private const PHOTO_TTL_DAYS = 7;
+    private const PHOTO_TEXT_WINDOW_SECONDS = 120;
 
     /**
      * POST /api/v1/swipe-rfid
@@ -152,7 +154,8 @@ class SwipeRfidController extends Controller
     /**
      * POST /api/v1/swipe-photo（multipart）
      * Body: branch_code, rfid, photo（jpeg/png ≤1MB）
-     * 刷卡機拍照後呼叫：存照片（私有），推 LINE 圖片給該學生已驗證綁定的家長，並回傳 image_url。
+     * 刷卡機拍照後呼叫：存照片（私有），推 LINE 文字「{姓名} {時間} 刷卡」+圖片給該學生已驗證綁定的家長，並回傳 image_url。
+     * 分校要在 LINE 通知設定開「到班刷卡」或「離班刷卡」才會發（LineNotifySettings）。
      * 圖片網址是 APP_URL 上的簽章網址，所以刷卡機有沒有固定 IP 都沒差。
      */
     public function photo(Request $request)
@@ -177,6 +180,18 @@ class SwipeRfidController extends Controller
             return response()->json(['ok' => false, 'error' => 'student_not_found'], 404);
         }
 
+        // 到班/離班開關分開；判斷不出來（照片早到/晚到）就任一開就發。文字一律中性，誤刷也不會講錯。
+        [$kind, $swipedAt] = $this->recentSwipe($student);
+        $settings = LineNotifySettings::get((int) $campus->getKey());
+        $wanted = match ($kind) {
+            'in' => $settings['swipe_in'],
+            'out' => $settings['swipe_out'],
+            default => $settings['swipe_in'] || $settings['swipe_out'],
+        };
+        if (!$wanted) {
+            return response()->json(['ok' => true, 'sent' => 0, 'skipped' => 'disabled']);
+        }
+
         $dir = self::PHOTO_DIR . '/' . $campus->getKey();
         $this->prunePhotos($dir);
         $file = Str::uuid() . '.' . $request->file('photo')->extension();
@@ -190,7 +205,8 @@ class SwipeRfidController extends Controller
         );
         $imageUrl = rtrim((string) config('app.url'), '/') . $signed;
 
-        $sent = $this->pushPhotoToParents($student, $campus, $imageUrl);
+        $text = "{$student->name} {$swipedAt->format('H:i')} 刷卡";
+        $sent = $this->pushPhotoToParents($student, $campus, $text, $imageUrl);
 
         return response()->json(['ok' => true, 'sent' => $sent, 'image_url' => $imageUrl]);
     }
@@ -210,7 +226,7 @@ class SwipeRfidController extends Controller
         return response()->file(Storage::path($path)); // default disk = local
     }
 
-    private function pushPhotoToParents(Student $student, Campus $campus, string $imageUrl): int
+    private function pushPhotoToParents(Student $student, Campus $campus, string $text, string $imageUrl): int
     {
         $token = (string) ($campus->messaging_channel_token ?? '');
         if ($token === '') {
@@ -227,10 +243,8 @@ class SwipeRfidController extends Controller
             try {
                 $delivered = Http::withToken($token)->timeout(5)->post('https://api.line.me/v2/bot/message/push', [
                     'to' => $binding->line_user_id,
-                    // 只推圖：到班文字由讀卡機用 swipe-rfid 回傳的 LineIDs 自己推，避免家長收兩則。
-                    'messages' => [
-                        ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
-                    ],
+                    // Flex 一張卡片＝照片＋文字，算 1 則額度；altText 是通知列/聊天列表看到的字。
+                    'messages' => [$this->swipePhotoFlex($text, $imageUrl)],
                 ])->successful();
             } catch (\Throwable $e) {
                 Log::warning('swipe_photo_line_push_failed: ' . $e->getMessage());
@@ -252,6 +266,58 @@ class SwipeRfidController extends Controller
         }
 
         return $sent;
+    }
+
+    /** @return array<string,mixed> LINE Flex bubble：上面照片（點了看原圖），下面文字。 */
+    private function swipePhotoFlex(string $text, string $imageUrl): array
+    {
+        return [
+            'type' => 'flex',
+            'altText' => $text,
+            'contents' => [
+                'type' => 'bubble',
+                'hero' => [
+                    'type' => 'image', 'url' => $imageUrl, 'size' => 'full',
+                    'aspectRatio' => '4:3', 'aspectMode' => 'cover',
+                    'action' => ['type' => 'uri', 'uri' => $imageUrl],
+                ],
+                'body' => [
+                    'type' => 'box', 'layout' => 'vertical',
+                    'contents' => [['type' => 'text', 'text' => $text, 'weight' => 'bold', 'wrap' => true]],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * 這張照片對應的刷卡：讀卡機不知道到班/離班，看 swipe-rfid 剛寫的今日紀錄。
+     * 只認 2 分鐘內的簽到/簽退，否則 unknown（時間用現在）。
+     *
+     * @return array{0:string,1:Carbon} [in|out|unknown, 刷卡時間]
+     */
+    private function recentSwipe(Student $student): array
+    {
+        $now = now();
+        $latest = StudentSignIn::query()
+            ->where('StudentID', $student->getKey())
+            ->whereDate('SignInDT', $now->toDateString())
+            ->orderByDesc('id')
+            ->first();
+        if (!$latest) {
+            return ['unknown', $now];
+        }
+
+        $recent = fn ($dt) => $dt && Carbon::parse($dt)->diffInSeconds($now, true) <= self::PHOTO_TEXT_WINDOW_SECONDS;
+        $out = $latest->getAttribute('SignOutDT');
+        $in = $latest->getAttribute('SignInDT');
+        if ($recent($out)) {
+            return ['out', Carbon::parse($out)];
+        }
+        if (!$out && $recent($in)) {
+            return ['in', Carbon::parse($in)];
+        }
+
+        return ['unknown', $now];
     }
 
     /** 照片只留到簽章網址過期為止。ponytail: 每次上傳順手掃該分校目錄；量大再改排程。 */
@@ -401,7 +467,9 @@ class SwipeRfidController extends Controller
     }
 
     /**
-     * 刷卡回應的學生資訊。LineIDs = 已驗證綁定的家長 LINE userId，供讀卡機用 LINE Bot 推播。
+     * 刷卡回應的學生資訊。
+     * LineIDs 固定空陣列（欄位保留給舊讀卡機解析）：LINE 一律由 AllTrue 的 swipe-photo 發一張 Flex 卡，
+     * 受分校 LINE 通知開關控制；讀卡機拿不到家長 ID，就不會自己再推文字（重複、繞過開關、多扣額度）。
      */
     private function studentPayload(Student $student): array
     {
@@ -411,11 +479,7 @@ class SwipeRfidController extends Controller
             'TelegramID'  => $student->TelegramID,
             'TelegramID1' => $student->TelegramID1,
             'TelegramID2' => $student->TelegramID2,
-            'LineIDs'     => StudentLineBinding::query()->where('student_id', $student->id)
-                ->whereNotNull('verified_at')
-                ->pluck('line_user_id')
-                ->values()
-                ->all(),
+            'LineIDs'     => [],
         ];
     }
 
