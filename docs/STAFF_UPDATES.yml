@@ -54,6 +54,20 @@ updates:
         text: 真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。
     source_refs:
       - "changelog:2026-10-01:monthly-usage-warning"
+  - id: staff-2026-10-02-line-notify-switches
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 可自己決定哪些事用 LINE 通知
+    summary: 「家長 LINE 通知設定」可逐項開關 LINE 通知，並看到本月已用幾則。
+    items:
+      - category: added
+        text: 可開關到班／離班刷卡（含照片）、學習回饋、繳費提醒、排課異常、重要通知；刷卡預設關。
+      - category: improved
+        text: LINE 一個收件人算一則，用不到請關掉省額度；刷卡只寫「姓名 時間 刷卡」，誤刷不會寫錯。
+    source_refs:
+      - "changelog:2026-10-02:line-notify-switches"
   - id: staff-2026-10-02-calendar-has-course
     published_at: "2026-10-02"
     audiences:

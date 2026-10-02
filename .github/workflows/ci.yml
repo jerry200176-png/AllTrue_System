@@ -582,6 +582,11 @@ jobs:
         # To update baseline after intentional cleanup: bash scripts/design-hex-count.sh > docs/design-hex-baseline.json
         run: npm run lint:design
 
+      - name: Unhandled child-emit guard (silent dead UI, G2)
+        run: |
+          node --test scripts/ci/check-unhandled-emits.test.mjs
+          node scripts/ci/check-unhandled-emits.mjs
+
       - name: Vite build
         working-directory: frontend
         run: npm run build

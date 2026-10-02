@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\ExceptionWorkflow;
+use App\Support\ClassTypeCapacity;
 use App\Support\SessionStatus;
 use App\Models\StudentClass;
 use Carbon\Carbon;
@@ -42,7 +43,7 @@ class ExceptionWorkflowCandidateGenerator
         $durationMinutes = $this->durationMinutes($sourceSession, $course);
         $durationSlots = max(1, (int) ceil($durationMinutes / 30));
         $teacherId = (int) ($course->TeacherID ?? 0);
-        $capacity = $this->capacityForClassType((string) ($course->ClassType ?? 'one_on_one'));
+        $capacity = ClassTypeCapacity::for((string) ($course->ClassType ?? 'one_on_one'));
         $occupancy = $this->buildOccupancy($workflow, $teacherId, $start, $end);
         // Candidate generation is only a recommendation, but it must not offer
         // a slot that the final ClassSession guard will reject for this student
@@ -304,16 +305,6 @@ class ExceptionWorkflowCandidateGenerator
         }
 
         return max(30, (int) ($course->SessionDuration ?? 120));
-    }
-
-    private function capacityForClassType(string $classType): int
-    {
-        return match ($classType) {
-            'one_on_two' => 2,
-            'one_on_three' => 3,
-            'tutoring' => 4,
-            default => 1,
-        };
     }
 
     private function slotIndex(string $time): int
