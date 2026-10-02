@@ -6,7 +6,7 @@ import path from 'node:path'
 const WORKFLOW_DIR = path.resolve('.github/workflows')
 const ALLOWED_RUNNER = 'ubuntu-latest'
 const ALLOWED_REUSABLE_WORKFLOWS = new Set([
-  'google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67',
+  'google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc',
 ])
 
 function normalizeUses(value) {
@@ -79,7 +79,7 @@ function selfTest() {
   const selfHosted = collectWorkflowJobs('jobs:\n  test:\n    runs-on: [self-hosted, Linux]\n')
   const multiline = collectWorkflowJobs('jobs:\n  test:\n    runs-on:\n      - self-hosted\n')
   const reusable = collectWorkflowJobs('jobs:\n  delegated:\n    uses: owner/repo/.github/workflows/ci.yml@main\n')
-  const pinnedOsv = collectWorkflowJobs('jobs:\n  scan:\n    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67" # v2.5.1\n')
+  const pinnedOsv = collectWorkflowJobs('jobs:\n  scan:\n    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc" # v2.6.0\n')
 
   if (hosted.length !== 1 || validateJobs(hosted).length !== 0) {
     throw new Error('self-test failed: ubuntu-latest must be accepted')

@@ -1,0 +1,40 @@
+id: INT-20260930-103900-P2H3
+title: In-app 370 monthly schedule estimate
+intent: In-app 370 monthly schedule estimate
+kind: intent
+brain_dump: Founder approved fixed-schedule auto estimate with manual exceptions;
+  actual billing remains confirmed attendance
+boundary: Course edit estimate UI and focused tests only; no billing calculation,
+  migration, or production activation
+success_condition: Recurring monthly edit shows schedule-derived month estimate, preserves
+  manual exceptions, tests pass
+risk: high
+priority: 3
+labels: []
+scope:
+  allow:
+  - frontend/src/components/CourseEditForm.vue
+  - frontend/src/lib/**
+  - frontend/src/components/__tests__/**
+  - docs/CHANGELOG.md
+  - docs/STAFF_UPDATES.yml
+  - .exo/cache/**
+  - .exo/memory/**
+  - .exo/locks/**
+  - .exo/tickets/**
+  - .exo/logs/**
+  deny: []
+budgets:
+  max_files_changed: 12
+  max_loc_changed: 400
+checks:
+- npm run lint:no-undef
+type: feature
+status: review
+parent_id: null
+spec_ref: null
+notes: []
+blockers: []
+created_at: '2026-09-30T10:39:00+08:00'
+children: []
+resource_profile: default

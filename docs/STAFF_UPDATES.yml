@@ -54,6 +54,20 @@ updates:
         text: 儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。
     source_refs:
       - "changelog:2026-09-30:fixed-schedule-save"
+  - id: staff-2026-09-30-monthly-plan
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 月結課程規劃堂數自動估計
+    summary: 編輯月結課程時，系統依固定上課時段顯示本月規劃堂數；特殊情況仍可手動修正。
+    items:
+      - category: improved
+        text: 固定時段有資料時自動帶入規劃估計，既有手動例外保留；實際收費仍依確認已上堂數。
+    source_refs:
+      - "alltrue:bug_report:370"
+      - "changelog:2026-09-30:monthly-plan"
+
   - id: staff-2026-09-30-teacher-late-missed
     published_at: "2026-09-30"
     audiences:
