@@ -120,7 +120,7 @@ flowchart TD
 | `type` | `"student"` |
 | `action` | `"sign_in"` |
 | `record` | 新建的 `StudentSignIn` 模型序列化 |
-| `student` | `id`, `name`, `TelegramID`, `TelegramID1`, `TelegramID2`, `LineIDs`（已驗證綁定的家長 LINE userId 陣列；只有分校「到班刷卡」（離班回應看「離班刷卡」）LINE 通知開著才有值，否則 `[]`。有呼叫 `swipe-photo` 的讀卡機請勿再用它推 LINE，AllTrue 會發照片卡片） |
+| `student` | `id`, `name`, `TelegramID`, `TelegramID1`, `TelegramID2`, `LineIDs`（本分校已驗證綁定的家長 LINE userId 陣列；只有分校「到班刷卡」（離班回應看「離班刷卡」）LINE 通知開著才有值，否則 `[]`。有呼叫 `swipe-photo` 的讀卡機請勿再用它推 LINE，AllTrue 會發照片卡片） |
 | `class` | 若有對應課程：`id`（`StudentClass.ID`）、`teacher_id`；否則 `null` |
 | `campus` | `TelegramToken`（可能為 `null`） |
 
