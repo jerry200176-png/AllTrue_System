@@ -19,6 +19,7 @@ on:
           - laravel_2833_preflight
           - contract_yang_binghe
           - contract_yu_shengrui
+          - monthly_slip_student
           - swipe_line_path
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
@@ -93,10 +94,12 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
+          if case == 'monthly_slip_student' and not os.environ.get('TARGET_STUDENT_NAME'):
+              raise SystemExit('monthly_slip_student requires student_name')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
@@ -409,6 +412,68 @@ jobs:
               'source'=>(string)$r->source, 'minutes'=>$r->minutes === null ? null : (int)$r->minutes])->values()->all();
             $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true,
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
+          }} elseif ($case === 'monthly_slip_student') {{
+            // Read-only, Founder GO 2026-10-02: why two 木柵 monthly slips show no lesson dates.
+            // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched name is
+            // compared in memory and never written out. August 2026 only. No names or free text in output.
+            $approvedStudentIds = [162, 164];
+            $studentIds = $db::table('Student')->where('CampusID', 16)->whereIn('id', $approvedStudentIds)
+              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $out['student_match_count'] = count($studentIds);
+            if (count($studentIds) !== 1) {{
+              $out['ok'] = false;
+              $out['error'] = 'student_name must match exactly one approved student';
+            }} else {{
+              // Candidate contracts are read internally only; output is limited to contracts linked to August
+              // sessions or August invoices/items (no unrelated contract history).
+              $studentClassIds = $db::table('StudentClass')->whereIn('StudentID', $studentIds)->pluck('ID')->map(fn ($id) => (int)$id)->all();
+              // August 2026 invoices: billing_period 2026-08, or any item whose service range overlaps August.
+              // PeriodStart / PeriodEnd are independently nullable (BillingController store): a missing bound is
+              // open-ended, but an item with neither bound has no service range and is not selected.
+              $augustItemInvoiceIds = $db::table('InvoiceItem')->select('InvoiceID')
+                ->where(fn ($q) => $q->whereNotNull('PeriodStart')->orWhereNotNull('PeriodEnd'))
+                ->where(fn ($q) => $q->whereNull('PeriodStart')->orWhereDate('PeriodStart', '<=', '2026-08-31'))
+                ->where(fn ($q) => $q->whereNull('PeriodEnd')->orWhereDate('PeriodEnd', '>=', '2026-08-01'));
+              $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)
+                ->where(fn ($q) => $q->where('billing_period', '2026-08')->orWhereIn('id', $augustItemInvoiceIds))->orderBy('id')
+                ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
+              // Export only August items: a multi-month split invoice can hold July/September lines. A missing
+              // bound is open-ended; an item with no range at all is kept only when its invoice is billed as 2026-08.
+              $augustInvoiceIds = $invoices->filter(fn ($r) => (string)($r->billing_period ?? '') === '2026-08')->pluck('id')->map(fn ($id) => (int)$id)->all();
+              $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
+                ->where(fn ($q) => $q
+                  ->where(fn ($r) => $r->where(fn ($b) => $b->whereNotNull('PeriodStart')->orWhereNotNull('PeriodEnd'))
+                    ->where(fn ($b) => $b->whereNull('PeriodStart')->orWhereDate('PeriodStart', '<=', '2026-08-31'))
+                    ->where(fn ($b) => $b->whereNull('PeriodEnd')->orWhereDate('PeriodEnd', '>=', '2026-08-01')))
+                  ->orWhere(fn ($r) => $r->whereNull('PeriodStart')->whereNull('PeriodEnd')->whereIn('InvoiceID', $augustInvoiceIds)))
+                ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount']);
+              $sessions = $studentClassIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $studentClassIds)
+                ->whereBetween('SessionDate', ['2026-08-01', '2026-08-31'])
+                ->selectRaw("StudentClassID as class_id, Status as status, COUNT(*) as n, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date")
+                ->groupBy('StudentClassID', 'Status')->orderBy('StudentClassID')->get();
+              // Linkage: August sessions, August items, and the invoice-level course only for invoices billed as 2026-08.
+              $linkedClassIds = collect($sessions->pluck('class_id'))
+                ->merge($invoices->filter(fn ($r) => (string)($r->billing_period ?? '') === '2026-08')->pluck('StudentClassID'))
+                ->merge($items->pluck('StudentClassID'))
+                ->filter()->map(fn ($id) => (int)$id)->unique()
+                ->filter(fn ($id) => in_array($id, $studentClassIds, true))->sort()->values()->all();
+              $classes = $linkedClassIds === [] ? collect() : $db::table('StudentClass')->whereIn('ID', $linkedClassIds)->orderBy('ID')
+                ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
+              // Every closed_reason value StudentClass writers set (grep backend/app, 2026-10-02); anything else is free text → 'other'.
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
+              $classes = $classes->map(function ($r) use ($knownReasons) {{
+                $reason = (string)($r->closed_reason ?? '');
+                $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
+                return $r;
+              }});
+              $out['student_ids'] = $studentIds;
+              $out['session_window'] = ['2026-08-01', '2026-08-31'];
+              $out['august_linked_class_ids'] = $linkedClassIds;
+              $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
+              $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
+              $out['invoice_items'] = $items->map(fn ($r) => (array)$r)->values()->all();
+              $out['august_sessions_by_class_status'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
+            }}
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
