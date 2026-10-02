@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\LineNotifySettings;
 use App\Models\ScheduleDiscrepancy;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -26,7 +27,7 @@ class ScheduleDiscrepancyNotifier
     public static function notify(ScheduleDiscrepancy $discrepancy): void
     {
         $campus = DB::table('Campus')->where('id', $discrepancy->branch_id)->first();
-        if (!$campus) {
+        if (!$campus || !LineNotifySettings::enabled((int) $campus->id, 'staff_schedule_discrepancy')) {
             return;
         }
 
