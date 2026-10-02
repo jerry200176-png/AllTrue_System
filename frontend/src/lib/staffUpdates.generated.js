@@ -4,6 +4,37 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-02-used-up-course-seat",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "已上完的舊課不再佔位",
+    "summary": "堂數用完的舊課，不會再讓一對三時段顯示已滿。",
+    "items": [
+      "建課時只計算還有剩餘堂數或未來堂次的學生。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "建課時只計算還有剩餘堂數或未來堂次的學生。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:373",
+      "changelog:2026-10-02:used-up-course-seat"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-01-monthly-usage-warning",
     "publishedAt": "2026-10-01",
     "effectiveAt": null,

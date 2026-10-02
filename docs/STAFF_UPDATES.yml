@@ -41,6 +41,19 @@ updates:
         text: 儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。
     source_refs:
       - "changelog:2026-09-30:fixed-schedule-save"
+  - id: staff-2026-10-02-used-up-course-seat
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 已上完的舊課不再佔位
+    summary: 堂數用完的舊課，不會再讓一對三時段顯示已滿。
+    items:
+      - category: fixed
+        text: 建課時只計算還有剩餘堂數或未來堂次的學生。
+    source_refs:
+      - "alltrue:bug_report:373"
+      - "changelog:2026-10-02:used-up-course-seat"
   - id: staff-2026-09-30-teacher-late-missed
     published_at: "2026-09-30"
     audiences:
