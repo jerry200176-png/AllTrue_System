@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Support\LineNotifySettings;
 use App\Models\Notification;
 use App\Models\UserNotificationPreference;
 use Carbon\Carbon;
@@ -23,7 +22,7 @@ class NotificationLineDispatcher
         }
 
         $campusId = $notification->CampusID;
-        if (!$campusId || !LineNotifySettings::enabled((int) $campusId, 'staff_high_alert')) {
+        if (!$campusId) {
             return;
         }
 

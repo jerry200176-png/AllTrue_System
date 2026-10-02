@@ -657,3 +657,8 @@ exemptions:
     changelog_date: "2026-10-01"
     changelog_title: "feat(rfid): swipe-photo API pushes swipe photo to parents via LINE"
     reason: 只新增讀卡機用的 API，教職員畫面無變化；讀卡機接上並實測後再評估家長公告。
+
+  - id: silent-2026-10-02-swipe-lineids-campus-scope
+    changelog_date: "2026-10-02"
+    changelog_title: "fix(rfid): swipe-rfid LineIDs only include the swiped campus's bindings"
+    reason: 只收窄讀卡機 API 回應的家長 LINE ID 範圍，教職員畫面無變化。

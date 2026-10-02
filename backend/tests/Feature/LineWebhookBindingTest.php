@@ -81,6 +81,30 @@ class LineWebhookBindingTest extends TestCase
         );
     }
 
+    public function test_transferred_student_rebind_moves_stale_binding_to_new_campus(): void
+    {
+        // 轉校：舊的已驗證綁定還掛舊分校 → 在新分校重新驗證要更新成新分校（不能回「已綁定」不動）。
+        Http::fake(['https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200)]);
+        $old = Campus::factory()->create();
+        $new = Campus::factory()->create();
+        $lineUserId = 'U' . str_repeat('b', 32);
+        $student = Student::create([
+            'name' => '轉校測試生', 'CampusID' => $new->id, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(),
+            'Notify_Token' => '', 'Phone' => '', 'parent_phone' => '0912345678',
+        ]);
+        StudentLineBinding::create([
+            'student_id' => $student->id, 'line_user_id' => $lineUserId, 'campus_id' => $old->id,
+            'bound_at' => now()->subYear(), 'verified_at' => now()->subYear(), 'verification_method' => 'contact_phone',
+        ]);
+
+        $this->postBindingMessage($new, $lineUserId, '綁定 轉校測試生 0912345678')->assertOk();
+
+        $rows = StudentLineBinding::where('student_id', $student->id)->where('line_user_id', $lineUserId)->get();
+        $this->assertCount(1, $rows, 'existing row is updated, not duplicated');
+        $this->assertSame((int) $new->id, (int) $rows->first()->campus_id);
+        $this->assertTrue($rows->first()->verified_at->isToday());
+    }
+
     public function test_binding_by_name_and_phone_fails_when_only_legacy_phone_differs(): void
     {
         Http::fake([
