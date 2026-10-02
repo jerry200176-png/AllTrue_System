@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.02",
     "date": "2026-10-02",
     "title": "2026.10.02 草稿（未發布）",
-    "summary": "page 前往課程核對 now opens course management",
+    "summary": "up courses no longer fill 1：3 slots；page 前往課程核對 now opens course management",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "up courses no longer fill 1：3 slots",
           "page 前往課程核對 now opens course management"
         ]
       }
     ],
     "items": [
+      "up courses no longer fill 1：3 slots",
       "page 前往課程核對 now opens course management"
     ]
   },
