@@ -374,7 +374,7 @@ class SwipeRfidController extends Controller
                     'type'     => 'student',
                     'action'   => 'sign_out',
                     'record'   => $openRecord,
-                    'student'  => $this->studentPayload($student),
+                    'student'  => $this->studentPayload($student, 'swipe_out'),
                     'campus'   => ['TelegramToken' => $campus->TelegramToken ?? null],
                 ], 200);
             }
@@ -456,7 +456,7 @@ class SwipeRfidController extends Controller
                 'type'     => 'student',
                 'action'   => 'sign_in',
                 'record'   => $signIn,
-                'student'  => $this->studentPayload($student),
+                'student'  => $this->studentPayload($student, 'swipe_in'),
                 'class'    => $studentClass ? [
                     'id'       => $studentClass->ID,
                     'teacher_id' => $studentClass->TeacherID,
@@ -468,18 +468,28 @@ class SwipeRfidController extends Controller
 
     /**
      * 刷卡回應的學生資訊。
-     * LineIDs 固定空陣列（欄位保留給舊讀卡機解析）：LINE 一律由 AllTrue 的 swipe-photo 發一張 Flex 卡，
-     * 受分校 LINE 通知開關控制；讀卡機拿不到家長 ID，就不會自己再推文字（重複、繞過開關、多扣額度）。
+     * LineIDs = 已驗證綁定的家長 LINE userId，給還沒接 swipe-photo 的讀卡機自己推文字（舊路徑，延續通知）。
+     * 只有該分校對應開關（到班 swipe_in／離班 swipe_out）開著才給；重複刷卡或開關關閉 → []。
+     * 讀卡機若有呼叫 swipe-photo（AllTrue 會發 Flex 卡），就不要再用 LineIDs 自己推，否則家長收兩則。
      */
-    private function studentPayload(Student $student): array
+    private function studentPayload(Student $student, ?string $notifyType = null): array
     {
+        $campusId = (int) $student->getAttribute('CampusID');
+        $lineIds = $notifyType !== null && LineNotifySettings::enabled($campusId, $notifyType)
+            ? StudentLineBinding::query()->where('student_id', $student->getKey())
+                ->whereNotNull('verified_at')
+                ->pluck('line_user_id')
+                ->values()
+                ->all()
+            : [];
+
         return [
             'id'          => $student->id,
             'name'        => $student->name,
             'TelegramID'  => $student->TelegramID,
             'TelegramID1' => $student->TelegramID1,
             'TelegramID2' => $student->TelegramID2,
-            'LineIDs'     => [],
+            'LineIDs'     => $lineIds,
         ];
     }
 

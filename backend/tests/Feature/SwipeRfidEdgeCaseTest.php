@@ -369,15 +369,23 @@ class SwipeRfidEdgeCaseTest extends TestCase
         $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->orderByDesc('id')->value('Status'));
     }
 
-    public function test_student_swipe_never_hands_parent_line_ids_to_the_reader(): void
+    public function test_student_swipe_returns_verified_line_ids_only_when_campus_switch_is_on(): void
     {
-        // LINE 一律由 AllTrue swipe-photo 發（受分校開關控制），讀卡機不能自己推。
+        // 還沒接 swipe-photo 的讀卡機靠 LineIDs 自己推文字 → 開關開著就要給（延續通知），關了就不給。
         $student = $this->makeStudent();
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
-        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => true]);
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Upending', 'campus_id' => $this->campus->id]);
 
+        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => false]);
         $this->swipe($student->RFID)
             ->assertStatus(201)
+            ->assertJsonPath('action', 'sign_in')
+            ->assertJsonPath('student.LineIDs', ['Uverified']);
+
+        // 離班開關關 → 簽退回應不給
+        $this->travel(5)->minutes();
+        $this->swipe($student->RFID)
+            ->assertJsonPath('action', 'sign_out')
             ->assertJsonPath('student.LineIDs', []);
     }
 

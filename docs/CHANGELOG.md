@@ -1,8 +1,12 @@
+## 2026-10-02 — fix(rfid): swipe-rfid LineIDs follow campus switches instead of always empty
+<!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-continuity -->
+- `POST /api/v1/swipe-rfid` 學生到班回應的 `student.LineIDs` 在分校「到班刷卡」開著時回已驗證家長 LINE userId，離班回應看「離班刷卡」；開關關閉或重複刷卡回 `[]`。還沒接 `swipe-photo` 的讀卡機可照舊自己推文字，不會因 #3437 斷掉通知；有呼叫 `swipe-photo` 的讀卡機不應再用 `LineIDs` 推，否則家長收兩則。
+
 ## 2026-10-02 — feat(line): per-campus LINE notify switches + swipe photo as one Flex card
 <!-- release-notes: staff_update=staff-2026-10-02-line-notify-switches -->
 - 主任在「家長 LINE 通知設定」可逐項開關 LINE 通知（到班刷卡、離班刷卡、老師回覆學習回饋、繳費提醒、排課異常、重要系統通知），並看到本月 LINE 已用／上限則數。存 `SystemSetting` `line_notify.campus.{id}`（無 migration）；未設定時既有通知維持開、刷卡通知預設關。`GET/PUT /api/v1/line/notify-settings`（主任限自己分校，super_admin 任一）。
 - `POST /api/v1/swipe-photo` 改成一張 Flex 卡片（照片＋「姓名 時間 刷卡」中性文字，誤刷也不會寫錯到班／離班），算 1 則；依 2 分鐘內刷卡紀錄套用到班／離班開關，判斷不出來時任一開就發；都關則不存照片不推。
-- `POST /api/v1/swipe-rfid` 回應的 `student.LineIDs` 改為固定空陣列（欄位保留）：LINE 一律由 AllTrue 發，讀卡機不再自行推文字，避免重複、繞過分校開關與多扣額度。
+- `POST /api/v1/swipe-rfid` 回應的 `student.LineIDs` 改受分校開關控制（見 2026-10-02 fix(rfid) 條目）。
 
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->
