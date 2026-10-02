@@ -12,6 +12,10 @@
 <!-- release-notes: silent_ship=silent-2026-10-01-calendar-tutoring-acceptance -->
 - 行事曆列印驗收將主任首頁既有的營運信任事件納入嚴格格式檢查，未知或洩漏資料的事件仍失敗。輔導課驗收不再假設每分校都有進行中的輔導課；保留一般未繳課與應收金額的正向控制，並在報告中明列當次是否觀察到真實輔導課樣本。完整 API 加 UI 路徑使用有界時限，UI 學生從授權分校內選取；新增課程操作限定在該生展開的明細，已有課程時先通過續報入口再檢查表單，點擊各有明確時限。未改收費規則或 production 資料。
 
+## 2026-10-02 — feat(bug-report): in-app reports auto-attach recent failed requests
+<!-- release-notes: staff_update=staff-2026-10-02-report-context -->
+- 回報問題時自動附上最近 5 筆失敗的 API 請求（方法、路徑不含查詢參數、狀態碼、請求編號）、系統版本與所在頁面／分校編號，不含任何內容或個資；後端為每個 API 回應加上 `X-Request-Id`，並寫入日誌。同時修正附加資訊過長被截斷成無效 JSON 的問題（上限 2000 → 4000）。
+
 ## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
 - 新增 `POST /api/v1/swipe-photo`（multipart：`branch_code`、`rfid`、`photo` jpeg/png ≤1MB，認證同 `swipe-rfid` 的分校 Bearer Token）。照片存私有 `storage/app/swipe-photos/{campus}`，以 `APP_URL` 上 7 天效期的相對簽章網址（`GET /api/v1/swipe-photo/{campus}/{file}`）推 LINE 圖片給該生已驗證綁定家長，並回傳 `image_url`；讀卡機不需固定 IP。只推圖片，到班文字仍由讀卡機用 `LineIDs` 推。超過 7 天的照片於下次上傳時清除。
