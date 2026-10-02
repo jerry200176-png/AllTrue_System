@@ -369,6 +369,38 @@ for (const [id, revision, issue] of [
     assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '330 must disclose no production UI check');
     assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '330 must give a no-names reopen path');
   }
+// Shipped batch 3 closeout 2026-10-02 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            293 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 293 must exist');
+    assert.ok(entry[1].includes('"rev" => "9eb132c0e6193db31c28edc7b191553821a485ee"'), '293 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36961012794"'), '293 deploy binding');
+    assert.ok(entry[1].includes('issues/2809'), '293 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '293 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '293 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '293 must give a no-names reopen path');
+  }
+  {
+    const entry = phaseCSource.match(/\n            358 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 358 must exist');
+    assert.ok(entry[1].includes('"rev" => "ace82171977af109cdecd357d3ccbf812be68396"'), '358 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36961012794"'), '358 deploy binding');
+    assert.ok(entry[1].includes('issues/3216'), '358 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '358 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '358 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '358 must give a no-names reopen path');
+    assert.ok(entry[1].includes('電話與備註'), '358 must state phone and notes are not added');
+  }
+  {
+    const entry = phaseCSource.match(/\n            352 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 352 must exist');
+    assert.ok(entry[1].includes('"rev" => "89a6c52051a95d3591afa30c2ee40526b3413f6b"'), '352 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36961012794"'), '352 deploy binding');
+    assert.ok(entry[1].includes('issues/3234'), '352 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '352 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '352 must disclose no production UI check');
+    assert.ok(entry[1].includes('問題仍存在') && !/[學生]姓名[:：]/.test(entry[1]), '352 must give a no-names reopen path');
+  }
 
 console.log('bug-writeback-workflow.test.mjs: ok');
 
