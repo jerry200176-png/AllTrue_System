@@ -136,7 +136,11 @@ class PaidStatusParityTest extends TestCase
             // R31 overpayment, 3 receipts > total, stored PaidAmount drifted below the rows.
             'overpaid_stored_drift' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 9000, 'partial', [$cash(5000), $cash(4000), $cash(3000)])]],
             // Historical/imported: stored PaidAmount says paid, no Payment rows (B15 falls back to stored PA).
-            'monthly_stored_no_rows' => ['mode' => 'date', 'flag' => 0, 'charge' => 6000, 'invoices' => [$inv('2026-08', 6000, 6000, 'paid')]],
+            // Both periods of the Jul-Aug course are invoiced so no uncovered range makes B15 ambiguous.
+            'monthly_stored_no_rows' => ['mode' => 'date', 'flag' => 0, 'charge' => 6000, 'invoices' => [
+                $inv('2026-07', 6000, 6000, 'paid'),
+                $inv('2026-08', 6000, 6000, 'paid'),
+            ]],
             // A reversal recorded as Method=void with a positive amount is still a void.
             'void_method_positive' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $voidPositive(10000)])]],
             // 1: a non-void invoice overrides CoursePackage.paid.
