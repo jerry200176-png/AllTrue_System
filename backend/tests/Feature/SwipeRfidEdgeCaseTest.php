@@ -373,6 +373,8 @@ class SwipeRfidEdgeCaseTest extends TestCase
         $student = $this->makeStudent();
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Upending', 'campus_id' => $this->campus->id]);
+        // 別校的已驗證綁定（轉校殘留）不能交給本校讀卡機
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'UotherCampus', 'campus_id' => $this->campus->id + 100, 'verified_at' => now()]);
 
         $this->swipe($student->RFID)
             ->assertStatus(201)

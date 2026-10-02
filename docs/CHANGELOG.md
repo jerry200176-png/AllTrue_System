@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-10-02-report-context -->
 - 回報問題時自動附上最近 5 筆失敗的 API 請求（方法、路徑不含查詢參數、狀態碼、請求編號）、系統版本與所在頁面／分校編號，不含任何內容或個資；後端為每個 API 回應加上 `X-Request-Id`，並寫入日誌。同時修正附加資訊過長被截斷成無效 JSON 的問題（上限 2000 → 4000）。
 
+## 2026-10-02 — fix(rfid): swipe-rfid LineIDs only include the swiped campus's bindings
+<!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-campus-scope -->
+- `POST /api/v1/swipe-rfid` 學生回應的 `student.LineIDs` 只回刷卡分校的已驗證家長 LINE userId；轉校殘留／舊匯入的別分校綁定不再交給本校讀卡機（避免跨分校用錯官方帳號推播）。
+
 ## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
 - 新增 `POST /api/v1/swipe-photo`（multipart：`branch_code`、`rfid`、`photo` jpeg/png ≤1MB，認證同 `swipe-rfid` 的分校 Bearer Token）。照片存私有 `storage/app/swipe-photos/{campus}`，以 `APP_URL` 上 7 天效期的相對簽章網址（`GET /api/v1/swipe-photo/{campus}/{file}`）推 LINE 圖片給該生已驗證綁定家長，並回傳 `image_url`；讀卡機不需固定 IP。只推圖片，到班文字仍由讀卡機用 `LineIDs` 推。超過 7 天的照片於下次上傳時清除。

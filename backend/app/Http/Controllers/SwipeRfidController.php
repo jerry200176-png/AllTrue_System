@@ -413,6 +413,9 @@ class SwipeRfidController extends Controller
             'TelegramID2' => $student->TelegramID2,
             'LineIDs'     => StudentLineBinding::query()->where('student_id', $student->id)
                 ->whereNotNull('verified_at')
+                // 只給刷卡分校頻道的綁定：學生是以 CampusID = 刷卡分校查出來的，所以等於刷卡分校；
+                // 轉校殘留／舊匯入的別校綁定不能交給這台讀卡機（跨分校）。
+                ->where('campus_id', (int) $student->getAttribute('CampusID'))
                 ->pluck('line_user_id')
                 ->values()
                 ->all(),
