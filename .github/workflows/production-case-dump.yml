@@ -422,14 +422,16 @@ jobs:
             }} else {{
               $classes = $db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID')
                 ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
-              $knownReasons = ['contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
+              // Every closed_reason value StudentClass writers set (grep backend/app, 2026-10-02); anything else is free text → 'other'.
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
               $classes = $classes->map(function ($r) use ($knownReasons) {{
                 $reason = (string)($r->closed_reason ?? '');
                 $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
                 return $r;
               }});
               $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
-              $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)->where(fn ($q) => $q->whereDate('IssueDate', '>=', '2026-06-01')->orWhere('billing_period', '>=', '2026-06'))->orderBy('id')
+              $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)->where(fn ($q) => $q->whereDate('IssueDate', '>=', '2026-06-01')->orWhere('billing_period', '>=', '2026-06')
+                  ->orWhereIn('id', $db::table('InvoiceItem')->select('InvoiceID')->whereDate('PeriodEnd', '>=', '2026-06-01')))->orderBy('id')
                 ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
               $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
                 ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount']);
