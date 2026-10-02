@@ -4,6 +4,37 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-02-tuition-course-check-link",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "前往課程核對可正常開啟",
+    "summary": "收費頁的「前往課程核對」現在會開啟課程管理。",
+    "items": [
+      "點擊後帶入該生與課程；「查看當月學收」也一併修正。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "點擊後帶入該生與課程；「查看當月學收」也一併修正。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:371",
+      "changelog:2026-10-02:tuition-course-check-link"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-01-monthly-usage-warning",
     "publishedAt": "2026-10-01",
     "effectiveAt": null,

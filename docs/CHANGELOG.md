@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
 - 新增 `POST /api/v1/swipe-photo`（multipart：`branch_code`、`rfid`、`photo` jpeg/png ≤1MB，認證同 `swipe-rfid` 的分校 Bearer Token）。照片存私有 `storage/app/swipe-photos/{campus}`，以 `APP_URL` 上 7 天效期的相對簽章網址（`GET /api/v1/swipe-photo/{campus}/{file}`）推 LINE 圖片給該生已驗證綁定家長，並回傳 `image_url`；讀卡機不需固定 IP。只推圖片，到班文字仍由讀卡機用 `LineIDs` 推。超過 7 天的照片於下次上傳時清除。
 
+## 2026-10-02 — fix(billing-ui): tuition page 前往課程核對 now opens course management
+<!-- release-notes: staff_update=staff-2026-10-02-tuition-course-check-link -->
+- 收費頁的「前往課程核對」與「查看當月學收」原本沒接上 App 導覽事件，點了沒反應；現在會開啟課程管理（帶入該生與課程）或當月學收頁。純前端導覽修正，不改收費資料。(#371)
+
 ## 2026-09-30 — feat(rfid): swipe-rfid returns student LINE ids
 <!-- release-notes: silent_ship=silent-2026-09-30-swipe-rfid-line-ids -->
 - `POST /api/v1/swipe-rfid` 學生回應（到班／離班／重複忽略）的 `student` 新增 `LineIDs`：該生已驗證綁定（`student_line_bindings.verified_at` 非空）的家長 LINE userId 陣列，供讀卡機用 LINE Bot 推播；未驗證綁定不回傳。老師回應不變。
