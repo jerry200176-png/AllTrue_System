@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Support\LineNotifySettings;
 use App\Models\FeedbackPushLog;
 use App\Models\LearningRecordFeedback;
 use App\Models\Notification;
@@ -118,9 +117,6 @@ class FeedbackPushNotifier
         }
 
         $campusId = (int) $feedback->campus_id;
-        if (!LineNotifySettings::enabled($campusId, 'feedback_reply')) {
-            return;
-        }
         $bindings = StudentLineBinding::where('student_id', $feedback->student_id)
             ->verified()
             ->where('campus_id', $campusId)

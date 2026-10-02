@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Support\LineNotifySettings;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
 use App\Models\SecurityAuditEvent;
@@ -196,7 +195,7 @@ class LineWebhookController extends Controller
         $cid = $obs->newCorrelationId();
         $normalized = preg_replace('/[^0-9]/', '', $phone) ?? '';
         $candidates = Student::whereRaw('TRIM(name) = ?', [$name])->where('CampusID', $campus->id)->get();
-        $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
+        $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId, (int) $campus->id));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_NAME, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             // 跨校衝突：本分校找不到，但同名＋同手機的學生存在於其他分校 → 明確告知，避免家長誤以為系統沒資料
@@ -246,7 +245,7 @@ class LineWebhookController extends Controller
         $cid = $obs->newCorrelationId();
         $normalized = preg_replace('/[^0-9]/', '', $phone) ?? '';
         $student = Student::where('id', $studentId)->first();
-        $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
+        $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId, (int) $campus->id));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_STUDENT_ID, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             $message = match ($c['reasonCode']) {
@@ -315,10 +314,16 @@ class LineWebhookController extends Controller
         }
     }
 
-    private function isAlreadyBound(int $studentId, string $lineUserId): bool
+    /**
+     * 只把「本分校」的已驗證綁定當成已綁定。轉校後舊綁定的 campus_id 還是舊分校，
+     * 不算已綁定 → 家長在新分校重新驗證時會走 bindStudent()，把那筆更新成新分校
+     * （swipe-rfid LineIDs 只給刷卡分校的綁定，否則轉校家長永遠收不到）。
+     */
+    private function isAlreadyBound(int $studentId, string $lineUserId, int $campusId): bool
     {
         return StudentLineBinding::where('student_id', $studentId)
             ->where('line_user_id', $lineUserId)
+            ->where('campus_id', $campusId)
             ->verified()
             ->exists();
     }
@@ -412,94 +417,6 @@ class LineWebhookController extends Controller
 
         $campus = $this->getCampus($campusId);
         return response()->json(['message' => 'LINE 設定已儲存', 'status' => $this->buildStatus($campus, $request)]);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Director API: GET/PUT /api/v1/line/notify-settings
-    // 每間分校「哪些事要用 LINE 通知」＋本月 LINE 額度。主任只能改自己分校。
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public function notifySettings(Request $request): \Illuminate\Http\JsonResponse
-    {
-        $campus = $this->authorizedCampus($request, $request->query('branch_id'));
-        if ($campus instanceof \Illuminate\Http\JsonResponse) {
-            return $campus;
-        }
-
-        return response()->json([
-            'campus_id' => (int) $campus->id,
-            'settings' => LineNotifySettings::get((int) $campus->id),
-            'quota' => $this->fetchQuota((string) ($campus->messaging_channel_token ?? '')),
-        ]);
-    }
-
-    public function saveNotifySettings(Request $request): \Illuminate\Http\JsonResponse
-    {
-        $rules = ['branch_id' => 'nullable|integer', 'settings' => 'required|array'];
-        foreach (array_keys(LineNotifySettings::DEFAULTS) as $type) {
-            $rules["settings.{$type}"] = 'sometimes|boolean';
-        }
-        $data = $request->validate($rules);
-        $unknown = array_diff(array_keys($data['settings']), array_keys(LineNotifySettings::DEFAULTS));
-        if ($unknown) {
-            return response()->json(['message' => '不明的通知類型：' . implode(', ', $unknown)], 422);
-        }
-
-        $campus = $this->authorizedCampus($request, $data['branch_id'] ?? null);
-        if ($campus instanceof \Illuminate\Http\JsonResponse) {
-            return $campus;
-        }
-
-        LineNotifySettings::set((int) $campus->id, array_map('boolval', $data['settings']));
-        Log::info('[line_notify_settings_changed]', [
-            'operator_id' => $request->attributes->get('auth_user')->id ?? null,
-            'campus_id' => (int) $campus->id,
-            'settings' => $data['settings'],
-        ]);
-
-        return response()->json([
-            'message' => 'LINE 通知設定已儲存',
-            'settings' => LineNotifySettings::get((int) $campus->id),
-        ]);
-    }
-
-    /** super_admin 任一分校；其他人只能是自己 auth_campus_ids 裡的分校（空清單 = 沒權限）。 */
-    private function authorizedCampus(Request $request, mixed $branchId): object
-    {
-        $campusId = $branchId ? (int) $branchId : $this->getDirectorCampusId($request);
-        if (!$campusId) {
-            return response()->json(['message' => 'Campus not found'], 404);
-        }
-        $authCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if ($request->attributes->get('auth_role') !== 'super_admin' && !in_array($campusId, $authCampusIds, true)) {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
-
-        return $this->getCampus($campusId) ?? response()->json(['message' => 'Campus not found'], 404);
-    }
-
-    /** @return array{limit:?int,used:?int}|null 本月 LINE 額度；沒 token 或 LINE 失敗回 null，不擋設定頁。 */
-    private function fetchQuota(string $token): ?array
-    {
-        if ($token === '') {
-            return null;
-        }
-        try {
-            $quota = Http::withToken($token)->timeout(5)->get('https://api.line.me/v2/bot/message/quota');
-            $used = Http::withToken($token)->timeout(5)->get('https://api.line.me/v2/bot/message/quota/consumption');
-            if (!$quota->successful() || !$used->successful()) {
-                return null;
-            }
-
-            // type=none 表示沒有上限（付費方案可能如此）。
-            return [
-                'limit' => $quota->json('type') === 'limited' ? (int) $quota->json('value') : null,
-                'used' => (int) $used->json('totalUsage'),
-            ];
-        } catch (\Throwable $e) {
-            Log::warning('line_quota_fetch_failed: ' . $e->getMessage());
-            return null;
-        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
