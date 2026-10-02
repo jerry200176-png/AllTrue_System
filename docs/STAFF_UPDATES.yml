@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-02-tuition-course-check-link
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 前往課程核對可正常開啟
+    summary: 收費頁的「前往課程核對」現在會開啟課程管理。
+    items:
+      - category: fixed
+        text: 點擊後帶入該生與課程；「查看當月學收」也一併修正。
+    source_refs:
+      - "alltrue:bug_report:371"
+      - "changelog:2026-10-02:tuition-course-check-link"
   - id: staff-2026-10-01-active-teachers-only
     published_at: "2026-10-01"
     audiences:
@@ -27,6 +40,19 @@ updates:
         text: 真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。
     source_refs:
       - "changelog:2026-10-01:monthly-usage-warning"
+  - id: staff-2026-10-02-used-up-course-seat
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 已上完的舊課不再佔位
+    summary: 堂數用完的舊課，不會再讓一對三時段顯示已滿。
+    items:
+      - category: fixed
+        text: 建課時只計算還有剩餘堂數或未來堂次的學生。
+    source_refs:
+      - "alltrue:bug_report:373"
+      - "changelog:2026-10-02:used-up-course-seat"
   - id: staff-2026-09-30-fixed-schedule-save
     published_at: "2026-09-30"
     audiences:
@@ -41,6 +67,20 @@ updates:
         text: 儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。
     source_refs:
       - "changelog:2026-09-30:fixed-schedule-save"
+  - id: staff-2026-09-30-monthly-plan
+    published_at: "2026-09-30"
+    audiences:
+      - director
+    importance: digest
+    title: 月結課程規劃堂數自動估計
+    summary: 編輯月結課程時，系統依固定上課時段顯示本月規劃堂數；特殊情況仍可手動修正。
+    items:
+      - category: improved
+        text: 固定時段有資料時自動帶入規劃估計，既有手動例外保留；實際收費仍依確認已上堂數。
+    source_refs:
+      - "alltrue:bug_report:370"
+      - "changelog:2026-09-30:monthly-plan"
+
   - id: staff-2026-09-30-teacher-late-missed
     published_at: "2026-09-30"
     audiences:

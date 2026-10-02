@@ -255,6 +255,14 @@ class ScheduleGuardService
             ->where('sc.TeacherID', $teacherId)
             ->where('sc.Stop', 0)
             ->where('st.CampusID', $branchId)
+            // In-app #373: a used-up count course keeps Stop=0 but no longer holds its
+            // weekly seat; any real future lesson is still counted by the ClassSession path.
+            ->where(function ($q) {
+                $q->whereNull('sc.ScheduleMode')
+                    ->orWhere('sc.ScheduleMode', '!=', 'count')
+                    ->orWhereNull('sc.RemainingSessions')
+                    ->orWhere('sc.RemainingSessions', '>', 0);
+            })
             ->select([
                 'sc.ID',
                 'sc.StudentID',
