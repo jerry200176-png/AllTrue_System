@@ -56,17 +56,17 @@ class LineNotifySettingsTest extends TestCase
             'quota' => ['limit' => 200, 'used' => 37],
         ]);
 
-        $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe_in' => true, 'tuition_reminder' => false]], $h)
+        $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe_in' => false, 'tuition_reminder' => false]], $h)
             ->assertOk()
-            ->assertJsonPath('settings.swipe_in', true)
-            ->assertJsonPath('settings.swipe_out', false)
+            ->assertJsonPath('settings.swipe_in', false)
+            ->assertJsonPath('settings.swipe_out', true)
             ->assertJsonPath('settings.tuition_reminder', false);
 
-        $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
+        $this->assertFalse(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
         $this->assertFalse(LineNotifySettings::enabled($this->mine->id, 'tuition_reminder'));
         $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'feedback_reply'));
         // 別的分校不受影響
-        $this->assertFalse(LineNotifySettings::enabled($this->other->id, 'swipe_in'));
+        $this->assertTrue(LineNotifySettings::enabled($this->other->id, 'swipe_in'));
     }
 
     public function test_rejects_other_campus_unknown_type_and_teacher(): void
@@ -82,7 +82,7 @@ class LineNotifySettingsTest extends TestCase
         $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe_in' => true]], $teacher)
             ->assertForbidden();
 
-        $this->assertFalse(LineNotifySettings::enabled($this->other->id, 'swipe_in'));
-        $this->assertFalse(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
+        $this->assertTrue(LineNotifySettings::enabled($this->other->id, 'swipe_in'));
+        $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
     }
 }

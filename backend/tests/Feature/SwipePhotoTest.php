@@ -48,7 +48,9 @@ class SwipePhotoTest extends TestCase
             'student_id' => $this->student->id, 'line_user_id' => 'Uunverified',
             'campus_id' => $this->campus->id, 'bound_at' => now(),
         ]);
-        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => true]);
+        // No saved switch row: existing campuses must still receive swipe LINE.
+        $this->assertTrue(LineNotifySettings::enabled($this->campus->id, 'swipe_in'));
+        $this->assertTrue(LineNotifySettings::enabled($this->campus->id, 'swipe_out'));
     }
 
     private function upload(array $overrides = [], string $token = 'photo-token')
