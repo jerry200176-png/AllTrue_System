@@ -83,6 +83,7 @@ class PaidStatusParityTest extends TestCase
     {
         $cash = fn (int $amount): array => ['amount' => $amount, 'method' => 'cash'];
         $void = fn (int $amount): array => ['amount' => -$amount, 'method' => 'void'];
+        $voidPositive = fn (int $amount): array => ['amount' => $amount, 'method' => 'void']; // imported reversal, positive sign
         $inv = fn (string $period, int $total, int $stored, string $status, array $payments = []): array => [
             'period' => $period, 'total' => $total, 'stored_paid' => $stored, 'status' => $status, 'payments' => $payments,
         ];
@@ -129,6 +130,13 @@ class PaidStatusParityTest extends TestCase
             'zero_fee_zero_invoice' => ['flag' => 0, 'charge' => 0, 'rate' => 0, 'invoices' => [$inv('2026-08', 0, 0, 'paid')]],
             // R31 overpayment, 3 receipts > total, stored PaidAmount drifted below the rows.
             'overpaid_stored_drift' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 9000, 'partial', [$cash(5000), $cash(4000), $cash(3000)])]],
+            // A reversal recorded as Method=void with a positive amount is still a void.
+            'void_method_positive' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $voidPositive(10000)])]],
+            // 1: a non-void invoice overrides CoursePackage.paid.
+            'package_paid_unpaid_invoice' => ['flag' => 0, 'charge' => 10000, 'package_paid' => true, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid')]],
+            // 3: settled-courses keeps these unpaid closed courses listed so they stay actionable.
+            'closed_settled_pending' => ['flag' => 0, 'charge' => 10000, 'closed_reason' => 'settled_pending', 'invoices' => []],
+            'closed_contract_amended' => ['flag' => 0, 'charge' => 10000, 'closed_reason' => 'contract_amended', 'invoices' => []],
             // Tutoring is free before a stray flag or a paid invoice.
             'tutoring_flag1' => ['flag' => 1, 'charge' => 0, 'rate' => 0, 'class_type' => 'tutoring', 'invoices' => []],
             'tutoring_paid_invoice' => ['flag' => 0, 'charge' => 0, 'rate' => 0, 'class_type' => 'tutoring', 'invoices' => [$inv('2026-08', 5000, 5000, 'paid', [$cash(5000)])]],
@@ -154,8 +162,10 @@ class PaidStatusParityTest extends TestCase
         }
         usort($invoices, fn ($a, $b) => strcmp($a['period'], $b['period'])); // oldest first
         foreach ($invoices as $invoice) {
-            $positive = array_sum(array_map(fn ($p) => $p['amount'] > 0 ? $p['amount'] : 0, $invoice['payments']));
-            $voided = abs(array_sum(array_map(fn ($p) => $p['amount'] < 0 ? $p['amount'] : 0, $invoice['payments'])));
+            // Void = negative amount OR Method=void (packet legend; B13 kernel).
+            $isVoid = fn ($p) => $p['amount'] < 0 || $p['method'] === 'void';
+            $positive = array_sum(array_map(fn ($p) => !$isVoid($p) && $p['amount'] > 0 ? $p['amount'] : 0, $invoice['payments']));
+            $voided = array_sum(array_map(fn ($p) => $isVoid($p) ? abs($p['amount']) : 0, $invoice['payments']));
             $applied = min($invoice['total'], max(0, $positive - $voided));
             if ($applied < $invoice['total']) {
                 return $applied > 0 ? 'partial' : 'unpaid';
@@ -189,13 +199,22 @@ class PaidStatusParityTest extends TestCase
         $mismatches = [];
         $observed = [];
         $seen = [];
+        $inclusionProblems = [];
         foreach ($ctx as $fixtureId => $c) {
             $fx = $c['fx'];
             $classId = (int) $c['course']->ID;
             $expected = $this->expected($fx);
             $results = $this->observe($c, $tuitionRows->get($classId), $listRows->get($classId), $headers);
-            // B17 settledCourses: listed in the "settled" list = treated as paid (Paid=1 OR any Status=paid invoice).
-            $results['api.accounting.settled_courses'] = $settledIds->has($classId) ? 'paid' : 'notpaid';
+            // B17 settledCourses: listed = treated as paid (Paid=1 OR any Status=paid invoice), except closed
+            // settled_pending / contract_amended rows, which are listed to stay actionable (inclusion, not status).
+            if (isset($fx['closed_reason'])) {
+                $results['api.accounting.settled_courses'] = null;
+                if (!$settledIds->has($classId)) {
+                    $inclusionProblems[] = "HARNESS: settled-courses dropped actionable closed_reason={$fx['closed_reason']} fixture {$fixtureId}";
+                }
+            } else {
+                $results['api.accounting.settled_courses'] = $settledIds->has($classId) ? 'paid' : 'notpaid';
+            }
             foreach ($results as $site => $actual) {
                 if ($actual === null) {
                     continue; // site has no opinion on this fixture (excluded by design)
@@ -215,7 +234,7 @@ class PaidStatusParityTest extends TestCase
             }
         }
 
-        $problems = [];
+        $problems = $inclusionProblems;
         foreach (self::MIN_OBSERVED as $site => $min) {
             if (($observed[$site] ?? 0) < $min) {
                 $problems[] = "HARNESS: site {$site} observed " . ($observed[$site] ?? 0) . " fixtures, expected >= {$min}";
@@ -318,6 +337,14 @@ class PaidStatusParityTest extends TestCase
             $ledger = $this->getJson("/api/v1/accounting/ledger?student_class_id={$id}", $headers);
             $ledger->assertOk();
             $invoices = collect($ledger->json('invoices'))->sortBy('billing_period')->values();
+            $got = $invoices->map(fn ($row) => (int) ($row['id'] ?? $row['invoice_id'] ?? 0))->sort()->values()->all();
+            $want = collect($c['invoice_ids'])->sort()->values()->all();
+            if ($got !== $want) {
+                // An omitted (or extra) invoice must not normalize to `paid`.
+                $out['api.accounting.ledger'] = 'other:ledger_invoices_' . implode(',', $got) . '_expected_' . implode(',', $want);
+
+                return $out;
+            }
             $open = $invoices->first(fn ($row) => (int) $row['outstanding_amount'] > 0);
             $out['api.accounting.ledger'] = $open === null ? 'paid' : ((int) $open['calculated_applied_amount'] > 0 ? 'partial' : 'unpaid');
         }
@@ -325,7 +352,7 @@ class PaidStatusParityTest extends TestCase
         return $out;
     }
 
-    /** @return array{fx: array, course: StudentClass, parent_token: string} */
+    /** @return array{fx: array, course: StudentClass, parent_token: string, invoice_ids: list<int>} */
     private function build(string $id, array $fx): array
     {
         $isDate = ($fx['mode'] ?? 'count') === 'date';
@@ -361,6 +388,7 @@ class PaidStatusParityTest extends TestCase
             'LearnTimeID' => null,
             'MDate' => now(),
             'Stop' => 0,
+            'closed_reason' => $fx['closed_reason'] ?? null,
             'ScheduleMode' => $isDate ? 'date' : 'count',
             'SessionCount' => $isDate ? 0 : ($fx['session_count'] ?? 10),
             'SessionDuration' => 120,
@@ -371,6 +399,7 @@ class PaidStatusParityTest extends TestCase
             'monthly_sessions' => null,
         ]);
 
+        $invoiceIds = [];
         foreach ($fx['invoices'] as $row) {
             $invoice = Invoice::create([
                 'StudentID' => $student->id,
@@ -382,6 +411,7 @@ class PaidStatusParityTest extends TestCase
                 'Status' => $row['status'],
                 'billing_period' => $row['period'],
             ]);
+            $invoiceIds[] = (int) $invoice->id;
             foreach ($row['payments'] as $payment) {
                 Payment::create([
                     'InvoiceID' => $invoice->id,
@@ -399,7 +429,7 @@ class PaidStatusParityTest extends TestCase
             'ExpiresAt' => now()->addHours(2),
         ]);
 
-        return ['fx' => $fx, 'course' => $course, 'parent_token' => $raw];
+        return ['fx' => $fx, 'course' => $course, 'parent_token' => $raw, 'invoice_ids' => $invoiceIds];
     }
 
     private function directorToken(): string

@@ -702,5 +702,85 @@
   "target": "paid",
   "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
   "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "void_method_positive",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S4 known divergence (packet row B18); observed: a Method=void reversal with a positive amount is counted as a payment (\"any Payment row = paid\")",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B1); observed: CoursePackage.paid overrides the member's open non-void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B27); observed: CoursePackage.paid overrides the member's open non-void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2); observed: CoursePackage.paid overrides the member's open non-void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B3); observed: CoursePackage.paid overrides the member's open non-void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B4); observed: CoursePackage.paid overrides the member's open non-void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B7); observed: CoursePackage.paid overrides the member's open non-void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S4 known divergence (packet row B18); observed: CoursePackage.paid overrides the member's open non-void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "closed_settled_pending",
+  "current": "other:pending_reconciliation",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B3); observed: closed unpaid course shows pending_reconciliation, a closed-course state outside paid/partial/unpaid; S3 must map it explicitly",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "closed_contract_amended",
+  "current": "other:pending_reconciliation",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B3); observed: closed unpaid course shows pending_reconciliation, a closed-course state outside paid/partial/unpaid; S3 must map it explicitly",
+  "uncertain": false
  }
 ]
