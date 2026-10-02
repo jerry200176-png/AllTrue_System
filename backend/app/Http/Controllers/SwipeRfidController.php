@@ -17,6 +17,7 @@ use App\Services\SessionDeductionService;
 use App\Services\StudentPresenceBackfillService;
 use App\Services\TeacherAttendanceMonth;
 use App\Services\TeacherClassCalendar;
+use App\Support\LineNotifySettings;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -153,7 +154,8 @@ class SwipeRfidController extends Controller
     /**
      * POST /api/v1/swipe-photo（multipart）
      * Body: branch_code, rfid, photo（jpeg/png ≤1MB）
-     * 刷卡機拍照後呼叫：存照片（私有），推 LINE 文字（到班/離班）+圖片給該學生已驗證綁定的家長，並回傳 image_url。
+     * 刷卡機拍照後呼叫：存照片（私有），推 LINE 文字「{姓名} {時間} 刷卡」+圖片給該學生已驗證綁定的家長，並回傳 image_url。
+     * 分校要在 LINE 通知設定開「到班刷卡」或「離班刷卡」才會發（LineNotifySettings）。
      * 圖片網址是 APP_URL 上的簽章網址，所以刷卡機有沒有固定 IP 都沒差。
      */
     public function photo(Request $request)
@@ -178,6 +180,18 @@ class SwipeRfidController extends Controller
             return response()->json(['ok' => false, 'error' => 'student_not_found'], 404);
         }
 
+        // 到班/離班開關分開；判斷不出來（照片早到/晚到）就任一開就發。文字一律中性，誤刷也不會講錯。
+        [$kind, $swipedAt] = $this->recentSwipe($student);
+        $settings = LineNotifySettings::get((int) $campus->getKey());
+        $wanted = match ($kind) {
+            'in' => $settings['swipe_in'],
+            'out' => $settings['swipe_out'],
+            default => $settings['swipe_in'] || $settings['swipe_out'],
+        };
+        if (!$wanted) {
+            return response()->json(['ok' => true, 'sent' => 0, 'skipped' => 'disabled']);
+        }
+
         $dir = self::PHOTO_DIR . '/' . $campus->getKey();
         $this->prunePhotos($dir);
         $file = Str::uuid() . '.' . $request->file('photo')->extension();
@@ -191,7 +205,8 @@ class SwipeRfidController extends Controller
         );
         $imageUrl = rtrim((string) config('app.url'), '/') . $signed;
 
-        $sent = $this->pushPhotoToParents($student, $campus, $imageUrl);
+        $text = "{$student->name} {$swipedAt->format('H:i')} 刷卡";
+        $sent = $this->pushPhotoToParents($student, $campus, $text, $imageUrl);
 
         return response()->json(['ok' => true, 'sent' => $sent, 'image_url' => $imageUrl]);
     }
@@ -211,7 +226,7 @@ class SwipeRfidController extends Controller
         return response()->file(Storage::path($path)); // default disk = local
     }
 
-    private function pushPhotoToParents(Student $student, Campus $campus, string $imageUrl): int
+    private function pushPhotoToParents(Student $student, Campus $campus, string $text, string $imageUrl): int
     {
         $token = (string) ($campus->messaging_channel_token ?? '');
         if ($token === '') {
@@ -222,18 +237,14 @@ class SwipeRfidController extends Controller
             ->where('campus_id', $campus->getKey())
             ->get();
 
-        $text = $this->swipePhotoText($student);
         $sent = 0;
         foreach ($bindings as $binding) {
             $delivered = false;
             try {
                 $delivered = Http::withToken($token)->timeout(5)->post('https://api.line.me/v2/bot/message/push', [
                     'to' => $binding->line_user_id,
-                    // 文字+圖一次推：讀卡機不再自己推文字，避免家長收兩則。
-                    'messages' => [
-                        ['type' => 'text', 'text' => $text],
-                        ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
-                    ],
+                    // Flex 一張卡片＝照片＋文字，算 1 則額度；altText 是通知列/聊天列表看到的字。
+                    'messages' => [$this->swipePhotoFlex($text, $imageUrl)],
                 ])->successful();
             } catch (\Throwable $e) {
                 Log::warning('swipe_photo_line_push_failed: ' . $e->getMessage());
@@ -257,11 +268,34 @@ class SwipeRfidController extends Controller
         return $sent;
     }
 
+    /** @return array<string,mixed> LINE Flex bubble：上面照片（點了看原圖），下面文字。 */
+    private function swipePhotoFlex(string $text, string $imageUrl): array
+    {
+        return [
+            'type' => 'flex',
+            'altText' => $text,
+            'contents' => [
+                'type' => 'bubble',
+                'hero' => [
+                    'type' => 'image', 'url' => $imageUrl, 'size' => 'full',
+                    'aspectRatio' => '4:3', 'aspectMode' => 'cover',
+                    'action' => ['type' => 'uri', 'uri' => $imageUrl],
+                ],
+                'body' => [
+                    'type' => 'box', 'layout' => 'vertical',
+                    'contents' => [['type' => 'text', 'text' => $text, 'weight' => 'bold', 'wrap' => true]],
+                ],
+            ],
+        ];
+    }
+
     /**
-     * 照片配的文字。讀卡機不知道到班/離班，由 swipe-rfid 剛寫的今日刷卡紀錄判斷。
-     * 只認 2 分鐘內的簽到/簽退；照片比刷卡先到或找不到紀錄 → 不寫到班/離班，避免講錯。
+     * 這張照片對應的刷卡：讀卡機不知道到班/離班，看 swipe-rfid 剛寫的今日紀錄。
+     * 只認 2 分鐘內的簽到/簽退，否則 unknown（時間用現在）。
+     *
+     * @return array{0:string,1:Carbon} [in|out|unknown, 刷卡時間]
      */
-    private function swipePhotoText(Student $student): string
+    private function recentSwipe(Student $student): array
     {
         $now = now();
         $latest = StudentSignIn::query()
@@ -269,19 +303,21 @@ class SwipeRfidController extends Controller
             ->whereDate('SignInDT', $now->toDateString())
             ->orderByDesc('id')
             ->first();
-
-        $recent = fn ($dt) => $dt && Carbon::parse($dt)->diffInSeconds($now, true) <= self::PHOTO_TEXT_WINDOW_SECONDS;
-        $label = '刷卡';
-        $at = $now;
-        if ($latest && $recent($latest->getAttribute('SignOutDT'))) {
-            $label = '離班';
-            $at = Carbon::parse($latest->getAttribute('SignOutDT'));
-        } elseif ($latest && !$latest->getAttribute('SignOutDT') && $recent($latest->getAttribute('SignInDT'))) {
-            $label = '到班';
-            $at = Carbon::parse($latest->getAttribute('SignInDT'));
+        if (!$latest) {
+            return ['unknown', $now];
         }
 
-        return "{$student->name} 已於 {$at->format('H:i')} {$label}";
+        $recent = fn ($dt) => $dt && Carbon::parse($dt)->diffInSeconds($now, true) <= self::PHOTO_TEXT_WINDOW_SECONDS;
+        $out = $latest->getAttribute('SignOutDT');
+        $in = $latest->getAttribute('SignInDT');
+        if ($recent($out)) {
+            return ['out', Carbon::parse($out)];
+        }
+        if (!$out && $recent($in)) {
+            return ['in', Carbon::parse($in)];
+        }
+
+        return ['unknown', $now];
     }
 
     /** 照片只留到簽章網址過期為止。ponytail: 每次上傳順手掃該分校目錄；量大再改排程。 */

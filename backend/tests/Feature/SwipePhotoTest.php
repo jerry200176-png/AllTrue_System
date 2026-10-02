@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Campus;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
+use App\Support\LineNotifySettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +48,7 @@ class SwipePhotoTest extends TestCase
             'student_id' => $this->student->id, 'line_user_id' => 'Uunverified',
             'campus_id' => $this->campus->id, 'bound_at' => now(),
         ]);
+        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => true]);
     }
 
     private function upload(array $overrides = [], string $token = 'photo-token')
@@ -79,14 +81,14 @@ class SwipePhotoTest extends TestCase
         Http::assertSentCount(1);
         $url = null;
         Http::assertSent(function ($req) use (&$url) {
-            [$text, $image] = $req['messages'];
-            $url = $image['originalContentUrl'];
+            $flex = $req['messages'][0];
+            $url = $flex['contents']['hero']['url'];
 
             return $req['to'] === 'Uverified'
-                && count($req['messages']) === 2
-                && $text['type'] === 'text'
-                && $image['type'] === 'image'
-                && $image['previewImageUrl'] === $url
+                && count($req['messages']) === 1
+                && $flex['type'] === 'flex'
+                && $flex['altText'] === $flex['contents']['body']['contents'][0]['text']
+                && $flex['contents']['hero']['action']['uri'] === $url
                 && str_starts_with($url, 'https://alltrue.example/api/v1/swipe-photo/')
                 && str_contains($url, 'signature=');
         });
@@ -101,33 +103,37 @@ class SwipePhotoTest extends TestCase
         $this->getJson($path)->assertForbidden();
     }
 
-    public function test_text_says_arrive_or_leave_from_the_swipe_just_recorded(): void
+    public function test_neutral_text_and_campus_switches_for_arrive_and_leave(): void
     {
+        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => false]);
         $this->travelTo(today()->setTime(10, 0));
-        $texts = function (): array {
-            return Http::recorded()
-                ->filter(fn ($pair) => str_contains($pair[0]->url(), 'api.line.me/v2/bot/message/push'))
-                ->map(fn ($pair) => $pair[0]['messages'][0]['text'])
-                ->values()->all();
-        };
+        $texts = fn (): array => Http::recorded()
+            ->filter(fn ($pair) => str_contains($pair[0]->url(), 'api.line.me/v2/bot/message/push'))
+            ->map(fn ($pair) => $pair[0]['messages'][0]['altText'])
+            ->values()->all();
         $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
+        $photos = fn (): int => count(Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
 
+        // 到班開 → 發；文字中性（誤刷也不會講錯到班/離班）
         $swipe()->assertJson(['action' => 'sign_in']);
-        $this->upload()->assertOk();
+        $this->upload()->assertOk()->assertJson(['sent' => 1]);
 
+        // 離班關 → 不發、不存照片
         $this->travel(2)->hours();
         $swipe()->assertJson(['action' => 'sign_out']);
-        $this->upload()->assertOk();
+        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'disabled']);
+        $this->assertSame(1, $photos());
 
-        // 照片晚到超過 2 分鐘（或沒刷卡紀錄）→ 不猜到班/離班。
+        // 判斷不出來（照片晚到）→ 任一開就發，時間用現在
         $this->travel(10)->minutes();
-        $this->upload()->assertOk();
+        $this->upload()->assertOk()->assertJson(['sent' => 1]);
 
-        $this->assertSame([
-            'PhotoKid 已於 10:00 到班',
-            'PhotoKid 已於 12:00 離班',
-            'PhotoKid 已於 12:10 刷卡',
-        ], $texts());
+        $this->assertSame(['PhotoKid 10:00 刷卡', 'PhotoKid 12:10 刷卡'], $texts());
+
+        // 兩個都關 → 完全不發
+        LineNotifySettings::set($this->campus->id, ['swipe_in' => false]);
+        $this->upload()->assertOk()->assertJson(['skipped' => 'disabled']);
+        $this->assertCount(2, $texts());
     }
 
     public function test_no_channel_token_still_stores_without_push(): void
