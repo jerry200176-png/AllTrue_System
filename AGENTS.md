@@ -91,7 +91,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 |---|---|---|
 | Fire-and-forget | 錯字、footer 日期、單一連結、小型 lint/docs 修正 | 累積到 docs batch；不要單獨開 PR 浪費 Actions |
 | Context-dependent | API 串接、前後端同改、README/Runbook 同步 | 先產 artifact（API contract、diff、測試結果），下游只讀 artifact |
-| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 必須進 PLAN/ARCH 或 BUG B1，等使用者批准後才 DEV |
+| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 先進 PLAN/ARCH 或 BUG B1，釐清產品意圖與受保護邊界；可先完成實作、測試與證據包，在受保護的合併、正式啟用或資料操作前取得 Founder 對具體範圍的決定。重大產品方向無明確最佳選項時，先取得決定再實作 |
 
 強制原則：
 - 以 bounded context 切任務，不以 migration/model/controller/frontend/test 這種技術層硬切碎。
@@ -123,7 +123,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 | T0 Docs-only | README、FAQ、INDEX、Runbook、規則文件，且不碰 `.github/**` / `scripts/**` | docs batch → `git diff --check` → PR；避免 deployable diff |
 | T1 Low-risk code | 單一 UI 顯示、純 helper、無資料寫入、無權限邊界 | 小 PR → 對應測試/build → REVIEW |
 | T2 Product workflow | 前後端契約、排課、出缺勤、評量、跨分校查詢 | PLAN/ARCH → DEV → TEST → INT → REVIEW |
-| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；使用者批准後才實作，CI 綠才可 merge |
+| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；先完成實作、測試與回復證據，在受保護的合併／正式啟用／資料操作前取得 Founder 對具體範圍的決定；CI 綠燈不能取代該決定 |
 
 **Definition of Ready（進 DEV 前）**
 - 已定義 product intent、architecture boundary、API/DB/data ownership、錯誤處理、多校區隔離。
