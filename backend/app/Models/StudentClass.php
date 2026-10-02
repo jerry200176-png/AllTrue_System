@@ -183,6 +183,26 @@ class StudentClass extends Model
     }
 
     /**
+     * F8 authority: a course holds its WEEKLY TEMPLATE seat iff Stop=0 and it is not a
+     * used-up count course. Concrete ClassSession rows are NOT governed by this rule.
+     */
+    public function scopeHoldsTemplateSeat($query)
+    {
+        return self::applyHoldsTemplateSeat($query, $this->getTable());
+    }
+
+    /** Same rule for DB::table('StudentClass as sc') builders; pass the alias. */
+    public static function applyHoldsTemplateSeat($query, string $alias)
+    {
+        return $query->where("$alias.Stop", 0)->where(function ($q) use ($alias) {
+            $q->whereNull("$alias.ScheduleMode")
+                ->orWhere("$alias.ScheduleMode", '!=', 'count')
+                ->orWhereNull("$alias.RemainingSessions")
+                ->orWhere("$alias.RemainingSessions", '>', 0);
+        });
+    }
+
+    /**
      * Scope a query to only include courses that are effectively paid.
      * Paid=1 OR belongs to a settled CoursePackage (paid=1).
      */
