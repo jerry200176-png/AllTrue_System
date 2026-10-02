@@ -40,6 +40,19 @@ updates:
         text: 真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。
     source_refs:
       - "changelog:2026-10-01:monthly-usage-warning"
+  - id: staff-2026-10-02-calendar-has-course
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 只看有課老師不再出現空欄
+    summary: 行事曆勾選「只看有課老師」時，不會再出現沒有課的空白老師欄。
+    items:
+      - category: fixed
+        text: 判斷方式改成和課表格子一致。
+    source_refs:
+      - "alltrue:bug_report:364"
+      - "changelog:2026-10-02:calendar-has-course"
   - id: staff-2026-10-02-used-up-course-seat
     published_at: "2026-10-02"
     audiences:
