@@ -256,9 +256,15 @@ class PaidStatusParityTest extends TestCase
             }
         }
 
+        // Allowlist: one entry per line; the per-site reason (packet row + removing step) is stored once.
+        $file = json_decode(file_get_contents(__DIR__ . '/paid_status_parity_allowlist.json'), true, 512, JSON_THROW_ON_ERROR);
         $allowlist = [];
-        foreach (json_decode(file_get_contents(__DIR__ . '/paid_status_parity_allowlist.json'), true, 512, JSON_THROW_ON_ERROR) as $entry) {
-            $allowlist["{$entry['site']}|{$entry['fixture']}"] = $entry;
+        foreach ($file['entries'] as $entry) {
+            $key = "{$entry['site']}|{$entry['fixture']}";
+            if (isset($allowlist[$key]) || !isset($file['site_reasons'][$entry['site']])) {
+                $problems[] = "HARNESS: allowlist entry {$key} is duplicated or its site has no reason";
+            }
+            $allowlist[$key] = $entry;
         }
 
         $rows = [];

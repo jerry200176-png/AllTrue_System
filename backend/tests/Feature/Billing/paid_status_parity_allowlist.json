@@ -1,986 +1,140 @@
-[
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "full_paid_invoice_only",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B1)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B1)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B1)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "discount_count",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B1)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "overpaid",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B1)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B1)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "amendment_stale_charge",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B1)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "full_paid_invoice_only",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B27)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B27)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B27)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "discount_count",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B27)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "overpaid",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B27)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B27)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "amendment_stale_charge",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B27)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "amendment_stale_charge",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B2)",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "zero_fee_non_tutoring",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S1 known divergence (packet row B12)",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "tutoring",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S1 known divergence (packet row B12)",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "legacy_flag_paid",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S1 known divergence (packet row B12)",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "monthly_two_open_partial",
-  "current": "unpaid",
-  "target": "partial",
-  "reason": "pre-S1 known divergence (packet row B12)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B3)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B3)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "discount_count",
-  "current": "partial",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B3)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B3)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B4)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B4)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "discount_count",
-  "current": "partial",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B4)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B4)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B7)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "partial_flag0",
-  "current": "unpaid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B7)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B7)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "zero_fee_non_tutoring",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B7)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "tutoring",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B7)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "amendment_stale_charge",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B7)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S4 known divergence (packet row B18)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "partial_flag0",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S4 known divergence (packet row B18)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "void_full",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S4 known divergence (packet row B18)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S4 known divergence (packet row B18)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "zero_fee_non_tutoring",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S4 known divergence (packet row B18)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S4 known divergence (packet row B18)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "monthly_two_open_partial",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S4 known divergence (packet row B18)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "stored_full_pay_partial",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "stored_full_pay_partial",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B3); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "stored_full_pay_partial",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B4); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "stored_full_pay_partial",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "stored_full_pay_partial",
-  "current": "paid",
-  "target": "partial",
-  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "stored_full_pay_voided",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "stored_full_pay_voided",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B3); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "stored_full_pay_voided",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B4); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "stored_full_pay_voided",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "stored_full_pay_voided",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "stored_zero_pay_full",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B1); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "stored_zero_pay_full",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B27); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "stored_zero_pay_full",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B2); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "stored_zero_pay_full",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B3); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "stored_zero_pay_full",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B4); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "stored_zero_pay_full",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "void_invoice_only_flag1",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S1 known divergence (packet row B12); observed in CI baseline: only a void invoice: target falls back to the legacy flag; site reads the void invoice",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "void_invoice_only_flag1",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B17); observed in CI baseline: only a void invoice: target falls back to the legacy flag; site reads the void invoice",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "zero_fee_flag1",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S1 known divergence (packet row B12); observed in CI baseline: zero-fee course resolves to free; site reads the stray flag or has no free state",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "zero_fee_flag1",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: zero-fee course resolves to free; site reads the stray flag or has no free state",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "zero_fee_flag1",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: zero-fee course resolves to free; site reads the stray flag or has no free state",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "zero_fee_zero_invoice",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S1 known divergence (packet row B12); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "zero_fee_zero_invoice",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "zero_fee_zero_invoice",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "zero_fee_zero_invoice",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B17); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: partial receipt left Paid=1, so the course is listed as settled",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "void_partial_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: Paid=1 survives a partial void, so the course is listed as settled",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: a later paid period (Status=paid) lists the course though July is unpaid",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "stored_full_pay_partial",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: invoice Status=paid while Payment rows are partial",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "stored_full_pay_voided",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: invoice Status=paid while the receipt was voided",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "stored_zero_pay_full",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: Payment rows cover the total but Status=unpaid and Paid=0, so not listed",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "tutoring_flag1",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S1 known divergence (packet row B12); observed: tutoring is free before a stray Paid=1",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "tutoring_flag1",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B7); observed: tutoring is free before a stray Paid=1",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "tutoring_paid_invoice",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S1 known divergence (packet row B12); observed: tutoring is free before a paid invoice",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "tutoring_paid_invoice",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B7); observed: tutoring is free before a paid invoice",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "tutoring_paid_invoice",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B17); observed: tutoring is free before a paid invoice",
-  "uncertain": false
- },
- {
-  "site": "resolver.byStudentClassIds",
-  "fixture": "package_paid_member",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S1 known divergence (packet row B12); observed: paid count-package member with no invoice; site ignores CoursePackage.paid",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "package_paid_member",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: paid count-package member with no invoice; site ignores CoursePackage.paid",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "overpaid_stored_drift",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B1); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "overpaid_stored_drift",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S5 known divergence (packet row B27); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "overpaid_stored_drift",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B2); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "overpaid_stored_drift",
-  "current": "partial",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B3); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "overpaid_stored_drift",
-  "current": "partial",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B4); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "overpaid_stored_drift",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B7); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.settled_courses",
-  "fixture": "overpaid_stored_drift",
-  "current": "notpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice); observed: R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "void_method_positive",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S4 known divergence (packet row B18); observed: a Method=void reversal with a positive amount is counted as a payment (\"any Payment row = paid\")",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B1); observed: CoursePackage.paid overrides the member's open non-void invoice",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B27); observed: CoursePackage.paid overrides the member's open non-void invoice",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2); observed: CoursePackage.paid overrides the member's open non-void invoice",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B3); observed: CoursePackage.paid overrides the member's open non-void invoice",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.outstanding",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B4); observed: CoursePackage.paid overrides the member's open non-void invoice",
-  "uncertain": false
- },
- {
-  "site": "api.student_classes.payment_status",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B7); observed: CoursePackage.paid overrides the member's open non-void invoice",
-  "uncertain": false
- },
- {
-  "site": "api.parent.dashboard.payment_status",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "paid",
-  "target": "unpaid",
-  "reason": "pre-S4 known divergence (packet row B18); observed: CoursePackage.paid overrides the member's open non-void invoice",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "closed_settled_pending",
-  "current": "other:pending_reconciliation",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B3); observed: closed unpaid course shows pending_reconciliation, a closed-course state outside paid/partial/unpaid; S3 must map it explicitly",
-  "uncertain": false
- },
- {
-  "site": "api.alerts.tuition.payment_status",
-  "fixture": "closed_contract_amended",
-  "current": "other:pending_reconciliation",
-  "target": "unpaid",
-  "reason": "pre-S3 known divergence (packet row B3); observed: closed unpaid course shows pending_reconciliation, a closed-course state outside paid/partial/unpaid; S3 must map it explicitly",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "full_paid_invoice_only",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "partial_flag1",
-  "current": "notunpaid",
-  "target": "unpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "void_partial_flag1",
-  "current": "notunpaid",
-  "target": "unpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "discount_count",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "zero_fee_non_tutoring",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "zero_fee_non_tutoring",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "tutoring",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "tutoring",
-  "current": "unpaid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "overpaid",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "monthly_earlier_unpaid",
-  "current": "notunpaid",
-  "target": "unpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "amendment_stale_charge",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "stored_zero_pay_full",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "zero_fee_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B1); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "zero_fee_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B27); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "zero_fee_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "zero_fee_flag1",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "zero_fee_zero_invoice",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "overpaid_stored_drift",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "package_paid_unpaid_invoice",
-  "current": "notunpaid",
-  "target": "unpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
-  "uncertain": false
- },
- {
-  "site": "model.isEffectivelyPaid",
-  "fixture": "tutoring_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B1); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyPaid",
-  "fixture": "tutoring_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S5 known divergence (packet row B27); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
-  "uncertain": false
- },
- {
-  "site": "model.isFullyPaidWithInvoiceAmount",
-  "fixture": "tutoring_flag1",
-  "current": "paid",
-  "target": "notpaid",
-  "reason": "pre-S3 known divergence (packet row B2); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "tutoring_flag1",
-  "current": "paid",
-  "target": "free",
-  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
-  "uncertain": false
- },
- {
-  "site": "model.scopeEffectivelyUnpaid",
-  "fixture": "tutoring_paid_invoice",
-  "current": "unpaid",
-  "target": "notunpaid",
-  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
-  "uncertain": false
- },
- {
-  "site": "api.accounting.ledger",
-  "fixture": "package_paid_member",
-  "current": "unpaid",
-  "target": "paid",
-  "reason": "pre-S3 known divergence (packet row B17); observed: no-invoice ledger course row reads raw StudentClass.Paid and ignores CoursePackage.paid",
-  "uncertain": false
- }
-]
+{
+ "site_reasons": {
+  "model.isEffectivelyPaid": "pre-S5 known divergence (packet row B1)",
+  "model.scopeEffectivelyPaid": "pre-S5 known divergence (packet row B27)",
+  "model.isFullyPaidWithInvoiceAmount": "pre-S3 known divergence (packet row B2)",
+  "resolver.byStudentClassIds": "pre-S1 known divergence (packet row B12)",
+  "api.alerts.tuition.payment_status": "pre-S3 known divergence (packet row B3)",
+  "api.alerts.tuition.outstanding": "pre-S3 known divergence (packet row B4)",
+  "api.student_classes.payment_status": "pre-S3 known divergence (packet row B7)",
+  "api.parent.dashboard.payment_status": "pre-S4 known divergence (packet row B18)",
+  "api.accounting.ledger": "pre-S3 known divergence (packet row B17)",
+  "api.accounting.settled_courses": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice)",
+  "model.scopeEffectivelyUnpaid": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync)"
+ },
+ "entries": [
+  {"site": "model.isEffectivelyPaid", "fixture": "full_paid_invoice_only", "current": "notpaid", "target": "paid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "partial_flag1", "current": "paid", "target": "notpaid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "void_partial_flag1", "current": "paid", "target": "notpaid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "discount_count", "current": "notpaid", "target": "paid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "overpaid", "current": "notpaid", "target": "paid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "monthly_earlier_unpaid", "current": "paid", "target": "notpaid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "amendment_stale_charge", "current": "notpaid", "target": "paid"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "full_paid_invoice_only", "current": "notpaid", "target": "paid"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "partial_flag1", "current": "paid", "target": "notpaid"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "void_partial_flag1", "current": "paid", "target": "notpaid"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "discount_count", "current": "notpaid", "target": "paid"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "overpaid", "current": "notpaid", "target": "paid"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "monthly_earlier_unpaid", "current": "paid", "target": "notpaid"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "amendment_stale_charge", "current": "notpaid", "target": "paid"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "partial_flag1", "current": "paid", "target": "notpaid"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "void_partial_flag1", "current": "paid", "target": "notpaid"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "monthly_earlier_unpaid", "current": "paid", "target": "notpaid"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "amendment_stale_charge", "current": "notpaid", "target": "paid"},
+  {"site": "resolver.byStudentClassIds", "fixture": "zero_fee_non_tutoring", "current": "unpaid", "target": "free"},
+  {"site": "resolver.byStudentClassIds", "fixture": "tutoring", "current": "unpaid", "target": "free"},
+  {"site": "resolver.byStudentClassIds", "fixture": "legacy_flag_paid", "current": "unpaid", "target": "paid"},
+  {"site": "resolver.byStudentClassIds", "fixture": "monthly_two_open_partial", "current": "unpaid", "target": "partial"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "void_partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "discount_count", "current": "partial", "target": "paid"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "monthly_earlier_unpaid", "current": "paid", "target": "unpaid"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "void_partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "discount_count", "current": "partial", "target": "paid"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "monthly_earlier_unpaid", "current": "paid", "target": "unpaid"},
+  {"site": "api.student_classes.payment_status", "fixture": "partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.student_classes.payment_status", "fixture": "partial_flag0", "current": "unpaid", "target": "partial"},
+  {"site": "api.student_classes.payment_status", "fixture": "void_partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.student_classes.payment_status", "fixture": "zero_fee_non_tutoring", "current": "unpaid", "target": "free"},
+  {"site": "api.student_classes.payment_status", "fixture": "tutoring", "current": "unpaid", "target": "free"},
+  {"site": "api.student_classes.payment_status", "fixture": "amendment_stale_charge", "current": "unpaid", "target": "paid"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "partial_flag0", "current": "paid", "target": "partial"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "void_full", "current": "paid", "target": "unpaid"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "void_partial_flag1", "current": "paid", "target": "partial"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "zero_fee_non_tutoring", "current": "unpaid", "target": "free"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "monthly_earlier_unpaid", "current": "paid", "target": "unpaid"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "monthly_two_open_partial", "current": "paid", "target": "partial"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "stored_full_pay_partial", "current": "paid", "target": "notpaid", "note": "stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "stored_full_pay_partial", "current": "paid", "target": "partial", "note": "stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "stored_full_pay_partial", "current": "paid", "target": "partial", "note": "stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)"},
+  {"site": "api.student_classes.payment_status", "fixture": "stored_full_pay_partial", "current": "paid", "target": "partial", "note": "stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "stored_full_pay_partial", "current": "paid", "target": "partial", "note": "stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "stored_full_pay_voided", "current": "paid", "target": "notpaid", "note": "stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "stored_full_pay_voided", "current": "paid", "target": "unpaid", "note": "stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "stored_full_pay_voided", "current": "paid", "target": "unpaid", "note": "stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)"},
+  {"site": "api.student_classes.payment_status", "fixture": "stored_full_pay_voided", "current": "paid", "target": "unpaid", "note": "stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "stored_full_pay_voided", "current": "paid", "target": "unpaid", "note": "stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)"},
+  {"site": "model.isEffectivelyPaid", "fixture": "stored_zero_pay_full", "current": "notpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "stored_zero_pay_full", "current": "notpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "stored_zero_pay_full", "current": "notpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "stored_zero_pay_full", "current": "unpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "stored_zero_pay_full", "current": "unpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
+  {"site": "api.student_classes.payment_status", "fixture": "stored_zero_pay_full", "current": "unpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
+  {"site": "resolver.byStudentClassIds", "fixture": "void_invoice_only_flag1", "current": "unpaid", "target": "paid", "note": "only a void invoice: target falls back to the legacy flag; site reads the void invoice"},
+  {"site": "api.accounting.ledger", "fixture": "void_invoice_only_flag1", "current": "unpaid", "target": "paid", "note": "only a void invoice: target falls back to the legacy flag; site reads the void invoice"},
+  {"site": "resolver.byStudentClassIds", "fixture": "zero_fee_flag1", "current": "unpaid", "target": "free", "note": "zero-fee course resolves to free; site reads the stray flag or has no free state"},
+  {"site": "api.student_classes.payment_status", "fixture": "zero_fee_flag1", "current": "paid", "target": "free", "note": "zero-fee course resolves to free; site reads the stray flag or has no free state"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "zero_fee_flag1", "current": "paid", "target": "free", "note": "zero-fee course resolves to free; site reads the stray flag or has no free state"},
+  {"site": "resolver.byStudentClassIds", "fixture": "zero_fee_zero_invoice", "current": "paid", "target": "free", "note": "zero-fee course resolves to free; site reads the zero-total invoice or has no free state"},
+  {"site": "api.student_classes.payment_status", "fixture": "zero_fee_zero_invoice", "current": "unpaid", "target": "free", "note": "zero-fee course resolves to free; site reads the zero-total invoice or has no free state"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "zero_fee_zero_invoice", "current": "unpaid", "target": "free", "note": "zero-fee course resolves to free; site reads the zero-total invoice or has no free state"},
+  {"site": "api.accounting.ledger", "fixture": "zero_fee_zero_invoice", "current": "paid", "target": "free", "note": "zero-fee course resolves to free; site reads the zero-total invoice or has no free state"},
+  {"site": "api.accounting.settled_courses", "fixture": "partial_flag1", "current": "paid", "target": "notpaid", "note": "partial receipt left Paid=1, so the course is listed as settled"},
+  {"site": "api.accounting.settled_courses", "fixture": "void_partial_flag1", "current": "paid", "target": "notpaid", "note": "Paid=1 survives a partial void, so the course is listed as settled"},
+  {"site": "api.accounting.settled_courses", "fixture": "monthly_earlier_unpaid", "current": "paid", "target": "notpaid", "note": "a later paid period (Status=paid) lists the course though July is unpaid"},
+  {"site": "api.accounting.settled_courses", "fixture": "stored_full_pay_partial", "current": "paid", "target": "notpaid", "note": "invoice Status=paid while Payment rows are partial"},
+  {"site": "api.accounting.settled_courses", "fixture": "stored_full_pay_voided", "current": "paid", "target": "notpaid", "note": "invoice Status=paid while the receipt was voided"},
+  {"site": "api.accounting.settled_courses", "fixture": "stored_zero_pay_full", "current": "notpaid", "target": "paid", "note": "Payment rows cover the total but Status=unpaid and Paid=0, so not listed"},
+  {"site": "resolver.byStudentClassIds", "fixture": "tutoring_flag1", "current": "unpaid", "target": "free", "note": "tutoring is free before a stray Paid=1"},
+  {"site": "api.student_classes.payment_status", "fixture": "tutoring_flag1", "current": "paid", "target": "free", "note": "tutoring is free before a stray Paid=1"},
+  {"site": "resolver.byStudentClassIds", "fixture": "tutoring_paid_invoice", "current": "paid", "target": "free", "note": "tutoring is free before a paid invoice"},
+  {"site": "api.student_classes.payment_status", "fixture": "tutoring_paid_invoice", "current": "unpaid", "target": "free", "note": "tutoring is free before a paid invoice"},
+  {"site": "api.accounting.ledger", "fixture": "tutoring_paid_invoice", "current": "paid", "target": "free", "note": "tutoring is free before a paid invoice"},
+  {"site": "resolver.byStudentClassIds", "fixture": "package_paid_member", "current": "unpaid", "target": "paid", "note": "paid count-package member with no invoice; site ignores CoursePackage.paid"},
+  {"site": "api.accounting.settled_courses", "fixture": "package_paid_member", "current": "notpaid", "target": "paid", "note": "paid count-package member with no invoice; site ignores CoursePackage.paid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "overpaid_stored_drift", "current": "notpaid", "target": "paid", "note": "R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "overpaid_stored_drift", "current": "notpaid", "target": "paid", "note": "R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "overpaid_stored_drift", "current": "notpaid", "target": "paid", "note": "R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "overpaid_stored_drift", "current": "partial", "target": "paid", "note": "R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "overpaid_stored_drift", "current": "partial", "target": "paid", "note": "R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial"},
+  {"site": "api.student_classes.payment_status", "fixture": "overpaid_stored_drift", "current": "unpaid", "target": "paid", "note": "R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial"},
+  {"site": "api.accounting.settled_courses", "fixture": "overpaid_stored_drift", "current": "notpaid", "target": "paid", "note": "R31 overpayment: Payment rows 12000 >= total 10000 but stored PaidAmount drifted to 9000/partial"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "void_method_positive", "current": "paid", "target": "unpaid", "note": "a Method=void reversal with a positive amount is counted as a payment (\"any Payment row = paid\")"},
+  {"site": "model.isEffectivelyPaid", "fixture": "package_paid_unpaid_invoice", "current": "paid", "target": "notpaid", "note": "CoursePackage.paid overrides the member's open non-void invoice"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "package_paid_unpaid_invoice", "current": "paid", "target": "notpaid", "note": "CoursePackage.paid overrides the member's open non-void invoice"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "package_paid_unpaid_invoice", "current": "paid", "target": "notpaid", "note": "CoursePackage.paid overrides the member's open non-void invoice"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "package_paid_unpaid_invoice", "current": "paid", "target": "unpaid", "note": "CoursePackage.paid overrides the member's open non-void invoice"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "package_paid_unpaid_invoice", "current": "paid", "target": "unpaid", "note": "CoursePackage.paid overrides the member's open non-void invoice"},
+  {"site": "api.student_classes.payment_status", "fixture": "package_paid_unpaid_invoice", "current": "paid", "target": "unpaid", "note": "CoursePackage.paid overrides the member's open non-void invoice"},
+  {"site": "api.parent.dashboard.payment_status", "fixture": "package_paid_unpaid_invoice", "current": "paid", "target": "unpaid", "note": "CoursePackage.paid overrides the member's open non-void invoice"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "closed_settled_pending", "current": "other:pending_reconciliation", "target": "unpaid", "note": "closed unpaid course shows pending_reconciliation, a closed-course state outside paid/partial/unpaid; S3 must map it explicitly"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "closed_contract_amended", "current": "other:pending_reconciliation", "target": "unpaid", "note": "closed unpaid course shows pending_reconciliation, a closed-course state outside paid/partial/unpaid; S3 must map it explicitly"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "full_paid_invoice_only", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "partial_flag1", "current": "notunpaid", "target": "unpaid", "note": "Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "void_partial_flag1", "current": "notunpaid", "target": "unpaid", "note": "Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "discount_count", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "zero_fee_non_tutoring", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "api.accounting.ledger", "fixture": "zero_fee_non_tutoring", "current": "unpaid", "target": "free", "note": "ledger course row has no free state (raw StudentClass.Paid)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "tutoring", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "api.accounting.ledger", "fixture": "tutoring", "current": "unpaid", "target": "free", "note": "ledger course row has no free state (raw StudentClass.Paid)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "overpaid", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "monthly_earlier_unpaid", "current": "notunpaid", "target": "unpaid", "note": "Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "amendment_stale_charge", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "stored_zero_pay_full", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "model.isEffectivelyPaid", "fixture": "zero_fee_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "zero_fee_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "zero_fee_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
+  {"site": "api.accounting.ledger", "fixture": "zero_fee_flag1", "current": "paid", "target": "free", "note": "ledger course row has no free state (raw StudentClass.Paid)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "zero_fee_zero_invoice", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "overpaid_stored_drift", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "package_paid_unpaid_invoice", "current": "notunpaid", "target": "unpaid", "note": "Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid"},
+  {"site": "model.isEffectivelyPaid", "fixture": "tutoring_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
+  {"site": "model.scopeEffectivelyPaid", "fixture": "tutoring_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "tutoring_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
+  {"site": "api.accounting.ledger", "fixture": "tutoring_flag1", "current": "paid", "target": "free", "note": "ledger course row has no free state (raw StudentClass.Paid)"},
+  {"site": "model.scopeEffectivelyUnpaid", "fixture": "tutoring_paid_invoice", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
+  {"site": "api.accounting.ledger", "fixture": "package_paid_member", "current": "unpaid", "target": "paid", "note": "no-invoice ledger course row reads raw StudentClass.Paid and ignores CoursePackage.paid"}
+ ]
+}
