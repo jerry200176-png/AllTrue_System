@@ -812,9 +812,18 @@ jobs:
                   'line_notify_setting_present'=>isset($settings['line_notify.campus.' . (int)$c->id])];
               }})->values()->all();
             // Pre-controller evidence: Apache combined access log (request line + status only; no IPs/UA leave prod).
-            $deployedController = @file_get_contents(base_path('app/Http/Controllers/SwipeRfidController.php')) ?: '';
-            $out['deployed_photo_endpoint_switch_gated'] = $deployedController === '' ? null
-              : (str_contains($deployedController, 'LineNotifySettings') || str_contains($deployedController, "'skipped'"));
+            // Identity guard: file/audit counts are evidence only on a revision whose photo() stores before any push/switch.
+            $preSwitchSha = '44ab1b3698cccfa1d12f367c65e12d3e53f1d3fe';
+            $preSwitchControllerSha256 = '81104cd2d5fe6f6f89ca13a37222cf7b80aa3a122d953b2782347c0a43681016';
+            $manifest = json_decode((string) @file_get_contents(public_path('deployment.json')), true) ?: [];
+            $controllerPath = base_path('app/Http/Controllers/SwipeRfidController.php');
+            $controllerHash = is_file($controllerPath) ? hash_file('sha256', $controllerPath) : null;
+            $out['runtime_identity'] = ['deployment_backend_sha' => $manifest['backend_sha'] ?? null,
+              'swipe_controller_sha256' => $controllerHash,
+              'expected_pre_switch_backend_sha' => $preSwitchSha,
+              'expected_pre_switch_controller_sha256' => $preSwitchControllerSha256];
+            $out['file_audit_evidence_valid'] = ($manifest['backend_sha'] ?? null) === $preSwitchSha
+              && $controllerHash === $preSwitchControllerSha256;
             $access = [];
             $logFiles = glob('/var/log/apache2/*access.log*') ?: [];
             $readable = 0;
@@ -845,9 +854,9 @@ jobs:
               'swipe_photo_files_14d uses file mtime; swipe_photo_files_retained_total spans all retained files (pruned after 7 days only when that campus uploads again).',
               'swipe_photo_delivery_audit_14d only exists when the campus has a LINE token and the student has verified bindings; zero rows does not prove zero uploads.',
               'Reader-side LINE text pushes (from LineIDs) go straight to LINE and leave no trace in AllTrue.',
-              'If deployed_photo_endpoint_switch_gated is true, photo() can return skipped before storing/auditing, so zero files/audit prove nothing; rely on access_log only.',
+              'FAIL CLOSED: file/audit counts count as evidence only when file_audit_evidence_valid is true (deployment backend_sha AND SwipeRfidController sha256 equal 44ab1b36, whose photo() stores every valid upload before pushing). Otherwise zero files/audit = INCONCLUSIVE; use access_log only. Files kept from an older revision still show uploads happened.',
               'access_log is the only pre-controller evidence. It has no campus (branch_code is in the body). files_read = 0 or byte_budget_exhausted => INCONCLUSIVE.',
-              'Conclusion rule: swipe-photo POSTs > 0 => some reader uploads photos; swipe-photo POSTs = 0 with swipe-rfid POSTs > 0 over complete logs => readers call swipe-rfid only; otherwise INCONCLUSIVE and the reader code/test is required.',
+              'Conclusion rule: swipe-photo POSTs > 0 or swipe_photo_files_14d > 0 => some reader uploads photos. "Readers call swipe-rfid only" needs ALL of: file_audit_evidence_valid, swipe_rfid_api_sign_ins_14d > 0, swipe_photo_files_14d = 0, and access_log fully read with swipe-photo POSTs = 0. Otherwise INCONCLUSIVE; the reader code/test is required.',
             ];
             $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
               'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
