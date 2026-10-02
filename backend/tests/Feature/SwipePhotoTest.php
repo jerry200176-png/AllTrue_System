@@ -69,7 +69,7 @@ class SwipePhotoTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_stores_photo_and_pushes_signed_image_only_to_verified_parent(): void
+    public function test_stores_photo_and_pushes_text_and_signed_image_only_to_verified_parent(): void
     {
         $res = $this->upload()->assertOk()->assertJson(['ok' => true, 'sent' => 1]);
 
@@ -79,11 +79,12 @@ class SwipePhotoTest extends TestCase
         Http::assertSentCount(1);
         $url = null;
         Http::assertSent(function ($req) use (&$url) {
-            $image = $req['messages'][0];
+            [$text, $image] = $req['messages'];
             $url = $image['originalContentUrl'];
 
             return $req['to'] === 'Uverified'
-                && count($req['messages']) === 1
+                && count($req['messages']) === 2
+                && $text['type'] === 'text'
                 && $image['type'] === 'image'
                 && $image['previewImageUrl'] === $url
                 && str_starts_with($url, 'https://alltrue.example/api/v1/swipe-photo/')
@@ -98,6 +99,35 @@ class SwipePhotoTest extends TestCase
         $this->getJson(parse_url($url, PHP_URL_PATH))->assertForbidden();
         $this->travel(8)->days();
         $this->getJson($path)->assertForbidden();
+    }
+
+    public function test_text_says_arrive_or_leave_from_the_swipe_just_recorded(): void
+    {
+        $this->travelTo(today()->setTime(10, 0));
+        $texts = function (): array {
+            return Http::recorded()
+                ->filter(fn ($pair) => str_contains($pair[0]->url(), 'api.line.me/v2/bot/message/push'))
+                ->map(fn ($pair) => $pair[0]['messages'][0]['text'])
+                ->values()->all();
+        };
+        $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
+
+        $swipe()->assertJson(['action' => 'sign_in']);
+        $this->upload()->assertOk();
+
+        $this->travel(2)->hours();
+        $swipe()->assertJson(['action' => 'sign_out']);
+        $this->upload()->assertOk();
+
+        // 照片晚到超過 2 分鐘（或沒刷卡紀錄）→ 不猜到班/離班。
+        $this->travel(10)->minutes();
+        $this->upload()->assertOk();
+
+        $this->assertSame([
+            'PhotoKid 已於 10:00 到班',
+            'PhotoKid 已於 12:00 離班',
+            'PhotoKid 已於 12:10 刷卡',
+        ], $texts());
     }
 
     public function test_no_channel_token_still_stores_without_push(): void
