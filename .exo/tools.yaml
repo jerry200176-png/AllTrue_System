@@ -50,3 +50,14 @@ tools:
   used_by: []
   last_used: '2026-08-27T12:43:47+08:00'
   created_at: '2026-08-27T12:43:44+08:00'
+- id: frontend.src.lib.monthlyScheduleEstimate.js:monthlyScheduleEstimate
+  module: frontend/src/lib/monthlyScheduleEstimate.js
+  function: monthlyScheduleEstimate
+  description: Estimate scheduled occurrences for the current course calendar month
+    from fixed weekdays or slots
+  signature: ''
+  tags: []
+  created_by: ''
+  used_by: []
+  last_used: '2026-09-30T10:45:28+08:00'
+  created_at: '2026-09-30T10:45:19+08:00'
