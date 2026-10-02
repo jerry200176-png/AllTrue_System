@@ -6,6 +6,9 @@ use App\Models\Scopes\OperationalTenantScope;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property bool $swipe_line_notify 學生刷卡到班是否推 LINE 給家長
+ */
 class Campus extends Model
 {
     use HasFactory;
