@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Support\LineNotifySettings;
 use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
@@ -369,16 +368,15 @@ class SwipeRfidEdgeCaseTest extends TestCase
         $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->orderByDesc('id')->value('Status'));
     }
 
-    public function test_student_swipe_never_hands_parent_line_ids_to_the_reader(): void
+    public function test_student_swipe_returns_only_verified_line_ids(): void
     {
-        // LINE 一律由 AllTrue swipe-photo 發（受分校開關控制），讀卡機不能自己推。
         $student = $this->makeStudent();
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
-        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => true]);
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Upending', 'campus_id' => $this->campus->id]);
 
         $this->swipe($student->RFID)
             ->assertStatus(201)
-            ->assertJsonPath('student.LineIDs', []);
+            ->assertJsonPath('student.LineIDs', ['Uverified']);
     }
 
     /** @test */

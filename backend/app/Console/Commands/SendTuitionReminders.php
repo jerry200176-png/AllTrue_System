@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Support\LineNotifySettings;
 use App\Models\Notification;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -65,10 +64,6 @@ class SendTuitionReminders extends Command
 
             $studentName = (string) ($student->getAttribute('name') ?? 'Unknown');
             $byCampus[$campusId][] = $studentName;
-
-            if (!LineNotifySettings::enabled($campusId, 'tuition_reminder')) {
-                continue;
-            }
 
             // Fan-out to every verified LINE binding (dad + mom), not first() only.
             $bindings = StudentLineBinding::where('student_id', $student->getKey())
