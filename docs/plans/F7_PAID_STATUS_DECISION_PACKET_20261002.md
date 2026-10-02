@@ -119,3 +119,19 @@ Assumption needing no decision: tutoring and zero-fee non-trial courses resolve 
 ## 6. Scope statement
 
 This packet is documentation only: **no code change, no data change, no deploy**. Each migration step above is its own R3 PR with its own Founder GO; S7 additionally requires a data-change approval and audit script. Worst observed disagreements (partial receipt sets Flag=1; parent portal treats any Payment row incl. void as paid; stored PaidAmount vs Payment rows) are static-read findings and must be reproduced on fixtures in S0 before any behavior change.
+
+## 7. S0 status (parity harness, 2026-10-02)
+
+Files: `backend/tests/Feature/Billing/PaidStatusParityTest.php`, `backend/tests/Feature/Billing/paid_status_parity_allowlist.json`. Tests only, zero `backend/app` change. Written by static reading; **not yet run** (PHPUnit is CI-only, repo red line R2), so the first CI run is the real baseline.
+
+Target semantics asserted (Founder 2026-10-02): partial => `partial`; invoices/payments decide, voided receipts never count, Paid flag only for legacy courses with no invoice; monthly => oldest unsettled period. `expected` is derived from the fixture rows, not from app code.
+
+Coverage: 17 fixtures (full paid flag1/flag0, partial flag1/flag0, full void, partial void, discount, zero-fee non-tutoring, tutoring, overpaid, monthly earlier-unpaid, monthly two-open-partial, monthly all paid, legacy Paid=1 no invoice, legacy unpaid, stale-Charge contract amendment #230, unpaid invoice) x 10 sites:
+- Model: `isEffectivelyPaid` (B1), `scopeEffectivelyPaid` (B27 SQL twin), `isFullyPaidWithInvoiceAmount` (B2, wraps static `isFullyPaid`). Binary sites: `free` fixtures skipped.
+- Services: `BillingPayableResolver` (B12, covers B13), `MonthlyPeriodPaymentService::batch` (B15).
+- HTTP: `GET alerts/tuition` (B3 `payment_status`, B4 `outstanding`), `GET student-classes` (B7), `GET parent/dashboard` (B18), `GET accounting/ledger` (B17).
+- Not callable or not covered: B5/B6 (inclusion queries, frozen, covered indirectly: absent row = no opinion), B8/B9/B11/B16 (writers and guards: need confirm/void request flows, S6/S7 own their tests), B10 (verbatim resolver copy), B14 (kernel input), B19 (parent slip amount, not a status), B20-B22 (Dunning, SendTuitionReminders, NotificationSync: side-effecting outbound; they read B1/B27, covered by the model sites; S5 shadow mode compares them), B23 Finance/B24 bank (flag/legacy `Pay` columns, not status sites), B25/B26, F1-F5 (frontend, S2 component tests), CoursePackage members (no fixture yet).
+
+Allowlist: 43 entries (41 certain, 2 uncertain: tuition x `monthly_earlier_unpaid`). Reason string names the step expected to remove it (S1 resolver, S3 admin read surfaces and B2, S4 parent portal, S5 B1/B27).
+
+How to read a failure: the test prints `KIND SITE FIXTURE CURRENT -> TARGET NOTE`. `NEW` = mismatch not allowlisted (regression, or a wrong static guess: confirm on the first CI run, then add a reasoned entry). `STALE` = a certain entry no longer mismatches (a step landed: delete the entry). `DRIFT` = still mismatches but with a different value (review). `HARNESS` = a site observed too few fixtures (route/response shape changed). Uncertain entries may match or mismatch. When S1 changes the resolver contract, update the `resolver` normalizer in `observe()` in the same PR.

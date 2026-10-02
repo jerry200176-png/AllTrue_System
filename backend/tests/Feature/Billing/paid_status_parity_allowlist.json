@@ -1,0 +1,346 @@
+[
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "full_paid_invoice_only",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B1)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "partial_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B1)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "void_partial_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B1)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "discount_count",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B1)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "overpaid",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B1)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "monthly_earlier_unpaid",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B1)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "amendment_stale_charge",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B1)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "full_paid_invoice_only",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B27)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "partial_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B27)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "void_partial_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B27)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "discount_count",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B27)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "overpaid",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B27)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "monthly_earlier_unpaid",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B27)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "amendment_stale_charge",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B27)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "partial_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "void_partial_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "monthly_earlier_unpaid",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "amendment_stale_charge",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B2)",
+  "uncertain": false
+ },
+ {
+  "site": "resolver.byStudentClassIds",
+  "fixture": "zero_fee_non_tutoring",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S1 known divergence (packet row B12)",
+  "uncertain": false
+ },
+ {
+  "site": "resolver.byStudentClassIds",
+  "fixture": "tutoring",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S1 known divergence (packet row B12)",
+  "uncertain": false
+ },
+ {
+  "site": "resolver.byStudentClassIds",
+  "fixture": "legacy_flag_paid",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S1 known divergence (packet row B12)",
+  "uncertain": false
+ },
+ {
+  "site": "resolver.byStudentClassIds",
+  "fixture": "monthly_two_open_partial",
+  "current": "unpaid",
+  "target": "partial",
+  "reason": "pre-S1 known divergence (packet row B12)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B3)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "void_partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B3)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "discount_count",
+  "current": "partial",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B3)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "monthly_earlier_unpaid",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B3)",
+  "uncertain": true
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B4)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "void_partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B4)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "discount_count",
+  "current": "partial",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B4)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "monthly_earlier_unpaid",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B4)",
+  "uncertain": true
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B7)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "partial_flag0",
+  "current": "unpaid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B7)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "void_partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B7)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "zero_fee_non_tutoring",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B7)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "tutoring",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B7)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "amendment_stale_charge",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B7)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "partial_flag0",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "void_full",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "void_partial_flag1",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "zero_fee_non_tutoring",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "monthly_earlier_unpaid",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "monthly_two_open_partial",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ }
+]
