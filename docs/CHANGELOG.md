@@ -1,9 +1,3 @@
-## 2026-10-02 — feat(line): per-campus LINE notify switches + swipe photo as one Flex card
-<!-- release-notes: staff_update=staff-2026-10-02-line-notify-switches -->
-- 主任在「家長 LINE 通知設定」可逐項開關 LINE 通知（到班刷卡、離班刷卡、老師回覆學習回饋、繳費提醒、排課異常、重要系統通知），並看到本月 LINE 已用／上限則數。存 `SystemSetting` `line_notify.campus.{id}`（無 migration）；未設定時既有通知維持開、刷卡通知預設關。`GET/PUT /api/v1/line/notify-settings`（主任限自己分校，super_admin 任一）。
-- `POST /api/v1/swipe-photo` 改成一張 Flex 卡片（照片＋「姓名 時間 刷卡」中性文字，誤刷也不會寫錯到班／離班），算 1 則；依 2 分鐘內刷卡紀錄套用到班／離班開關，判斷不出來時任一開就發；都關則不存照片不推。
-- `POST /api/v1/swipe-rfid` 回應的 `student.LineIDs` 改為固定空陣列（欄位保留）：LINE 一律由 AllTrue 發，讀卡機不再自行推文字，避免重複、繞過分校開關與多扣額度。
-
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->
 - 學生管理與課程管理的建課老師選單只顯示可指派的老師；一般課程、多老師時段及多科共用方案在儲存時再次驗證，停用或待審核老師不會被新指派。既有課程保留原授課老師與歷史顯示。
@@ -15,6 +9,10 @@
 ## 2026-10-02 — feat(bug-report): in-app reports auto-attach recent failed requests
 <!-- release-notes: staff_update=staff-2026-10-02-report-context -->
 - 回報問題時自動附上最近 5 筆失敗的 API 請求（方法、路徑不含查詢參數、狀態碼、請求編號）、系統版本與所在頁面／分校編號，不含任何內容或個資；後端為每個 API 回應加上 `X-Request-Id`，並寫入日誌。同時修正附加資訊過長被截斷成無效 JSON 的問題（上限 2000 → 4000）。
+
+## 2026-10-02 — fix(rfid): swipe-rfid LineIDs only include the swiped campus's bindings
+<!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-campus-scope -->
+- `POST /api/v1/swipe-rfid` 學生回應的 `student.LineIDs` 只回刷卡分校的已驗證家長 LINE userId；轉校殘留／舊匯入的別分校綁定不再交給本校讀卡機（避免跨分校用錯官方帳號推播）。LINE 綁定的「已綁定」判斷改為只看本分校綁定：轉校學生家長在新分校重新驗證時，舊分校的綁定列會更新成新分校（不再回「已綁定」而一直收不到）。
 
 ## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->

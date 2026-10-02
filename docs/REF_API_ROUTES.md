@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 491 api/* routes · generated 2026-10-02
+> Source: `php artisan route:list --json` · 489 api/* routes · generated 2026-10-01
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -491,12 +491,10 @@
 | PATCH | `api/v1/learning-records/{learningRecord}/teacher` | `LearningRecordController@updateTeacher` | role+campus |
 | PUT | `api/v1/learning-records/{learningRecord}/teacher-comment` | `LearningRecordTeacherCommentController@upsert` | role+campus |
 
-## /api/v1/line (6)
+## /api/v1/line (4)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
-| GET | `api/v1/line/notify-settings` | `LineWebhookController@notifySettings` | role |
-| PUT | `api/v1/line/notify-settings` | `LineWebhookController@saveNotifySettings` | role |
 | POST | `api/v1/line/settings` | `LineWebhookController@saveSettings` | role |
 | GET | `api/v1/line/status` | `LineWebhookController@status` | role |
 | POST | `api/v1/line/webhook` | `LineWebhookController@handleDomainBased` | public |

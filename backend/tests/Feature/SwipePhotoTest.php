@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\Campus;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
-use App\Support\LineNotifySettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +47,6 @@ class SwipePhotoTest extends TestCase
             'student_id' => $this->student->id, 'line_user_id' => 'Uunverified',
             'campus_id' => $this->campus->id, 'bound_at' => now(),
         ]);
-        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => true]);
     }
 
     private function upload(array $overrides = [], string $token = 'photo-token')
@@ -71,7 +69,7 @@ class SwipePhotoTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_stores_photo_and_pushes_text_and_signed_image_only_to_verified_parent(): void
+    public function test_stores_photo_and_pushes_signed_image_only_to_verified_parent(): void
     {
         $res = $this->upload()->assertOk()->assertJson(['ok' => true, 'sent' => 1]);
 
@@ -81,14 +79,13 @@ class SwipePhotoTest extends TestCase
         Http::assertSentCount(1);
         $url = null;
         Http::assertSent(function ($req) use (&$url) {
-            $flex = $req['messages'][0];
-            $url = $flex['contents']['hero']['url'];
+            $image = $req['messages'][0];
+            $url = $image['originalContentUrl'];
 
             return $req['to'] === 'Uverified'
                 && count($req['messages']) === 1
-                && $flex['type'] === 'flex'
-                && $flex['altText'] === $flex['contents']['body']['contents'][0]['text']
-                && $flex['contents']['hero']['action']['uri'] === $url
+                && $image['type'] === 'image'
+                && $image['previewImageUrl'] === $url
                 && str_starts_with($url, 'https://alltrue.example/api/v1/swipe-photo/')
                 && str_contains($url, 'signature=');
         });
@@ -101,39 +98,6 @@ class SwipePhotoTest extends TestCase
         $this->getJson(parse_url($url, PHP_URL_PATH))->assertForbidden();
         $this->travel(8)->days();
         $this->getJson($path)->assertForbidden();
-    }
-
-    public function test_neutral_text_and_campus_switches_for_arrive_and_leave(): void
-    {
-        LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => false]);
-        $this->travelTo(today()->setTime(10, 0));
-        $texts = fn (): array => Http::recorded()
-            ->filter(fn ($pair) => str_contains($pair[0]->url(), 'api.line.me/v2/bot/message/push'))
-            ->map(fn ($pair) => $pair[0]['messages'][0]['altText'])
-            ->values()->all();
-        $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
-        $photos = fn (): int => count(Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
-
-        // 到班開 → 發；文字中性（誤刷也不會講錯到班/離班）
-        $swipe()->assertJson(['action' => 'sign_in']);
-        $this->upload()->assertOk()->assertJson(['sent' => 1]);
-
-        // 離班關 → 不發、不存照片
-        $this->travel(2)->hours();
-        $swipe()->assertJson(['action' => 'sign_out']);
-        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'disabled']);
-        $this->assertSame(1, $photos());
-
-        // 判斷不出來（照片晚到）→ 任一開就發，時間用現在
-        $this->travel(10)->minutes();
-        $this->upload()->assertOk()->assertJson(['sent' => 1]);
-
-        $this->assertSame(['PhotoKid 10:00 刷卡', 'PhotoKid 12:10 刷卡'], $texts());
-
-        // 兩個都關 → 完全不發
-        LineNotifySettings::set($this->campus->id, ['swipe_in' => false]);
-        $this->upload()->assertOk()->assertJson(['skipped' => 'disabled']);
-        $this->assertCount(2, $texts());
     }
 
     public function test_no_channel_token_still_stores_without_push(): void

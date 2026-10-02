@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.02",
     "date": "2026-10-02",
     "title": "2026.10.02 草稿（未發布）",
-    "summary": "修正超級管理員看不到版本更新內容的問題；auto-attach recent failed requests",
+    "summary": "auto-attach recent failed requests；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
     "audience": [
       "teacher",
       "director"
@@ -18,13 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
-          "修正超級管理員看不到版本更新內容的問題",
           "auto-attach recent failed requests"
         ]
       },
       {
         "title": "修正內容",
         "items": [
+          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
           "threads unanswered for 14 days drop out of 待回覆",
           "只看有課老師」 no longer shows empty teacher columns",
           "up courses no longer fill 1：3 slots",
@@ -33,8 +33,8 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
-      "修正超級管理員看不到版本更新內容的問題",
       "auto-attach recent failed requests",
+      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "threads unanswered for 14 days drop out of 待回覆",
       "只看有課老師」 no longer shows empty teacher columns",
       "up courses no longer fill 1：3 slots",
