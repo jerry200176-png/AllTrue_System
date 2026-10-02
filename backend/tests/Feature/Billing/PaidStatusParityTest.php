@@ -44,7 +44,6 @@ class PaidStatusParityTest extends TestCase
     private const MIN_OBSERVED = [
         'api.alerts.tuition.payment_status' => 10,
         'api.alerts.tuition.outstanding' => 10,
-        'monthly_period_payment.batch' => 3,
     ];
 
     /**
@@ -60,6 +59,9 @@ class PaidStatusParityTest extends TestCase
             'api.student_classes.payment_status' => $all,
             'api.parent.dashboard.payment_status' => $all,
             'api.accounting.ledger' => $all,
+            'monthly_period_payment.batch' => array_keys(array_filter($fixtures, fn ($fx) => ($fx['mode'] ?? 'count') === 'date')),
+            'amount.resolver.outstanding' => $all,
+            'amount.ledger.outstanding' => $all,
         ];
     }
 
@@ -73,6 +75,9 @@ class PaidStatusParityTest extends TestCase
 
     /** Binary sites with no opinion on `free` fixtures (list membership, not a paid predicate). */
     private const BINARY_SKIP_FREE = ['api.accounting.settled_courses'];
+
+    /** Numeric sites: the outstanding amount (as a string) must equal expectedOutstanding(), not just the status. */
+    private const AMOUNT_SITES = ['amount.resolver.outstanding', 'amount.alerts.tuition.outstanding', 'amount.ledger.outstanding'];
 
     /** Unpaid predicate (reminders/notifications): in scope iff target is partial or unpaid. */
     private const UNPAID_SITES = ['model.scopeEffectivelyUnpaid'];
@@ -141,6 +146,8 @@ class PaidStatusParityTest extends TestCase
                 $inv('2026-07', 6000, 6000, 'paid'),
                 $inv('2026-08', 6000, 6000, 'paid'),
             ]],
+            // A negative cash row is a reversal even without Method=void.
+            'void_negative_cash' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $cash(-10000)])]],
             // A reversal recorded as Method=void with a positive amount is still a void.
             'void_method_positive' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $voidPositive(10000)])]],
             // 1: a non-void invoice overrides CoursePackage.paid.
@@ -173,17 +180,37 @@ class PaidStatusParityTest extends TestCase
         }
         usort($invoices, fn ($a, $b) => strcmp($a['period'], $b['period'])); // oldest first
         foreach ($invoices as $invoice) {
-            // Void = negative amount OR Method=void (packet legend; B13 kernel).
-            $isVoid = fn ($p) => $p['amount'] < 0 || $p['method'] === 'void';
-            $positive = array_sum(array_map(fn ($p) => !$isVoid($p) && $p['amount'] > 0 ? $p['amount'] : 0, $invoice['payments']));
-            $voided = array_sum(array_map(fn ($p) => $isVoid($p) ? abs($p['amount']) : 0, $invoice['payments']));
-            $applied = min($invoice['total'], max(0, $positive - $voided));
+            $applied = $this->applied($invoice);
             if ($applied < $invoice['total']) {
                 return $applied > 0 ? 'partial' : 'unpaid';
             }
         }
 
         return 'paid';
+    }
+
+    /** Net applied on one invoice. Void = negative amount OR Method=void (packet legend; B13 kernel); capped at total. */
+    private function applied(array $invoice): int
+    {
+        $isVoid = fn ($p) => $p['amount'] < 0 || $p['method'] === 'void';
+        $positive = array_sum(array_map(fn ($p) => !$isVoid($p) && $p['amount'] > 0 ? $p['amount'] : 0, $invoice['payments']));
+        $voided = array_sum(array_map(fn ($p) => $isVoid($p) ? abs($p['amount']) : 0, $invoice['payments']));
+
+        return min($invoice['total'], max(0, $positive - $voided));
+    }
+
+    /** Target course outstanding: free => 0; no non-void invoice => 0 if flag/package paid else Charge; else sum of open balances. */
+    private function expectedOutstanding(array $fx): int
+    {
+        if ($this->expected($fx) === 'free') {
+            return 0;
+        }
+        $invoices = array_values(array_filter($fx['invoices'], fn ($i) => $i['status'] !== 'void'));
+        if ($invoices === []) {
+            return (!empty($fx['flag']) || !empty($fx['package_paid'])) ? 0 : (int) $fx['charge'];
+        }
+
+        return array_sum(array_map(fn ($i) => max(0, $i['total'] - $this->applied($i)), $invoices));
     }
 
     public function test_paid_status_sites_match_founder_target_or_are_allowlisted(): void
@@ -238,6 +265,8 @@ class PaidStatusParityTest extends TestCase
                         continue;
                     }
                     $target = $expected === 'paid' ? 'paid' : 'notpaid';
+                } elseif (in_array($site, self::AMOUNT_SITES, true)) {
+                    $target = (string) $this->expectedOutstanding($fx);
                 } elseif (in_array($site, self::UNPAID_SITES, true)) {
                     $target = in_array($expected, ['partial', 'unpaid'], true) ? 'unpaid' : 'notunpaid';
                 }
@@ -320,6 +349,7 @@ class PaidStatusParityTest extends TestCase
 
         // B12: payable resolver (invoice only, no flag, no free state; `unbilled` reads as nothing paid).
         $r = app(BillingPayableResolver::class)->byStudentClassIds([$id], [$course])[$id];
+        $out['amount.resolver.outstanding'] = $r['payable_outstanding'] === null ? 'null' : (string) (int) $r['payable_outstanding'];
         if ($r['payable_status'] === 'unbilled') {
             $out['resolver.byStudentClassIds'] = 'unpaid';
         } else {
@@ -334,11 +364,13 @@ class PaidStatusParityTest extends TestCase
         // B3 / B4: alerts/tuition row (absent = excluded by inclusion rules, tutoring, charge <= 0).
         $out['api.alerts.tuition.payment_status'] = null;
         $out['api.alerts.tuition.outstanding'] = null;
+        $out['amount.alerts.tuition.outstanding'] = null;
         if ($tuitionRow !== null) {
             $s = (string) $tuitionRow['payment_status'];
             $out['api.alerts.tuition.payment_status'] = in_array($s, ['paid', 'renew_needed', 'monthly_due_soon'], true) ? 'paid'
                 : (in_array($s, ['partial', 'unpaid'], true) ? $s : "other:{$s}");
             $outstanding = (int) $tuitionRow['outstanding'];
+            $out['amount.alerts.tuition.outstanding'] = (string) $outstanding;
             $charge = (int) $tuitionRow['charge'];
             $out['api.alerts.tuition.outstanding'] = $outstanding === 0 ? 'paid' : ($outstanding < $charge ? 'partial' : 'unpaid');
         }
@@ -356,6 +388,7 @@ class PaidStatusParityTest extends TestCase
         // or the course row's `paid` (legacy StudentClass.Paid) when the course has no invoice.
         $ledger = $this->getJson("/api/v1/accounting/ledger?student_class_id={$id}", $headers);
         $ledger->assertOk();
+        $out['amount.ledger.outstanding'] = (string) (int) $ledger->json('summary.outstanding_total');
         {
             $invoices = collect($ledger->json('invoices'))->sortBy('billing_period')->values();
             $got = $invoices->map(fn ($row) => (int) ($row['id'] ?? $row['invoice_id'] ?? 0))->sort()->values()->all();
