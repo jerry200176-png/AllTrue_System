@@ -96,6 +96,27 @@ describe('UniversalClassScheduler — 依實際時長扣堂', () => {
     wrapper.unmount();
   });
 
+  it('未來月結開課日剛好在固定星期時，開課日就是首堂（不可被略過）', async () => {
+    const wrapper = await mountScheduler();
+    const vm = wrapper.vm;
+
+    // Future date: a past fixed-weekday opening date is auto-added to confirmed_dates instead.
+    vm.form.payment_type = 'monthly';
+    vm.form.course_start_date = '2099-01-01';
+    vm.form.end_date = '2099-01-31';
+    vm.form.days_of_week = [4];
+    vm.form.start_time = '18:00';
+    vm.form.duration_hours = 2;
+    await flushPromises();
+
+    expect(vm.monthlySystemOccurrences.map((entry) => entry.ymd)).toEqual([
+      '2099-01-01', '2099-01-08', '2099-01-15', '2099-01-22', '2099-01-29',
+    ]);
+    expect(vm.monthlyPreviewText).toContain('共 5 堂');
+
+    wrapper.unmount();
+  });
+
   it('in-app #320 / GitHub #3070: package session subjects preserve fixed-vs-flexible pre-schedule choice in payload', async () => {
     const wrapper = await mountScheduler();
     const vm = wrapper.vm;

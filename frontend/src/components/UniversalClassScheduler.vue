@@ -1026,11 +1026,13 @@ function countWeekdayOccurrences(startStr, endStr, isoWeekdays) {
   const end = new Date(endStr + 'T00:00:00');
   if (end < start) return 0;
   const openingDow = weekdayOneToSeven(start);
+  // A non-fixed opening date is still the first lesson; a fixed-weekday opening
+  // date is counted by the loop below (it must not be skipped).
   let count = isoWeekdays.includes(openingDow) ? 0 : 1;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const jsDay = d.getDay();
     const isoDay = jsDay === 0 ? 7 : jsDay;
-    if (d.getTime() !== start.getTime() && isoWeekdays.includes(isoDay)) count++;
+    if (isoWeekdays.includes(isoDay)) count++;
   }
   return count;
 }
@@ -1747,8 +1749,10 @@ const monthlySystemOccurrences = computed(() => {
     entries.push(...buildSessionEntriesForDate(startStr));
   }
 
+  // The loop starts on the opening date itself: a fixed-weekday opening date is
+  // the first lesson; a non-fixed opening date was added above and is skipped
+  // here because its weekday is not in daySet.
   const cursor = new Date(`${startStr}T00:00:00`);
-  cursor.setDate(cursor.getDate() + 1);
   const end = new Date(`${endStr}T00:00:00`);
   let guard = 0;
   while (cursor <= end && guard < 731) {
