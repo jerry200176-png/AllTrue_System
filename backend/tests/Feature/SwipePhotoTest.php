@@ -167,6 +167,9 @@ class SwipePhotoTest extends TestCase
         $this->travel(5)->minutes();
         $swipe()->assertJson(['action' => 'sign_out']);
         $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'unsafe_record']);
+        // 照片晚到（超過 2 分鐘）也一樣不發
+        $this->travel(10)->minutes();
+        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'unsafe_record']);
 
         $this->assertSame([], Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
         Http::assertNothingSent();

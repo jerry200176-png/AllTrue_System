@@ -297,7 +297,7 @@ class SwipeRfidController extends Controller
      * 這張照片對應的刷卡：讀卡機不知道到班/離班，看 swipe-rfid 剛寫的今日紀錄。
      * 只認 2 分鐘內的簽到/簽退，否則 unknown（時間用現在）。
      *
-     * @return array{0:string,1:Carbon} [in|out|unsafe|unknown, 刷卡時間]；unsafe = 剛簽退的不是本校未作廢紀錄
+     * @return array{0:string,1:Carbon} [in|out|unsafe|unknown, 刷卡時間]；unsafe = 今天最新一筆不是本校未作廢紀錄
      */
     private function recentSwipe(Student $student, int $campusId): array
     {
@@ -310,12 +310,16 @@ class SwipeRfidController extends Controller
         if (!$latest) {
             return ['unknown', $now];
         }
+        // 先看安全再看時間：今天最新一筆是別校／分校不明／已作廢 → 不管照片多晚到都不發。
+        if (!$this->isOwnActiveRecord($latest, $campusId)) {
+            return ['unsafe', $now];
+        }
 
         $recent = fn ($dt) => $dt && Carbon::parse($dt)->diffInSeconds($now, true) <= self::PHOTO_TEXT_WINDOW_SECONDS;
         $out = $latest->getAttribute('SignOutDT');
         $in = $latest->getAttribute('SignInDT');
         if ($recent($out)) {
-            return [$this->isOwnActiveRecord($latest, $campusId) ? 'out' : 'unsafe', Carbon::parse($out)];
+            return ['out', Carbon::parse($out)];
         }
         if (!$out && $recent($in)) {
             return ['in', Carbon::parse($in)];
