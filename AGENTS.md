@@ -14,6 +14,26 @@
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
 **Provenance:** `.agent-session/manifest.json` is the local agent-start session file (git-ignored, not committed); a PR that claims a session force-adds it or updates `human-authored.json` — see WORKTREE_POLICY.
 
+## Code Review Rules
+
+### External notifications
+
+- When a PR changes an outbound notification or its switch, trace every producer and sender, including device/client consumers of API payloads. Verify that disabling the switch suppresses all sends and that enabled paths do not duplicate messages or charges. A controller-only test is insufficient when another sender uses its response.
+
+### Campus and guardian boundaries
+
+- For new or changed APIs and notifications, verify the server enforces the authenticated campus scope on reads, writes, and recipient selection; an empty campus list grants no campus. Parent LINE sends must use verified bindings for the same student and campus. Preserve the documented super-admin exception.
+
+### Attendance and billing effects
+
+- When a PR changes RFID, attendance, scheduling, or payment flows, trace effects to the authoritative session and ledger records. Flag duplicate attendance or deduction, cross-campus effects, and paths that can claim success before the intended write or external send is verified. Require a focused regression scenario for the affected path.
+
+## PR review and delivery handoff
+
+- Follow the live GitHub ruleset and [`docs/governance/RISK_BASED_MERGE_POLICY.md`](docs/governance/RISK_BASED_MERGE_POLICY.md). For T0–T2, the implementing Agent resolves review findings, passes exact-head required checks, follows the risk-specific merge SOP, and continues delivery without asking the Founder to say GO or click Approve for each phase or PR when no approving review is required.
+- A Codex or other bot review supplies evidence, not a substitute identity for the PR author. Review findings must be addressed; a clean bot review alone does not satisfy tests, rollback readiness, or production verification.
+- For T3/protected actions, prepare the exact target, effect, credible downside, rollback, and verification evidence, then obtain the Founder decision required by the canonical policy. An approval already given for that concrete scope continues through its necessary steps; ask again only if the scope or protected effect materially changes.
+
 
 ## 開工前 First-read 順序
 
