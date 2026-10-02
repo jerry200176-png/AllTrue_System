@@ -153,5 +153,11 @@ commit_all "$d" human
 d=$(fresh CIFRESHBAD HUMANSECRET)
 result "7e base unreadable, no agent file, invalid human-authored.json fails" fail "$(check "$d" origin/no-such-base)"
 
+# 8. A tracked manifest (e.g. re-added by a stale branch merge) fails outright.
+d=$(task RETRACK); echo change >>"$d/product.txt"
+git -C "$d" add -f .agent-session/manifest.json; commit_all "$d" retrack
+check "$d" >/dev/null; grep -q "must not be tracked" "$d.log" && r=fail || r=pass
+result "8 tracked manifest is rejected" fail "$r"
+
 echo "passed=$pass failed=$failed"
 [ "$failed" -eq 0 ]

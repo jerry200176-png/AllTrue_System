@@ -43,6 +43,12 @@ BASE="$(resolve_base)"
 AGENT_FILE=".agent-session/manifest.json"
 HUMAN_FILE=".agent-session/human-authored.json"
 
+# The agent-start manifest is a local file (git-ignored since #3309). A stale
+# branch re-tracked it once (#3322) and every PR then conflicted on it again.
+if git ls-files --error-unmatch "$AGENT_FILE" >/dev/null 2>&1; then
+  fail "$AGENT_FILE must not be tracked (local agent-start file); run: git rm --cached $AGENT_FILE"
+fi
+
 AGENT_CLAIMED=0
 HUMAN_CLAIMED=0
 agent_rc=0
