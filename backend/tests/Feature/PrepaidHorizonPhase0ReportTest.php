@@ -91,9 +91,9 @@ class PrepaidHorizonPhase0ReportTest extends TestCase
     /** @param array<string,mixed> $over */
     private function course(array $over): int
     {
-        $studentId = 97000 + random_int(1, 8999);
-        DB::table('Student')->insert([
-            'id' => $studentId, 'name' => 'P0 Test', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        // DB 自動給 id：隨機 id 在同一個測試呼叫兩次時會撞號（CI 曾 Duplicate entry 98544）。
+        $studentId = (int) DB::table('Student')->insertGetId([
+            'name' => 'P0 Test', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
         ]);
         $base = [
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,

@@ -56,33 +56,38 @@ class LineNotifySettingsTest extends TestCase
             'quota' => ['limit' => 200, 'used' => 37],
         ]);
 
-        $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe_in' => true, 'tuition_reminder' => false]], $h)
+        // 沒設定過＝全部開（既有分校通知不中斷）；主任明確關掉才停。
+        $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
+        $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'swipe_out'));
+
+        $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe_out' => false, 'tuition_reminder' => false]], $h)
             ->assertOk()
             ->assertJsonPath('settings.swipe_in', true)
             ->assertJsonPath('settings.swipe_out', false)
             ->assertJsonPath('settings.tuition_reminder', false);
 
-        $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
+        $this->assertFalse(LineNotifySettings::enabled($this->mine->id, 'swipe_out'));
         $this->assertFalse(LineNotifySettings::enabled($this->mine->id, 'tuition_reminder'));
         $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'feedback_reply'));
         // 別的分校不受影響
-        $this->assertFalse(LineNotifySettings::enabled($this->other->id, 'swipe_in'));
+        $this->assertTrue(LineNotifySettings::enabled($this->other->id, 'swipe_out'));
     }
 
     public function test_rejects_other_campus_unknown_type_and_teacher(): void
     {
         $director = ['Authorization' => 'Bearer ' . $this->token('A', $this->mine->id)];
 
-        $this->putJson('/api/v1/line/notify-settings', ['branch_id' => $this->other->id, 'settings' => ['swipe_in' => true]], $director)
+        $this->putJson('/api/v1/line/notify-settings', ['branch_id' => $this->other->id, 'settings' => ['swipe_in' => false]], $director)
             ->assertForbidden();
         $this->putJson('/api/v1/line/notify-settings', ['settings' => ['marketing_blast' => true]], $director)
             ->assertStatus(422);
 
         $teacher = ['Authorization' => 'Bearer ' . $this->token('T', $this->mine->id)];
-        $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe_in' => true]], $teacher)
+        $this->putJson('/api/v1/line/notify-settings', ['settings' => ['swipe_in' => false]], $teacher)
             ->assertForbidden();
 
-        $this->assertFalse(LineNotifySettings::enabled($this->other->id, 'swipe_in'));
-        $this->assertFalse(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
+        // 被拒的請求都沒有改到設定
+        $this->assertTrue(LineNotifySettings::enabled($this->other->id, 'swipe_in'));
+        $this->assertTrue(LineNotifySettings::enabled($this->mine->id, 'swipe_in'));
     }
 }

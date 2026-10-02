@@ -7,14 +7,14 @@ use App\Models\SystemSetting;
 /**
  * 每間分校「哪些事要用 LINE 通知」的開關。LINE 免費方案每月 200 則、一個收件人算一則，
  * 所以由分校主任自己決定。存在 SystemSetting（key = line_notify.campus.{id}，JSON），不需 migration。
- * 沒設定過 = DEFAULTS：既有通知維持開，新的刷卡通知預設關。
+ * 沒設定過 = DEFAULTS：全部維持開，既有分校（含只打 swipe-rfid 的讀卡機）通知不中斷；主任明確關掉才停。
  */
 final class LineNotifySettings
 {
     /** @var array<string,bool> type => 預設 */
     public const DEFAULTS = [
-        'swipe_in' => false,
-        'swipe_out' => false,
+        'swipe_in' => true,
+        'swipe_out' => true,
         'feedback_reply' => true,
         'tuition_reminder' => true,
         'staff_schedule_discrepancy' => true,

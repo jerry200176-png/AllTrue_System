@@ -369,6 +369,35 @@ class SwipeRfidEdgeCaseTest extends TestCase
         $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->orderByDesc('id')->value('Status'));
     }
 
+    public function test_unset_campus_switches_keep_reader_line_ids(): void
+    {
+        // 還沒存過 LINE 通知設定的分校（＝目前正式環境）→ 照舊給 LineIDs，只打 swipe-rfid 的讀卡機通知不中斷。
+        $student = $this->makeStudent();
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
+
+        $this->swipe($student->RFID)
+            ->assertJsonPath('action', 'sign_in')
+            ->assertJsonPath('student.LineIDs', ['Uverified']);
+        $this->travel(5)->minutes();
+        $this->swipe($student->RFID)
+            ->assertJsonPath('action', 'sign_out')
+            ->assertJsonPath('student.LineIDs', ['Uverified']);
+    }
+
+    public function test_sign_out_closing_another_campus_record_gives_no_line_ids(): void
+    {
+        // 當天轉校：開著的紀錄是別校的 → 不是本校離班，不給 LineIDs，避免假的離班通知。
+        $student = $this->makeStudent();
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
+        $this->swipe($student->RFID)->assertJsonPath('action', 'sign_in');
+        StudentSignIn::where('StudentID', $student->id)->update(['CampusID' => $this->campus->id + 100]);
+
+        $this->travel(5)->minutes();
+        $this->swipe($student->RFID)
+            ->assertJsonPath('action', 'sign_out')
+            ->assertJsonPath('student.LineIDs', []);
+    }
+
     public function test_student_swipe_returns_verified_line_ids_only_when_campus_switch_is_on(): void
     {
         // 還沒接 swipe-photo 的讀卡機靠 LineIDs 自己推文字 → 開關開著就要給（延續通知），關了就不給。

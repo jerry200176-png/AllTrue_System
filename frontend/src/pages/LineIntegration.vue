@@ -239,8 +239,8 @@ const notifyGroups = [
   {
     title: '通知家長',
     items: [
-      { key: 'swipe_in', label: '到班刷卡（含照片）', desc: '孩子到班刷卡時傳「姓名 時間 刷卡」＋照片。每天每位家長約 1 則。' },
-      { key: 'swipe_out', label: '離班刷卡（含照片）', desc: '孩子離班刷卡時傳同樣內容。每天每位家長約 1 則。' },
+      { key: 'swipe_in', label: '到班刷卡', desc: '孩子到班刷卡時通知家長；讀卡機有拍照上傳時會附照片。每天每位家長約 1 則。' },
+      { key: 'swipe_out', label: '離班刷卡', desc: '孩子離班刷卡時通知家長，內容同上。每天每位家長約 1 則。' },
       { key: 'feedback_reply', label: '老師回覆學習回饋', desc: '老師回覆家長的回饋時通知。' },
       { key: 'tuition_reminder', label: '繳費提醒', desc: '有未繳費課程時提醒家長。' },
     ],
