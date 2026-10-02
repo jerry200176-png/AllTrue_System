@@ -205,7 +205,7 @@
   "current": "paid",
   "target": "unpaid",
   "reason": "pre-S3 known divergence (packet row B3)",
-  "uncertain": true
+  "uncertain": false
  },
  {
   "site": "api.alerts.tuition.outstanding",
@@ -237,7 +237,7 @@
   "current": "paid",
   "target": "unpaid",
   "reason": "pre-S3 known divergence (packet row B4)",
-  "uncertain": true
+  "uncertain": false
  },
  {
   "site": "api.student_classes.payment_status",
@@ -341,6 +341,206 @@
   "current": "paid",
   "target": "partial",
   "reason": "pre-S4 known divergence (packet row B18)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "stored_full_pay_partial",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "stored_full_pay_partial",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B3); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "stored_full_pay_partial",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B4); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "stored_full_pay_partial",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "stored_full_pay_partial",
+  "current": "paid",
+  "target": "partial",
+  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: stored PaidAmount/Status=paid but net Payment rows are partial (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "stored_full_pay_voided",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "stored_full_pay_voided",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B3); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "stored_full_pay_voided",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B4); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "stored_full_pay_voided",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "stored_full_pay_voided",
+  "current": "paid",
+  "target": "unpaid",
+  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: stored PaidAmount/Status=paid but the receipt was voided (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "stored_zero_pay_full",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B1); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "stored_zero_pay_full",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S5 known divergence (packet row B27); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "stored_zero_pay_full",
+  "current": "notpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B2); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.payment_status",
+  "fixture": "stored_zero_pay_full",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B3); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.alerts.tuition.outstanding",
+  "fixture": "stored_zero_pay_full",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B4); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "stored_zero_pay_full",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)",
+  "uncertain": false
+ },
+ {
+  "site": "resolver.byStudentClassIds",
+  "fixture": "void_invoice_only_flag1",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S1 known divergence (packet row B12); observed in CI baseline: only a void invoice: target falls back to the legacy flag; site reads the void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "api.accounting.ledger",
+  "fixture": "void_invoice_only_flag1",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B17); observed in CI baseline: only a void invoice: target falls back to the legacy flag; site reads the void invoice",
+  "uncertain": false
+ },
+ {
+  "site": "resolver.byStudentClassIds",
+  "fixture": "zero_fee_flag1",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S1 known divergence (packet row B12); observed in CI baseline: zero-fee course resolves to free; site reads the stray flag or has no free state",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "zero_fee_flag1",
+  "current": "paid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: zero-fee course resolves to free; site reads the stray flag or has no free state",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "zero_fee_flag1",
+  "current": "paid",
+  "target": "free",
+  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: zero-fee course resolves to free; site reads the stray flag or has no free state",
+  "uncertain": false
+ },
+ {
+  "site": "resolver.byStudentClassIds",
+  "fixture": "zero_fee_zero_invoice",
+  "current": "paid",
+  "target": "free",
+  "reason": "pre-S1 known divergence (packet row B12); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
+  "uncertain": false
+ },
+ {
+  "site": "api.student_classes.payment_status",
+  "fixture": "zero_fee_zero_invoice",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B7); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
+  "uncertain": false
+ },
+ {
+  "site": "api.parent.dashboard.payment_status",
+  "fixture": "zero_fee_zero_invoice",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S4 known divergence (packet row B18); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
+  "uncertain": false
+ },
+ {
+  "site": "api.accounting.ledger",
+  "fixture": "zero_fee_zero_invoice",
+  "current": "paid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B17); observed in CI baseline: zero-fee course resolves to free; site reads the zero-total invoice or has no free state",
   "uncertain": false
  }
 ]

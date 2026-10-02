@@ -39,16 +39,29 @@ class PaidStatusParityTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** Minimum fixtures each HTTP site must observe, so a broken harness cannot pass vacuously. */
+    /** Minimum fixtures each filtered site must observe, so a broken harness cannot pass vacuously. */
     private const MIN_OBSERVED = [
-        'resolver.byStudentClassIds' => 17,
         'api.alerts.tuition.payment_status' => 10,
         'api.alerts.tuition.outstanding' => 10,
-        'api.student_classes.payment_status' => 15,
-        'api.parent.dashboard.payment_status' => 15,
-        'api.accounting.ledger' => 12,
         'monthly_period_payment.batch' => 3,
     ];
+
+    /**
+     * Sites that must answer for exactly these fixtures (every fixture, or every fixture with an invoice):
+     * a fixture silently disappearing from a list/card/ledger is itself a regression.
+     */
+    private function exactObservable(array $fixtures): array
+    {
+        $all = array_keys($fixtures);
+        $withInvoices = array_keys(array_filter($fixtures, fn ($fx) => $fx['invoices'] !== []));
+
+        return [
+            'resolver.byStudentClassIds' => $all,
+            'api.student_classes.payment_status' => $all,
+            'api.parent.dashboard.payment_status' => $all,
+            'api.accounting.ledger' => $withInvoices,
+        ];
+    }
 
     /** Sites that can only answer paid / notpaid. */
     private const BINARY_SITES = [
@@ -103,23 +116,31 @@ class PaidStatusParityTest extends TestCase
             // #230: stale Charge copied from a previous contract; contract price is 8 x 1650 = 13200.
             'amendment_stale_charge' => ['flag' => 0, 'charge' => 24750, 'rate' => 1650, 'session_count' => 8, 'invoices' => [$inv('2026-08', 13200, 13200, 'paid', [$cash(13200)])]],
             'unpaid_invoice' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid')]],
+            // Stored PaidAmount/Status disagree with Payment rows (the F7 split): payments decide.
+            'stored_full_pay_partial' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 10000, 'paid', [$cash(4000)])]],
+            'stored_full_pay_voided' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 10000, 'paid', [$cash(10000), $void(10000)])]],
+            'stored_zero_pay_full' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000)])]],
+            // Only a void invoice: no non-void invoice, so the legacy flag decides.
+            'void_invoice_only_flag1' => ['flag' => 1, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'void')]],
+            // Zero-fee wins over a stray flag or a zero-total invoice.
+            'zero_fee_flag1' => ['flag' => 1, 'charge' => 0, 'rate' => 0, 'invoices' => []],
+            'zero_fee_zero_invoice' => ['flag' => 0, 'charge' => 0, 'rate' => 0, 'invoices' => [$inv('2026-08', 0, 0, 'paid')]],
         ];
     }
 
     /** Founder target semantics, derived from the fixture rows (not from any app code). */
     private function expected(array $fx): string
     {
-        if (($fx['class_type'] ?? 'one_on_one') === 'tutoring') {
+        // Tutoring and zero-fee resolve to `free` before any flag/invoice rule (packet target contract).
+        if (($fx['class_type'] ?? 'one_on_one') === 'tutoring'
+            || ((int) $fx['charge'] <= 0 && (float) ($fx['rate'] ?? 0) <= 0)) {
             return 'free';
         }
-        if ($fx['invoices'] === []) {
-            if (!empty($fx['flag'])) {
-                return 'paid'; // legacy: flag counts only with no invoice
-            }
-
-            return ((int) $fx['charge'] <= 0 && (float) ($fx['rate'] ?? 0) <= 0) ? 'free' : 'unpaid';
+        // Void invoices are not invoices for paid status; with none left the legacy flag decides.
+        $invoices = array_values(array_filter($fx['invoices'], fn ($i) => $i['status'] !== 'void'));
+        if ($invoices === []) {
+            return !empty($fx['flag']) ? 'paid' : 'unpaid';
         }
-        $invoices = $fx['invoices'];
         usort($invoices, fn ($a, $b) => strcmp($a['period'], $b['period'])); // oldest first
         foreach ($invoices as $invoice) {
             $positive = array_sum(array_map(fn ($p) => $p['amount'] > 0 ? $p['amount'] : 0, $invoice['payments']));
@@ -153,6 +174,7 @@ class PaidStatusParityTest extends TestCase
 
         $mismatches = [];
         $observed = [];
+        $seen = [];
         foreach ($ctx as $fixtureId => $c) {
             $fx = $c['fx'];
             $classId = (int) $c['course']->ID;
@@ -163,6 +185,7 @@ class PaidStatusParityTest extends TestCase
                     continue; // site has no opinion on this fixture (excluded by design)
                 }
                 $observed[$site] = ($observed[$site] ?? 0) + 1;
+                $seen[$site][] = $fixtureId;
                 $target = $expected;
                 if (in_array($site, self::BINARY_SITES, true)) {
                     if ($expected === 'free') {
@@ -183,6 +206,14 @@ class PaidStatusParityTest extends TestCase
             }
         }
 
+        foreach ($this->exactObservable($this->fixtures()) as $site => $fixtureIds) {
+            $missing = array_diff($fixtureIds, $seen[$site] ?? []);
+            $extra = array_diff($seen[$site] ?? [], $fixtureIds);
+            if ($missing !== [] || $extra !== []) {
+                $problems[] = "HARNESS: site {$site} visibility changed; missing [" . implode(', ', $missing) . '] extra [' . implode(', ', $extra) . ']';
+            }
+        }
+
         $allowlist = [];
         foreach (json_decode(file_get_contents(__DIR__ . '/paid_status_parity_allowlist.json'), true, 512, JSON_THROW_ON_ERROR) as $entry) {
             $allowlist["{$entry['site']}|{$entry['fixture']}"] = $entry;
@@ -192,7 +223,8 @@ class PaidStatusParityTest extends TestCase
         foreach ($mismatches as $key => $m) {
             if (!isset($allowlist[$key])) {
                 $rows[] = ['NEW', $m['site'], $m['fixture'], $m['current'], $m['target'], 'not allowlisted: fix the regression or add a reasoned entry'];
-            } elseif (empty($allowlist[$key]['uncertain']) && ($allowlist[$key]['current'] !== $m['current'] || $allowlist[$key]['target'] !== $m['target'])) {
+            } elseif ($allowlist[$key]['current'] !== $m['current'] || $allowlist[$key]['target'] !== $m['target']) {
+                // `uncertain` only excuses a missing mismatch (no STALE); an observed one must match exactly.
                 $rows[] = ['DRIFT', $m['site'], $m['fixture'], $m['current'], $m['target'], "allowlist says {$allowlist[$key]['current']} -> {$allowlist[$key]['target']}"];
             }
         }
@@ -282,7 +314,7 @@ class PaidStatusParityTest extends TestCase
     {
         $isDate = ($fx['mode'] ?? 'count') === 'date';
         $student = Student::create([
-            'name' => "paid-parity-{$id}", 'CampusID' => 1, 'ClassID' => 1,
+            'name' => mb_substr("pp-{$id}", 0, 32), 'CampusID' => 1, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '', 'Phone' => '0911222333',
         ]);
         $course = StudentClass::create([
