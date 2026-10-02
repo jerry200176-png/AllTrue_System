@@ -211,6 +211,81 @@ class MonthlyBillingSlipTest extends TestCase
         $response->assertJsonCount(0, 'sessions');
     }
 
+    public function test_monthly_slip_lists_planned_dates_when_period_has_no_attended_sessions(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-02 09:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken('director-monthly-planned@example.com');
+        $student = Student::create([
+            'name' => '月結預排日期測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 99,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-08-01',
+            'EndDate' => '2026-08-31',
+            'TotalHours' => 8,
+            'Charge' => 6000,
+            'Paid' => 1,
+            'Rate' => 1500,
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'date',
+            'SessionCount' => 4,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 4,
+            'ClassType' => 'one_on_one',
+            'UsedSessions' => 0,
+            'settlement_day' => 17,
+            'monthly_sessions' => 4,
+            'rate_unit' => 'session',
+        ]);
+        foreach ([['2026-08-03', 'scheduled'], ['2026-08-10', 'scheduled'], ['2026-08-17', 'cancelled']] as [$date, $status]) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => $date,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => $status,
+            ]);
+        }
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-08-01',
+            'DueDate' => '2026-08-17',
+            'TotalAmount' => 6000,
+            'PaidAmount' => 6000,
+            'Status' => 'paid',
+            'billing_period' => '2026-08',
+        ]);
+        InvoiceItem::create([
+            'InvoiceID' => $invoice->id,
+            'StudentClassID' => $course->ID,
+            'Description' => '月結費用 2026年8月',
+            'Amount' => 6000,
+            'PeriodStart' => '2026-08-01',
+            'PeriodEnd' => '2026-08-31',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
+            ->assertOk()
+            ->assertJsonCount(2, 'sessions')
+            ->assertJsonPath('sessions.0.date', '2026-08-03')
+            ->assertJsonPath('sessions.1.date', '2026-08-10')
+            ->assertJsonPath('total_amount', 6000);
+    }
+
     public function test_count_mode_slip_uses_contract_charge_when_stored_charge_is_stale(): void
     {
         $token = $this->createDirectorToken('director-count-stale-charge@example.com');

@@ -212,7 +212,17 @@ class MonthlyBillingService
             ? (string) $course->displaySubjectName()
             : '課程';
 
-        return $this->billableSessionsForPeriod($course, $billingPeriod)
+        $sessions = $this->billableSessionsForPeriod($course, $billingPeriod);
+        if ($sessions->isEmpty()) {
+            // Display only (amounts untouched): a slip with no attended
+            // lessons yet still lists the period's planned lessons (R22).
+            $sessions = $this->periodSessionQuery($course, $billingPeriod)
+                ->whereNotIn('Status', ['cancelled', 'voided', 'rescheduled'])
+                ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+                ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
+        }
+
+        return $sessions
             ->values()
             ->map(function (ClassSession $session, int $index) use ($subject): array {
                 return [
