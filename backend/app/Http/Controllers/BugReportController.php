@@ -18,7 +18,7 @@ class BugReportController extends Controller
             'severity' => 'nullable|in:low,medium,high,critical',
             'page_key' => 'nullable|string|max:50',
             'url' => 'nullable|string|max:500',
-            'client_info' => 'nullable|string|max:2000',
+            'client_info' => 'nullable|string|max:4000',
             'branch_id' => 'required|integer',
             'attachments' => "nullable|array|max:{$maxAtt}",
         ]);

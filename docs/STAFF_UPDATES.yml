@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-02-awaiting-14d
+    published_at: "2026-10-02"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 待回覆不再卡舊對話
+    summary: 家長留言超過兩週仍無人回覆，不再列入待回覆。
+    items:
+      - category: fixed
+        text: 家長之後再留言會自動重新列入；「標記不需回覆」照常可用。
+    source_refs:
+      - "alltrue:bug_report:295"
+      - "changelog:2026-10-02:awaiting-14d"
   - id: staff-2026-10-02-tuition-course-check-link
     published_at: "2026-10-02"
     audiences:
@@ -28,6 +42,19 @@ updates:
         text: 若選擇後老師狀態有變，儲存時會提醒重新選擇；既有課程紀錄仍可查看。
     source_refs:
       - "changelog:2026-10-01:active-teachers-only"
+  - id: staff-2026-10-02-report-context
+    published_at: "2026-10-02"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報問題自動附紀錄
+    summary: 回報問題時會自動附上最近的操作失敗紀錄，不必再截圖說明。
+    items:
+      - category: improved
+        text: 只附失敗的請求與版本資訊，不含你輸入的內容或個資。
+    source_refs:
+      - "changelog:2026-10-02:report-context"
   - id: staff-2026-10-01-monthly-usage-warning
     published_at: "2026-10-01"
     audiences:
@@ -40,6 +67,20 @@ updates:
         text: 真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。
     source_refs:
       - "changelog:2026-10-01:monthly-usage-warning"
+  - id: staff-2026-10-02-line-notify-switches
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 可自己決定哪些事用 LINE 通知
+    summary: 「家長 LINE 通知設定」可逐項開關 LINE 通知，並看到本月已用幾則。
+    items:
+      - category: added
+        text: 可開關到班／離班刷卡（含照片）、學習回饋、繳費提醒、排課異常、重要通知；刷卡預設關。
+      - category: improved
+        text: LINE 一個收件人算一則，用不到請關掉省額度；刷卡只寫「姓名 時間 刷卡」，誤刷不會寫錯。
+    source_refs:
+      - "changelog:2026-10-02:line-notify-switches"
   - id: staff-2026-10-02-calendar-has-course
     published_at: "2026-10-02"
     audiences:

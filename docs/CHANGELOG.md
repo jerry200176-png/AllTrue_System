@@ -1,3 +1,9 @@
+## 2026-10-02 — feat(line): per-campus LINE notify switches + swipe photo as one Flex card
+<!-- release-notes: staff_update=staff-2026-10-02-line-notify-switches -->
+- 主任在「家長 LINE 通知設定」可逐項開關 LINE 通知（到班刷卡、離班刷卡、老師回覆學習回饋、繳費提醒、排課異常、重要系統通知），並看到本月 LINE 已用／上限則數。存 `SystemSetting` `line_notify.campus.{id}`（無 migration）；未設定時既有通知維持開、刷卡通知預設關。`GET/PUT /api/v1/line/notify-settings`（主任限自己分校，super_admin 任一）。
+- `POST /api/v1/swipe-photo` 改成一張 Flex 卡片（照片＋「姓名 時間 刷卡」中性文字，誤刷也不會寫錯到班／離班），算 1 則；依 2 分鐘內刷卡紀錄套用到班／離班開關，判斷不出來時任一開就發；都關則不存照片不推。
+- `POST /api/v1/swipe-rfid` 回應的 `student.LineIDs` 改為固定空陣列（欄位保留）：LINE 一律由 AllTrue 發，讀卡機不再自行推文字，避免重複、繞過分校開關與多扣額度。
+
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->
 - 學生管理與課程管理的建課老師選單只顯示可指派的老師；一般課程、多老師時段及多科共用方案在儲存時再次驗證，停用或待審核老師不會被新指派。既有課程保留原授課老師與歷史顯示。
@@ -6,9 +12,17 @@
 <!-- release-notes: silent_ship=silent-2026-10-01-calendar-tutoring-acceptance -->
 - 行事曆列印驗收將主任首頁既有的營運信任事件納入嚴格格式檢查，未知或洩漏資料的事件仍失敗。輔導課驗收不再假設每分校都有進行中的輔導課；保留一般未繳課與應收金額的正向控制，並在報告中明列當次是否觀察到真實輔導課樣本。完整 API 加 UI 路徑使用有界時限，UI 學生從授權分校內選取；新增課程操作限定在該生展開的明細，已有課程時先通過續報入口再檢查表單，點擊各有明確時限。未改收費規則或 production 資料。
 
+## 2026-10-02 — feat(bug-report): in-app reports auto-attach recent failed requests
+<!-- release-notes: staff_update=staff-2026-10-02-report-context -->
+- 回報問題時自動附上最近 5 筆失敗的 API 請求（方法、路徑不含查詢參數、狀態碼、請求編號）、系統版本與所在頁面／分校編號，不含任何內容或個資；後端為每個 API 回應加上 `X-Request-Id`，並寫入日誌。同時修正附加資訊過長被截斷成無效 JSON 的問題（上限 2000 → 4000）。
+
 ## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
 - 新增 `POST /api/v1/swipe-photo`（multipart：`branch_code`、`rfid`、`photo` jpeg/png ≤1MB，認證同 `swipe-rfid` 的分校 Bearer Token）。照片存私有 `storage/app/swipe-photos/{campus}`，以 `APP_URL` 上 7 天效期的相對簽章網址（`GET /api/v1/swipe-photo/{campus}/{file}`）推 LINE 圖片給該生已驗證綁定家長，並回傳 `image_url`；讀卡機不需固定 IP。只推圖片，到班文字仍由讀卡機用 `LineIDs` 推。超過 7 天的照片於下次上傳時清除。
+
+## 2026-10-02 — fix(feedback): parent threads unanswered for 14 days drop out of 待回覆 (in-app #295)
+<!-- release-notes: staff_update=staff-2026-10-02-awaiting-14d -->
+- 家長留言（無留言串時為回饋本身）超過 14 天且之後沒有老師／主任公開回覆，不再算「待回覆」，老師首頁待辦、計數與列表篩選一致（`ParentFeedbackAwaitingService::AWAITING_STALE_AFTER_DAYS`）。家長之後再留言即重新列入；「標記不需回覆」維持原行為。未改資料與 schema。
 
 ## 2026-10-02 — fix(calendar): 「只看有課老師」 no longer shows empty teacher columns
 <!-- release-notes: staff_update=staff-2026-10-02-calendar-has-course -->

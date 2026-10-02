@@ -2,21 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\StudentClass;
+use App\Support\ClassTypeCapacity;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class ScheduleGuardService
 {
     public const TEACHER_SLOT_ABSOLUTE_MAX = 3;
-
-    /** @var array<string, int> */
-    private array $classCapacityMap = [
-        'one_on_one' => 1,
-        'one_on_two' => 2,
-        'one_on_three' => 3,
-        'tutoring' => 4,
-        'trial' => 1,
-    ];
 
     /** @var array<int, object|null> */
     private array $roomCache = [];
@@ -165,8 +158,7 @@ class ScheduleGuardService
 
     private function capacityForClassType(?string $classType): int
     {
-        $key = (string) ($classType ?: 'one_on_one');
-        return $this->classCapacityMap[$key] ?? 1;
+        return ClassTypeCapacity::for($classType);
     }
 
     private function classTypeLabel(?string $classType): string
@@ -253,16 +245,9 @@ class ScheduleGuardService
         $query = DB::table('StudentClass as sc')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.TeacherID', $teacherId)
-            ->where('sc.Stop', 0)
             ->where('st.CampusID', $branchId)
-            // In-app #373: a used-up count course keeps Stop=0 but no longer holds its
-            // weekly seat; any real future lesson is still counted by the ClassSession path.
-            ->where(function ($q) {
-                $q->whereNull('sc.ScheduleMode')
-                    ->orWhere('sc.ScheduleMode', '!=', 'count')
-                    ->orWhereNull('sc.RemainingSessions')
-                    ->orWhere('sc.RemainingSessions', '>', 0);
-            })
+            // In-app #373: used-up count courses no longer hold a weekly seat (F8 single rule).
+            ->tap(fn ($q) => StudentClass::applyHoldsTemplateSeat($q, 'sc'))
             ->select([
                 'sc.ID',
                 'sc.StudentID',

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\LineNotifySettings;
 use App\Models\Campus;
 use App\Models\FeedbackPushLog;
 use App\Models\LearningRecordFeedback;
@@ -111,6 +112,24 @@ class FeedbackPushNotifierTest extends TestCase
         $this->assertDatabaseHas('feedback_push_log', [
             'feedback_id' => $fb->id, 'direction' => 'to_parent',
         ]);
+    }
+
+    public function test_campus_turned_off_feedback_reply_is_not_pushed(): void
+    {
+        config(['perfflags.feedback_push_enabled' => true]);
+        Http::fake(['api.line.me/*' => Http::response([], 200)]);
+        $campus = $this->campusWithToken();
+        $fb = $this->makeFeedback((int) $campus->id);
+        StudentLineBinding::create([
+            'student_id' => $fb->student_id, 'line_user_id' => 'U-bound', 'campus_id' => (int) $campus->id,
+            'bound_at' => now(), 'verified_at' => now(), 'verification_method' => 'contact_phone',
+            'notify_learning_feedback' => 1,
+        ]);
+        LineNotifySettings::set((int) $campus->id, ['feedback_reply' => false]);
+
+        $this->notifier()->notifyStaffReplied($fb);
+
+        Http::assertNothingSent();
     }
 
     public function test_optout_parent_is_not_pushed(): void

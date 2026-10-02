@@ -24,6 +24,16 @@ export function parseBugReportClientInfo(raw) {
   const context = Object.fromEntries(
     Object.entries(LIMITS).map(([key, limit]) => [key, boundedText(parsed[key], limit)]),
   );
+  // F10: compact failure/build context, only present when the reporter sent it.
+  const buildSha = boundedText(parsed.buildSha, 40);
+  if (buildSha) context.buildSha = buildSha;
+  if (Array.isArray(parsed.recentApiFailures)) {
+    const lines = parsed.recentApiFailures.slice(-5).map((f) => (f && typeof f === 'object'
+      ? [boundedText(f.method, 10), boundedText(f.path, 120), f.status, boundedText(f.requestId, 64)]
+        .filter((x) => x !== '' && x != null).join(' ')
+      : '')).filter(Boolean);
+    if (lines.length) context.recentApiFailures = lines;
+  }
   return Object.values(context).some(Boolean) ? context : null;
 }
 
