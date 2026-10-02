@@ -477,7 +477,7 @@ async function toggleNotify(key, value) {
     notifyOk.value = res.ok;
     notifyMsg.value = res.ok ? '✅ 已儲存' : (data.message || '儲存失敗');
     if (res.ok) notify.value = { ...notify.value, settings: data.settings };
-  } catch (e) {
+  } catch {
     notifyOk.value = false;
     notifyMsg.value = '連線錯誤，請稍後再試';
   } finally {

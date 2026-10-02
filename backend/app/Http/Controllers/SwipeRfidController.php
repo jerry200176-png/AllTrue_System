@@ -467,7 +467,9 @@ class SwipeRfidController extends Controller
     }
 
     /**
-     * 刷卡回應的學生資訊。LineIDs = 已驗證綁定的家長 LINE userId，供讀卡機用 LINE Bot 推播。
+     * 刷卡回應的學生資訊。
+     * LineIDs 固定空陣列（欄位保留給舊讀卡機解析）：LINE 一律由 AllTrue 的 swipe-photo 發一張 Flex 卡，
+     * 受分校 LINE 通知開關控制；讀卡機拿不到家長 ID，就不會自己再推文字（重複、繞過開關、多扣額度）。
      */
     private function studentPayload(Student $student): array
     {
@@ -477,11 +479,7 @@ class SwipeRfidController extends Controller
             'TelegramID'  => $student->TelegramID,
             'TelegramID1' => $student->TelegramID1,
             'TelegramID2' => $student->TelegramID2,
-            'LineIDs'     => StudentLineBinding::query()->where('student_id', $student->id)
-                ->whereNotNull('verified_at')
-                ->pluck('line_user_id')
-                ->values()
-                ->all(),
+            'LineIDs'     => [],
         ];
     }
 
