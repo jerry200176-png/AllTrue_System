@@ -66,6 +66,38 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-report-context",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "回報問題自動附紀錄",
+    "summary": "回報問題時會自動附上最近的操作失敗紀錄，不必再截圖說明。",
+    "items": [
+      "只附失敗的請求與版本資訊，不含你輸入的內容或個資。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "只附失敗的請求與版本資訊，不含你輸入的內容或個資。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-02:report-context"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-02-line-notify-switches",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,
@@ -129,6 +161,39 @@ export const staffUpdates = [
     "sourceRefs": [
       "alltrue:bug_report:364",
       "changelog:2026-10-02:calendar-has-course"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
+    "id": "staff-2026-10-02-awaiting-14d",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "待回覆不再卡舊對話",
+    "summary": "家長留言超過兩週仍無人回覆，不再列入待回覆。",
+    "items": [
+      "家長之後再留言會自動重新列入；「標記不需回覆」照常可用。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "家長之後再留言會自動重新列入；「標記不需回覆」照常可用。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:295",
+      "changelog:2026-10-02:awaiting-14d"
     ],
     "date": "2026-10-02",
     "version": "2026.10.02"

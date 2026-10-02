@@ -14,6 +14,26 @@
 **Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
 **Provenance:** `.agent-session/manifest.json` is the local agent-start session file (git-ignored, not committed); a PR that claims a session force-adds it or updates `human-authored.json` — see WORKTREE_POLICY.
 
+## Code Review Rules
+
+### External notifications
+
+- When a PR changes an outbound notification or its switch, trace every producer and sender, including device/client consumers of API payloads. Verify that disabling the switch suppresses all sends and that enabled paths do not duplicate messages or charges. A controller-only test is insufficient when another sender uses its response.
+
+### Campus and guardian boundaries
+
+- For new or changed APIs and notifications, verify the server enforces the authenticated campus scope on reads, writes, and recipient selection; an empty campus list grants no campus. Parent LINE sends must use verified bindings for the same student and campus. Preserve the documented super-admin exception.
+
+### Attendance and billing effects
+
+- When a PR changes RFID, attendance, scheduling, or payment flows, trace effects to the authoritative session and ledger records. Flag duplicate attendance or deduction, cross-campus effects, and paths that can claim success before the intended write or external send is verified. Require a focused regression scenario for the affected path.
+
+## PR review and delivery handoff
+
+- Follow the live GitHub ruleset and [`docs/governance/RISK_BASED_MERGE_POLICY.md`](docs/governance/RISK_BASED_MERGE_POLICY.md). For T0–T2, the implementing Agent resolves review findings, passes exact-head required checks, follows the risk-specific merge SOP, and continues delivery without asking the Founder to say GO or click Approve for each phase or PR when no approving review is required.
+- A Codex or other bot review supplies evidence, not a substitute identity for the PR author. Review findings must be addressed; a clean bot review alone does not satisfy tests, rollback readiness, or production verification.
+- For T3/protected actions, prepare the exact target, effect, credible downside, rollback, and verification evidence, then obtain the Founder decision required by the canonical policy. An approval already given for that concrete scope continues through its necessary steps; ask again only if the scope or protected effect materially changes.
+
 
 ## 開工前 First-read 順序
 
@@ -71,7 +91,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 |---|---|---|
 | Fire-and-forget | 錯字、footer 日期、單一連結、小型 lint/docs 修正 | 累積到 docs batch；不要單獨開 PR 浪費 Actions |
 | Context-dependent | API 串接、前後端同改、README/Runbook 同步 | 先產 artifact（API contract、diff、測試結果），下游只讀 artifact |
-| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 必須進 PLAN/ARCH 或 BUG B1，等使用者批准後才 DEV |
+| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 先進 PLAN/ARCH 或 BUG B1，釐清產品意圖與受保護邊界；可先完成實作、測試與證據包，在受保護的合併、正式啟用或資料操作前取得 Founder 對具體範圍的決定。重大產品方向無明確最佳選項時，先取得決定再實作 |
 
 強制原則：
 - 以 bounded context 切任務，不以 migration/model/controller/frontend/test 這種技術層硬切碎。
@@ -103,7 +123,7 @@ gate、不要求每 PR 更新 diagram；除非未來有實際 evidence 顯示某
 | T0 Docs-only | README、FAQ、INDEX、Runbook、規則文件，且不碰 `.github/**` / `scripts/**` | docs batch → `git diff --check` → PR；避免 deployable diff |
 | T1 Low-risk code | 單一 UI 顯示、純 helper、無資料寫入、無權限邊界 | 小 PR → 對應測試/build → REVIEW |
 | T2 Product workflow | 前後端契約、排課、出缺勤、評量、跨分校查詢 | PLAN/ARCH → DEV → TEST → INT → REVIEW |
-| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；使用者批准後才實作，CI 綠才可 merge |
+| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；先完成實作、測試與回復證據，在受保護的合併／正式啟用／資料操作前取得 Founder 對具體範圍的決定；CI 綠燈不能取代該決定 |
 
 **Definition of Ready（進 DEV 前）**
 - 已定義 product intent、architecture boundary、API/DB/data ownership、錯誤處理、多校區隔離。
