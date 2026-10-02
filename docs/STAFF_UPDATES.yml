@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-02-tuition-course-check-link
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 前往課程核對可正常開啟
+    summary: 收費頁的「前往課程核對」現在會開啟課程管理。
+    items:
+      - category: fixed
+        text: 點擊後帶入該生與課程；「查看當月學收」也一併修正。
+    source_refs:
+      - "alltrue:bug_report:371"
+      - "changelog:2026-10-02:tuition-course-check-link"
   - id: staff-2026-10-01-active-teachers-only
     published_at: "2026-10-01"
     audiences:

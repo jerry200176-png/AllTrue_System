@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.10.02",
+    "date": "2026-10-02",
+    "title": "2026.10.02 草稿（未發布）",
+    "summary": "page 前往課程核對 now opens course management",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "page 前往課程核對 now opens course management"
+        ]
+      }
+    ],
+    "items": [
+      "page 前往課程核對 now opens course management"
+    ]
+  },
+  {
     "version": "2026.10.01",
     "date": "2026-10-01",
     "title": "2026.10.01 草稿（未發布）",
@@ -656,39 +678,6 @@ export const changelogDraftNotes = [
       "減少未收款堂數先預覽再同步取消超額預排",
       "主任從今日待辦進入課務後可返回",
       "手機點名操作與輔導課單價說明"
-    ]
-  },
-  {
-    "version": "2026.09.11",
-    "date": "2026-09-11",
-    "title": "2026.09.11 草稿（未發布）",
-    "summary": "課後儲存確認與失敗輸入保留；未付款堂數更正只在安全條件下開放",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "課後儲存確認與失敗輸入保留",
-          "未付款堂數更正只在安全條件下開放"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "課程繳費下一步更容易辨識",
-          "未安排堂次的日期清單說明"
-        ]
-      }
-    ],
-    "items": [
-      "課後儲存確認與失敗輸入保留",
-      "未付款堂數更正只在安全條件下開放",
-      "課程繳費下一步更容易辨識",
-      "未安排堂次的日期清單說明"
     ]
   }
 ];
