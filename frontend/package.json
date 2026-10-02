@@ -72,8 +72,8 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.75.0",
-    "@supabase/supabase-js": "^2.116.0",
+    "@sentry/vue": "^10.75.3",
+    "@supabase/supabase-js": "^2.117.2",
     "vue": "^3.5.43"
   },
   "devDependencies": {
@@ -92,6 +92,6 @@
     "vue-eslint-parser": "^9.4.3"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-arm64-gnu": "^4.63.3"
+    "@rollup/rollup-linux-arm64-gnu": "^4.63.5"
   }
 }
