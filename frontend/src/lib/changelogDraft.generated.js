@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.10.02",
     "date": "2026-10-02",
     "title": "2026.10.02 草稿（未發布）",
-    "summary": "只看有課老師」 no longer shows empty teacher columns；up courses no longer fill 1：3 slots",
+    "summary": "auto-attach recent failed requests；只看有課老師」 no longer shows empty teacher columns",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "auto-attach recent failed requests"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -25,6 +31,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "auto-attach recent failed requests",
       "只看有課老師」 no longer shows empty teacher columns",
       "up courses no longer fill 1：3 slots",
       "page 前往課程核對 now opens course management"

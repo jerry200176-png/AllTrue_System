@@ -414,6 +414,8 @@
             <div v-if="triageContext.feedbackType"><b>回報類型：</b>{{ triageContext.feedbackType }}</div>
             <div v-if="triageContext.occurrenceAt"><b>發生時間：</b>{{ triageContext.occurrenceAt }}<span v-if="triageContext.timeZone">（{{ triageContext.timeZone }}）</span></div>
             <div v-if="triageContext.relatedReference"><b>相關資料：</b>{{ triageContext.relatedReference }}</div>
+            <div v-if="triageContext.buildSha"><b>版本：</b>{{ triageContext.buildSha.slice(0, 10) }}</div>
+            <div v-if="triageContext.recentApiFailures"><b>最近失敗請求：</b>{{ triageContext.recentApiFailures.join('；') }}</div>
             <div v-if="triageContext.screenSize || triageContext.timeZone">
               <b>裝置：</b>{{ triageContext.screenSize || '未知尺寸' }}<span v-if="triageContext.timeZone"> · {{ triageContext.timeZone }}</span>
             </div>
