@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.02",
     "date": "2026-10-02",
     "title": "2026.10.02 草稿（未發布）",
-    "summary": "up courses no longer fill 1：3 slots",
+    "summary": "up courses no longer fill 1：3 slots；page 前往課程核對 now opens course management",
     "audience": [
       "teacher",
       "director"
@@ -18,12 +18,14 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "up courses no longer fill 1：3 slots"
+          "up courses no longer fill 1：3 slots",
+          "page 前往課程核對 now opens course management"
         ]
       }
     ],
     "items": [
-      "up courses no longer fill 1：3 slots"
+      "up courses no longer fill 1：3 slots",
+      "page 前往課程核對 now opens course management"
     ]
   },
   {
@@ -67,7 +69,7 @@ export const changelogDraftNotes = [
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "rfid returns student LINE ids；attendance month close, correction audit, cross-campus swipe",
+    "summary": "月結課程依固定時段估計規劃堂數；rfid returns student LINE ids",
     "audience": [
       "teacher",
       "director"
@@ -77,12 +79,12 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "月結課程依固定時段估計規劃堂數",
           "rfid returns student LINE ids",
           "attendance month close, correction audit, cross-campus swipe",
           "month view for teacher attendance (director + teacher self)",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "tab acting context, context chip, route-implied switch",
-          "as in security audit + self-approval hard block"
+          "tab acting context, context chip, route-implied switch"
         ]
       },
       {
@@ -98,12 +100,12 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "月結課程依固定時段估計規劃堂數",
       "rfid returns student LINE ids",
       "attendance month close, correction audit, cross-campus swipe",
       "month view for teacher attendance (director + teacher self)",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "tab acting context, context chip, route-implied switch",
-      "as in security audit + self-approval hard block",
       "schedule edits sync future lessons in one save",
       "late / missed judged from real class sessions"
     ]

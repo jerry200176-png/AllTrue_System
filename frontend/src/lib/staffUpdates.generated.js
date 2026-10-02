@@ -35,6 +35,37 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-tuition-course-check-link",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "前往課程核對可正常開啟",
+    "summary": "收費頁的「前往課程核對」現在會開啟課程管理。",
+    "items": [
+      "點擊後帶入該生與課程；「查看當月學收」也一併修正。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "點擊後帶入該生與課程；「查看當月學收」也一併修正。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:371",
+      "changelog:2026-10-02:tuition-course-check-link"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-01-monthly-usage-warning",
     "publishedAt": "2026-10-01",
     "effectiveAt": null,
@@ -512,6 +543,37 @@ export const staffUpdates = [
     ],
     "sourceRefs": [
       "changelog:2026-09-30:monthly-renew-admin"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
+    "id": "staff-2026-09-30-monthly-plan",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結課程規劃堂數自動估計",
+    "summary": "編輯月結課程時，系統依固定上課時段顯示本月規劃堂數；特殊情況仍可手動修正。",
+    "items": [
+      "固定時段有資料時自動帶入規劃估計，既有手動例外保留；實際收費仍依確認已上堂數。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "固定時段有資料時自動帶入規劃估計，既有手動例外保留；實際收費仍依確認已上堂數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:370",
+      "changelog:2026-09-30:monthly-plan"
     ],
     "date": "2026-09-30",
     "version": "2026.09.30"

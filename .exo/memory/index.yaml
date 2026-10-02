@@ -328,6 +328,17 @@ failure_modes:
       different sessions and cover mismatched-time payloads.
   severity: medium
   frequency: recurring
+- id: FM-20260930-104548-F9D0
+  name: Editing a recurring monthly course can expose a stale scalar planning count
+  detection:
+    signal: Editing a recurring monthly course can expose a stale scalar planning
+      count
+    source: reflection:REF-20260930-104548-XJ6S
+  mitigation:
+    practice: In-app 370 uses a visible month-specific fixed-slot estimate, preserves
+      legacy exceptions until reset, and leaves confirmed attendance as billing authority.
+  severity: medium
+  frequency: recurring
 - id: FM-20260930-113123-9GBE
   name: UI smoke navigation timed out despite the destination heading being visible
   detection:

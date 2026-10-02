@@ -1,0 +1,12 @@
+id: REF-20260930-104548-XJ6S
+pattern: Editing a recurring monthly course can expose a stale scalar planning count
+insight: In-app 370 uses a visible month-specific fixed-slot estimate, preserves legacy
+  exceptions until reset, and leaves confirmed attendance as billing authority.
+severity: medium
+scope: global
+actor: agent:codex
+session_id: SES-20260930103907-848F9D2C
+created_at: '2026-09-30T10:45:48+08:00'
+status: active
+tags: []
+hit_count: 0
