@@ -7,6 +7,15 @@ import {
 } from './bugReportContext.js';
 
 assert.deepEqual(parseBugReportClientInfo(JSON.stringify({
+  buildSha: 'abcdef1234',
+  recentApiFailures: [{ method: 'POST', path: '/api/v1/x', status: 500, requestId: 'req-12345678' }],
+})), {
+  occurrenceAt: '', relatedReference: '', screenSize: '', timeZone: '', feedbackType: '',
+  buildSha: 'abcdef1234',
+  recentApiFailures: ['POST /api/v1/x 500 req-12345678'],
+});
+
+assert.deepEqual(parseBugReportClientInfo(JSON.stringify({
   occurrenceAt: ' 2026-08-29T14:30 ',
   relatedReference: '學生 271／課堂 32570',
   screenSize: '1280x720',

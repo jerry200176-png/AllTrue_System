@@ -66,6 +66,38 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-report-context",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "回報問題自動附紀錄",
+    "summary": "回報問題時會自動附上最近的操作失敗紀錄，不必再截圖說明。",
+    "items": [
+      "只附失敗的請求與版本資訊，不含你輸入的內容或個資。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "只附失敗的請求與版本資訊，不含你輸入的內容或個資。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-02:report-context"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-02-line-notify-switches",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,

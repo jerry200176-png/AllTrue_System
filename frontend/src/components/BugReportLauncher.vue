@@ -163,6 +163,7 @@ import {
   namePastedImage,
   validateBugAttachments,
 } from '../lib/bugReportAttachments';
+import { fitClientInfo, getBuildSha, getRecentApiFailures } from '../lib/recentApiFailures';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -511,7 +512,7 @@ async function doSubmit() {
   submitError.value = '';
 
   try {
-    const rawClientInfo = JSON.stringify({
+    const clientInfo = fitClientInfo({
       userAgent: navigator.userAgent,
       screenSize: `${window.innerWidth}x${window.innerHeight}`,
       timestamp: new Date().toISOString(),
@@ -519,8 +520,11 @@ async function doSubmit() {
       occurrenceAt: occurrenceAt.value || null,
       relatedReference: (relatedReference.value.trim() || '').slice(0, 300) || null,
       feedbackType: feedbackType.value,
+      recentApiFailures: getRecentApiFailures(),
+      buildSha: await getBuildSha(),
+      // numeric ids only, no names
+      route: { page: props.currentPageKey || null, branchId: Number(effectiveBranchId.value) || null },
     });
-    const clientInfo = rawClientInfo.length > 1950 ? rawClientInfo.slice(0, 1950) : rawClientInfo;
 
     const basePayload = {
       title: title.value.trim() || `[${props.currentPageKey || '未知頁面'}] ${new Date().toLocaleString('zh-TW')}`,

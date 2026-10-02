@@ -74,6 +74,8 @@ last_reviewed: 2026-08-23
 
 ### 3.6 ⛔ AI 處理 in-app bug 回報的 SOP（2026-05-17 起，違反 = 重複問使用者）
 
+> 分診先讀 `client_info.recentApiFailures`（最近 5 筆失敗請求，含 `requestId` 可對 log 的 `request_id`）與 `client_info.buildSha`、`route`，再問使用者。
+
 ```
 1. 一定要先撈 attachments：
    SELECT id, stored_path, original_name FROM bug_report_attachments
