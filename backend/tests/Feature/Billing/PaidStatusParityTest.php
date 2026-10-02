@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Http\Controllers\AlertController;
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\ParentSession;
 use App\Models\Payment;
@@ -68,6 +69,7 @@ class PaidStatusParityTest extends TestCase
         'model.isEffectivelyPaid',
         'model.scopeEffectivelyPaid',
         'model.isFullyPaidWithInvoiceAmount',
+        'api.accounting.settled_courses',
     ];
 
     protected function tearDown(): void
@@ -125,6 +127,15 @@ class PaidStatusParityTest extends TestCase
             // Zero-fee wins over a stray flag or a zero-total invoice.
             'zero_fee_flag1' => ['flag' => 1, 'charge' => 0, 'rate' => 0, 'invoices' => []],
             'zero_fee_zero_invoice' => ['flag' => 0, 'charge' => 0, 'rate' => 0, 'invoices' => [$inv('2026-08', 0, 0, 'paid')]],
+            // R31 overpayment, 3 receipts > total, stored PaidAmount drifted below the rows.
+            'overpaid_stored_drift' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 9000, 'partial', [$cash(5000), $cash(4000), $cash(3000)])]],
+            // Tutoring is free before a stray flag or a paid invoice.
+            'tutoring_flag1' => ['flag' => 1, 'charge' => 0, 'rate' => 0, 'class_type' => 'tutoring', 'invoices' => []],
+            'tutoring_paid_invoice' => ['flag' => 0, 'charge' => 0, 'rate' => 0, 'class_type' => 'tutoring', 'invoices' => [$inv('2026-08', 5000, 5000, 'paid', [$cash(5000)])]],
+            // Count-package member, no invoice: CoursePackage.paid is a legacy flag like StudentClass.Paid
+            // (assumption for S1: it counts only while the member has no non-void invoice).
+            'package_paid_member' => ['flag' => 0, 'charge' => 10000, 'package_paid' => true, 'invoices' => []],
+            'package_unpaid_member' => ['flag' => 0, 'charge' => 10000, 'package_paid' => false, 'invoices' => []],
         ];
     }
 
@@ -139,7 +150,7 @@ class PaidStatusParityTest extends TestCase
         // Void invoices are not invoices for paid status; with none left the legacy flag decides.
         $invoices = array_values(array_filter($fx['invoices'], fn ($i) => $i['status'] !== 'void'));
         if ($invoices === []) {
-            return !empty($fx['flag']) ? 'paid' : 'unpaid';
+            return (!empty($fx['flag']) || !empty($fx['package_paid'])) ? 'paid' : 'unpaid';
         }
         usort($invoices, fn ($a, $b) => strcmp($a['period'], $b['period'])); // oldest first
         foreach ($invoices as $invoice) {
@@ -171,6 +182,9 @@ class PaidStatusParityTest extends TestCase
         $listRes = $this->getJson('/api/v1/student-classes?branch_id=1&per_page=1000', $headers);
         $listRes->assertOk();
         $listRows = collect($listRes->json('data'))->keyBy(fn ($r) => (int) ($r['ID'] ?? $r['id']));
+        $settledRes = $this->getJson('/api/v1/accounting/settled-courses?branch_id=1', $headers);
+        $settledRes->assertOk();
+        $settledIds = collect($settledRes->json('data'))->map(fn ($r) => (int) $r['student_class_id'])->flip();
 
         $mismatches = [];
         $observed = [];
@@ -180,6 +194,8 @@ class PaidStatusParityTest extends TestCase
             $classId = (int) $c['course']->ID;
             $expected = $this->expected($fx);
             $results = $this->observe($c, $tuitionRows->get($classId), $listRows->get($classId), $headers);
+            // B17 settledCourses: listed in the "settled" list = treated as paid (Paid=1 OR any Status=paid invoice).
+            $results['api.accounting.settled_courses'] = $settledIds->has($classId) ? 'paid' : 'notpaid';
             foreach ($results as $site => $actual) {
                 if ($actual === null) {
                     continue; // site has no opinion on this fixture (excluded by design)
@@ -317,7 +333,15 @@ class PaidStatusParityTest extends TestCase
             'name' => mb_substr("pp-{$id}", 0, 32), 'CampusID' => 1, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '', 'Phone' => '0911222333',
         ]);
+        $package = !array_key_exists('package_paid', $fx) ? null : CoursePackage::create([
+            'student_id' => $student->id, 'campus_id' => 1, 'name' => "pp-pkg-{$id}",
+            'billing_mode' => 'count', 'total_sessions' => 10, 'remaining_sessions' => 10,
+            'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session',
+            'class_type' => 'one_on_one', 'paid' => $fx['package_paid'],
+            'paid_at' => $fx['package_paid'] ? '2026-08-01' : null, 'stop' => false, 'enabled' => true,
+        ]);
         $course = StudentClass::create([
+            'PackageID' => $package?->id,
             'StudentID' => $student->id,
             'GradeID' => 1,
             'SubjectID' => 1,
