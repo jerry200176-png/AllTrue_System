@@ -56,7 +56,7 @@ Codex／Cursor 共用本路徑。啟動：`agent-start alltrue <task-id>`（禁�
    - 路由／Plan handoff 契約（portfolio-ops）：`docs/model-routed-product-delivery.md` + `docs/templates/strong-plan-handoff.md`；本機 `model-route-resolve`／`codex-route`。  
 7. **發佈**：只走 canonical `deploy.yml`／既有 environment gate；**不** Pi SSH；**不**把本 skill 當 production 授權。  
 8. **驗證**：依 [執行政策的風險分層](../../../docs/plans/INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md#production-discipline-autonomous-small-fixes)：R0/R1 無 protected boundary 時，exact production SHA + deterministic affected-path regression + 公開 `version.json` / `deployment.json` / health 可完成 engineering delivery；未觀測到的 production user-path 必須標 `NO`，reporter acceptance 留在既有異步流程。R2/R3 或資料／權限／billing／migration 仍須直接受影響 production-path 證據，不得套用低風險例外。UI 可讀性測試不能只看「沒有 overflow」。區分 **code verified ≠ merged ≠ deployed ≠ production version verified ≠ production user-path verified ≠ reporter accepted**。
-9. **回寫與學習**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。依 recurrence evidence 補 regression test／共用 authority／`AI_REGRESSION_LESSONS`／tech debt；未根治就明列剩餘風險。
+9. **回寫與學習**：既有 In-App API／UI 流程；白話；不重複送；不洩漏內部／個資；**不** LINE/email/SMS；**不**偽造 `reporter-verify`。依 recurrence evidence 補 regression test／共用 authority／`AI_REGRESSION_LESSONS`／tech debt；未根治就明列剩餘風險。上線的功能若對應到仍開著的回報（含先前已收件但未實作者），主動用 follow-up 告知回報者「已上線＋怎麼用」，不要等對方再問（#368 教訓）。修 bug 時先認領 `AI_REGRESSION_LESSONS` 復發家族 F1～F10，優先修「權威」而非單一畫面。
 10. **續跑與重核**：一張 PR 完成不是停點；繼續下一筆已授權、無衝突工作。第一項 blocked（等 Founder）時，推進其他合法項。結束前重取同口徑 snapshot，分開本輪處理、新進、open/resolved/closed coverage，逐筆留下真實 next action。
 
 ### Work-conserving queue
