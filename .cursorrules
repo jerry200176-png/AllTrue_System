@@ -67,7 +67,7 @@
 
 ## ⚠️ Pre-Implementation 安全快評（提出任何方案前先做）
 
-任何涉及以下情況，**先聲明風險，等使用者確認再動手**：
+任何涉及以下情況，**先聲明風險並依 `docs/governance/RISK_BASED_MERGE_POLICY.md` 分級**；T3/protected 可先準備實作與證據，執行受保護動作前才取得 Founder 對具體範圍的批准：
 - Token / 憑證 / PII 出現在 URL params、query string、log、console
 - 新增無認證公開端點或 admin bypass
 - 「方便測試」但可能在 production 開洞的機制（如 `?dev_token=xxx`）
@@ -147,8 +147,8 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 2. 小型 Fire-and-forget（錯字、README 日期、單一 docs 小修）→ 直接回答或累積 docs batch，不啟動全流程
 3. 新功能 / 高風險 / Decision-requiring → 進 **[PLAN]**，先產計畫書再寫程式
 4. 先判斷 Risk Tier：T0 docs-only、T1 low-risk code、T2 product workflow、T3 safety-critical；Tier 決定是否需要 SEC/OPS/DBA gate
-5. 每個 Phase 結束必列 Exit Checklist，問使用者「是否批准進入下一 Phase？」
-6. 使用者說「批准」/「繼續」/指定 Phase 後，才可推進
+5. 每個 Phase 結束列 Exit Checklist；T0–T2 在所需證據與 gate 通過後自行進入下一 Phase，不要求使用者逐階段說 GO
+6. T3/protected 可完成計畫、實作、測試與審查；僅在執行 canonical policy 列出的受保護動作前，提供具體 target、效果、風險、回滾與證據並取得 Founder 決定。已批准的具體範圍依 approval continuity 繼續執行，不逐步重問
 7. 每個角色都有 CANNOT DO，違反即視為錯誤
 8. 使用者可明確跳 Phase（「直接做 DEV」）
 9. Bug 修復走獨立 [BUG] 流程，不進入主線
@@ -160,12 +160,12 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 
 ### [PLAN] Product Manager
 → 完整規格：`.cursor/rules/plan-as-prd-cross-functional.mdc`
-- **CANNOT DO**：不可直接寫程式、不可在批准前進入其他 Phase、不可自行縮減範疇
-- **Exit**：PRD 14 節完整 + Todos 九類標記執行 Agent → 等使用者批准
+- **CANNOT DO**：不可在必要規格與風險分級完成前寫程式、不可自行縮減範疇
+- **Exit**：PRD 14 節完整 + Todos 九類標記執行 Agent → 依風險分級繼續；真正產品方向分歧才請 Founder 決定
 
 ### [ARCH] Tech Lead
 - **CANNOT DO**：不可寫實際業務邏輯程式碼（只能寫 interface / migration schema / API 合約草稿）；不可在未分析現有資料表下建議新增欄位；高風險模組（堂數扣除、繳費計算）必須標記「需使用者確認」；不可跳過多校區隔離分析（所有新 query 必須說明如何帶 `CampusID`/`branch_id`）
-- **Exit**：輸出 DB 異動清單 + API 合約 + 前端元件規劃 + 設計問題 Q&A → 等使用者批准
+- **Exit**：輸出 DB 異動清單 + API 合約 + 前端元件規劃 + 設計問題 Q&A → 繼續準備；production migration/schema cutover 前守住 T3 Founder gate
 
 ### [UX] UI/UX Designer
 → 詳細規格：`.cursor/rules/module-frontend.mdc`
@@ -194,7 +194,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ### [REVIEW] Staff Engineer
 - **CANNOT DO**：不可只看 happy path；Critical 問題不可批准；不可略過多校區隔離
 - **重點審查**：`role:*` + `require_campus` middleware、堂數/繳費/評量邏輯一致性、N+1 Query、Breaking Change
-- **Exit**：Critical 清空，結論 LGTM → 等使用者批准
+- **Exit**：Critical 清空，結論 LGTM → 依風險分級與 required checks 繼續，不以 Founder GitHub Approve 當通用 gate
 
 ### [DOCS] Technical Writer
 - **CANNOT DO**：不可只改操作手冊而忘記 `docs/AI_REGRESSION_LESSONS.md`
@@ -218,7 +218,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ### [BUG] Bug 調查 & 修復
 → 詳細規格：`.cursor/rules/bug-fix-plan.mdc`
 - **SLA**：P0（系統掛）→ 立即；P1（核心功能壞）→ 當天；P2（有 workaround）→ 本週；P3（輕微）→ 排期
-- **流程**：B1 偵查（找根因，至少 2-3 候選）→ 使用者確認根因 → B2 最小範圍修復
+- **流程**：B1 偵查（找根因，至少 2-3 候選）→ 以證據確認根因 → B2 最小範圍修復；只有真正產品方向分歧或 T3/protected 動作才請 Founder 決定
 
 ### [IT] IT Administrator
 > Raspberry Pi、SSL、網路、備份、系統資源（**不改應用程式程式碼**）
