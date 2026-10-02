@@ -289,6 +289,26 @@ for (const [id, revision, issue] of [
     assert.ok(!entry[1].includes('仍等待您實際確認') && entry[1].includes('若'), '292 is a decision closure, not a fix acceptance claim');
   }
 
+// Shipped batch closeout 2026-10-02 (engineering tests + production version check only).
+  {
+    const entry = phaseCSource.match(/\n            316 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 316 must exist');
+    assert.ok(entry[1].includes('"rev" => "c2356c3ac0b7c681e74c1f7c17d72f28985c073a"'), '316 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36862070318"'), '316 deploy binding');
+    assert.ok(entry[1].includes('issues/3066'), '316 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '316 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '316 must disclose no production UI check');
+  }
+  {
+    const entry = phaseCSource.match(/\n            331 => \[([\s\S]*?)\n            \],/);
+    assert.ok(entry, 'scoped Phase-C entry 331 must exist');
+    assert.ok(entry[1].includes('"rev" => "6cc2213a49c48bd432b5d221aa6b74bcd4a8c2df"'), '331 requires the exact containing merge');
+    assert.ok(entry[1].includes('"deploy" => "36862070318"'), '331 deploy binding');
+    assert.ok(entry[1].includes('issues/3104'), '331 must notify its canonical issue');
+    assert.ok(entry[1].includes('仍等待您實際確認'), '331 must not claim reporter acceptance');
+    assert.ok(entry[1].includes('沒有在正式環境實際操作畫面'), '331 must disclose no production UI check');
+  }
+
 console.log('bug-writeback-workflow.test.mjs: ok');
 
 assert.match(phaseCSource,
