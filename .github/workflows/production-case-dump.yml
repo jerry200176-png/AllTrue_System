@@ -97,8 +97,9 @@ jobs:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
-          if case == 'monthly_slip_student' and not os.environ.get('TARGET_STUDENT_NAME'):
-              raise SystemExit('monthly_slip_student requires student_name')
+          # Founder GO 2026-10-02 is scoped to these two 木柵 students only.
+          if case == 'monthly_slip_student' and os.environ.get('TARGET_STUDENT_NAME') not in {'陳宥翰', '陳宥霖'}:
+              raise SystemExit('monthly_slip_student is limited to the two approved 木柵 students')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
@@ -413,8 +414,9 @@ jobs:
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
           }} elseif ($case === 'monthly_slip_student') {{
             // Read-only: why a monthly payment slip lists no lesson dates (Founder report 2026-10-02).
-            // Exact-name match must be unique; outputs ids/dates/statuses/amounts, never names or free text.
-            $studentIds = $db::table('Student')->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            // Two approved 木柵 students only; exact-name match must be unique; outputs ids/dates/statuses/amounts, never names or free text.
+            // 木柵 only (CampusID 16), per the Founder GO scope.
+            $studentIds = $db::table('Student')->where('CampusID', 16)->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['student_match_count'] = count($studentIds);
             if (count($studentIds) !== 1) {{
               $out['ok'] = false;
