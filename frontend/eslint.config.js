@@ -47,6 +47,9 @@ export default [
     },
     rules: {
       'no-undef': 'error',
+      // Undeclared emits hide a child's events from the unhandled-emit guard
+      // (scripts/ci/check-unhandled-emits.mjs). 0 violations at enable time.
+      'vue/require-explicit-emits': 'error',
     },
   },
   {
