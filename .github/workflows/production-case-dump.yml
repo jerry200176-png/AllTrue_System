@@ -19,6 +19,7 @@ on:
           - laravel_2833_preflight
           - contract_yang_binghe
           - contract_yu_shengrui
+          - monthly_slip_student
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -92,10 +93,12 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'monthly_slip_student'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
+          if case == 'monthly_slip_student' and not os.environ.get('TARGET_STUDENT_NAME'):
+              raise SystemExit('monthly_slip_student requires student_name')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
@@ -408,6 +411,28 @@ jobs:
               'source'=>(string)$r->source, 'minutes'=>$r->minutes === null ? null : (int)$r->minutes])->values()->all();
             $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true,
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
+          }} elseif ($case === 'monthly_slip_student') {{
+            // Read-only: why a monthly payment slip lists no lesson dates (Founder report 2026-10-02).
+            // Exact-name match only; outputs ids/dates/statuses/amounts, never names or free text.
+            $studentIds = $db::table('Student')->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            $classes = $studentIds === [] ? collect() : $db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID')
+              ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
+            $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
+            $invoices = $studentIds === [] ? collect() : $db::table('Invoice')->whereIn('StudentID', $studentIds)->whereDate('IssueDate', '>=', '2026-06-01')->orderBy('id')
+              ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
+            $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
+              ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount']);
+            $sessions = $classIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $classIds)
+              ->whereBetween('SessionDate', ['2026-06-01', '2026-10-31'])
+              ->selectRaw("StudentClassID as class_id, DATE_FORMAT(SessionDate, '%Y-%m') as month, Status as status, COUNT(*) as n, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date")
+              ->groupBy('StudentClassID', 'month', 'Status')->orderBy('StudentClassID')->orderBy('month')->get();
+            $campus = $studentIds === [] ? collect() : $db::table('Student')->whereIn('id', $studentIds)->pluck('CampusID', 'id');
+            $out['student_ids'] = $studentIds;
+            $out['student_campus'] = $campus->all();
+            $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
+            $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
+            $out['invoice_items'] = $items->map(fn ($r) => (array)$r)->values()->all();
+            $out['sessions_by_class_month_status'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
             $tbl = fn ($t) => \\Illuminate\\Support\\Facades\\Schema::hasTable($t);
