@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { latestReleaseVersionForRole } from '../src/lib/releaseNotes.js';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { assertDirectorDashboardTelemetry, isDirectorDashboardEvent } from './fixtures/directorDashboardTelemetry.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const REQUESTED_BRANCH_ID = Number(process.env.SMOKE_BRANCH_ID || 0);
@@ -177,22 +178,11 @@ function assertBoundedTelemetry(payloads) {
   const rowBuckets = new Set(['0', '1-25', '26-100', '101-500', '500+']);
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   const workflowEvents = new Set(['workflow_calendar_started', 'workflow_calendar_completed', 'workflow_calendar_returned', 'workflow_calendar_error']);
-  const generalEvents = new Set(['dashboard_opened']);
   const printPayloads = payloads.filter((payload) => eventNames.has(payload?.event));
   for (const payload of payloads) {
     const event = payload?.event;
-    expect(eventNames.has(event) || workflowEvents.has(event) || generalEvents.has(event), `unexpected adoption event: ${event}`).toBe(true);
-    if (generalEvents.has(event)) {
-      expect(Object.keys(payload).sort()).toEqual(['branch_id', 'event', 'meta']);
-      expect(Number.isInteger(payload.branch_id)).toBe(true);
-      expect(payload.branch_id).toBeGreaterThan(0);
-      expect(payload.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta)).toBe(true);
-      expect(Object.keys(payload.meta).sort()).toEqual(['page', 'role', 'telem_day', 'telem_session']);
-      expect(payload.meta.page).toBe('director-dashboard');
-      expect(payload.meta.role).toBe('director');
-      expect(payload.meta.telem_session).toMatch(/^t_[a-z0-9_]+$/);
-      expect(datePattern.test(payload.meta.telem_day)).toBe(true);
-    }
+    expect(eventNames.has(event) || workflowEvents.has(event) || isDirectorDashboardEvent(event), `unexpected adoption event: ${event}`).toBe(true);
+    if (isDirectorDashboardEvent(event)) assertDirectorDashboardTelemetry(payload);
   }
   expect(printPayloads.length, 'calendar preview should emit bounded telemetry').toBeGreaterThan(0);
   for (const payload of printPayloads) {

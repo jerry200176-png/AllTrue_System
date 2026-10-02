@@ -35,16 +35,8 @@ final class CourseEditabilityService
             ->exists();
 
         $diagnostic = SessionDeductionService::batchExpectedUsedSessionDiagnostics([$classId])[$classId] ?? null;
-        $sessionCount = (int) ($course->SessionCount ?? 0);
-        $expectedRemaining = $diagnostic === null
-            ? null
-            : max(0, $sessionCount - (int) $diagnostic['expected_used']);
-        $usageMismatch = $diagnostic !== null && (
-            (int) $diagnostic['cancelled_usage_artifacts'] > 0
-            || (int) ($course->UsedSessions ?? 0) !== (int) $diagnostic['expected_used']
-            || ((string) ($course->ScheduleMode ?? 'count') === 'count'
-                && (int) ($course->RemainingSessions ?? 0) !== $expectedRemaining)
-        );
+        $usageMismatch = $diagnostic !== null
+            && SessionDeductionService::usageBalanceAssessment($course, $diagnostic)['review_required'];
 
         $isCountCourse = (string) ($course->ScheduleMode ?? 'count') === 'count';
         $isPackage = $course->isPartOfPackage();

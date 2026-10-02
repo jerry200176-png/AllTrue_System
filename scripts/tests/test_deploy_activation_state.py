@@ -705,6 +705,16 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
         self.assertIn("production deployment identity unavailable; classifier must fail closed", workflow)
         self.assertNotIn('base = parents[0]["sha"]', workflow)
 
+    def test_superseded_ci_run_skips_before_founder_approval(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        resolve = workflow[workflow.index("  resolve-target:"):workflow.index("  detect-deployable:")]
+        detect = workflow[workflow.index("  detect-deployable:"):workflow.index("  classify-activation:")]
+        self.assertIn('if [[ "$EVENT_NAME" == "workflow_run" ]]; then', resolve)
+        self.assertIn('echo "superseded=true" >> "$GITHUB_OUTPUT"', resolve)
+        self.assertIn("superseded: ${{ steps.resolve.outputs.superseded }}", resolve)
+        self.assertLess(resolve.index("superseded=true"), resolve.index('echo "target_sha=${TARGET_SHA}"'))
+        self.assertIn("needs.resolve-target.outputs.superseded != 'true'", detect)
+
     def test_manual_activation_holds_unknown_runtime_identity(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         classify = workflow[workflow.index("  classify-activation:"):]

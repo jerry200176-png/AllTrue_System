@@ -2,6 +2,16 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-01-calendar-tutoring-acceptance
+    changelog_date: "2026-10-01"
+    changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
+    reason: 僅修正內部正式站驗收的事件、樣本前提、學生明細定位與有界 UI 時限，不改教職員操作或收費規則。
+
+  - id: silent-2026-10-01-muzha-pop-schedule
+    changelog_date: "2026-10-01"
+    changelog_title: "fix(ops): route exact Muzha fixed schedule repair through POP"
+    reason: 僅備妥受控個案修復；四門課正式資料尚須預演、核准與驗證，不提前公告完成。
+
   - id: silent-2026-09-29-monthly-case-closed
     changelog_date: "2026-09-29"
     changelog_title: "fix(ops): report closed monthly case eligibility explicitly"
@@ -632,3 +642,18 @@ exemptions:
     changelog_date: "2026-09-29"
     changelog_title: "feat(courses): director undo of contract amendment"
     reason: 主任操作選單新增「撤銷調整」，屬既有提前結束流程的補救入口，待部署與主任驗收後再評估公告。
+
+  - id: silent-2026-10-01-deploy-skip-superseded
+    changelog_date: "2026-10-01"
+    changelog_title: "fix(ci): late CI for an older commit no longer asks for deploy approval"
+    reason: 只改部署流程，教職員畫面無變化。
+
+  - id: silent-2026-09-30-swipe-rfid-line-ids
+    changelog_date: "2026-09-30"
+    changelog_title: "feat(rfid): swipe-rfid returns student LINE ids"
+    reason: 只給讀卡機的 API 回應多一個欄位，教職員畫面無變化。
+
+  - id: silent-2026-10-01-swipe-photo-line
+    changelog_date: "2026-10-01"
+    changelog_title: "feat(rfid): swipe-photo API pushes swipe photo to parents via LINE"
+    reason: 只新增讀卡機用的 API，教職員畫面無變化；讀卡機接上並實測後再評估家長公告。

@@ -1,0 +1,114 @@
+name: Muzha POP exact case verification (read-only)
+# governance-capability: read-only-probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-case-dump-muzha-pop-20261001
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Read only POP record and exact schedule state
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          ssh_dir="$RUNNER_TEMP/muzha-pop-readonly"
+          install -d -m 700 "$ssh_dir"
+          printf '%s' "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > "$ssh_dir/deploy_key"
+          chmod 600 "$ssh_dir/deploy_key"
+          trap 'rm -f "$ssh_dir/deploy_key"' EXIT
+          ssh -i "$ssh_dir/deploy_key" -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o ConnectTimeout=20 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "$PI_SSH_USER@$PI_SSH_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $app = require 'bootstrap/app.php';
+          $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+          $id = 'b2f0719c-6a1c-44e6-b8e1-4796ca439ae1';
+          $db = \Illuminate\Support\Facades\DB::class;
+          $request = $db::table('pop_operation_requests')->where('id', $id)->first();
+          $records = $db::table('pop_execution_records')->where('operation_id', $id)
+              ->orderBy('created_at')->get(['phase', 'result', 'actor', 'commit_sha']);
+          $approvals = $db::table('pop_approval_events')->where('operation_id', $id)
+              ->where('event_type', 'approved')->get(['approver_role', 'commit_sha', 'expires_at']);
+          $plan = app(\App\Operations\Strategies\MuzhaFixedScheduleStrategy::class)
+              ->plan(['campus_id' => 16, 'decision_reference' => 'rm-muzha-fixed-schedule-20260930']);
+          $slotFailures = [];
+          $lockedCourses = [];
+          $slotGuard = app(\App\Services\ClassSessionMaterializationService::class);
+          foreach (\App\Operations\Strategies\MuzhaFixedScheduleManifest::cases() as $classId => $case) {
+              $course = \App\Models\StudentClass::query()->find($classId);
+              if ($course?->isUsageSettlementLocked()) $lockedCourses[] = $classId;
+              foreach ($case['rows'] as $sessionId => [$date, $start, $status, $exception]) {
+                  if ($status !== 'scheduled' || $start === $case['new']) continue;
+                  $session = \App\Models\ClassSession::query()->find($sessionId);
+                  if (!$session) { $slotFailures[] = ['id' => $sessionId, 'error' => 'missing']; continue; }
+                  $session->setAttribute('StartTime', $case['new'] . ':00');
+                  $session->setAttribute('EndTime', \Carbon\Carbon::createFromFormat('H:i', $case['new'])->addHours(2)->format('H:i:s'));
+                  try { $slotGuard->assertStudentSlotAvailableForSession($session); }
+                  catch (\Throwable $e) {
+                      $failure = ['id' => $sessionId, 'error' => class_basename($e)];
+                      if ($e instanceof \App\Exceptions\SlotOccupiedException) {
+                          $failure += ['source' => $e->conflictSource,
+                              'conflict_session_id' => $e->conflictSessionId,
+                              'conflict_course_id' => $e->conflictCourseId,
+                              'conflict_schedule_id' => $e->conflictScheduleId];
+                      }
+                      $slotFailures[] = $failure;
+                  }
+              }
+          }
+          $conflictingSessions = $db::table('ClassSession as cs')
+              ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+              ->whereIn('cs.id', [19301, 19345])
+              ->get(['cs.id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime',
+                  'cs.Status', 'cs.IsContractException', 'sc.StudentID', 'sc.SubjectID',
+                  'sc.TeacherID', 'sc.ClassType', 'sc.PackageID', 'sc.Stop', 'sc.time']);
+          $subjectNames = $db::table('Subject')->whereIn('id', [64, 66])->pluck('Subject_Name', 'id');
+          $manifest = json_decode((string) file_get_contents('public/deployment.json'), true);
+          echo json_encode([
+              'request_id' => $id, 'deployed_sha' => $manifest['backend_sha'] ?? null,
+              'request_status' => $request->status ?? 'missing',
+              'catalog_version' => $request->catalog_version ?? null,
+              'approval_roles' => $approvals->pluck('approver_role')->all(),
+              'approval_shas' => $approvals->pluck('commit_sha')->all(),
+              'records' => $records->map(fn ($r) => [
+                  'phase' => $r->phase, 'result' => $r->result,
+                  'actor' => $r->actor, 'commit_sha' => $r->commit_sha,
+              ])->all(),
+              'diagnostic' => ['locked_courses' => $lockedCourses, 'slot_failures' => $slotFailures,
+                  'conflicting_sessions' => $conflictingSessions],
+              'subject_names' => $subjectNames,
+              'schedule' => [
+                  'ok' => $plan['ok'], 'state' => $plan['state'], 'errors' => $plan['errors'],
+                  'class_ids' => $plan['class_ids'], 'occurrences' => $plan['occurrence_count'],
+                  'time_updates' => $plan['time_updates'],
+                  'adopted' => $plan['matching_exceptions_adopted'],
+                  'cancelled_preserved' => $plan['cancelled_rows_preserved'],
+                  'conflicting_exceptions_preserved' => $plan['conflicting_exceptions_preserved'] ?? null,
+              ],
+          ], JSON_THROW_ON_ERROR) . PHP_EOL;
+          PHP
+          REMOTE

@@ -4,6 +4,149 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-01-monthly-usage-warning",
+    "publishedAt": "2026-10-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結課不再誤顯示堂數待對帳",
+    "summary": "月結課改上課星期後，預排堂數不會再被當成包堂餘額而誤報。",
+    "items": [
+      "真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-01:monthly-usage-warning"
+    ],
+    "date": "2026-10-01",
+    "version": "2026.10.01"
+  },
+  {
+    "id": "staff-2026-10-01-monthly-renew-polish",
+    "publishedAt": "2026-10-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結續報日期更準",
+    "summary": "新一期結束日會對齊結算日；已過期很久的期別會先提醒，不會自動勾選。",
+    "items": [
+      "10/1 到期、31 號結算的課，續報會是 10/2～10/31，不再跳過或排到 11/1。",
+      "新一期起始日早已過去時，續報視窗會提醒並預設不勾，避免補錯期。",
+      "日期填錯時改顯示中文原因；續報視窗的科目與老師名稱排版修正。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "10/1 到期、31 號結算的課，續報會是 10/2～10/31，不再跳過或排到 11/1。",
+          "日期填錯時改顯示中文原因；續報視窗的科目與老師名稱排版修正。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "新一期起始日早已過去時，續報視窗會提醒並預設不勾，避免補錯期。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-01:monthly-renew-polish"
+    ],
+    "date": "2026-10-01",
+    "version": "2026.10.01"
+  },
+  {
+    "id": "staff-2026-10-01-active-teachers-only",
+    "publishedAt": "2026-10-01",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "建課只可選在職老師",
+    "summary": "新增課程時不再列出停用或待審核老師。",
+    "items": [
+      "若選擇後老師狀態有變，儲存時會提醒重新選擇；既有課程紀錄仍可查看。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "若選擇後老師狀態有變，儲存時會提醒重新選擇；既有課程紀錄仍可查看。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-01:active-teachers-only"
+    ],
+    "date": "2026-10-01",
+    "version": "2026.10.01"
+  },
+  {
+    "id": "staff-2026-09-30-course-history-guard",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "major",
+    "title": "改科目、換老師不再改寫過去的課",
+    "summary": "已上過課的合約不能直接改科目；換老師時，指定日期之前的堂次會保留原老師。",
+    "items": [
+      "已有上課紀錄的合約若直接改科目，系統會擋下並提示改用轉課（合約拆分），舊合約保留已上堂次。",
+      "編輯課程換老師時可選「新老師從哪天開始教」，預設今天，該日前的堂次維持原老師。",
+      "已繳費課程也能轉課：剩餘堂數與已繳金額轉到新合約，原收據不變，可先試算。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已有上課紀錄的合約若直接改科目，系統會擋下並提示改用轉課（合約拆分），舊合約保留已上堂次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "編輯課程換老師時可選「新老師從哪天開始教」，預設今天，該日前的堂次維持原老師。"
+        ]
+      },
+      {
+        "title": "你現在可以",
+        "items": [
+          "已繳費課程也能轉課：剩餘堂數與已繳金額轉到新合約，原收據不變，可先試算。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:course-history-guard"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-ux-followups",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,
@@ -157,6 +300,91 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-teacher-month-close",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "老師出勤可以月底確認",
+    "summary": "主任核對完可按「確認本月出勤」；補卡與跨校刷卡的紀錄也更清楚。",
+    "items": [
+      "月出勤表可按「確認本月出勤」；確認後不能補卡，要先重新開啟並寫原因。",
+      "補卡不再蓋掉原本狀態，月表會顯示原本遲到幾分與「已修正」。",
+      "沒簽退就到別校刷卡，前一校會標「跨校未簽退」，不再把別校上班算成下班。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "月出勤表可按「確認本月出勤」；確認後不能補卡，要先重新開啟並寫原因。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "補卡不再蓋掉原本狀態，月表會顯示原本遲到幾分與「已修正」。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "沒簽退就到別校刷卡，前一校會標「跨校未簽退」，不再把別校上班算成下班。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:teacher-month-close"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
+    "id": "staff-2026-09-30-teacher-late-missed",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師出勤看得到遲到和有課未刷卡",
+    "summary": "老師打卡改用實際課表判斷遲到；有課卻沒刷卡的老師也會列出來。",
+    "items": [
+      "「課表異常待處理」現在會列出有課卻沒刷卡的老師（以前完全不會出現）。",
+      "跑校老師到第二間分校刷卡，只跟該分校的第一堂課比，不再被誤判成遲到。",
+      "月出勤表顯示老師名字，新增「第一堂」和「狀態」欄，可只看異常；匯出也有遲到天數。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "「課表異常待處理」現在會列出有課卻沒刷卡的老師（以前完全不會出現）。",
+          "跑校老師到第二間分校刷卡，只跟該分校的第一堂課比，不再被誤判成遲到。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "月出勤表顯示老師名字，新增「第一堂」和「狀態」欄，可只看異常；匯出也有遲到天數。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:teacher-late-missed"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-subject-units-reference-totals",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,
@@ -219,6 +447,45 @@ export const staffUpdates = [
     "version": "2026.09.30"
   },
   {
+    "id": "staff-2026-09-30-monthly-renew-admin",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結續報一次搞定",
+    "summary": "學生管理展開學生，按「月結續報下月」，勾科目、確認一次就續好全部科目。",
+    "items": [
+      "新增「月結續報下月」：列出所有月結科目、新一期日期與預估金額，一次送出。",
+      "續約按鈕不再一直是灰色；行政帳號選「無折扣」也能送出。",
+      "9/30 到期續一個月會到 10/31（以前會變成 10/30）。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新增「月結續報下月」：列出所有月結科目、新一期日期與預估金額，一次送出。"
+        ]
+      },
+      {
+        "title": "我們修好了",
+        "items": [
+          "續約按鈕不再一直是灰色；行政帳號選「無折扣」也能送出。",
+          "9/30 到期續一個月會到 10/31（以前會變成 10/30）。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:monthly-renew-admin"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
     "id": "staff-2026-09-30-monthly-plan",
     "publishedAt": "2026-09-30",
     "effectiveAt": null,
@@ -245,6 +512,73 @@ export const staffUpdates = [
     "sourceRefs": [
       "alltrue:bug_report:370",
       "changelog:2026-09-30:monthly-plan"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
+    "id": "staff-2026-09-30-learning-teacher-search",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "評量可直接搜尋老師",
+    "summary": "輸入老師姓名並按搜尋或 Enter，即可查看該老師授課的評量紀錄。",
+    "items": [
+      "老師姓名可用部分文字搜尋；代課堂次依實際授課老師顯示與篩選。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "老師姓名可用部分文字搜尋；代課堂次依實際授課老師顯示與篩選。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:learning-teacher-search"
+    ],
+    "date": "2026-09-30",
+    "version": "2026.09.30"
+  },
+  {
+    "id": "staff-2026-09-30-fixed-schedule-save",
+    "publishedAt": "2026-09-30",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "固定調課會同步未來堂次",
+    "summary": "調整課程固定時段後，可修改的未來堂次會在同一次儲存中同步；未同步的堂次會顯示警示。",
+    "items": [
+      "已點名、已核准與單堂例外會保留；固定調課不再只改課程設定而漏掉未來堂次。",
+      "儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "已點名、已核准與單堂例外會保留；固定調課不再只改課程設定而漏掉未來堂次。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "儲存被阻擋或失敗時會顯示原因，方便查明缺少的欄位或衝突。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-09-30:fixed-schedule-save"
     ],
     "date": "2026-09-30",
     "version": "2026.09.30"

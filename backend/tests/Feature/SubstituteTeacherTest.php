@@ -295,6 +295,53 @@ class SubstituteTeacherTest extends TestCase
         $this->assertSame($regularTeacherId, (int) ($hit['TeacherID'] ?? 0));
     }
 
+    public function test_learning_record_teacher_name_search_matches_displayed_substitute_not_stale_teacher_id(): void
+    {
+        [$dirToken, $regularTeacherId, $subTeacherId, $session, $lr] = $this->seedSubstituteScenario();
+        $headers = ['Authorization' => "Bearer {$dirToken}", 'Accept' => 'application/json'];
+        $before = $this->withHeaders($headers)->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('正班') . '&per_page=50');
+        $before->assertOk();
+        $this->assertTrue(collect($before->json('data'))->pluck('id')->contains($lr->id));
+
+        $this->withHeaders($headers)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subTeacherId,
+        ])->assertOk();
+        DB::table('LearningRecord')->where('id', $lr->id)->update(['TeacherID' => $regularTeacherId]);
+
+        $sameNameTeacher = User::create([
+            'LoginName' => 'another-sub@example.com', 'Name' => '代課老師', 'PSW' => 'x',
+            'type' => 'T', 'phone' => '0900000034', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $sameNameTeacher->id, 'Admin' => 0, 'Approved' => 1]);
+        $historicalSession = ClassSession::create([
+            'StudentClassID' => $session->StudentClassID, 'SessionDate' => '2026-04-20',
+            'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'attended',
+        ]);
+        $sameNameRecord = LearningRecord::create([
+            'StudentClassID' => $session->StudentClassID, 'ClassSessionID' => $historicalSession->id,
+            'TeacherID' => $sameNameTeacher->id, 'Status' => 'approved', 'Content' => '已授課',
+            'SessionDate' => '2026-04-20', 'StartTime' => '13:00', 'EndTime' => '15:00',
+        ]);
+
+        $matching = $this->withHeaders($headers)->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('代課') . '&per_page=50');
+        $matching->assertOk();
+        $this->assertEqualsCanonicalizing([$lr->id, $sameNameRecord->id], collect($matching->json('data'))->pluck('id')->all());
+        $this->assertSame('代課老師', $matching->json('data.0.teacher_name'));
+
+        $oldTeacher = $this->withHeaders($headers)->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('正班') . '&per_page=50');
+        $oldTeacher->assertOk();
+        $this->assertFalse(collect($oldTeacher->json('data'))->pluck('id')->contains($lr->id));
+
+        $unknown = $this->withHeaders($headers)->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('找不到的老師') . '&per_page=50');
+        $unknown->assertOk()->assertJsonPath('total', 0);
+        $this->withHeaders($headers)->getJson('/api/v1/learning-records?branch_id=2&teacher_name=' . urlencode('代課'))
+            ->assertStatus(403);
+
+        $byId = $this->withHeaders($headers)->getJson("/api/v1/learning-records?branch_id=1&teacher_id={$subTeacherId}&per_page=50");
+        $byId->assertOk();
+        $this->assertTrue(collect($byId->json('data'))->pluck('id')->contains($lr->id));
+    }
+
     public function test_latest_approved_summary_uses_effective_substitute_teacher(): void
     {
         [$dirToken, $regularTeacherId, $subTeacherId, $session, $lr] = $this->seedSubstituteScenario();

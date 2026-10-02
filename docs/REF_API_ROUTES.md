@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 485 api/* routes · generated 2026-09-30
+> Source: `php artisan route:list --json` · 489 api/* routes · generated 2026-10-01
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -800,6 +800,13 @@
 |--------|-----|--------|------|
 | GET | `api/v1/substitutes/recent` | `SubstituteController@recent` | role+campus |
 
+## /api/v1/swipe-photo (2)
+
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| POST | `api/v1/swipe-photo` | `SwipeRfidController@photo` | public |
+| GET | `api/v1/swipe-photo/{campus}/{file}` | `SwipeRfidController@showPhoto` | public |
+
 ## /api/v1/swipe-rfid (1)
 
 | Method | URI | Action | Auth |
@@ -814,13 +821,15 @@
 | PUT | `api/v1/system/settings/substitute-undo` | `SubstituteController@setUndoSetting` | role+campus |
 | GET | `api/v1/system/trust-summary` | `SystemTrustController@summary` | role+campus |
 
-## /api/v1/teacher-attendance (7)
+## /api/v1/teacher-attendance (9)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/teacher-attendance` | `TeacherAttendanceController@index` | role+campus |
 | GET | `api/v1/teacher-attendance/export` | `TeacherAttendanceController@export` | role+campus |
 | GET | `api/v1/teacher-attendance/export-monthly` | `TeacherAttendanceController@exportMonthly` | role+campus |
+| POST | `api/v1/teacher-attendance/month-close` | `TeacherAttendanceController@closeMonth` | role+campus |
+| POST | `api/v1/teacher-attendance/month-reopen` | `TeacherAttendanceController@reopenMonth` | role+campus |
 | GET | `api/v1/teacher-attendance/monthly` | `TeacherAttendanceController@monthly` | role+campus |
 | GET | `api/v1/teacher-attendance/today` | `TeacherAttendanceController@today` | role+campus |
 | GET | `api/v1/teacher-attendance/unclosed` | `TeacherAttendanceController@unclosed` | role+campus |

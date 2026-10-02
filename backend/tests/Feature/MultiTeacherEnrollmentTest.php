@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -332,6 +333,117 @@ class MultiTeacherEnrollmentTest extends TestCase
         $this->assertSame($expected, $teacherIds, '三個 StudentClass 各自對應正確老師');
 
         $this->assertNull($res->json('dual_teacher_warning'), 'allow_multi_teacher=true 三師時不應出現 dual_teacher_warning');
+    }
+
+    public function test_suspended_teacher_cannot_be_assigned_to_new_course(): void
+    {
+        $token = $this->makeDirectorToken('dir-suspended@test.com');
+        $teacher = $this->makeTeacher('teacher-suspended@test.com');
+        $teacher->update(['status' => 'suspended']);
+        $student = $this->makeStudent('停用老師學生');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', [
+                'branch_id' => 1,
+                'student_id' => $student->id,
+                'teacher_id' => $teacher->id,
+                'subject' => 'Math',
+                'class_type' => 'one_on_one',
+                'total_classes' => 1,
+                'confirmed_dates' => [],
+                'future_dates' => [$this->nextWeekday(3)],
+                'start_time' => '16:00',
+                'duration_minutes' => 120,
+                'price_per_session' => 800,
+                'payment_type' => 'session',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['teacher_id']);
+
+        $this->assertSame(0, StudentClass::where('StudentID', $student->id)->count());
+    }
+
+    public function test_legacy_null_status_teacher_can_still_be_assigned(): void
+    {
+        $token = $this->makeDirectorToken('dir-legacy-status@test.com');
+        $teacher = $this->makeTeacher('teacher-legacy-status@test.com');
+        $teacher->update(['status' => null]);
+        $student = $this->makeStudent('舊狀態老師學生');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', [
+                'branch_id' => 1,
+                'student_id' => $student->id,
+                'teacher_id' => $teacher->id,
+                'subject' => 'Math',
+                'class_type' => 'one_on_one',
+                'total_classes' => 1,
+                'confirmed_dates' => [],
+                'future_dates' => [$this->nextWeekday(3)],
+                'start_time' => '16:00',
+                'duration_minutes' => 120,
+                'price_per_session' => 800,
+                'payment_type' => 'session',
+            ])->assertCreated();
+
+        $this->assertSame(1, StudentClass::where('StudentID', $student->id)->count());
+    }
+
+    public function test_pending_slot_teacher_cannot_be_assigned_to_new_course(): void
+    {
+        $token = $this->makeDirectorToken('dir-pending-slot@test.com');
+        $teacher = $this->makeTeacher('teacher-active-slot@test.com');
+        $pending = $this->makeTeacher('teacher-pending-slot@test.com');
+        $pending->update(['status' => 'pending']);
+        $student = $this->makeStudent('待審時段老師學生');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', [
+                'branch_id' => 1,
+                'student_id' => $student->id,
+                'teacher_id' => $teacher->id,
+                'subject' => 'Math',
+                'class_type' => 'one_on_one',
+                'total_classes' => 1,
+                'confirmed_dates' => [],
+                'future_dates' => [$this->nextWeekday(3)],
+                'start_time' => '16:00',
+                'duration_minutes' => 120,
+                'price_per_session' => 800,
+                'payment_type' => 'session',
+                'day_time_slots' => [
+                    ['day' => 3, 'start_time' => '16:00', 'teacher_id' => $pending->id],
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['day_time_slots.0.teacher_id']);
+
+        $this->assertSame(0, StudentClass::where('StudentID', $student->id)->count());
+    }
+
+    public function test_package_rejects_suspended_subject_teacher_without_writes(): void
+    {
+        $token = $this->makeDirectorToken('dir-suspended-package@test.com');
+        $active = $this->makeTeacher('teacher-active-package@test.com');
+        $suspended = $this->makeTeacher('teacher-suspended-package@test.com');
+        $suspended->update(['status' => 'suspended']);
+        $student = $this->makeStudent('停用老師方案學生');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/course-packages/create-multi-subject', [
+                'student_id' => $student->id,
+                'branch_id' => 1,
+                'name' => '停用老師方案',
+                'total_sessions' => 8,
+                'rate' => 500,
+                'subjects' => [
+                    ['subject_id' => 1, 'teacher_id' => $active->id],
+                    ['subject_id' => 2, 'teacher_id' => $suspended->id],
+                ],
+            ])->assertStatus(422)->assertJsonValidationErrors(['subjects.1.teacher_id']);
+
+        $this->assertSame(0, CoursePackage::where('student_id', $student->id)->count());
+        $this->assertSame(0, StudentClass::where('StudentID', $student->id)->count());
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

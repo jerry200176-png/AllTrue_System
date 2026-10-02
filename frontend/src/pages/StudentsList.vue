@@ -218,10 +218,16 @@
                     <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">menu_book</span>
                     {{ student.name }} 的課程安排
                   </h4>
-                  <button type="button" class="primary small" @click="openAddCourse(student)">
-                    <span class="material-symbols-outlined btn-icon">add</span>
-                    新增課程
-                  </button>
+                  <div class="course-panel-header__actions">
+                    <button v-if="getRenewableMonthlyCourses(student.id).length" type="button" class="small ghost" data-testid="batch-monthly-renew" @click="openBatchRenew(student)">
+                      <span class="material-symbols-outlined btn-icon">autorenew</span>
+                      月結續報下月（{{ getRenewableMonthlyCourses(student.id).length }} 科）
+                    </button>
+                    <button type="button" class="primary small" @click="openAddCourse(student)">
+                      <span class="material-symbols-outlined btn-icon">add</span>
+                      新增課程
+                    </button>
+                  </div>
                 </div>
                 <div class="student-note-line">
                   <span class="student-note-label">學生備註：</span>
@@ -458,7 +464,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -720,7 +726,7 @@
         <CourseEditForm
           ref="editFormRef"
           v-model="courseForm"
-          :teachers="teachers"
+          :teachers="editTeacherOptions"
           :rooms="rooms"
           :subjects="subjectOptions"
           :day-options="dayOptions"
@@ -763,9 +769,19 @@
       @duplicate-course="handleSchedulerDuplicate"
     />
 
+    <MonthlyBatchRenewModal
+      :show="!!batchRenewStudent"
+      :student-name="batchRenewStudent?.name || ''"
+      :courses="batchRenewStudent ? getRenewableMonthlyCourses(batchRenewStudent.id) : []"
+      @close="batchRenewStudent = null"
+      @done="loadAllStudentCourses"
+    />
+
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
+      :submitting="renewMonthlySubmitting"
+      :warnings="renewMonthlyWarnings"
       @close="closeRenewMonthlyModal"
       @preview-change="loadRenewMonthlyPreview"
       @submit="submitRenewMonthly"
@@ -1022,12 +1038,12 @@ import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/cons
 import { getStudentCourseSubjectDisplayLabel } from '../lib/studentCourseSubjectDisplay.js';
 import { guardianRoleLabel, lineBindingDisplay } from '../lib/guardianDisplay.js';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
+import { applyMonthlyRenewalPreview, nextPeriodEnd, renewalErrorMessage, invalidateMonthlyRenewalPreview } from '../lib/monthlyRenewalPreview';
 import {
   calculateTransactionDiscountPreview,
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
   estimatePurchaseBatchCharge,
-  getRenewalPreviewAmount,
   getPerSessionFee,
 } from '../lib/coursePricing';
 import { formatDuplicatePurchaseHint, formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
@@ -1051,6 +1067,7 @@ import {
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
+import { buildEditTeacherOptions, isAssignableTeacher } from '../lib/courseTeacherOptions.js';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import EnrollmentConflictDecisionModal from '../components/EnrollmentConflictDecisionModal.vue';
 import {
@@ -1060,6 +1077,7 @@ import {
   normalizeActiveCourseConflicts,
 } from '../lib/enrollmentConflictDecision';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
+import MonthlyBatchRenewModal from '../components/course-management/MonthlyBatchRenewModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import {
   buildTuitionCollectNav,
@@ -1171,6 +1189,7 @@ const showCourseModal = ref(false);
 const editingCourseId = ref(null);
 const editingCourseFromLaravel = ref(false);
 const editingCourseRaw = ref(null);
+const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
 const editFormRef = ref(null);
 const toastRef = ref(null);
 const selectedStudent = ref(null);
@@ -1270,6 +1289,9 @@ const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
 const renewMonthlyPreviewRequestId = ref(0);
+const renewMonthlySubmitting = ref(false);
+const batchRenewStudent = ref(null);
+const renewMonthlyWarnings = ref([]);
 
 // --- Monthly Invoice Modal ---
 const showInvoiceModal = ref(false);
@@ -1483,6 +1505,13 @@ const isHistoryCourseByReason = (course) => {
 const getActiveStudentCourses = (id) => {
   return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
 };
+/** Active, billable monthly courses: what the one-dialog 月結續報 offers. */
+const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
+  String(c?.payment_type || '').toLowerCase() === 'monthly'
+  && !isTutoringCourse(c)
+  && String(c?.status || '').toLowerCase() !== 'inactive'
+));
+const openBatchRenew = (student) => { batchRenewStudent.value = student; };
 const getHistoryStudentCourses = (id) => {
   // History is a detail disclosure inside an expanded student, so it must remain
   // available even when the top-level list is showing active courses only.
@@ -2011,6 +2040,7 @@ const loadTeachers = async () => {
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     const normalized = list
+      .filter(isAssignableTeacher)
       .map((t) => {
         const id = Number(t?.id ?? 0);
         if (!Number.isFinite(id) || id <= 0) return null;
@@ -2121,6 +2151,7 @@ const loadStudentCourses = async (studentId) => {
           rate_per_30min: c.rate_per_30min,
           duration_hours: c.duration_hours,
           payment_type: c.payment_type,
+          end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
           sessions_purchased: c.sessions_purchased,
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
           sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
@@ -2207,6 +2238,7 @@ const loadAllStudentCourses = async () => {
             rate_per_30min: c.rate_per_30min,
             duration_hours: c.duration_hours,
             payment_type: c.payment_type,
+            end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : ''),
             sessions_purchased: c.sessions_purchased,
             remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
             sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
@@ -2302,6 +2334,8 @@ const focusInitialStudent = async () => {
     if (targetCourse) {
       selectStudentCourse(student.id, targetCourse.id);
       if (props.initialStudentIntent === 'edit') editCourse(targetCourse);
+      else if ((props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew')
+        && getRenewableMonthlyCourses(student.id).some((c) => c.id === targetCourse.id)) openBatchRenew(student);
       else if (props.initialStudentIntent === 'purchase' || props.initialStudentIntent === 'renew') openAddSessionsForCourse(targetCourse);
       else if (props.initialStudentIntent === 'close') closeCourseNoRenew(targetCourse, student.name);
     }
@@ -3109,6 +3143,21 @@ const parseApiErrorMessage = (err, fallback = '操作失敗') => {
   return (generic || details || fallback) + actionLine;
 };
 
+const courseScheduleFingerprint = (form) => {
+  const slots = (form?.day_time_slots || []).map((slot) => [
+    Number(slot?.day || 0),
+    normalizeTo30Min(slot?.start_time || form?.start_time || '16:00'),
+    Number(slot?.duration_hours || form?.duration_hours || 2),
+  ]).sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1]));
+  return JSON.stringify({
+    slots,
+    days: [...new Set((form?.days_of_week || []).map(Number))].sort((a, b) => a - b),
+    duration: Number(form?.duration_hours || 2),
+    start: normalizeTo30Min(form?.start_time || '16:00'),
+    first: String(form?.first_class_date || '').slice(0, 10),
+  });
+};
+
 const submitCourse = async () => {
   const form = courseForm.value;
   const student = selectedStudent.value;
@@ -3194,34 +3243,42 @@ const submitCourse = async () => {
         return;
       }
       const isPackageCourse = !!editingCourseRaw.value?.PackageID;
+      const originalForm = courseFormSnapshot.value ? JSON.parse(courseFormSnapshot.value) : null;
+      const scheduleChanged = !originalForm || courseScheduleFingerprint(form) !== courseScheduleFingerprint(originalForm);
       const body = {
         subject: form.subject,
         teacher_id: form.teacher_id || null,
         class_type: form.class_type,
         rate_per_30min: form.rate_per_30min,
         rate_unit: form.rate_unit || 'session',
-        duration_hours: form.duration_hours,
         payment_type: form.payment_type,
         sessions_purchased: form.sessions_purchased,
-        days_of_week: form.days_of_week?.length ? form.days_of_week : (form.day_of_week ? [form.day_of_week] : []),
-        start_time: form.start_time,
-        day_time_slots: (form.day_time_slots || [])
-          .map((slot) => ({
-            day: Number(slot?.day || 0),
-            start_time: normalizeTo30Min(slot?.start_time || form.start_time || '16:00'),
-            duration_minutes: Number(slot?.duration_hours || 0) > 0 ? Math.round(Number(slot.duration_hours) * 60) : undefined,
-          }))
-          .filter((slot) => slot.day >= 1 && slot.day <= 7),
-        end_time: computeEndTime(form.start_time, form.duration_hours),
-        first_class_date: form.first_class_date || null,
-        force_rebuild_if_mismatch: true,
+        ...(scheduleChanged ? {
+          duration_hours: form.duration_hours,
+          days_of_week: form.days_of_week?.length ? form.days_of_week : (form.day_of_week ? [form.day_of_week] : []),
+          start_time: form.start_time,
+          day_time_slots: (form.day_time_slots || [])
+            .map((slot) => ({
+              day: Number(slot?.day || 0),
+              start_time: normalizeTo30Min(slot?.start_time || form.start_time || '16:00'),
+              duration_minutes: Number(slot?.duration_hours || 0) > 0 ? Math.round(Number(slot.duration_hours) * 60) : undefined,
+            }))
+            .filter((slot) => slot.day >= 1 && slot.day <= 7),
+          end_time: computeEndTime(form.start_time, form.duration_hours),
+          first_class_date: form.first_class_date || null,
+          force_rebuild_if_mismatch: true,
+        } : {}),
         room_id: form.room_id || null,
         settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
         monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
         Memo: form.memo || null
       };
       if (isPackageCourse) delete body.remaining_sessions;
-      body.paid_at = form.paid_at ? form.paid_at : null;
+      // A schedule edit must not send an unchanged payment field. An empty
+      // paid_at can otherwise be interpreted as a request to undo a payment.
+      if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
+        body.paid_at = form.paid_at || null;
+      }
       const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
         method: 'PUT',
         credentials: 'include',
@@ -3258,7 +3315,11 @@ const submitCourse = async () => {
           successMsg += `\n\n⚠️ 學段提示：${payload.scope_warning}`;
         }
         closeCourseModal();
-        toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+        if (sync?.warning) {
+          toastRef.value?.show?.({ title: '部分堂次未同步', description: sync.warning, variant: 'warning', durationMs: 8000 });
+        } else {
+          toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+        }
         await loadAllStudentCourses();
         await loadStudentCourses(student.id);
         return;
@@ -3266,7 +3327,17 @@ const submitCourse = async () => {
       const err = await res.json().catch(() => ({}));
       toastRef.value?.show?.({ title: '儲存失敗', description: parseApiErrorMessage(err, '更新課程失敗'), variant: 'error', durationMs: 5000 });
       return;
-    } catch (_) {}
+    } catch (error) {
+      // A Laravel course must never silently fall through to the legacy
+      // Supabase writer after a network or parsing failure.
+      toastRef.value?.show?.({
+        title: '儲存失敗',
+        description: error?.message || '連線失敗，請稍後再試。',
+        variant: 'error',
+        durationMs: 5000,
+      });
+      return;
+    }
   }
   const base = {
     student_id: student.id,
@@ -3344,6 +3415,7 @@ const openAddSessionsForCourse = (course) => {
       original_amount: estimateMonthlyRenewalCharge(course),
       preview_end_date: '',
     };
+    renewMonthlyWarnings.value = [];
     showRenewMonthlyModal.value = true;
     loadRenewMonthlyPreview();
     return;
@@ -3370,6 +3442,7 @@ const openAddSessionsForCourse = (course) => {
 };
 
 const closeRenewMonthlyModal = () => {
+  if (renewMonthlySubmitting.value) return;
   renewMonthlyPreviewRequestId.value += 1;
   showRenewMonthlyModal.value = false;
   renewMonthlyTargetCourse.value = null;
@@ -3383,15 +3456,12 @@ async function loadRenewMonthlyPreview(endDate = '') {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (!token) return;
-    const currentEnd = course?.end_date || course?.EndDate || null;
-    let targetEnd = endDate;
-    if (!targetEnd) {
-      const d = currentEnd ? new Date(currentEnd) : new Date();
-      d.setMonth(d.getMonth() + 1);
-      targetEnd = d.toISOString().slice(0, 10);
+    if (!token) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '請重新登入後再預覽新一期。' });
+      return;
     }
-    renewMonthlyForm.value.preview_end_date = targetEnd;
+    const targetEnd = endDate || nextPeriodEnd(course?.end_date || course?.EndDate, course?.settlement_day);
+    invalidateMonthlyRenewalPreview(renewMonthlyForm.value, targetEnd);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
       credentials: 'include',
@@ -3407,10 +3477,16 @@ async function loadRenewMonthlyPreview(endDate = '') {
       requestedEndDate: targetEnd,
       currentEndDate: renewMonthlyForm.value.preview_end_date,
     })) return;
-    const amount = getRenewalPreviewAmount(json);
-    if (amount != null) renewMonthlyForm.value.original_amount = amount;
+    if (res.ok || json.severity === 'blocked') {
+      renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
+      applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
+    } else {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: renewalErrorMessage(json, '無法取得期間預覽，請重試。') });
+    }
   } catch {
-    /* preview is advisory only */
+    if (requestId === renewMonthlyPreviewRequestId.value && courseId === renewMonthlyTargetCourse.value?.id) {
+      Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: '無法取得期間預覽，請檢查連線後重試。' });
+    }
   }
 }
 
@@ -3578,6 +3654,8 @@ const submitRenewMonthly = async (endDate) => {
   const course = renewMonthlyTargetCourse.value;
   if (!course?.id) return;
   if (!endDate) { alert('請選擇新到期日或延長月數'); return; }
+  if (renewMonthlySubmitting.value) return;
+  renewMonthlySubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -3590,7 +3668,13 @@ const submitRenewMonthly = async (endDate) => {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ end_date: endDate, discount: renewMonthlyForm.value.discount }),
+      // Only financial roles may send `discount`; a NONE discount must be omitted or admin gets 403.
+      body: JSON.stringify({
+        end_date: endDate,
+        ...(renewMonthlyForm.value.discount?.type && renewMonthlyForm.value.discount.type !== 'NONE'
+          ? { discount: renewMonthlyForm.value.discount }
+          : {}),
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -3607,6 +3691,8 @@ const submitRenewMonthly = async (endDate) => {
     await loadAllStudentCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    renewMonthlySubmitting.value = false;
   }
 };
 
@@ -4245,6 +4331,7 @@ table th { font-size: 12.5px; }
   align-items: center;
   margin-bottom: 16px;
 }
+.course-panel-header__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .course-panel-header h4 {
   display: flex;
   align-items: center;

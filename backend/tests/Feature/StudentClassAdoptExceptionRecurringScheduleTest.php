@@ -292,7 +292,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     private function createCourseRecord(int $studentId, int $teacherId, array $overrides = []): StudentClass
     {
         return StudentClass::create(array_merge([
-            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacherId, 'by1' => 1, 'Period' => 4,
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('English'), 'TeacherID' => $teacherId, 'by1' => 1, 'Period' => 4,
             'StartDate' => '2026-04-01', 'TotalHours' => 10, 'Charge' => 0, 'Paid' => 0, 'Rate' => 500, 'MDate' => now(), 'Stop' => 0,
             'ScheduleMode' => 'count', 'SessionCount' => 6, 'SessionDuration' => 60, 'RemainingSessions' => 5, 'UsedSessions' => 1,
             'ClassType' => 'one_on_one', 'week' => 1, 'time' => '17:00:00',

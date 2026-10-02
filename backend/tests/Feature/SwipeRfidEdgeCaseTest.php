@@ -6,6 +6,7 @@ use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
 use App\Models\Subject;
 use App\Models\TeacherSignIn;
@@ -331,5 +332,75 @@ class SwipeRfidEdgeCaseTest extends TestCase
             'TD-009: backfill SignOutDT 必須等於 ClassSession.EndTime（14:00），不可為午夜或其他錯誤值');
         $this->assertStringNotContainsString('00:00:00', $bSignIn->SignOutDT,
             'TD-009: backfill SignOutDT 不應為午夜 00:00');
+    }
+
+    // ── 老師遲到：只比「這間分校」的第一堂，且只看今天第一次到這間分校 ─────────
+
+    /** @test */
+    public function teacher_late_status_only_compares_this_campus_first_arrival(): void
+    {
+        $teacherId = DB::table('User')->insertGetId([
+            'LoginName' => 'runner-teacher@example.com', 'Name' => '跑校老師',
+            'PSW' => 'secret', 'type' => 'T', 'phone' => '0900000000',
+        ]);
+        DB::table('UserCampus')->insert([
+            'CampusID' => $this->campus->id, 'UserID' => $teacherId,
+            'Admin' => 0, 'Approved' => 1, 'RFID' => 'EDGE-RUNNER',
+        ]);
+        $today = now()->toDateString();
+
+        // 別校 08:00 有課；本校 15:00 才有課 → 10:00 到本校不算遲到
+        DB::table('schedules')->insert([
+            'student_id' => 1, 'teacher_id' => $teacherId, 'day_of_week' => now()->dayOfWeekIso,
+            'start_time' => '08:00', 'end_time' => '09:00', 'status' => 'scheduled',
+            'branch_id' => $this->campus->id + 100, 'schedule_date' => $today,
+        ]);
+        $sc = $this->makeStudentClass($this->makeStudent()->id, ['TeacherID' => $teacherId]);
+        $this->makeClassSession($sc->ID, $today, '15:00', '17:00');
+
+        $this->swipe('EDGE-RUNNER')->assertStatus(201);
+        $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->value('Status'));
+
+        // 本校 09:00 也有課、今天已到過本校 → 中午回來再刷，不算遲到
+        $this->makeClassSession($sc->ID, $today, '09:00', '10:00');
+        TeacherSignIn::where('TeacherID', $teacherId)->update(['SignInDT' => "{$today} 08:55:00", 'SignOutDT' => "{$today} 09:30:00"]);
+        $this->swipe('EDGE-RUNNER')->assertStatus(201);
+        $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->orderByDesc('id')->value('Status'));
+    }
+
+    public function test_student_swipe_returns_only_verified_line_ids(): void
+    {
+        $student = $this->makeStudent();
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Upending', 'campus_id' => $this->campus->id]);
+
+        $this->swipe($student->RFID)
+            ->assertStatus(201)
+            ->assertJsonPath('student.LineIDs', ['Uverified']);
+    }
+
+    /** @test */
+    public function teacher_swipe_at_other_campus_closes_previous_as_cross_campus_and_opens_new(): void
+    {
+        $teacherId = DB::table('User')->insertGetId([
+            'LoginName' => 'cross-teacher@example.com', 'Name' => '跨校老師',
+            'PSW' => 'secret', 'type' => 'T', 'phone' => '0900000000',
+        ]);
+        DB::table('UserCampus')->insert([
+            'CampusID' => $this->campus->id, 'UserID' => $teacherId,
+            'Admin' => 0, 'Approved' => 1, 'RFID' => 'EDGE-CROSS',
+        ]);
+        $otherCampus = $this->campus->id + 100;
+        $earlier = TeacherSignIn::create([
+            'TeacherID' => $teacherId, 'CampusID' => $otherCampus,
+            'SignInDT' => now()->setTime(8, 0), 'SignOutDT' => null, 'MDT' => now(), 'Source' => 'rfid', 'Status' => 'normal',
+        ]);
+
+        $this->swipe('EDGE-CROSS')->assertStatus(201)->assertJsonPath('action', 'sign_in');
+
+        $earlier->refresh();
+        $this->assertSame(now()->format('Y-m-d H:i:s'), Carbon::parse($earlier->SignOutDT)->format('Y-m-d H:i:s'));
+        $this->assertSame(\App\Services\TeacherAttendanceMonth::CROSS_CAMPUS_MEMO, $earlier->Memo);
+        $this->assertSame(1, TeacherSignIn::where('TeacherID', $teacherId)->where('CampusID', $this->campus->id)->whereNull('SignOutDT')->count());
     }
 }

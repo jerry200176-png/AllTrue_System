@@ -45,6 +45,7 @@
     }
   },
   "workflows": {
+    "ops-muzha-pop-readonly-verify.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Exact POP request and four-course strategy plan are read through SELECT-only Laravel bootstrap; no execute, approval, save, update, or write path."},
     "monthly-leave-boundary-inventory.yml": {"classification":"read-only-probe","production_mutation":"marker-only","evidence":"Workflow is manual-confirmed, pinned-SSH, and invokes a read-only artisan inventory command; no apply/execute/write path."},
     "1387-db-grant-repair.yml": {
       "classification": "legacy-case-specific-mutation",
@@ -84,6 +85,7 @@
       "future_state": "Retire after case closure or migrate through Founder-approved POP"
     },
     "yang-1445-contract-repair.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:yang-1445-contract-move --execute/--rollback --force","authorization":"Manual exact phrase, actor, pinned production SSH trust; dry-run default; Founder GO before execute","concurrency":"repair-yang-1445; cancel-in-progress=false","rollback":"Command --rollback restores snapshot_before rows from session_corrections; in-transaction and independent post-verify","canonical":false,"required":"case-specific repair","future_state":"Retire after case closure"},
+    "yu-shengrui-3499-transfer-repair.yml": {"classification":"legacy-case-specific-mutation","production_mutation":"confirmed","trigger":"workflow_dispatch","production_command_or_path":"repair:yu-shengrui-3499-transfer --execute/--rollback --force","authorization":"Manual exact phrase, actor, pinned production SSH trust; dry-run default; Founder GO before execute","concurrency":"repair-yu-shengrui-3499; cancel-in-progress=false","rollback":"Command --rollback restores snapshot_before rows from session_corrections; in-transaction and independent post-verify","canonical":false,"required":"case-specific repair","future_state":"Retire after case closure"},
     "173-supersede-repair.yml": {
       "classification": "legacy-case-specific-mutation",
       "production_mutation": "confirmed",

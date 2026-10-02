@@ -51,7 +51,8 @@ class LearningRecordCourseTeacherOwnershipTest extends TestCase
     {
         [$dir, $old, $neu, $course, $session, $lr] = $this->scenario(pendingFuture: false);
         $this->assertSame('2026-09-13', $session->SessionDate);
-        $this->putTeacher($dir, $course->ID, $neu)->assertOk();
+        // Past lessons keep the former teacher unless staff pick an earlier effective date.
+        $this->putTeacher($dir, $course->ID, $neu, '2026-09-01')->assertOk();
         $lr->refresh();
         $this->assertSame($neu, (int) $lr->TeacherID);
         $falsePin = DB::table('schedules')
@@ -132,6 +133,14 @@ class LearningRecordCourseTeacherOwnershipTest extends TestCase
         DB::table('LearningRecord')->where('id', $lr->id)->update(['TeacherID' => $old]);
         $lr->refresh();
         $this->assertEffective($dir, $lr->id, $neu, '新正班');
+        $newNameIds = collect($this->withHeaders($this->auth($dir))
+            ->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('新正班'))
+            ->json('data'))->pluck('id')->all();
+        $oldNameIds = collect($this->withHeaders($this->auth($dir))
+            ->getJson('/api/v1/learning-records?branch_id=1&teacher_name=' . urlencode('舊正班'))
+            ->json('data'))->pluck('id')->all();
+        $this->assertContains($lr->id, $newNameIds);
+        $this->assertNotContains($lr->id, $oldNameIds);
         $this->assertTeacherSees($old, $lr->id, false);
         $this->assertTeacherSees($neu, $lr->id, true);
         $newRes = $this->withHeaders($this->auth($this->tokenFor($neu)))
@@ -175,11 +184,12 @@ class LearningRecordCourseTeacherOwnershipTest extends TestCase
         return [$dir, $old, $neu, $course, $session, $lr];
     }
 
-    private function putTeacher(string $dir, int $courseId, int $teacherId)
+    private function putTeacher(string $dir, int $courseId, int $teacherId, ?string $effectiveDate = null)
     {
-        return $this->withHeaders($this->auth($dir))->putJson("/api/v1/student-classes/{$courseId}", [
+        return $this->withHeaders($this->auth($dir))->putJson("/api/v1/student-classes/{$courseId}", array_filter([
             'teacher_id' => $teacherId,
-        ]);
+            'teacher_effective_date' => $effectiveDate,
+        ]));
     }
 
     private function assertEffective(string $dir, int $lrId, int $tid, string $name): void

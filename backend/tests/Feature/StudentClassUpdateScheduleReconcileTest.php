@@ -22,6 +22,7 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\DB::table('Subject')->where('Subject_Name', 'Math')->where('id', '<>', 1)->update(['Subject_Name' => 'Math (legacy)']); \Illuminate\Support\Facades\DB::table('Subject')->updateOrInsert(['id' => 1], ['School_id' => 1, 'Grade_no' => 0, 'Subject_Name' => 'Math']); // fixtures use SubjectID 1 + subject=Math (ids are not reset between tests)
         // seedCourseWithHistory() 把「未來」sessions 放在 2026-04-19 起，
         // 若執行日期已經跨過 4/19，那筆 session 會被 sync 視為過去而不更新，
         // 導致 scheduled 集合裡仍出現舊時間。統一凍結到 4/12。
@@ -134,6 +135,90 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         foreach ($futureSessions as $session) {
             $this->assertStringStartsWith('13:00', (string) $session->StartTime);
         }
+    }
+
+    public function test_fixed_time_edit_with_start_date_mismatch_syncs_future_and_adopts_matching_exception(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+
+        // The first actual lesson is later than StartDate. A prior one-off
+        // adjustment already has the requested new time, but the series does not.
+        $exception = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-04-19')
+            ->firstOrFail();
+        $exception->update([
+            'StartTime' => '13:00:00',
+            'EndTime' => '15:00:00',
+            'IsContractException' => true,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'duration_hours' => 2,
+            'days_of_week' => [7],
+            'start_time' => '13:00',
+            'day_time_slots' => [['day' => 7, 'start_time' => '13:00', 'duration_minutes' => 120]],
+            'payment_type' => 'session',
+            'first_class_date' => '2026-03-01',
+            'force_rebuild_if_mismatch' => true,
+        ]);
+
+        $res->assertOk();
+        $this->assertGreaterThan(0, (int) $res->json('session_sync.updated_future_sessions'));
+        $this->assertSame('13:00:00', (string) $course->fresh()->time);
+        $this->assertFalse((bool) $exception->fresh()->IsContractException);
+        $this->assertSame('15:00:00', (string) ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-03-08')->value('StartTime'));
+        foreach (ClassSession::where('StudentClassID', $course->ID)
+            ->where('Status', 'scheduled')->get() as $session) {
+            $this->assertSame('13:00:00', (string) $session->StartTime);
+            $this->assertSame('15:00:00', (string) $session->EndTime);
+        }
+    }
+
+    public function test_fixed_time_edit_reports_partially_locked_future_occurrences(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory();
+        $locked = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-04-19')->firstOrFail();
+        StudentSignIn::create([
+            'StudentClassID' => $course->ID,
+            'StudentID' => $student->id,
+            'TeacherID' => 99,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'CampusID' => 1,
+            'SignInDT' => '2026-04-19 15:00:00',
+            'MDT' => now(),
+            'ClassSessionID' => $locked->id,
+            'Status' => 'present',
+            'SessionDeducted' => 0,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'duration_hours' => 2,
+            'days_of_week' => [7],
+            'start_time' => '13:00',
+            'day_time_slots' => [['day' => 7, 'start_time' => '13:00', 'duration_minutes' => 120]],
+            'payment_type' => 'session',
+            'first_class_date' => '2026-03-01',
+            'force_rebuild_if_mismatch' => true,
+        ]);
+
+        $res->assertOk();
+        $this->assertGreaterThan(0, (int) $res->json('session_sync.updated_future_sessions'));
+        $this->assertSame(1, (int) $res->json('session_sync.unaligned_future_sessions'));
+        $this->assertNotEmpty($res->json('session_sync.warning'));
+        $this->assertSame('15:00:00', (string) $locked->fresh()->StartTime);
     }
 
     /**

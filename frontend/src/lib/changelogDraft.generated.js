@@ -5,10 +5,47 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.10.01",
+    "date": "2026-10-01",
+    "title": "2026.10.01 草稿（未發布）",
+    "summary": "photo pushes swipe photo to parents via LINE；teachers cannot be assigned to new courses",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "photo pushes swipe photo to parents via LINE"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "teachers cannot be assigned to new courses",
+          "calendar and tutoring acceptance follow actual contracts",
+          "renewal follows settlement day; flags late periods",
+          "for an older commit no longer asks for deploy approval",
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
+        ]
+      }
+    ],
+    "items": [
+      "photo pushes swipe photo to parents via LINE",
+      "teachers cannot be assigned to new courses",
+      "calendar and tutoring acceptance follow actual contracts",
+      "renewal follows settlement day; flags late periods",
+      "for an older commit no longer asks for deploy approval",
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
+    ]
+  },
+  {
     "version": "2026.09.30",
     "date": "2026-09-30",
     "title": "2026.09.30 草稿（未發布）",
-    "summary": "月結課程依固定時段估計規劃堂數；month view for teacher attendance (director + teacher self)",
+    "summary": "月結課程依固定時段估計規劃堂數；rfid returns student LINE ids",
     "audience": [
       "teacher",
       "director"
@@ -19,31 +56,34 @@ export const changelogDraftNotes = [
         "title": "新增內容",
         "items": [
           "月結課程依固定時段估計規劃堂數",
+          "rfid returns student LINE ids",
+          "attendance month close, correction audit, cross-campus swipe",
           "month view for teacher attendance (director + teacher self)",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "tab acting context, context chip, route-implied switch",
-          "as in security audit + self-approval hard block",
-          "entry staff login (no role picker)"
+          "tab acting context, context chip, route-implied switch"
         ]
       },
       {
         "title": "修正內容",
         "items": [
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "from a stale acting context instead of failing every request",
-          "loading skeleton, Esc closes student modal, clearer LINE binding, class-type filter"
+          "schedule edits sync future lessons in one save",
+          "late / missed judged from real class sessions",
+          "name search applies to assessment records",
+          "renewal submit stays enabled after preview",
+          "修正超級管理員看不到版本更新內容的問題",
+          "change requires transfer; teacher change keeps past lessons"
         ]
       }
     ],
     "items": [
       "月結課程依固定時段估計規劃堂數",
+      "rfid returns student LINE ids",
+      "attendance month close, correction audit, cross-campus swipe",
       "month view for teacher attendance (director + teacher self)",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "tab acting context, context chip, route-implied switch",
-      "as in security audit + self-approval hard block",
-      "entry staff login (no role picker)",
-      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-      "from a stale acting context instead of failing every request"
+      "schedule edits sync future lessons in one save",
+      "late / missed judged from real class sessions"
     ]
   },
   {
@@ -649,48 +689,6 @@ export const changelogDraftNotes = [
       "未付款堂數更正只在安全條件下開放",
       "課程繳費下一步更容易辨識",
       "未安排堂次的日期清單說明"
-    ]
-  },
-  {
-    "version": "2026.09.10",
-    "date": "2026-09-10",
-    "title": "2026.09.10 草稿（未發布）",
-    "summary": "回復正班老師會清掉殘留代課列；評量評語視窗更清楚、更容易操作",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "回復正班老師會清掉殘留代課列",
-          "評量評語視窗更清楚、更容易操作",
-          "評量表授課老師顯示實際填寫老師"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "出缺勤紀錄更容易閱讀",
-          "進度中心更容易理解",
-          "需要留意事項更容易處理",
-          "家長入口標頭更容易操作",
-          "家長學習分頁更容易操作",
-          "版本更新頁更容易閱讀"
-        ]
-      }
-    ],
-    "items": [
-      "回復正班老師會清掉殘留代課列",
-      "評量評語視窗更清楚、更容易操作",
-      "評量表授課老師顯示實際填寫老師",
-      "出缺勤紀錄更容易閱讀",
-      "進度中心更容易理解",
-      "需要留意事項更容易處理",
-      "家長入口標頭更容易操作",
-      "家長學習分頁更容易操作"
     ]
   }
 ];

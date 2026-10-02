@@ -8,6 +8,21 @@
 
 const TONE_RANK = { danger: 3, warning: 2, info: 1 };
 
+export function usageBalanceWarningTitle(course) {
+  const diagnostic = course?.usage_balance_diagnostic;
+  if (!diagnostic) return '課堂狀態與扣堂紀錄不一致，請先完成重複堂次／扣堂對帳。';
+  const storedRemaining = Number(diagnostic.stored_remaining_sessions);
+  const hasExpectedRemaining = diagnostic.expected_remaining_sessions !== null && diagnostic.expected_remaining_sessions !== undefined;
+  const expectedRemaining = hasExpectedRemaining ? Number(diagnostic.expected_remaining_sessions) : null;
+  if (Number.isFinite(storedRemaining) && Number.isFinite(expectedRemaining) && storedRemaining !== expectedRemaining) {
+    return `課程原始記錄為剩 ${storedRemaining} 堂，目前畫面依出席與扣堂證據顯示剩 ${expectedRemaining} 堂；請先完成對帳，再作為收費依據。`;
+  }
+  if (Number(diagnostic.cancelled_usage_artifacts) > 0) {
+    return '已取消課堂仍有扣堂或出席紀錄，請先查看對帳明細。';
+  }
+  return `課堂狀態、已用堂數或扣堂紀錄不一致（課堂 ${diagnostic.class_session_used_sessions} 堂、扣堂 ${diagnostic.ledger_used_sessions} 堂），請先查看對帳明細。`;
+}
+
 /**
  * @param {{hasSlotConflict: boolean, schedule_drift: boolean, contract_exception_count: number, usage_balance_status: string}} course
  * @param {(course: object) => string} usageBalanceWarningTitle

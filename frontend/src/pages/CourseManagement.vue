@@ -893,6 +893,7 @@
             <button type="button" class="ghost" data-testid="course-manager-settings-back" @click="leaveCourseManagerSettings">返回總覽</button>
             <button type="button" class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存課程設定</button>
           </div>
+          <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
           <details class="cm-settings-more">
             <summary>其他操作</summary>
             <button type="button" class="ghost small" data-testid="course-manager-duplicate" @click="duplicateCourseForTeacher(courseManagerCourse)">複製為新課程並更換老師</button>
@@ -920,6 +921,7 @@
           <p>{{ editSaveError.message }}</p>
           <p v-if="editSaveError.details" class="alert-detail">{{ editSaveError.details }}</p>
           <p v-if="editSaveError.hint" class="alert-detail">{{ editSaveError.hint }}</p>
+          <button v-if="editSaveError.code === 'subject_change_requires_transfer'" type="button" class="small primary" data-testid="open-course-transfer" @click="showCourseTransfer = true">改用轉課</button>
         </AtInlineAlert>
         <section v-if="editability?.reasons?.length" class="editability-action-panel" data-testid="course-editability-panel" aria-label="課程編輯分流">
           <div class="editability-action-panel__intro">
@@ -974,6 +976,7 @@
           <button class="ghost" @click="showEditModal = false">取消</button>
           <button class="primary" :disabled="editFormRef?.hasErrors || editabilityLoading" @click="submitEdit">儲存</button>
         </div>
+        <p v-if="editFormRef?.hasErrors" class="form-hint" role="status">請先修正表單標示的必填欄位，再儲存課程設定。</p>
       </div>
     </div>
 
@@ -1144,6 +1147,14 @@
       @submit="submitRenewMonthly"
     />
 
+    <CourseTransferModal
+      :show="showCourseTransfer"
+      :course-id="editingId"
+      :subjects="subjectOptions"
+      :teachers="editTeacherOptions"
+      @close="showCourseTransfer = false"
+      @done="onCourseTransferDone"
+    />
     <TransferSessionsModal
       :show="showTransferSessionsModal"
       :source-course="transferSessionsCourse"
@@ -1533,9 +1544,9 @@ import {
   canApplyRenewalPreview,
   estimateMonthlyRenewalCharge,
 } from '../lib/coursePricing';
-import { applyMonthlyRenewalPreview, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
+import { applyMonthlyRenewalPreview, nextPeriodEnd, renewalErrorMessage, invalidateMonthlyRenewalPreview, canSubmitMonthlyRenewal } from '../lib/monthlyRenewalPreview';
 import { coursesWithSlotConflicts } from '../lib/slotOccupancy';
-import { courseRowWarningSummary } from '../lib/courseRowWarnings';
+import { courseRowWarningSummary, usageBalanceWarningTitle } from '../lib/courseRowWarnings';
 import {
   formatRenewSuccessMessage,
   formatDuplicatePurchaseHint,
@@ -1545,7 +1556,7 @@ import {
 } from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { convertSingleCourseToPackage, previewSingleCoursePackageConversion, updatePackage } from '../lib/coursePackagesApi';
-import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
+import { buildEditTeacherOptions, isAssignableTeacher, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import {
   editabilityActionDescription,
@@ -1575,6 +1586,7 @@ import {
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import TransferSessionsModal from '../components/course-management/TransferSessionsModal.vue';
+import CourseTransferModal from '../components/course-management/CourseTransferModal.vue';
 import ContractAdjustmentChoiceModal from '../components/course-management/ContractAdjustmentChoiceModal.vue';
 import ContractAmendmentModal from '../components/course-management/ContractAmendmentModal.vue';
 import ContractAmendmentRevertModal from '../components/course-management/ContractAmendmentRevertModal.vue';
@@ -2282,6 +2294,14 @@ const editFormRef = ref(null);
 const editForm = ref({});
 const editFormSnapshot = ref('');
 const editSaveError = ref(null);
+const showCourseTransfer = ref(false);
+const onCourseTransferDone = async () => {
+  showCourseTransfer.value = false;
+  showEditModal.value = false;
+  editSaveError.value = null;
+  await loadCourses();
+  toastRef.value?.show?.({ title: '轉課完成', description: '轉課日之前的堂次留在舊合約，之後的堂次已轉到新合約。', variant: 'success', durationMs: 4000 });
+};
 const editability = ref(null);
 const editabilityLoading = ref(false);
 const editabilityError = ref('');
@@ -2446,7 +2466,7 @@ function continuePackageConversionFromPreview() {
   closePackageConversionPreview();
   if (course) openPackageConversion(course);
 }
-/** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
+/** 開啟編輯時的排課指紋；變更時由同一次更新交易同步未上堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
 const rooms = ref([]);
@@ -2534,17 +2554,6 @@ function isBillingCorrectionStructureEligible(course) {
 
 function isUnpaidCountCourse(course) {
   return isBillingCorrectionStructureEligible(course) && course?.payment_status === 'unpaid';
-}
-
-function usageBalanceWarningTitle(course) {
-  const diagnostic = course?.usage_balance_diagnostic;
-  if (!diagnostic) return '課堂狀態與扣堂紀錄不一致，請先完成重複堂次／扣堂對帳。';
-  const storedRemaining = Number(diagnostic.stored_remaining_sessions);
-  const expectedRemaining = Number(diagnostic.expected_remaining_sessions);
-  if (Number.isFinite(storedRemaining) && Number.isFinite(expectedRemaining) && storedRemaining !== expectedRemaining) {
-    return `課程原始記錄為剩 ${storedRemaining} 堂，目前畫面依出席與扣堂證據顯示剩 ${expectedRemaining} 堂；請先完成對帳，再作為收費依據。`;
-  }
-  return `課堂狀態顯示已上 ${diagnostic.class_session_used_sessions} 堂，但扣堂紀錄為 ${diagnostic.ledger_used_sessions} 堂；請先完成對帳，再作為收費依據。`;
 }
 
 function openContractAdjustmentModal(course) {
@@ -3327,17 +3336,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
     }
     const currentEnd = course?.end_date || course?.EndDate || null;
     let endDate = requestedEndDate;
-    if (!endDate) {
-      if (currentEnd) {
-        const d = new Date(currentEnd);
-        d.setMonth(d.getMonth() + 1);
-        endDate = d.toISOString().slice(0, 10);
-      } else {
-        const d = new Date();
-        d.setMonth(d.getMonth() + 1);
-        endDate = d.toISOString().slice(0, 10);
-      }
-    }
+    if (!endDate) endDate = nextPeriodEnd(currentEnd, course?.settlement_day);
     invalidateMonthlyRenewalPreview(renewMonthlyForm.value, endDate);
     const res = await fetch(`/api/v1/student-classes/${course.id}/renewal-preview`, {
       method: 'POST',
@@ -3362,7 +3361,7 @@ async function loadRenewMonthlyPreviewForEndDate(course, requestedEndDate = '') 
         renewMonthlyWarnings.value = [...(json.warnings || []), ...(json.blockers || [])];
         applyMonthlyRenewalPreview(renewMonthlyForm.value, json);
       } else {
-        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: json.message || '無法取得期間預覽，請重試。' });
+        Object.assign(renewMonthlyForm.value, { preview_status: 'error', preview_error: renewalErrorMessage(json, '無法取得期間預覽，請重試。') });
       }
     }
   } catch {
@@ -5163,7 +5162,6 @@ const loadTeachers = async () => {
     if (!token) { teachers.value = []; return; }
     const params = new URLSearchParams({
       per_page: 'all',
-      status: 'active',
       branch_id: currentBranchId,
     });
     const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
@@ -5172,7 +5170,7 @@ const loadTeachers = async () => {
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
     const filteredRows = (Array.isArray(list) ? list : []).filter((teacher) => {
-      if ((teacher?.status || 'active') !== 'active') return false;
+      if (!isAssignableTeacher(teacher)) return false;
       const branchIds = Array.isArray(teacher?.branch_ids)
         ? teacher.branch_ids.map((id) => String(id))
         : [];
@@ -5349,6 +5347,10 @@ const submitEdit = async () => {
         const body = {
           subject: form.subject,
           teacher_id: form.teacher_id || null,
+          // Past sessions keep the former teacher; default effective date = today.
+          ...(String(form.original_teacher_id || '') !== String(form.teacher_id || '') && form.teacher_id
+            ? { teacher_effective_date: form.teacher_effective_date || new Date().toLocaleDateString('sv-SE') }
+            : {}),
           class_type: form.class_type,
           rate_per_30min: form.rate_per_30min,
           rate_unit: form.rate_unit || 'session',
@@ -5374,33 +5376,15 @@ const submitEdit = async () => {
         if (res.ok) {
           const payload = await res.json().catch(() => ({}));
           const sync = payload?.session_sync || {};
-          let scheduleAutoRebuildOk = false;
-          if (scheduleChanged) {
-            const rbRes = await fetch(`/api/v1/student-classes/${id}`, {
-              method: 'PUT',
-              credentials: 'include',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ force_partial_rebuild: true }),
-            });
-            const rbPayload = await rbRes.json().catch(() => ({}));
-            if (rbRes.ok) {
-              scheduleAutoRebuildOk = true;
-              sync._auto_rebuild_updated = Number(rbPayload?.session_sync?.updated_future_sessions ?? 0);
-            } else {
-              sync._auto_rebuild_failed = rbPayload?.message || rbRes.statusText;
-            }
-          }
           editScheduleBaseline.value = null;
           let successMsg = '課程已更新。';
-          if (scheduleChanged && scheduleAutoRebuildOk) {
-            const u = Number(sync._auto_rebuild_updated ?? 0) + Number(sync.updated_future_sessions ?? 0);
+          if (scheduleChanged) {
+            const u = Number(sync.updated_future_sessions ?? 0);
             if (u > 0) {
               successMsg += ` 已依新固定排課同步 ${u} 筆未上堂次（已點名／已核准堂次維持不變）。`;
             } else {
               successMsg += ' 未上預排堂次已與新固定排課對齊（無需變更或已無未上堂次）。';
             }
-          } else if (sync?._auto_rebuild_failed) {
-            successMsg += ` 未上堂次未自動同步：${sync._auto_rebuild_failed}。請稍後再開啟編輯並按儲存重試；若仍失敗請洽技術支援。`;
           }
           if (sync?.rebuilt) {
             successMsg += ` 已依新開課日重排 ${Number(sync.created_sessions || 0)} 堂。`;
@@ -5415,14 +5399,14 @@ const submitEdit = async () => {
             } else {
               successMsg += ' 已鎖定已點名／已核准堂次；未來堂次日期無需調整。';
             }
-          } else if (sync?.reason === 'history_exists' && !(scheduleChanged && scheduleAutoRebuildOk)) {
+          } else if (sync?.reason === 'history_exists' && !scheduleChanged) {
             // 開課日無變動但有歷史記錄阻擋（或 slots 無法解析）
             if (sync?.reconcile_skipped) {
               successMsg += ' 課程時段已更新，但部分未來堂次因狀態鎖定未同步時間，請至堂次列表確認。';
             } else {
               successMsg += ' 本課已有出缺勤/核准紀錄，為保留歷史資料未重排堂次。';
             }
-          } else if (sync?.reason === 'start_date_unchanged' && !(scheduleChanged && scheduleAutoRebuildOk)) {
+          } else if (sync?.reason === 'start_date_unchanged' && !scheduleChanged) {
             successMsg += ' 開課日未變更，故未重排堂次。';
           } else if (sync?.reason === 'start_date_not_updated') {
             successMsg += ' 本次未更新開課日，故未重排堂次。';
@@ -5433,7 +5417,16 @@ const submitEdit = async () => {
           if (courseManagerOpen.value && courseManagerCourse.value) {
             editCourse(courseManagerCourse.value, { openModal: false });
           }
-          toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+          if (sync?.warning) {
+            toastRef.value?.show?.({
+              title: '部分堂次未同步',
+              description: sync.warning,
+              variant: 'warning',
+              durationMs: 8000,
+            });
+          } else {
+            toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
+          }
           return;
         }
         const err = await res.json().catch(() => ({}));
@@ -5441,10 +5434,17 @@ const submitEdit = async () => {
           ? Object.values(err.errors).flat().filter(Boolean).join(' ')
           : '';
         editSaveError.value = {
+          code: err?.code || '',
           message: err?.message || '更新失敗，請檢查欄位後再試。',
           details,
           hint: editabilityNextStepLabel(editabilityNextStepForError(err)),
         };
+        toastRef.value?.show?.({
+          title: '儲存失敗',
+          description: [editSaveError.value.message, details, editSaveError.value.hint].filter(Boolean).join(' '),
+          variant: 'error',
+          durationMs: 8000,
+        });
         return;
       }
     } catch (e) {
@@ -5452,6 +5452,12 @@ const submitEdit = async () => {
         message: '連線失敗，請稍後再試。',
         details: e?.message || '',
       };
+      toastRef.value?.show?.({
+        title: '儲存失敗',
+        description: [editSaveError.value.message, editSaveError.value.details].filter(Boolean).join(' '),
+        variant: 'error',
+        durationMs: 8000,
+      });
       return;
     }
   }

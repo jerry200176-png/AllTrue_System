@@ -6,6 +6,7 @@ use App\Exports\TeacherMonthlyAttendanceExport;
 use App\Models\TeacherSignIn;
 use App\Models\TeacherSignInAdjustment;
 use App\Services\TeacherAttendanceMonth;
+use App\Services\TeacherClassCalendar;
 use App\Support\TeacherProfileDirectory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -164,6 +165,7 @@ class TeacherAttendanceController extends Controller
             $query->where('ts.Status', $status);
         }
 
+        /** @var \Illuminate\Pagination\LengthAwarePaginator $records */
         $records = $query->orderBy('ts.SignInDT', 'desc')->paginate($perPage);
 
         // 附加最後補卡資訊
@@ -180,7 +182,16 @@ class TeacherAttendanceController extends Controller
             return $row;
         });
 
-        return response()->json($records);
+        // 當天每位老師一列（依課表重算，跟月出勤表同一套）；有課沒刷的老師也在裡面
+        $days = [];
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $date)) {
+            foreach ($this->loadMonth(substr($date, 0, 7), $effectiveCampusIds, $teacherId)['teachers'] as $t) {
+                $days[] = ['teacher_id' => $t['teacher_id'], 'teacher_name' => $t['teacher_name']]
+                    + collect($t['days'])->firstWhere('date', $date);
+            }
+        }
+
+        return response()->json($records->toArray() + ['days' => $days]);
     }
 
     /**
@@ -206,6 +217,12 @@ class TeacherAttendanceController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
+        foreach ([$signin->SignInDT, $request->input('new_signin_dt')] as $dt) {
+            if ($this->activeMonthClose((int) $signin->CampusID, Carbon::parse($dt)->format('Y-m'))) {
+                return response()->json(['message' => '這個月的出勤已確認，要修改請先重新開啟'], 423);
+            }
+        }
+
         [$adjustment, $signin] = DB::transaction(function () use ($request, $signin, $authUser) {
             $adj = TeacherSignInAdjustment::create([
                 'teacher_signin_id'   => $signin->id,
@@ -217,10 +234,10 @@ class TeacherAttendanceController extends Controller
                 'new_signout_dt'      => $request->input('new_signout_dt'),
             ]);
 
-            // 原始值已保存至 audit 表；主表改為補卡後的有效時間，前端才能正確顯示
+            // 原始值已保存至 audit 表；主表改為補卡後的有效時間，前端才能正確顯示。
+            // Status（刷卡當下的判斷）不蓋掉，「已補卡」由 audit 表判斷。
             $signin->SignInDT  = $request->input('new_signin_dt');
             $signin->SignOutDT = $request->input('new_signout_dt'); // null 代表未補簽退
-            $signin->Status    = 'adjusted';
             $signin->MDT       = now();
             $signin->save();
 
@@ -231,8 +248,97 @@ class TeacherAttendanceController extends Controller
             'ok'            => true,
             'signin_id'     => $signin->id,
             'adjustment_id' => $adjustment->id,
-            'new_status'    => 'adjusted',
+            'new_status'    => $signin->Status,
         ]);
+    }
+
+    /**
+     * POST /api/v1/teacher-attendance/month-close  {year_month, campus_id}
+     * 主任確認某分校某月的老師出勤；確認後不能補卡。
+     */
+    public function closeMonth(Request $request)
+    {
+        [$campusId, $yearMonth, $error] = $this->monthCloseTarget($request);
+        if ($error) {
+            return $error;
+        }
+        if ($this->activeMonthClose($campusId, $yearMonth)) {
+            return response()->json(['message' => '這個月已經確認過了'], 409);
+        }
+
+        DB::table('teacher_attendance_month_closes')->insert([
+            'campus_id'         => $campusId,
+            'year_month'        => $yearMonth,
+            'closed_by_user_id' => $request->attributes->get('auth_user')->id,
+            'closed_at'         => now(),
+        ]);
+
+        return response()->json(['ok' => true, 'month_close' => $this->monthCloseInfo($campusId, $yearMonth)]);
+    }
+
+    /**
+     * POST /api/v1/teacher-attendance/month-reopen  {year_month, campus_id, reason}
+     * 重新開啟已確認的月份（要寫原因，留紀錄）。
+     */
+    public function reopenMonth(Request $request)
+    {
+        $request->validate(['reason' => 'required|string|min:2|max:500']);
+        [$campusId, $yearMonth, $error] = $this->monthCloseTarget($request);
+        if ($error) {
+            return $error;
+        }
+
+        $updated = DB::table('teacher_attendance_month_closes')
+            ->where('campus_id', $campusId)
+            ->where('year_month', $yearMonth)
+            ->whereNull('reopened_at')
+            ->update([
+                'reopened_by_user_id' => $request->attributes->get('auth_user')->id,
+                'reopened_at'         => now(),
+                'reopen_reason'       => $request->input('reason'),
+            ]);
+        if (! $updated) {
+            return response()->json(['message' => '這個月還沒確認'], 409);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** @return array{0:int,1:string,2:?\Illuminate\Http\JsonResponse} */
+    private function monthCloseTarget(Request $request): array
+    {
+        $request->validate([
+            'year_month' => 'required|date_format:Y-m',
+            'campus_id'  => 'required|integer',
+        ]);
+        $campusId = (int) $request->input('campus_id');
+        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        if ($request->attributes->get('auth_role') !== 'super_admin' && ! in_array($campusId, $campusIds, true)) {
+            return [0, '', response()->json(['message' => 'Forbidden'], 403)];
+        }
+
+        return [$campusId, (string) $request->input('year_month'), null];
+    }
+
+    private function activeMonthClose(int $campusId, string $yearMonth): ?object
+    {
+        return DB::table('teacher_attendance_month_closes')
+            ->where('campus_id', $campusId)
+            ->where('year_month', $yearMonth)
+            ->whereNull('reopened_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /** @return array{closed_at:string,closed_by:string}|null */
+    private function monthCloseInfo(int $campusId, string $yearMonth): ?array
+    {
+        $close = $this->activeMonthClose($campusId, $yearMonth);
+
+        return $close ? [
+            'closed_at' => (string) $close->closed_at,
+            'closed_by' => (string) (DB::table('User')->where('id', $close->closed_by_user_id)->value('Name') ?? ''),
+        ] : null;
     }
 
     /**
@@ -381,6 +487,7 @@ class TeacherAttendanceController extends Controller
                 'totals'       => $t['totals'],
             ], $month['teachers']),
             'adjustments' => $month['adjustments'],
+            'month_close' => is_array($campusIds) && count($campusIds) === 1 ? $this->monthCloseInfo((int) $campusIds[0], $yearMonth) : null,
         ]);
     }
 
@@ -468,6 +575,11 @@ class TeacherAttendanceController extends Controller
                 'a.new_signin_dt', 'a.new_signout_dt', 'a.created_at',
             ]);
         $adjustedIds = array_fill_keys($adjustments->pluck('teacher_signin_id')->all(), true);
+        // 第一次補卡前的原始上班時間（月表用來顯示「原本遲到幾分」）
+        $originalIn = $adjustments->groupBy('teacher_signin_id')->map(fn ($g) => $g->first()->original_signin_dt);
+        $records->each(function ($r) use ($originalIn) {
+            $r->original_sign_in_dt = $originalIn->get($r->id);
+        });
 
         // 跑校：同一天在 2 間以上分校刷卡（看老師全部分校，不受目前分校篩選）
         $runDates = [];
@@ -484,9 +596,16 @@ class TeacherAttendanceController extends Controller
                 });
         }
 
-        $teachers = $records->groupBy('teacher_id')->map(function ($rows, $id) use ($yearMonth, $adjustedIds, $runDates) {
-            $days = TeacherAttendanceMonth::days($rows, $yearMonth, $adjustedIds, $runDates[$id] ?? []);
-            $name = $rows->first()->teacher_name;
+        // 有課的老師就算整月沒刷卡也要列出來（才看得到缺卡）
+        $classes = TeacherClassCalendar::load($from->toDateString(), $to->toDateString(), $campusIds, $teacherId);
+        $byTeacher = $records->groupBy('teacher_id');
+        $ids = collect(array_keys($classes))->merge($byTeacher->keys())->map(fn ($id) => (int) $id)->unique();
+        $names = DB::table('User')->whereIn('id', $ids->all())->pluck('Name', 'id');
+
+        $teachers = $ids->map(function ($id) use ($byTeacher, $classes, $names, $yearMonth, $adjustedIds, $runDates) {
+            $rows = $byTeacher->get($id, collect());
+            $days = TeacherAttendanceMonth::days($rows, $yearMonth, $adjustedIds, $runDates[$id] ?? [], null, $classes[$id] ?? []);
+            $name = (string) ($names[$id] ?? '');
 
             return [
                 'teacher_id'   => (int) $id,

@@ -41,6 +41,10 @@
             <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
           </select>
           <span v-if="fieldErrors.teacher_id" class="field-error">{{ fieldErrors.teacher_id }}</span>
+          <label v-if="teacherChanged" class="teacher-effective-date">
+            新老師從哪天開始教（此日之前的堂次保留原老師）
+            <input v-model="form.teacher_effective_date" type="date" data-testid="teacher-effective-date" />
+          </label>
           <div v-if="form.teacher_id" class="teacher-schedule-hint">
             <span v-if="teacherScheduleLoading" class="teacher-schedule-meta">載入排課中…</span>
             <template v-else-if="teacherSchedule.length">
@@ -352,6 +356,7 @@ const defaultForm = {
   paid_at: '',
   original_paid_at: '',
   original_teacher_id: '',
+  teacher_effective_date: '',
 };
 
 const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });

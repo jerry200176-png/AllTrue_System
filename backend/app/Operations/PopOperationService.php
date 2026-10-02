@@ -126,7 +126,8 @@ final class PopOperationService
         $this->assertRequestIntegrity($request, $entry, $parameters, null, false);
         if ($this->isReviewedMonthly($entry)) {
             $this->assertMonthlyApprover($request, $entry, $approver, $approverRole, $approverId, $approvalReference, $ttlMinutes);
-        } elseif ($approverId !== null && (string) $request->actor === 'user:' . $approverId) {
+        } elseif (!$this->isExactMuzhaSchedule($entry)
+            && $approverId !== null && (string) $request->actor === 'user:' . $approverId) {
             throw new RuntimeException('POP approval requires separation of duties.');
         }
         $dryRun = $this->latest($request, 'dry-run');
@@ -591,13 +592,30 @@ final class PopOperationService
             return $roles;
         }
 
+        if ($policy === 'founder-exact-muzha-schedule'
+            && ($entry['id'] ?? null) === 'muzha-fixed-schedule-20261001'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaFixedScheduleStrategy::class
+            && ($entry['founder_approval_required'] ?? false) === true
+            && ($entry['risk'] ?? null) === 'critical'
+            && ($entry['blast_radius'] ?? null) === 'four_exact_student_classes'
+            && ($entry['reversible'] ?? false) === true
+            && ($entry['snapshot_required'] ?? false) === true
+            && ($entry['transaction_required'] ?? false) === true
+            && ($entry['rollback_supported'] ?? false) === true
+            && ($entry['verification_required'] ?? false) === true
+            && ($entry['approval_required'] ?? false) === true
+            && ($entry['execution_authority'] ?? null) === 'pop-pi-local'
+            && $roles === ['super_admin']) {
+            return $roles;
+        }
+
         throw new RuntimeException('POP approval policy is not supported by this execution slice; fail closed.');
     }
 
     /** @param array<string,mixed> $entry */
     private function assertFounderApprovalReference(array $entry, string $reference): void
     {
-        if (($entry['approval_policy'] ?? null) !== 'founder-explicit-single-repair' && ($entry['founder_approval_required'] ?? false) !== true) {
+        if (($entry['founder_approval_required'] ?? false) !== true) {
             return;
         }
         if (!str_starts_with(strtolower($reference), 'founder-go-')) {
@@ -609,6 +627,14 @@ final class PopOperationService
     private function isReviewedMonthly(array $entry): bool
     {
         return ($entry['id'] ?? null) === 'reviewed-monthly-accounting-correction';
+    }
+
+    /** This Founder-authorized exact case has one super_admin approver. */
+    private function isExactMuzhaSchedule(array $entry): bool
+    {
+        return ($entry['id'] ?? null) === 'muzha-fixed-schedule-20261001'
+            && ($entry['strategy_class'] ?? null) === \App\Operations\Strategies\MuzhaFixedScheduleStrategy::class
+            && ($entry['approval_policy'] ?? null) === 'founder-exact-muzha-schedule';
     }
 
     /** @return array<string,mixed> */

@@ -1,10 +1,59 @@
+## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
+<!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->
+- 學生管理與課程管理的建課老師選單只顯示可指派的老師；一般課程、多老師時段及多科共用方案在儲存時再次驗證，停用或待審核老師不會被新指派。既有課程保留原授課老師與歷史顯示。
+
+## 2026-10-01 — fix(qa): production calendar and tutoring acceptance follow actual contracts
+<!-- release-notes: silent_ship=silent-2026-10-01-calendar-tutoring-acceptance -->
+- 行事曆列印驗收將主任首頁既有的營運信任事件納入嚴格格式檢查，未知或洩漏資料的事件仍失敗。輔導課驗收不再假設每分校都有進行中的輔導課；保留一般未繳課與應收金額的正向控制，並在報告中明列當次是否觀察到真實輔導課樣本。完整 API 加 UI 路徑使用有界時限，UI 學生從授權分校內選取；新增課程操作限定在該生展開的明細，已有課程時先通過續報入口再檢查表單，點擊各有明確時限。未改收費規則或 production 資料。
+
+## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
+<!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
+- 新增 `POST /api/v1/swipe-photo`（multipart：`branch_code`、`rfid`、`photo` jpeg/png ≤1MB，認證同 `swipe-rfid` 的分校 Bearer Token）。照片存私有 `storage/app/swipe-photos/{campus}`，以 `APP_URL` 上 7 天效期的相對簽章網址（`GET /api/v1/swipe-photo/{campus}/{file}`）推 LINE 圖片給該生已驗證綁定家長，並回傳 `image_url`；讀卡機不需固定 IP。只推圖片，到班文字仍由讀卡機用 `LineIDs` 推。超過 7 天的照片於下次上傳時清除。
+
 ## 2026-09-30 — feat(courses): 月結課程依固定時段估計規劃堂數 (in-app #370)
 <!-- release-notes: staff_update=staff-2026-09-30-monthly-plan -->
 - 編輯月結課程時顯示所屬月份固定時段的規劃估計堂數，無例外值時自動帶入；可手動修正，既有不同堂數保留並可改回推算。逐堂手動排課維持手填。實際收費仍依確認已上堂數；未改後端帳務、歷史資料或 schema。
 
+## 2026-09-30 — feat(rfid): swipe-rfid returns student LINE ids
+<!-- release-notes: silent_ship=silent-2026-09-30-swipe-rfid-line-ids -->
+- `POST /api/v1/swipe-rfid` 學生回應（到班／離班／重複忽略）的 `student` 新增 `LineIDs`：該生已驗證綁定（`student_line_bindings.verified_at` 非空）的家長 LINE userId 陣列，供讀卡機用 LINE Bot 推播；未驗證綁定不回傳。老師回應不變。
+
+## 2026-09-30 — fix(course): fixed schedule edits sync future lessons in one save
+<!-- release-notes: staff_update=staff-2026-09-30-fixed-schedule-save -->
+- 課程查找與學生管理調整固定時段時，即使課程開課日與第一筆實際堂次不同，也會在同一次更新交易中同步可修改的未來堂次；已點名、已核准與真正單堂例外保留。移除課程查找額外的第二次更新請求，避免主檔與堂次先後成功造成半套結果；若仍有未對齊堂次，明確顯示筆數與警示。儲存被必填欄位阻擋、API 拒絕或連線失敗時，顯示可見原因。學生管理不再把未修改的繳費日期送去更動付款狀態，也不再在 Laravel 寫入失敗後落到舊資料寫入路徑。
+
+## 2026-09-30 — fix(attendance): teacher late / missed judged from real class sessions
+<!-- release-notes: staff_update=staff-2026-09-30-teacher-late-missed -->
+- 老師出勤狀態改成讀取時依課表重算（`TeacherAttendanceMonth` + 新 `TeacherClassCalendar`，規則同 `SubstituteService::collectTeacherBusySlots`：ClassSession 為準、扣掉被代課堂次、加上代課／加課 schedules）。每間分校第一次刷卡比該分校第一堂，晚超過 10 分鐘＝遲到；有課沒刷且已過第一堂＋10 分＝有課未刷卡；沒課有刷＝行政出勤。有課整月沒刷卡的老師也會出現在月表。今日頁「課表異常」改用同一套結果（以前 `missed` 從未產生、`pending_review` 永遠卡住）。月出勤表標題帶老師名字、新增第一堂／狀態欄；月報匯出註記與摘要加遲到、有課未刷卡。
+
+## 2026-09-30 — fix(learning): teacher-name search applies to assessment records
+<!-- release-notes: staff_update=staff-2026-09-30-learning-teacher-search -->
+- 學習評量表輸入老師姓名後按搜尋或 Enter，可按實際授課老師查詢跨頁紀錄，包含單堂代課與尚未上課的現任老師；共用學生／老師選單首次點入不再立即關閉。
+
+## 2026-10-01 — fix(students): monthly renewal follows settlement day; flags late periods
+<!-- release-notes: staff_update=staff-2026-10-01-monthly-renew-polish -->
+- 實際操作續報發現：批次續報把「舊期 10-01 到期」誤判成「已續到十月」而跳過；單科預設新期到 11-01。改用 `nextPeriodEnd`：新期結束日對齊課程結算日（10-01 到期、31 號結算 → 10-02～10-31）。批次改成「下一期開始日落在所選月份（或更早）就續一期」，預設月份為本月。新期開始日已過 7 天以上的列預設不勾並提示（多半是舊資料）。預覽／續報錯誤優先顯示中文驗證訊息（不再出現 "The given data was invalid."）。批次列科目／老師名字不再被擠成直排。
+
+## 2026-10-01 — fix(ci): late CI for an older commit no longer asks for deploy approval
+<!-- release-notes: silent_ship=silent-2026-10-01-deploy-skip-superseded -->
+- `Deploy to Pi` 由較舊 commit 的遲到 CI 觸發時，`resolve-target` 先比對目前 main；不是最新就標 `superseded` 並跳過後續（不再先請 Founder 核准、核准後才因 exact-main gate 取消）。最新 main 的 CI 會自己觸發部署。手動 dispatch 行為不變。
+
+## 2026-09-30 — fix(students): monthly renewal submit stays enabled after preview
+<!-- release-notes: staff_update=staff-2026-09-30-monthly-renew-admin -->
+- #3333 起 `RenewMonthlyModal` 需要 `preview_status=ready` 才能送出，但學生管理頁（目前唯一續約入口）的預覽只更新金額、從未設定預覽狀態，所以「建立新一期」永遠是灰的。學生管理改用與課程管理相同的 `invalidate/applyMonthlyRenewalPreview`，並顯示警告／擋件。學生管理課程列表補上 `end_date`（以前沒帶，舊期到期日顯示「無到期日」、改用今天 +1 月）。新增 `addMonthsToPeriodEnd`：月底到期續月仍到月底（09-30 → 10-31）。
+- 新增 `MonthlyBatchRenewModal`：學生管理展開學生後「月結續報下月（N 科）」一次列出該生所有進行中月結課，逐科呼叫 `renewal-preview` 顯示新期間／預估金額／擋件，勾選後依序呼叫 `renew-monthly`（不帶折扣；折扣仍走單科）。課程查找的月結續約深連結直接開這個視窗。單科按鈕在月結課顯示「結算 / 續約下月」（原「加購」）。
+
+## 2026-09-30 — fix(students): monthly renewal no longer blocked for admin
+<!-- release-notes: staff_update=staff-2026-09-30-monthly-renew-admin -->
+- 學生管理「月結續約」送出時，選「無折扣」就不再帶 `discount` 欄位。以前每次都帶，後端交易折扣權限檢查（只限 director / super_admin）把行政（admin）的續約全擋成 403（#3168 起）。堂數加購與課程管理頁原本就只在有折扣時帶，不受影響。
+
 ## 2026-09-29 — fix(ops): report closed monthly case eligibility explicitly
 <!-- release-notes: silent_ship=silent-2026-09-29-monthly-case-closed -->
 - 合法空白單案資格明確拒絕為沒有可執行案例，隨 backend 正常部署帶入已清空清單；不改資料、核准角色或執行通道。
+
+## 2026-09-30 — feat(attendance): teacher attendance month close, correction audit, cross-campus swipe
+<!-- release-notes: staff_update=staff-2026-09-30-teacher-month-close -->
+- 新表 `teacher_attendance_month_closes`：主任 `POST /teacher-attendance/month-close` 確認分校某月，之後 `adjust` 回 423；`month-reopen` 需原因、留列不刪。補卡與系統自動補簽退不再把 `Status` 蓋成 `adjusted`；月表用第一次補卡前的原始上班時間算出 `original_late_minutes`。老師還沒簽退就到別校刷卡：前一筆寫 `跨校自動簽退` 並算異常，本校開新上班（以前會把本校上班當成前一校的下班）。
 
 ## 2026-09-29 — fix(ops): unblock local approved repair scheduling
 <!-- release-notes: silent_ship=silent-2026-09-29-pop-local-claim -->
@@ -13,6 +62,10 @@
 ## 2026-09-29 — feat(ops): support exact-case human review for monthly correction
 <!-- release-notes: silent_ship=silent-2026-09-29-reviewed-monthly-case -->
 - 單案本人核對入口限定完整簽章參數、冪等鍵、同一實際核准人及期限完全一致；空白資格拒絕所有請求。核准仍由實際登入本人寫入既有 DB；原雙角色入口與執行通道不變，發布資格不代表帳務已更正。
+
+## 2026-09-30 — fix(course): subject change requires transfer; teacher change keeps past lessons
+<!-- release-notes: staff_update=staff-2026-09-30-course-history-guard -->
+- 已有過去／已上堂次的合約改科目回 422 `subject_change_requires_transfer`（稽核 `student_class.edit_blocked`），改用 `split-contract` 轉課：帶 `subject`/`subject_id`、`teacher_id`、`slots` 時依 `start_date` 切分，之前的堂次留舊合約，之後的堂次連同紀錄轉新合約。已繳費合約（單張已繳清帳單、無折扣）餘額轉入：舊帳單降為已用金額並記 `transfer_out`(−X)，新合約建立已繳帳單並記 `transfer_in`(+X)，原收款／收據／繳費回報不動、非現金；新舊合約以 `replacement` 關聯；其餘情況回 422 `transfer_paid_not_simple`。課程管理儲存被擋時出現「改用轉課」視窗（含試算金額）。換老師新增選填 `teacher_effective_date`（≤今天，預設今天）：該日前的堂次保留原老師。改固定時段不再刪除重建已點名堂次。
 
 ## 2026-09-30 — fix(attendance): readable monthly xlsx and clearer single-swipe marking
 <!-- release-notes: silent_ship=silent-2026-09-30-teacher-attendance-polish -->
@@ -3783,3 +3836,10 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-09-19 — feat(calendar): director week/month print preview (in-app #318 / GitHub #3068)
 <!-- release-notes: staff_update=staff-2026-09-19-calendar-print-318 -->
 - 主任可從班級行事曆列印目前有權限查看的週／月課表，包含總覽、每日明細、學生、課程、教師、日期時間、校區教室與異動狀態；僅透過瀏覽器列印，不建立額外檔案或資料來源。
+## 2026-10-01 — fix(ops): route exact Muzha fixed schedule repair through POP
+<!-- release-notes: silent_ship=silent-2026-10-01-muzha-pop-schedule -->
+- 木柵四門數學課的舊資料修正改由受控 POP 預演、資料庫核准、Pi 本機執行與驗證。精確核對四門合約及 32 筆未來堂次，包含 10/3 兩筆 17:00–19:00 單次例外；舊工作流程已移除、直接套用腳本已停用。此版只備妥受控修復，正式課程資料須在 POP 執行並驗證後才算更正完成。
+
+## 2026-10-01 — fix(course): monthly courses no longer show prepaid balance reconciliation warnings
+<!-- release-notes: staff_update=staff-2026-10-01-monthly-usage-warning -->
+- 課程查找與編輯前檢依課程模式判定堂數對帳：月結課的預排堂數不再當作包堂購買額度，因此新一期週一課在尚未上課時不會因剩餘堂數為 0 被誤標「堂數待對帳」。已用堂數不符或取消堂次殘留扣堂證據仍會提示對帳；包堂課的剩餘堂數檢查與部分時數計算維持原規則。未更動歷史課表、收款或扣堂資料。

@@ -495,7 +495,7 @@ class StudentClassController extends Controller
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
             $usageDiagnostic = $usageDiagnosticsByClass[(int) $class->ID] ?? null;
 
-            // Remaining = 購買堂數 − 實際已上（扣點、已完成堂次、已核准評量取最大後再與購買數取 cap）
+            // 堂數制 Remaining = 購買堂數 − 實際已上；月結 SessionCount 是預排數，不作餘額投影。
 
             // #613 A1：若課程有「部分時數」事件（RemainingMinutes 非整堂倍數），分鐘為權威，
             // 不可用 count-based observed 覆寫 recomputeCounters 已寫入的衍生值；否則沿用既有 self-heal。
@@ -504,7 +504,8 @@ class StudentClassController extends Controller
             $hasFractionalBalance = $storedRemainingMinutes !== null
                 && ((int) $storedRemainingMinutes % $perSessionMin !== 0);
 
-            if ($class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
+            if ($class->getAttribute('payment_type') === 'session'
+                && $class->getAttribute('sessions_purchased') > 0 && !$hasFractionalBalance) {
                 $observedUsedSessions = min($class->getAttribute('sessions_purchased'), $observedUsedSessions);
                 $class->UsedSessions = $observedUsedSessions;
                 $class->RemainingSessions = max(0, $class->getAttribute('sessions_purchased') - $observedUsedSessions);
@@ -512,15 +513,10 @@ class StudentClassController extends Controller
             $class->setAttribute('sessions_used', (int) ($class->UsedSessions ?? 0));
             $class->setAttribute('remaining_sessions', (int) ($class->RemainingSessions ?? 0));
             if ($usageDiagnostic !== null) {
-                $expectedRemaining = max(
-                    0,
-                    (int) $class->getAttribute('sessions_purchased') - (int) $usageDiagnostic['expected_used']
+                $assessment = SessionDeductionService::usageBalanceAssessment(
+                    $class, $usageDiagnostic, $storedUsedSessions, $storedRemainingSessions
                 );
-                $class->setAttribute('usage_balance_status', (
-                    (int) $usageDiagnostic['cancelled_usage_artifacts'] > 0
-                    || $storedUsedSessions !== (int) $usageDiagnostic['expected_used']
-                    || $storedRemainingSessions !== $expectedRemaining
-                ) ? 'review_required' : 'ok');
+                $class->setAttribute('usage_balance_status', $assessment['review_required'] ? 'review_required' : 'ok');
                 $class->setAttribute('usage_balance_diagnostic', [
                     'stored_used_sessions' => $storedUsedSessions,
                     'stored_remaining_sessions' => $storedRemainingSessions,
@@ -529,7 +525,7 @@ class StudentClassController extends Controller
                     'cancelled_usage_artifacts' => (int) $usageDiagnostic['cancelled_usage_artifacts'],
                     'ledger_used_sessions' => (int) $usageDiagnostic['ledger_used'],
                     'expected_used_sessions' => (int) $usageDiagnostic['expected_used'],
-                    'expected_remaining_sessions' => $expectedRemaining,
+                    'expected_remaining_sessions' => $assessment['expected_remaining'],
                 ]);
             }
             // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。
@@ -1771,6 +1767,25 @@ class StudentClassController extends Controller
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
         unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['by1']);
 
+        // Past lessons are history: a subject change mid-contract must go through
+        // the split (轉課) flow, otherwise taught sessions would be relabelled.
+        if (array_key_exists('SubjectID', $mapped)
+            && (int) $mapped['SubjectID'] !== (int) $studentClass->getAttribute('SubjectID')
+            && $this->subjectLabelForGuard((int) $mapped['SubjectID']) !== $this->subjectLabelForGuard((int) $studentClass->getAttribute('SubjectID'))
+            && $this->courseHasPastOrTaughtSessions((int) $studentClass->getKey())
+        ) {
+            $this->auditEditBlocked($studentClass, 'subject_change_requires_transfer', 422);
+            return response()->json([
+                'message' => '此課程已有上過的堂次，直接改科目會讓過去的堂次也變成新科目。'
+                    . '請改用「轉課／合約拆分」：舊合約保留已上堂次，剩餘堂數轉到新科目的新合約。',
+                'code' => 'subject_change_requires_transfer',
+                'suggested_actions' => ['split_contract'],
+            ], 422);
+        }
+        $teacherEffectiveDate = $request->validate([
+            'teacher_effective_date' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today'],
+        ])['teacher_effective_date'] ?? null;
+
         if ($studentClass->isPartOfPackage()) {
             unset($mapped['RemainingSessions']);
         }
@@ -1904,7 +1919,8 @@ class StudentClassController extends Controller
             $previousStartDate,
             $scheduleSlotsForRebuild,
             $previousScheduleSlots,
-            $scheduleFieldsPresent
+            $scheduleFieldsPresent,
+            $teacherEffectiveDate
         ) {
         $studentClass->update($mapped);
         $studentClass->refresh();
@@ -1960,7 +1976,8 @@ class StudentClassController extends Controller
                 $this->pinPastSessionsToFormerTeacherAfterContractTeacherChange(
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
-                    $newTeacherId
+                    $newTeacherId,
+                    $teacherEffectiveDate
                 );
                 $this->syncFutureScheduleTeachersAfterContractTeacherChange(
                     $courseIdForTeacherSync,
@@ -1971,7 +1988,12 @@ class StudentClassController extends Controller
             if ($newTeacherId > 0) {
                 // in-app #312: drop false #207 pins on untaught past slots so
                 // calendar follows the live contract teacher (real substitutes kept).
-                $this->clearUntaughtPastFalseHistoryPins($courseIdForTeacherSync, $newTeacherId);
+                // A teacher change made now keeps pins before the effective date.
+                $this->clearUntaughtPastFalseHistoryPins(
+                    $courseIdForTeacherSync,
+                    $newTeacherId,
+                    $newTeacherId !== $oldTeacherSnapshot ? ($teacherEffectiveDate ?: Carbon::today()->toDateString()) : null
+                );
             }
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
                 // in-app #314 Option 2B: after false pins are cleared, align mutable
@@ -1985,7 +2007,8 @@ class StudentClassController extends Controller
                     $courseIdForTeacherSync,
                     $oldTeacherSnapshot,
                     $newTeacherId,
-                    $actorId
+                    $actorId,
+                    $teacherEffectiveDate ?: Carbon::today()->toDateString()
                 );
             }
         }
@@ -2093,7 +2116,12 @@ class StudentClassController extends Controller
         // be sparse near the end of a course (e.g. only one Wednesday remains),
         // so reverse-reconciling from them would erase newly edited weekdays.
         if ($scheduleFieldsPresent) {
-            if (($sessionSync['reason'] ?? '') === 'history_exists'
+            $unalignedFuture = $this->countUnalignedFutureContractSessions($studentClass);
+            $sessionSync['unaligned_future_sessions'] = $unalignedFuture;
+            if ($unalignedFuture > 0) {
+                $sessionSync['reconcile_skipped'] = true;
+                $sessionSync['warning'] = "固定時段已儲存，但仍有 {$unalignedFuture} 筆未來堂次與新時段不同。請在堂次列表確認狀態。";
+            } elseif (($sessionSync['reason'] ?? '') === 'history_exists'
                 && (
                     !array_key_exists('updated_future_sessions', $sessionSync)
                     || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
@@ -3036,16 +3064,42 @@ class StudentClassController extends Controller
         return response()->json($result);
     }
 
+    /** Shared validation; any of subject/teacher/slots switches split-contract to 轉課 (cutover by start_date). */
+    private function validateSplitRequest(Request $request, bool $withReason): array
+    {
+        $isTransfer = $request->filled('subject_id') || $request->filled('subject')
+            || $request->filled('teacher_id') || $request->filled('slots');
+        $data = $request->validate([
+            'session_ids' => [$isTransfer ? 'nullable' : 'required', 'array', $isTransfer ? 'min:0' : 'min:1', 'max:100'],
+            'session_ids.*' => ['integer'],
+            'start_date' => ['required', 'date'],
+            'reason' => [$withReason ? 'required' : 'nullable', 'string', 'max:255'],
+            'subject_id' => ['nullable', 'integer', 'exists:Subject,id'],
+            'subject' => ['nullable', 'string', 'max:64'],
+            'teacher_id' => ['nullable', 'integer', 'exists:User,id'],
+            'slots' => ['nullable', 'array', 'min:1', 'max:6'],
+            'slots.*.weekday' => ['required_with:slots', 'integer', 'between:1,7'],
+            'slots.*.time' => ['required_with:slots', 'date_format:H:i'],
+            'slots.*.duration_minutes' => ['required_with:slots', 'integer', 'between:30,480'],
+        ]);
+        if (empty($data['subject_id']) && !empty($data['subject'])) {
+            $data['subject_id'] = FrontendSubjectIdResolver::resolve((string) $data['subject'])
+                ?? abort(response()->json(['message' => '找不到指定的科目。', 'code' => 'transfer_subject_unknown'], 422));
+        }
+        $data['is_transfer'] = $isTransfer;
+
+        return $data;
+    }
+
     public function splitContractPreview(Request $request, StudentClass $studentClass)
     {
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
             return $accessError;
         }
-        $data = $request->validate([
-            'session_ids' => ['required', 'array', 'min:1', 'max:100'],
-            'session_ids.*' => ['integer'],
-            'start_date' => ['required', 'date'],
-        ]);
+        $data = $this->validateSplitRequest($request, false);
+        if ($data['is_transfer']) {
+            return $this->transferByCutover($studentClass, $data, true);
+        }
         return response()->json($this->splitContractPreviewPayload(
             $this->prepareSplitContractPlan($studentClass, $data)
         ));
@@ -3055,12 +3109,10 @@ class StudentClassController extends Controller
         if ($accessError = $this->authorizeStudentClassAccess($studentClass)) {
             return $accessError;
         }
-        $data = $request->validate([
-            'session_ids' => ['required', 'array', 'min:1', 'max:100'],
-            'session_ids.*' => ['integer'],
-            'start_date' => ['required', 'date'],
-            'reason' => ['required', 'string', 'max:255'],
-        ]);
+        $data = $this->validateSplitRequest($request, true);
+        if ($data['is_transfer']) {
+            return $this->transferByCutover($studentClass, $data, false);
+        }
         return DB::transaction(function () use ($studentClass, $data) {
             $source = StudentClass::query()->where('ID', $studentClass->getAttribute('ID'))
                 ->lockForUpdate()
@@ -6045,6 +6097,42 @@ class StudentClassController extends Controller
             'future_session_count' => $futureSessionCount,
         ];
     }
+    /** 轉課 slot/teacher conflicts for the new contract (source's own slots excluded). */
+    private function transferScheduleConflicts(StudentClass $source, array $plan): array
+    {
+        if (empty($plan['slots']) && empty($plan['teacher_id'])) {
+            return [];
+        }
+        $teacherId = (int) ($plan['teacher_id'] ?? $source->getAttribute('TeacherID'));
+        $campusId = (int) (DB::table('Student')->where('id', (int) $source->getAttribute('StudentID'))->value('CampusID') ?? 0);
+        $slots = $plan['slots'] ?: $this->resolveScheduleSlotsForRebuild($source);
+        $recurring = [];
+        foreach ($slots as $slot) {
+            $start = substr((string) data_get($slot, 'time', ''), 0, 5);
+            $weekday = (int) data_get($slot, 'weekday', 0);
+            if ($start === '' || $weekday < 1 || $weekday > 7) {
+                continue;
+            }
+            $recurring[] = [
+                'day_of_week' => $weekday,
+                'start_time' => $start,
+                'end_time' => Carbon::createFromFormat('H:i', $start)
+                    ->addMinutes(max(30, (int) data_get($slot, 'duration_minutes', 120)))->format('H:i'),
+            ];
+        }
+
+        return $this->scheduleGuardService->validateRecurringCourse([
+            'teacher_id' => $teacherId,
+            'class_type' => (string) ($source->getAttribute('ClassType') ?: 'one_on_one'),
+            'room_id' => $source->getAttribute('room_id') ? (int) $source->getAttribute('room_id') : null,
+            'branch_id' => $campusId,
+            'slots' => $recurring,
+            'exclude_student_class_id' => (int) $source->getAttribute('ID'),
+            'exclude_student_id' => (int) $source->getAttribute('StudentID') ?: null,
+            'start_date' => $plan['start_date'],
+        ]);
+    }
+
     private function splitContractPreviewPayload(array $plan): array
     {
         return [
@@ -6123,6 +6211,364 @@ class StudentClassController extends Controller
             'deduction_basis' => $source->deduction_basis,
         ];
     }
+    /**
+     * 轉課 by cutover date: sessions before start_date stay on the old contract,
+     * sessions on/after it move (same ids, with their LR / sign-ins / schedule rows)
+     * to a new contract carrying the new subject/teacher/slot. Preview runs the very
+     * same code inside a rolled-back transaction, so preview == execution.
+     */
+    private function transferByCutover(StudentClass $studentClass, array $data, bool $preview)
+    {
+        DB::beginTransaction();
+        try {
+            $out = $this->applyTransfer($studentClass, $data, $preview);
+            $preview ? DB::rollBack() : DB::commit();
+
+            return response()->json($out, $preview ? 200 : 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    private function assertTransferEligible(StudentClass $c): void
+    {
+        $fail = fn (string $code, string $msg, int $status = 422) => abort(response()->json(['message' => $msg, 'code' => $code], $status));
+        $id = (int) $c->getAttribute('ID');
+        if ((string) ($c->getAttribute('ScheduleMode') ?? 'count') !== 'count' || strtolower((string) ($c->getAttribute('rate_unit') ?? 'session')) !== 'session') {
+            $fail('split_contract_count_mode_only', '只有堂數制、按堂計費的課程可以轉課。');
+        }
+        if ($c->isPartOfPackage()) {
+            $fail('split_contract_package_forbidden', '共用課程包請使用方案調整流程。');
+        }
+        if ($c->hasDeductionHistory() && (string) ($c->getAttribute('closed_reason') ?? '') === 'usage_settled') {
+            $fail('split_contract_usage_settled', '此課程已提前結清，無法轉課。');
+        }
+        $hasPayment = Payment::query()->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
+            ->where('Invoice.StudentClassID', $id)
+            ->where(fn ($q) => $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void'))
+            ->where('Payment.Amount', '>', 0)->exists();
+        if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
+            $fail('split_contract_paid_locked', '此課程有待處理的繳費回報，請先完成或作廢該筆回報。', 409);
+        }
+        if ($hasPayment && (int) ($c->getAttribute('Paid') ?? 0) !== 1) {
+            $fail('transfer_paid_not_simple', '課程未標記已繳但有收款紀錄，請改用帳務更正流程。');
+        }
+    }
+
+    private function applyTransfer(StudentClass $studentClass, array $data, bool $preview): array
+    {
+        $source = StudentClass::query()->where('ID', $studentClass->getKey())->lockForUpdate()->first();
+        if (!$source) {
+            abort(404);
+        }
+        $this->assertTransferEligible($source);
+        $cid = (int) $source->getAttribute('ID');
+        $start = Carbon::parse($data['start_date'])->toDateString();
+        $oldTeacher = (int) $source->getAttribute('TeacherID');
+        $newTeacher = (int) ($data['teacher_id'] ?? $oldTeacher);
+        $newSubjectId = (int) ($data['subject_id'] ?? $source->getAttribute('SubjectID'));
+
+        $sessions = ClassSession::query()->where('StudentClassID', $cid)
+            ->whereRaw("COALESCE(Status, '') != 'cancelled'")->lockForUpdate()->get();
+        $isMoving = fn ($x) => $this->normalizeDateString($x->getAttribute('SessionDate')) >= $start;
+        $unmarked = $sessions->reject($isMoving)->filter(fn ($x) => (string) $x->getAttribute('Status') === 'scheduled');
+        if ($unmarked->isNotEmpty()) {
+            abort(response()->json([
+                'message' => '轉課日之前還有未點名的堂次，請先點名或取消，或把轉課日改到這些堂次之後。',
+                'code' => 'transfer_unmarked_sessions_before_cutover',
+            ], 422));
+        }
+        $movingIds = $sessions->filter($isMoving)->pluck('id')->map(fn ($i) => (int) $i)->values()->all();
+
+        $slots = $data['slots'] ?? null;
+        $previousSlots = $this->resolveScheduleSlotsForRebuild($source);
+        $conflicts = $this->transferScheduleConflicts($source, ['slots' => $slots, 'teacher_id' => $data['teacher_id'] ?? null, 'start_date' => $start]);
+        if (!empty($conflicts)) {
+            abort(response()->json([
+                'message' => $conflicts[0]['message'] ?? '新老師在新時段已有其他課程或已達人數上限',
+                'code' => 'teacher_schedule_conflict', 'conflicts' => $conflicts,
+            ], 409));
+        }
+
+        $duration = max(30, (int) ($slots[0]['duration_minutes'] ?? $source->getAttribute('SessionDuration') ?? 120));
+        $new = $this->createStudentClassRecordResilient(array_merge(
+            $this->buildSplitContractPayload($source, ['start_date' => $start, 'new_session_count' => 0, 'new_charge' => 0]),
+            ['SubjectID' => $newSubjectId, 'TeacherID' => $newTeacher, 'SessionDuration' => $duration],
+            $this->splitContractSlotColumns($slots)
+        ));
+        $newId = (int) $new->getAttribute('ID');
+        $new->setAttribute('scheduling_policy', $source->getAttribute('scheduling_policy') ?: 'auto_recurrence');
+
+        // Move the cutover sessions together with their history.
+        $subjectName = (string) (DB::table('Subject')->where('id', $newSubjectId)->value('Subject_Name') ?? '');
+        if ($movingIds) {
+            ClassSession::query()->whereIn('id', $movingIds)->update(['StudentClassID' => $newId]);
+            $lrs = LearningRecord::query()->whereIn('ClassSessionID', $movingIds);
+            $subjectName !== '' ? $lrs->update(['StudentClassID' => $newId, 'Subject' => $subjectName]) : $lrs->update(['StudentClassID' => $newId]);
+            StudentSignIn::query()->whereIn('ClassSessionID', $movingIds)->update(['StudentClassID' => $newId]);
+        }
+        $rows = DB::table('schedules')->where('student_course_id', $cid)->whereDate('schedule_date', '>=', $start);
+        $subjectName !== '' ? $rows->update(['student_course_id' => $newId, 'subject' => $subjectName]) : $rows->update(['student_course_id' => $newId]);
+
+        $oldCount = (int) ($source->getAttribute('SessionCount') ?? 0);
+        $used = (int) (SessionDeductionService::batchObservedUsedSessions([$cid])[$cid] ?? 0);
+        $remaining = $oldCount - $used;
+        if ($used < 1 || $remaining < 1) {
+            abort(response()->json([
+                'message' => '轉課日之前已上堂數或剩餘堂數不足以分成兩份合約，請重新選擇轉課日。',
+                'code' => 'split_contract_invalid_balance', 'observed_used_sessions' => $used,
+            ], 422));
+        }
+        $rate = (float) ($source->getAttribute('Rate') ?? 0);
+        $sourceCharge = (int) round($rate * $used);
+        $newCharge = (int) round($rate * $remaining);
+        $plan = ['source_charge' => $sourceCharge, 'new_session_count' => $remaining, 'new_charge' => $newCharge, 'start_date' => $start];
+
+        if ((int) ($source->getAttribute('Paid') ?? 0) === 1) {
+            $plan['paid'] = $this->paidTransferPlan($source, $oldCount, $sourceCharge, $newCharge, $rate);
+        }
+        $source->setAttribute('SessionCount', $used);
+        $source->setAttribute('Charge', $sourceCharge);
+        $source->save();
+        $new->setAttribute('SessionCount', $remaining);
+        $new->setAttribute('Charge', $newCharge);
+        $new->setAttribute('TotalHours', (int) round(($remaining * $duration) / 60));
+        $new->save();
+        $this->afterTransferMoney($source, $new, $plan, $data);
+
+        // Re-time not-yet-taught moved sessions to the new slot, then top up / trim to the new balance.
+        $newSlots = $slots ?: $previousSlots;
+        if ($slots) {
+            $this->syncFutureScheduledSessionTimes($newId, $newSlots, $duration, $previousSlots);
+        }
+        $new->refresh();
+        $this->extendSessionsIfNeeded($new, $remaining);
+        $this->cancelExcessScheduledSessions($newId, $remaining);
+        if ($newTeacher !== $oldTeacher) {
+            $this->syncFutureScheduleTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher);
+            $this->alignMutableLearningRecordTeachersAfterContractTeacherChange($newId, $oldTeacher, $newTeacher, $this->currentActorId(), $start);
+        }
+        SessionDeductionService::recomputeCounters($cid);
+        SessionDeductionService::recomputeCounters($newId);
+        $last = ClassSession::query()->where('StudentClassID', $newId)->whereRaw("COALESCE(Status, '') != 'cancelled'")->max('SessionDate');
+        if ($last) {
+            $new->setAttribute('EndDate', $this->normalizeDateString($last));
+            $new->save();
+        }
+        $this->linkTransferGroup($source, $new, $start);
+        if (!$preview) {
+            SecurityAuditEvent::append('student_class.contract_transfer', 'success', [
+                'campus_id' => $source->student?->CampusID, 'actor_type' => 'user',
+                'actor_id' => request()->attributes->get('auth_user')?->id,
+                'subject_type' => 'student_class', 'subject_id' => $cid,
+            ], [
+                'source_course_id' => $cid, 'new_course_id' => $newId, 'cutover_date' => $start,
+                'moved_session_count' => count($movingIds), 'used_session_count' => $used,
+                'transferred_remaining_sessions' => $remaining,
+                'source_charge' => $sourceCharge, 'new_charge' => $newCharge,
+                'subject_before' => (int) $source->getAttribute('SubjectID'), 'subject_after' => $newSubjectId,
+                'teacher_before' => $oldTeacher, 'teacher_after' => $newTeacher,
+                'reason_hash' => hash('sha256', (string) ($data['reason'] ?? '')),
+                'transfer_amount' => (int) ($plan['paid']['transfer_amount'] ?? 0),
+            ] + ($plan['paid_result'] ?? []));
+        }
+        $new->refresh();
+
+        return [
+            'message' => '轉課完成：轉課日之前的堂次留在舊合約，之後的堂次（含紀錄）轉到新合約。',
+            'moved_session_count' => count($movingIds),
+            'source_correction' => ['session_count' => $used, 'charge' => $sourceCharge],
+            'source_course' => ['id' => $cid, 'session_count' => $used, 'charge' => $sourceCharge],
+            'new_course' => ['id' => $newId, 'session_count' => $remaining, 'charge' => $newCharge, 'moved_session_count' => count($movingIds)],
+            'paid_transfer' => isset($plan['paid']) ? ['transfer_amount' => $plan['paid']['transfer_amount'], 'receipt_no' => $plan['paid']['receipt_no']] : null,
+        ];
+    }
+
+    /** Paid: carry the balance over with linked transfer rows; unpaid: shrink the open invoice to the used part. */
+    private function afterTransferMoney(StudentClass $source, StudentClass $new, array &$plan, array $data): void
+    {
+        if (!empty($plan['paid'])) {
+            $this->recordPaidContractTransfer($source, $new, $plan);
+
+            return;
+        }
+        $invoices = Invoice::query()->where('StudentClassID', $source->getAttribute('ID'))
+            ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))->lockForUpdate()->get();
+        foreach ($invoices as $invoice) {
+            $invoice->setAttribute('TotalAmount', $plan['source_charge']);
+            $invoice->save();
+            InvoiceItem::query()->where('InvoiceID', $invoice->getKey())
+                ->where('StudentClassID', $source->getAttribute('ID'))->update(['Amount' => $plan['source_charge']]);
+        }
+    }
+
+    /** Keep old and new contracts together in the continuity group (mixed-subject groups have subject_id = null). */
+    private function linkTransferGroup(StudentClass $source, StudentClass $new, string $start): void
+    {
+        $srcId = (int) $source->getAttribute('ID');
+        $scope = ['mode' => 'all', 'campus_ids' => []]; // access already authorized
+        $actorId = request()->attributes->get('auth_user')?->id;
+        $actorId = $actorId ? (int) $actorId : null;
+        $continuity = app(\App\Services\CourseContinuityService::class);
+        $row = ['student_class_id' => (int) $new->getAttribute('ID'), 'relation_type' => 'replacement',
+            'effective_from' => $start, 'decision_reason' => '轉課：轉課日之後的堂次轉入新合約'];
+        $subjectChanged = (int) $new->getAttribute('SubjectID') !== (int) $source->getAttribute('SubjectID');
+        $member = \App\Models\CourseContractGroupMember::query()->where('student_class_id', $srcId)->first();
+        $group = $member ? \App\Models\CourseContractGroup::query()->whereKey($member->group_id)->lockForUpdate()->first() : null;
+        if ($group) {
+            if ($subjectChanged && $group->subject_id) {
+                $group->subject_id = null;
+                $group->save();
+            }
+            $continuity->addMember($group, $row, $actorId, $scope);
+        } else {
+            $continuity->createGroup([
+                'student_id' => (int) $source->getAttribute('StudentID'),
+                'campus_id' => (int) (DB::table('Student')->where('id', (int) $source->getAttribute('StudentID'))->value('CampusID') ?? 0),
+                'subject_id' => $subjectChanged ? null : (int) $source->getAttribute('SubjectID'),
+                'members' => [['student_class_id' => $srcId, 'relation_type' => 'original'], $row],
+            ], $actorId, $scope);
+        }
+    }
+
+    /**
+     * Strict eligibility for carrying a PAID balance across a 轉課. Only the plain
+     * case (one paid invoice == full contract price, no discount) is supported;
+     * everything else must use billing correction.
+     */
+    private function paidTransferPlan(StudentClass $course, int $oldCount, int $sourceCharge, int $newCharge, float $rate): array
+    {
+        $refuse = fn (string $why) => abort(response()->json([
+            'message' => '此課程的收款情況較特殊（' . $why . '），無法自動轉課，請改用帳務更正流程。',
+            'code' => 'transfer_paid_not_simple',
+        ], 422));
+        $classId = (int) $course->getAttribute('ID');
+        $fullCharge = (int) round($rate * $oldCount);
+        if ((int) ($course->getAttribute('Paid') ?? 0) !== 1) {
+            $refuse('課程未標記已繳但有收款紀錄');
+        }
+        if ((int) ($course->getAttribute('Disconunt') ?? 0) !== 0 || (int) ($course->getAttribute('Charge') ?? 0) !== $fullCharge) {
+            $refuse('有折扣或金額與堂數×單價不符');
+        }
+        $invoices = Invoice::query()->where('StudentClassID', $classId)
+            ->where(function ($q) { $q->whereNull('Status')->orWhere('Status', '!=', 'void'); })
+            ->lockForUpdate()->get();
+        if ($invoices->count() !== 1) {
+            $refuse('帳單數量不是一張');
+        }
+        $invoice = $invoices->first();
+        $payments = Payment::query()->where('InvoiceID', $invoice->getKey())->orderBy('id')->get();
+        $net = (int) $payments->sum(fn ($p) => (int) $p->Amount);
+        if ((int) $invoice->TotalAmount !== $fullCharge || (int) $invoice->PaidAmount !== $fullCharge
+            || $net !== $fullCharge || $payments->contains(fn ($p) => (string) $p->Method === 'void' || (int) $p->Amount < 0)) {
+            $refuse('帳單金額、已收金額與課程總價不一致或有沖銷紀錄');
+        }
+        if ($fullCharge - $sourceCharge !== $newCharge) {
+            $refuse('金額無法平均切分');
+        }
+        $report = PaymentReport::query()->where('StudentClassID', $classId)->where('status', 'confirmed')->orderByDesc('id')->first();
+        $receipt = $report
+            ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->getKey(), 6, '0', STR_PAD_LEFT)
+            : null;
+
+        return [
+            'invoice_id' => (int) $invoice->getKey(),
+            'paid_amount' => $fullCharge,
+            'transfer_amount' => $newCharge,
+            'receipt_no' => $receipt,
+            'pay_date' => $this->normalizeDateString($course->getAttribute('PayDate')),
+        ];
+    }
+
+    /**
+     * Paid 轉課 money flow. The original Payment / receipt / payment_report are never
+     * edited; the carry-over is a linked pair of non-cash ledger rows:
+     *   source invoice: Payment -X 'transfer_out'   (reads as a reversal in existing ledgers)
+     *   new invoice   : Payment +X 'transfer_in'    (invoice created already paid)
+     * Both invoices then balance: source total = paid = used*rate, new total = paid = remaining*rate.
+     */
+    private function recordPaidContractTransfer(StudentClass $source, StudentClass $new, array &$plan): void
+    {
+        $paid = $plan['paid'];
+        $x = (int) $paid['transfer_amount'];
+        $srcId = (int) $source->getAttribute('ID');
+        $newId = (int) $new->getAttribute('ID');
+        $paidAt = $paid['pay_date'] ?: Carbon::today()->toDateString();
+        $receipt = $paid['receipt_no'] ? '原收據 ' . $paid['receipt_no'] : '原收據無編號';
+
+        $invoice = Invoice::query()->where('id', (int) $paid['invoice_id'])->lockForUpdate()->first();
+        if (!$invoice) {
+            abort(404);
+        }
+        $invoice->setAttribute('TotalAmount', $plan['source_charge']);
+        $invoice->setAttribute('PaidAmount', $plan['source_charge']);
+        $invoice->save();
+        InvoiceItem::query()->where('InvoiceID', $invoice->getKey())->where('StudentClassID', $srcId)
+            ->update(['Amount' => $plan['source_charge']]);
+        $out = Payment::query()->create([
+            'InvoiceID' => $invoice->getKey(),
+            'Amount' => -$x,
+            'PaidAt' => $paidAt,
+            'Method' => 'transfer_out',
+            'Note' => mb_substr("轉課轉出 {$x} 元至新合約#{$newId}（{$receipt}；轉課日 {$plan['start_date']}）", 0, 255),
+        ]);
+
+        $newInvoice = Invoice::query()->create([
+            'StudentID' => (int) $new->getAttribute('StudentID'),
+            'StudentClassID' => $newId,
+            'IssueDate' => Carbon::today()->toDateString(),
+            'DueDate' => Carbon::today()->toDateString(),
+            'TotalAmount' => $x,
+            'PaidAmount' => $x,
+            'ScheduleModeAtIssue' => 'count',
+            'Status' => 'paid',
+            'Note' => mb_substr("轉課轉入：自合約#{$srcId}（{$receipt}）", 0, 255),
+        ]);
+        InvoiceItem::query()->create([
+            'InvoiceID' => $newInvoice->getKey(),
+            'StudentClassID' => $newId,
+            'Description' => '轉課轉入：剩餘 ' . (int) $plan['new_session_count'] . ' 堂',
+            'Amount' => $x,
+        ]);
+        $in = Payment::query()->create([
+            'InvoiceID' => $newInvoice->getKey(),
+            'Amount' => $x,
+            'PaidAt' => $paidAt,
+            'Method' => 'transfer_in',
+            'Note' => mb_substr("轉課轉入 {$x} 元，來源合約#{$srcId} 帳單#{$invoice->getKey()} 付款#{$out->getKey()}（{$receipt}）", 0, 255),
+        ]);
+        $new->setAttribute('Paid', 1);
+        $new->setAttribute('PayDate', $paidAt);
+        $new->save();
+        if ((int) ($source->getAttribute('Pay') ?? 0) === (int) $paid['paid_amount']) {
+            $source->setAttribute('Pay', $plan['source_charge']);
+            $source->save();
+        }
+        $plan['paid_result'] = ['source_invoice_id' => (int) $invoice->getKey(), 'new_invoice_id' => (int) $newInvoice->getKey(),
+            'transfer_out_payment_id' => (int) $out->getKey(), 'transfer_in_payment_id' => (int) $in->getKey()];
+    }
+
+    /** Fixed-slot columns (week/time[/durationN]) for an explicit 轉課 slot list. */
+    private function splitContractSlotColumns(?array $slots): array
+    {
+        if (!$slots) {
+            return [];
+        }
+        $cols = [];
+        foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $i => $weekCol) {
+            $timeCol = $i === 0 ? 'time' : "time{$i}";
+            $slot = $slots[$i] ?? null;
+            $cols[$weekCol] = $slot ? (int) $slot['weekday'] : null;
+            $cols[$timeCol] = $slot ? $slot['time'] . ':00' : null;
+            if ($i > 0) {
+                $cols["duration{$i}"] = $slot ? (int) $slot['duration_minutes'] : null;
+            }
+        }
+
+        return $cols;
+    }
+
     private function mapFrontendPayload(Request $request): array
     {
         $input = $request->json()->all();
@@ -6641,6 +7087,42 @@ class StudentClassController extends Controller
         return false;
     }
 
+    private function countUnalignedFutureContractSessions(StudentClass $studentClass): int
+    {
+        $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+        $contractKeys = [];
+        $defaultDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
+        foreach ($slots as $slot) {
+            $day = (int) data_get($slot, 'weekday', 0);
+            $start = substr((string) data_get($slot, 'time', ''), 0, 5);
+            if ($day < 1 || $day > 7 || $start === '') {
+                continue;
+            }
+            $duration = max(30, (int) (data_get($slot, 'duration_minutes') ?: $defaultDuration));
+            $end = Carbon::createFromFormat('H:i', $start)->addMinutes($duration)->format('H:i');
+            $contractKeys["{$day}|{$start}|{$end}"] = true;
+        }
+
+        $query = ClassSession::query()->where('StudentClassID', (int) $studentClass->getKey())
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', Carbon::today()->toDateString());
+        if (Schema::hasColumn('ClassSession', 'IsContractException')) {
+            $query->where(function ($q) {
+                $q->whereNull('IsContractException')->orWhere('IsContractException', 0);
+            });
+        }
+        return $query->get(['SessionDate', 'StartTime', 'EndTime'])->filter(function ($session) use ($contractKeys) {
+            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            if (!$date) {
+                return false;
+            }
+            $day = (int) Carbon::parse($date)->dayOfWeekIso;
+            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+            $end = substr((string) ($session->EndTime ?? ''), 0, 5);
+            return !isset($contractKeys["{$day}|{$start}|{$end}"]);
+        })->count();
+    }
+
     /**
      * Rebuild upcoming class sessions when first class date is edited and no immutable history exists.
      *
@@ -6684,7 +7166,7 @@ class StudentClassController extends Controller
             $classId = (int) $studentClass->ID;
 
             // If immutable history exists, do a safe partial sync (times only).
-            if ($this->hasImmutableSessionHistory($classId)) {
+            if ($this->hasImmutableSessionHistory($classId) || $this->hasAttendanceMarkedSessions($classId)) {
                 $updatedCount = $this->syncFutureScheduledSessionTimes(
                     $classId,
                     $slots,
@@ -6824,30 +7306,31 @@ class StudentClassController extends Controller
         }
         $startDateChanged = $newStartDate !== $previousStartDate;
         if (!$startDateChanged) {
-            if (
-                !$forceRebuildIfMismatch
-                || !$this->hasSessionStartDateMismatch((int) $studentClass->ID, $newStartDate)
-            ) {
-                // Start date unchanged — but if schedule fields (week/time)
-                // changed, still sync future session times rather than doing
-                // nothing (which lets reconcile overwrite the new values).
-                if ($scheduleUpdated) {
-                    $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
-                    if (!empty($slots)) {
-                        $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
-                        $updatedCount = $this->syncFutureScheduledSessionTimes(
-                            (int) $studentClass->ID,
-                            $slots,
-                            $durationMinutes,
-                            $previousScheduleSlots
-                        );
-                        return [
-                            'rebuilt' => false,
-                            'reason' => 'history_exists',
-                            'updated_future_sessions' => $updatedCount,
-                        ];
-                    }
+            $startDateMismatch = $forceRebuildIfMismatch
+                && $this->hasSessionStartDateMismatch((int) $studentClass->ID, $newStartDate);
+            // Editing the recurring slot must sync mutable occurrences even when
+            // an older course's first materialized lesson does not equal its
+            // StartDate. That mismatch concerns the start-date rebuild only;
+            // letting it bypass this branch left the new contract beside old
+            // future times (and made the UI issue a second, non-atomic PUT).
+            if ($scheduleUpdated && (!$startDateMismatch || $this->hasImmutableSessionHistory((int) $studentClass->getKey()))) {
+                $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+                if (!empty($slots)) {
+                    $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
+                    $updatedCount = $this->syncFutureScheduledSessionTimes(
+                        (int) $studentClass->ID,
+                        $slots,
+                        $durationMinutes,
+                        $previousScheduleSlots
+                    );
+                    return [
+                        'rebuilt' => false,
+                        'reason' => 'history_exists',
+                        'updated_future_sessions' => $updatedCount,
+                    ];
                 }
+            }
+            if (!$startDateMismatch) {
                 return ['rebuilt' => false, 'reason' => 'start_date_unchanged'];
             }
         }
@@ -7828,11 +8311,14 @@ class StudentClassController extends Controller
     private function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
         int $courseId,
         int $oldTeacherId,
-        int $newTeacherId
+        int $newTeacherId,
+        ?string $effectiveDate = null
     ): void {
         if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
             return;
         }
+        // Sessions before this date keep the former teacher (default: today).
+        $effectiveDate = $effectiveDate ?: Carbon::today()->toDateString();
 
         $course = DB::table('StudentClass')->where('ID', $courseId)->first();
         if (!$course) {
@@ -7858,8 +8344,13 @@ class StudentClassController extends Controller
         $taughtStatuses = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
         $pastSessions = DB::table('ClassSession as cs')
             ->where('cs.StudentClassID', $courseId)
-            ->where(function ($q) use ($today, $taughtStatuses) {
-                $q->whereIn('cs.Status', $taughtStatuses)
+            ->where(function ($q) use ($today, $taughtStatuses, $effectiveDate) {
+                // Past lessons are history regardless of attendance evidence.
+                $q->where(function ($before) use ($effectiveDate) {
+                    $before->whereDate('cs.SessionDate', '<', $effectiveDate)
+                        ->whereRaw("COALESCE(cs.Status, '') != 'cancelled'");
+                })
+                    ->orWhereIn('cs.Status', $taughtStatuses)
                     ->orWhere(function ($q2) use ($today) {
                         $q2->whereDate('cs.SessionDate', '<', $today)
                             ->whereExists(function ($sub) {
@@ -8026,7 +8517,8 @@ class StudentClassController extends Controller
         int $courseId,
         int $oldTeacherId,
         int $newTeacherId,
-        int $changedBy
+        int $changedBy,
+        ?string $fromDate = null
     ): void {
         if ($courseId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
             return;
@@ -8034,6 +8526,7 @@ class StudentClassController extends Controller
 
         $records = LearningRecord::query()
             ->where('StudentClassID', $courseId)
+            ->when($fromDate, fn ($q) => $q->whereDate('SessionDate', '>=', $fromDate))
             ->whereNull('VoidedAt')
             ->where('TeacherID', '!=', $newTeacherId)
             ->get();
@@ -8073,7 +8566,7 @@ class StudentClassController extends Controller
      * Remove false history pins created for untaught past ClassSessions.
      * Real substitutes and taught-session #207 pins are retained.
      */
-    private function clearUntaughtPastFalseHistoryPins(int $courseId, int $currentTeacherId): void
+    private function clearUntaughtPastFalseHistoryPins(int $courseId, int $currentTeacherId, ?string $fromDate = null): void
     {
         if ($courseId <= 0 || $currentTeacherId <= 0) {
             return;
@@ -8087,6 +8580,7 @@ class StudentClassController extends Controller
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id')
             ->whereDate('schedule_date', '<', $today)
+            ->when($fromDate, fn ($q) => $q->whereDate('schedule_date', '>=', $fromDate))
             ->where('teacher_id', '<>', $currentTeacherId)
             ->get(['id', 'original_schedule_id', 'schedule_date', 'start_time']);
 
@@ -8175,6 +8669,37 @@ class StudentClassController extends Controller
             return true;
         }
         return false;
+    }
+
+    /** Attendance-marked sessions are history: a slot-only edit must never delete-and-rebuild them. */
+    private function hasAttendanceMarkedSessions(int $studentClassId): bool
+    {
+        return DB::table('ClassSession')
+            ->where('StudentClassID', $studentClassId)
+            ->whereIn('Status', ['attended', 'late', 'leave', 'excused', 'absent'])
+            ->exists();
+    }
+
+    /** Any non-cancelled past session, taught status, sign-in or deducted LR. */
+    private function courseHasPastOrTaughtSessions(int $courseId): bool
+    {
+        if ($courseId <= 0) {
+            return false;
+        }
+        $taught = ['attended', 'late', 'leave', 'excused', 'completed', 'absent'];
+        return DB::table('ClassSession')
+                ->where('StudentClassID', $courseId)
+                ->whereRaw("COALESCE(Status, '') != 'cancelled'")
+                ->where(fn ($q) => $q->whereDate('SessionDate', '<', Carbon::today()->toDateString())
+                    ->orWhereIn('Status', $taught))
+                ->exists()
+            || StudentSignIn::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')->exists()
+            || LearningRecord::query()->where('StudentClassID', $courseId)->whereNull('VoidedAt')->where('SessionDeducted', 1)->exists();
+    }
+
+    private function subjectLabelForGuard(int $subjectId): string
+    {
+        return (string) (DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? "#{$subjectId}");
     }
 
     /**

@@ -91,7 +91,7 @@
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { calculateTransactionDiscountPreview } from '../../lib/coursePricing';
-import { canSubmitMonthlyRenewal } from '../../lib/monthlyRenewalPreview';
+import { addMonthsToPeriodEnd, canSubmitMonthlyRenewal, nextPeriodEnd } from '../../lib/monthlyRenewalPreview';
 
 const props = defineProps({
   show: Boolean,
@@ -115,10 +115,8 @@ const minDate = computed(() => {
 const computedEndDate = computed(() => {
   const months = Number(props.form?.months ?? 1);
   if (!months || months <= 0) return '—';
-  const parsed = props.form?.current_end_date ? new Date(props.form.current_end_date) : null;
-  const base = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
-  base.setMonth(base.getMonth() + months);
-  return base.toISOString().slice(0, 10);
+  const first = nextPeriodEnd(props.form?.current_end_date, props.form?.settlement_day);
+  return months > 1 ? addMonthsToPeriodEnd(first, months - 1) : first;
 });
 
 const finalEndDate = computed(() => {

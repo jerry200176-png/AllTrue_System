@@ -389,7 +389,7 @@ class SameDayMultiSlotTest extends TestCase
         $defaults = [
             'StudentID' => $studentId,
             'GradeID' => 1,
-            'SubjectID' => 68,
+            'SubjectID' => \App\Services\FrontendSubjectIdResolver::resolve('Chemistry'),
             'TeacherID' => 99,
             'by1' => 1,
             'Period' => 4,
