@@ -10,7 +10,8 @@
   "api.parent.dashboard.payment_status": "pre-S4 known divergence (packet row B18)",
   "api.accounting.ledger": "pre-S3 known divergence (packet row B17)",
   "api.accounting.settled_courses": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice)",
-  "model.scopeEffectivelyUnpaid": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync)"
+  "model.scopeEffectivelyUnpaid": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync)",
+  "monthly_period_payment.batch": "pre-S1 known divergence (packet row B15)"
  },
  "entries": [
   {"site": "model.isEffectivelyPaid", "fixture": "full_paid_invoice_only", "current": "notpaid", "target": "paid"},
@@ -135,6 +136,12 @@
   {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "tutoring_flag1", "current": "paid", "target": "notpaid", "note": "free course with a stray Paid=1 answers paid (free must never be paid)"},
   {"site": "api.accounting.ledger", "fixture": "tutoring_flag1", "current": "paid", "target": "free", "note": "ledger course row has no free state (raw StudentClass.Paid)"},
   {"site": "model.scopeEffectivelyUnpaid", "fixture": "tutoring_paid_invoice", "current": "unpaid", "target": "notunpaid", "note": "Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)"},
-  {"site": "api.accounting.ledger", "fixture": "package_paid_member", "current": "unpaid", "target": "paid", "note": "no-invoice ledger course row reads raw StudentClass.Paid and ignores CoursePackage.paid"}
+  {"site": "api.accounting.ledger", "fixture": "package_paid_member", "current": "unpaid", "target": "paid", "note": "no-invoice ledger course row reads raw StudentClass.Paid and ignores CoursePackage.paid"},
+  {"site": "model.isFullyPaidWithInvoiceAmount", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "notpaid", "note": "stored PaidAmount covers the charge with no Payment rows"},
+  {"site": "monthly_period_payment.batch", "fixture": "monthly_stored_no_rows", "current": "review_required", "target": "unpaid", "note": "B15 falls back to stored PaidAmount with no Payment rows and reports review_required"},
+  {"site": "api.alerts.tuition.payment_status", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "unpaid", "note": "stored PaidAmount/Status=paid with no Payment rows counts as paid"},
+  {"site": "api.alerts.tuition.outstanding", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "unpaid", "note": "outstanding from stored PaidAmount with no Payment rows"},
+  {"site": "api.student_classes.payment_status", "fixture": "monthly_stored_no_rows", "current": "review_required", "target": "unpaid", "note": "B15 review_required surfaced for stored-only PaidAmount"},
+  {"site": "api.accounting.settled_courses", "fixture": "monthly_stored_no_rows", "current": "paid", "target": "notpaid", "note": "invoice Status=paid with no Payment rows lists the course as settled"}
  ]
 }

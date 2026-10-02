@@ -135,6 +135,8 @@ class PaidStatusParityTest extends TestCase
             'zero_fee_zero_invoice' => ['flag' => 0, 'charge' => 0, 'rate' => 0, 'invoices' => [$inv('2026-08', 0, 0, 'paid')]],
             // R31 overpayment, 3 receipts > total, stored PaidAmount drifted below the rows.
             'overpaid_stored_drift' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 9000, 'partial', [$cash(5000), $cash(4000), $cash(3000)])]],
+            // Historical/imported: stored PaidAmount says paid, no Payment rows (B15 falls back to stored PA).
+            'monthly_stored_no_rows' => ['mode' => 'date', 'flag' => 0, 'charge' => 6000, 'invoices' => [$inv('2026-08', 6000, 6000, 'paid')]],
             // A reversal recorded as Method=void with a positive amount is still a void.
             'void_method_positive' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $voidPositive(10000)])]],
             // 1: a non-void invoice overrides CoursePackage.paid.
@@ -261,7 +263,7 @@ class PaidStatusParityTest extends TestCase
         $allowlist = [];
         foreach ($file['entries'] as $entry) {
             $key = "{$entry['site']}|{$entry['fixture']}";
-            if (isset($allowlist[$key]) || !isset($file['site_reasons'][$entry['site']])) {
+            if (isset($allowlist[$key]) || trim((string) ($file['site_reasons'][$entry['site']] ?? '')) === '') {
                 $problems[] = "HARNESS: allowlist entry {$key} is duplicated or its site has no reason";
             }
             $allowlist[$key] = $entry;
@@ -409,7 +411,7 @@ class PaidStatusParityTest extends TestCase
             'Rate' => $fx['rate'] ?? null,
             'LearnTimeID' => null,
             'MDate' => now(),
-            'Stop' => 0,
+            'Stop' => isset($fx['closed_reason']) ? 1 : 0, // real close/amend flows stop the course
             'closed_reason' => $fx['closed_reason'] ?? null,
             'ScheduleMode' => $isDate ? 'date' : 'count',
             'SessionCount' => $isDate ? 0 : ($fx['session_count'] ?? 10),
