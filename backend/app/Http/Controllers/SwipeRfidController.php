@@ -36,6 +36,7 @@ class SwipeRfidController extends Controller
 {
     private const PHOTO_DIR = 'swipe-photos';
     private const PHOTO_TTL_DAYS = 7;
+    private const PHOTO_TEXT_WINDOW_SECONDS = 120;
 
     /**
      * POST /api/v1/swipe-rfid
@@ -152,7 +153,7 @@ class SwipeRfidController extends Controller
     /**
      * POST /api/v1/swipe-photo（multipart）
      * Body: branch_code, rfid, photo（jpeg/png ≤1MB）
-     * 刷卡機拍照後呼叫：存照片（私有），推 LINE 圖片給該學生已驗證綁定的家長，並回傳 image_url。
+     * 刷卡機拍照後呼叫：存照片（私有），推 LINE 文字（到班/離班）+圖片給該學生已驗證綁定的家長，並回傳 image_url。
      * 圖片網址是 APP_URL 上的簽章網址，所以刷卡機有沒有固定 IP 都沒差。
      */
     public function photo(Request $request)
@@ -221,14 +222,16 @@ class SwipeRfidController extends Controller
             ->where('campus_id', $campus->getKey())
             ->get();
 
+        $text = $this->swipePhotoText($student);
         $sent = 0;
         foreach ($bindings as $binding) {
             $delivered = false;
             try {
                 $delivered = Http::withToken($token)->timeout(5)->post('https://api.line.me/v2/bot/message/push', [
                     'to' => $binding->line_user_id,
-                    // 只推圖：到班文字由讀卡機用 swipe-rfid 回傳的 LineIDs 自己推，避免家長收兩則。
+                    // 文字+圖一次推：讀卡機不再自己推文字，避免家長收兩則。
                     'messages' => [
+                        ['type' => 'text', 'text' => $text],
                         ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
                     ],
                 ])->successful();
@@ -252,6 +255,33 @@ class SwipeRfidController extends Controller
         }
 
         return $sent;
+    }
+
+    /**
+     * 照片配的文字。讀卡機不知道到班/離班，由 swipe-rfid 剛寫的今日刷卡紀錄判斷。
+     * 只認 2 分鐘內的簽到/簽退；照片比刷卡先到或找不到紀錄 → 不寫到班/離班，避免講錯。
+     */
+    private function swipePhotoText(Student $student): string
+    {
+        $now = now();
+        $latest = StudentSignIn::query()
+            ->where('StudentID', $student->getKey())
+            ->whereDate('SignInDT', $now->toDateString())
+            ->orderByDesc('id')
+            ->first();
+
+        $recent = fn ($dt) => $dt && Carbon::parse($dt)->diffInSeconds($now, true) <= self::PHOTO_TEXT_WINDOW_SECONDS;
+        $label = '刷卡';
+        $at = $now;
+        if ($latest && $recent($latest->getAttribute('SignOutDT'))) {
+            $label = '離班';
+            $at = Carbon::parse($latest->getAttribute('SignOutDT'));
+        } elseif ($latest && !$latest->getAttribute('SignOutDT') && $recent($latest->getAttribute('SignInDT'))) {
+            $label = '到班';
+            $at = Carbon::parse($latest->getAttribute('SignInDT'));
+        }
+
+        return "{$student->name} 已於 {$at->format('H:i')} {$label}";
     }
 
     /** 照片只留到簽章網址過期為止。ponytail: 每次上傳順手掃該分校目錄；量大再改排程。 */

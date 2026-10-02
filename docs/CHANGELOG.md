@@ -1,3 +1,7 @@
+## 2026-10-02 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo
+<!-- release-notes: silent_ship=silent-2026-10-02-swipe-photo-text -->
+- `POST /api/v1/swipe-photo` 推給家長的 LINE 改為「文字＋照片」一次送出：文字由 AllTrue 依 2 分鐘內剛寫入的刷卡紀錄判斷「到班」或「離班」（例：`王小明 已於 10:00 到班`），照片早到、晚到或找不到紀錄時只寫「刷卡」不猜。讀卡機不需再自己推文字。
+
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->
 - 學生管理與課程管理的建課老師選單只顯示可指派的老師；一般課程、多老師時段及多科共用方案在儲存時再次驗證，停用或待審核老師不會被新指派。既有課程保留原授課老師與歷史顯示。
