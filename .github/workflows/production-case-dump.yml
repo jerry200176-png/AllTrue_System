@@ -434,8 +434,12 @@ jobs:
               }});
               $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
               // August 2026 invoices: billing_period 2026-08, or any item whose service range overlaps August.
+              // PeriodStart / PeriodEnd are independently nullable (BillingController store): a missing bound is
+              // open-ended, but an item with neither bound has no service range and is not selected.
               $augustItemInvoiceIds = $db::table('InvoiceItem')->select('InvoiceID')
-                ->whereDate('PeriodStart', '<=', '2026-08-31')->whereDate('PeriodEnd', '>=', '2026-08-01');
+                ->where(fn ($q) => $q->whereNotNull('PeriodStart')->orWhereNotNull('PeriodEnd'))
+                ->where(fn ($q) => $q->whereNull('PeriodStart')->orWhereDate('PeriodStart', '<=', '2026-08-31'))
+                ->where(fn ($q) => $q->whereNull('PeriodEnd')->orWhereDate('PeriodEnd', '>=', '2026-08-01'));
               $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)
                 ->where(fn ($q) => $q->where('billing_period', '2026-08')->orWhereIn('id', $augustItemInvoiceIds))->orderBy('id')
                 ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
