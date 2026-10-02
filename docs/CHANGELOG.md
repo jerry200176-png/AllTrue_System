@@ -1,7 +1,3 @@
-## 2026-10-02 — fix(rfid): swipe-rfid LineIDs follow campus switches instead of always empty
-<!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-continuity -->
-- `POST /api/v1/swipe-rfid` 學生到班回應的 `student.LineIDs` 在分校「到班刷卡」開著時回本分校已驗證家長 LINE userId（不含其他分校綁定），離班回應看「離班刷卡」；開關關閉或重複刷卡回 `[]`。還沒接 `swipe-photo` 的讀卡機可照舊自己推文字，不會因 #3437 斷掉通知；有呼叫 `swipe-photo` 的讀卡機不應再用 `LineIDs` 推，否則家長收兩則。
-
 ## 2026-10-02 — feat(line): per-campus LINE notify switches + swipe photo as one Flex card
 <!-- release-notes: staff_update=staff-2026-10-02-line-notify-switches -->
 - 主任在「家長 LINE 通知設定」可逐項開關 LINE 通知（到班刷卡、離班刷卡、老師回覆學習回饋、繳費提醒、排課異常、重要系統通知），並看到本月 LINE 已用／上限則數。存 `SystemSetting` `line_notify.campus.{id}`（無 migration）；未設定時既有通知維持開、刷卡通知預設關。`GET/PUT /api/v1/line/notify-settings`（主任限自己分校，super_admin 任一）。
@@ -15,6 +11,14 @@
 ## 2026-10-01 — fix(qa): production calendar and tutoring acceptance follow actual contracts
 <!-- release-notes: silent_ship=silent-2026-10-01-calendar-tutoring-acceptance -->
 - 行事曆列印驗收將主任首頁既有的營運信任事件納入嚴格格式檢查，未知或洩漏資料的事件仍失敗。輔導課驗收不再假設每分校都有進行中的輔導課；保留一般未繳課與應收金額的正向控制，並在報告中明列當次是否觀察到真實輔導課樣本。完整 API 加 UI 路徑使用有界時限，UI 學生從授權分校內選取；新增課程操作限定在該生展開的明細，已有課程時先通過續報入口再檢查表單，點擊各有明確時限。未改收費規則或 production 資料。
+
+## 2026-10-02 — fix(rfid): swipe-rfid LineIDs follow campus switches instead of always empty
+<!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-continuity -->
+- `POST /api/v1/swipe-rfid` 學生到班回應的 `student.LineIDs` 在分校「到班刷卡」開著時回本分校已驗證家長 LINE userId（不含其他分校綁定），離班回應看「離班刷卡」；開關關閉或重複刷卡回 `[]`。還沒接 `swipe-photo` 的讀卡機可照舊自己推文字，不會因 #3437 斷掉通知；有呼叫 `swipe-photo` 的讀卡機不應再用 `LineIDs` 推，否則家長收兩則。
+
+## 2026-10-02 — feat(bug-report): in-app reports auto-attach recent failed requests
+<!-- release-notes: staff_update=staff-2026-10-02-report-context -->
+- 回報問題時自動附上最近 5 筆失敗的 API 請求（方法、路徑不含查詢參數、狀態碼、請求編號）、系統版本與所在頁面／分校編號，不含任何內容或個資；後端為每個 API 回應加上 `X-Request-Id`，並寫入日誌。同時修正附加資訊過長被截斷成無效 JSON 的問題（上限 2000 → 4000）。
 
 ## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->

@@ -3,6 +3,9 @@ import { createApp } from 'vue';
 import * as Sentry from '@sentry/vue';
 import App from './App.vue';
 import './styles.css';
+import { installFetchRecorder } from './lib/recentApiFailures';
+
+installFetchRecorder();
 
 // Deploy 後舊 chunk hash 失效時，自動 reload 一次讓使用者取得最新版
 // vite:preloadError 處理 <link rel="modulepreload"> 層失敗
