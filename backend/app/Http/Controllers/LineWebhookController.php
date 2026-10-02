@@ -195,7 +195,7 @@ class LineWebhookController extends Controller
         $cid = $obs->newCorrelationId();
         $normalized = preg_replace('/[^0-9]/', '', $phone) ?? '';
         $candidates = Student::whereRaw('TRIM(name) = ?', [$name])->where('CampusID', $campus->id)->get();
-        $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
+        $c = $obs->classifier()->classifyLineNameCandidates($candidates, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId, (int) $campus->id));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_NAME, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             // 跨校衝突：本分校找不到，但同名＋同手機的學生存在於其他分校 → 明確告知，避免家長誤以為系統沒資料
@@ -245,7 +245,7 @@ class LineWebhookController extends Controller
         $cid = $obs->newCorrelationId();
         $normalized = preg_replace('/[^0-9]/', '', $phone) ?? '';
         $student = Student::where('id', $studentId)->first();
-        $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId));
+        $c = $obs->classifier()->classifyLineStudentId($student, $normalized, (int) $campus->id, fn (int $sid) => $this->isAlreadyBound($sid, $lineUserId, (int) $campus->id));
         $obs->observe($cid, ParentBindingCodes::CHANNEL_LINE, ParentBindingCodes::METHOD_STUDENT_ID, $c, $normalized !== '' ? $normalized : null);
         if ($c['outcome'] === ParentBindingCodes::OUTCOME_FAILURE) {
             $message = match ($c['reasonCode']) {
@@ -314,10 +314,16 @@ class LineWebhookController extends Controller
         }
     }
 
-    private function isAlreadyBound(int $studentId, string $lineUserId): bool
+    /**
+     * 只把「本分校」的已驗證綁定當成已綁定。轉校後舊綁定的 campus_id 還是舊分校，
+     * 不算已綁定 → 家長在新分校重新驗證時會走 bindStudent()，把那筆更新成新分校
+     * （swipe-rfid LineIDs 只給刷卡分校的綁定，否則轉校家長永遠收不到）。
+     */
+    private function isAlreadyBound(int $studentId, string $lineUserId, int $campusId): bool
     {
         return StudentLineBinding::where('student_id', $studentId)
             ->where('line_user_id', $lineUserId)
+            ->where('campus_id', $campusId)
             ->verified()
             ->exists();
     }

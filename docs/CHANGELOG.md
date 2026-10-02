@@ -12,7 +12,7 @@
 
 ## 2026-10-02 — fix(rfid): swipe-rfid LineIDs only include the swiped campus's bindings
 <!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-campus-scope -->
-- `POST /api/v1/swipe-rfid` 學生回應的 `student.LineIDs` 只回刷卡分校的已驗證家長 LINE userId；轉校殘留／舊匯入的別分校綁定不再交給本校讀卡機（避免跨分校用錯官方帳號推播）。
+- `POST /api/v1/swipe-rfid` 學生回應的 `student.LineIDs` 只回刷卡分校的已驗證家長 LINE userId；轉校殘留／舊匯入的別分校綁定不再交給本校讀卡機（避免跨分校用錯官方帳號推播）。LINE 綁定的「已綁定」判斷改為只看本分校綁定：轉校學生家長在新分校重新驗證時，舊分校的綁定列會更新成新分校（不再回「已綁定」而一直收不到）。
 
 ## 2026-10-01 — feat(rfid): swipe-photo API pushes swipe photo to parents via LINE
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
