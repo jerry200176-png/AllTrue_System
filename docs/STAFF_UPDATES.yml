@@ -42,6 +42,18 @@ updates:
         text: 若選擇後老師狀態有變，儲存時會提醒重新選擇；既有課程紀錄仍可查看。
     source_refs:
       - "changelog:2026-10-01:active-teachers-only"
+  - id: staff-2026-10-02-monthly-opening-preview
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 月結開課日首堂不再漏算
+    summary: 開課日剛好是上課星期時，預覽堂數會含開課日那一堂。
+    items:
+      - category: fixed
+        text: 在日曆手動調整後建立的月結課，也會保留開課日那一堂。
+    source_refs:
+      - "changelog:2026-10-02:monthly-opening-preview"
   - id: staff-2026-10-02-report-context
     published_at: "2026-10-02"
     audiences:

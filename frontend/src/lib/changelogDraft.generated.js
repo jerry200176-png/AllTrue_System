@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.02",
     "date": "2026-10-02",
     "title": "2026.10.02 草稿（未發布）",
-    "summary": "auto-attach recent failed requests；改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
+    "summary": "auto-attach recent failed requests；preview keeps a fixed-weekday opening date as the first lesson",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "preview keeps a fixed-weekday opening date as the first lesson",
           "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
           "threads unanswered for 14 days drop out of 待回覆",
           "只看有課老師」 no longer shows empty teacher columns",
@@ -34,6 +35,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "auto-attach recent failed requests",
+      "preview keeps a fixed-weekday opening date as the first lesson",
       "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
       "threads unanswered for 14 days drop out of 待回覆",
       "只看有課老師」 no longer shows empty teacher columns",
