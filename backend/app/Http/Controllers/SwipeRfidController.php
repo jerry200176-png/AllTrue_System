@@ -302,9 +302,12 @@ class SwipeRfidController extends Controller
     private function recentSwipe(Student $student, int $campusId): array
     {
         $now = now();
+        // 排除簽退時 StudentPresenceBackfillService 補建的 presence-window 列：它們 id 較新，
+        // 但不是這次刷卡碰到的紀錄，會蓋掉真正被簽退的（可能是別校／作廢）那筆。
         $latest = StudentSignIn::query()
             ->where('StudentID', $student->getKey())
             ->whereDate('SignInDT', $now->toDateString())
+            ->where(fn ($q) => $q->whereNull('Memo')->orWhere('Memo', '!=', 'presence-window'))
             ->orderByDesc('id')
             ->first();
         if (!$latest) {

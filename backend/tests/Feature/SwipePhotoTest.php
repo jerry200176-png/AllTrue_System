@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Campus;
+use App\Models\ClassSession;
+use App\Models\StudentClass;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
@@ -173,6 +175,31 @@ class SwipePhotoTest extends TestCase
 
         $this->assertSame([], Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
         Http::assertNothingSent();
+    }
+
+    public function test_presence_window_backfill_rows_do_not_hide_an_unsafe_sign_out(): void
+    {
+        // 簽退時會補建本校 presence-window 列（id 較新）；照片要對到真正被簽退的別校紀錄，不能被補建列蓋掉。
+        $this->travelTo(today()->setTime(10, 0));
+        $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
+        $swipe()->assertJson(['action' => 'sign_in']);
+        StudentSignIn::where('StudentID', $this->student->id)->update(['CampusID' => $this->campus->id + 100]);
+
+        $sc = StudentClass::create([
+            'StudentID' => $this->student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 0,
+            'TotalHours' => 2, 'StartDate' => now()->subYear(), 'Stop' => 0, 'SessionCount' => 10, 'ScheduleMode' => 'count',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => today()->toDateString(),
+            'StartTime' => '10:30:00', 'EndTime' => '11:30:00', 'Status' => 'scheduled',
+        ]);
+
+        $this->travelTo(today()->setTime(12, 0));
+        $swipe()->assertJson(['action' => 'sign_out']);
+        $this->assertSame(1, StudentSignIn::where('StudentID', $this->student->id)->where('Memo', 'presence-window')->count());
+
+        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'unsafe_record']);
+        $this->assertSame([], Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
     }
 
     public function test_no_channel_token_still_stores_without_push(): void
