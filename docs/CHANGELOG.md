@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-10-02-monthly-opening-preview -->
 - 新增月結課程時，若開課日剛好是固定上課星期，預覽清單與「共 N 堂」會把開課日算成首堂，和系統實際建立的堂次一致；在日曆手動調整後送出的堂次也不會再漏掉開課日那一堂。開課日不在固定星期時的既有規則不變。未改既有課程或帳務資料。
 
+## 2026-10-02 — perf(teacher-home): batch same-day schedule read-repair; show known tasks early (in-app #319)
+<!-- release-notes: staff_update=staff-2026-10-02-teacher-home-speed -->
+- `GET /class-sessions` 同日查詢（老師首頁每分鐘輪詢）的「schedules 例外補建」改為批次載入課程、原排課日與已建堂次，已建立的堂次不再逐筆開交易 upsert（原每筆約 5 次查詢，且掃描當日全分校例外）；回應內容不變。同時帶入 b2a419f9b 的漸進顯示：關鍵點名與課表就緒後，已知待辦先顯示，補填提醒／家長回覆計數標「至少」。未改 schema 或資料。
+
 ## 2026-10-02 — feat(bug-report): in-app reports auto-attach recent failed requests
 <!-- release-notes: staff_update=staff-2026-10-02-report-context -->
 - 回報問題時自動附上最近 5 筆失敗的 API 請求（方法、路徑不含查詢參數、狀態碼、請求編號）、系統版本與所在頁面／分校編號，不含任何內容或個資；後端為每個 API 回應加上 `X-Request-Id`，並寫入日誌。同時修正附加資訊過長被截斷成無效 JSON 的問題（上限 2000 → 4000）。
