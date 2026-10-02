@@ -236,8 +236,28 @@ class ClassSessionController extends Controller
             ->when(!empty($campusIds), fn ($query) => $query->whereIn('branch_id', $campusIds))
             ->get();
 
+        // #319 perf: this runs on EVERY same-day read (Teacher Home polls it each
+        // minute) over all schedules of the day. Batch-load courses, anchor dates and
+        // already-materialized slots so steady state is O(1) queries, not ~5 per row.
+        $courseIds = $schedules->pluck('student_course_id')->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $courses = $courseIds === []
+            ? collect()
+            : StudentClass::query()->whereIn('ID', $courseIds)->get()->keyBy(fn ($c) => (int) $c->getAttribute('ID'));
+        $anchorIds = $schedules->pluck('original_schedule_id')->map(fn ($v) => (int) $v)->filter(fn ($v) => $v > 0)->unique()->values()->all();
+        $anchorDates = $anchorIds === [] ? collect() : Schedule::query()->whereIn('id', $anchorIds)->pluck('schedule_date', 'id');
+        $existingSlots = [];
+        if ($courseIds !== []) {
+            ClassSession::query()
+                ->whereIn('StudentClassID', $courseIds)
+                ->whereDate('SessionDate', $start)
+                ->get(['StudentClassID', 'StartTime'])
+                ->each(function ($r) use (&$existingSlots) {
+                    $existingSlots[(int) $r->StudentClassID . '|' . substr((string) $r->StartTime, 0, 5)] = true;
+                });
+        }
+
         foreach ($schedules as $schedule) {
-            $course = StudentClass::query()->find((int) $schedule->student_course_id);
+            $course = $courses->get((int) $schedule->student_course_id);
             if (!$course || (int) ($course->Stop ?? 0) === 1) {
                 continue;
             }
@@ -246,10 +266,14 @@ class ClassSessionController extends Controller
             // repairing it here would create a duplicate ghost occurrence.
             $anchorId = (int) ($schedule->original_schedule_id ?? 0);
             if ($anchorId > 0) {
-                $anchorDate = Schedule::query()->whereKey($anchorId)->value('schedule_date');
+                $anchorDate = $anchorDates->get($anchorId);
                 if ($anchorDate && Carbon::parse($anchorDate)->toDateString() !== $start) {
                     continue;
                 }
+            }
+
+            if (isset($existingSlots[(int) $course->getAttribute('ID') . '|' . substr((string) ($schedule->start_time ?? ''), 0, 5)])) {
+                continue; // upsertSlot would be a no-op (same course/date/HH:MM exists)
             }
 
             $startTime = substr((string) ($schedule->start_time ?? ''), 0, 8);
