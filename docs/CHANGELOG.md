@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
 - 新增 `POST /api/v1/swipe-photo`（multipart：`branch_code`、`rfid`、`photo` jpeg/png ≤1MB，認證同 `swipe-rfid` 的分校 Bearer Token）。照片存私有 `storage/app/swipe-photos/{campus}`，以 `APP_URL` 上 7 天效期的相對簽章網址（`GET /api/v1/swipe-photo/{campus}/{file}`）推 LINE 圖片給該生已驗證綁定家長，並回傳 `image_url`；讀卡機不需固定 IP。只推圖片，到班文字仍由讀卡機用 `LineIDs` 推。超過 7 天的照片於下次上傳時清除。
 
+## 2026-10-02 — fix(feedback): parent threads unanswered for 14 days drop out of 待回覆 (in-app #295)
+<!-- release-notes: staff_update=staff-2026-10-02-awaiting-14d -->
+- 家長留言（無留言串時為回饋本身）超過 14 天且之後沒有老師／主任公開回覆，不再算「待回覆」，老師首頁待辦、計數與列表篩選一致（`ParentFeedbackAwaitingService::AWAITING_STALE_AFTER_DAYS`）。家長之後再留言即重新列入；「標記不需回覆」維持原行為。未改資料與 schema。
+
 ## 2026-10-02 — fix(calendar): 「只看有課老師」 no longer shows empty teacher columns
 <!-- release-notes: staff_update=staff-2026-10-02-calendar-has-course -->
 - 行事曆日檢視勾選「只看有課老師」時，改用與課表格子相同的判斷；課程時間不在 08:00–22:00 格子內、或當天實際不占任何格子的老師，不再留下一整欄空白。未改課程或排課資料。(#364)

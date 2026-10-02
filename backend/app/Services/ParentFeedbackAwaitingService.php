@@ -15,6 +15,14 @@ class ParentFeedbackAwaitingService
 {
     public const STAFF_PUBLIC_ROLES = ['teacher', 'director'];
 
+    /** In-app #295: an unanswered parent message older than this no longer counts as awaiting. */
+    public const AWAITING_STALE_AFTER_DAYS = 14;
+
+    private function staleCutoff(): string
+    {
+        return now()->subDays(self::AWAITING_STALE_AFTER_DAYS)->format('Y-m-d H:i:s');
+    }
+
     public function normalizeContent(string $content): string
     {
         return trim($content);
@@ -62,6 +70,12 @@ class ParentFeedbackAwaitingService
         }
 
         if (!$awaiting) {
+            return false;
+        }
+
+        // Latest parent message (body-only threads: the feedback itself) older than the window.
+        $parentAt = $parentLatest[0] ?? $this->eventSortKey($feedback->created_at ?? null, 0)[0];
+        if ($parentAt !== '' && $parentAt < $this->staleCutoff()) {
             return false;
         }
 
@@ -170,6 +184,24 @@ class ParentFeedbackAwaitingService
                             LIMIT 1
                         )"
                     );
+            });
+        })->where(function ($fresh) use ($feedbackIdColumn, $tableAlias) {
+            // Stale (#295): latest parent message (or body-only feedback itself) within the window.
+            $cutoff = $this->staleCutoff();
+            $fresh->whereExists(function ($recent) use ($feedbackIdColumn, $cutoff) {
+                $recent->select(DB::raw(1))
+                    ->from('learning_record_feedback_replies as r_fresh')
+                    ->whereColumn('r_fresh.feedback_id', $feedbackIdColumn)
+                    ->where('r_fresh.author_role', 'parent')
+                    ->where('r_fresh.created_at', '>=', $cutoff);
+            })->orWhere(function ($bodyOnly) use ($feedbackIdColumn, $tableAlias, $cutoff) {
+                $bodyOnly->where("{$tableAlias}.created_at", '>=', $cutoff)
+                    ->whereNotExists(function ($anyParent) use ($feedbackIdColumn) {
+                        $anyParent->select(DB::raw(1))
+                            ->from('learning_record_feedback_replies as r_any_parent')
+                            ->whereColumn('r_any_parent.feedback_id', $feedbackIdColumn)
+                            ->where('r_any_parent.author_role', 'parent');
+                    });
             });
         })->where(function ($dismiss) use ($feedbackIdColumn, $tableAlias) {
             // Dismissed threads stay out of the queue until a newer parent reply.
