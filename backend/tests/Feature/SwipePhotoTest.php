@@ -215,16 +215,28 @@ class SwipePhotoTest extends TestCase
         // 今天沒有 RFID 刷卡列 → 對不起來，不存不推
         $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'uncorrelated']);
 
-        // 人工／待配對建的列（Memo 非 swipe-rfid/self_study）不算 RFID 刷卡：就算 id 較新、還是別校的，
-        // 照片仍對到剛剛那筆本校 RFID 簽到。
+        $this->assertSame([], Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
+        Http::assertNothingSent();
+    }
+
+    public function test_sign_out_closing_a_newer_manual_row_does_not_fall_back_to_older_rfid_arrival(): void
+    {
+        // 10:00 RFID 到班（A，開著）→ 人工配對再開一筆較新的 B（manual-match，開著）
+        // → 10:01 刷卡關掉的是 B（離班）。照片不能跳過 B 回退到 A 而推成「到班」。
+        $this->travelTo(today()->setTime(10, 0));
         $this->swipeRfid()->assertJson(['action' => 'sign_in']);
         StudentSignIn::create([
-            'StudentID' => $this->student->id, 'StudentClassID' => 0, 'Memo' => 'manual',
-            'SignInDT' => now(), 'CampusID' => $this->campus->id + 100,
+            'StudentID' => $this->student->id, 'StudentClassID' => 0, 'Memo' => 'manual-match',
+            'SignInDT' => now(), 'CampusID' => $this->campus->id,
         ]);
-        $this->upload()->assertOk()->assertJson(['sent' => 1]);
 
-        $this->assertCount(1, Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
+        $this->travel(61)->seconds(); // 過 60 秒防彈跳，A 的簽到仍在 120 秒內
+        $this->swipeRfid()->assertJson(['action' => 'sign_out']);
+        $this->assertNotNull(StudentSignIn::where('Memo', 'manual-match')->value('SignOutDT'));
+
+        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'uncorrelated']);
+        $this->assertSame([], Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
+        Http::assertNothingSent();
     }
 
     public function test_no_channel_token_still_stores_without_push(): void

@@ -40,6 +40,8 @@ class SwipeRfidController extends Controller
     private const PHOTO_TEXT_WINDOW_SECONDS = 120;
     /** handleStudentSwipe() 建的學生簽到列 Memo（有課 swipe-rfid／無課 self_study）。 */
     private const RFID_SIGN_IN_MEMOS = ['swipe-rfid', 'self_study'];
+    /** StudentPresenceBackfillService 補建列的 Memo。 */
+    private const BACKFILL_MEMO = 'presence-window';
 
     /**
      * POST /api/v1/swipe-rfid
@@ -293,8 +295,8 @@ class SwipeRfidController extends Controller
 
     /**
      * 這張照片對應的刷卡：讀卡機不知道到班/離班，看今天「最後一次實際 RFID 刷卡」寫的列。
-     * 只認 SwipeRfidController 建的列（Memo swipe-rfid / self_study）；StudentPresenceBackfillService 補建的
-     * presence-window 列、人工／待配對建的列都不算（它們 id 可能較新，會蓋掉真正被刷到的那筆）。
+     * 略過 StudentPresenceBackfillService 補建的 presence-window 列後，今天最新一筆必須是 SwipeRfidController 建的
+     * （Memo swipe-rfid / self_study）；是人工／待配對列就 uncorrelated，不往前找舊 RFID 列。
      * 那筆不是本校未作廢 → unsafe；不是 2 分鐘內的簽到／簽退 → uncorrelated。兩者都不發。
      *
      * @return array{0:string,1:Carbon} [in|out|unsafe|uncorrelated, 刷卡時間]
@@ -302,13 +304,15 @@ class SwipeRfidController extends Controller
     private function recentSwipe(Student $student, int $campusId): array
     {
         $now = now();
+        // 只排除 backfill 補建列；最新一筆若是人工／待配對列（可能正是這次刷卡關掉的那筆），
+        // 不往前回退找較舊的 RFID 列（會把離班誤判成到班），直接 uncorrelated。
         $latest = StudentSignIn::query()
             ->where('StudentID', $student->getKey())
             ->whereDate('SignInDT', $now->toDateString())
-            ->whereIn('Memo', self::RFID_SIGN_IN_MEMOS)
+            ->where(fn ($q) => $q->whereNull('Memo')->orWhere('Memo', '!=', self::BACKFILL_MEMO))
             ->orderByDesc('id')
             ->first();
-        if (!$latest) {
+        if (!$latest || !in_array($latest->getAttribute('Memo'), self::RFID_SIGN_IN_MEMOS, true)) {
             return ['uncorrelated', $now];
         }
         // 先看安全再看時間：別校／分校不明／已作廢 → 不管照片多晚到都不發。
