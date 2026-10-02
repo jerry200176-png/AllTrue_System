@@ -783,7 +783,8 @@ jobs:
             $since = now()->subDays(14);
             $signIns = $db::table('StudentSingIn as si')->join('Student as s', 's.id', '=', 'si.StudentID')
               ->where('si.SignInDT', '>=', $since)->groupBy('s.CampusID')
-              ->selectRaw('s.CampusID as campus_id, COUNT(*) as n, MAX(si.SignInDT) as last_at')->get()->keyBy('campus_id');
+              ->selectRaw("s.CampusID as campus_id, COUNT(*) as n, MAX(si.SignInDT) as last_at, SUM(si.Memo IN ('swipe-rfid', 'self_study')) as n_api, MAX(CASE WHEN si.Memo IN ('swipe-rfid', 'self_study') THEN si.SignInDT END) as last_api_at")
+              ->get()->keyBy('campus_id');
             $photoAudit = $db::table('security_audit_events')->where('event_type', 'notification.delivery')
               ->where('occurred_at', '>=', $since)->where('metadata', 'like', '%swipe_photo%')
               ->groupBy('campus_id', 'outcome')
@@ -793,19 +794,30 @@ jobs:
             $settings = $db::table('system_settings')->where('key', 'like', 'line_notify.campus.%')->pluck('value', 'key');
             $out['campuses'] = $db::table('Campus')->orderBy('id')
               ->get(['id', 'code', 'messaging_channel_token', 'TelegramToken', 'is_test'])
-              ->map(function ($c) use ($signIns, $bindings, $settings) {{
+              ->map(function ($c) use ($signIns, $bindings, $settings, $since) {{
                 $dir = storage_path('app/swipe-photos/' . (int) $c->id);
                 $files = is_dir($dir) ? array_values(array_filter(glob($dir . '/*') ?: [], 'is_file')) : [];
+                $files14 = array_values(array_filter($files, fn ($f) => filemtime($f) >= $since->getTimestamp()));
                 $si = $signIns->get($c->id);
                 return ['campus_id'=>(int)$c->id, 'code'=>(string)$c->code, 'is_test'=>(bool)$c->is_test,
                   'has_line_channel_token'=>!empty($c->messaging_channel_token),
                   'has_telegram_token'=>!empty($c->TelegramToken),
                   'verified_line_bindings'=>(int)($bindings[$c->id] ?? 0),
-                  'student_sign_ins_14d'=>$si ? (int)$si->n : 0, 'last_student_sign_in'=>$si ? $si->last_at : null,
-                  'swipe_photo_files'=>count($files),
+                  'student_sign_ins_14d_all_sources'=>$si ? (int)$si->n : 0,
+                  'swipe_rfid_api_sign_ins_14d'=>$si ? (int)$si->n_api : 0,
+                  'last_swipe_rfid_api_sign_in'=>$si ? $si->last_api_at : null,
+                  'swipe_photo_files_14d'=>count($files14),
+                  'swipe_photo_files_retained_total'=>count($files),
                   'newest_swipe_photo_at'=>$files === [] ? null : date('Y-m-d H:i:s', max(array_map('filemtime', $files))),
                   'line_notify_setting_present'=>isset($settings['line_notify.campus.' . (int)$c->id])];
               }})->values()->all();
+            $out['evidence_limits'] = [
+              'student_sign_ins_14d_all_sources includes manual/approval/backfill attendance; it does NOT prove reader calls.',
+              'swipe_rfid_api_sign_ins_14d counts sign-ins created by SwipeRfidController (Memo swipe-rfid/self_study); sign-outs and duplicate swipes are not counted, and later Memo edits would hide a row.',
+              'swipe_photo_files_14d uses file mtime; swipe_photo_files_retained_total spans all retained files (pruned after 7 days only when that campus uploads again).',
+              'swipe_photo_delivery_audit_14d only exists when the campus has a LINE token and the student has verified bindings; zero rows does not prove zero uploads.',
+              'Reader-side LINE text pushes (from LineIDs) go straight to LINE and leave no trace in AllTrue.',
+            ];
             $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
               'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
           }} else {{
