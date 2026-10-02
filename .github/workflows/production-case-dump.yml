@@ -423,16 +423,9 @@ jobs:
               $out['ok'] = false;
               $out['error'] = 'student_name must match exactly one approved student';
             }} else {{
-              $classes = $db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID')
-                ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
-              // Every closed_reason value StudentClass writers set (grep backend/app, 2026-10-02); anything else is free text → 'other'.
-              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
-              $classes = $classes->map(function ($r) use ($knownReasons) {{
-                $reason = (string)($r->closed_reason ?? '');
-                $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
-                return $r;
-              }});
-              $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
+              // Candidate contracts are read internally only; output is limited to contracts linked to August
+              // sessions or August invoices/items (no unrelated contract history).
+              $studentClassIds = $db::table('StudentClass')->whereIn('StudentID', $studentIds)->pluck('ID')->map(fn ($id) => (int)$id)->all();
               // August 2026 invoices: billing_period 2026-08, or any item whose service range overlaps August.
               // PeriodStart / PeriodEnd are independently nullable (BillingController store): a missing bound is
               // open-ended, but an item with neither bound has no service range and is not selected.
@@ -445,12 +438,26 @@ jobs:
                 ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
               $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
                 ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount']);
-              $sessions = $classIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $classIds)
+              $sessions = $studentClassIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $studentClassIds)
                 ->whereBetween('SessionDate', ['2026-08-01', '2026-08-31'])
                 ->selectRaw("StudentClassID as class_id, Status as status, COUNT(*) as n, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date")
                 ->groupBy('StudentClassID', 'Status')->orderBy('StudentClassID')->get();
+              $linkedClassIds = collect($sessions->pluck('class_id'))
+                ->merge($invoices->pluck('StudentClassID'))->merge($items->pluck('StudentClassID'))
+                ->filter()->map(fn ($id) => (int)$id)->unique()
+                ->filter(fn ($id) => in_array($id, $studentClassIds, true))->sort()->values()->all();
+              $classes = $linkedClassIds === [] ? collect() : $db::table('StudentClass')->whereIn('ID', $linkedClassIds)->orderBy('ID')
+                ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
+              // Every closed_reason value StudentClass writers set (grep backend/app, 2026-10-02); anything else is free text → 'other'.
+              $knownReasons = ['completed', 'contract_amended', 'converted_trial', 'parent_leave_rejected', 'repair_rolled_back', 'settled', 'settled_pending', 'usage_settled'];
+              $classes = $classes->map(function ($r) use ($knownReasons) {{
+                $reason = (string)($r->closed_reason ?? '');
+                $r->closed_reason = $reason === '' ? null : (in_array($reason, $knownReasons, true) ? $reason : 'other');
+                return $r;
+              }});
               $out['student_ids'] = $studentIds;
               $out['session_window'] = ['2026-08-01', '2026-08-31'];
+              $out['august_linked_class_ids'] = $linkedClassIds;
               $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
               $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
               $out['invoice_items'] = $items->map(fn ($r) => (array)$r)->values()->all();
