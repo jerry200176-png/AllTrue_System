@@ -437,14 +437,24 @@ jobs:
               $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)
                 ->where(fn ($q) => $q->where('billing_period', '2026-08')->orWhereIn('id', $augustItemInvoiceIds))->orderBy('id')
                 ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
+              // Export only August items: a multi-month split invoice can hold July/September lines. A missing
+              // bound is open-ended; an item with no range at all is kept only when its invoice is billed as 2026-08.
+              $augustInvoiceIds = $invoices->filter(fn ($r) => (string)($r->billing_period ?? '') === '2026-08')->pluck('id')->map(fn ($id) => (int)$id)->all();
               $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
+                ->where(fn ($q) => $q
+                  ->where(fn ($r) => $r->where(fn ($b) => $b->whereNotNull('PeriodStart')->orWhereNotNull('PeriodEnd'))
+                    ->where(fn ($b) => $b->whereNull('PeriodStart')->orWhereDate('PeriodStart', '<=', '2026-08-31'))
+                    ->where(fn ($b) => $b->whereNull('PeriodEnd')->orWhereDate('PeriodEnd', '>=', '2026-08-01')))
+                  ->orWhere(fn ($r) => $r->whereNull('PeriodStart')->whereNull('PeriodEnd')->whereIn('InvoiceID', $augustInvoiceIds)))
                 ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount']);
               $sessions = $studentClassIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $studentClassIds)
                 ->whereBetween('SessionDate', ['2026-08-01', '2026-08-31'])
                 ->selectRaw("StudentClassID as class_id, Status as status, COUNT(*) as n, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date")
                 ->groupBy('StudentClassID', 'Status')->orderBy('StudentClassID')->get();
+              // Linkage: August sessions, August items, and the invoice-level course only for invoices billed as 2026-08.
               $linkedClassIds = collect($sessions->pluck('class_id'))
-                ->merge($invoices->pluck('StudentClassID'))->merge($items->pluck('StudentClassID'))
+                ->merge($invoices->filter(fn ($r) => (string)($r->billing_period ?? '') === '2026-08')->pluck('StudentClassID'))
+                ->merge($items->pluck('StudentClassID'))
                 ->filter()->map(fn ($id) => (int)$id)->unique()
                 ->filter(fn ($id) => in_array($id, $studentClassIds, true))->sort()->values()->all();
               $classes = $linkedClassIds === [] ? collect() : $db::table('StudentClass')->whereIn('ID', $linkedClassIds)->orderBy('ID')
