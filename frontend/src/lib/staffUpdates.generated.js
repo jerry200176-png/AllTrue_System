@@ -98,6 +98,36 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-monthly-opening-preview",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "月結開課日首堂不再漏算",
+    "summary": "開課日剛好是上課星期時，預覽堂數會含開課日那一堂。",
+    "items": [
+      "在日曆手動調整後建立的月結課，也會保留開課日那一堂。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "在日曆手動調整後建立的月結課，也會保留開課日那一堂。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-02:monthly-opening-preview"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-02-calendar-has-course",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,
