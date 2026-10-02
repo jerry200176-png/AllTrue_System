@@ -54,23 +54,28 @@ class PaidStatusParityTest extends TestCase
     private function exactObservable(array $fixtures): array
     {
         $all = array_keys($fixtures);
-        $withInvoices = array_keys(array_filter($fixtures, fn ($fx) => $fx['invoices'] !== []));
 
         return [
             'resolver.byStudentClassIds' => $all,
             'api.student_classes.payment_status' => $all,
             'api.parent.dashboard.payment_status' => $all,
-            'api.accounting.ledger' => $withInvoices,
+            'api.accounting.ledger' => $all,
         ];
     }
 
-    /** Sites that can only answer paid / notpaid. */
+    /** Paid predicates that can only answer paid / notpaid. Target: only `paid` is paid; `free` is notpaid. */
     private const BINARY_SITES = [
         'model.isEffectivelyPaid',
         'model.scopeEffectivelyPaid',
         'model.isFullyPaidWithInvoiceAmount',
         'api.accounting.settled_courses',
     ];
+
+    /** Binary sites with no opinion on `free` fixtures (list membership, not a paid predicate). */
+    private const BINARY_SKIP_FREE = ['api.accounting.settled_courses'];
+
+    /** Unpaid predicate (reminders/notifications): in scope iff target is partial or unpaid. */
+    private const UNPAID_SITES = ['model.scopeEffectivelyUnpaid'];
 
     protected function tearDown(): void
     {
@@ -223,10 +228,12 @@ class PaidStatusParityTest extends TestCase
                 $seen[$site][] = $fixtureId;
                 $target = $expected;
                 if (in_array($site, self::BINARY_SITES, true)) {
-                    if ($expected === 'free') {
-                        continue; // a boolean predicate has no `free` state
+                    if ($expected === 'free' && in_array($site, self::BINARY_SKIP_FREE, true)) {
+                        continue;
                     }
                     $target = $expected === 'paid' ? 'paid' : 'notpaid';
+                } elseif (in_array($site, self::UNPAID_SITES, true)) {
+                    $target = in_array($expected, ['partial', 'unpaid'], true) ? 'unpaid' : 'notunpaid';
                 }
                 if ($actual !== $target) {
                     $mismatches["{$site}|{$fixtureId}"] = ['site' => $site, 'fixture' => $fixtureId, 'current' => $actual, 'target' => $target];
@@ -292,6 +299,8 @@ class PaidStatusParityTest extends TestCase
         // B1 / B27: Paid flag (+ package) only.
         $out['model.isEffectivelyPaid'] = $course->isEffectivelyPaid() ? 'paid' : 'notpaid';
         $out['model.scopeEffectivelyPaid'] = StudentClass::query()->effectivelyPaid()->where('ID', $id)->exists() ? 'paid' : 'notpaid';
+        // B1 twin used by SendTuitionReminders / NotificationSync: an independently maintained SQL predicate.
+        $out['model.scopeEffectivelyUnpaid'] = StudentClass::query()->effectivelyUnpaid()->where('ID', $id)->exists() ? 'unpaid' : 'notunpaid';
 
         // B2: flag OR (agg stored PaidAmount >= Charge > 0). Wraps the static isFullyPaid.
         $paidAmount = (int) (AlertController::invoiceAggregateByStudentClassIds([$id])[$id]['paid_amount'] ?? 0);
@@ -331,17 +340,24 @@ class PaidStatusParityTest extends TestCase
         $card = collect($dash->json('classes'))->first(fn ($row) => (int) $row['id'] === $id);
         $out['api.parent.dashboard.payment_status'] = $card !== null ? (string) $card['payment_status'] : null;
 
-        // B17: accounting ledger; course status = oldest invoice with an outstanding balance.
-        $out['api.accounting.ledger'] = null;
-        if ($c['fx']['invoices'] !== []) {
-            $ledger = $this->getJson("/api/v1/accounting/ledger?student_class_id={$id}", $headers);
-            $ledger->assertOk();
+        // B17: accounting ledger; course status = oldest invoice with an outstanding balance,
+        // or the course row's `paid` (legacy StudentClass.Paid) when the course has no invoice.
+        $ledger = $this->getJson("/api/v1/accounting/ledger?student_class_id={$id}", $headers);
+        $ledger->assertOk();
+        {
             $invoices = collect($ledger->json('invoices'))->sortBy('billing_period')->values();
             $got = $invoices->map(fn ($row) => (int) ($row['id'] ?? $row['invoice_id'] ?? 0))->sort()->values()->all();
             $want = collect($c['invoice_ids'])->sort()->values()->all();
             if ($got !== $want) {
                 // An omitted (or extra) invoice must not normalize to `paid`.
                 $out['api.accounting.ledger'] = 'other:ledger_invoices_' . implode(',', $got) . '_expected_' . implode(',', $want);
+
+                return $out;
+            }
+            if ($want === []) {
+                $courseRow = collect($ledger->json('courses'))->first(fn ($row) => (int) $row['id'] === $id);
+                $out['api.accounting.ledger'] = $courseRow === null ? 'other:ledger_course_missing'
+                    : (!empty($courseRow['paid']) ? 'paid' : 'unpaid');
 
                 return $out;
             }

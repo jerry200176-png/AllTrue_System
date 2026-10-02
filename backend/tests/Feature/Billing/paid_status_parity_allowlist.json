@@ -782,5 +782,205 @@
   "target": "unpaid",
   "reason": "pre-S3 known divergence (packet row B3); observed: closed unpaid course shows pending_reconciliation, a closed-course state outside paid/partial/unpaid; S3 must map it explicitly",
   "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "full_paid_invoice_only",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "partial_flag1",
+  "current": "notunpaid",
+  "target": "unpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "void_partial_flag1",
+  "current": "notunpaid",
+  "target": "unpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "discount_count",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "zero_fee_non_tutoring",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "api.accounting.ledger",
+  "fixture": "zero_fee_non_tutoring",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "tutoring",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "api.accounting.ledger",
+  "fixture": "tutoring",
+  "current": "unpaid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "overpaid",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "monthly_earlier_unpaid",
+  "current": "notunpaid",
+  "target": "unpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "amendment_stale_charge",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "stored_zero_pay_full",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "zero_fee_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B1); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "zero_fee_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B27); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "zero_fee_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
+  "uncertain": false
+ },
+ {
+  "site": "api.accounting.ledger",
+  "fixture": "zero_fee_flag1",
+  "current": "paid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "zero_fee_zero_invoice",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "overpaid_stored_drift",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "package_paid_unpaid_invoice",
+  "current": "notunpaid",
+  "target": "unpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=1 or a paid package keeps the course out of the unpaid scope although invoices leave it partial/unpaid",
+  "uncertain": false
+ },
+ {
+  "site": "model.isEffectivelyPaid",
+  "fixture": "tutoring_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B1); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyPaid",
+  "fixture": "tutoring_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S5 known divergence (packet row B27); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.isFullyPaidWithInvoiceAmount",
+  "fixture": "tutoring_flag1",
+  "current": "paid",
+  "target": "notpaid",
+  "reason": "pre-S3 known divergence (packet row B2); observed: free course with a stray Paid=1 answers paid (free must never be paid)",
+  "uncertain": false
+ },
+ {
+  "site": "api.accounting.ledger",
+  "fixture": "tutoring_flag1",
+  "current": "paid",
+  "target": "free",
+  "reason": "pre-S3 known divergence (packet row B17); observed: ledger course row has no free state (raw StudentClass.Paid)",
+  "uncertain": false
+ },
+ {
+  "site": "model.scopeEffectivelyUnpaid",
+  "fixture": "tutoring_paid_invoice",
+  "current": "unpaid",
+  "target": "notunpaid",
+  "reason": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync); observed: Paid=0 with no paid package puts the course in the unpaid scope although invoices/payments settle it or it is free (callers may filter tutoring separately)",
+  "uncertain": false
+ },
+ {
+  "site": "api.accounting.ledger",
+  "fixture": "package_paid_member",
+  "current": "unpaid",
+  "target": "paid",
+  "reason": "pre-S3 known divergence (packet row B17); observed: no-invoice ledger course row reads raw StudentClass.Paid and ignores CoursePackage.paid",
+  "uncertain": false
  }
 ]
