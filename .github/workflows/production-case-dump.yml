@@ -811,12 +811,43 @@ jobs:
                   'newest_swipe_photo_at'=>$files === [] ? null : date('Y-m-d H:i:s', max(array_map('filemtime', $files))),
                   'line_notify_setting_present'=>isset($settings['line_notify.campus.' . (int)$c->id])];
               }})->values()->all();
+            // Pre-controller evidence: Apache combined access log (request line + status only; no IPs/UA leave prod).
+            $deployedController = @file_get_contents(base_path('app/Http/Controllers/SwipeRfidController.php')) ?: '';
+            $out['deployed_photo_endpoint_switch_gated'] = $deployedController === '' ? null
+              : (str_contains($deployedController, 'LineNotifySettings') || str_contains($deployedController, "'skipped'"));
+            $access = [];
+            $logFiles = glob('/var/log/apache2/*access.log*') ?: [];
+            $readable = 0;
+            $budget = 268435456;
+            foreach ($logFiles as $lf) {{
+              if (filemtime($lf) < $since->getTimestamp() || $budget <= 0) {{ continue; }}
+              $h = @gzopen($lf, 'rb');
+              if (!$h) {{ continue; }}
+              $readable++;
+              while (!gzeof($h) && $budget > 0) {{
+                $line = gzgets($h, 65536);
+                if ($line === false) {{ break; }}
+                $budget -= strlen($line);
+                if (!preg_match('#\[(\d{{2}}/\w{{3}}/\d{{4}}):[^\]]*\] "(POST|GET) /api/v1/(swipe-rfid|swipe-photo)[ ?/][^"]*" (\d{{3}})#', $line, $m)) {{ continue; }}
+                $day = \DateTime::createFromFormat('d/M/Y', $m[1]);
+                if (!$day || $day->getTimestamp() < $since->copy()->startOfDay()->getTimestamp()) {{ continue; }}
+                $k = $m[2] . ' ' . $m[3] . ' ' . $m[4];
+                $access[$k][$day->format('Y-m-d')] = ($access[$k][$day->format('Y-m-d')] ?? 0) + 1;
+              }}
+              gzclose($h);
+            }}
+            ksort($access);
+            $out['access_log'] = ['files_found' => count($logFiles), 'files_read' => $readable,
+              'byte_budget_exhausted' => $budget <= 0, 'requests_14d_by_endpoint_status_day' => $access];
             $out['evidence_limits'] = [
               'student_sign_ins_14d_all_sources includes manual/approval/backfill attendance; it does NOT prove reader calls.',
               'swipe_rfid_api_sign_ins_14d counts sign-ins created by SwipeRfidController (Memo swipe-rfid/self_study); sign-outs and duplicate swipes are not counted, and later Memo edits would hide a row.',
               'swipe_photo_files_14d uses file mtime; swipe_photo_files_retained_total spans all retained files (pruned after 7 days only when that campus uploads again).',
               'swipe_photo_delivery_audit_14d only exists when the campus has a LINE token and the student has verified bindings; zero rows does not prove zero uploads.',
               'Reader-side LINE text pushes (from LineIDs) go straight to LINE and leave no trace in AllTrue.',
+              'If deployed_photo_endpoint_switch_gated is true, photo() can return skipped before storing/auditing, so zero files/audit prove nothing; rely on access_log only.',
+              'access_log is the only pre-controller evidence. It has no campus (branch_code is in the body). files_read = 0 or byte_budget_exhausted => INCONCLUSIVE.',
+              'Conclusion rule: swipe-photo POSTs > 0 => some reader uploads photos; swipe-photo POSTs = 0 with swipe-rfid POSTs > 0 over complete logs => readers call swipe-rfid only; otherwise INCONCLUSIVE and the reader code/test is required.',
             ];
             $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
               'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
