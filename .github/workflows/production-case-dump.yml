@@ -19,6 +19,7 @@ on:
           - laravel_2833_preflight
           - contract_yang_binghe
           - contract_yu_shengrui
+          - swipe_line_path
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -92,7 +93,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -777,6 +778,36 @@ jobs:
               ],
               'denied_guardian_statuses' => $deniedVerification,
             ];
+          }} elseif ($case === 'swipe_line_path') {{
+            // Aggregate-only: does any reader call swipe-rfid / swipe-photo? No names, RFIDs or LINE ids.
+            $since = now()->subDays(14);
+            $signIns = $db::table('StudentSingIn as si')->join('Student as s', 's.id', '=', 'si.StudentID')
+              ->where('si.SignInDT', '>=', $since)->groupBy('s.CampusID')
+              ->selectRaw('s.CampusID as campus_id, COUNT(*) as n, MAX(si.SignInDT) as last_at')->get()->keyBy('campus_id');
+            $photoAudit = $db::table('security_audit_events')->where('event_type', 'notification.delivery')
+              ->where('occurred_at', '>=', $since)->where('metadata', 'like', '%swipe_photo%')
+              ->groupBy('campus_id', 'outcome')
+              ->selectRaw('campus_id, outcome, COUNT(*) as n, MAX(occurred_at) as last_at')->get();
+            $bindings = $db::table('student_line_bindings')->whereNotNull('verified_at')
+              ->groupBy('campus_id')->selectRaw('campus_id, COUNT(*) as n')->pluck('n', 'campus_id');
+            $settings = $db::table('system_settings')->where('key', 'like', 'line_notify.campus.%')->pluck('value', 'key');
+            $out['campuses'] = $db::table('Campus')->orderBy('id')
+              ->get(['id', 'code', 'messaging_channel_token', 'TelegramToken', 'is_test'])
+              ->map(function ($c) use ($signIns, $bindings, $settings) {{
+                $dir = storage_path('app/swipe-photos/' . (int) $c->id);
+                $files = is_dir($dir) ? array_values(array_filter(glob($dir . '/*') ?: [], 'is_file')) : [];
+                $si = $signIns->get($c->id);
+                return ['campus_id'=>(int)$c->id, 'code'=>(string)$c->code, 'is_test'=>(bool)$c->is_test,
+                  'has_line_channel_token'=>!empty($c->messaging_channel_token),
+                  'has_telegram_token'=>!empty($c->TelegramToken),
+                  'verified_line_bindings'=>(int)($bindings[$c->id] ?? 0),
+                  'student_sign_ins_14d'=>$si ? (int)$si->n : 0, 'last_student_sign_in'=>$si ? $si->last_at : null,
+                  'swipe_photo_files'=>count($files),
+                  'newest_swipe_photo_at'=>$files === [] ? null : date('Y-m-d H:i:s', max(array_map('filemtime', $files))),
+                  'line_notify_setting_present'=>isset($settings['line_notify.campus.' . (int)$c->id])];
+              }})->values()->all();
+            $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
+              'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int)$parentCampus->id : null;
