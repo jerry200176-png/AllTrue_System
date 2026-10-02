@@ -582,6 +582,62 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * In-app #373: a used-up count course (RemainingSessions=0, no future lesson)
+     * still had Stop=0 and kept its weekly 1:3 seat forever.
+     * Revert-proof: before the fix the three used-up courses fill the slot → conflict.
+     */
+    public function test_used_up_count_course_does_not_hold_recurring_seat(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-guard-used-up@example.com');
+        $addCourse = function (string $name, int $remaining) use ($teacherId): void {
+            $student = $this->createStudent(1, $name);
+            StudentClass::query()->insert([
+                'StudentID' => $student->id,
+                'TeacherID' => $teacherId,
+                'ClassType' => 'one_on_three',
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-01-01',
+                'TotalHours' => 16,
+                'SessionCount' => 8,
+                'SessionDuration' => 120,
+                'RemainingSessions' => $remaining,
+                'UsedSessions' => 8 - $remaining,
+                'Charge' => 1600,
+                'Pay' => 1600,
+                'Paid' => 0,
+                'Rate' => 800,
+                'Stop' => 0,
+                'MDate' => now(),
+                'week' => 7,
+                'time' => '10:00',
+                'ScheduleMode' => 'count',
+            ]);
+        };
+        $guard = app(\App\Services\ScheduleGuardService::class);
+        $payload = [
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_three',
+            'branch_id' => 1,
+            'slots' => [['day_of_week' => 7, 'start_time' => '10:00', 'end_time' => '12:00']],
+        ];
+
+        foreach (['用完甲', '用完乙', '用完丙'] as $name) {
+            $addCourse($name, 0);
+        }
+        $this->assertSame([], $guard->validateRecurringCourse($payload), 'Used-up courses must not occupy the slot');
+
+        foreach (['在讀甲', '在讀乙', '在讀丙'] as $name) {
+            $addCourse($name, 8);
+        }
+        $blocked = $guard->validateRecurringCourse($payload);
+        $this->assertNotEmpty($blocked);
+        $this->assertSame('teacher_capacity', $blocked[0]['type'] ?? null);
+    }
+
+    /**
      * 調課寫 schedules 時，若請求仍帶合約 TeacherID（正班）但鏈結上已有「代課 scheduled」，
      * 伺服器改用代課老師檢 capacity — 避免因正班同日已滿而誤擋『代課老師為空』的跨日調課。
      */
