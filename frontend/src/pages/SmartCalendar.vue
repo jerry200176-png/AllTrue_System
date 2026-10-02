@@ -1439,8 +1439,9 @@ const getTeacherAliasIdSet = (teacherId) => {
   return new Set(resolveTeacherAliasIds(entry, teacherId));
 };
 
-const getCoursesForTeacherAt = (teacherId, hour) => {
-  const aliasSet = getTeacherAliasIdSet(teacherId);
+const getCoursesForTeacherAt = (teacherId, hour) => getCoursesForAliasSetAt(getTeacherAliasIdSet(teacherId), hour);
+
+const getCoursesForAliasSetAt = (aliasSet, hour) => {
   return filteredCourses.value.filter(c => {
     if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
     if (parseHour(c.start_time) !== hour) return false;
@@ -1628,16 +1629,12 @@ const visibleTeachers = computed(() => {
   }
   // 日檢視：當日有排課的老師優先置左，無課老師排後方，減少橫向捲動
   const dowForSort = !isWeekOverview.value ? selectedDow.value : null;
-  const ymdForSort = !isWeekOverview.value ? selectedDateStr.value : null;
+  // In-app #364: "has course" must match what the day grid can render, otherwise a
+  // course outside 08–22 (or not occupying any grid hour) leaves an empty column.
   const teacherHasCourseToday = (aliasIds) => {
     if (dowForSort == null) return false;
     const aliasSet = new Set(aliasIds);
-    return filteredCourses.value.some((c) => {
-      if (!courseBelongsToTeacherAlias(c, aliasSet)) return false;
-      if (c.day_of_week !== dowForSort) return false;
-      if (ymdForSort && isSessionCancelledOnDate(c, ymdForSort)) return false;
-      return true;
-    });
+    return hours.some((h) => getCoursesForAliasSetAt(aliasSet, h).length > 0);
   };
   const withBusyFlag = filtered.map((t) => ({
     ...t,

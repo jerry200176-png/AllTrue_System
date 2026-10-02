@@ -66,6 +66,37 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-calendar-has-course",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "只看有課老師不再出現空欄",
+    "summary": "行事曆勾選「只看有課老師」時，不會再出現沒有課的空白老師欄。",
+    "items": [
+      "判斷方式改成和課表格子一致。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "判斷方式改成和課表格子一致。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:364",
+      "changelog:2026-10-02:calendar-has-course"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-01-monthly-usage-warning",
     "publishedAt": "2026-10-01",
     "effectiveAt": null,

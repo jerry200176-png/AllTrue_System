@@ -10,6 +10,10 @@
 <!-- release-notes: silent_ship=silent-2026-10-01-swipe-photo-line -->
 - 新增 `POST /api/v1/swipe-photo`（multipart：`branch_code`、`rfid`、`photo` jpeg/png ≤1MB，認證同 `swipe-rfid` 的分校 Bearer Token）。照片存私有 `storage/app/swipe-photos/{campus}`，以 `APP_URL` 上 7 天效期的相對簽章網址（`GET /api/v1/swipe-photo/{campus}/{file}`）推 LINE 圖片給該生已驗證綁定家長，並回傳 `image_url`；讀卡機不需固定 IP。只推圖片，到班文字仍由讀卡機用 `LineIDs` 推。超過 7 天的照片於下次上傳時清除。
 
+## 2026-10-02 — fix(calendar): 「只看有課老師」 no longer shows empty teacher columns
+<!-- release-notes: staff_update=staff-2026-10-02-calendar-has-course -->
+- 行事曆日檢視勾選「只看有課老師」時，改用與課表格子相同的判斷；課程時間不在 08:00–22:00 格子內、或當天實際不占任何格子的老師，不再留下一整欄空白。未改課程或排課資料。(#364)
+
 ## 2026-10-02 — fix(schedule): used-up courses no longer fill 1:3 slots
 <!-- release-notes: staff_update=staff-2026-10-02-used-up-course-seat -->
 - 建課或改固定時段檢查老師容量時，堂數已用完且沒有未來堂次的舊課不再佔用每週位子；仍有剩餘堂數或真實未來堂次的學生照常計入。未改帳務、出勤或課程資料。(#373)
