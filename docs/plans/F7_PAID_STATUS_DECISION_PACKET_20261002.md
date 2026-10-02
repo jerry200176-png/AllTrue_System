@@ -1,0 +1,121 @@
+# F7 Decision Packet: one authority for paid / payable / outstanding
+
+Date: 2026-10-02. Worktree: `W4-PAID-STATUS-INVENTORY-20261002`, base `d3253209e`.
+Status: READ-ONLY INVENTORY + DECISION PACKET. **No code, data or production change is made or authorized by this document.**
+Method: static code reading only. Nothing was executed, no DB or production was queried. Cells marked UNKNOWN need a runtime fixture (see section 4 parity tests).
+
+## 1. Problem and evidence
+
+"Is this course/period paid, how much is payable, how much is outstanding" is decided in 27 backend sites across 18 files and 5 frontend sites. Each reads a different subset of {`StudentClass.Paid`, `CoursePackage.paid`, `StudentClass.Charge`, `Rate x qty`, `Invoice.TotalAmount`, `Invoice.PaidAmount` (stored), `SUM(Payment)` rows, void payments, `billing_period`, monthly confirmed sessions}. Two screens showing the same course can therefore disagree.
+
+Repo evidence (all verified in `docs/`):
+- F7 family row (`AI_REGRESSION_LESSONS.md:336`): Charge vs Rate x qty, Paid flag vs Invoice/Payment are two truths; fixing one side "bounces back".
+- G-009 (`CLAUDE.md:104`): `payment_status = Paid=1 OR valid Invoice payment`; Paid flag cannot beat invoice payment (GitHub #798/#799, in-app #158/#159).
+- R94/R95 (2026-08-06): `computePaymentStatus` ignored full invoice payment; inventory found 8 files / 4 variants; TD-083 B0/B1 converged only `AlertController` and `StudentClassController`. B2 (notifications, reminders, parent portal) and B3 (Dunning, Founder GO given 2026-08-17) are **still not done**: `DunningService`, `SendTuitionReminders`, `NotificationSyncService`, `ParentPortalController` still use `isEffectivelyPaid` / raw `Paid`.
+- R89/R90 (in-app #212/#213): billing fix covered one surface; Finance center still showed stale `TotalAmount`. Rule: every billing fix needs a surface matrix on one shared read model.
+- R26 (in-app #369, 2026-09-29): monthly `Paid=1` cannot prove the next period is paid; zero-session period must not reuse the scheduled-amount fallback.
+- R28: paid course must not be paid again (guards); R31: overpayment must be capped in "applied", shown as overpaid, never "pay again".
+- R115: mode conversion must not reverse confirmed receipts. R118: zero-yuan receipts need a reason (trial / tutoring). R140: monthly `SessionCount` is a pre-schedule count, not a package balance.
+- In-app reports named in the brief: #129 #147 #172 #249 #259 #302 #303 #346 #349 #354 #369. Only #249 (R135 second entry, pending report vs settlement) and #369 are cited in repo docs. The rest are NOT verified here. Per the standing lesson, re-pull each bug-detail dump before attributing it to a root cause below.
+
+## 2. Inventory
+
+Legend for "reads": Flag = `StudentClass.Paid`; Pkg = `CoursePackage.paid`; Chg = `StudentClass.Charge`; R*q = Rate x qty; Tot = `Invoice.TotalAmount`; PA = stored `Invoice.PaidAmount`; Pay = `Payment` rows; Void = negative/`Method=void` Payment; BP = `billing_period`; Sess = confirmed monthly sessions (attended/completed/late).
+
+| # | Implementation (file:function) | Reads | Used by | Differs from BillingPayableResolver on |
+|---|---|---|---|---|
+| B1 | `Models/StudentClass.php:isEffectivelyPaid`, `scopeEffectivelyPaid/Unpaid` | Flag, Pkg | Dunning, SendTuitionReminders, ParentPortal, NotificationSync, AccountingCourseClarity, Alert, StudentClassController | No amounts at all. Partial, overpay, void, period: blind. |
+| B2 | `StudentClass.php:isFullyPaid`, `isFullyPaidWithInvoiceAmount` | B1 or (agg PA >= charge > 0) | Alert, StudentClassController, PaymentReport guard, B8 | Uses sum of stored PA over all invoices (B5), uncapped, not per period; needs charge > 0 so zero-fee is never "paid". |
+| B3 | `AlertController::computePaymentStatus`, `computePackageCountPaymentStatus` | B2 inputs + pending report + closed_reason + remaining | `GET alerts/tuition` -> TuitionCollectionPage, DirectorDashboard, StudentsList chips | 7-value status; `partial` only reachable when Flag=0 (see section 3, partial rows). |
+| B4 | `AlertController::tuition` row build, `countModeCharge`, `packageCountModeCharge` | R*q (count), reconciled open invoice or `summarize(today)` (date), `pkg->rate*total_sessions`, B5 | same screen | Row carries BOTH `outstanding` (B5 math) and `payable_outstanding` (resolver) -> two answers in one JSON row. Count charge = R*q, ignores Chg (#230) and discount baked into Chg. |
+| B5 | `AlertController::invoiceAggregateByStudentClassIds` | `SUM(PA)`, `SUM(Tot)` over all non-void invoices | B3, B4, StudentClassController | Stored PA not Pay rows; all periods summed; no cap; no void awareness except through PA drift. Also `Tot` stored, not reconciled (#3333). |
+| B6 | `AlertController` inclusion: `mapCountModeAlert`, `mapMonthlyAlert`, `monthlyAlertRow`, `tuitionSlipData`, SQL `Paid=0` | Flag (+B1) | alert list membership, slip availability | Intentionally independent of display status (DIRECTOR_PAYMENT_ALERT_RULES, frozen file). |
+| B7 | `StudentClassController::index` (~L470-640) | Chg or R*q fallback, B1, B5, pending report, B15 override | course lookup (CourseManagement, StudentsList) | `payment_status` computed BEFORE tutoring charge is zeroed; never emits `partial`; monthly status overridden by B15. |
+| B8 | `StudentClassController` ~L9345 (renew/purchase guard) | B1, B2 | contract amendment flows | Raw Chg, not effective charge. |
+| B9 | `PaymentReportController::courseAlreadyHasConfirmedPayment`, `confirm`/`directorRecord` guards | Flag, `Status='paid'` invoice exists, raw Chg, `SUM(PA)` | director-record, confirm, batch-confirm (R28) | Third paid test: "any invoice with Status paid". Uses raw Chg: a count course with Chg=0 but R*q>0 can pass the duplicate guard. |
+| B10 | `PaymentReportController::index` inline block (~L265-290) | `InvoiceAmountReconciliationService::resolve` | payment report list | Verbatim copy of resolver arithmetic (not a call). Diverges silently if resolver changes. |
+| B11 | `PaymentReportController::confirm` / `void` writers | writes PA, Status, Flag | money-writing | confirm sets Flag=1 when `!$sc->Paid` even if `$status='partial'`; void resets Flag=0 only if invoice becomes `unpaid`. |
+| B12 | `Services/BillingPayableResolver::byStudentClassIds` | non-void invoices; picks ONE (open first, then latest period, then id) via B13 | Alert rows, PaymentReport list, PaymentEntryModal, PaymentSlipModal | Reference. Invoice-only: no Flag, no tutoring, no zero-fee, `null` when no invoice, hides other open periods. |
+| B13 | `Services/InvoiceAmountReconciliationService::resolve` | Tot, Pay (positive minus void), BP, Sess via B14 (date mode, unpaid and net 0 only) | B12, B15, B16, B17, B10 | THE per-invoice kernel: `net_applied = max(0, +Pay - |Void|)`. Recomputes total only if unpaid, no payment, not cross-month range. |
+| B14 | `Services/MonthlyBillingService::summarizePeriod` | Sess x `StudentClassPricingService`, Chg fallback, package members -> stored | B13, B7 via B15, PaymentReport guards | Source of #3333 amount. Falls back to Chg when rate missing (`stored_charge_missing_rate`). |
+| B15 | `Services/MonthlyPeriodPaymentService::batch` | Tot via B13, `Pay` net else PA, items period, Sess coverage, legacy Flag for single period | B7 only (monthly courses) | Only per-period implementation. Not used by Alert/Parent/Dunning/Notification. |
+| B16 | `BillingController::recordPayment`, `syncStudentClassPaidFromInvoice`, `show` | writes PA/Status; Flag=1 on ANY payment; show uses B13 | invoice detail, receipt | Documented matrix: partial -> Flag=1. |
+| B17 | `AccountingController` ledger (~L90-160, L250-460) and `settledCourses` | B13 total, own net/applied/overpaid math, legacy `Paid` -> Chg when no invoices, `Paid=1 OR Status=paid` for settled list | Accounting Center, AccountingLedgerModal | Closest to resolver, but duplicates net/cap math inline; no tutoring rule; `settledCourses` is a Flag/Status OR. |
+| B18 | `ParentPortalController::isClassPaid` + `AlertController::lastPaidAtByStudentClassIds` | B1 OR "any Payment row exists" (join, no Amount>0 / Method filter, no cap) | parent portal per-course `paid`, payment alerts | **Any payment row (even a void or partial) = paid.** |
+| B19 | `ParentPortalController` slip: `effectivelyUnpaid` scope, `resolveUnitPrice/Subtotal/MonthlyFee` | Flag/Pkg, R*q, Chg, Pay | parent slip/notice amounts | Own amount from Rate x SessionCount; ignores invoices entirely. |
+| B20 | `DunningService::evaluateCountMode/DateMode` | B1 | in-app dunning events (frozen file) | Flag only. Monthly: a Flag=1 hides all later periods (R26 2026-09-29 says this is wrong). |
+| B21 | `Console/SendTuitionReminders` | scope + B1 | LINE reminders to parents | Same as B20. |
+| B22 | `NotificationSyncService` (tuition builder uses B1 scope; another builder uses `Paid===0`, `charge = Chg ?? Pay`, `outstanding = unpaid ? Chg : 0`; invoice-overdue builder uses raw `PA`/`Tot`) | Flag, Chg, PA | notification center | Three variants in one file; `outstanding` is all-or-nothing, never partial. |
+| B23 | `FinanceController` dashboard (`Paid=1` count), `outstanding` (`Paid=0`), `arAging` (`Chg - Pay` course-level legacy columns) | Flag; `StudentClass.Pay` | finance dashboard, AR aging | `Pay` is a legacy course column, not Payment rows; aging ignores invoices. Dashboard counts tutoring as paid but excludes it from unpaid. |
+| B24 | `BankReconciliationController::suggest` | `Pay = amount AND Paid=1` | bank matching | Flag + legacy `Pay` equality. |
+| B25 | `Support/AccountingCourseClarity::lifecycle` | B1 | course history/lifecycle label | Paid label drives "history_completed" for stopped count courses. |
+| B26 | `Services/MonthlyContractBoundaryService::extensionRequiresRenewal` | Flag=1 OR PA>0 OR positive non-void Pay | monthly extension gate | Fourth variant: "any positive money" = paid-enough to forbid extension. Reasonable intent, different predicate. |
+| B27 | `Models/StudentClass::scopeEffectivelyPaid/Unpaid` SQL twins | Flag, Pkg | ParentPortal slip, Reminders, NotificationSync | SQL twin of B1, must be kept in sync by hand. |
+| F1 | `StudentsList.vue:isCourseSettled` | `payment_status`, else `Paid >= Charge` | course card actions | `Paid` is 0/1 flag compared to money: with Charge > 1 the fallback is always false; `paid>0` branch only when charge missing. |
+| F2 | `CourseManagement.vue:courseIsSettledForClose` | same as F1 | close-course (no renew) | Same defect, gates a write action. |
+| F3 | `DirectorDashboard.vue:isPaymentNoticeAvailable`, `paymentCenterIntent` | `payment_status` / `alert_type` | slip + routing | Status string list hard-coded client side. |
+| F4 | `OverdueBucketsPanel.vue` | `total_amount - paid_amount` per row | no importer found in `frontend/src` | Possibly dead (TD-083 A class). Confirm before deleting. |
+| F5 | `PaymentSlipModal.vue`, `PaymentEntryModal.vue` | `payable_*` else `estimated_amount ?? charge` | slip, entry modal | Falls back to course Chg/R*q when unbilled; the amount a director records can come from a different source than the invoice. |
+| (pass-through) | `ParentPortal.vue c.paid`, `NotificationsCenter.vue payload.outstanding`, `lib/monthlyPaymentDisplay.js` | server fields | display | No logic of their own; inherit B18/B22/B15. |
+
+Existing parity anchor: `backend/tests/Feature/BillingPayableSemanticsTest.php`, `TuitionAlertsApiTest.php`.
+
+## 3. Edge-case matrix (static read; UNKNOWN = needs runtime fixture)
+
+Columns: RES = B12/B13 resolver; LIST = B7 course lookup; TUI = B3/B4 alerts/tuition; PAR = B18 parent portal; DUN = B20/B21/B22 reminders and dunning; LED = B17 accounting ledger; MPP = B15; FIN = B23.
+
+| Edge case | RES | LIST | TUI | PAR | DUN | LED | MPP | FIN |
+|---|---|---|---|---|---|---|---|---|
+| Partial: invoice 10000, 4000 confirmed (writer sets Flag=1) | outstanding 6000 | `paid` (Flag) | `paid`, `outstanding` 0, but `payable_outstanding` 6000 in same row | `paid` | treated paid, no reminder | outstanding 6000 | `partial` (monthly only) | paid (Flag) |
+| Partial with Flag=0 (flag manually cleared) | 6000 | `unpaid` (never `partial`) | `partial`, outstanding = Chg - SUM(PA) | `paid` (Payment row exists) | unpaid, reminded full-course | 6000 | `partial` | unpaid |
+| Voided receipt, full void (PA 0, invoice `unpaid`, Flag reset 0) | full outstanding | `unpaid` | `unpaid` | **`paid`** (original + void Payment rows both exist) | unpaid | full outstanding | `unpaid` | unpaid |
+| Voided receipt, partial void (4000 of 10000 left, Flag stays 1) | 6000 | `paid` | `paid` | `paid` | paid | 6000 | `partial` | paid |
+| Discount | not a separate input anywhere; baked into Tot/Chg at issue | Chg | R*q ignores discount for count mode | R*q ignores discount | n/a | Tot | Tot | Chg |
+| Monthly, period N paid, period N+1 invoice open | latest open invoice outstanding | MPP override: period status | `paid` if `SUM(PA)` over all periods >= current charge, else `unpaid` | `paid` (any Payment row) | **hidden if Flag=1** | per invoice, correct | correct per period | Flag |
+| Monthly confirmed-session billing (#3333): unpaid invoice stored 6000, sessions imply 7500 | total 7500 (only if unpaid and net 0) | MPP uses B13 -> 7500 | `charge` 7500 for open invoice; else `summarize(today)` = current month, not invoice period | Chg/R*q (stale) | n/a | 7500 | 7500 | Chg |
+| Monthly, paid invoice, sessions later change | stored total kept | stored | stored (B5) | n/a | n/a | stored, `amount_discrepancy` flag in B13 only | stored + discrepancy | n/a |
+| Overpayment (R31): 3 payments > total | applied capped, `overpaid` not exposed by RES (only LED computes it) | paid | paid; outstanding 0 | paid | paid | applied = total, overpaid shown | `paid` | paid |
+| Overpayment where stored PA drifted from Payment rows | uses Payment rows | uses PA | uses PA | any row | Flag | Payment rows | Payment rows else PA | Flag |
+| Tutoring / zero-fee (#325/#351 per brief, unverified) | no tutoring concept: a stray invoice is "payable" | `unpaid` if Chg>0 and Flag=0 (status set before charge is zeroed), zero-fee non-tutoring = `unpaid` forever (needs charge>0) | excluded by SQL | excluded | excluded | counts any invoice | n/a | dashboard counts tutoring paid, excludes from unpaid; arAging excludes |
+| Contract amendment (Chg stale / copied total, #230) | invoice Tot only | Chg (stale) unless <= 0 | R*q | R*q | n/a | Tot | Tot | `Chg - Pay` |
+| Contract amendment after payment (R115) | invoice kept | Flag kept | Flag kept | any row | Flag | kept | kept | Flag |
+| Course has no invoice at all | `unbilled`, null | Flag/Chg | Flag/R*q | Flag | Flag | legacy Flag -> Chg | `single_period_legacy` or `unattributed` | Flag |
+| Count package member | per member invoice | pkg via B1 | anchor member + `pkg->paid` | pkg | pkg | n/a | excluded | Flag |
+
+## 4. Recommendation: ledger model, one resolver
+
+Principle: totals are derived from rows (invoice total, Payment net, period), never stored as a second truth. `StudentClass.Paid` becomes a legacy cache, not an input, when any non-void invoice exists.
+
+**Authority: `BillingPayableResolver` as the course-level façade over `InvoiceAmountReconciliationService::resolve` as the per-invoice kernel. Accept the pair, reject the Resolver in its current shape.**
+- Why accept: already the shared reference for 5 surfaces (alerts, payment reports, entry modal, slip, ledger via B13); B13 already encodes the hard-won rules (void netting, cap, #3333 recompute only when unpaid and net 0, cross-month range guard); has a semantics test.
+- Why not as-is: (1) picks one invoice and hides other open periods; (2) returns `null` for unbilled courses, so every caller keeps its own legacy fallback (the root of the 27 copies); (3) no course-level boolean/status, so callers rebuild paid status; (4) no overpaid, no tutoring/zero-fee `free` state; (5) no Flag/legacy rule (G-009 OR logic is outside it).
+- Rejected alternatives: `StudentClass::isFullyPaid` (amount-blind to periods, reads stored PA, needs charge > 0); `AccountingController` ledger math (closest but private to one controller); `MonthlyPeriodPaymentService` (monthly only; better folded in as the period engine, not a second authority).
+- Target contract (additive first): per course `{status: paid|partial|unpaid|unbilled|free|review_required, payable_total, applied, outstanding, overpaid, periods[], source: invoice|legacy_flag|none, current_invoice_id}`. Legacy rule: Flag counts only when the course has zero non-void invoices (and is flagged `source=legacy_flag`). Tutoring or zero-fee returns `free`, not `unpaid`. Monthly returns worst-period-first.
+- Not changed by this packet: the alert list inclusion queries (frozen by `DIRECTOR_PAYMENT_ALERT_RULES.md`), they stay independent until product approves.
+
+### Migration order (each step = its own R3 PR, own Founder GO)
+
+| Step | Scope | Blast radius | Parity test written first | Rollback |
+|---|---|---|---|---|
+| S0 | Read-only discrepancy report: run old sites and new resolver over one fixture set and over a prod-snapshot export, list courses where results differ (no behavior change) | none (dev/test only, no prod write) | Fixture library covering every row in section 3; harness asserts each old site vs new; diffs written to an allowlist file with reason | delete the harness |
+| S1 | Extend resolver additively (multi-period, overpaid, `free`, legacy rule); fold B15 in; no caller changes | none at runtime (unused fields) | Existing `BillingPayableSemanticsTest` must stay green byte-for-byte; new fields tested on the section 3 fixtures | revert PR |
+| S2 | Frontend: delete client recompute F1, F2, F3, F5 fallbacks; consume `payment_status`/`payable_*`; remove F4 if confirmed dead | display and two gated actions (close course) | Component tests: same server payload through old and new helper must give the same boolean; the `Paid >= Charge` fallback case documented as intended change | revert PR |
+| S3 | Read-only admin surfaces on resolver: B10, B16 `show`, B17, B7 (`payment_status`), B4 (single `outstanding`, drop duplicate math), B23 Finance, B24 | director/accounting screens; per R90 every surface must be re-verified in one matrix | For each surface: fixture -> old payload vs new payload; allowed diffs listed: Flag=1+partial now `partial`, void fixed, `free` state | revert PR; feature flag `paid_status_resolver` per surface if Founder wants staged |
+| S4 | Parent portal B18, B19 (customer-visible) | parents see paid/unpaid and slip amount | Same fixtures; documented intended change: void and partial no longer "paid" | revert PR |
+| S5 | Outbound: B20, B21, B22, B25 (reminders, dunning, notifications; B3 GO already exists for Dunning) | parents/staff receive or stop receiving messages | **Shadow mode first**: compute both, send by old, log diffs for one cycle, then switch. Dunning cooldown/weekly-cap tests unchanged | flag back to old predicate |
+| S6 | Money guards: B9, B8, B26 duplicate-payment and extension gates | blocks or allows payment entry (R28) | R28 tests (`directorRecord`, `confirm` twice, residual unpaid invoice, Chg=0 count course) must remain green; add the Chg=0 case as new | revert PR; guards fail closed |
+| S7 | Writers: B11, B16 stop setting Flag=1 on partial; Flag derived. Separate, reviewable backfill script (audit trail) | production data semantics | Writer tests: partial confirm leaves invoice `partial` and course not `paid`; void restores; idempotent backfill dry-run counts | revert PR; backfill script has a reverse manifest; **prod data change needs its own Founder GO** |
+
+Order rationale: read-only display first (any wrong result is visible and revertable), customer-facing next, outbound after shadow, money-writing last. S0 and S1 unblock everything and change nothing.
+
+## 5. Founder decisions needed (max 3)
+
+1. **Partial payment meaning.** Today a confirmed partial receipt sets `StudentClass.Paid=1`, so parents, dunning and reminders treat the course as paid while accounting shows balance due. Recommended: course is `paid` only when net applied >= total; partial stays `partial`, still reminded for the remaining amount. (Option B: keep Paid=1 on partial and show balance only in accounting. Not recommended: it keeps the F7 contradiction.)
+2. **Paid flag authority.** Recommended: when a non-void invoice exists, invoices decide and `Paid` is only a derived cache; the flag counts alone only for legacy courses with no invoice. This modifies G-009 wording ("Paid=1 OR invoice payment") and the frozen alert/Dunning rules; needs product sign-off on those documents.
+3. **Monthly course-level status.** Recommended: oldest unsettled period wins (worst-first), shown to directors and parents alike, and reminders keyed to the invoice/period rather than the course flag. Alternative: current-month status only (simpler, hides arrears, what B20 effectively does today).
+
+Assumption needing no decision: tutoring and zero-fee non-trial courses resolve to `free`, matching the existing "tutoring is free" rule.
+
+## 6. Scope statement
+
+This packet is documentation only: **no code change, no data change, no deploy**. Each migration step above is its own R3 PR with its own Founder GO; S7 additionally requires a data-change approval and audit script. Worst observed disagreements (partial receipt sets Flag=1; parent portal treats any Payment row incl. void as paid; stored PaidAmount vs Payment rows) are static-read findings and must be reproduced on fixtures in S0 before any behavior change.
