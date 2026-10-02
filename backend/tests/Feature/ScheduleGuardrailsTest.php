@@ -638,6 +638,33 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * F8: the model scope and the guard's recurring-seat loader share one rule.
+     * One used-up count 1:3 + two active 1:3 on the same weekly slot -> 2 occupants.
+     * (Substitute/ExceptionWorkflow occupancy is ClassSession-based, so not template-governed.)
+     */
+    public function test_template_seat_rule_parity_scope_and_guard(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-f8-parity@example.com');
+        foreach ([['用完', 0], ['在讀甲', 8], ['在讀乙', 8]] as [$name, $remaining]) {
+            $student = $this->createStudent(1, $name);
+            StudentClass::query()->insert([
+                'StudentID' => $student->id, 'TeacherID' => $teacherId, 'ClassType' => 'one_on_three',
+                'GradeID' => 1, 'SubjectID' => 1, 'by1' => 1, 'Period' => 4, 'StartDate' => '2026-01-01',
+                'TotalHours' => 16, 'SessionCount' => 8, 'SessionDuration' => 120,
+                'RemainingSessions' => $remaining, 'UsedSessions' => 8 - $remaining,
+                'Charge' => 1600, 'Pay' => 1600, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+                'MDate' => now(), 'week' => 7, 'time' => '10:00', 'ScheduleMode' => 'count',
+            ]);
+        }
+        $this->assertSame(2, StudentClass::query()->where('TeacherID', $teacherId)->holdsTemplateSeat()->count());
+
+        $m = new \ReflectionMethod(\App\Services\ScheduleGuardService::class, 'loadTeacherRecurringCourses');
+        $m->setAccessible(true);
+        $rows = $m->invoke(app(\App\Services\ScheduleGuardService::class), $teacherId, 1);
+        $this->assertCount(2, $rows);
+    }
+
+    /**
      * 調課寫 schedules 時，若請求仍帶合約 TeacherID（正班）但鏈結上已有「代課 scheduled」，
      * 伺服器改用代課老師檢 capacity — 避免因正班同日已滿而誤擋『代課老師為空』的跨日調課。
      */

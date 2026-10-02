@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Support\LineNotifySettings;
 use App\Models\Campus;
 use App\Models\Notification;
 use App\Models\UserNotificationPreference;
@@ -76,6 +77,17 @@ class NotificationLineDispatcherTest extends TestCase
             str_contains($req->url(), 'api.line.me/v2/bot/message/push') &&
             $req['to'] === 'Ua1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4'
         );
+    }
+
+    public function test_does_not_send_when_campus_turned_off_staff_high_alert(): void
+    {
+        $campus = Campus::factory()->create(['messaging_channel_token' => 'fake-token-abc']);
+        $this->makeStaffWithLine($campus->id, 'Ua1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4');
+        LineNotifySettings::set($campus->id, ['staff_high_alert' => false]);
+
+        app(NotificationLineDispatcher::class)->dispatch($this->makeHighNotification($campus->id));
+
+        Http::assertNothingSent();
     }
 
     public function test_does_not_send_when_staff_has_no_line_id(): void

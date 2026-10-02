@@ -98,6 +98,43 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-line-notify-switches",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "可自己決定哪些事用 LINE 通知",
+    "summary": "「家長 LINE 通知設定」可逐項開關 LINE 通知，並看到本月已用幾則。",
+    "items": [
+      "可開關到班／離班刷卡（含照片）、學習回饋、繳費提醒、排課異常、重要通知；刷卡預設關。",
+      "LINE 一個收件人算一則，用不到請關掉省額度；刷卡只寫「姓名 時間 刷卡」，誤刷不會寫錯。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "可開關到班／離班刷卡（含照片）、學習回饋、繳費提醒、排課異常、重要通知；刷卡預設關。"
+        ]
+      },
+      {
+        "title": "操作更順手",
+        "items": [
+          "LINE 一個收件人算一則，用不到請關掉省額度；刷卡只寫「姓名 時間 刷卡」，誤刷不會寫錯。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-02:line-notify-switches"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-02-calendar-has-course",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,
