@@ -40,6 +40,18 @@ updates:
         text: 真正的出席、扣堂或取消紀錄不一致時，仍會顯示對帳提醒。
     source_refs:
       - "changelog:2026-10-01:monthly-usage-warning"
+  - id: staff-2026-10-02-swipe-line-notify
+    published_at: "2026-10-02"
+    audiences:
+      - director
+    importance: digest
+    title: 刷卡LINE通知可依分校開關
+    summary: LINE 設定頁可選這間分校學生刷卡到班時，要不要用 LINE 通知家長。
+    items:
+      - category: improved
+        text: 已設定 LINE 的分校預設開啟；取消勾選就不推到班訊息與照片，學費提醒等其他通知照常。
+    source_refs:
+      - "changelog:2026-10-02:swipe-line-notify"
   - id: staff-2026-10-02-calendar-has-course
     published_at: "2026-10-02"
     audiences:

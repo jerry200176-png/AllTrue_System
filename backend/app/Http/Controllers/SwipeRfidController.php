@@ -213,7 +213,7 @@ class SwipeRfidController extends Controller
     private function pushPhotoToParents(Student $student, Campus $campus, string $imageUrl): int
     {
         $token = (string) ($campus->messaging_channel_token ?? '');
-        if ($token === '') {
+        if ($token === '' || !$campus->swipe_line_notify) {
             return 0;
         }
         $bindings = StudentLineBinding::query()->where('student_id', $student->getKey())
@@ -287,7 +287,7 @@ class SwipeRfidController extends Controller
                         'type'   => 'student',
                         'action' => 'duplicate_ignored',
                         'record' => $openRecord,
-                        'student' => $this->studentPayload($student),
+                        'student' => $this->studentPayload($student, $campus),
                         'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
                     ], 200);
                 }
@@ -308,7 +308,7 @@ class SwipeRfidController extends Controller
                     'type'     => 'student',
                     'action'   => 'sign_out',
                     'record'   => $openRecord,
-                    'student'  => $this->studentPayload($student),
+                    'student'  => $this->studentPayload($student, $campus),
                     'campus'   => ['TelegramToken' => $campus->TelegramToken ?? null],
                 ], 200);
             }
@@ -328,7 +328,7 @@ class SwipeRfidController extends Controller
                         'type'   => 'student',
                         'action' => 'duplicate_ignored',
                         'record' => $existingSignIn,
-                        'student' => $this->studentPayload($student),
+                        'student' => $this->studentPayload($student, $campus),
                         'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
                     ], 200);
                 }
@@ -390,7 +390,7 @@ class SwipeRfidController extends Controller
                 'type'     => 'student',
                 'action'   => 'sign_in',
                 'record'   => $signIn,
-                'student'  => $this->studentPayload($student),
+                'student'  => $this->studentPayload($student, $campus),
                 'class'    => $studentClass ? [
                     'id'       => $studentClass->ID,
                     'teacher_id' => $studentClass->TeacherID,
@@ -402,8 +402,9 @@ class SwipeRfidController extends Controller
 
     /**
      * 刷卡回應的學生資訊。LineIDs = 已驗證綁定的家長 LINE userId，供讀卡機用 LINE Bot 推播。
+     * 分校沒開「刷卡 LINE 通知」→ 回空陣列，讀卡機就不推。
      */
-    private function studentPayload(Student $student): array
+    private function studentPayload(Student $student, Campus $campus): array
     {
         return [
             'id'          => $student->id,
@@ -411,8 +412,9 @@ class SwipeRfidController extends Controller
             'TelegramID'  => $student->TelegramID,
             'TelegramID1' => $student->TelegramID1,
             'TelegramID2' => $student->TelegramID2,
-            'LineIDs'     => StudentLineBinding::query()->where('student_id', $student->id)
+            'LineIDs'     => !$campus->swipe_line_notify ? [] : StudentLineBinding::query()->where('student_id', $student->id)
                 ->whereNotNull('verified_at')
+                ->where('campus_id', $campus->getKey())
                 ->pluck('line_user_id')
                 ->values()
                 ->all(),

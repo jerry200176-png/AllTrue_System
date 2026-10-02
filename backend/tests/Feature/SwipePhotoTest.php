@@ -34,7 +34,7 @@ class SwipePhotoTest extends TestCase
             'TeachLIFFID' => '', 'TeachLIFF_URL' => '',
         ]);
         // messaging_channel_token 不在 fillable。
-        DB::table('Campus')->where('id', $this->campus->id)->update(['messaging_channel_token' => 'line-token']);
+        DB::table('Campus')->where('id', $this->campus->id)->update(['messaging_channel_token' => 'line-token', 'swipe_line_notify' => true]);
         $this->student = Student::create([
             'name' => 'PhotoKid', 'CampusID' => $this->campus->id, 'ClassID' => 1,
             'RFID' => 'PHOTO-1', 'enable' => 1,
@@ -112,6 +112,15 @@ class SwipePhotoTest extends TestCase
         // 新照片存了、超過 7 天的舊照片被清掉。
         $this->assertCount(1, Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
         Storage::disk('local')->assertMissing($old);
+        Http::assertNothingSent();
+    }
+
+    public function test_campus_notify_off_stores_without_push(): void
+    {
+        DB::table('Campus')->where('id', $this->campus->id)->update(['swipe_line_notify' => false]);
+
+        $this->upload()->assertOk()->assertJson(['sent' => 0]);
+        $this->assertCount(1, Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
         Http::assertNothingSent();
     }
 }

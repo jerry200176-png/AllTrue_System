@@ -379,6 +379,7 @@ class LineWebhookController extends Controller
             'messaging_channel_token'  => 'nullable|string|max:512',
             'messaging_channel_secret' => 'nullable|string|max:64',
             'liff_id'                  => 'nullable|string|max:64',
+            'swipe_line_notify'        => 'nullable|boolean',
         ]);
 
         $campusId = !empty($data['branch_id']) ? (int) $data['branch_id'] : $this->getDirectorCampusId($request);
@@ -398,6 +399,9 @@ class LineWebhookController extends Controller
         }
         if (array_key_exists('messaging_channel_secret', $data)) {
             $update['messaging_channel_secret'] = $data['messaging_channel_secret'] ?? '';
+        }
+        if (isset($data['swipe_line_notify'])) {
+            $update['swipe_line_notify'] = (bool) $data['swipe_line_notify'];
         }
         if (array_key_exists('liff_id', $data)) {
             $liffId = trim($data['liff_id'] ?? '');
@@ -457,6 +461,7 @@ class LineWebhookController extends Controller
             'has_channel_token'      => !empty($campus->messaging_channel_token),
             'has_channel_secret'     => !empty($campus->messaging_channel_secret),
             'liff_id_value'          => $liffId,
+            'swipe_line_notify'      => (bool) ($campus->swipe_line_notify ?? false),
         ];
     }
 

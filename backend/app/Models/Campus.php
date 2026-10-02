@@ -37,6 +37,7 @@ class Campus extends Model
 
     protected $casts = [
         'is_test' => 'boolean',
+        'swipe_line_notify' => 'boolean',
     ];
 
     protected static function booted(): void

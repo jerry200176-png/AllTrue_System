@@ -105,6 +105,14 @@
         <p class="field-hint">LINE Developers → LIFF 分頁建立後會得到一組代碼</p>
       </div>
 
+      <div class="field">
+        <label for="line-swipe-notify">
+          <input id="line-swipe-notify" v-model="form.swipe_line_notify" type="checkbox" />
+          學生刷卡到班時，用 LINE 通知家長
+        </label>
+        <p class="field-hint">不勾 = 這間分校刷卡不推 LINE（學費提醒等其他通知不受影響）</p>
+      </div>
+
       <div class="save-row">
         <AtButton shape="rect" variant="primary" :loading="saving" @click="saveSettings">
           {{ saving ? '儲存中…' : '儲存設定' }}
@@ -207,7 +215,7 @@ const saveOk  = ref(true);
 const copied  = ref('');
 const openStep = ref(0);
 
-const form = ref({ messaging_channel_token: '', messaging_channel_secret: '', liff_id: '' });
+const form = ref({ messaging_channel_token: '', messaging_channel_secret: '', liff_id: '', swipe_line_notify: false });
 const show = ref({ token: false, secret: false });
 const quickStart = [
   '到 LINE Official Account Manager 啟用 Messaging API（會自動建立 channel）',
@@ -321,6 +329,7 @@ async function loadStatus() {
       status.value = await res.json();
       // Pre-fill LIFF ID if already set (non-sensitive)
       if (status.value.liff_id_value) form.value.liff_id = status.value.liff_id_value;
+      form.value.swipe_line_notify = !!status.value.swipe_line_notify;
     } else {
       const t = await res.text();
       let msg = `無法載入狀態（HTTP ${res.status}）`;
@@ -349,6 +358,7 @@ async function saveSettings() {
     if (form.value.messaging_channel_token.trim()) body.messaging_channel_token = form.value.messaging_channel_token.trim();
     if (form.value.messaging_channel_secret.trim()) body.messaging_channel_secret = form.value.messaging_channel_secret.trim();
     body.liff_id = form.value.liff_id.trim();
+    body.swipe_line_notify = form.value.swipe_line_notify;
 
     const res = await fetch('/api/v1/line/settings', {
       method: 'POST',

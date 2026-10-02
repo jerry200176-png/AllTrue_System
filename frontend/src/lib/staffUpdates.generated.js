@@ -66,6 +66,36 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-swipe-line-notify",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "刷卡LINE通知可依分校開關",
+    "summary": "LINE 設定頁可選這間分校學生刷卡到班時，要不要用 LINE 通知家長。",
+    "items": [
+      "已設定 LINE 的分校預設開啟；取消勾選就不推到班訊息與照片，學費提醒等其他通知照常。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "已設定 LINE 的分校預設開啟；取消勾選就不推到班訊息與照片，學費提醒等其他通知照常。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-02:swipe-line-notify"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-02-calendar-has-course",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,

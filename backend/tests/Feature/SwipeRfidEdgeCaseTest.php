@@ -368,15 +368,27 @@ class SwipeRfidEdgeCaseTest extends TestCase
         $this->assertSame('normal', TeacherSignIn::where('TeacherID', $teacherId)->orderByDesc('id')->value('Status'));
     }
 
-    public function test_student_swipe_returns_only_verified_line_ids(): void
+    public function test_student_swipe_returns_only_verified_line_ids_of_this_campus(): void
     {
+        DB::table('Campus')->where('id', $this->campus->id)->update(['swipe_line_notify' => true]);
         $student = $this->makeStudent();
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Upending', 'campus_id' => $this->campus->id]);
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uother', 'campus_id' => $this->campus->id + 100, 'verified_at' => now()]);
 
         $this->swipe($student->RFID)
             ->assertStatus(201)
             ->assertJsonPath('student.LineIDs', ['Uverified']);
+    }
+
+    public function test_student_swipe_returns_no_line_ids_when_campus_notify_off(): void
+    {
+        $student = $this->makeStudent();
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
+
+        $this->swipe($student->RFID)
+            ->assertStatus(201)
+            ->assertJsonPath('student.LineIDs', []);
     }
 
     /** @test */
