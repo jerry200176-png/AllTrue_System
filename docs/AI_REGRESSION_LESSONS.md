@@ -96,7 +96,7 @@ last_reviewed: 2026-09-05
 
 > 詳細事故記錄（33 條）→ [AI_REGRESSION_LESSONS_ARCHIVE.md](archive/AI_REGRESSION_LESSONS_ARCHIVE.md)
 >
-> **🔁 高復發檢討**：改排課/扣堂/月結/行事曆/停用課程前，先讀本檔 **§復發家族（Recurring Defect Families）** 認領 F1～F6，對照不變式並補回歸測試 —— 否則點修會再復發。
+> **🔁 高復發檢討**：改排課/扣堂/月結/行事曆/停用課程前，先讀本檔 **§復發家族（Recurring Defect Families）** 認領 F1～F10，對照不變式並補回歸測試 —— 否則點修會再復發。
 
 ---
 
@@ -334,13 +334,17 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆；把方案池總堂數當成員課程應物化列數 → 假「不一致」警告；堂數制 projected chip 誤呼叫 ensure-projected；把方案池剩餘數當成員可排能力 | #147、#553、#430、#448、#440、§R21、§R24、#1465；架構後續見 **ADR-006**（Commitment→materialize→pool coverage；非餘額猜堂） | 池／成員排課／已用分欄；package under→info 且**成員課程 UI 不顯示方案池剩餘**；無 allocation aggregate 前不推導尚可排／未排 N；count projected 不呼叫 ensure-projected；物化 affordance 僅 `ScheduleMode=date` |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
+| **F8 佔位／容量多來源**（2026-10-02） | 老師時段容量從週模板、`ClassSession`、`schedules`、跨校列各算各的；容量表 `capacityForClassType` 複製 3 份；**堂數已用完但 `Stop=0` 的課仍佔週模板位** | in-app #373/#372、#338、#347、#363、#253、§R72、§R114、§R116 | 佔位一律經同一個「誰佔位」判斷；三個入口（ScheduleGuard／Substitute／ExceptionWorkflow）同 fixture 必須算出同人數；用完堂數的課不佔位（`ScheduleGuardrailsTest::test_used_up_count_course_does_not_hold_recurring_seat`） |
+| **F9 事件沒人接（靜默死按鈕）**（2026-10-02） | 子元件 `emit('navigate'…)`，父層掛載時沒有 `@navigate`；Vite build 與 `no-undef` lint 都抓不到 | in-app #371（#3326 引入）、#260、#263、#323 | `scripts/ci/check-unhandled-emits.mjs`（navigate/close/saved 等結果事件必須有 listener）；新元件不得加入 baseline |
+| **F10 回報缺線索**（2026-10-02） | in-app 回報只有截圖／自由文字，沒有路由參數、最後失敗的 API、版本號 → 每筆都要寫專用正式站 probe | in-app #369、#333、#338、#363、§R51、§R53 | 回報自動附 recent failed requests（含 `X-Request-Id`）、`build_sha`、路由參數；`client_info` 先刪欄位再序列化，不可截斷成壞 JSON |
 | **F6 輸入邊界 collation／長度** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`）；另 **VARCHAR(512) 溢位** → SQLSTATE 22001 Data too long（貼繳費說明） | #657、**#1378**、**#1732** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾；超長備註須 422 `memo_too_long`，禁止 500 |
 
 **通用防再犯規則（跨家族）：**
 1. 任何「**狀態變更**」（停用、結束、結算、續期、調課）寫主檔時，必須在**同一交易內**決定其衍生 `ClassSession`/`schedules`/名額/金額如何對齊，並寫測試覆蓋「變更後衍生資料正確」。
 2. 任何「**列表/行事曆/收據**」呈現課程資料時，先確認資料來源是否涵蓋 **歷史/停用/未來/月結推算** 四種狀態，缺一即為潛在 F1/F2/F5 復發。
-3. 修任一家族成員，PR 必須引用本節家族代號（F1～F6）並附「**revert 後會 fail**」的回歸測試；否則視為點修，會再復發。
+3. 修任一家族成員，PR 必須引用本節家族代號（F1～F10）並附「**revert 後會 fail**」的回歸測試；否則視為點修，會再復發。
 4. DB 文字欄若為 `utf8mb3`：查詢 `like` **先濾**非 BMP（F6 搜尋）；**寫入**路徑則必須升級欄位 charset 至 utf8mb4（#1378），禁止永久靜默刪 emoji。
+5. **一件事只能有一個算法（2026-10-02 根因盤點）**：約 230 張 in-app issue 中，帳務（F7，~45）、佔位（F8，~35）、生命週期（F1，~30）、剩餘堂數（F4，~35）的共同根是「同一個業務值在多處各算一次」。新增或修改這類值時，先找既有權威（例：佔位→`ScheduleGuardService` 的共用判斷、行事曆→`calendarOccurrenceMerge.js`、應繳→`BillingPayableResolver`），**改權威、讓畫面去讀**，不得在 controller／頁面另寫一份；找不到權威就在 PR「防再犯」欄寫明並開 tech-debt。
 
 **延伸（2026-07-22 / #1378）**：production `StudentClass.Memo` 為 utf8mb3 時，備註含 📅 會讓建課 transaction 整筆失敗。CI DB 預設 utf8mb4 → 測不到。修法：migration `2026_07_22_130000_convert_student_class_free_text_to_utf8mb4` + `StudentClassMemoUtf8mb4Test`；Founder GO → [`docs/runbooks/1378-memo-utf8mb4-execution-package.md`](runbooks/1378-memo-utf8mb4-execution-package.md)。
 
@@ -1218,7 +1222,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
-> 改下列模組前，**先回本檔 §復發家族** 認領對應 F1～F6（狀態收尾/月結續期/排課生成/共用堂數/行事曆合併/輸入邊界），再讀以下細項。
+> 改下列模組前，**先回本檔 §復發家族** 認領對應 F1～F10（狀態收尾/月結續期/排課生成/共用堂數/行事曆合併/輸入邊界/繳費雙真相/佔位多來源/事件沒人接/回報缺線索），再讀以下細項。
 
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|

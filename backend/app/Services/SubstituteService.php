@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\UserCampus;
+use App\Support\ClassTypeCapacity;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -267,7 +268,7 @@ class SubstituteService
                 }
             }
             $studentCount = count($occupants);
-            $capacity          = $this->capacityForClassType($slot['class_type']);
+            $capacity          = ClassTypeCapacity::for($slot['class_type']);
             $remainingCapacity = max(0, $capacity - $studentCount);
             $overlappingSources = array_values(array_filter(
                 $rawSlots,
@@ -613,20 +614,5 @@ class SubstituteService
         }
 
         return $aStart < $bEnd && $bStart < $aEnd;
-    }
-
-    /**
-     * 與 ScheduleGuardService::capacityForClassType 保持同步的容量對應表。
-     * Single Source of Truth：後端計算後以 remaining_capacity 整數下傳前端，
-     * 前端無需持有此 map。
-     */
-    private function capacityForClassType(?string $classType): int
-    {
-        return match ((string) ($classType ?: 'one_on_one')) {
-            'one_on_two'   => 2,
-            'one_on_three' => 3,
-            'tutoring'     => 4,
-            default        => 1,
-        };
     }
 }
