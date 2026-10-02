@@ -181,7 +181,11 @@ class SwipeRfidController extends Controller
         }
 
         // 到班/離班開關分開；判斷不出來（照片早到/晚到）就任一開就發。文字一律中性，誤刷也不會講錯。
-        [$kind, $swipedAt] = $this->recentSwipe($student);
+        // 剛簽退的是別校／分校不明／已作廢的紀錄 → 不是本校離班，跟 swipe-rfid 的 LineIDs 一樣不發。
+        [$kind, $swipedAt] = $this->recentSwipe($student, (int) $campus->getKey());
+        if ($kind === 'unsafe') {
+            return response()->json(['ok' => true, 'sent' => 0, 'skipped' => 'unsafe_record']);
+        }
         $settings = LineNotifySettings::get((int) $campus->getKey());
         $wanted = match ($kind) {
             'in' => $settings['swipe_in'],
@@ -293,9 +297,9 @@ class SwipeRfidController extends Controller
      * 這張照片對應的刷卡：讀卡機不知道到班/離班，看 swipe-rfid 剛寫的今日紀錄。
      * 只認 2 分鐘內的簽到/簽退，否則 unknown（時間用現在）。
      *
-     * @return array{0:string,1:Carbon} [in|out|unknown, 刷卡時間]
+     * @return array{0:string,1:Carbon} [in|out|unsafe|unknown, 刷卡時間]；unsafe = 剛簽退的不是本校未作廢紀錄
      */
-    private function recentSwipe(Student $student): array
+    private function recentSwipe(Student $student, int $campusId): array
     {
         $now = now();
         $latest = StudentSignIn::query()
@@ -311,7 +315,7 @@ class SwipeRfidController extends Controller
         $out = $latest->getAttribute('SignOutDT');
         $in = $latest->getAttribute('SignInDT');
         if ($recent($out)) {
-            return ['out', Carbon::parse($out)];
+            return [$this->isOwnActiveRecord($latest, $campusId) ? 'out' : 'unsafe', Carbon::parse($out)];
         }
         if (!$out && $recent($in)) {
             return ['in', Carbon::parse($in)];

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Campus;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
+use App\Models\StudentSignIn;
 use App\Support\LineNotifySettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -134,6 +135,41 @@ class SwipePhotoTest extends TestCase
         LineNotifySettings::set($this->campus->id, ['swipe_in' => false]);
         $this->upload()->assertOk()->assertJson(['skipped' => 'disabled']);
         $this->assertCount(2, $texts());
+    }
+
+    /** @return array<string, array{0: array<string, mixed>}> */
+    public static function unsafeClosedRecords(): array
+    {
+        return [
+            'other campus (same-day transfer)' => [['CampusID' => 'other']],
+            'unknown campus (pending-swipe match)' => [['CampusID' => null]],
+            'voided row' => [['VoidedAt' => 'now']],
+        ];
+    }
+
+    /**
+     * @dataProvider unsafeClosedRecords
+     * @param array<string, mixed> $patch
+     */
+    public function test_photo_after_sign_out_of_unsafe_record_is_not_sent(array $patch): void
+    {
+        // 跟 swipe-rfid 的 LineIDs 同一個規則：剛簽退的不是本校未作廢紀錄 → 不發假的離班卡片、不存照片。
+        $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
+        $swipe()->assertJson(['action' => 'sign_in']);
+        $patch = array_map(fn ($v) => match ($v) {
+            'other' => $this->campus->id + 100,
+            'now' => now(),
+            default => $v,
+        }, $patch);
+        StudentSignIn::where('StudentID', $this->student->id)->update($patch);
+        Http::fake(['api.line.me/*' => Http::response([], 200)]); // 清掉簽到時的紀錄
+
+        $this->travel(5)->minutes();
+        $swipe()->assertJson(['action' => 'sign_out']);
+        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'unsafe_record']);
+
+        $this->assertSame([], Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
+        Http::assertNothingSent();
     }
 
     public function test_no_channel_token_still_stores_without_push(): void
