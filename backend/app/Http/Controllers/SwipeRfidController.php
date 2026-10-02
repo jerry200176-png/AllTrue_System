@@ -38,6 +38,8 @@ class SwipeRfidController extends Controller
     private const PHOTO_DIR = 'swipe-photos';
     private const PHOTO_TTL_DAYS = 7;
     private const PHOTO_TEXT_WINDOW_SECONDS = 120;
+    /** handleStudentSwipe() 建的學生簽到列 Memo（有課 swipe-rfid／無課 self_study）。 */
+    private const RFID_SIGN_IN_MEMOS = ['swipe-rfid', 'self_study'];
 
     /**
      * POST /api/v1/swipe-rfid
@@ -180,18 +182,14 @@ class SwipeRfidController extends Controller
             return response()->json(['ok' => false, 'error' => 'student_not_found'], 404);
         }
 
-        // 到班/離班開關分開；判斷不出來（照片早到/晚到）就任一開就發。文字一律中性，誤刷也不會講錯。
-        // 剛簽退的是別校／分校不明／已作廢的紀錄 → 不是本校離班，跟 swipe-rfid 的 LineIDs 一樣不發。
+        // 照片要對到「剛剛那次實際刷卡」才發（fail closed）：對不起來、或那筆是別校／分校不明／已作廢 → 不存不推。
+        // 對到了再看到班/離班開關；文字一律中性，誤刷也不會講錯。
         [$kind, $swipedAt] = $this->recentSwipe($student, (int) $campus->getKey());
-        if ($kind === 'unsafe') {
-            return response()->json(['ok' => true, 'sent' => 0, 'skipped' => 'unsafe_record']);
+        if ($kind === 'unsafe' || $kind === 'uncorrelated') {
+            return response()->json(['ok' => true, 'sent' => 0, 'skipped' => $kind === 'unsafe' ? 'unsafe_record' : 'uncorrelated']);
         }
         $settings = LineNotifySettings::get((int) $campus->getKey());
-        $wanted = match ($kind) {
-            'in' => $settings['swipe_in'],
-            'out' => $settings['swipe_out'],
-            default => $settings['swipe_in'] || $settings['swipe_out'],
-        };
+        $wanted = $kind === 'in' ? $settings['swipe_in'] : $settings['swipe_out'];
         if (!$wanted) {
             return response()->json(['ok' => true, 'sent' => 0, 'skipped' => 'disabled']);
         }
@@ -294,26 +292,26 @@ class SwipeRfidController extends Controller
     }
 
     /**
-     * 這張照片對應的刷卡：讀卡機不知道到班/離班，看 swipe-rfid 剛寫的今日紀錄。
-     * 只認 2 分鐘內的簽到/簽退，否則 unknown（時間用現在）。
+     * 這張照片對應的刷卡：讀卡機不知道到班/離班，看今天「最後一次實際 RFID 刷卡」寫的列。
+     * 只認 SwipeRfidController 建的列（Memo swipe-rfid / self_study）；StudentPresenceBackfillService 補建的
+     * presence-window 列、人工／待配對建的列都不算（它們 id 可能較新，會蓋掉真正被刷到的那筆）。
+     * 那筆不是本校未作廢 → unsafe；不是 2 分鐘內的簽到／簽退 → uncorrelated。兩者都不發。
      *
-     * @return array{0:string,1:Carbon} [in|out|unsafe|unknown, 刷卡時間]；unsafe = 今天最新一筆不是本校未作廢紀錄
+     * @return array{0:string,1:Carbon} [in|out|unsafe|uncorrelated, 刷卡時間]
      */
     private function recentSwipe(Student $student, int $campusId): array
     {
         $now = now();
-        // 排除簽退時 StudentPresenceBackfillService 補建的 presence-window 列：它們 id 較新，
-        // 但不是這次刷卡碰到的紀錄，會蓋掉真正被簽退的（可能是別校／作廢）那筆。
         $latest = StudentSignIn::query()
             ->where('StudentID', $student->getKey())
             ->whereDate('SignInDT', $now->toDateString())
-            ->where(fn ($q) => $q->whereNull('Memo')->orWhere('Memo', '!=', 'presence-window'))
+            ->whereIn('Memo', self::RFID_SIGN_IN_MEMOS)
             ->orderByDesc('id')
             ->first();
         if (!$latest) {
-            return ['unknown', $now];
+            return ['uncorrelated', $now];
         }
-        // 先看安全再看時間：今天最新一筆是別校／分校不明／已作廢 → 不管照片多晚到都不發。
+        // 先看安全再看時間：別校／分校不明／已作廢 → 不管照片多晚到都不發。
         if (!$this->isOwnActiveRecord($latest, $campusId)) {
             return ['unsafe', $now];
         }
@@ -328,7 +326,7 @@ class SwipeRfidController extends Controller
             return ['in', Carbon::parse($in)];
         }
 
-        return ['unknown', $now];
+        return ['uncorrelated', $now];
     }
 
     /** 照片只留到簽章網址過期為止。ponytail: 每次上傳順手掃該分校目錄；量大再改排程。 */

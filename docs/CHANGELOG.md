@@ -1,7 +1,7 @@
 ## 2026-10-02 — feat(line): per-campus LINE notify switches + swipe photo as one Flex card
 <!-- release-notes: staff_update=staff-2026-10-02-line-notify-switches -->
 - 主任在「家長 LINE 通知設定」可逐項開關 LINE 通知（到班刷卡、離班刷卡、老師回覆學習回饋、繳費提醒、排課異常、重要系統通知），並看到本月 LINE 已用／上限則數。存 `SystemSetting` `line_notify.campus.{id}`（無 migration）；未設定時全部預設開（本條原寫刷卡通知預設關，已由 2026-10-02 fix(rfid) 條目改為預設開，避免只打 swipe-rfid 的讀卡機斷通知）。`GET/PUT /api/v1/line/notify-settings`（主任限自己分校，super_admin 任一）。
-- `POST /api/v1/swipe-photo` 改成一張 Flex 卡片（照片＋「姓名 時間 刷卡」中性文字，誤刷也不會寫錯到班／離班），算 1 則；依 2 分鐘內刷卡紀錄套用到班／離班開關，判斷不出來時任一開就發；都關則不存照片不推。
+- `POST /api/v1/swipe-photo` 改成一張 Flex 卡片（照片＋「姓名 時間 刷卡」中性文字，誤刷也不會寫錯到班／離班），算 1 則；依 2 分鐘內刷卡紀錄套用到班／離班開關，判斷不出來時任一開就發（已由 2026-10-02 fix(rfid) 條目改為不發）；都關則不存照片不推。
 - `POST /api/v1/swipe-rfid` 回應的 `student.LineIDs` 改受分校開關控制（見 2026-10-02 fix(rfid) 條目）。
 
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
@@ -14,7 +14,7 @@
 
 ## 2026-10-02 — fix(rfid): swipe-rfid LineIDs follow campus switches instead of always empty
 <!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-continuity -->
-- `POST /api/v1/swipe-rfid` 學生到班回應的 `student.LineIDs` 在分校「到班刷卡」開著時回本分校已驗證家長 LINE userId（不含其他分校綁定），離班回應看「離班刷卡」；開關關閉或重複刷卡回 `[]`。被簽退的紀錄不是本分校（當天轉校、待配對建立的無分校紀錄）或已作廢時，簽退回應也回 `[]`；`swipe-photo` 套同一規則（今天最新一筆不是本分校未作廢紀錄 → 不存照片不推，`skipped: unsafe_record`，照片晚到也一樣），避免假的離班通知。沒存過設定的分校到班／離班開關預設**開**（與 #3440 相同），還沒接 `swipe-photo` 的讀卡機可照舊自己推文字，不會因 #3437 斷掉通知；主任設定頁兩個開關改寫為「讀卡機有拍照上傳時會附照片」。有呼叫 `swipe-photo` 的讀卡機不應再用 `LineIDs` 推，否則家長收兩則。
+- `POST /api/v1/swipe-rfid` 學生到班回應的 `student.LineIDs` 在分校「到班刷卡」開著時回本分校已驗證家長 LINE userId（不含其他分校綁定），離班回應看「離班刷卡」；開關關閉或重複刷卡回 `[]`。被簽退的紀錄不是本分校（當天轉校、待配對建立的無分校紀錄）或已作廢時，簽退回應也回 `[]`；`swipe-photo` 改為 fail closed：只對今天最後一筆實際 RFID 刷卡列（Memo `swipe-rfid`／`self_study`，不看 presence-window 補建列與人工／待配對列）；該列不是本分校未作廢 → `skipped: unsafe_record`；沒有該列或不是 2 分鐘內的簽到／簽退 → `skipped: uncorrelated`，兩者都不存照片不推，避免假的離班通知。沒存過設定的分校到班／離班開關預設**開**（與 #3440 相同），還沒接 `swipe-photo` 的讀卡機可照舊自己推文字，不會因 #3437 斷掉通知；主任設定頁兩個開關改寫為「讀卡機有拍照上傳時會附照片」。有呼叫 `swipe-photo` 的讀卡機不應再用 `LineIDs` 推，否則家長收兩則。
 
 ## 2026-10-02 — feat(bug-report): in-app reports auto-attach recent failed requests
 <!-- release-notes: staff_update=staff-2026-10-02-report-context -->

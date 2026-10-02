@@ -63,6 +63,11 @@ class SwipePhotoTest extends TestCase
         ], $overrides), ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json']);
     }
 
+    private function swipeRfid()
+    {
+        return $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
+    }
+
     public function test_rejects_bad_token_unknown_rfid_and_non_image(): void
     {
         $this->upload([], 'wrong')->assertStatus(401);
@@ -76,6 +81,7 @@ class SwipePhotoTest extends TestCase
 
     public function test_stores_photo_and_pushes_text_and_signed_image_only_to_verified_parent(): void
     {
+        $this->swipeRfid()->assertJson(['action' => 'sign_in']);
         $res = $this->upload()->assertOk()->assertJson(['ok' => true, 'sent' => 1]);
 
         $files = Storage::disk('local')->files("swipe-photos/{$this->campus->id}");
@@ -127,16 +133,18 @@ class SwipePhotoTest extends TestCase
         $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'disabled']);
         $this->assertSame(1, $photos());
 
-        // 判斷不出來（照片晚到）→ 任一開就發，時間用現在
+        // 對不起來（照片晚到超過 2 分鐘）→ fail closed，不發不存
         $this->travel(10)->minutes();
-        $this->upload()->assertOk()->assertJson(['sent' => 1]);
+        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'uncorrelated']);
+        $this->assertSame(1, $photos());
 
-        $this->assertSame(['PhotoKid 10:00 刷卡', 'PhotoKid 12:10 刷卡'], $texts());
-
-        // 兩個都關 → 完全不發
+        // 再到班，但到班開關也關 → 不發
+        $this->travel(1)->hours();
         LineNotifySettings::set($this->campus->id, ['swipe_in' => false]);
+        $swipe()->assertJson(['action' => 'sign_in']);
         $this->upload()->assertOk()->assertJson(['skipped' => 'disabled']);
-        $this->assertCount(2, $texts());
+
+        $this->assertSame(['PhotoKid 10:00 刷卡'], $texts());
     }
 
     /** @return array<string, array{0: array<string, mixed>}> */
@@ -202,6 +210,23 @@ class SwipePhotoTest extends TestCase
         $this->assertSame([], Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
     }
 
+    public function test_photo_without_a_matching_rfid_swipe_fails_closed(): void
+    {
+        // 今天沒有 RFID 刷卡列 → 對不起來，不存不推
+        $this->upload()->assertOk()->assertJson(['sent' => 0, 'skipped' => 'uncorrelated']);
+
+        // 人工／待配對建的列（Memo 非 swipe-rfid/self_study）不算 RFID 刷卡：就算 id 較新、還是別校的，
+        // 照片仍對到剛剛那筆本校 RFID 簽到。
+        $this->swipeRfid()->assertJson(['action' => 'sign_in']);
+        StudentSignIn::create([
+            'StudentID' => $this->student->id, 'StudentClassID' => 0, 'Memo' => 'manual',
+            'SignInDT' => now(), 'CampusID' => $this->campus->id + 100,
+        ]);
+        $this->upload()->assertOk()->assertJson(['sent' => 1]);
+
+        $this->assertCount(1, Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
+    }
+
     public function test_no_channel_token_still_stores_without_push(): void
     {
         DB::table('Campus')->where('id', $this->campus->id)->update(['messaging_channel_token' => null]);
@@ -210,6 +235,7 @@ class SwipePhotoTest extends TestCase
         Storage::disk('local')->put($old, 'x');
         touch(Storage::disk('local')->path($old), now()->subDays(8)->getTimestamp());
 
+        $this->swipeRfid()->assertJson(['action' => 'sign_in']);
         $this->upload()->assertOk()->assertJson(['sent' => 0]);
         // 新照片存了、超過 7 天的舊照片被清掉。
         $this->assertCount(1, Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
