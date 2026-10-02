@@ -62,6 +62,10 @@ class PaidStatusParityTest extends TestCase
             'monthly_period_payment.batch' => array_keys(array_filter($fixtures, fn ($fx) => ($fx['mode'] ?? 'count') === 'date')),
             'amount.resolver.outstanding' => $all,
             'amount.ledger.outstanding' => $all,
+            'amount.resolver.total' => $all,
+            'amount.resolver.applied' => $all,
+            'amount.ledger.total' => $all,
+            'amount.ledger.applied' => $all,
         ];
     }
 
@@ -76,8 +80,12 @@ class PaidStatusParityTest extends TestCase
     /** Binary sites with no opinion on `free` fixtures (list membership, not a paid predicate). */
     private const BINARY_SKIP_FREE = ['api.accounting.settled_courses'];
 
-    /** Numeric sites: the outstanding amount (as a string) must equal expectedOutstanding(), not just the status. */
-    private const AMOUNT_SITES = ['amount.resolver.outstanding', 'amount.alerts.tuition.outstanding', 'amount.ledger.outstanding'];
+    /** Numeric sites: total / applied / outstanding (as strings) must equal expectedAmounts(), not just the status. */
+    private const AMOUNT_SITES = [
+        'amount.resolver.outstanding' => 'outstanding', 'amount.alerts.tuition.outstanding' => 'outstanding',
+        'amount.ledger.outstanding' => 'outstanding', 'amount.resolver.total' => 'total', 'amount.resolver.applied' => 'applied',
+        'amount.ledger.total' => 'total', 'amount.ledger.applied' => 'applied',
+    ];
 
     /** Unpaid predicate (reminders/notifications): in scope iff target is partial or unpaid. */
     private const UNPAID_SITES = ['model.scopeEffectivelyUnpaid'];
@@ -148,6 +156,8 @@ class PaidStatusParityTest extends TestCase
             ]],
             // A negative cash row is a reversal even without Method=void.
             'void_negative_cash' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $cash(-10000)])]],
+            // Both reversal encodings on one invoice: each is a void (|−6000| + 4000), they must not cancel.
+            'void_mixed_encodings' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $cash(-6000), $voidPositive(4000)])]],
             // A reversal recorded as Method=void with a positive amount is still a void.
             'void_method_positive' => ['flag' => 0, 'charge' => 10000, 'invoices' => [$inv('2026-08', 10000, 0, 'unpaid', [$cash(10000), $voidPositive(10000)])]],
             // 1: a non-void invoice overrides CoursePackage.paid.
@@ -199,18 +209,25 @@ class PaidStatusParityTest extends TestCase
         return min($invoice['total'], max(0, $positive - $voided));
     }
 
-    /** Target course outstanding: free => 0; no non-void invoice => 0 if flag/package paid else Charge; else sum of open balances. */
-    private function expectedOutstanding(array $fx): int
+    /**
+     * Target course amounts {total, applied, outstanding}: free => all 0; no non-void invoice => total = Charge,
+     * applied = Charge if flag/package paid else 0; else sums over non-void invoices (applied capped per invoice).
+     */
+    private function expectedAmounts(array $fx): array
     {
         if ($this->expected($fx) === 'free') {
-            return 0;
+            return ['total' => 0, 'applied' => 0, 'outstanding' => 0];
         }
         $invoices = array_values(array_filter($fx['invoices'], fn ($i) => $i['status'] !== 'void'));
         if ($invoices === []) {
-            return (!empty($fx['flag']) || !empty($fx['package_paid'])) ? 0 : (int) $fx['charge'];
-        }
+            $applied = (!empty($fx['flag']) || !empty($fx['package_paid'])) ? (int) $fx['charge'] : 0;
 
-        return array_sum(array_map(fn ($i) => max(0, $i['total'] - $this->applied($i)), $invoices));
+            return ['total' => (int) $fx['charge'], 'applied' => $applied, 'outstanding' => (int) $fx['charge'] - $applied];
+        }
+        $total = array_sum(array_column($invoices, 'total'));
+        $applied = array_sum(array_map(fn ($i) => $this->applied($i), $invoices));
+
+        return ['total' => $total, 'applied' => $applied, 'outstanding' => $total - $applied];
     }
 
     public function test_paid_status_sites_match_founder_target_or_are_allowlisted(): void
@@ -265,8 +282,8 @@ class PaidStatusParityTest extends TestCase
                         continue;
                     }
                     $target = $expected === 'paid' ? 'paid' : 'notpaid';
-                } elseif (in_array($site, self::AMOUNT_SITES, true)) {
-                    $target = (string) $this->expectedOutstanding($fx);
+                } elseif (isset(self::AMOUNT_SITES[$site])) {
+                    $target = (string) $this->expectedAmounts($fx)[self::AMOUNT_SITES[$site]];
                 } elseif (in_array($site, self::UNPAID_SITES, true)) {
                     $target = in_array($expected, ['partial', 'unpaid'], true) ? 'unpaid' : 'notunpaid';
                 }
@@ -350,6 +367,9 @@ class PaidStatusParityTest extends TestCase
         // B12: payable resolver (invoice only, no flag, no free state; `unbilled` reads as nothing paid).
         $r = app(BillingPayableResolver::class)->byStudentClassIds([$id], [$course])[$id];
         $out['amount.resolver.outstanding'] = $r['payable_outstanding'] === null ? 'null' : (string) (int) $r['payable_outstanding'];
+        $out['amount.resolver.total'] = $r['payable_amount'] === null ? 'null' : (string) (int) $r['payable_amount'];
+        $out['amount.resolver.applied'] = $r['payable_amount'] === null ? 'null'
+            : (string) ((int) $r['payable_amount'] - (int) $r['payable_outstanding']);
         if ($r['payable_status'] === 'unbilled') {
             $out['resolver.byStudentClassIds'] = 'unpaid';
         } else {
@@ -389,6 +409,8 @@ class PaidStatusParityTest extends TestCase
         $ledger = $this->getJson("/api/v1/accounting/ledger?student_class_id={$id}", $headers);
         $ledger->assertOk();
         $out['amount.ledger.outstanding'] = (string) (int) $ledger->json('summary.outstanding_total');
+        $out['amount.ledger.total'] = (string) (int) $ledger->json('summary.invoice_total');
+        $out['amount.ledger.applied'] = (string) (int) $ledger->json('summary.applied_total');
         {
             $invoices = collect($ledger->json('invoices'))->sortBy('billing_period')->values();
             $got = $invoices->map(fn ($row) => (int) ($row['id'] ?? $row['invoice_id'] ?? 0))->sort()->values()->all();
