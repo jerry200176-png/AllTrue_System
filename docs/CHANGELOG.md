@@ -14,7 +14,7 @@
 
 ## 2026-10-02 — fix(rfid): swipe-rfid LineIDs follow campus switches instead of always empty
 <!-- release-notes: silent_ship=silent-2026-10-02-swipe-lineids-continuity -->
-- `POST /api/v1/swipe-rfid` 學生到班回應的 `student.LineIDs` 在分校「到班刷卡」開著時回本分校已驗證家長 LINE userId（不含其他分校綁定），離班回應看「離班刷卡」；開關關閉或重複刷卡回 `[]`。開著的紀錄屬於別分校（當天轉校）時簽退回應也回 `[]`，避免假的離班通知。沒存過設定的分校到班／離班開關預設**開**（與 #3440 相同），還沒接 `swipe-photo` 的讀卡機可照舊自己推文字，不會因 #3437 斷掉通知；主任設定頁兩個開關改寫為「讀卡機有拍照上傳時會附照片」。有呼叫 `swipe-photo` 的讀卡機不應再用 `LineIDs` 推，否則家長收兩則。
+- `POST /api/v1/swipe-rfid` 學生到班回應的 `student.LineIDs` 在分校「到班刷卡」開著時回本分校已驗證家長 LINE userId（不含其他分校綁定），離班回應看「離班刷卡」；開關關閉或重複刷卡回 `[]`。被簽退的紀錄不是本分校（當天轉校、待配對建立的無分校紀錄）或已作廢時，簽退回應也回 `[]`，避免假的離班通知。沒存過設定的分校到班／離班開關預設**開**（與 #3440 相同），還沒接 `swipe-photo` 的讀卡機可照舊自己推文字，不會因 #3437 斷掉通知；主任設定頁兩個開關改寫為「讀卡機有拍照上傳時會附照片」。有呼叫 `swipe-photo` 的讀卡機不應再用 `LineIDs` 推，否則家長收兩則。
 
 ## 2026-10-02 — feat(bug-report): in-app reports auto-attach recent failed requests
 <!-- release-notes: staff_update=staff-2026-10-02-report-context -->

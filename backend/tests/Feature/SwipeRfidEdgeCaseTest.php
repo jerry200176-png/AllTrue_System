@@ -384,13 +384,32 @@ class SwipeRfidEdgeCaseTest extends TestCase
             ->assertJsonPath('student.LineIDs', ['Uverified']);
     }
 
-    public function test_sign_out_closing_another_campus_record_gives_no_line_ids(): void
+    /** @return array<string, array{0: array<string, mixed>}> */
+    public static function unsafeOpenRecords(): array
     {
-        // 當天轉校：開著的紀錄是別校的 → 不是本校離班，不給 LineIDs，避免假的離班通知。
+        return [
+            'other campus (same-day transfer)' => [['CampusID' => 'other']],
+            'unknown campus (pending-swipe match)' => [['CampusID' => null]],
+            'voided row' => [['VoidedAt' => 'now']],
+        ];
+    }
+
+    /**
+     * @dataProvider unsafeOpenRecords
+     * @param array<string, mixed> $patch
+     */
+    public function test_sign_out_of_unsafe_open_record_gives_no_line_ids(array $patch): void
+    {
+        // 被簽退的紀錄不是「本校、未作廢」→ 不算本校離班，不給 LineIDs，避免假的離班通知。
         $student = $this->makeStudent();
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
         $this->swipe($student->RFID)->assertJsonPath('action', 'sign_in');
-        StudentSignIn::where('StudentID', $student->id)->update(['CampusID' => $this->campus->id + 100]);
+        $patch = array_map(fn ($v) => match ($v) {
+            'other' => $this->campus->id + 100,
+            'now' => now(),
+            default => $v,
+        }, $patch);
+        StudentSignIn::where('StudentID', $student->id)->update($patch);
 
         $this->travel(5)->minutes();
         $this->swipe($student->RFID)

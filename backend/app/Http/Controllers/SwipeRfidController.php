@@ -374,10 +374,11 @@ class SwipeRfidController extends Controller
                     'type'     => 'student',
                     'action'   => 'sign_out',
                     'record'   => $openRecord,
-                    // 開著的紀錄是別間分校的（當天轉校）→ 這不是本校的離班，不給 LineIDs，避免假的離班通知。
+                    // 只有「本校、未作廢」的紀錄被簽退才算本校離班；別校／分校不明（當天轉校、待配對建立）
+                    // 或已作廢的紀錄 → 不給 LineIDs，避免假的離班通知。簽到簽退本身不受影響。
                     'student'  => $this->studentPayload(
                         $student,
-                        $this->recordIsOtherCampus($openRecord, (int) $campusId) ? null : 'swipe_out'
+                        $this->isOwnActiveRecord($openRecord, (int) $campusId) ? 'swipe_out' : null
                     ),
                     'campus'   => ['TelegramToken' => $campus->TelegramToken ?? null],
                 ], 200);
@@ -470,11 +471,13 @@ class SwipeRfidController extends Controller
         });
     }
 
-    private function recordIsOtherCampus(StudentSignIn $record, int $campusId): bool
+    private function isOwnActiveRecord(StudentSignIn $record, int $campusId): bool
     {
         $recordCampus = $record->getAttribute('CampusID');
 
-        return $recordCampus !== null && (int) $recordCampus !== $campusId;
+        return $record->getAttribute('VoidedAt') === null
+            && $recordCampus !== null
+            && (int) $recordCampus === $campusId;
     }
 
     /**
