@@ -222,6 +222,41 @@ class ParentFeedbackAwaitingReplyTest extends TestCase
         }
     }
 
+    public function test_awaiting_drops_after_14_days_without_staff_reply_query_and_record_paths_agree(): void
+    {
+        $svc = app(ParentFeedbackAwaitingService::class);
+        $teacher = $this->user('T');
+        $old = $this->seedRecord(['teacher' => $teacher]);
+        $recent = $this->seedRecord(['teacher' => $teacher]);
+        foreach ([$old, $recent] as $s) {
+            $this->putJson($this->parentUrl($s), ['content' => '請問'], $this->bearer($this->parentToken($s['student_id'])))->assertOk();
+        }
+        $fbOld = LearningRecordFeedback::where('learning_record_id', $old['record_id'])->first();
+        $fbRecent = LearningRecordFeedback::where('learning_record_id', $recent['record_id'])->first();
+        DB::table('learning_record_feedbacks')->where('id', $fbOld->id)->update(['created_at' => now()->subDays(15)]);
+        DB::table('learning_record_feedbacks')->where('id', $fbRecent->id)->update(['created_at' => now()->subDays(3)]);
+
+        $this->assertFalse($svc->isAwaitingStaffReply($fbOld->fresh()));
+        $this->assertTrue($svc->isAwaitingStaffReply($fbRecent->fresh()));
+        $this->assertSame(1, $svc->countAwaitingForStaff('teacher', $teacher->id));
+
+        // Parent reply thread: latest parent message decides, not the feedback creation date.
+        DB::table('learning_record_feedback_replies')->insert([
+            'feedback_id' => $fbRecent->id, 'author_role' => 'parent', 'content' => '追問',
+            'created_at' => now()->subDays(15), 'updated_at' => now()->subDays(15),
+        ]);
+        $this->assertFalse($svc->isAwaitingStaffReply($fbRecent->fresh()));
+        $this->assertSame(0, $svc->countAwaitingForStaff('teacher', $teacher->id));
+
+        // A new parent message re-opens it.
+        DB::table('learning_record_feedback_replies')->insert([
+            'feedback_id' => $fbRecent->id, 'author_role' => 'parent', 'content' => '再追問',
+            'created_at' => now()->subDays(3), 'updated_at' => now()->subDays(3),
+        ]);
+        $this->assertTrue($svc->isAwaitingStaffReply($fbRecent->fresh()));
+        $this->assertSame(1, $svc->countAwaitingForStaff('teacher', $teacher->id));
+    }
+
     public function test_count_equals_list_total_for_teacher_and_director(): void
     {
         $campusA = CampusFactory::new()->create();
