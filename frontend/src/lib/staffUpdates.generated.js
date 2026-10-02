@@ -134,6 +134,39 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-awaiting-14d",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "待回覆不再卡舊對話",
+    "summary": "家長留言超過兩週仍無人回覆，不再列入待回覆。",
+    "items": [
+      "家長之後再留言會自動重新列入；「標記不需回覆」照常可用。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "家長之後再留言會自動重新列入；「標記不需回覆」照常可用。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:295",
+      "changelog:2026-10-02:awaiting-14d"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-01-monthly-usage-warning",
     "publishedAt": "2026-10-01",
     "effectiveAt": null,

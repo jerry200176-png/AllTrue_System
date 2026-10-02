@@ -3,6 +3,20 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-02-awaiting-14d
+    published_at: "2026-10-02"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 待回覆不再卡舊對話
+    summary: 家長留言超過兩週仍無人回覆，不再列入待回覆。
+    items:
+      - category: fixed
+        text: 家長之後再留言會自動重新列入；「標記不需回覆」照常可用。
+    source_refs:
+      - "alltrue:bug_report:295"
+      - "changelog:2026-10-02:awaiting-14d"
   - id: staff-2026-10-02-tuition-course-check-link
     published_at: "2026-10-02"
     audiences:
