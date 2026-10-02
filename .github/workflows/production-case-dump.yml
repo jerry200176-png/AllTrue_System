@@ -97,9 +97,8 @@ jobs:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
-          # Founder GO 2026-10-02 is scoped to these two 木柵 students only.
-          if case == 'monthly_slip_student' and os.environ.get('TARGET_STUDENT_NAME') not in {'陳宥翰', '陳宥霖'}:
-              raise SystemExit('monthly_slip_student is limited to the two approved 木柵 students')
+          if case == 'monthly_slip_student' and not os.environ.get('TARGET_STUDENT_NAME'):
+              raise SystemExit('monthly_slip_student requires student_name')
           if target_student_class_id and (case not in {'billing_huang', 'fixed_slot_huang', 'transfer_capacity_chen'} or not target_student_class_id.isdigit()):
               raise SystemExit('student_class_id is only supported as a numeric scoped case')
           target_subject_name = os.environ.get('TARGET_SUBJECT_NAME', '數學') or '數學'
@@ -413,14 +412,16 @@ jobs:
             $out['verification'] = ['student_found'=>count($studentIds) > 0, 'read_only'=>true,
               'future_scheduled_session_ids'=>$sessions->filter(fn ($r) => strtolower((string)$r->status) === 'scheduled' && (string)$r->session_date > now()->toDateString())->pluck('id')->map(fn ($id) => (int)$id)->values()->all()];
           }} elseif ($case === 'monthly_slip_student') {{
-            // Read-only: why a monthly payment slip lists no lesson dates (Founder report 2026-10-02).
-            // Two approved 木柵 students only; exact-name match must be unique; outputs ids/dates/statuses/amounts, never names or free text.
-            // 木柵 only (CampusID 16), per the Founder GO scope.
-            $studentIds = $db::table('Student')->where('CampusID', 16)->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
+            // Read-only, Founder GO 2026-10-02: why two 木柵 monthly slips show no lesson dates.
+            // Scope: CampusID 16 and the approved student-ID allowlist only; the dispatched name is
+            // compared in memory and never written out. August 2026 only. No names or free text in output.
+            $approvedStudentIds = [162, 164];
+            $studentIds = $db::table('Student')->where('CampusID', 16)->whereIn('id', $approvedStudentIds)
+              ->whereRaw('TRIM(name) = ?', [$targetStudentName])->pluck('id')->map(fn ($id) => (int)$id)->all();
             $out['student_match_count'] = count($studentIds);
             if (count($studentIds) !== 1) {{
               $out['ok'] = false;
-              $out['error'] = 'student_name must match exactly one student';
+              $out['error'] = 'student_name must match exactly one approved student';
             }} else {{
               $classes = $db::table('StudentClass')->whereIn('StudentID', $studentIds)->orderBy('ID')
                 ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'SessionCount', 'RemainingSessions', 'closed_reason']);
@@ -432,35 +433,24 @@ jobs:
                 return $r;
               }});
               $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
-              $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)->where(fn ($q) => $q->whereDate('IssueDate', '>=', '2026-06-01')->orWhere('billing_period', '>=', '2026-06')
-                  ->orWhereIn('id', $db::table('InvoiceItem')->select('InvoiceID')->whereDate('PeriodEnd', '>=', '2026-06-01')))->orderBy('id')
+              // August 2026 invoices: billing_period 2026-08, or any item whose service range overlaps August.
+              $augustItemInvoiceIds = $db::table('InvoiceItem')->select('InvoiceID')
+                ->whereDate('PeriodStart', '<=', '2026-08-31')->whereDate('PeriodEnd', '>=', '2026-08-01');
+              $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)
+                ->where(fn ($q) => $q->where('billing_period', '2026-08')->orWhereIn('id', $augustItemInvoiceIds))->orderBy('id')
                 ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
               $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
                 ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount']);
-              // Session window covers every matched invoice period (item ranges and billing_period months).
-              $windowStart = '2026-06-01';
-              $windowEnd = now()->addDays(60)->toDateString();
-              foreach ($items as $it) {{ if ($it->PeriodEnd && (string)$it->PeriodEnd > $windowEnd) {{ $windowEnd = substr((string)$it->PeriodEnd, 0, 10); }} }}
-              foreach ($items as $it) {{ if ($it->PeriodStart && substr((string)$it->PeriodStart, 0, 10) < $windowStart) {{ $windowStart = substr((string)$it->PeriodStart, 0, 10); }} }}
-              foreach ($invoices as $inv) {{
-                if ($inv->billing_period && preg_match('/^\d{{4}}-\d{{2}}$/', (string)$inv->billing_period)) {{
-                  $periodEnd = \Carbon\Carbon::parse($inv->billing_period . '-01')->endOfMonth()->toDateString();
-                  if ($periodEnd > $windowEnd) {{ $windowEnd = $periodEnd; }}
-                  $periodStart = $inv->billing_period . '-01';
-                  if ($periodStart < $windowStart) {{ $windowStart = $periodStart; }}
-                }}
-              }}
               $sessions = $classIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $classIds)
-                ->whereBetween('SessionDate', [$windowStart, $windowEnd])
-                ->selectRaw("StudentClassID as class_id, DATE_FORMAT(SessionDate, '%Y-%m') as month, Status as status, COUNT(*) as n, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date")
-                ->groupBy('StudentClassID', 'month', 'Status')->orderBy('StudentClassID')->orderBy('month')->get();
+                ->whereBetween('SessionDate', ['2026-08-01', '2026-08-31'])
+                ->selectRaw("StudentClassID as class_id, Status as status, COUNT(*) as n, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date")
+                ->groupBy('StudentClassID', 'Status')->orderBy('StudentClassID')->get();
               $out['student_ids'] = $studentIds;
-              $out['student_campus'] = $db::table('Student')->whereIn('id', $studentIds)->pluck('CampusID', 'id')->all();
-              $out['session_window'] = [$windowStart, $windowEnd];
+              $out['session_window'] = ['2026-08-01', '2026-08-31'];
               $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
               $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
               $out['invoice_items'] = $items->map(fn ($r) => (array)$r)->values()->all();
-              $out['sessions_by_class_month_status'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
+              $out['august_sessions_by_class_status'] = $sessions->map(fn ($r) => (array)$r)->values()->all();
             }}
           }} elseif ($case === 'contract_yang_binghe') {{
             $redact = fn ($r) => collect((array)$r)->reject(fn ($v, $k) => preg_match('/phone|email|address|token|password|secret|line_?id|^name$|content|comment|feedback|remark|memo/i', (string)$k))->all();
