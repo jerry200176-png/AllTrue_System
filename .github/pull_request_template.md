@@ -50,6 +50,12 @@ Release-Impact: user-visible
 
 > **Golden**：無需人工勾選。CI job **Golden scenarios report** 會依 diff 對應 §0–§4；見 [`docs/QA_GOLDEN_SCENARIOS.md`](../docs/QA_GOLDEN_SCENARIOS.md)。
 
+## 防再犯（fix 必填；見 docs/AI_REGRESSION_LESSONS.md §復發家族）
+<!-- 修系統，不只修這一筆。沒有就寫「N/A — 原因」。 -->
+- **復發家族**：F1～F10 哪一個？（新類型請在該節新增一列）
+- **為什麼測試／lint 沒抓到**：
+- **這次加的「整類」防護**：共用權威（改哪個函式讓所有畫面讀它）／lint 或 CI 檢查／一致性或 revert 會 fail 的測試
+
 ## Migration Compatibility（有 DB migration 時必填）
 <!-- 見 docs/RULE_MIGRATION_COMPAT.md -->
 - **Phase**: Expand / Backfill / Contract / Simple Add / N/A
