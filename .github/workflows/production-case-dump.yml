@@ -429,26 +429,30 @@ jobs:
                 return $r;
               }});
               $classIds = $classes->pluck('ID')->map(fn ($id) => (int)$id)->all();
-              $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)->whereDate('IssueDate', '>=', '2026-06-01')->orderBy('id')
+              $invoices = $db::table('Invoice')->whereIn('StudentID', $studentIds)->where(fn ($q) => $q->whereDate('IssueDate', '>=', '2026-06-01')->orWhere('billing_period', '>=', '2026-06'))->orderBy('id')
                 ->get(['id', 'StudentID', 'StudentClassID', 'IssueDate', 'Status', 'TotalAmount', 'PaidAmount', 'ScheduleModeAtIssue', 'billing_period']);
               $items = $invoices->isEmpty() ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoices->pluck('id')->all())
                 ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount']);
               // Session window covers every matched invoice period (item ranges and billing_period months).
+              $windowStart = '2026-06-01';
               $windowEnd = now()->addDays(60)->toDateString();
               foreach ($items as $it) {{ if ($it->PeriodEnd && (string)$it->PeriodEnd > $windowEnd) {{ $windowEnd = substr((string)$it->PeriodEnd, 0, 10); }} }}
+              foreach ($items as $it) {{ if ($it->PeriodStart && substr((string)$it->PeriodStart, 0, 10) < $windowStart) {{ $windowStart = substr((string)$it->PeriodStart, 0, 10); }} }}
               foreach ($invoices as $inv) {{
                 if ($inv->billing_period && preg_match('/^\d{{4}}-\d{{2}}$/', (string)$inv->billing_period)) {{
                   $periodEnd = \Carbon\Carbon::parse($inv->billing_period . '-01')->endOfMonth()->toDateString();
                   if ($periodEnd > $windowEnd) {{ $windowEnd = $periodEnd; }}
+                  $periodStart = $inv->billing_period . '-01';
+                  if ($periodStart < $windowStart) {{ $windowStart = $periodStart; }}
                 }}
               }}
               $sessions = $classIds === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $classIds)
-                ->whereBetween('SessionDate', ['2026-06-01', $windowEnd])
+                ->whereBetween('SessionDate', [$windowStart, $windowEnd])
                 ->selectRaw("StudentClassID as class_id, DATE_FORMAT(SessionDate, '%Y-%m') as month, Status as status, COUNT(*) as n, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date")
                 ->groupBy('StudentClassID', 'month', 'Status')->orderBy('StudentClassID')->orderBy('month')->get();
               $out['student_ids'] = $studentIds;
               $out['student_campus'] = $db::table('Student')->whereIn('id', $studentIds)->pluck('CampusID', 'id')->all();
-              $out['session_window'] = ['2026-06-01', $windowEnd];
+              $out['session_window'] = [$windowStart, $windowEnd];
               $out['classes'] = $classes->map(fn ($r) => (array)$r)->values()->all();
               $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
               $out['invoice_items'] = $items->map(fn ($r) => (array)$r)->values()->all();
