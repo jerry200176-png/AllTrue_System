@@ -478,6 +478,7 @@ class SwipeRfidController extends Controller
         $lineIds = $notifyType !== null && LineNotifySettings::enabled($campusId, $notifyType)
             ? StudentLineBinding::query()->where('student_id', $student->getKey())
                 ->whereNotNull('verified_at')
+                ->where('campus_id', $campusId) // 只給本分校頻道的綁定（轉校殘留／舊資料不外流給讀卡機）
                 ->pluck('line_user_id')
                 ->values()
                 ->all()

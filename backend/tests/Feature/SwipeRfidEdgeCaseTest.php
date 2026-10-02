@@ -375,6 +375,7 @@ class SwipeRfidEdgeCaseTest extends TestCase
         $student = $this->makeStudent();
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Uverified', 'campus_id' => $this->campus->id, 'verified_at' => now()]);
         StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'Upending', 'campus_id' => $this->campus->id]);
+        StudentLineBinding::create(['student_id' => $student->id, 'line_user_id' => 'UotherCampus', 'campus_id' => $this->campus->id + 100, 'verified_at' => now()]);
 
         LineNotifySettings::set($this->campus->id, ['swipe_in' => true, 'swipe_out' => false]);
         $this->swipe($student->RFID)
