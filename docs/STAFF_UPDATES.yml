@@ -3,6 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-03-awaiting-reporter-timeout
+    published_at: "2026-10-03"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報問題逾期未回覆會先結案
+    summary: 如果我們問你問題後超過兩週沒回覆，會先結案；你直接在那筆回報留言就會自動重開。
+    items:
+      - category: improved
+        text: 回報問題：如果我們問你問題後超過兩週沒回覆，會先結案；你直接在那筆回報留言就會自動重開。
+    source_refs:
+      - "alltrue:inapp_rootcause_v2:F11-a"
   - id: staff-2026-10-02-teacher-home-speed
     published_at: "2026-10-02"
     audiences:

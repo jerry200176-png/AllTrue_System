@@ -14,6 +14,8 @@
 | 7 days after verified resolve and public staff ask-to-retest, no reporter reply since resolve, no regression signal | Eligible for individually reviewed `closed_by_timeout` |
 | Reporter replied after resolve, including same-second timestamp | **Excluded** from timeout; investigate the reply |
 | No recent public staff ask-to-retest, or ask newer than 7 days | **Excluded** from timeout |
+| `triaged`, latest public comment is staff's and >= 14 days old, no reporter reply after it (internal notes ignored) | Eligible (same `--reviewed-ids` gate, listed as `[awaiting_reporter]`): public comment `超過 14 天沒收到回覆，先結案。直接在這裡回覆就會重開。` then `closed` with note `closed_by_timeout — awaiting reporter reply 14 days` |
+| Reporter adds a public comment on a `closed_by_timeout` bug | Reopened to `triaged` (note `reopened_by_reporter_reply`); staff/super_admin comments and reporter-verified closes never reopen |
 | Reporter says still broken | `in_progress` via reporter-verify |
 | Resolved without `[resolution_evidence]` **or** valid append-only production evidence | **Excluded** from timeout (do not auto-close) |
 

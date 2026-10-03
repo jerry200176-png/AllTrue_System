@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.10.03",
+    "date": "2026-10-03",
+    "title": "2026.10.03 草稿（未發布）",
+    "summary": "reports awaiting the reporter close after 14 days; reporter reply reopens",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "reports awaiting the reporter close after 14 days; reporter reply reopens"
+        ]
+      }
+    ],
+    "items": [
+      "reports awaiting the reporter close after 14 days; reporter reply reopens"
+    ]
+  },
+  {
     "version": "2026.10.02",
     "date": "2026-10-02",
     "title": "2026.10.02 草稿（未發布）",
@@ -651,57 +673,6 @@ export const changelogDraftNotes = [
       "正職薪資要件的提示更清楚",
       "分校健康看板在手機更容易查看",
       "教室管理在手機更容易操作"
-    ]
-  },
-  {
-    "version": "2026.09.12",
-    "date": "2026-09-12",
-    "title": "2026.09.12 草稿（未發布）",
-    "summary": "輔導課可延續不收費的下一期；重複續報會說明下一步",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "輔導課可延續不收費的下一期"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "重複續報會說明下一步",
-          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
-          "手機直向可送出意見與建議",
-          "舊評量儲存回應的學生欄位一致",
-          "減少未收款堂數先預覽再同步取消超額預排",
-          "主任從今日待辦進入課務後可返回"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "手機點名操作與輔導課單價說明",
-          "首屏先呈現今日待辦",
-          "老師評量頁先呈現待辦訊號",
-          "重疊警示與結束課程操作更好懂",
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "個人資料控制項在手機更容易操作"
-        ]
-      }
-    ],
-    "items": [
-      "輔導課可延續不收費的下一期",
-      "重複續報會說明下一步",
-      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
-      "手機直向可送出意見與建議",
-      "舊評量儲存回應的學生欄位一致",
-      "減少未收款堂數先預覽再同步取消超額預排",
-      "主任從今日待辦進入課務後可返回",
-      "手機點名操作與輔導課單價說明"
     ]
   }
 ];

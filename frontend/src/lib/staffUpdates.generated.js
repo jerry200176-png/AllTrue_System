@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-03-awaiting-reporter-timeout",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "回報問題逾期未回覆會先結案",
+    "summary": "如果我們問你問題後超過兩週沒回覆，會先結案；你直接在那筆回報留言就會自動重開。",
+    "items": [
+      "回報問題：如果我們問你問題後超過兩週沒回覆，會先結案；你直接在那筆回報留言就會自動重開。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "回報問題：如果我們問你問題後超過兩週沒回覆，會先結案；你直接在那筆回報留言就會自動重開。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:inapp_rootcause_v2:F11-a"
+    ],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-02-used-up-course-seat",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,

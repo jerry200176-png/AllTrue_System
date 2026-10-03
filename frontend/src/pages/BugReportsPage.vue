@@ -369,7 +369,7 @@
             <div class="resolution-content">
               <strong>已關閉</strong>
               <span v-if="resolutionNote" class="resolution-note">{{ resolutionNote }}</span>
-              <span v-else class="resolution-note resolution-note--empty">此問題已關閉，如需重新開啟請聯繫管理員。</span>
+              <span v-else class="resolution-note resolution-note--empty">此問題已關閉，如需重新開啟請聯繫管理員；若是因逾期未回覆而結案，直接在下方留言即可重開。</span>
             </div>
           </div>
 
@@ -724,6 +724,9 @@ const resolutionNote = computed(() => {
   const log = [...detail.value.status_logs]
     .reverse()
     .find(l => terminal.includes(l.to_status));
+  if (log?.to_status === 'closed' && String(log.note || '').includes('closed_by_timeout')) {
+    return '因逾期未回覆而結案；直接在下方留言即可重開。';
+  }
   return statusLogDisplayNote(log);
 });
 
@@ -983,6 +986,7 @@ async function doAddComment() {
     newComment.value = '';
     commentIsInternal.value = false;
     await selectBug(activeBug.value);
+    loadBugs();
   } catch (e) {
     actionFeedback.value = { tone: 'error', text: '留言失敗：' + e.message };
   }

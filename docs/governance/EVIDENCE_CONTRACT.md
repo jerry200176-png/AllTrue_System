@@ -49,6 +49,12 @@ After `resolved` + public ask-to-retest:
 - Excludes resolves lacking `[resolution_evidence]` (legacy / unverified).  
 - If reporter reports still broken: reopen to `in_progress` (do not game close).
 
+### Awaiting-reporter timeout (`triaged`)
+
+- Applies to `triaged` bugs whose latest **non-internal** comment is a staff question (author is not the reporter), at least **14 calendar days** old, with no reporter reply after it. The 14 days is a fixed constant (`AWAITING_REPORTER_TIMEOUT_DAYS`), independent of the workflow/command `--days`.
+- Same individually reviewed apply (`--reviewed-ids`) as above. The public comment and the `closed` status (note `closed_by_timeout — awaiting reporter reply 14 days`) commit atomically after an eligibility recheck.
+- Reopen: a reporter's public comment on a `closed_by_timeout` bug moves an awaiting-timeout closure to `triaged` and a resolved-timeout closure to `in_progress` (note `reopened_by_reporter_reply`). Staff comments and reporter-verified closes never reopen.
+
 ## Independent verification
 
 Prefer a second agent/role assuming the fix is wrong before merge of high-risk changes. Same-session self-check is Partial only.
