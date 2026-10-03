@@ -140,6 +140,11 @@ DANGEROUS = [
     "bash -x scripts/post-merge-smoke.sh",
     "gh pr merge 123 --squash --admin",
     'printf "%s" "$(<.env)"',
+    'echo "$(<backend/.env)"',
+    "printf '%s' \"$(cat backend/.env)\"",
+    'chmod +x "$(bash scripts/post-merge-smoke.sh)"',
+    "gh pr merge 123 -m '--admin'",
+    "bash " + " ".join(f"s{i}.sh" for i in range(25)),
     "<" + "a" * 60000,  # over the length cap: deny instead of a slow scan that times out (= allow)
     "echo $(< backend/.env)",
     "python3 script.py < .env",

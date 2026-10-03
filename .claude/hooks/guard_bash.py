@@ -46,7 +46,7 @@ GAP = rf"(?:(?!{SEP}).)*?"
 # One alternative per token, so there is only one way to match a prefix run
 # (overlapping alternatives backtrack exponentially and time the hook out = allow).
 _PREFIX = r"(?:\b(?:sudo|env|command|exec|time|nice|nohup|[^\s=;&|]+=\S*)\s+)*"
-ANCHOR = rf"(?:^|{SEP}|\bthen\b)\s*{_PREFIX}"
+ANCHOR = rf"(?:^|{SEP}|\bthen\b|\$\(|`)\s*{_PREFIX}"
 
 # bash/sh/zsh/dash -c "..." / -lc '...' wrapper: extracts the quoted payload
 # so it can be re-checked as its own command, since ANCHOR-based patterns
@@ -188,8 +188,8 @@ def check_git_patterns(cmd: str) -> None:
         deny("Blocked: push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
 
     # 2c. admin merge bypasses required checks (AGENTS.md machine ban on --admin)
-    if re.search(rf"\bgh\b{GAP}\bpr\b{GAP}\bmerge\b{GAP}--admin\b", cmd):
-        deny("Blocked: gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
+    # (checked on the raw command in check_all: for gh pr merge, -m is the merge
+    # strategy, so its "value" is not inert text)
 
     # 3. git reset --hard
     if re.search(rf"\bgit\b{GAP}\breset\b{GAP}--hard\b", cmd):
@@ -306,9 +306,13 @@ def _script_targets_pi(cmd: str) -> bool:
     toks = []
     for seg in re.split(SEP, cmd):
         words = seg.split()
-        if words and (words[0] in viewers or re.match(r"(?:bash|sh|zsh)\s+-n\b", seg.strip())):
+        if words and not _SUBST_RE.search(seg) and (
+                words[0] in viewers or re.match(r"(?:bash|sh|zsh)\s+-n\b", seg.strip())):
             continue
         toks += re.findall(r"[\w./-]+\.(?:sh|bash)\b", seg)
+    toks = list(dict.fromkeys(toks))
+    if len(toks) > 20:
+        return True  # too many to read inside the hook timeout; fail closed
     for tok in toks:
         try:
             with open(tok, encoding="utf-8", errors="ignore") as fh:
@@ -341,6 +345,8 @@ def check_file_flags(cmd: str) -> None:
 
 
 def check_all(cmd: str, depth: int = 0) -> None:
+    if re.search(rf"\bgh\b{GAP}\bpr\b{GAP}\bmerge\b{GAP}--admin\b", cmd):
+        deny("Blocked: gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
     scan_cmd = _strip_non_executed_text(cmd)
     check_git_patterns(scan_cmd)
     check_deploy_patterns(scan_cmd)
