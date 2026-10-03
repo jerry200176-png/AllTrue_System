@@ -179,4 +179,11 @@ class BillingCourseStatusResolverTest extends TestCase
         $this->assertSame('review_required', $member(false)['status']);
         $this->assertSame('paid', $member(true)['status']);
     }
+
+    public function test_zero_charge_positive_rate_legacy_course_is_review_required(): void
+    {
+        foreach ([0, 1] as $paid) {
+            $this->assertSame('review_required', $this->resolve($this->course([], ['Charge' => 0, 'Rate' => 1500, 'Paid' => $paid]))['status']);
+        }
+    }
 }

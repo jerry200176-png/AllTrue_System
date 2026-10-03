@@ -84,11 +84,11 @@ class BillingPayableResolver
             'outstanding' => max(0, $total - $applied), 'overpaid' => $overpaid,
             'periods' => $periods, 'source' => $source, 'current_invoice_id' => $invoiceId,
         ];
-        $charge = max(0, (int) ($course?->getAttribute('Charge') ?? 0));
+        $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
         $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);
-        $tutoring = strtolower(trim((string) ($course?->getAttribute('ClassType') ?? ''))) === 'tutoring';
+        $tutoring = strtolower(trim((string) ($course->getAttribute('ClassType') ?? ''))) === 'tutoring';
         $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
-        $zeroFee = !$isPackageMember && $charge <= 0 && (float) ($course?->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
+        $zeroFee = !$isPackageMember && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
         if ($tutoring || $zeroFee) {
             return $result('free', 0, 0, 0, [], 'none', null);
         }
@@ -104,11 +104,12 @@ class BillingPayableResolver
         }
         if ($invoices->isEmpty()) {
             // Legacy rule: the Paid flag (or paid package) counts only while no non-void invoice exists.
-            if ($course->isEffectivelyPaid()) {
+            if ($course->isEffectivelyPaid() && ($charge > 0 || $isPackageMember)) {
                 return $result('paid', $charge, $charge, 0, [], 'legacy_flag', null);
             }
-            // Package members carry Charge 0; the amount authority is the package (S3), so do not report 0 outstanding.
-            if ($isPackageMember && $charge <= 0) {
+            // Charge 0 yet not free: package members (amount authority is the package, S3) or a positive Rate
+            // with an empty Charge column. Never report a settled/zero balance for that shape.
+            if ($charge <= 0) {
                 return $result('review_required', 0, 0, 0, [], 'none', null);
             }
 

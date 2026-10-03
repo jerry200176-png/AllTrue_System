@@ -665,5 +665,5 @@ exemptions:
 
   - id: silent-2026-10-03-f7-s1-resolver
     changelog_date: "2026-10-03"
-    changelog_title: "fix(billing): F7 S1 resolver contract; void receipts of mixed encodings no longer cancel"
+    changelog_title: "fix(billing): paid-status resolver contract; mixed void receipts no longer cancel"
     reason: 新方法尚無呼叫端；沖銷加總只影響同一發票同時含負數列與 Method=void 正數列的罕見資料，畫面無新增功能。
