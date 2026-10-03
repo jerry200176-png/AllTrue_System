@@ -857,7 +857,7 @@ defineExpose({ setError });
   .stp-cap-tag__short { display: inline; }
 }
 .stp-pick {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -899,7 +899,7 @@ defineExpose({ setError });
 .stp-empty__cta {
   margin-top: 10px;
   background: transparent;
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   border: 1px solid rgba(245, 124, 0, 0.4);
   border-radius: 8px;
   padding: 6px 14px;

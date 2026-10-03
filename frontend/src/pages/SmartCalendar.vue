@@ -2807,7 +2807,7 @@ onMounted(() => {
   text-align: center;
   padding: 8px 16px;
   background: var(--ds-primary-wash, var(--ds-primary-wash));
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 0.85rem;
   font-weight: 500;
   border-radius: 8px;
@@ -2894,7 +2894,7 @@ onMounted(() => {
 .smart-cal-heading-copy { min-width: 0; }
 .smart-cal-kicker {
   margin: 0 0 4px;
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -2992,7 +2992,7 @@ onMounted(() => {
 }
 .view-tabs button.active {
   background: var(--ds-canvas);
-  color: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-primary-text);
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .smart-cal-toolbar {
@@ -3238,7 +3238,7 @@ onMounted(() => {
   gap: 6px;
   background: var(--ds-primary-wash, var(--ds-warning-wash));
   border: 1px solid color-mix(in srgb, var(--ds-primary-deep, var(--ds-primary)) 30%, var(--ds-canvas));
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   cursor: pointer;
 }
 .toolbar-teacher-leave-btn:hover {
@@ -3946,10 +3946,10 @@ onMounted(() => {
   box-shadow: 0 -3px 0 var(--ds-ink-mute) inset;
 }
 .day-col-today .day-col-name {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
 .day-col-today .day-col-date {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 .day-col-name {

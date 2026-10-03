@@ -79,7 +79,7 @@ const subjectLabel = computed(() => getSubjectLabel(props.subject));
 .slot-time { color: var(--text); font-weight: 500; }
 .slot-capacity { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; }
 .slot-capacity.cap-free { background: var(--ds-success-wash); color: var(--ds-success); }
-.slot-capacity.cap-partial { background: var(--ds-warning-wash); color: var(--ds-primary); }
+.slot-capacity.cap-partial { background: var(--ds-warning-wash); color: var(--ds-primary-text); }
 .slot-students { font-size: 11px; color: var(--text-light); flex-basis: 100%; }
 .slot-has-students { background: var(--ds-warning-wash); }
 </style>

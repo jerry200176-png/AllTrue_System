@@ -442,7 +442,7 @@ onMounted(() => { load(); loadStats(); });
   align-items: center;
   justify-content: center;
   background: var(--ds-primary-wash);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-weight: var(--ds-font-weight-bold);
   font-size: var(--ds-font-size-sm);
   flex-shrink: 0;

@@ -2841,7 +2841,7 @@ async function submit() {
   align-items: center;
   gap: 3px;
 }
-.slot-teacher-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+.slot-teacher-add-btn:hover { border-color: var(--primary); color: var(--ds-primary-text); }
 .slot-teacher-picker {
   grid-column: 2 / -1;
   display: flex;
@@ -3359,7 +3359,7 @@ async function submit() {
   color: var(--ds-canvas);
 }
 .usw-stepper-item.is-active {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
 .usw-stepper-separator {
   flex: 0 0 24px;
@@ -3416,7 +3416,7 @@ async function submit() {
   justify-content: center;
   border-radius: 12px;
   background: var(--ds-primary-wash, var(--ds-primary-wash));
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
 .usw-type-card--package .usw-type-card-icon {
   background: var(--ds-success-wash);
@@ -3651,7 +3651,7 @@ async function submit() {
 }
 .pkg-add-btn:hover {
   border-color: var(--ds-primary, var(--ds-primary));
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
 
 /* --- Package calendar --- */
@@ -3723,9 +3723,9 @@ async function submit() {
 }
 .pkg-summary-total {
   background: var(--ds-primary-wash, var(--ds-primary-wash));
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
-.pkg-summary-total .pkg-summary-num { color: var(--ds-primary-deep, var(--ds-primary)); }
+.pkg-summary-total .pkg-summary-num { color: var(--ds-primary-text); }
 .pkg-summary-used {
   background: var(--ds-success-wash);
   color: var(--ds-success);

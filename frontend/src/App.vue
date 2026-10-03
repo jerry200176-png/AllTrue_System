@@ -3268,7 +3268,7 @@ function formatBuildTime(rawIso) {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: var(--accent);
+  color: var(--ds-primary-text);
   margin-bottom: 6px;
 }
 
@@ -3774,7 +3774,7 @@ function formatBuildTime(rawIso) {
 .dashboard-return-button:hover,
 .dashboard-return-button:focus-visible {
   border-color: var(--ds-primary);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
 }
 
 .account-menu {
@@ -4111,7 +4111,7 @@ function formatBuildTime(rawIso) {
 }
 
 .guide-tour-mission-label {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -4161,7 +4161,7 @@ function formatBuildTime(rawIso) {
 
 .guide-tour-objective > .material-symbols-outlined {
   flex: 0 0 auto;
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 17px;
 }
 
@@ -4265,7 +4265,7 @@ function formatBuildTime(rawIso) {
   padding: 3px 9px;
   border-radius: 999px;
   background: var(--ds-primary-wash);
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -4307,7 +4307,7 @@ function formatBuildTime(rawIso) {
 }
 
 .onboarding-launch-rank-head .material-symbols-outlined {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 18px;
 }
 
@@ -4342,7 +4342,7 @@ function formatBuildTime(rawIso) {
 
 .onboarding-launch-progress-head strong,
 .guide-tour-checklist-head strong {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
 
 .onboarding-launch-checklist,
@@ -4373,13 +4373,13 @@ function formatBuildTime(rawIso) {
 
 .onboarding-launch-checklist li.is-done,
 .guide-tour-checklist li.is-done {
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
 
 .onboarding-check-icon,
 .guide-tour-checklist .material-symbols-outlined {
   flex: 0 0 auto;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-size: 17px;
 }
 
@@ -4811,7 +4811,7 @@ function formatBuildTime(rawIso) {
 
 .update-banner-btn {
   background: var(--ds-canvas);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   border: none;
   border-radius: 6px;
   padding: 5px 16px;

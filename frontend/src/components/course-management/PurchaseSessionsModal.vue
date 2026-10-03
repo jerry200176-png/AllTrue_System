@@ -114,7 +114,7 @@ const packageNote = computed(() => {
   width: 42px;
   height: 42px;
   border-radius: 16px;
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash, var(--ds-primary-wash));
   border: 1px solid rgba(245, 124, 0, 0.3);
   box-shadow: 0 10px 26px rgba(245,124,0,0.18);
@@ -124,7 +124,7 @@ const packageNote = computed(() => {
 .package-op-toggle { display: flex; gap: 6px; margin: 0 0 14px; padding: 4px; background: var(--ds-canvas-soft, var(--ds-canvas-soft)); border: 1px solid var(--ds-hairline, var(--ds-hairline)); border-radius: 12px; }
 .package-op-btn { flex: 1; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-light, var(--ds-ink-mute)); font-size: 13px; font-weight: 700; cursor: pointer; transition: var(--transition, all 0.2s ease); }
 .package-op-btn:hover:not(.active):not(:disabled) { color: var(--text, var(--ds-ink)); }
-.package-op-btn.active { background: var(--card-bg, var(--ds-canvas)); color: var(--primary, var(--ds-ink-mute)); box-shadow: var(--ds-shadow-1, 0 1px 3px rgba(0,55,112,0.08)); }
+.package-op-btn.active { background: var(--card-bg, var(--ds-canvas)); color: var(--ds-primary-text); box-shadow: var(--ds-shadow-1, 0 1px 3px rgba(0,55,112,0.08)); }
 .package-op-btn:disabled { cursor: not-allowed; opacity: 0.6; }
 .field-hint { display: block; margin-top: 6px; color: var(--text-light, var(--ds-ink-mute)); font-size: 12px; }
 .modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; }

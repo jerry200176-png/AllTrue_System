@@ -243,7 +243,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
 }
 
 .ss-option.selected {
-  color: var(--primary, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 

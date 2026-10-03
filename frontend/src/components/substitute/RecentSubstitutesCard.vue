@@ -354,7 +354,7 @@ defineExpose({ reload: load });
   background: rgba(245, 124, 0, 0.08);
   border: 1px solid rgba(245, 124, 0, 0.18);
   border-radius: 999px;
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;

@@ -114,7 +114,7 @@ function handleSubmit() {
   padding: 10px 14px; margin: 12px 0;
 }
 .existing-session-hint { color: var(--text-light); font-size: 12px; margin: 4px 0 0; line-height: 1.5; }
-.conflict-msg { color: var(--ds-primary); font-size: 13px; font-weight: 600; margin: 0 0 6px; line-height: 1.5; }
+.conflict-msg { color: var(--ds-primary-text); font-size: 13px; font-weight: 600; margin: 0 0 6px; line-height: 1.5; }
 .conflict-actions { margin: 0; padding-left: 18px; color: var(--ds-danger); font-size: 12px; line-height: 1.6; }
 .conflict-retry { margin-top: 8px; }
 .package-planning-message { color: var(--ds-warning); font-size: 12px; margin: 0; line-height: 1.5; }

@@ -409,7 +409,7 @@ input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; bor
 .admission-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 0; padding: 14px; background: var(--ds-canvas-soft); border-radius: var(--ds-radius-md); } .admission-meta div { display: grid; gap: 2px; } .admission-meta dt { font-size: 12px; color: var(--ds-ink-mute); } .admission-meta dd { margin: 0; font-weight: 600; }
 .admission-owner-panel { margin-top: 4px; } .admission-history { margin-top: 10px; padding: 14px; border: 1px solid var(--ds-hairline); border-radius: var(--ds-radius-lg); background: var(--ds-canvas-soft); } .admission-history h3 { margin-bottom: 10px; font-size: 15px; } .admission-history ol { display: grid; gap: 8px; margin: 0; padding-left: 20px; } .admission-history li { display: flex; justify-content: space-between; gap: 12px; color: var(--ds-ink); font-size: 13px; } .admission-history time { color: var(--ds-ink-mute); font-size: 12px; white-space: nowrap; }
 .admission-note { margin: 0; padding: 12px; background: var(--ds-primary-wash); border-radius: var(--ds-radius-md); font-size: 13px; } .admission-workflow { display: grid; gap: 14px; } .admission-panel { display: grid; gap: 10px; padding: 16px; box-shadow: none; } .admission-panel h3 { font-size: 15px; margin: 0; } .admission-mini-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-.admission-empty, .admission-loading { display: grid; justify-items: center; gap: 14px; padding: 48px 24px; text-align: center; color: var(--ds-ink-mute); } .admission-empty.compact { padding: 18px; border: 1px dashed var(--ds-hairline); border-radius: var(--ds-radius-md); display: flex; align-items: center; gap: 10px; text-align: left; } .admission-empty .material-symbols-outlined { font-size: 48px; color: var(--ds-primary); }
+.admission-empty, .admission-loading { display: grid; justify-items: center; gap: 14px; padding: 48px 24px; text-align: center; color: var(--ds-ink-mute); } .admission-empty.compact { padding: 18px; border: 1px dashed var(--ds-hairline); border-radius: var(--ds-radius-md); display: flex; align-items: center; gap: 10px; text-align: left; } .admission-empty .material-symbols-outlined { font-size: 48px; color: var(--ds-primary-text); }
 .admission-skeleton { display: grid; gap: 12px; margin-bottom: 20px; } .admission-skeleton-row { height: 64px; border-radius: var(--ds-radius-md); background: linear-gradient(90deg, var(--ds-surface-0), var(--ds-primary-wash), var(--ds-surface-0)); background-size: 200% 100%; animation: admission-shimmer 1.2s ease-in-out infinite; }
 @keyframes admission-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 
@@ -467,7 +467,7 @@ input, select, textarea { width: 100%; min-height: 44px; padding: 10px 12px; bor
 }
 .admission-page .at-btn.admission-button.at-btn--secondary {
   background: var(--ds-canvas);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   border-color: var(--ds-primary);
 }
 .admission-page .at-btn.admission-button.at-btn--danger {

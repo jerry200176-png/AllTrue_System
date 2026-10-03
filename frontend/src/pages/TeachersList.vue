@@ -2097,7 +2097,7 @@ button.small.danger {
 .branch-chip.selected {
   border-color: var(--primary);
   background: var(--primary-bg);
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-weight: 700;
 }
 .branch-chip.disabled {
@@ -2173,7 +2173,7 @@ button.small.danger {
 .chip-check {
   font-size: 12px;
   width: 14px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 

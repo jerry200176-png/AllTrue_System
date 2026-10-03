@@ -2548,7 +2548,7 @@ watch(() => props.branchId, () => {
   border: 1px solid var(--ds-hairline);
   background: var(--ds-canvas);
 }
-.att-snapshot-eyebrow { margin: 0 0 3px; color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; }
+.att-snapshot-eyebrow { margin: 0 0 3px; color: var(--ds-primary-text); font-size: 12px; font-weight: 700; }
 .att-teacher-snapshot h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }
 .att-snapshot-copy { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.5; }
 .att-snapshot-copy strong { color: var(--ds-ink); font-variant-numeric: tabular-nums; }
@@ -2588,7 +2588,7 @@ watch(() => props.branchId, () => {
 }
 .att-workspace-eyebrow {
   margin: 0 0 3px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -2630,7 +2630,7 @@ watch(() => props.branchId, () => {
   font-weight: 700;
   list-style-position: inside;
 }
-.att-secondary-summary > summary::marker { color: var(--ds-primary); }
+.att-secondary-summary > summary::marker { color: var(--ds-primary-text); }
 .att-secondary-summary > summary span {
   color: var(--ds-ink-mute);
   font-size: 12px;
@@ -2647,7 +2647,7 @@ watch(() => props.branchId, () => {
 
 /* Section */
 .att-section-title {
-  font-size: 15px; font-weight: 700; color: var(--primary);
+  font-size: 15px; font-weight: 700; color: var(--ds-primary-text);
   letter-spacing: 0.3px;
 }
 .att-checkin-header {
@@ -2865,7 +2865,7 @@ watch(() => props.branchId, () => {
   margin-top: 16px; border-top: 1px solid rgba(148,163,184,0.15); padding-top: 12px;
 }
 .att-manual-toggle {
-  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--primary);
+  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ds-primary-text);
   padding: 6px 0; user-select: none;
 }
 .att-manual-toggle:hover { text-decoration: underline; }
@@ -2886,7 +2886,7 @@ watch(() => props.branchId, () => {
 .att-search-input { width: 150px; padding: 7px 12px; font-size: 13px; }
 .att-filter-select { width: 100px; padding: 7px 10px; font-size: 13px; }
 .att-date-input { width: 140px; padding: 7px 10px; font-size: 13px; }
-.att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--ds-primary); background: var(--ds-canvas-soft); border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
+.att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--ds-primary-text); background: var(--ds-canvas-soft); border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
 .att-mode-toggle { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--ds-hairline); }
 .att-mode-btn { padding: 5px 12px; font-size: 12px; font-weight: 600; border: none; background: var(--ds-canvas); color: var(--text-light); cursor: pointer; transition: all 0.15s; border-right: 1px solid var(--ds-hairline); }
 .att-mode-btn:last-child { border-right: none; }
@@ -2907,7 +2907,7 @@ watch(() => props.branchId, () => {
 .att-inline-edit .att-status-select { font-size: 12px; padding: 2px 4px; }
 
 /* Tags */
-.status-tag.excused, .status-tag.leave { background: var(--ds-canvas-soft); color: var(--ds-primary); }
+.status-tag.excused, .status-tag.leave { background: var(--ds-canvas-soft); color: var(--ds-primary-text); }
 .status-tag.rejected { background: var(--danger-bg); color: var(--danger); }
 .att-self-study-tag { background: var(--ds-warning-wash); color: var(--ds-warning); border: 1px solid var(--ds-warning); }
 
@@ -3195,7 +3195,7 @@ watch(() => props.branchId, () => {
 }
 .att-report-badge-acknowledged {
   background: var(--ds-canvas-soft);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   border-color: var(--ds-hairline);
 }
 .att-report-badge-resolved {
@@ -3226,7 +3226,7 @@ watch(() => props.branchId, () => {
   margin-left: auto;
   background: none;
   border: 0;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -3234,7 +3234,7 @@ watch(() => props.branchId, () => {
   min-height: 44px;
   text-decoration: underline;
 }
-.att-missing-link:hover { color: var(--ds-primary); }
+.att-missing-link:hover { color: var(--ds-primary-text); }
 
 /* Toast */
 .sd-toast {

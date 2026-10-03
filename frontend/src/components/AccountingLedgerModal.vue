@@ -423,7 +423,7 @@ const anomalyLabel = (code) => labelMap({
 .ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}
 .ledger-modal{width:min(920px,96vw);height:100vh;overflow:auto;background:var(--surface,var(--ds-canvas));color:var(--text,var(--ds-ink));box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:20px 22px 32px}
 .ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:14px}
-.ledger-eyebrow{margin:0 0 4px;color:var(--primary,var(--ds-ink-mute));font-size:12px;font-weight:800;letter-spacing:.08em}
+.ledger-eyebrow{margin:0 0 4px;color:var(--ds-primary-text);font-size:12px;font-weight:800;letter-spacing:.08em}
 .ledger-header h3{margin:0;font-size:22px}
 .ledger-subtitle{margin:6px 0 0;color:var(--text-light,var(--ds-ink-mute));font-size:13px}
 .ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,var(--ds-ink-mute))}
@@ -440,7 +440,7 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-section{margin-top:18px}
 .ledger-section h4{margin:0 0 8px;font-size:14px}
-.ledger-more{margin-top:8px;border:0;background:transparent;color:var(--primary,var(--ds-info));font-size:13px;font-weight:600;cursor:pointer;padding:0}
+.ledger-more{margin-top:8px;border:0;background:transparent;color:var(--ds-primary-text);font-size:13px;font-weight:600;cursor:pointer;padding:0}
 .ledger-table-wrap{overflow-x:auto}
 .ledger-table{width:100%;border-collapse:collapse;font-size:13px}
 .ledger-table th,.ledger-table td{border-bottom:1px solid var(--ds-canvas-soft);padding:8px 10px;text-align:left;vertical-align:top}

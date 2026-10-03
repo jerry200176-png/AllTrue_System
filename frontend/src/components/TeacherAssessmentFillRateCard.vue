@@ -133,7 +133,7 @@ defineExpose({ reload: load });
 <style scoped>
 .tafr-card { display: flex; flex-direction: column; gap: 14px; }
 .tafr-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.tafr-card__eyebrow { color: var(--ds-primary); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.tafr-card__eyebrow { color: var(--ds-primary-text); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .tafr-card h3 { margin: 3px 0 4px; color: var(--ds-ink); font-size: 16px; }
 .tafr-card p { margin: 0; color: var(--ds-ink-secondary); font-size: 12px; line-height: 1.5; }
 .tafr-period { display: flex; flex-direction: column; gap: 5px; flex: 0 0 auto; color: var(--ds-ink-mute); font-size: 11px; font-weight: 700; }

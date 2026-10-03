@@ -11,6 +11,7 @@ export default defineConfig({
     include: [
       'src/components/**/__tests__/**/*.test.js',
       'src/composables/**/__tests__/**/*.test.js',
+      'src/lib/tokenContrast.test.js',
     ],
     globals: false,
     coverage: {

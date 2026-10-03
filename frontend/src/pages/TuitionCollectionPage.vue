@@ -812,7 +812,7 @@
           <div class="tc-dialog-header">
             <div>
               <h3 id="batch-preview-title" class="tc-dialog-title" style="margin-bottom:2px">
-                <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">fact_check</span>
+                <span class="material-symbols-outlined" style="font-size:22px;color:var(--ds-primary-text)">fact_check</span>
                 送出前確認
               </h3>
               <p id="batch-preview-description" class="tc-dialog-desc">
@@ -923,7 +923,7 @@
       <div v-if="settleDialogOpen" class="tc-overlay" @click.self="settleDialogOpen = false">
         <div class="tc-dialog">
           <h3 class="tc-dialog-title">
-            <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">task_alt</span>
+            <span class="material-symbols-outlined" style="font-size:22px;color:var(--ds-primary-text)">task_alt</span>
             確認結案此課程
           </h3>
           <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤；已繳費與已上課紀錄會保留。</p>
@@ -2683,7 +2683,7 @@ loadAlerts();
 .tc-action-queue > div { display: grid; gap: 2px; }
 .tc-action-queue strong { color: var(--text); }
 .tc-action-queue span { color: var(--text-light); font-size: 12px; }
-.tc-queue-link { border: 0; background: transparent; color: var(--primary); font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tc-queue-link { border: 0; background: transparent; color: var(--ds-primary-text); font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
 
 .tc-cta-btn {
   padding: 8px 20px;
@@ -2700,7 +2700,7 @@ loadAlerts();
 .tc-cta-btn:hover { opacity: 0.9; }
 .tc-cta-btn--ghost {
   background: transparent;
-  color: var(--primary);
+  color: var(--ds-primary-text);
 }
 .tc-cta-btn--ghost:hover {
   background: rgba(37,99,235,0.05);
@@ -2735,7 +2735,7 @@ loadAlerts();
 }
 .tc-tab:hover { color: var(--text); background: var(--bg); }
 .tc-tab--active {
-  color: var(--primary);
+  color: var(--ds-on-brand);
   border-bottom-color: var(--primary);
   background: var(--primary-light, rgba(37,99,235,0.06));
 }
@@ -2904,14 +2904,14 @@ loadAlerts();
   color: var(--text);
   font-weight: 500;
 }
-.tc-btn--csv:hover:not(:disabled) { background: var(--bg); border-color: var(--primary-light); color: var(--primary); }
+.tc-btn--csv:hover:not(:disabled) { background: var(--bg); border-color: var(--primary-light); color: var(--ds-primary-text); }
 .tc-btn--csv:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .tc-btn--batch {
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
-.tc-btn--batch:hover { background: var(--primary-light, rgba(37,99,235,0.08)); border-color: var(--primary); }
+.tc-btn--batch:hover { background: var(--primary-light, rgba(37,99,235,0.08)); border-color: var(--primary); color: var(--ds-on-brand); }
 
 .tc-cell-name { font-weight: 500; }
 .tc-col-check {
@@ -3080,7 +3080,7 @@ loadAlerts();
 .tc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .tc-btn .material-symbols-outlined { font-size: 15px; }
 
-.tc-btn--slip { color: var(--primary); }
+.tc-btn--slip { color: var(--ds-primary-text); }
 .tc-btn--slip:hover:not(:disabled) { background: var(--ds-canvas-soft); border-color: var(--ds-hairline); }
 
 .tc-btn--confirm { color: var(--ds-success); }
@@ -3328,7 +3328,7 @@ loadAlerts();
   background: none;
   border: none;
   padding: 0;
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-size: inherit;
   cursor: pointer;
   text-decoration: underline dotted;
@@ -3368,7 +3368,7 @@ loadAlerts();
   font-size: 18px;
   line-height: 1.25;
 }
-.tc-session-dialog-title .material-symbols-outlined { color: var(--primary); font-size: 20px; }
+.tc-session-dialog-title .material-symbols-outlined { color: var(--ds-primary-text); font-size: 20px; }
 .tc-session-dialog-subtitle { margin-top: 4px; color: var(--text-light); font-size: 13px; }
 :global(.at-dialog__panel.tc-session-dialog .at-dialog__close) { min-width: 44px; min-height: 44px; }
 :global(.tc-session-dialog-action) { min-height: 44px; }

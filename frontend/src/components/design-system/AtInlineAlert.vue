@@ -74,7 +74,7 @@ const icon = computed(() => ({
 .at-inline-alert--info {
   background: var(--ds-info-wash);
   border-color: transparent;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
 }
 .at-inline-alert--success {
   background: var(--ds-success-wash);

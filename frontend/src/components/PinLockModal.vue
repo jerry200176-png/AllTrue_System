@@ -310,7 +310,7 @@ onMounted(loadStatus);
 .pin-lock-head { display: grid; justify-items: center; gap: 6px; text-align: center; }
 .pin-lock-icon {
   font-size: 34px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash, rgba(31, 58, 95, 0.08));
   width: 56px; height: 56px;
   display: grid; place-items: center;
@@ -353,7 +353,7 @@ onMounted(loadStatus);
 
 .pin-lock-link {
   background: none; border: none; cursor: pointer;
-  font-size: 12.5px; color: var(--ds-primary);
+  font-size: 12.5px; color: var(--ds-primary-text);
   text-decoration: underline; padding: 4px;
 }
 .pin-lock-dismiss {
@@ -364,6 +364,6 @@ onMounted(loadStatus);
 }
 
 .pin-lock-loading { display: grid; place-items: center; padding: 18px; }
-.spin { font-size: 30px; color: var(--ds-primary); animation: pinSpin 1s linear infinite; }
+.spin { font-size: 30px; color: var(--ds-primary-text); animation: pinSpin 1s linear infinite; }
 @keyframes pinSpin { to { transform: rotate(360deg); } }
 </style>
