@@ -5906,22 +5906,25 @@ watch(
   },
   { immediate: true },
 );
+const pendingConvertTrialId = ref(0);
+watch(coursesLoading, (loading) => {
+  if (loading || !pendingConvertTrialId.value) return;
+  const trial = courses.value.find((c) => c.id === pendingConvertTrialId.value && c.class_type === 'trial');
+  pendingConvertTrialId.value = 0;
+  if (trial) openPurchaseModal(trial);
+});
 watch(
   () => [props.initialStudentId, props.initialCourseId, props.initialStudentName],
-  async () => {
+  () => {
     const name = String(props.initialStudentName || '').trim();
     const sid = props.initialStudentId;
     if (!name && (sid == null || sid === '')) return;
     if (name) filters.value.name = name.slice(0, 40);
-    const convertTrialId = props.initialCourseIntent === 'convert-trial' ? Number(props.initialCourseId) : 0;
-    const loading = loadCourses(1);
+    // in-app #374: Students sends trial 「轉為正式課程」 here. Consumed by the coursesLoading watcher
+    // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
+    if (props.initialCourseIntent === 'convert-trial') pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
+    loadCourses(1);
     emit('clear-initial-student');
-    // in-app #374: Students page sends trial 「轉為正式課程」 here.
-    if (convertTrialId) {
-      await loading;
-      const trial = courses.value.find((c) => c.id === convertTrialId && c.class_type === 'trial');
-      if (trial) openPurchaseModal(trial);
-    }
   },
   { immediate: true },
 );
