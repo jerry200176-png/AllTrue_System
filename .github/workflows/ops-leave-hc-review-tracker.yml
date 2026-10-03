@@ -22,14 +22,18 @@ concurrency:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   track:
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Evaluate SLA and comment #1342
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,11 +101,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -162,7 +167,7 @@ jobs:
           Path("out/leave-hc-line-delivery.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
           print(data)
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: leave-hc-line-delivery

@@ -16,10 +16,13 @@ concurrency:
 
 permissions:
   contents: read
-  issues: write
+  issues: read
 
 jobs:
   github-open-issues:
+    permissions:
+      contents: read
+      issues: write  # posts audit comments to #1342/#1343
     name: Dump open GitHub Issues (no PRs)
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -58,7 +61,7 @@ jobs:
           done
 
       - name: Upload issues artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: open-issues-dump
           path: out/
@@ -70,11 +73,12 @@ jobs:
     timeout-minutes: 25
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -228,7 +232,7 @@ jobs:
           PY
 
       - name: Upload Pi audit artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: pi-td059-leave-audit
           path: out/
