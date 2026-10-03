@@ -25,6 +25,7 @@ const TEXT_PAIRS = [
   ['ds-primary-text', 'ds-canvas-soft'],
   ['ds-info', 'ds-canvas'],
   ['ds-info', 'ds-canvas-soft'],
+  ['ds-on-brand', 'ds-primary-soft'],
 ];
 
 describe('design token text contrast >= 4.5 (WCAG AA)', () => {
