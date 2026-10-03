@@ -793,7 +793,7 @@
                 </template>
                 <!-- 編輯狀態 -->
                 <div v-else class="att-inline-edit">
-                  <select v-model="record._newStatus" class="att-status-select" aria-label="點名狀態">
+                  <select v-model="record._newStatus" class="att-status-select" :aria-label="`${record.person_name || ''} 點名狀態`.trim()">
                     <option value="present">到班</option>
                     <option value="late">遲到</option>
                     <option value="leave">請假</option>
@@ -869,7 +869,7 @@
               <td>{{ s.subject_name || '—' }}</td>
               <td>{{ s.teacher_name || '—' }}</td>
               <td>
-                <select v-model="makeupMarkStatus[s.class_session_id]" class="att-status-select" aria-label="補登點名狀態">
+                <select v-model="makeupMarkStatus[s.class_session_id]" class="att-status-select" :aria-label="`${s.student_name || ''} 補登點名狀態`.trim()">
                   <option value="present">到班</option>
                   <option value="late">遲到</option>
                   <option v-if="s.session_status === 'scheduled'" value="leave">請假</option>
