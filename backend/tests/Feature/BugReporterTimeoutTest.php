@@ -315,6 +315,27 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_days_option_ignored_and_admin_api_cannot_reopen_closed_to_triaged(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(10));
+
+        $this->artisan('bugs:close-stale-resolved', ['--dry-run' => true, '--days' => 7, '--actor' => $admin->id])
+            ->doesntExpectOutput("bug #{$bug->id} [awaiting_reporter]: would_close")
+            ->assertExitCode(0);
+        $this->assertSame('triaged', $bug->fresh()->status);
+
+        BugReportService::changeStatus($bug->id, $admin->id, 'closed', 'manual');
+        $r = BugReportService::changeStatus($bug->id, $admin->id, 'triaged', 'x');
+        $this->assertSame('invalid_transition', $r['code']);
+        $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($admin), 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$bug->id}/status", ['status' => 'triaged']);
+        $this->assertSame('closed', $bug->fresh()->status);
+
+        Carbon::setTestNow();
+    }
+
     private function tokenFor(User $user): string
     {
         UserCampus::firstOrCreate(['CampusID' => 1, 'UserID' => $user->id], ['Admin' => $user->type === 'S' ? 1 : 0, 'Approved' => 1]);

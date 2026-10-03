@@ -50,7 +50,7 @@ class BugReportService
         'triaged' => ['in_progress', 'closed'],
         'in_progress' => ['resolved', 'closed'],
         'resolved' => ['in_progress', 'closed'],
-        'closed' => ['in_progress', 'triaged'],
+        'closed' => ['in_progress'],
     ];
 
     /** Disposition kinds that normally do not require engineering work. */
@@ -289,6 +289,7 @@ class BugReportService
      *   deploy_run_id?: ?string,
      *   evidence_exception_reason?: ?string,
      *   allow_exception?: bool,
+     *   reopen_by_timeout?: bool,
      *   disposition?: ?string,
      *   github_issue_url?: ?string,
      *   github_pr_url?: ?string,
@@ -310,6 +311,10 @@ class BugReportService
 
         $fromStatus = (string) $bug->getRawOriginal('status');
         $allowed = self::VALID_TRANSITIONS[$fromStatus] ?? [];
+        if ($fromStatus === 'closed' && !empty($options['reopen_by_timeout'])) {
+            // Only reopenIfClosedByTimeout passes this; the admin status API never does.
+            $allowed[] = 'triaged';
+        }
         if (!in_array($newStatus, $allowed, true)) {
             return ['ok' => false, 'code' => 'invalid_transition', 'message' => 'Invalid status transition'];
         }
@@ -910,7 +915,7 @@ class BugReportService
         if ($closeLog && str_contains((string) $closeLog->note, 'closed_by_timeout')) {
             // Resolved-verification timeouts return to in_progress (regression state); awaiting-info ones to triaged.
             $target = str_contains((string) $closeLog->note, 'Evidence Contract') ? 'in_progress' : 'triaged';
-            self::changeStatus($bugId, $reporterId, $target, 'reopened_by_reporter_reply');
+            self::changeStatus($bugId, $reporterId, $target, 'reopened_by_reporter_reply', ['reopen_by_timeout' => true]);
         }
     }
 
