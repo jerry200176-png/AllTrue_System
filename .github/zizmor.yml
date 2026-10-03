@@ -37,6 +37,8 @@ rules:
       - branch-hygiene.yml
       - open-followup-issues.yml
       - release.yml
+      # Fetches a recovery SHA outside main's history; keep auth for that fetch.
+      - security-1124-restore-recovered-uploads.yml
       # Production deploy workflow: deferred to a dedicated reviewed change.
       - deploy.yml
   adhoc-packages:

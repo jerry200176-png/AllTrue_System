@@ -20,6 +20,9 @@ permissions:
 
 jobs:
   github-open-issues:
+    permissions:
+      contents: read
+      issues: write  # posts audit comments to #1342/#1343
     name: Dump open GitHub Issues (no PRs)
     runs-on: ubuntu-latest
     timeout-minutes: 10
