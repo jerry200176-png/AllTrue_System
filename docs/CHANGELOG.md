@@ -1,5 +1,5 @@
 ## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
-<!-- release-notes: staff_update=staff-2026-10-03-trial-convert-atomic -->
+<!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
 - 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。
 
 ## 2026-10-03 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo

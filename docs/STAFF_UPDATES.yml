@@ -3,18 +3,6 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
-  - id: staff-2026-10-03-trial-convert-atomic
-    published_at: "2026-10-03"
-    audiences:
-      - director
-    importance: digest
-    title: 試聽轉正式失敗時不再誤結案
-    summary: 轉正式遇到衝堂或建立失敗時，試聽課程與未來堂次會原樣保留。
-    items:
-      - category: fixed
-        text: 試聽轉正式被衝堂擋下時，試聽課程不會被結案、未來堂次也不會被取消，可直接調整後重試。
-    source_refs:
-      - "alltrue:convert_trial_atomic:20261003"
   - id: staff-2026-10-03-awaiting-reporter-timeout
     published_at: "2026-10-03"
     audiences:
