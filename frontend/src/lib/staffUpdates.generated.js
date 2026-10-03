@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-03-trial-convert-atomic",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "試聽轉正式失敗時不再誤結案",
+    "summary": "轉正式遇到衝堂或建立失敗時，試聽課程與未來堂次會原樣保留。",
+    "items": [
+      "試聽轉正式被衝堂擋下時，試聽課程不會被結案、未來堂次也不會被取消，可直接調整後重試。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "試聽轉正式被衝堂擋下時，試聽課程不會被結案、未來堂次也不會被取消，可直接調整後重試。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:convert_trial_atomic:20261003"
+    ],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-03-awaiting-reporter-timeout",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,
