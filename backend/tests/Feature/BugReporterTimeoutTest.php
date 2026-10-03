@@ -375,6 +375,38 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_logged_close_rerun_and_ship_notice_are_gated_and_recorded(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $issue = 'https://github.com/jerry200176-png/AllTrue_System/issues/1';
+        $sha = 'abcdef1234567';
+
+        // A report closed by another path is not a logged close: rerun refuses, ship notice refuses.
+        $other = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(15));
+        BugReportService::closeByReporterTimeout($other->id, $admin->id);
+        $this->assertSame('closed_otherwise', BugReportService::closeAsLogged($other->id, $admin->id, 'suggestion', $issue, 'x')['code']);
+        $this->assertSame('not_logged', BugReportService::notifyLoggedSuggestionShipped($other->id, $admin->id, $issue, $sha, '1', '已上線')['code']);
+
+        $bug = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDay(), false);
+        BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, '已收進產品清單');
+        $wrongIssue = 'https://github.com/jerry200176-png/AllTrue_System/issues/2';
+        $this->assertSame('not_logged', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $wrongIssue, $sha, '1', '已上線')['code']);
+        $this->assertSame('invalid_evidence', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, 'main', '1', '已上線')['code']);
+
+        $this->assertSame('notified', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, $sha, '99', '已上線')['action']);
+        $this->assertSame('already_notified', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, $sha, '99', '已上線')['action']);
+        $this->assertSame(1, BugReportComment::where('bug_report_id', $bug->id)->where('body', '已上線')->count());
+        $this->assertSame('closed', $bug->fresh()->status);
+
+        $loop = BugReportService::getDetail($bug->id, true)['product_loop'];
+        $this->assertTrue($loop['shipped']);
+        $this->assertSame('SHIPPED', $loop['semantic_phase']);
+        $this->assertSame($sha, $loop['production_revision']);
+
+        Carbon::setTestNow();
+    }
+
     public function test_open_on_page_lists_only_own_unfinished_reports_on_that_page(): void
     {
         [$admin, $reporter] = $this->seedUsers();
@@ -383,6 +415,7 @@ class BugReporterTimeoutTest extends TestCase
             'description' => 'D', 'severity' => 'low', 'status' => $status, 'page_key' => $page,
         ]);
         $mine = $make($reporter->id, 'calendar', 'triaged');
+        $resolved = $make($reporter->id, 'calendar', 'resolved');
         $make($reporter->id, 'calendar', 'closed');
         $make($reporter->id, 'students', 'triaged');
         $make($admin->id, 'calendar', 'triaged');
@@ -390,7 +423,7 @@ class BugReporterTimeoutTest extends TestCase
         $res = $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($reporter), 'Accept' => 'application/json'])
             ->getJson('/api/v1/bugs/open-on-page?page_key=calendar&branch_id=1')
             ->assertOk();
-        $this->assertSame([$mine->id], array_column($res->json('data'), 'id'));
+        $this->assertEqualsCanonicalizing([$mine->id, $resolved->id], array_column($res->json('data'), 'id'));
     }
 
     private function tokenFor(User $user): string

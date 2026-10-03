@@ -988,7 +988,9 @@ class BugReportService
                 return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
             }
             if ($bug->getAttribute('status') === 'closed') {
-                return ['ok' => true, 'action' => 'already_closed'];
+                return self::loggedCloseDisposition($bugId) !== null
+                    ? ['ok' => true, 'action' => 'already_closed']
+                    : ['ok' => false, 'code' => 'closed_otherwise', 'message' => 'report was closed by another path'];
             }
             $options = ['disposition' => $kind];
             if ($issueUrl !== null && $issueUrl !== '') {
@@ -1005,6 +1007,80 @@ class BugReportService
     }
 
     /**
+     * Disposition payload of the latest close when it was a closeAsLogged close, else null.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function loggedCloseDisposition(int $bugId): ?array
+    {
+        $closeLog = BugReportStatusLog::query()
+            ->where('bug_report_id', $bugId)
+            ->where('to_status', 'closed')
+            ->orderByDesc('id')
+            ->first();
+        $note = (string) ($closeLog->note ?? '');
+        if (!str_contains($note, self::CLOSED_AS_LOGGED_NOTE)) {
+            return null;
+        }
+
+        return self::parseMarkerPayload($note, self::DISPOSITION_MARKER) ?? [];
+    }
+
+    /**
+     * F12 ship notice: a logged suggestion shipped. Records append-only production evidence and posts
+     * the public notice in one transaction. Only for reports closed as logged with this same issue.
+     *
+     * @return array{ok: bool, action?: string, code?: string, message?: string}
+     */
+    public static function notifyLoggedSuggestionShipped(
+        int $bugId,
+        int $actorId,
+        string $issueUrl,
+        string $productionRevision,
+        string $deployRunId,
+        string $publicReply
+    ): array {
+        if (preg_match('/^[0-9a-f]{7,40}$/i', $productionRevision) !== 1 || preg_match('/^\d+$/', $deployRunId) !== 1) {
+            return ['ok' => false, 'code' => 'invalid_evidence', 'message' => 'production_revision must be a git SHA and deploy_run_id numeric'];
+        }
+        if (trim($publicReply) === '') {
+            return ['ok' => false, 'code' => 'public_reply_required', 'message' => 'public reply is required'];
+        }
+
+        return DB::transaction(function () use ($bugId, $actorId, $issueUrl, $productionRevision, $deployRunId, $publicReply) {
+            $bug = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+            if (!$bug || $bug->getAttribute('status') !== 'closed') {
+                return ['ok' => false, 'code' => 'not_logged', 'message' => 'report is not closed as a logged suggestion'];
+            }
+            $logged = self::loggedCloseDisposition($bugId);
+            if ($logged === null || ($logged['github_issue_url'] ?? null) !== $issueUrl) {
+                return ['ok' => false, 'code' => 'not_logged', 'message' => 'report is not closed as a logged suggestion for this issue'];
+            }
+            $sourceRef = 'logged_ship:' . $productionRevision;
+            $exists = BugReportEvidence::query()->where('bug_report_id', $bugId)->where('source_ref', $sourceRef)->exists();
+            if ($exists) {
+                return ['ok' => true, 'action' => 'already_notified'];
+            }
+            $evidence = new BugReportEvidence();
+            $evidence->fill([
+                'bug_report_id' => $bugId,
+                'evidence_type' => BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION,
+                'production_revision' => $productionRevision,
+                'deploy_run_id' => $deployRunId,
+                'source_ref' => $sourceRef,
+                'verified_by' => $actorId,
+                'verified_at' => Carbon::now(),
+                'metadata' => ['github_issue_url' => $issueUrl],
+                'created_at' => Carbon::now(),
+            ]);
+            $evidence->save();
+            self::addComment($bugId, $actorId, $publicReply);
+
+            return ['ok' => true, 'action' => 'notified'];
+        });
+    }
+
+    /**
      * F13: the reporter's own unfinished reports on one page, so the form can offer "add to this one".
      * Read-only (does not mark the inbox seen).
      *
@@ -1016,7 +1092,7 @@ class BugReportService
             ->where('reporter_user_id', $reporterId)
             ->when($campusIds !== [], fn ($q) => $q->whereIn('CampusID', $campusIds))
             ->where('page_key', $pageKey)
-            ->whereIn('status', ['new', 'triaged', 'in_progress'])
+            ->whereIn('status', ['new', 'triaged', 'in_progress', 'resolved'])
             ->orderByDesc('id')
             ->limit($limit)
             ->toBase()
@@ -1281,8 +1357,13 @@ class BugReportService
             ?? ($resolution['deploy_run_id'] ?? null);
 
         $status = (string) $bug->getAttribute('status');
+        // F12: a logged suggestion that shipped stays closed but carries ship evidence.
+        $loggedShipped = $status === 'closed'
+            && str_starts_with((string) ($latestEvidence['source_ref'] ?? ''), 'logged_ship:');
         $semantic = 'SUBMITTED';
-        if ($status === 'closed') {
+        if ($loggedShipped) {
+            $semantic = 'SHIPPED';
+        } elseif ($status === 'closed') {
             $semantic = 'CLOSED';
         } elseif ($status === 'resolved' && $productionRevision) {
             $semantic = 'SHIPPED';
@@ -1319,7 +1400,8 @@ class BugReportService
             'github_pr_url' => $githubPrUrl,
             'production_revision' => $productionRevision,
             'deploy_run_id' => $deployRunId,
-            'shipped' => $status === 'resolved' && is_string($productionRevision) && $productionRevision !== '',
+            'shipped' => $loggedShipped
+                || ($status === 'resolved' && is_string($productionRevision) && $productionRevision !== ''),
             'closed' => $status === 'closed',
             'evidence_count' => count($evidenceRows),
         ];

@@ -408,12 +408,16 @@ function openForm() {
 
 // F13: show the reporter's own unfinished reports on this page so the same issue is added to, not re-sent.
 const openOnPage = ref([]);
+let openOnPageRequest = 0;
 async function loadOpenOnPage() {
+  const requestId = ++openOnPageRequest;
   openOnPage.value = [];
   const branchId = Number(effectiveBranchId.value);
   if (!branchId || !props.currentPageKey) return;
   try {
-    openOnPage.value = await fetchOpenReportsOnPage(branchId, props.currentPageKey);
+    const rows = await fetchOpenReportsOnPage(branchId, props.currentPageKey);
+    // A slower answer from an earlier opening must not replace the current page's list.
+    if (requestId === openOnPageRequest && showForm.value) openOnPage.value = rows;
   } catch {
     // Optional hint only; the form works without it.
   }

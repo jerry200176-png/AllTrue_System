@@ -382,6 +382,22 @@ describe('open reports on this page (F13)', () => {
     wrapper.unmount();
   });
 
+  it('ignores a slower answer from an earlier opening', async () => {
+    let resolveOld;
+    fetchOpenReportsOnPage
+      .mockImplementationOnce(() => new Promise((r) => { resolveOld = r; }))
+      .mockResolvedValueOnce([]);
+    const wrapper = await openLauncher({ currentPageKey: 'calendar' });
+    wrapper.vm.closeForm?.();
+    await wrapper.setProps({ currentPageKey: 'students' });
+    await wrapper.find('.fab').trigger('click');
+    await flushPromises();
+    resolveOld([{ id: 1, title: 'old page', status: 'triaged' }]);
+    await flushPromises();
+    expect(bodyCount('.open-on-page')).toBe(0);
+    wrapper.unmount();
+  });
+
   it('shows nothing when there is no unfinished report on the page', async () => {
     const wrapper = await openLauncher();
     await flushPromises();

@@ -99,7 +99,9 @@ jobs:
           $bug = \App\Models\BugReport::find($bugId);
           if (!$bug) { throw new \RuntimeException("bug not found: ".$bugId); }
           $status = (string)$bug->status;
-          if (!in_array($status, ["new", "triaged"], true)) {
+          // close_as_logged reruns may find the report already closed; closeAsLogged decides idempotently.
+          $allowedStatuses = getenv("CLOSE_AS_LOGGED") === "true" ? ["new", "triaged", "closed"] : ["new", "triaged"];
+          if (!in_array($status, $allowedStatuses, true)) {
               throw new \RuntimeException("refusing status: ".$status);
           }
           $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
