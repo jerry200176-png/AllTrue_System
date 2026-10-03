@@ -1,0 +1,51 @@
+// @ts-check
+/**
+ * Automated WCAG 2.1 A/AA scan (axe-core) of real Vue pages on the pilot mount,
+ * with every API call answered by an empty list.
+ *
+ * Ratchet: BASELINE holds today's serious/critical violations (rule id → node count).
+ * A new rule, or more nodes for a known rule, fails. When you fix one, lower or
+ * delete its entry so it cannot come back.
+ */
+import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+const BLOCKING_IMPACTS = new Set(['serious', 'critical']);
+
+// Baseline 2026-10-03 (axe-core 4.13 via @axe-core/playwright 4.13).
+// Most color-contrast nodes are muted text #64748d on #f6f9fc (4.49:1, needs 4.5)
+// and orange #ef6c00 with white (3.08:1).
+const BASELINE = {
+  teacher: { 'color-contrast': 3 },
+  students: { 'color-contrast': 4 },
+  admissions: { 'color-contrast': 11 },
+  calendar: { 'color-contrast': 21 },
+  chat: { 'color-contrast': 2 },
+  parent: { 'color-contrast': 1 },
+  attendance: { 'color-contrast': 11, label: 2 },
+  profile: { 'color-contrast': 2, label: 1 },
+};
+
+for (const [name, allowed] of Object.entries(BASELINE)) {
+  test(`axe WCAG A/AA: ${name} has no new serious/critical violations`, async ({ page }) => {
+    await page.route('**/api/**', (route) => route.fulfill({ contentType: 'application/json', body: '{"data":[]}' }));
+    await page.goto(`/pilot-mount.html?page=${name}`);
+    await expect(page.locator('[data-pilot-ready="1"]')).toHaveCount(1);
+    await page.waitForLoadState('networkidle');
+
+    const { violations } = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    const regressions = violations
+      .filter((v) => BLOCKING_IMPACTS.has(v.impact ?? ''))
+      .filter((v) => v.nodes.length > (allowed[v.id] ?? 0))
+      .map((v) => ({
+        rule: v.id,
+        impact: v.impact,
+        nodes: v.nodes.length,
+        allowed: allowed[v.id] ?? 0,
+        help: v.helpUrl,
+        targets: v.nodes.slice(0, 5).map((n) => n.target.join(' ')),
+      }));
+    expect(regressions).toEqual([]);
+  });
+}
