@@ -87,7 +87,7 @@ _DESC_HEREDOC_RE = re.compile(
 )
 
 
-_SUBST_RE = re.compile(r"\$\(|`")
+_SUBST_RE = re.compile(r"\$\(|`|[<>]\(")
 
 
 def _blank(s: str) -> str:
@@ -338,6 +338,12 @@ def check_redirect_read(cmd: str) -> None:
         deny("Blocked: shell redirection reads a credential-shaped file (AGENTS.md RULE-SEC-001).")
 
 
+def check_redirect_write(cmd: str) -> None:
+    # `> .env`, `>> ~/.ssh/config`, `| tee .env`: overwriting credentials.
+    if re.search(rf"(?:>>?|\btee\b(?:\s+-\S+)*)\s*['\"]?[^\s;&|'\"()]*{SECRET_FILE_RE.pattern}", cmd):
+        deny("Blocked: command writes to a credential-shaped file (AGENTS.md RULE-SEC-001).")
+
+
 def check_file_flags(cmd: str) -> None:
     # git commit -F <file> / gh --body-file <file> publish the file's contents.
     if re.search(rf"(?:\s-F|--body-file|--file)\s*=?\s*['\"]?[^\s;&|'\"]*{SECRET_FILE_RE.pattern}", cmd):
@@ -354,6 +360,7 @@ def check_all(cmd: str, depth: int = 0) -> None:
     check_production_host(scan_cmd)
     check_file_flags(scan_cmd)
     check_redirect_read(scan_cmd)
+    check_redirect_write(scan_cmd)
 
     if depth >= MAX_UNWRAP_DEPTH:
         return

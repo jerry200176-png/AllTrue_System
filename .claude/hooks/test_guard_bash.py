@@ -144,6 +144,11 @@ DANGEROUS = [
     "printf '%s' \"$(cat backend/.env)\"",
     'chmod +x "$(bash scripts/post-merge-smoke.sh)"',
     "gh pr merge 123 -m '--admin'",
+    "chmod +x <(bash scripts/post-merge-smoke.sh)",
+    "bash -n <(bash scripts/post-merge-smoke.sh)",
+    "echo 'TOKEN=x' > backend/.env",
+    "printf '%s' x >> ~/.ssh/config",
+    "echo x | tee -a .env",
     "bash " + " ".join(f"s{i}.sh" for i in range(25)),
     "<" + "a" * 60000,  # over the length cap: deny instead of a slow scan that times out (= allow)
     "echo $(< backend/.env)",
