@@ -496,6 +496,8 @@
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | POST | `api/v1/line/settings` | `LineWebhookController@saveSettings` | role |
+| GET | `api/v1/line/notify-settings` | `LineWebhookController@notifySettings` | role |
+| PUT | `api/v1/line/notify-settings` | `LineWebhookController@saveNotifySettings` | role |
 | GET | `api/v1/line/status` | `LineWebhookController@status` | role |
 | POST | `api/v1/line/webhook` | `LineWebhookController@handleDomainBased` | public |
 | POST | `api/v1/line/webhook/{campusId}` | `LineWebhookController@handle` | public |

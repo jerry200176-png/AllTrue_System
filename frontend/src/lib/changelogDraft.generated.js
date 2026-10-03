@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.03",
     "date": "2026-10-03",
     "title": "2026.10.03 草稿（未發布）",
-    "summary": "photo pushes arrival/leave text together with the photo；reports awaiting the reporter close after 14 days; reporter reply reopens",
+    "summary": "can turn off swipe LINE notifications to parents；photo pushes arrival/leave text together with the photo",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "can turn off swipe LINE notifications to parents",
           "photo pushes arrival/leave text together with the photo",
           "reports awaiting the reporter close after 14 days; reporter reply reopens",
           "photo and text arrive as one LINE message"
@@ -31,6 +32,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "can turn off swipe LINE notifications to parents",
       "photo pushes arrival/leave text together with the photo",
       "reports awaiting the reporter close after 14 days; reporter reply reopens",
       "photo and text arrive as one LINE message",

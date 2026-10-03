@@ -8,7 +8,7 @@
       data-guide="line-header"
     >
       <template #actions>
-        <AtButton shape="rect" variant="ghost" icon="refresh" :disabled="loading" @click="loadStatus">重新整理</AtButton>
+        <AtButton shape="rect" variant="ghost" icon="refresh" :disabled="loading" @click="loadAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
 
@@ -113,6 +113,24 @@
       </div>
     </div>
 
+    <!-- 刷卡 LINE 通知開關（每間分校自己決定） -->
+    <div class="card" v-if="notify">
+      <h3>🔔 刷卡通知家長</h3>
+      <label class="notify-row">
+        <input
+          type="checkbox"
+          :checked="notify.settings.swipe"
+          :disabled="notifySaving"
+          @change="toggleNotify('swipe', $event.target.checked)"
+        />
+        <span>
+          <strong>學生刷卡時，用 LINE 通知家長（到班／離班＋照片）</strong>
+          <span class="field-hint notify-desc">關掉後刷卡照常記錄出勤，只是不傳 LINE 給家長。</span>
+        </span>
+      </label>
+      <span v-if="notifyMsg" class="save-msg" :class="notifyOk ? 'ok' : 'err'" role="status" aria-live="polite">{{ notifyMsg }}</span>
+    </div>
+
     <!-- Webhook URL -->
     <div class="card" v-if="status">
       <h3>📡 Webhook 網址</h3>
@@ -206,6 +224,10 @@ const saveMsg = ref('');
 const saveOk  = ref(true);
 const copied  = ref('');
 const openStep = ref(0);
+const notify = ref(null);
+const notifySaving = ref(false);
+const notifyMsg = ref('');
+const notifyOk = ref(true);
 
 const form = ref({ messaging_channel_token: '', messaging_channel_secret: '', liff_id: '' });
 const show = ref({ token: false, secret: false });
@@ -400,8 +422,52 @@ function copyParentGuide(mode = 'short') {
   copy(shortText, 'guide-short');
 }
 
-onMounted(loadStatus);
-watch(() => props.branchId, () => { status.value = null; loadStatus(); });
+function notifyUrl() {
+  return props.branchId ? `/api/v1/line/notify-settings?branch_id=${props.branchId}` : '/api/v1/line/notify-settings';
+}
+
+async function loadNotify() {
+  try {
+    const res = await fetch(notifyUrl(), { headers: await getAuthHeaders(), credentials: 'include' });
+    notify.value = res.ok ? await res.json() : null;
+  } catch (e) {
+    notify.value = null;
+    console.error('Failed to load LINE notify settings:', e);
+  }
+}
+
+async function toggleNotify(key, value) {
+  notifySaving.value = true;
+  notifyMsg.value = '';
+  try {
+    const body = { settings: { [key]: value } };
+    if (props.branchId != null && props.branchId !== '') body.branch_id = Number(props.branchId);
+    const res = await fetch('/api/v1/line/notify-settings', {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    notifyOk.value = res.ok;
+    notifyMsg.value = res.ok ? '✅ 已儲存' : (data.message || '儲存失敗');
+    if (res.ok) notify.value = { ...notify.value, settings: data.settings };
+  } catch {
+    notifyOk.value = false;
+    notifyMsg.value = '連線錯誤，請稍後再試';
+  } finally {
+    notifySaving.value = false;
+    setTimeout(() => { notifyMsg.value = ''; }, 4000);
+  }
+}
+
+function loadAll() {
+  loadStatus();
+  loadNotify();
+}
+
+onMounted(loadAll);
+watch(() => props.branchId, () => { status.value = null; notify.value = null; loadAll(); });
 </script>
 
 <style scoped>
@@ -563,6 +629,9 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ds-ink); 
 
 .save-row { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .save-msg { font-size: 13px; font-weight: 600; }
+.notify-row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+.notify-row input { margin-top: 3px; }
+.notify-desc { display: block; }
 .save-msg.ok { color: var(--ds-success); }
 .save-msg.err { color: var(--ds-danger); }
 

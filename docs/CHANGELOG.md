@@ -1,3 +1,7 @@
+## 2026-10-03 — feat(line): directors can turn off swipe LINE notifications to parents
+<!-- release-notes: staff_update=staff-2026-10-03-swipe-line-switch -->
+- 「家長 LINE 通知」頁新增分校開關「刷卡通知家長」（`GET/PUT /api/v1/line/notify-settings`，存 SystemSetting `line_notify.campus.{id}`，未設定＝開）。關閉時 `swipe-photo` 不推 LINE、`swipe-rfid` 回 `LineIDs: []`，讀卡機也沒有對象可推；刷卡出勤照常記錄。主任只能改自己分校。
+
 ## 2026-10-03 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo
 <!-- release-notes: silent_ship=silent-2026-10-03-swipe-photo-text -->
 - `POST /api/v1/swipe-photo` 推給家長的 LINE 改為「文字＋照片」一次送出：文字由 AllTrue 依 2 分鐘內剛寫入的刷卡紀錄判斷「到班」或「離班」（例：`王小明 已於 10:00 到班`），照片早到、晚到或找不到紀錄時只寫「刷卡」不猜。讀卡機不需再自己推文字。

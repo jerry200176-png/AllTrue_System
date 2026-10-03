@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-03-swipe-line-switch",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "可以關掉刷卡 LINE 通知家長",
+    "summary": "主任可關掉自己分校的刷卡 LINE 通知，預設開著。",
+    "items": [
+      "設定與資源 → 家長 LINE 通知 → 「刷卡通知家長」可開關。關掉後刷卡照常記錄出勤，只是不傳 LINE 給家長。"
+    ],
+    "sections": [
+      {
+        "title": "你現在可以",
+        "items": [
+          "設定與資源 → 家長 LINE 通知 → 「刷卡通知家長」可開關。關掉後刷卡照常記錄出勤，只是不傳 LINE 給家長。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:swipe-line-switch-20261003"
+    ],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-03-awaiting-reporter-timeout",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,
