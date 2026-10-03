@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.03",
     "date": "2026-10-03",
     "title": "2026.10.03 草稿（未發布）",
-    "summary": "can turn off swipe LINE notifications to parents；photo pushes arrival/leave text together with the photo",
+    "summary": "close as logged and reopen on reply; form shows your open reports on the page；can turn off swipe LINE notifications to parents",
     "audience": [
       "teacher",
       "director"
@@ -18,6 +18,7 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "close as logged and reopen on reply; form shows your open reports on the page",
           "can turn off swipe LINE notifications to parents",
           "photo pushes arrival/leave text together with the photo",
           "reports awaiting the reporter close after 14 days; reporter reply reopens",
@@ -37,14 +38,14 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "close as logged and reopen on reply; form shows your open reports on the page",
       "can turn off swipe LINE notifications to parents",
       "photo pushes arrival/leave text together with the photo",
       "reports awaiting the reporter close after 14 days; reporter reply reopens",
       "photo and text arrive as one LINE message",
       "courses convert to a regular course instead of a new trial batch",
       "names for attendance and profile form controls",
-      "are always JSON; 補卡 shows the real error",
-      "trial-to-formal conversion no longer leaves the trial stopped"
+      "are always JSON; 補卡 shows the real error"
     ]
   },
   {

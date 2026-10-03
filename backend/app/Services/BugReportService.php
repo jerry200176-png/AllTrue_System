@@ -43,6 +43,11 @@ class BugReportService
         'needs_info',
     ];
 
+    /** Suggestion-style outcomes that close the in-app ticket; the GitHub issue is the backlog of record (F12). */
+    public const LOGGED_CLOSE_KINDS = ['suggestion', 'ux_friction', 'not_planned', 'duplicate'];
+    /** Machine marker line on the close log; stripped from note_display like the other markers. */
+    public const CLOSED_AS_LOGGED_NOTE = '[closed_as_logged]';
+
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
     public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請(?![求款假])|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
 
@@ -936,7 +941,7 @@ class BugReportService
     }
 
     /**
-     * A reporter reply on a timeout-closed bug reopens it (triaged, or in_progress for resolved-verification timeouts).
+     * A reporter reply on a timeout- or logged-closed bug reopens it (triaged, or in_progress for resolved-verification timeouts).
      */
     /** @return array{ok: bool, code?: string, message?: string}|null null when nothing to reopen */
     public static function reopenIfClosedByTimeout(int $bugId, int $reporterId): ?array
@@ -950,13 +955,181 @@ class BugReportService
             ->where('to_status', 'closed')
             ->orderByDesc('id')
             ->first();
-        if ($closeLog && str_contains((string) $closeLog->note, 'closed_by_timeout')) {
-            // Resolved-verification timeouts return to in_progress (regression state); awaiting-info ones to triaged.
-            $target = str_contains((string) $closeLog->note, 'Evidence Contract') ? 'in_progress' : 'triaged';
+        $note = (string) ($closeLog->note ?? '');
+        if (str_contains($note, 'closed_by_timeout') || str_contains($note, self::CLOSED_AS_LOGGED_NOTE)) {
+            // Resolved-verification timeouts return to in_progress (regression state); the rest to triaged.
+            $target = str_contains($note, 'Evidence Contract') ? 'in_progress' : 'triaged';
             return self::changeStatus($bugId, $reporterId, $target, 'reopened_by_reporter_reply', ['reopen_by_timeout' => true]);
         }
 
         return null;
+    }
+
+    /**
+     * F12: close a suggestion / ux / not-planned / duplicate report once it is logged, with one public reply,
+     * in one transaction. Idempotent: an already-closed report is left alone. A reporter reply reopens it.
+     *
+     * @return array{ok: bool, action?: string, code?: string, message?: string}
+     */
+    public static function closeAsLogged(int $bugId, int $actorId, string $kind, string $issueUrl, string $publicReply): array
+    {
+        if (!in_array($kind, self::LOGGED_CLOSE_KINDS, true)) {
+            return ['ok' => false, 'code' => 'invalid_kind', 'message' => 'kind must be one of ' . implode(',', self::LOGGED_CLOSE_KINDS)];
+        }
+        if ($issueUrl === '') {
+            return ['ok' => false, 'code' => 'github_issue_required', 'message' => 'a logged close needs its GitHub issue (not_planned too: record the reason there)'];
+        }
+        if (trim($publicReply) === '') {
+            return ['ok' => false, 'code' => 'public_reply_required', 'message' => 'public reply is required'];
+        }
+
+        return DB::transaction(function () use ($bugId, $actorId, $kind, $issueUrl, $publicReply) {
+            $bug = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+            if (!$bug) {
+                return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
+            }
+            if ($bug->getAttribute('status') === 'closed') {
+                $prior = self::loggedCloseDisposition($bugId);
+                $same = $prior !== null
+                    && ($prior['kind'] ?? null) === $kind
+                    && ($prior['github_issue_url'] ?? null) === $issueUrl;
+
+                return $same
+                    ? ['ok' => true, 'action' => 'already_closed']
+                    : ['ok' => false, 'code' => 'closed_otherwise', 'message' => 'report is closed by another path or with another issue'];
+            }
+            // A reporter reply reopened it: staff must answer that reply before closing again,
+            // so a replayed dispatch cannot bury the reporter's new message.
+            $reopened = BugReportStatusLog::query()->where('bug_report_id', $bugId)
+                ->where('note', 'reopened_by_reporter_reply')->exists();
+            if ($reopened) {
+                $lastAuthor = BugReportComment::query()->where('bug_report_id', $bugId)
+                    ->where('is_internal_note', false)->orderByDesc('id')->value('author_user_id');
+                if ((int) $lastAuthor === (int) $bug->getAttribute('reporter_user_id')) {
+                    return ['ok' => false, 'code' => 'reporter_reply_unanswered', 'message' => 'answer the reporter reply before closing again'];
+                }
+            }
+            $options = ['disposition' => $kind, 'github_issue_url' => $issueUrl];
+            $res = self::changeStatus($bugId, $actorId, 'closed', self::CLOSED_AS_LOGGED_NOTE . "\n已收進產品清單", $options);
+            if (!$res['ok']) {
+                return $res;
+            }
+            self::addComment($bugId, $actorId, $publicReply);
+
+            return ['ok' => true, 'action' => 'closed'];
+        });
+    }
+
+    /**
+     * Disposition payload of the latest close when it was a closeAsLogged close, else null.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function loggedCloseDisposition(int $bugId): ?array
+    {
+        $closeLog = BugReportStatusLog::query()
+            ->where('bug_report_id', $bugId)
+            ->where('to_status', 'closed')
+            ->orderByDesc('id')
+            ->first();
+        $note = (string) ($closeLog->note ?? '');
+        if (!str_contains($note, self::CLOSED_AS_LOGGED_NOTE)) {
+            return null;
+        }
+
+        return self::parseMarkerPayload($note, self::DISPOSITION_MARKER) ?? [];
+    }
+
+    /** Evidence source_ref prefix tying a ship notice to the latest close log of the report. */
+    private static function loggedShipRefPrefix(int $bugId): string
+    {
+        $closeLogId = (int) BugReportStatusLog::query()->where('bug_report_id', $bugId)
+            ->where('to_status', 'closed')->max('id');
+
+        return 'logged_ship:' . $closeLogId . ':';
+    }
+
+    /**
+     * F12 ship notice: a logged suggestion shipped. Records append-only production evidence and posts
+     * the public notice in one transaction. Only for reports closed as logged with this same issue.
+     *
+     * @return array{ok: bool, action?: string, code?: string, message?: string}
+     */
+    public static function notifyLoggedSuggestionShipped(
+        int $bugId,
+        int $actorId,
+        string $issueUrl,
+        string $productionRevision,
+        string $deployRunId,
+        string $publicReply
+    ): array {
+        $productionRevision = strtolower($productionRevision);
+        if (preg_match('/^[0-9a-f]{40}$/', $productionRevision) !== 1 || preg_match('/^\d+$/', $deployRunId) !== 1) {
+            return ['ok' => false, 'code' => 'invalid_evidence', 'message' => 'production_revision must be the full 40-char git SHA and deploy_run_id numeric'];
+        }
+        if (trim($publicReply) === '') {
+            return ['ok' => false, 'code' => 'public_reply_required', 'message' => 'public reply is required'];
+        }
+
+        return DB::transaction(function () use ($bugId, $actorId, $issueUrl, $productionRevision, $deployRunId, $publicReply) {
+            $bug = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+            if (!$bug || $bug->getAttribute('status') !== 'closed') {
+                return ['ok' => false, 'code' => 'not_logged', 'message' => 'report is not closed as a logged suggestion'];
+            }
+            $logged = self::loggedCloseDisposition($bugId);
+            if ($logged === null || ($logged['github_issue_url'] ?? null) !== $issueUrl) {
+                return ['ok' => false, 'code' => 'not_logged', 'message' => 'report is not closed as a logged suggestion for this issue'];
+            }
+            // Bound to this close cycle: a later reopen + re-close does not inherit the old ship.
+            $sourceRef = self::loggedShipRefPrefix($bugId) . $productionRevision;
+            $exists = BugReportEvidence::query()->where('bug_report_id', $bugId)->where('source_ref', $sourceRef)->exists();
+            if ($exists) {
+                return ['ok' => true, 'action' => 'already_notified'];
+            }
+            $evidence = new BugReportEvidence();
+            $evidence->fill([
+                'bug_report_id' => $bugId,
+                'evidence_type' => BugReportEvidence::TYPE_RESOLUTION_PRODUCTION_VERIFICATION,
+                'production_revision' => $productionRevision,
+                'deploy_run_id' => $deployRunId,
+                'source_ref' => $sourceRef,
+                'verified_by' => $actorId,
+                'verified_at' => Carbon::now(),
+                'metadata' => ['github_issue_url' => $issueUrl],
+                'created_at' => Carbon::now(),
+            ]);
+            $evidence->save();
+            self::addComment($bugId, $actorId, $publicReply);
+            $bug->touch(); // list unread state follows updated_at
+
+            return ['ok' => true, 'action' => 'notified'];
+        });
+    }
+
+    /**
+     * F13: the reporter's own unfinished reports on one page, so the form can offer "add to this one".
+     * Read-only (does not mark the inbox seen).
+     *
+     * @return list<array{id: int, title: string, status: string, created_at: ?string}>
+     */
+    public static function openOnPageForReporter(int $reporterId, array $campusIds, string $pageKey, int $limit = 3): array
+    {
+        return BugReport::query()
+            ->where('reporter_user_id', $reporterId)
+            ->when($campusIds !== [], fn ($q) => $q->whereIn('CampusID', $campusIds))
+            ->where('page_key', $pageKey)
+            ->whereIn('status', ['new', 'triaged', 'in_progress', 'resolved'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->toBase()
+            ->get(['id', 'title', 'status', 'created_at'])
+            ->map(fn (object $b) => [
+                'id' => (int) $b->id,
+                'title' => (string) $b->title,
+                'status' => (string) $b->status,
+                'created_at' => $b->created_at ? Carbon::parse($b->created_at)->toIso8601String() : null,
+            ])
+            ->all();
     }
 
     /**
@@ -1141,6 +1314,7 @@ class BugReportService
             $trim = ltrim($line);
             if (str_starts_with($trim, self::DISPOSITION_MARKER)
                 || str_starts_with($trim, self::RESOLUTION_EVIDENCE_MARKER)
+                || str_starts_with($trim, self::CLOSED_AS_LOGGED_NOTE)
             ) {
                 continue;
             }
@@ -1210,8 +1384,25 @@ class BugReportService
             ?? ($resolution['deploy_run_id'] ?? null);
 
         $status = (string) $bug->getAttribute('status');
+        // F12: a logged suggestion that shipped stays closed but carries ship evidence.
+        $latestCloseLogId = 0;
+        foreach ($statusLogs as $log) {
+            if ((string) $log->getAttribute('to_status') === 'closed') {
+                $latestCloseLogId = max($latestCloseLogId, (int) $log->getKey());
+            }
+        }
+        $latestRef = (string) ($latestEvidence['source_ref'] ?? '');
+        $loggedShipped = $status === 'closed'
+            && str_starts_with($latestRef, 'logged_ship:' . $latestCloseLogId . ':');
+        if (!$loggedShipped && str_starts_with($latestRef, 'logged_ship:')) {
+            // Ship evidence from an earlier close cycle must not describe the current one.
+            $productionRevision = null;
+            $deployRunId = null;
+        }
         $semantic = 'SUBMITTED';
-        if ($status === 'closed') {
+        if ($loggedShipped) {
+            $semantic = 'SHIPPED';
+        } elseif ($status === 'closed') {
             $semantic = 'CLOSED';
         } elseif ($status === 'resolved' && $productionRevision) {
             $semantic = 'SHIPPED';
@@ -1248,7 +1439,8 @@ class BugReportService
             'github_pr_url' => $githubPrUrl,
             'production_revision' => $productionRevision,
             'deploy_run_id' => $deployRunId,
-            'shipped' => $status === 'resolved' && is_string($productionRevision) && $productionRevision !== '',
+            'shipped' => $loggedShipped
+                || ($status === 'resolved' && is_string($productionRevision) && $productionRevision !== ''),
             'closed' => $status === 'closed',
             'evidence_count' => count($evidenceRows),
         ];

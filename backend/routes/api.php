@@ -926,6 +926,7 @@ Route::prefix('v1')->group(function () {
         Route::post('bugs', [BugReportController::class, 'store']);
         Route::get('bugs', [BugReportController::class, 'index']);
         Route::get('bugs/unread-badge', [BugReportController::class, 'unreadBadge']);
+        Route::get('bugs/open-on-page', [BugReportController::class, 'openOnPage']);
         Route::get('bugs/{id}', [BugReportController::class, 'show']);
         Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment']);
         Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify']);

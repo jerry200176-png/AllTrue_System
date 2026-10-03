@@ -851,11 +851,11 @@ watch(() => props.focusBugId, (nextId) => {
     lastFocusedBugId = null;
     return;
   }
-  const requestedBug = bugs.value.find((bug) => String(bug.id) === String(nextId));
-  if (requestedBug && String(nextId) !== lastFocusedBugId) {
-    lastFocusedBugId = String(nextId);
-    selectBug(requestedBug);
-  }
+  if (String(nextId) === lastFocusedBugId) return;
+  // Not on the loaded page (e.g. an older report): open it by id anyway.
+  const requestedBug = bugs.value.find((bug) => String(bug.id) === String(nextId)) || { id: Number(nextId) };
+  lastFocusedBugId = String(nextId);
+  selectBug(requestedBug);
 });
 
 function buildStatusFilter() {
@@ -899,11 +899,9 @@ async function loadBugs() {
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
     const requestedId = String(props.focusBugId || '');
     if (requestedId && requestedId !== lastFocusedBugId) {
-      const requestedBug = bugs.value.find((bug) => String(bug.id) === requestedId);
-      if (requestedBug) {
-        lastFocusedBugId = requestedId;
-        await selectBug(requestedBug);
-      }
+      const requestedBug = bugs.value.find((bug) => String(bug.id) === requestedId) || { id: Number(requestedId) };
+      lastFocusedBugId = requestedId;
+      await selectBug(requestedBug);
     }
   } catch (e) {
     console.error('[Bugs] loadBugs:', e);

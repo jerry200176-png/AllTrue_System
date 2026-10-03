@@ -10,6 +10,9 @@
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
+## 2026-10-03 — feat(bug-report): suggestions close as logged and reopen on reply; form shows your open reports on the page
+<!-- release-notes: staff_update=staff-2026-10-03-suggestion-loop -->
+- 建議／改善／不做／重複的回報可用 `closeAsLogged` 結案（GitHub issue 為產品清單），回報人留言自動重開；上線後可用 follow-up 通知已結案建議。回報視窗會列出自己在同頁仍處理中的回報，可直接補充。
 ## 2026-10-03 — feat(line): directors can turn off swipe LINE notifications to parents
 <!-- release-notes: staff_update=staff-2026-10-03-swipe-line-switch -->
 - 「家長 LINE 通知」頁新增分校開關「刷卡通知家長」（`GET/PUT /api/v1/line/notify-settings`，存 SystemSetting `line_notify.campus.{id}`，未設定＝開）。關閉時 `swipe-photo` 不推 LINE、`swipe-rfid` 回 `LineIDs: []`，讀卡機也沒有對象可推；刷卡出勤照常記錄。主任只能改自己分校。

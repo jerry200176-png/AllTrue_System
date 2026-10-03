@@ -1,6 +1,8 @@
 name: Bug follow-up public comment
 
 # Idempotent public follow-up. This workflow deliberately never changes status.
+# expected_status=closed is only for a logged suggestion that shipped (F12): it records
+# production evidence via BugReportService::notifyLoggedSuggestionShipped.
 on:
   workflow_dispatch:
     inputs:
@@ -9,7 +11,7 @@ on:
         required: true
         type: string
       expected_status:
-        description: Current status that must remain unchanged (triaged, in_progress, or resolved)
+        description: Current status that must remain unchanged (triaged, in_progress, resolved, or closed for a logged suggestion that shipped)
         required: true
         type: string
       github_issue_url:
@@ -19,6 +21,16 @@ on:
       public_reply:
         description: Public follow-up reply
         required: true
+        type: string
+      production_revision:
+        description: Deployed full 40-char git SHA (required when expected_status=closed)
+        required: false
+        default: ""
+        type: string
+      deploy_run_id:
+        description: Deploy run ID (required when expected_status=closed)
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -62,12 +74,18 @@ jobs:
           EXPECTED_STATUS: ${{ inputs.expected_status }}
           GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
           PUBLIC_REPLY: ${{ inputs.public_reply }}
+          PRODUCTION_REVISION: ${{ inputs.production_revision }}
+          DEPLOY_RUN_ID: ${{ inputs.deploy_run_id }}
         run: |
           set -euo pipefail
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved)$ ]] || { echo "invalid expected_status"; exit 1; }
+          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
+          if [[ "$EXPECTED_STATUS" == closed ]]; then
+            [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "closed follow-up needs the full 40-char production_revision"; exit 1; }
+            [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "closed follow-up needs deploy_run_id"; exit 1; }
+          fi
           PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
@@ -76,11 +94,17 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+            "BUG_ID='$BUG_ID' EXPECTED_STATUS='$EXPECTED_STATUS' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' PRODUCTION_REVISION='$PRODUCTION_REVISION' DEPLOY_RUN_ID='$DEPLOY_RUN_ID' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
-          export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY
+          export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
+          if [[ "$EXPECTED_STATUS" == closed ]]; then
+            # Same gate as Phase-C: never announce a revision that is not in production.
+            PROD_HEAD=$(git rev-parse HEAD)
+            echo "prod_head=$PROD_HEAD"
+            git merge-base --is-ancestor "$PRODUCTION_REVISION" "$PROD_HEAD" || { echo "production_revision is not in production"; exit 1; }
+          fi
           php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
           $expected = (string)getenv("EXPECTED_STATUS");
@@ -92,6 +116,13 @@ jobs:
           $admin = \Illuminate\Support\Facades\DB::table("UserCampus")
               ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
           $actor = $admin ? (int)$admin : 1;
+          if ($expected === "closed") {
+              $shipped = \App\Services\BugReportService::notifyLoggedSuggestionShipped(
+                  $bugId, $actor, $issueUrl, (string)getenv("PRODUCTION_REVISION"), (string)getenv("DEPLOY_RUN_ID"), $reply
+              );
+              if (!($shipped["ok"] ?? false)) { throw new \RuntimeException(json_encode($shipped)); }
+              echo json_encode(["bug_id" => $bugId, "status" => "closed", "logged_ship" => $shipped, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          } else {
           // The Phase-A acknowledgement already contains the same GitHub URL.
           // Idempotency must therefore match this exact follow-up payload,
           // not merely the shared issue link, or the requested post-deploy
@@ -102,5 +133,6 @@ jobs:
           $commentSucceeded = ($comment["ok"] ?? false) || isset($comment["id"]) || ($comment["skipped"] ?? false);
           if (!$commentSucceeded) { throw new \RuntimeException(json_encode($comment)); }
           echo json_encode(["bug_id" => $bugId, "status" => (string)$bug->status, "comment" => $comment, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          }
           '
           REMOTE

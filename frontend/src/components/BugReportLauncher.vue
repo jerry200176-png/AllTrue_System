@@ -29,6 +29,14 @@
     >
       <div class="bug-report-form" @paste="onPaste">
         <template v-if="!submitSuccess">
+        <div v-if="openOnPage.length" class="open-on-page" role="note">
+          <p>你在這頁還有 {{ openOnPage.length }} 筆回報處理中，同一件事可以直接補充：</p>
+          <ul>
+            <li v-for="r in openOnPage" :key="r.id">
+              <button type="button" class="open-on-page-link" @click="openExistingReport(r.id)">{{ r.title || `回報 #${r.id}` }} → 補充到這筆</button>
+            </li>
+          </ul>
+        </div>
 
         <label for="bug-report-title">一句話說明 <span class="optional">（選填，自動帶入頁面）</span></label>
         <input id="bug-report-title" v-model="title" class="form-input" placeholder="簡述你想告訴我們的事（留空則自動填入）" maxlength="200" />
@@ -155,7 +163,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import AtDialog from './design-system/AtDialog.vue';
-import { submitBugReport } from '../lib/bugReportsApi';
+import { submitBugReport, fetchOpenReportsOnPage } from '../lib/bugReportsApi';
 import {
   extractImageFiles,
   extractTransferFiles,
@@ -395,6 +403,29 @@ function openForm() {
   submitSuccess.value = false;
   attachmentError.value = '';
   submittedBugId.value = null;
+  loadOpenOnPage();
+}
+
+// F13: show the reporter's own unfinished reports on this page so the same issue is added to, not re-sent.
+const openOnPage = ref([]);
+let openOnPageRequest = 0;
+async function loadOpenOnPage() {
+  const requestId = ++openOnPageRequest;
+  openOnPage.value = [];
+  const branchId = Number(effectiveBranchId.value);
+  if (!branchId || !props.currentPageKey) return;
+  try {
+    const rows = await fetchOpenReportsOnPage(branchId, props.currentPageKey);
+    // A slower answer from an earlier opening must not replace the current page's list.
+    if (requestId === openOnPageRequest && showForm.value) openOnPage.value = rows;
+  } catch {
+    // Optional hint only; the form works without it.
+  }
+}
+
+function openExistingReport(bugId) {
+  requestCloseForm();
+  if (!showForm.value) emit('open-bugs', bugId);
 }
 
 function openFilePicker() {
@@ -596,6 +627,25 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
   border-radius: 8px; font-size: 14px; font-family: inherit;
 }
 .form-textarea { resize: vertical; }
+.open-on-page {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.open-on-page p { margin: 0 0 4px; }
+.open-on-page ul { margin: 0; padding-left: 18px; }
+.open-on-page-link {
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ds-primary-text, inherit);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .feedback-type {
   margin: 16px 0 0;
   padding: 0;
