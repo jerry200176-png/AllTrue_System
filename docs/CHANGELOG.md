@@ -3883,3 +3883,7 @@ Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的
 ## 2026-10-01 — fix(course): monthly courses no longer show prepaid balance reconciliation warnings
 <!-- release-notes: staff_update=staff-2026-10-01-monthly-usage-warning -->
 - 課程查找與編輯前檢依課程模式判定堂數對帳：月結課的預排堂數不再當作包堂購買額度，因此新一期週一課在尚未上課時不會因剩餘堂數為 0 被誤標「堂數待對帳」。已用堂數不符或取消堂次殘留扣堂證據仍會提示對帳；包堂課的剩餘堂數檢查與部分時數計算維持原規則。未更動歷史課表、收款或扣堂資料。
+
+## 2026-10-03 — fix(billing): paid-status resolver contract; mixed void receipts no longer cancel
+<!-- release-notes: silent_ship=silent-2026-10-03-f7-s1-resolver -->
+- 帳務核心 `InvoiceAmountReconciliationService` 計算已沖銷收款時，對每筆沖銷（負數列或 `Method=void` 正數列）先取絕對值再加總；同一張發票同時有兩種沖銷寫法時不再互相抵銷而高估已收金額。另新增尚無呼叫端的 `BillingPayableResolver::courseStatusesByStudentClassIds()`（F7 S1）。

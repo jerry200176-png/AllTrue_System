@@ -21,11 +21,18 @@ export const changelogDraftNotes = [
           "photo pushes arrival/leave text together with the photo",
           "reports awaiting the reporter close after 14 days; reporter reply reopens"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "status resolver contract; mixed void receipts no longer cancel"
+        ]
       }
     ],
     "items": [
       "photo pushes arrival/leave text together with the photo",
-      "reports awaiting the reporter close after 14 days; reporter reply reopens"
+      "reports awaiting the reporter close after 14 days; reporter reply reopens",
+      "status resolver contract; mixed void receipts no longer cancel"
     ]
   },
   {
