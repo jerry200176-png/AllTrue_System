@@ -75,7 +75,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Checkout workflow revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
@@ -166,7 +166,7 @@ jobs:
       runtime_state: ${{ steps.detect.outputs.runtime_state }}
     steps:
       - name: Checkout target revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -446,7 +446,7 @@ jobs:
       reason: ${{ steps.classify.outputs.reason }}
     steps:
       - name: Checkout target revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -970,7 +970,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Checkout target revision for gate policy
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -1119,7 +1119,7 @@ jobs:
 
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -1611,7 +1611,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout exact smoke revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -1826,7 +1826,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -1968,7 +1968,7 @@ jobs:
       name: production-activation
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
