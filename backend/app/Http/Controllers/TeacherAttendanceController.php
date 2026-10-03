@@ -204,6 +204,14 @@ class TeacherAttendanceController extends Controller
             'new_signin_dt'  => 'required|date',
             'new_signout_dt' => 'nullable|date|after:new_signin_dt',
             'adjust_reason'  => 'required|string|min:2|max:500',
+        ], [
+            'new_signin_dt.required'   => '簽到時間必填',
+            'new_signin_dt.date'       => '簽到時間格式不正確',
+            'new_signout_dt.date'      => '簽退時間格式不正確',
+            'new_signout_dt.after'     => '簽退時間必須晚於簽到時間',
+            'adjust_reason.required'   => '補卡原因必填',
+            'adjust_reason.min'        => '補卡原因至少要寫兩個字',
+            'adjust_reason.max'        => '補卡原因最多 500 字',
         ]);
 
         $role      = $request->attributes->get('auth_role');
