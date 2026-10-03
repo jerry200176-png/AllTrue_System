@@ -53,7 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           rc=0
-          "$RUNNER_TEMP/zizmor-venv/bin/zizmor" --no-exit-codes --format=plain --min-severity=medium .github/ > "$RUNNER_TEMP/zizmor.txt" 2>&1 || rc=$?
+          "$RUNNER_TEMP/zizmor-venv/bin/zizmor" --no-exit-codes --strict-collection --color=never --format=plain --min-severity=medium .github/ > "$RUNNER_TEMP/zizmor.txt" 2>&1 || rc=$?
           {
             echo "### zizmor (medium+)"
             echo '```'
