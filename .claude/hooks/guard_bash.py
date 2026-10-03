@@ -1,406 +1,710 @@
 #!/usr/bin/env python3
-"""PreToolUse hook for the Bash tool.
+"""PreToolUse hook for the Bash tool: AST-based, fails closed.
 
-Reads the hook JSON payload on stdin, decides allow/deny for
-destructive-git / production-deploy / credential-leak shaped commands, and
-prints a PreToolUse decision JSON to stdout. Exits 0 either way (the JSON
-decision is what blocks, not the exit code) so a malformed payload never
-crashes the session.
+The command is parsed by `shfmt --to-json` (mvdan/sh, pinned by
+scripts/install-shfmt.sh). Every simple command in the tree (including ones
+nested in $(), backticks, <(), subshells, control flow, pipelines and
+`bash -c`/`eval` payloads) is checked semantically on its argv, so quoting,
+`git -C`, wrappers and free-text commit messages no longer matter.
 
-This is a textual guardrail against ordinary mistakes and casual bypass
-attempts (bash -c wrapping, git -C, chained commands, python/node
-subprocess literals, etc.) — ported from portfolio-ops .claude/hooks (see its
-docs/hook-threat-model.md) plus an AllTrue production-host rule. It is not a sandbox.
-New text-matching bypasses are expected; server-side controls (GitHub ruleset,
-production-activation environment) remain the real boundary.
+Fail closed: parse error, shfmt timeout, any exception => deny. If shfmt is
+not installed (e.g. cloud session) the old regex guard (guard_bash_regex.py)
+is used instead. shfmt lookup: $ALLTRUE_SHFMT (if set, only that), PATH,
+.claude/hooks/bin/shfmt.
 
-Can be invoked standalone for testing:
-  echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | python3 guard_bash.py
-Or run the regression suite:
-  python3 test_guard_bash.py
+Not a sandbox: server-side controls (GitHub ruleset, production-activation
+environment) remain the real boundary. Known gaps: `xargs`/`find -exec` fed
+from stdin, ssh host aliases from ~/.ssh/config, bash/sh reading a script
+from a pipe is denied but other interpreters are only regex-scanned.
 """
+import contextlib
+import glob as globmod
+import io
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 
-# Statement separators we treat as ending a "unit" a dangerous pattern must
-# stay within. Deliberately does not attempt real shell parsing (quotes,
-# subshells) — see the module docstring.
-SEP = r"[;&|\n]"
-
-# Gap between a keyword and the next: matches any run of characters that is
-# NOT a statement separator. This absorbs flags (`git -C /path push`),
-# punctuation from other languages embedding the tokens (`"git","push"`
-# inside a Python list literal), and plain whitespace uniformly, so we
-# don't have to assume a token is immediately followed by the next one.
-GAP = rf"(?:(?!{SEP}).)*?"
-
-# Statement start: beginning of the string, right after a separator, or
-# after `then` — plus tolerated no-op prefixes (env assignments, sudo,
-# command, exec, time, nice, nohup) before the "real" program name. Used to
-# anchor patterns built on words that are also plausible in ordinary English
-# text (e.g. "deploy", "make", "release") so a commit message mentioning
-# them isn't denied — only an actual invocation is.
-# One alternative per token, so there is only one way to match a prefix run
-# (overlapping alternatives backtrack exponentially and time the hook out = allow).
-_PREFIX = r"(?:\b(?:sudo|env|command|exec|time|nice|nohup|[^\s=;&|]+=\S*)\s+)*"
-ANCHOR = rf"(?:^|{SEP}|\bthen\b|\$\(|`)\s*{_PREFIX}"
-
-# bash/sh/zsh/dash -c "..." / -lc '...' wrapper: extracts the quoted payload
-# so it can be re-checked as its own command, since ANCHOR-based patterns
-# would otherwise not see past the opening quote.
-_WRAPPER_RE = re.compile(
-    r"\b(?:bash|sh|zsh|dash)\s+-\w*c\w*\s+(['\"])(.*?)(?<!\\)\1", re.DOTALL
-)
-
-MAX_UNWRAP_DEPTH = 3
-
-# A hook that times out is treated as "allow", and some patterns here are
-# quadratic. Refuse commands too long to scan well inside the 10s hook timeout
-# (12k chars worst case is about 1s). Long text belongs in --body-file / -F.
+HERE = os.path.dirname(os.path.abspath(__file__))
 MAX_COMMAND_CHARS = 12_000
+MAX_DEPTH = 3
+MAX_SCRIPTS = 20
+DYN = "\x00"  # placeholder for a non-literal word part
 
-# Descriptive-text-only flags: their entire purpose is free-form human text
-# (commit message, PR/issue body/title) — never a path, ref, or nested
-# command. Scoped narrowly on purpose: this is NOT "any quoted string" or
-# "any heredoc" (that would let e.g. `bash -c "$(cat <<'EOF' ... EOF)"`
-# smuggle a real command past the scan) — only text captured specifically
-# as the value of one of these flags is treated as non-executed.
-_DESC_FLAGS = r"(?:--body|--title|--description|--message|-m)"
-
-# Case 1: `<flag> "...text..."` — plain quoted string.
-_DESC_QUOTED_RE = re.compile(
-    rf"{_DESC_FLAGS}(\s*=?\s*)(['\"])((?:\\.|(?!\2).)*)\2", re.DOTALL
-)
-
-# Case 2: `<flag> "$(cat <<'EOF' ... EOF)"` — the heredoc-via-command-
-# substitution shape used by this project's own commit/PR conventions.
-# Requires the flag to directly precede `$(cat <<DELIM`, so a heredoc used
-# for any other purpose (e.g. actually piped into a shell) is untouched.
-_DESC_HEREDOC_RE = re.compile(
-    rf"{_DESC_FLAGS}\s*=?\s*(['\"]?)\$\(\s*cat\s+<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2[ \t]*\r?\n"
-    r"(.*?\r?\n)"
-    r"[ \t]*\3\s*\)\1",
-    re.DOTALL,
-)
-
-
-_SUBST_RE = re.compile(r"\$\(|`|[<>]\(")
-
-
-def _blank(s: str) -> str:
-    return re.sub(r"[^\n]", " ", s)
-
-
-def _strip_non_executed_text(cmd: str) -> str:
-    """Blank out free-form descriptive text (commit messages, PR/issue
-    bodies/titles) passed to -m/--body/--title/etc., including the
-    heredoc-via-$(cat <<EOF) shape this project's own git conventions use,
-    before dangerous-pattern scanning. Preserves string length/newlines so
-    match spans elsewhere in `cmd` stay meaningful. Deliberately narrow —
-    see module docstring on why full shell parsing is out of scope."""
-
-    def _blank_heredoc(m: "re.Match") -> str:
-        if not m.group(2) and _SUBST_RE.search(m.group(4)):
-            return m.group(0)  # unquoted delimiter: $(...) / backticks still execute
-        return m.group(0)[: m.start(4) - m.start(0)] + _blank(m.group(4)) + \
-            m.group(0)[m.end(4) - m.start(0):]
-
-    cmd = _DESC_HEREDOC_RE.sub(_blank_heredoc, cmd)
-
-    def _blank_quoted(m: "re.Match") -> str:
-        if m.group(2) == '"' and _SUBST_RE.search(m.group(3)):
-            return m.group(0)  # "$(...)" / backticks execute inside double quotes
-        return m.group(0)[: m.start(3) - m.start(0)] + _blank(m.group(3)) + \
-            m.group(0)[m.end(3) - m.start(0):]
-
-    cmd = _DESC_QUOTED_RE.sub(_blank_quoted, cmd)
-    return cmd
-
-
-def deny(reason: str) -> None:
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "deny",
-            "permissionDecisionReason": reason,
-        }
-    }))
-    sys.exit(0)
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "mksh", "yash", "fish", "source", "."}
+INTERP = re.compile(r"(?:awk|gawk|mawk|perl|ruby|node|nodejs|php|lua|deno|bun|python[\d.]*)$")
+READERS = set("cat less more head tail sed awk grep rg base64 xxd od strings nl tac cut sort jq tee cp scp rsync curl".split())
+SSH_FAMILY = {"ssh", "scp", "sftp", "rsync"}
+# Programs whose argv is fully covered by semantic rules (or inert); every other program also gets the
+# legacy regex scan over its argv (defense in depth for unknown executors).
+SAFE_CMDS = set("echo printf true false test [ : cd pwd ls date sleep wc mkdir touch head tail cat grep rg "
+                "diff stat file".split())
+KNOWN_GIT = set("commit push reset clean branch config status log diff add fetch pull checkout switch show merge "
+                "rebase stash tag remote rev-parse ls-files worktree restore mv rm init clone cherry-pick describe "
+                "grep blame apply am bisect rev-list show-ref symbolic-ref ls-remote cat-file shortlog submodule difftool "
+                "filter-branch ls-tree diff-tree merge-base name-rev reflog fsck gc prune repack pack-refs update-ref "
+                "for-each-ref hash-object mktree read-tree write-tree commit-tree archive bundle notes format-patch "
+                "revert sparse-checkout maintenance count-objects check-ignore check-attr var version help range-diff "
+                "whatchanged verify-commit verify-tag".split())
+KNOWN_GH = set("pr issue repo run workflow release api auth browse config gist label project search secret status "
+               "variable cache completion help ruleset org codespace ssh-key attestation version alias extension".split())
+FREE_TEXT = re.compile(r"--(?:body|title|message|description)=|-m.")
+NOPROP = {"Subshell", "CmdSubst", "ProcSubst", "FuncDecl"}
+UNCERTAIN = {"IfClause", "ForClause", "WhileClause", "CaseClause"}
+CARRIERS = {"su", "script", "flock", "watch", "parallel", "find", "xargs", "busybox"}
+PI_RE = re.compile(r"(?i)pi\.lifenet\.com\.tw|\bPI_(?:SSH_)?(?:HOST|USER)\b")
+SECRET_OK = {".env.example", ".env.sample", ".env.template", ".env.dist"}
+# wrapper -> (flags, options taking a value); anything else => deny.
+_L = lambda *a: set(a)
+WRAPPERS = {
+    "command": (_L("-p", "-v", "-V"), set()), "exec": (_L("-c", "-l"), _L("-a")),
+    "builtin": (set(), set()), "nohup": (set(), set()),
+    "time": (_L("-p", "-v", "-a", "--portability", "--verbose", "--append"), _L("-f", "-o", "--format", "--output")),
+    "setsid": (_L("-c", "-f", "-w", "--ctty", "--fork", "--wait"), set()),
+    "env": (_L("-i", "-0", "-v", "--ignore-environment", "--null", "--debug"), _L("-u", "--unset", "-C", "--chdir")),
+    "nice": (set(), _L("-n", "--adjustment")),
+    "timeout": (_L("--foreground", "--preserve-status", "-v", "--verbose"), _L("-s", "--signal", "-k", "--kill-after")),
+    "sudo": (_L("-E", "-H", "-n", "-S", "-b", "-i", "-s", "-A", "-k", "-K", "--preserve-env", "--login", "--shell",
+                "--non-interactive", "--background", "--stdin"),
+             _L("-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--close-from", "-D",
+                "--chdir", "-R", "--chroot", "-T", "--command-timeout", "-U", "--other-user")),
+    "stdbuf": (set(), _L("-i", "-o", "-e", "--input", "--output", "--error")),
+    "ionice": (_L("-t", "--ignore"), _L("-c", "-n", "-p", "--class", "--classdata", "--pid")),
+    "local-heavy-gate": (set(), set()),
+    "xargs": (_L("-0", "-r", "-t", "-p", "-x", "--null", "--no-run-if-empty", "--verbose", "--interactive", "--exit"),
+              _L("-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a", "--max-args", "--max-procs", "--delimiter",
+                 "--arg-file", "--max-lines", "--max-chars")),
+}
+# git global options: flags and options taking a separate value
+GIT_FLAGS = set("--no-pager -p --paginate -P --no-replace-objects --bare --literal-pathspecs --glob-pathspecs "
+                "--noglob-pathspecs --icase-pathspecs --no-optional-locks --no-lazy-fetch --no-advice --version -v "
+                "--help -h --html-path --man-path --info-path --exec-path --list-cmds".split())
+GIT_OPT_VALUE = {"--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--attr-source"}
+# git -c/--config-env/config keys allowed by default-deny; everything else can run programs or redirect pushes
+CFG_OK = re.compile(r"(?i)(?:user\.(?:name|email)|color\..+|core\.quotepath|advice\..+|init\.defaultbranch"
+                    r"|safe\.directory|log\..+|format\..+)$")
+GIT_ENV_BAD = re.compile(r"(?i)GIT_(?:CONFIG\w*|PAGER|EDITOR|SEQUENCE_EDITOR|SSH|SSH_COMMAND|EXTERNAL_DIFF|ASKPASS"
+                         r"|EXEC_PATH|PROXY_COMMAND|DIR|WORK_TREE)$")
+CFG_READ = {"--get", "--get-all", "--get-regexp", "--list", "-l", "--get-urlmatch", "--get-color", "--get-colorbool"}
+CFG_VAL = {"-f", "--file", "--blob", "--type", "--default", "--comment"}
 
 
-def allow() -> None:
-    # No output = no opinion = allowed to proceed to normal permission flow.
-    sys.exit(0)
+class Deny(Exception):
+    pass
 
 
-def current_branch() -> str:
-    # symbolic-ref works even on an unborn branch (no commits yet);
-    # rev-parse --abbrev-ref HEAD can misreport "HEAD" in that case.
-    for args in (["git", "symbolic-ref", "--short", "HEAD"],
-                 ["git", "rev-parse", "--abbrev-ref", "HEAD"]):
+class Unverifiable(Deny):
+    """The AST can't prove the command safe or dangerous (dynamic words, script
+    bodies, unknown options...). Decided by the legacy regex guard instead, so
+    the AST guard is never weaker than it and never blocks more on uncertainty."""
+
+
+class Resplit(Exception):
+    """env -S: the value is a command line to re-parse."""
+
+
+class W:
+    """A shell word: text with DYN where non-literal, dynamic flag, raw JSON."""
+    __slots__ = ("text", "dyn", "raw", "glob")
+
+    def __init__(self, node):
+        self.raw = json.dumps(node)
+        self.text, self.dyn, self.glob = "", False, False
+        for p in node.get("Parts", []):
+            t = p.get("Type")
+            if t == "Lit":
+                if re.search(r"(?<!\\)[*?\[]", p["Value"]):
+                    self.glob = True
+                v = re.sub(r"\\(.)", r"\1", p["Value"], flags=re.S)
+                if re.search(r"\{[^}]*(,|\.\.)[^}]*\}", v):  # brace expansion
+                    self.dyn = True
+                self.text += v
+            elif t == "SglQuoted" and not p.get("Dollar"):
+                self.text += p["Value"]
+            elif t == "DblQuoted" and all(q.get("Type") == "Lit" for q in p.get("Parts", [])):
+                self.text += "".join(re.sub(r"\\(.)", r"\1", q["Value"], flags=re.S) for q in p.get("Parts", []))
+            else:
+                self.dyn, self.text = True, self.text + DYN
+
+
+def unk(w):
+    """Value cannot be known statically (expansion or glob)."""
+    return w.dyn or w.glob
+
+
+def base(w):
+    return os.path.basename(w.text)
+
+
+def find_shfmt():
+    env = os.environ.get("ALLTRUE_SHFMT")
+    cands = [env] if env else [shutil.which("shfmt"), os.path.join(HERE, "bin", "shfmt")]
+    for c in cands:
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def parse(shfmt, cmd):
+    try:
+        r = subprocess.run([shfmt, "-ln", "bash", "--to-json"], input=cmd, capture_output=True,
+                           text=True, timeout=3)
+    except subprocess.TimeoutExpired:
+        raise Deny("shfmt timed out parsing the command")
+    if r.returncode != 0:
+        raise Deny("cannot parse command (fail closed): " + r.stderr.strip()[:200])
+    return json.loads(r.stdout)
+
+
+def is_secret(path, cwd):
+    p = os.path.expanduser(path)
+    cands = [p]
+    full = p if os.path.isabs(p) else os.path.join(cwd, p)
+    try:
+        if os.path.exists(full) or os.path.islink(full):
+            cands.append(os.path.realpath(full))
+    except OSError:
+        pass
+    for c in cands:
+        parts = c.split("/")
+        b = parts[-1]
+        if (b.endswith(".env") or b.startswith(".env.") and b not in SECRET_OK or b.endswith(".pem")
+                or b.startswith("id_rsa") or b == "credentials.json"
+                or ".ssh" in parts[:-1] or ".aws" in parts[:-1]):
+            return True
+    return False
+
+
+def secret_arg(text, cwd, g=False):
+    # also catches `file=@.env` / `--file=.env`; g: unquoted glob, test every match
+    vs = {text, text.split("=", 1)[-1], text.split("@", 1)[-1]}
+    if re.match(r"-[^-]", text):
+        vs.add(text[2:])  # -Xvalue
+    vs = {v.lstrip("@<") for v in vs} - {""}
+    if g:
+        vs |= {m for v in vs for m in globmod.glob(os.path.join(cwd, os.path.expanduser(v)))}
+    return any(is_secret(v, cwd) for v in vs)
+
+
+def unwrap(argv, seen):
+    while argv:
+        if argv[0].dyn or argv[0].glob and argv[0].text not in ("[", "[["):
+            raise Unverifiable("cannot verify dynamic command name")
+        n = base(argv[0])
+        if n not in WRAPPERS:
+            return argv
+        flags, vals = WRAPPERS[n]
+        i = 1
+        if n == "local-heavy-gate":
+            while i < len(argv) and argv[i].text != "--":
+                i += 1
+            i += 1
+        else:
+            while i < len(argv):
+                t = argv[i].text
+                if argv[i].dyn:
+                    raise Unverifiable(f"cannot verify dynamic {n} option")
+                if t == "--":
+                    i += 1
+                    break
+                if n == "env" and re.match(r"-S|--split-string", t):
+                    att = t.split("=", 1)[1] if t.startswith("--") and "=" in t else t[2:] if not t.startswith("--") else ""
+                    val, rest = (att, argv[i + 1:]) if att else (argv[i + 1].text if i + 1 < len(argv) else "", argv[i + 2:])
+                    if any(w.dyn for w in rest) or any(w.dyn for w in argv):
+                        raise Unverifiable("cannot verify dynamic env -S command")
+                    raise Resplit(val + " " + " ".join(shlex.quote(w.text) for w in rest))
+                if n == "env" and "=" in t and not t.startswith("-"):
+                    env_name_check(t.split("=", 1)[0], seen)
+                    i += 1
+                elif not t.startswith("-"):
+                    break
+                elif t.startswith("--") and "=" in t:
+                    if t.split("=", 1)[0] not in vals:
+                        raise Deny(f"unknown {n} option {t.split('=', 1)[0]} (fail closed)")
+                    i += 1
+                elif t in flags:
+                    i += 1
+                elif t in vals:
+                    i += 2
+                elif not t.startswith("--") and t[:2] in vals and len(t) > 2:
+                    i += 1  # attached value, e.g. -n5
+                elif n == "nice" and re.match(r"-\d+$", t):
+                    i += 1
+                elif not t.startswith("--") and len(t) > 2 and all("-" + c in flags for c in t[1:]):
+                    i += 1  # cluster of flags
+                else:
+                    raise Deny(f"unknown {n} option {t} (fail closed)")
+            if n == "timeout":
+                i += 1  # duration
+        argv = argv[i:]
+    return argv
+
+
+def abbr(a, full, minlen=4):
+    n = a.split("=", 1)[0]
+    return a.startswith("--") and len(n) >= minlen and full.startswith(n)
+
+
+def shorts(a):
+    return a[1:] if re.match(r"-[A-Za-z]+$", a) else ""
+
+
+def branch_of(d):
+    for args in (["symbolic-ref", "--short", "HEAD"], ["rev-parse", "--abbrev-ref", "HEAD"]):
         try:
-            out = subprocess.run(args, capture_output=True, text=True, timeout=5)
-            branch = out.stdout.strip()
-            if out.returncode == 0 and branch and branch != "HEAD":
-                return branch
+            r = subprocess.run(["git", "-C", d] + args, capture_output=True, text=True, timeout=5)
+            b = r.stdout.strip()
+            if r.returncode == 0 and b and b != "HEAD":
+                return b
         except Exception:
             continue
     return ""
 
 
-SECRET_FILE_RE = re.compile(
-    r"(\.env(?!\.(?:example|sample|template|dist)(?![.\w]))(?:\.[A-Za-z]+)?\b|[^;&|\s\"']*\.pem\b|\bid_rsa(?:\.\w+)?\b|"
-    r"\bcredentials\.json\b|\.ssh/[A-Za-z0-9_.-]*\b|\.aws/[A-Za-z0-9_.-]*\b)"
-)
+def check_cfg(text, dyn=False):
+    if dyn or not CFG_OK.match(text.split("=", 1)[0]):
+        raise Deny("git -c/--config-env key is not on the safe allowlist (fail closed)")
 
 
-def check_git_patterns(cmd: str) -> None:
-    # Deliberately NOT anchored to a statement boundary: "git" subcommand
-    # shapes are specific enough (and false negatives here are worse than
-    # the rare false positive of a commit message literally containing
-    # e.g. "git push --force") that we search anywhere in the command.
-    # See the module docstring for the tradeoff.
-
-    # 1. direct commit on main/master (flags between "git" and "commit"
-    #    tolerated, e.g. `git -C /path commit`, `git --no-pager commit`).
-    if re.search(rf"\bgit\b{GAP}\bcommit\b", cmd):
-        branch = current_branch()
-        if branch in ("main", "master"):
-            deny(
-                f"Blocked: direct commit on '{branch}'. Branch first — "
-                "see CLAUDE.md Git rules."
-            )
-
-    # 2. force push
-    force_flag = r'(--force\b|--force-with-lease\b|(?:^|[\s,"\'])-[a-zA-Z]*f[a-zA-Z]*(?:[\s,"\']|$))'
-    if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}{force_flag}", cmd) or \
-            re.search(rf"\bgit\b{GAP}\bpush\b{GAP}\s['\"]?\+[^\s;&|]", cmd):
-        deny(
-            "Blocked: force push. Forbidden without explicit Founder "
-            "approval this session (CLAUDE.md)."
-        )
-
-    # 2b. direct push to main/master (R3: feature branch + PR only)
-    if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}[\s:]['\"]?(?:refs/heads/)?(?:main|master)\b(?![-/.\w])", cmd):
-        deny("Blocked: push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
-
-    # 2c. admin merge bypasses required checks (AGENTS.md machine ban on --admin)
-    # (checked on the raw command in check_all: for gh pr merge, -m is the merge
-    # strategy, so its "value" is not inert text)
-
-    # 3. git reset --hard
-    if re.search(rf"\bgit\b{GAP}\breset\b{GAP}--hard\b", cmd):
-        deny("Blocked: git reset --hard. Forbidden — see CLAUDE.md.")
-
-    # 4. git clean with -f/-d
-    if re.search(rf"\bgit\b{GAP}\bclean\b{GAP}-[a-zA-Z]*[fd]", cmd):
-        deny(
-            "Blocked: git clean. Forbidden — never discard untracked work "
-            "(CLAUDE.md)."
-        )
-
-    # 5. force branch delete / remote ref deletion
-    if re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}-[a-zA-Z]*D\b", cmd) or (
-            re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}--delete\b", cmd)
-            and re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}(--force\b|\s-f\b)", cmd)) or (
-            re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}\s-[a-zA-Z]*d", cmd)
-            and re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}(--force\b|\s-[a-zA-Z]*f)", cmd)):
-        deny(
-            "Blocked: force branch delete. Forbidden without explicit "
-            "Founder approval."
-        )
-    if re.search(
-        rf"\bgit\b{GAP}\bpush\b{GAP}(--delete\b|--prune\b|--mirror\b|\s-d\b|\s:[A-Za-z0-9/_.-]+(?:\s|$))",
-        cmd,
-    ):
-        deny(
-            "Blocked: remote branch/ref deletion via push. Forbidden "
-            "without explicit Founder approval."
-        )
+def env_name_check(name, seen):
+    if GIT_ENV_BAD.match(name):
+        raise Deny(f"{name} can inject git config/programs (fail closed)")
+    seen.append(name)
 
 
-def check_deploy_patterns(cmd: str) -> None:
-    # Anchored to statement start: these use words ("make", "deploy",
-    # "release") that are common in ordinary English (commit messages, PR
-    # text), so we only flag them as an actual command invocation, not
-    # free text. bash -c wrapping is still caught via the unwrap pass in
-    # main().
-    deploy_patterns = [
-        rf"{ANCHOR}vercel\b{GAP}--prod\b",
-        rf"{ANCHOR}terraform\b{GAP}\bapply\b",
-        rf"{ANCHOR}supabase\b{GAP}\bdb\b{GAP}\bpush\b",
-        rf"{ANCHOR}prisma\b{GAP}\bmigrate\b{GAP}\bdeploy\b",
-        rf"(?:{ANCHOR}php\b{GAP}|{ANCHOR}\S*/)artisan\b{GAP}\bmigrate\S*{GAP}--force\b",
-        rf"{ANCHOR}kubectl\b{GAP}\bapply\b",
-        rf"{ANCHOR}gh\b{GAP}\bworkflow\b{GAP}\brun\b{GAP}deploy",
-        rf"{ANCHOR}(npm|yarn|pnpm)\b{GAP}\brun\b{GAP}\bdeploy\b",
-        # generic script/target invocation shapes — best-effort, not exhaustive
-        rf"{ANCHOR}make\b[ \t]+(?:-\S+[ \t]+)*\b(deploy|release)\b",
-        rf"{ANCHOR}\./\S*deploy\S*\.(sh|bash|py|rb|js)\b",
-        rf"{ANCHOR}(sh|bash|zsh)\b\s+\S*deploy\S*\.(sh|bash)\b",
-    ]
-    for pat in deploy_patterns:
-        if re.search(pat, cmd):
-            deny(
-                "Blocked: production deploy/migration command (or a script "
-                "shaped like one). Requires explicit Founder approval this "
-                "session (CLAUDE.md, governance/AUTONOMY_POLICY.md)."
-            )
-
-
-def check_credential_leak(cmd: str) -> None:
-    read_verbs = r"(cat|less|more|head|tail|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort|jq)\b"
-    if re.search(rf"{ANCHOR}{read_verbs}{GAP}{SECRET_FILE_RE.pattern}", cmd):
-        deny(
-            "Blocked: command outputs a credential-shaped file. If this is "
-            "legitimate, read it deliberately and never paste the value "
-            "into chat/logs (AGENTS.md RULE-SEC-001)."
-        )
-    if re.search(rf"{ANCHOR}(curl|scp|rsync)\b{GAP}{SECRET_FILE_RE.pattern}", cmd):
-        deny("Blocked: command appears to transfer a credential-shaped file externally.")
-
-    # Symlink / indirection guard: resolve file-reading commands' path
-    # arguments and check the *resolved* target, not just the literal
-    # argument text — catches `cat innocuous_name` where innocuous_name is
-    # a symlink to .env etc.
-    for segment in re.split(SEP, cmd):
-        segment = segment.strip()
-        if not segment:
+def check_git(args, cwd):
+    i, dirs = 0, []
+    while i < len(args):
+        w = args[i]
+        a = w.text
+        if unk(w):
+            break
+        if a == "-C" and i + 1 < len(args):
+            dirs.append(args[i + 1])
+            i += 2
+        elif a in ("-c", "--config-env") and i + 1 < len(args):
+            check_cfg(args[i + 1].text, args[i + 1].dyn)
+            i += 2
+        elif a.startswith("--config-env="):
+            check_cfg(a.split("=", 1)[1], w.dyn)
+            i += 1
+        elif a in GIT_OPT_VALUE:
+            i += 2
+        elif a.startswith("--") and a.split("=")[0] in GIT_OPT_VALUE or a.startswith(("--exec-path=", "--list-cmds=")) \
+                or a in GIT_FLAGS:
+            i += 1
+        elif a.startswith("-"):
+            raise Deny(f"unknown git global option {a} (fail closed)")
+        else:
+            break
+    if i >= len(args):
+        return
+    if unk(args[i]):
+        raise Unverifiable("cannot verify dynamic git subcommand")
+    sub, rest = args[i].text, args[i + 1:]
+    texts = [w.text for w in rest]
+    d = cwd
+    for w in dirs:
+        if w.dyn:
+            if sub == "commit":
+                raise Unverifiable("cannot verify dynamic git -C directory for commit")
             continue
-        tokens = segment.split()
-        if not tokens or tokens[0] not in ("cat", "head", "tail", "less", "more", "sed", "awk",
-                                           "grep", "rg", "base64", "xxd", "od", "strings", "nl", "tac"):
+        d = os.path.join(d, os.path.expanduser(w.text))
+    if sub == "config" and not CFG_READ & set(texts):
+        keys, k = [], 0
+        while k < len(texts):
+            if texts[k] in CFG_VAL:
+                k += 1
+            elif texts[k] in ("-e", "--edit"):
+                raise Deny("git config --edit runs an editor (fail closed)")
+            elif not texts[k].startswith("-"):
+                keys.append(texts[k])
+                break
+            k += 1
+        if not keys or not CFG_OK.match(keys[0]):
+            raise Deny("git config write key is not on the safe allowlist (fail closed)")
+    if sub not in KNOWN_GIT:
+        raise Deny(f"unknown git subcommand '{sub}' (alias/external command; fail closed)")
+    if (sub == "rebase" and any(t == "--exec" or abbr(t, "--exec") or "x" in shorts(t) for t in texts)
+            or sub == "bisect" and "run" in texts or sub == "submodule" and "foreach" in texts
+            or sub == "difftool" and any(abbr(t, "--extcmd") or "x" in shorts(t) for t in texts)
+            or sub == "filter-branch"):
+        raise Deny(f"git {sub} can execute arbitrary programs (fail closed)")
+    if sub in ("push", "reset", "clean", "branch") and any(unk(w) for w in rest):
+        # reset: `--soft $(git merge-base ...)` is routine; regex still catches a literal --hard
+        raise (Unverifiable if sub == "reset" else Deny)(f"cannot verify dynamic arguments to git {sub} (fail closed)")
+    if sub == "commit":
+        if branch_of(d) in ("main", "master"):
+            raise Deny(f"direct commit on '{branch_of(d)}'. Branch first - see CLAUDE.md Git rules.")
+        if file_flag_secret(texts, cwd):
+            raise Deny("a credential-shaped file would be published as a commit message.")
+    elif sub == "push":
+        pos = []
+        for t in texts:
+            c = shorts(t)
+            if abbr(t, "--force") or t.startswith("--force-") or "f" in c:
+                raise Deny("force push. Forbidden without explicit Founder approval (CLAUDE.md).")
+            if abbr(t, "--delete") or abbr(t, "--prune") or abbr(t, "--mirror") or "d" in c:
+                raise Deny("remote branch/ref deletion via push. Forbidden without Founder approval.")
+            if not t.startswith("-"):
+                pos.append(t)
+        for t in pos:
+            if t.startswith("+"):
+                raise Deny("force push (+refspec). Forbidden without explicit Founder approval.")
+            if t.startswith(":"):
+                raise Deny("remote ref deletion via push (:ref). Forbidden without Founder approval.")
+            dst = t.rsplit(":", 1)[-1]
+            dst = dst[len("refs/heads/"):] if dst.startswith("refs/heads/") else dst
+            if dst in ("main", "master"):
+                raise Deny("push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
+    elif sub == "reset":
+        if any(abbr(t, "--hard") for t in texts):
+            raise Deny("git reset --hard. Forbidden - see CLAUDE.md.")
+    elif sub == "clean":
+        if any(set(shorts(t)) & set("fd") or abbr(t, "--force") for t in texts):
+            raise Deny("git clean. Forbidden - never discard untracked work (CLAUDE.md).")
+    elif sub == "branch":
+        cl = [shorts(t) for t in texts]
+        force = any("f" in c for c in cl) or any(abbr(t, "--force") for t in texts)
+        delete = any("d" in c for c in cl) or any(abbr(t, "--delete") for t in texts)
+        if any("D" in c for c in cl) or (force and delete):
+            raise Deny("force branch delete. Forbidden without explicit Founder approval.")
+
+
+def file_flag_secret(t, cwd):
+    """-F/--file/--body-file <path> and --file=<path> forms (including as the last argument)."""
+    return any(a in ("-F", "--body-file", "--file") and j + 1 < len(t) and secret_arg(t[j + 1], cwd)
+               or a.startswith(("--body-file=", "--file=")) and secret_arg(a, cwd) for j, a in enumerate(t))
+
+
+def check_gh(args):
+    allt = [w.text for w in args]
+    t, k = [], 0
+    while k < len(allt):  # -R/--repo is inherited by every subcommand and may appear anywhere
+        a = allt[k]
+        if a in ("-R", "--repo"):
+            k += 2
             continue
-        for tok in tokens[1:]:
-            if tok.startswith("-"):
-                continue
-            candidate = os.path.expanduser(tok)
-            try:
-                if not os.path.exists(candidate) and not os.path.islink(candidate):
-                    continue
-                resolved = os.path.realpath(candidate)
-            except Exception:
-                continue
-            if SECRET_FILE_RE.search(resolved):
-                deny(
-                    "Blocked: path resolves (possibly via symlink) to a "
-                    f"credential-shaped file: {os.path.basename(resolved)}. "
-                    "See AGENTS.md RULE-SEC-001."
-                )
+        if not (a.startswith("--repo=") or a.startswith("-R") and len(a) > 2):
+            t.append(a)
+        k += 1
+    if t and (t[0] not in KNOWN_GH or any(unk(w) for w in args[:1])):
+        raise Deny(f"unknown gh subcommand {t[0]!r} (fail closed)")
+    if t[:2] in (["alias", "set"], ["alias", "import"]):
+        raise Deny("gh alias set/import can hide commands (fail closed)")
+    if t[:2] == ["pr", "merge"] and any(abbr(a, "--admin") for a in t):
+        raise Deny("gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
+    if t[:2] == ["workflow", "run"] and any("deploy" in a.lower() for a in t[2:]):
+        raise Deny("gh workflow run deploy*: production deploy needs explicit Founder approval.")
+    if file_flag_secret(allt, os.getcwd()):
+        raise Deny("a credential-shaped file would be published as a PR/issue body.")
 
 
-# AllTrue: the Raspberry Pi is production. Agents never SSH/copy to it
-# (CLAUDE.md R2/R6, incident C: `php artisan test` on the Pi wiped prod DB).
-PI_TARGET = r"(?i:pi\.lifenet\.com\.tw\b|\$\{?PI_(?:SSH_)?(?:HOST|USER)\b)"
+PKG_RUN = {"run", "run-script", "rum", "urn"}
+PKG_BUILTIN = set("install add remove view info why list test build".split())
+PKG_VAL = {"--prefix", "-C", "--workspace", "-w", "--filter", "-F", "--cwd", "--dir"}
 
 
-def _script_targets_pi(cmd: str) -> bool:
-    # Any segment may run a script (bash -x, timeout, wrappers...), except ones
-    # whose program only views files.
-    viewers = {"git", "sed", "cat", "less", "more", "head", "tail", "grep", "rg",
-               "diff", "wc", "ls", "stat", "file", "jq", "nl", "tac",
-               "shellcheck", "chmod"}
-    toks = []
-    for seg in re.split(SEP, cmd):
-        words = seg.split()
-        if words and not _SUBST_RE.search(seg) and (
-                words[0] in viewers or re.match(r"(?:bash|sh|zsh)\s+-n\b", seg.strip())):
-            continue
-        toks += re.findall(r"[\w./-]+\.(?:sh|bash)\b", seg)
-    toks = list(dict.fromkeys(toks))
-    if len(toks) > 20:
-        return True  # too many to read inside the hook timeout; fail closed
-    for tok in toks:
+def pkg_deploy(n, t):
+    words, k = [], 0
+    while k < len(t):  # drop options (and their separate values)
+        if t[k].startswith("-"):
+            k += 2 if t[k] in PKG_VAL else 1
+        else:
+            words.append(t[k])
+            k += 1
+    if not words:
+        return False
+    if words[0] in PKG_RUN:
+        return any(re.search(r"\bdeploy\b", a) for a in words[1:2])
+    return n != "npm" and words[0] not in PKG_BUILTIN and bool(re.search(r"\bdeploy\b", words[0]))
+
+
+def check_deploy(n, argv):
+    t = [w.text for w in argv[1:]]
+    hit = (
+        n == "terraform" and "apply" in t or n == "kubectl" and "apply" in t
+        or n == "vercel" and any(a == "--prod" or a.startswith("--prod=") for a in t)
+        or n == "supabase" and "db" in t and "push" in t[t.index("db"):]
+        or n == "prisma" and "migrate" in t and "deploy" in t
+        or n in ("npm", "yarn", "pnpm") and pkg_deploy(n, t)
+        or n == "make" and any(re.match(r"(?:deploy|release)", a) for a in t)
+        or (n == "php" and any(base(w) == "artisan" for w in argv[1:]) or n == "artisan")
+        and any(a.startswith("migrate") for a in t) and any(a == "--force" or a.startswith("--force=") for a in t)
+    )
+    if hit:
+        raise Deny("production deploy/migration command. Requires explicit Founder approval "
+                   "(CLAUDE.md, governance/AUTONOMY_POLICY.md).")
+
+
+def regex_scan(text):
+    """Run the legacy regex guard over free-form code embedded in interpreter args."""
+    import guard_bash_regex as rx
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
         try:
-            with open(tok, encoding="utf-8", errors="ignore") as fh:
-                body = fh.read(200_000)
-        except OSError:
-            continue
-        if re.search(r"(?i)pi\.lifenet\.com\.tw", body) and re.search(r"\b(?:ssh|scp|rsync)\b", body):
-            return True
-    return False
+            rx.check_all(text)
+        except SystemExit:
+            pass
+    if buf.getvalue():
+        raise Deny("(regex) " + json.loads(buf.getvalue())["hookSpecificOutput"]["permissionDecisionReason"])
 
 
-def check_production_host(cmd: str) -> None:
-    if re.search(rf"\b(?:ssh|scp|sftp|rsync)\b{GAP}{PI_TARGET}", cmd) or _script_targets_pi(cmd):
-        deny(
-            "Blocked: SSH/copy to the production Pi. Forbidden for agents — "
-            "all changes go branch -> PR -> CI -> deploy.yml (CLAUDE.md R2/R6)."
-        )
+class Walker:
+    def __init__(self, shfmt):
+        self.shfmt = shfmt
+        self.scripts = []  # (path, cwd)
+        self.alts = set()  # cwds from before uncertain constructs
+        self.fed = None  # stdin of the command being walked: None | "pipe" | "file" | ("lit", text)
+
+    def run(self, cmd, cwd, depth=0):
+        if depth > MAX_DEPTH:
+            raise Unverifiable("shell payload nested too deeply to verify")
+        self.walk(parse(self.shfmt, cmd), cwd, depth)
+
+    def walk(self, n, cwd, depth):
+        if isinstance(n, list):
+            for x in n:
+                cwd = self.walk(x, cwd, depth)
+            return cwd
+        if not isinstance(n, dict):
+            return cwd
+        saved = self.fed
+        if n.get("Type") == "DeclClause":
+            for a in n.get("Args", []):
+                env_name_check((a.get("Name") or {}).get("Value") or "", [])
+        for r in n.get("Redirs", []):
+            op = r.get("Op")
+            if op in ("<<", "<<-"):
+                parts = (r.get("Hdoc") or {}).get("Parts", [])
+                lit = all(p.get("Type") == "Lit" for p in parts)
+                self.fed = ("lit" if lit else "dyn", "".join(p.get("Value", " DYN ") for p in parts))
+            elif op == "<<<":
+                w = W(r["Word"])
+                self.fed = "pipe" if w.dyn else ("lit", w.text)
+            elif op == "<":
+                self.fed = "file"
+        entry = cwd
+        # cd is truly non-propagating only out of pipelines, subshells, substitutions and functions. After
+        # ||, && and if/for/while/case the cwd is uncertain: the pre-construct cwd is kept as an alternate
+        # for script resolution (self.alts).
+        op = n.get("Op") if n.get("Type") == "BinaryCmd" else None
+        seq = op not in ("|", "|&")
+        for k, v in n.items():
+            if k == "Redirs":
+                for r in v:
+                    self.redirect(r, cwd)
+            if k == "Y" and n.get("Op") in ("|", "|&"):
+                self.fed = "pipe"
+            r = self.walk(v, cwd if seq else entry, depth)
+            if seq:
+                cwd = r
+        if n.get("Type") == "CallExpr":
+            seen = []
+            for a in n.get("Assigns", []):
+                env_name_check(a["Name"]["Value"], seen)
+        if n.get("Type") == "CallExpr" and n.get("Args"):
+            cwd = self.cmd([W(a) for a in n["Args"]], cwd, depth, seen) or cwd
+        self.fed = saved
+        if cwd != entry and (op in ("||", "&&") or n.get("Type") in UNCERTAIN):
+            self.alts.add(entry)
+        return entry if not seq or n.get("Type") in NOPROP else cwd
+
+    def redirect(self, r, cwd):
+        if r.get("Op") not in ("<<", "<<-", "<<<") and r.get("Word"):
+            w = W(r["Word"])
+            if secret_arg(w.text, cwd, w.glob):
+                raise Deny(f"shell redirection {r['Op']} touches a credential-shaped file (AGENTS.md RULE-SEC-001).")
+
+    def tail(self, argv, cwd, depth):
+        """Payload carriers: treat any later literal word as a possible command start."""
+        if depth > MAX_DEPTH:
+            raise Unverifiable("carrier nested too deeply to verify")
+        for k in range(1, len(argv)):
+            if not unk(argv[k]) and argv[k].text != ".":  # `.` is usually a find/path operand
+                self.cmd(argv[k:], cwd, depth + 1)
+            if " " in argv[k].text and not argv[k].dyn and base(argv[0]) in ("su", "script", "flock", "watch", "parallel"):
+                self.run(argv[k].text, cwd, depth + 1)
+
+    def cmd(self, argv, cwd, depth, seen=None):
+        seen = [] if seen is None else seen
+        try:
+            argv = unwrap(argv, seen)
+        except Resplit as r:
+            self.run(str(r), cwd, depth + 1)
+            return None
+        if not argv:
+            return None
+        name, args = base(argv[0]), argv[1:]
+        if name == "cd":
+            return os.path.join(cwd, os.path.expanduser(args[0].text)) if args and not args[0].dyn else None
+        if name in SSH_FAMILY:
+            if any(PI_RE.search(w.raw) for w in args):
+                raise Deny("SSH/copy to the production Pi. Forbidden for agents - all changes go "
+                           "branch -> PR -> CI -> deploy.yml (CLAUDE.md R2/R6).")
+            if any(unk(w) for w in args):
+                raise Unverifiable(f"cannot verify dynamic arguments to {name} (fail closed)")
+        if name == "git":
+            if any(n.upper() in ("PAGER", "EDITOR") for n in seen):
+                raise Deny("PAGER/EDITOR assignment for git can run programs (fail closed)")
+            check_git(args, cwd)
+        elif name == "gh":
+            check_gh(args)
+        check_deploy(name, argv)
+        if name in READERS:
+            for w in args:
+                if secret_arg(w.text, cwd, w.glob):
+                    raise Deny(f"{name} reads/copies a credential-shaped file (AGENTS.md RULE-SEC-001).")
+        if name not in SAFE_CMDS:
+            keep, skip = [], False
+            for w in argv:  # free-text values (-m/--body/...) are inert; AST already exposes substitutions
+                if skip or name in ("git", "gh") and FREE_TEXT.match(w.text):
+                    skip = w.text in ("-m", "--message", "--body", "--title", "--description")
+                    continue
+                keep.append(w.text)
+                skip = name in ("git", "gh") and w.text in ("-m", "--message", "--body", "--title", "--description")
+            regex_scan(" ".join(keep))
+        if name in CARRIERS:
+            self.tail(argv, cwd, depth)
+        if name == "set" and (any(re.match(r"-[A-Za-z]*a", w.text) for w in args)
+                              or any(args[k].text in ("-o", "+o") and args[k + 1].text.startswith("a")
+                                     for k in range(len(args) - 1)) or any(unk(w) for w in args)):
+            raise Deny("set -a/allexport (or dynamic set args) can export injected variables (fail closed)")
+        if name == "eval":
+            if any(w.dyn for w in args):
+                raise Unverifiable("cannot verify dynamic eval payload")
+            self.run(" ".join(w.text for w in args), cwd, depth + 1)
+        if name in SHELLS:
+            self.shell(name, args, cwd, depth)
+        elif INTERP.match(name):
+            pos = [w for w in args if not w.text.startswith("-") or w.text == "-"]
+            if (not pos or pos[0].text == "-") and not any(re.match(r"-[a-z]*[ceEr]$", w.text) for w in args):
+                self.stdin_code(name, cwd, depth, False)
+        elif "/" in argv[0].text and re.search(r"\.(sh|bash)$", argv[0].text):
+            self.script(argv[0].text, cwd, depth, True)
+        if re.search(r"deploy[^/]*\.(sh|bash|py|rb|js)$", argv[0].text if "/" in argv[0].text else "", re.I):
+            raise Deny("deploy script. Requires explicit Founder approval (CLAUDE.md).")
+        return None
+
+    def stdin_code(self, name, cwd, depth, shell):
+        f = self.fed
+        if isinstance(f, tuple) and (f[0] == "lit" or not shell):
+            # literal code, or an interpreter heredoc whose $vars are only data: scan the text
+            self.run(f[1], cwd, depth + 1) if shell else regex_scan(f[1])
+        elif f == "file" and not shell:
+            return  # `python3 < x.py` is the same as `python3 x.py`
+        elif f is not None or shell:
+            raise Deny(f"{name} reading code from a pipe, variable or file cannot be verified (fail closed)")
+
+    def shell(self, name, args, cwd, depth):
+        if name in ("source", "."):
+            ops, c, nflag, s_flag = args[:1], False, False, False
+        else:
+            i = c = nflag = s_flag = 0
+            while i < len(args) and not unk(args[i]):
+                t = args[i].text
+                if t == "--":
+                    i += 1
+                    break
+                if t in ("-", "") or t[0] not in "-+":
+                    break
+                if t.startswith("--"):
+                    if t in ("--rcfile", "--init-file"):
+                        i += 1
+                    elif t not in ("--login", "--noprofile", "--norc", "--posix", "--restricted", "--verbose",
+                                   "--debug", "--noediting", "--version", "--help"):
+                        raise Deny(f"unknown shell option {t} (fail closed)")
+                else:
+                    cl = t[1:]
+                    if "a" in cl and t[0] == "-" or re.search(r"[oO]", cl) and i + 1 < len(args) \
+                            and args[i + 1].text.startswith("a"):
+                        raise Deny("shell -a/allexport exports injected variables (fail closed)")
+                    if t[0] == "-":
+                        c, nflag, s_flag = c or "c" in cl, nflag or "n" in cl, s_flag or "s" in cl
+                    if re.search(r"[oO]", cl):
+                        if cl[-1] not in "oO":
+                            raise Deny(f"ambiguous shell option cluster {t} (fail closed)")
+                        i += 1
+                i += 1
+            ops = args[i:]
+        if c:
+            if not ops or unk(ops[0]):
+                raise Unverifiable("cannot verify shell -c payload (fail closed)")
+            return self.run(ops[0].text, cwd, depth + 1)
+        if nflag:
+            return
+        if not ops or s_flag or ops[0].text == "-":
+            return self.stdin_code(name, cwd, depth, True)
+        t = ops[0].text
+        if unk(ops[0]) or t.startswith("/dev/") or re.match(r"/proc/[^/]+/fd/", t):
+            raise Deny("shell script operand is dynamic or a device/fd (fail closed)")
+        if re.search(r"deploy[^/]*\.(sh|bash|py|rb|js)$", t, re.I):
+            raise Deny("deploy script. Requires explicit Founder approval (CLAUDE.md).")
+        self.script(t, cwd, depth, True)
+        for w in ops[1:]:  # other *.sh operands: Pi check only
+            if re.search(r"\.(sh|bash)$", w.text):
+                self.script(w.text, cwd, depth, False)
+
+    def script(self, path, cwd, depth, strict):
+        self.scripts.append((path, cwd))
+        if len(self.scripts) > MAX_SCRIPTS:
+            raise Deny("too many scripts to verify inside the hook timeout (fail closed)")
+        found = False
+        for d in {cwd, os.getcwd()} | self.alts:  # every possible cwd; deny if any candidate matches
+            try:
+                with open(os.path.join(d, path), encoding="utf-8", errors="ignore") as fh:
+                    body = fh.read(200_000)
+            except OSError:
+                continue
+            found = True
+            if re.search(r"(?i)pi\.lifenet\.com\.tw", body) and re.search(r"\b(?:ssh|scp|rsync)\b", body):
+                raise Deny(f"script {path} targets the production Pi (CLAUDE.md R2/R6).")
+            if strict:
+                self.run(body, d, depth + 1)
+        if strict and not found:
+            raise Deny(f"script {path} cannot be opened to verify (fail closed)")
 
 
-def check_redirect_read(cmd: str) -> None:
-    # `< .env`, `$(<.env)`: the shell itself reads the file, whatever the command.
-    if re.search(rf"<\s*['\"]?[^\s;&|'\"()]*{SECRET_FILE_RE.pattern}", cmd):
-        deny("Blocked: shell redirection reads a credential-shaped file (AGENTS.md RULE-SEC-001).")
-
-
-def check_redirect_write(cmd: str) -> None:
-    # `> .env`, `>> ~/.ssh/config`, `| tee .env`: overwriting credentials.
-    if re.search(rf"(?:>>?|\btee\b(?:\s+-\S+)*)\s*['\"]?[^\s;&|'\"()]*{SECRET_FILE_RE.pattern}", cmd):
-        deny("Blocked: command writes to a credential-shaped file (AGENTS.md RULE-SEC-001).")
-
-
-def check_file_flags(cmd: str) -> None:
-    # git commit -F <file> / gh --body-file <file> publish the file's contents.
-    if re.search(rf"(?:\s-F|--body-file|--file)\s*=?\s*['\"]?[^\s;&|'\"]*{SECRET_FILE_RE.pattern}", cmd):
-        deny("Blocked: a credential-shaped file would be published as a commit message or PR/issue body.")
-
-
-def check_all(cmd: str, depth: int = 0) -> None:
-    if re.search(rf"\bgh\b{GAP}\bpr\b{GAP}\bmerge\b{GAP}--admin\b", cmd):
-        deny("Blocked: gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
-    scan_cmd = _strip_non_executed_text(cmd)
-    check_git_patterns(scan_cmd)
-    check_deploy_patterns(scan_cmd)
-    check_credential_leak(scan_cmd)
-    check_production_host(scan_cmd)
-    check_file_flags(scan_cmd)
-    check_redirect_read(scan_cmd)
-    check_redirect_write(scan_cmd)
-
-    if depth >= MAX_UNWRAP_DEPTH:
-        return
-    # Unwrap against the ORIGINAL (unstripped) cmd — a real bash -c payload
-    # is never itself the value of a -m/--body/--title flag, so stripping
-    # has no legitimate reason to touch it, and unwrapping the stripped
-    # version would risk missing a wrapper whose quotes happened to look
-    # like a descriptive flag's.
-    for m in _WRAPPER_RE.finditer(cmd):
-        inner = m.group(2)
-        if inner:
-            check_all(inner, depth + 1)
-
-
-def main() -> None:
+def emit_deny(reason):
+    out = json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                             "permissionDecision": "deny",
+                                             "permissionDecisionReason": reason}})
     try:
-        payload = json.load(sys.stdin)
+        print(out)
+        sys.stdout.flush()
     except Exception:
-        allow()
-        return
+        sys.exit(2)
+    sys.exit(0)
 
-    cmd = (payload.get("tool_input") or {}).get("command", "") or ""
-    if not cmd:
-        allow()
-        return
 
-    # Join backslash-newline line continuations so a genuinely multi-line
-    # command isn't split into separate "statements" that individually
-    # look safe.
-    cmd = re.sub(r"\\\r?\n", " ", cmd)
-
-    if len(cmd) > MAX_COMMAND_CHARS:
-        deny(
-            f"Blocked: command is {len(cmd)} chars, over the guard's {MAX_COMMAND_CHARS}-char "
-            "scan limit. Put long text in a file (--body-file / -F) and pass the path."
-        )
-
-    check_all(cmd)
-
-    allow()
+def main():
+    try:
+        cmd = (json.load(sys.stdin).get("tool_input") or {}).get("command", "") or ""
+        if not cmd:
+            return
+        if len(cmd) > MAX_COMMAND_CHARS:
+            raise Deny(f"command is {len(cmd)} chars, over the guard's {MAX_COMMAND_CHARS}-char limit. "
+                       "Put long text in a file (--body-file / -F) and pass the path.")
+        shfmt = find_shfmt()
+        if shfmt is None:
+            sys.stderr.write("guard_bash: shfmt not found (scripts/install-shfmt.sh); using regex fallback\n")
+            import guard_bash_regex as rx
+            rx.check_all(re.sub(r"\\\r?\n", " ", cmd))
+            return
+        try:
+            Walker(shfmt).run(cmd, os.getcwd())
+        except Unverifiable:
+            import guard_bash_regex as rx
+            rx.check_all(re.sub(r"\\\r?\n", " ", cmd))  # denies via its own emit + exit
+    except Deny as e:
+        emit_deny(f"Blocked (AST guard): {e}")
+    except SystemExit:
+        raise
+    except BaseException as e:  # fail closed
+        emit_deny(f"Blocked (AST guard): internal error, failing closed: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":
