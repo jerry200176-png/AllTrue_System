@@ -1,7 +1,7 @@
 # REF — API Routes
 
 > **GENERATED FILE — do not hand-edit.** Regenerate: `bash scripts/generate-ref-api-routes.sh`
-> Source: `php artisan route:list --json` · 491 api/* routes · generated 2026-10-03
+> Source: `php artisan route:list --json` · 492 api/* routes · generated 2026-10-04
 >
 > Auth legend: `role`=role middleware group, `campus`=require_campus, `pin`=require_pin,
 > `auth`=non-role authentication (for example API key), `public`=no enforcing auth middleware.
@@ -214,13 +214,14 @@
 |--------|-----|--------|------|
 | GET | `api/v1/branches` | `CampusController@listPublic` | public |
 
-## /api/v1/bugs (9)
+## /api/v1/bugs (10)
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | POST | `api/v1/bugs` | `BugReportController@store` | role+campus |
 | GET | `api/v1/bugs` | `BugReportController@index` | role+campus |
 | POST | `api/v1/bugs/mark-inbox-seen` | `BugReportController@markInboxSeen` | role+campus |
+| GET | `api/v1/bugs/open-on-page` | `BugReportController@openOnPage` | role+campus |
 | GET | `api/v1/bugs/unread-badge` | `BugReportController@unreadBadge` | role+campus |
 | GET | `api/v1/bugs/{id}` | `BugReportController@show` | role+campus |
 | POST | `api/v1/bugs/{id}/comments` | `BugReportController@addComment` | role+campus |
