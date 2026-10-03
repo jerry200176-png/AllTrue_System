@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-10-02-monthly-opening-preview -->
 - 新增月結課程時，若開課日剛好是固定上課星期，預覽清單與「共 N 堂」會把開課日算成首堂，和系統實際建立的堂次一致；在日曆手動調整後送出的堂次也不會再漏掉開課日那一堂。開課日不在固定星期時的既有規則不變。未改既有課程或帳務資料。
 
+## 2026-10-03 — feat(bug-report): triaged reports awaiting the reporter close after 14 days; reporter reply reopens
+<!-- release-notes: staff_update=staff-2026-10-03-awaiting-reporter-timeout -->
+- 已分流且最後一則公開留言是客服提問、14 天沒有回報人回覆的回報，經人工審核後會先結案並留下公開說明；回報人再於該筆留言會自動重開為已分流（一般結案不受影響）
+
 ## 2026-10-02 — perf(teacher-home): batch same-day schedule read-repair; show known tasks early (in-app #319)
 <!-- release-notes: staff_update=staff-2026-10-02-teacher-home-speed -->
 - `GET /class-sessions` 同日查詢（老師首頁每分鐘輪詢）的「schedules 例外補建」改為批次載入課程、原排課日與已建堂次，已建立的堂次不再逐筆開交易 upsert（原每筆約 5 次查詢，且掃描當日全分校例外）；回應內容不變。同時帶入 b2a419f9b 的漸進顯示：關鍵點名與課表就緒後，已知待辦先顯示，補填提醒／家長回覆計數標「至少」。未改 schema 或資料。

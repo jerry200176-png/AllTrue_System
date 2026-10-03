@@ -898,7 +898,7 @@ class BugReportService
      */
     public static function reopenIfClosedByTimeout(int $bugId, int $reporterId): void
     {
-        $bug = BugReport::query()->find($bugId);
+        $bug = BugReport::query()->where('id', $bugId)->first();
         if (!$bug || $bug->status !== 'closed') {
             return;
         }
