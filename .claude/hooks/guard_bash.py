@@ -18,10 +18,12 @@ from stdin, ssh host aliases from ~/.ssh/config, bash/sh reading a script
 from a pipe is denied but other interpreters are only regex-scanned.
 """
 import contextlib
+import glob as globmod
 import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -32,38 +34,70 @@ MAX_DEPTH = 3
 MAX_SCRIPTS = 20
 DYN = "\x00"  # placeholder for a non-literal word part
 
-SHELLS = {"bash", "sh", "zsh", "dash", "source", "."}
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "mksh", "yash", "fish", "source", "."}
 INTERP = re.compile(r"(?:awk|gawk|mawk|perl|ruby|node|nodejs|php|lua|deno|bun|python[\d.]*)$")
 READERS = set("cat less more head tail sed awk grep rg base64 xxd od strings nl tac cut sort jq tee cp scp rsync curl".split())
 SSH_FAMILY = {"ssh", "scp", "sftp", "rsync"}
-VIEWERS_N = {"-n"}  # `bash -n script` only parses
+# Programs whose argv is fully covered by semantic rules (or inert); every other program also gets the
+# legacy regex scan over its argv (defense in depth for unknown executors).
+SAFE_CMDS = set("git gh echo printf true false test [ : cd pwd ls date sleep wc mkdir touch head tail cat grep rg "
+                "diff stat file".split())
+KNOWN_GIT = set("commit push reset clean branch config status log diff add fetch pull checkout switch show merge "
+                "rebase stash tag remote rev-parse ls-files worktree restore mv rm init clone cherry-pick describe "
+                "grep blame apply am bisect rev-list show-ref symbolic-ref ls-remote cat-file blame shortlog".split())
+CARRIERS = {"su", "script", "flock", "watch", "parallel", "find", "xargs", "busybox"}
 PI_RE = re.compile(r"(?i)pi\.lifenet\.com\.tw|\bPI_(?:SSH_)?(?:HOST|USER)\b")
 SECRET_OK = {".env.example", ".env.sample", ".env.template", ".env.dist"}
-# wrapper -> options that take a value
+# wrapper -> (flags, options taking a value); anything else => deny.
+_L = lambda *a: set(a)
 WRAPPERS = {
-    "command": set(), "exec": set(), "builtin": set(), "nohup": set(), "time": set(),
-    "setsid": set(), "env": {"-u", "-C", "-S"}, "nice": {"-n"}, "timeout": {"-s", "-k"},
-    "sudo": set("-u -g -h -p -C -D -R -T -U".split()), "stdbuf": {"-i", "-o", "-e"},
-    "ionice": {"-c", "-n", "-p"}, "local-heavy-gate": set(),
-    "xargs": set("-I -n -P -d -E -L -s -a".split()),
+    "command": (_L("-p", "-v", "-V"), set()), "exec": (_L("-c", "-l"), _L("-a")),
+    "builtin": (set(), set()), "nohup": (set(), set()),
+    "time": (_L("-p", "-v", "-a", "--portability", "--verbose", "--append"), _L("-f", "-o", "--format", "--output")),
+    "setsid": (_L("-c", "-f", "-w", "--ctty", "--fork", "--wait"), set()),
+    "env": (_L("-i", "-0", "-v", "--ignore-environment", "--null", "--debug"), _L("-u", "--unset", "-C", "--chdir")),
+    "nice": (set(), _L("-n", "--adjustment")),
+    "timeout": (_L("--foreground", "--preserve-status", "-v", "--verbose"), _L("-s", "--signal", "-k", "--kill-after")),
+    "sudo": (_L("-E", "-H", "-n", "-S", "-b", "-i", "-s", "-A", "-k", "-K", "--preserve-env", "--login", "--shell",
+                "--non-interactive", "--background", "--stdin"),
+             _L("-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--close-from", "-D",
+                "--chdir", "-R", "--chroot", "-T", "--command-timeout", "-U", "--other-user")),
+    "stdbuf": (set(), _L("-i", "-o", "-e", "--input", "--output", "--error")),
+    "ionice": (_L("-t", "--ignore"), _L("-c", "-n", "-p", "--class", "--classdata", "--pid")),
+    "local-heavy-gate": (set(), set()),
+    "xargs": (_L("-0", "-r", "-t", "-p", "-x", "--null", "--no-run-if-empty", "--verbose", "--interactive", "--exit"),
+              _L("-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a", "--max-args", "--max-procs", "--delimiter",
+                 "--arg-file", "--max-lines", "--max-chars")),
 }
-GIT_OPT_VALUE = {"--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env"}
+# git global options: flags and options taking a separate value
+GIT_FLAGS = set("--no-pager -p --paginate -P --no-replace-objects --bare --literal-pathspecs --glob-pathspecs "
+                "--noglob-pathspecs --icase-pathspecs --no-optional-locks --no-lazy-fetch --no-advice --version -v "
+                "--help -h --html-path --man-path --info-path --exec-path --list-cmds".split())
+GIT_OPT_VALUE = {"--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--attr-source"}
+# git config keys that can hide/redirect a push or run programs
+CFG_BAD = re.compile(r"(?i)\b(?:alias\.|core\.sshcommand|remote\.[^=\s]*\.push|push\.)")
 
 
 class Deny(Exception):
     pass
 
 
+class Resplit(Exception):
+    """env -S: the value is a command line to re-parse."""
+
+
 class W:
     """A shell word: text with DYN where non-literal, dynamic flag, raw JSON."""
-    __slots__ = ("text", "dyn", "raw")
+    __slots__ = ("text", "dyn", "raw", "glob")
 
     def __init__(self, node):
         self.raw = json.dumps(node)
-        self.text, self.dyn = "", False
+        self.text, self.dyn, self.glob = "", False, False
         for p in node.get("Parts", []):
             t = p.get("Type")
             if t == "Lit":
+                if re.search(r"(?<!\\)[*?\[]", p["Value"]):
+                    self.glob = True
                 v = re.sub(r"\\(.)", r"\1", p["Value"], flags=re.S)
                 if re.search(r"\{[^}]*(,|\.\.)[^}]*\}", v):  # brace expansion
                     self.dyn = True
@@ -74,6 +108,11 @@ class W:
                 self.text += "".join(re.sub(r"\\(.)", r"\1", q["Value"], flags=re.S) for q in p.get("Parts", []))
             else:
                 self.dyn, self.text = True, self.text + DYN
+
+
+def unk(w):
+    """Value cannot be known statically (expansion or glob)."""
+    return w.dyn or w.glob
 
 
 def base(w):
@@ -119,29 +158,66 @@ def is_secret(path, cwd):
     return False
 
 
-def secret_arg(text, cwd):
-    # also catches `file=@.env` / `--file=.env`
-    return any(is_secret(v, cwd) for v in {text, text.split("=", 1)[-1], text.split("@", 1)[-1]} if v)
+def secret_arg(text, cwd, g=False):
+    # also catches `file=@.env` / `--file=.env`; g: unquoted glob, test every match
+    vs = {text, text.split("=", 1)[-1], text.split("@", 1)[-1]}
+    if re.match(r"-[^-]", text):
+        vs.add(text[2:])  # -Xvalue
+    vs = {v.lstrip("@<") for v in vs} - {""}
+    if g:
+        vs |= {m for v in vs for m in globmod.glob(os.path.join(cwd, os.path.expanduser(v)))}
+    return any(is_secret(v, cwd) for v in vs)
 
 
 def unwrap(argv):
     while argv:
-        if argv[0].dyn:
+        if argv[0].dyn or argv[0].glob and argv[0].text not in ("[", "[["):
             raise Deny("cannot verify dynamic command name")
         n = base(argv[0])
         if n not in WRAPPERS:
             return argv
+        flags, vals = WRAPPERS[n]
         i = 1
         if n == "local-heavy-gate":
             while i < len(argv) and argv[i].text != "--":
                 i += 1
             i += 1
         else:
-            while i < len(argv) and (argv[i].text.startswith("-") or n == "env" and "=" in argv[i].text):
-                if argv[i].text == "--":
+            while i < len(argv):
+                t = argv[i].text
+                if argv[i].dyn:
+                    raise Deny(f"cannot verify dynamic {n} option")
+                if t == "--":
                     i += 1
                     break
-                i += 2 if argv[i].text in WRAPPERS[n] else 1
+                if n == "env" and re.match(r"-S|--split-string", t):
+                    att = t.split("=", 1)[1] if t.startswith("--") and "=" in t else t[2:] if not t.startswith("--") else ""
+                    val, rest = (att, argv[i + 1:]) if att else (argv[i + 1].text if i + 1 < len(argv) else "", argv[i + 2:])
+                    if any(w.dyn for w in rest) or any(w.dyn for w in argv):
+                        raise Deny("cannot verify dynamic env -S command")
+                    raise Resplit(val + " " + " ".join(shlex.quote(w.text) for w in rest))
+                if n == "env" and "=" in t and not t.startswith("-"):
+                    if t.upper().startswith("GIT_CONFIG"):
+                        raise Deny("GIT_CONFIG_* can inject git aliases/config (fail closed)")
+                    i += 1
+                elif not t.startswith("-"):
+                    break
+                elif t.startswith("--") and "=" in t:
+                    if t.split("=", 1)[0] not in vals:
+                        raise Deny(f"unknown {n} option {t.split('=', 1)[0]} (fail closed)")
+                    i += 1
+                elif t in flags:
+                    i += 1
+                elif t in vals:
+                    i += 2
+                elif not t.startswith("--") and t[:2] in vals and len(t) > 2:
+                    i += 1  # attached value, e.g. -n5
+                elif n == "nice" and re.match(r"-\d+$", t):
+                    i += 1
+                elif not t.startswith("--") and len(t) > 2 and all("-" + c in flags for c in t[1:]):
+                    i += 1  # cluster of flags
+                else:
+                    raise Deny(f"unknown {n} option {t} (fail closed)")
             if n == "timeout":
                 i += 1  # duration
         argv = argv[i:]
@@ -169,37 +245,61 @@ def branch_of(d):
     return ""
 
 
+def check_cfg(w):
+    if w.dyn or CFG_BAD.search(w.text):
+        raise Deny("git -c/--config-env alias/sshCommand/push config can hide or redirect a push (fail closed)")
+
+
 def check_git(args, cwd):
     i, dirs = 0, []
     while i < len(args):
-        a = args[i].text
+        w = args[i]
+        a = w.text
+        if unk(w):
+            break
         if a == "-C" and i + 1 < len(args):
             dirs.append(args[i + 1])
             i += 2
-        elif a == "-c" and i + 1 < len(args):
-            if args[i + 1].text.lower().startswith("alias.") or args[i + 1].dyn:
-                raise Deny("git -c alias/dynamic config can hide a subcommand")
+        elif a in ("-c", "--config-env") and i + 1 < len(args):
+            check_cfg(args[i + 1])
             i += 2
+        elif a.startswith("--config-env="):
+            check_cfg(w)
+            i += 1
         elif a in GIT_OPT_VALUE:
             i += 2
-        elif a.startswith("-"):
+        elif a.startswith("--") and a.split("=")[0] in GIT_OPT_VALUE or a.startswith(("--exec-path=", "--list-cmds=")) \
+                or a in GIT_FLAGS:
             i += 1
+        elif a.startswith("-"):
+            raise Deny(f"unknown git global option {a} (fail closed)")
         else:
             break
     if i >= len(args):
         return
-    if args[i].dyn:
+    if unk(args[i]):
         raise Deny("cannot verify dynamic git subcommand")
     sub, rest = args[i].text, args[i + 1:]
     texts = [w.text for w in rest]
-    if sub in ("push", "reset", "clean", "branch") and any(w.dyn for w in rest):
+    d = cwd
+    for w in dirs:
+        if w.dyn:
+            if sub == "commit":
+                raise Deny("cannot verify dynamic git -C directory for commit")
+            continue
+        d = os.path.join(d, os.path.expanduser(w.text))
+    if sub == "config" and any(CFG_BAD.search(t) for t in texts):
+        raise Deny("git config alias/sshCommand/push key (fail closed)")
+    if sub not in KNOWN_GIT:
+        try:
+            if subprocess.run(["git", "-C", d, "config", "--get", "alias." + sub], capture_output=True,
+                              timeout=5).returncode == 0:
+                raise Deny(f"git alias '{sub}' cannot be verified (fail closed)")
+        except subprocess.TimeoutExpired:
+            raise Deny("git alias lookup timed out")
+    if sub in ("push", "reset", "clean", "branch") and any(unk(w) for w in rest):
         raise Deny(f"cannot verify dynamic arguments to git {sub} (fail closed)")
     if sub == "commit":
-        d = cwd
-        for w in dirs:
-            if w.dyn:
-                raise Deny("cannot verify dynamic git -C directory for commit")
-            d = os.path.join(d, os.path.expanduser(w.text))
         if branch_of(d) in ("main", "master"):
             raise Deny(f"direct commit on '{branch_of(d)}'. Branch first - see CLAUDE.md Git rules.")
         for j, t in enumerate(texts[:-1]):
@@ -258,7 +358,7 @@ def check_deploy(n, argv):
         or n == "vercel" and any(a == "--prod" or a.startswith("--prod=") for a in t)
         or n == "supabase" and "db" in t and "push" in t[t.index("db"):]
         or n == "prisma" and "migrate" in t and "deploy" in t
-        or n in ("npm", "yarn", "pnpm") and "deploy" in t
+        or n in ("npm", "yarn", "pnpm") and any(re.search(r"\bdeploy\b", a) for a in t)
         or n == "make" and any(a in ("deploy", "release") for a in t)
         or (n == "php" and any(base(w) == "artisan" for w in argv[1:]) or n == "artisan")
         and any(a.startswith("migrate") for a in t) and any(a == "--force" or a.startswith("--force=") for a in t)
@@ -285,6 +385,7 @@ class Walker:
     def __init__(self, shfmt):
         self.shfmt = shfmt
         self.scripts = []  # (path, cwd)
+        self.fed = None  # stdin of the command being walked: None | "pipe" | "file" | ("lit", text)
 
     def run(self, cmd, cwd, depth=0):
         if depth > MAX_DEPTH:
@@ -298,23 +399,58 @@ class Walker:
             return cwd
         if not isinstance(n, dict):
             return cwd
+        saved = self.fed
+        if n.get("Type") == "DeclClause":
+            for a in n.get("Args", []):
+                if ((a.get("Name") or {}).get("Value") or "").upper().startswith("GIT_CONFIG"):
+                    raise Deny("GIT_CONFIG_* can inject git aliases/config (fail closed)")
+        for r in n.get("Redirs", []):
+            op = r.get("Op")
+            if op in ("<<", "<<-"):
+                parts = (r.get("Hdoc") or {}).get("Parts", [])
+                self.fed = ("lit", "".join(p["Value"] for p in parts)) if all(p.get("Type") == "Lit" for p in parts) else "pipe"
+            elif op == "<<<":
+                w = W(r["Word"])
+                self.fed = "pipe" if w.dyn else ("lit", w.text)
+            elif op == "<":
+                self.fed = "file"
         for k, v in n.items():
             if k == "Redirs":
                 for r in v:
                     self.redirect(r, cwd)
+            if k == "Y" and n.get("Op") in ("|", "|&"):
+                self.fed = "pipe"
             cwd = self.walk(v, cwd, depth)
         if n.get("Type") == "CallExpr" and n.get("Args"):
-            cwd = self.call(n, cwd, depth) or cwd
+            for a in n.get("Assigns", []):
+                if a["Name"]["Value"].upper().startswith("GIT_CONFIG"):
+                    raise Deny("GIT_CONFIG_* can inject git aliases/config (fail closed)")
+            cwd = self.cmd([W(a) for a in n["Args"]], cwd, depth) or cwd
+        self.fed = saved
         return cwd
 
     def redirect(self, r, cwd):
         if r.get("Op") not in ("<<", "<<-", "<<<") and r.get("Word"):
             w = W(r["Word"])
-            if secret_arg(w.text, cwd):
+            if secret_arg(w.text, cwd, w.glob):
                 raise Deny(f"shell redirection {r['Op']} touches a credential-shaped file (AGENTS.md RULE-SEC-001).")
 
-    def call(self, n, cwd, depth):
-        argv = unwrap([W(a) for a in n["Args"]])
+    def tail(self, argv, cwd, depth):
+        """Payload carriers: treat any later literal word as a possible command start."""
+        if depth > MAX_DEPTH:
+            raise Deny("carrier nested too deeply to verify")
+        for k in range(1, len(argv)):
+            if not unk(argv[k]) and argv[k].text != ".":  # `.` is usually a find/path operand
+                self.cmd(argv[k:], cwd, depth + 1)
+            if " " in argv[k].text and not argv[k].dyn and base(argv[0]) in ("su", "script", "flock", "watch", "parallel"):
+                self.run(argv[k].text, cwd, depth + 1)
+
+    def cmd(self, argv, cwd, depth):
+        try:
+            argv = unwrap(argv)
+        except Resplit as r:
+            self.run(str(r), cwd, depth + 1)
+            return None
         if not argv:
             return None
         name, args = base(argv[0]), argv[1:]
@@ -324,7 +460,7 @@ class Walker:
             if any(PI_RE.search(w.raw) for w in args):
                 raise Deny("SSH/copy to the production Pi. Forbidden for agents - all changes go "
                            "branch -> PR -> CI -> deploy.yml (CLAUDE.md R2/R6).")
-            if any(w.dyn for w in args):
+            if any(unk(w) for w in args):
                 raise Deny(f"cannot verify dynamic arguments to {name} (fail closed)")
         if name == "git":
             check_git(args, cwd)
@@ -333,44 +469,85 @@ class Walker:
         check_deploy(name, argv)
         if name in READERS:
             for w in args:
-                if (not w.text.startswith("-") or "=" in w.text) and secret_arg(w.text, cwd):
+                if secret_arg(w.text, cwd, w.glob):
                     raise Deny(f"{name} reads/copies a credential-shaped file (AGENTS.md RULE-SEC-001).")
-        if INTERP.match(name):
+        if name not in SAFE_CMDS:
             regex_scan(" ".join(w.text for w in argv))
+        if name in CARRIERS:
+            self.tail(argv, cwd, depth)
         if name == "eval":
             if any(w.dyn for w in args):
                 raise Deny("cannot verify dynamic eval payload")
             self.run(" ".join(w.text for w in args), cwd, depth + 1)
         if name in SHELLS:
             self.shell(name, args, cwd, depth)
+        elif INTERP.match(name):
+            pos = [w for w in args if not w.text.startswith("-") or w.text == "-"]
+            if (not pos or pos[0].text == "-") and not any(re.match(r"-[a-z]*[ceEr]$", w.text) for w in args):
+                self.stdin_code(name, cwd, depth, False)
         elif "/" in argv[0].text and re.search(r"\.(sh|bash)$", argv[0].text):
-            self.script(argv[0].text, cwd)
+            self.script(argv[0].text, cwd, depth, True)
         if re.search(r"deploy[^/]*\.(sh|bash|py|rb|js)$", argv[0].text if "/" in argv[0].text else "", re.I):
             raise Deny("deploy script. Requires explicit Founder approval (CLAUDE.md).")
         return None
 
-    def shell(self, name, args, cwd, depth):
-        flags = [w.text for w in args if re.match(r"-[A-Za-z]+$", w.text)]
-        pos = [w for w in args if not w.text.startswith("-")]
-        if name in ("source", "."):
-            pos, flags = pos[:1], []
-        elif any("c" in f for f in flags):
-            if not pos or pos[0].dyn:
-                raise Deny("cannot verify dynamic shell -c payload (fail closed)")
-            self.run(pos[0].text, cwd, depth + 1)
-            return
-        if "-n" in flags:
-            return
-        if not pos:
-            raise Deny("shell reading commands from stdin cannot be verified (fail closed)")
-        for w in pos[:1]:
-            if re.search(r"deploy[^/]*\.(sh|bash|py|rb|js)$", w.text, re.I):
-                raise Deny("deploy script. Requires explicit Founder approval (CLAUDE.md).")
-        for w in args:  # first positional is the script; any *.sh arg is checked too
-            if w is pos[0] or re.search(r"\.(sh|bash)$", w.text):
-                self.script(w.text, cwd)
+    def stdin_code(self, name, cwd, depth, shell):
+        f = self.fed
+        if isinstance(f, tuple):
+            if shell:
+                self.run(f[1], cwd, depth + 1)
+            else:
+                regex_scan(f[1])
+        elif f is not None or shell:
+            raise Deny(f"{name} reading code from stdin/pipe/file cannot be verified (fail closed)")
 
-    def script(self, path, cwd):
+    def shell(self, name, args, cwd, depth):
+        if name in ("source", "."):
+            ops, c, nflag, s_flag = args[:1], False, False, False
+        else:
+            i = c = nflag = s_flag = 0
+            while i < len(args) and not unk(args[i]):
+                t = args[i].text
+                if t == "--":
+                    i += 1
+                    break
+                if t in ("-", "") or t[0] not in "-+":
+                    break
+                if t.startswith("--"):
+                    if t in ("--rcfile", "--init-file"):
+                        i += 1
+                    elif t not in ("--login", "--noprofile", "--norc", "--posix", "--restricted", "--verbose",
+                                   "--debug", "--noediting", "--version", "--help"):
+                        raise Deny(f"unknown shell option {t} (fail closed)")
+                else:
+                    cl = t[1:]
+                    if t[0] == "-":
+                        c, nflag, s_flag = c or "c" in cl, nflag or "n" in cl, s_flag or "s" in cl
+                    if re.search(r"[oO]", cl):
+                        if cl[-1] not in "oO":
+                            raise Deny(f"ambiguous shell option cluster {t} (fail closed)")
+                        i += 1
+                i += 1
+            ops = args[i:]
+        if c:
+            if not ops or unk(ops[0]):
+                raise Deny("cannot verify shell -c payload (fail closed)")
+            return self.run(ops[0].text, cwd, depth + 1)
+        if nflag:
+            return
+        if not ops or s_flag or ops[0].text == "-":
+            return self.stdin_code(name, cwd, depth, True)
+        t = ops[0].text
+        if unk(ops[0]) or t.startswith("/dev/") or re.match(r"/proc/[^/]+/fd/", t):
+            raise Deny("shell script operand is dynamic or a device/fd (fail closed)")
+        if re.search(r"deploy[^/]*\.(sh|bash|py|rb|js)$", t, re.I):
+            raise Deny("deploy script. Requires explicit Founder approval (CLAUDE.md).")
+        self.script(t, cwd, depth, True)
+        for w in ops[1:]:  # other *.sh operands: Pi check only
+            if re.search(r"\.(sh|bash)$", w.text):
+                self.script(w.text, cwd, depth, False)
+
+    def script(self, path, cwd, depth, strict):
         self.scripts.append((path, cwd))
         if len(self.scripts) > MAX_SCRIPTS:
             raise Deny("too many scripts to verify inside the hook timeout (fail closed)")
@@ -382,6 +559,11 @@ class Walker:
                 continue
             if re.search(r"(?i)pi\.lifenet\.com\.tw", body) and re.search(r"\b(?:ssh|scp|rsync)\b", body):
                 raise Deny(f"script {path} targets the production Pi (CLAUDE.md R2/R6).")
+            if strict:
+                self.run(body, cwd, depth + 1)
+            return
+        if strict:
+            raise Deny(f"script {path} cannot be opened to verify (fail closed)")
 
 
 def emit_deny(reason):
