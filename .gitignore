@@ -208,3 +208,6 @@ tmp-cutover/
 
 # Local agent-start session manifest: read in the worktree, never committed.
 /.agent-session/manifest.json
+
+# Pinned shfmt binary for the Bash guard hook (scripts/install-shfmt.sh).
+/.claude/hooks/bin/
