@@ -388,7 +388,8 @@ class TeacherAttendanceApiTest extends TestCase
                 'adjust_reason' => '忘',
             ])
             ->assertStatus(422)
-            ->assertJsonStructure(['message', 'errors' => ['adjust_reason']]);
+            ->assertJsonStructure(['message', 'errors' => ['adjust_reason']])
+            ->assertJsonPath('errors.adjust_reason.0', '補卡原因至少要寫兩個字');
 
         $this->withHeaders(['Authorization' => "Bearer {$director['token']}"])
             ->post('/api/v1/teacher-attendance/999999999/adjust', [
