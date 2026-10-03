@@ -683,11 +683,6 @@ exemptions:
     changelog_title: "fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped"
     reason: 只修正轉換失敗時的交易回滾（內部資料一致性），成功流程與畫面無變化。
 
-  - id: silent-2026-10-03-text-contrast
-    changelog_date: "2026-10-03"
-    changelog_title: "fix(a11y): AA contrast for muted gray and orange text"
-    reason: 灰色與橘色文字加深屬畫面細節；依指南須 merge、deploy、production 驗證後才發教職員卡片，卡片於驗證後另 PR 發布。
-
   - id: silent-2026-10-03-form-control-labels
     changelog_date: "2026-10-03"
     changelog_title: "fix(a11y): accessible names for attendance and profile form controls"

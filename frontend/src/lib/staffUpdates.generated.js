@@ -34,6 +34,38 @@ export const staffUpdates = [
     "version": "2026.10.03"
   },
   {
+    "id": "staff-2026-10-03-text-contrast",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "灰色與橘色文字更清楚",
+    "summary": "系統裡比較淡的灰字和橘色文字都加深了，亮色和暗色模式都更好讀。",
+    "items": [
+      "灰色說明文字和橘色文字加深，螢幕反光或看久了也比較清楚。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "灰色說明文字和橘色文字加深，螢幕反光或看久了也比較清楚。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "github:jerry200176-png/AllTrue_System#3472"
+    ],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-03-swipe-line-switch",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,

@@ -79,8 +79,41 @@ export function notesForRole(role) {
 }
 
 export function latestReleaseVersionForRole(role) {
-  const notes = notesForRole(role);
-  return notes.length > 0 ? notes[0].version : '';
+  return releaseSeenToken(notesForRole(role));
+}
+
+/**
+ * Seen state is one token per staff mode ({"director": "...", "teacher": "..."}),
+ * so a director/teacher switching modes never re-opens a feed already dismissed.
+ * A legacy plain-string value still counts as seen for any mode.
+ */
+function parseSeenTokens(stored) {
+  if (!stored) return {};
+  try {
+    const parsed = JSON.parse(stored);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch { /* legacy plain token */ }
+  return { _legacy: String(stored) };
+}
+
+export function isReleaseTokenSeen(stored, role, token) {
+  const seen = parseSeenTokens(stored);
+  return seen[role] === token || seen._legacy === token;
+}
+
+export function addSeenReleaseToken(stored, role, token) {
+  return JSON.stringify({ ...parseSeenTokens(stored), [role]: token });
+}
+
+/**
+ * "Seen" token for the release nudge: newest version plus every note id that
+ * shares it, so a second card published on the same day re-opens the nudge.
+ */
+export function releaseSeenToken(notes) {
+  if (!notes || notes.length === 0) return '';
+  const latest = notes[0].version;
+  const ids = notes.filter((n) => n.version === latest).map((n) => n.id || '').sort().join(',');
+  return ids ? `${latest}#${ids}` : latest;
 }
 
 /**
