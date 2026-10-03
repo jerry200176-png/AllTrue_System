@@ -40,11 +40,18 @@ READERS = set("cat less more head tail sed awk grep rg base64 xxd od strings nl 
 SSH_FAMILY = {"ssh", "scp", "sftp", "rsync"}
 # Programs whose argv is fully covered by semantic rules (or inert); every other program also gets the
 # legacy regex scan over its argv (defense in depth for unknown executors).
-SAFE_CMDS = set("git gh echo printf true false test [ : cd pwd ls date sleep wc mkdir touch head tail cat grep rg "
+SAFE_CMDS = set("echo printf true false test [ : cd pwd ls date sleep wc mkdir touch head tail cat grep rg "
                 "diff stat file".split())
 KNOWN_GIT = set("commit push reset clean branch config status log diff add fetch pull checkout switch show merge "
                 "rebase stash tag remote rev-parse ls-files worktree restore mv rm init clone cherry-pick describe "
-                "grep blame apply am bisect rev-list show-ref symbolic-ref ls-remote cat-file blame shortlog".split())
+                "grep blame apply am bisect rev-list show-ref symbolic-ref ls-remote cat-file shortlog submodule difftool "
+                "filter-branch ls-tree diff-tree merge-base name-rev reflog fsck gc prune repack pack-refs update-ref "
+                "for-each-ref hash-object mktree read-tree write-tree commit-tree archive bundle notes format-patch "
+                "revert sparse-checkout maintenance count-objects check-ignore check-attr var version help range-diff "
+                "whatchanged verify-commit verify-tag".split())
+KNOWN_GH = set("pr issue repo run workflow release api auth browse config gist label project search secret status "
+               "variable cache completion help ruleset org codespace ssh-key attestation version alias extension".split())
+FREE_TEXT = re.compile(r"--(?:body|title|message|description)=|-m.")
 CARRIERS = {"su", "script", "flock", "watch", "parallel", "find", "xargs", "busybox"}
 PI_RE = re.compile(r"(?i)pi\.lifenet\.com\.tw|\bPI_(?:SSH_)?(?:HOST|USER)\b")
 SECRET_OK = {".env.example", ".env.sample", ".env.template", ".env.dist"}
@@ -74,8 +81,13 @@ GIT_FLAGS = set("--no-pager -p --paginate -P --no-replace-objects --bare --liter
                 "--noglob-pathspecs --icase-pathspecs --no-optional-locks --no-lazy-fetch --no-advice --version -v "
                 "--help -h --html-path --man-path --info-path --exec-path --list-cmds".split())
 GIT_OPT_VALUE = {"--git-dir", "--work-tree", "--namespace", "--super-prefix", "--config-env", "--attr-source"}
-# git config keys that can hide/redirect a push or run programs
-CFG_BAD = re.compile(r"(?i)\b(?:alias\.|core\.sshcommand|remote\.[^=\s]*\.push|push\.)")
+# git -c/--config-env/config keys allowed by default-deny; everything else can run programs or redirect pushes
+CFG_OK = re.compile(r"(?i)(?:user\.(?:name|email)|color\..+|core\.quotepath|advice\..+|init\.defaultbranch"
+                    r"|safe\.directory|log\..+|format\..+)$")
+GIT_ENV_BAD = re.compile(r"(?i)GIT_(?:CONFIG\w*|PAGER|EDITOR|SEQUENCE_EDITOR|SSH|SSH_COMMAND|EXTERNAL_DIFF|ASKPASS"
+                         r"|EXEC_PATH|PROXY_COMMAND|DIR|WORK_TREE)$")
+CFG_READ = {"--get", "--get-all", "--get-regexp", "--list", "-l", "--get-urlmatch", "--get-color", "--get-colorbool"}
+CFG_VAL = {"-f", "--file", "--blob", "--type", "--default", "--comment"}
 
 
 class Deny(Exception):
@@ -169,7 +181,7 @@ def secret_arg(text, cwd, g=False):
     return any(is_secret(v, cwd) for v in vs)
 
 
-def unwrap(argv):
+def unwrap(argv, seen):
     while argv:
         if argv[0].dyn or argv[0].glob and argv[0].text not in ("[", "[["):
             raise Deny("cannot verify dynamic command name")
@@ -197,8 +209,7 @@ def unwrap(argv):
                         raise Deny("cannot verify dynamic env -S command")
                     raise Resplit(val + " " + " ".join(shlex.quote(w.text) for w in rest))
                 if n == "env" and "=" in t and not t.startswith("-"):
-                    if t.upper().startswith("GIT_CONFIG"):
-                        raise Deny("GIT_CONFIG_* can inject git aliases/config (fail closed)")
+                    env_name_check(t.split("=", 1)[0], seen)
                     i += 1
                 elif not t.startswith("-"):
                     break
@@ -245,9 +256,15 @@ def branch_of(d):
     return ""
 
 
-def check_cfg(w):
-    if w.dyn or CFG_BAD.search(w.text):
-        raise Deny("git -c/--config-env alias/sshCommand/push config can hide or redirect a push (fail closed)")
+def check_cfg(text, dyn=False):
+    if dyn or not CFG_OK.match(text.split("=", 1)[0]):
+        raise Deny("git -c/--config-env key is not on the safe allowlist (fail closed)")
+
+
+def env_name_check(name, seen):
+    if GIT_ENV_BAD.match(name):
+        raise Deny(f"{name} can inject git config/programs (fail closed)")
+    seen.append(name)
 
 
 def check_git(args, cwd):
@@ -261,10 +278,10 @@ def check_git(args, cwd):
             dirs.append(args[i + 1])
             i += 2
         elif a in ("-c", "--config-env") and i + 1 < len(args):
-            check_cfg(args[i + 1])
+            check_cfg(args[i + 1].text, args[i + 1].dyn)
             i += 2
         elif a.startswith("--config-env="):
-            check_cfg(w)
+            check_cfg(a.split("=", 1)[1], w.dyn)
             i += 1
         elif a in GIT_OPT_VALUE:
             i += 2
@@ -288,15 +305,26 @@ def check_git(args, cwd):
                 raise Deny("cannot verify dynamic git -C directory for commit")
             continue
         d = os.path.join(d, os.path.expanduser(w.text))
-    if sub == "config" and any(CFG_BAD.search(t) for t in texts):
-        raise Deny("git config alias/sshCommand/push key (fail closed)")
+    if sub == "config" and not CFG_READ & set(texts):
+        keys, k = [], 0
+        while k < len(texts):
+            if texts[k] in CFG_VAL:
+                k += 1
+            elif texts[k] in ("-e", "--edit"):
+                raise Deny("git config --edit runs an editor (fail closed)")
+            elif not texts[k].startswith("-"):
+                keys.append(texts[k])
+                break
+            k += 1
+        if not keys or not CFG_OK.match(keys[0]):
+            raise Deny("git config write key is not on the safe allowlist (fail closed)")
     if sub not in KNOWN_GIT:
-        try:
-            if subprocess.run(["git", "-C", d, "config", "--get", "alias." + sub], capture_output=True,
-                              timeout=5).returncode == 0:
-                raise Deny(f"git alias '{sub}' cannot be verified (fail closed)")
-        except subprocess.TimeoutExpired:
-            raise Deny("git alias lookup timed out")
+        raise Deny(f"unknown git subcommand '{sub}' (alias/external command; fail closed)")
+    if (sub == "rebase" and any(t == "--exec" or abbr(t, "--exec") or "x" in shorts(t) for t in texts)
+            or sub == "bisect" and "run" in texts or sub == "submodule" and "foreach" in texts
+            or sub == "difftool" and any(abbr(t, "--extcmd") or "x" in shorts(t) for t in texts)
+            or sub == "filter-branch"):
+        raise Deny(f"git {sub} can execute arbitrary programs (fail closed)")
     if sub in ("push", "reset", "clean", "branch") and any(unk(w) for w in rest):
         raise Deny(f"cannot verify dynamic arguments to git {sub} (fail closed)")
     if sub == "commit":
@@ -341,6 +369,10 @@ def check_git(args, cwd):
 
 def check_gh(args):
     t = [w.text for w in args]
+    if t and (t[0] not in KNOWN_GH or any(unk(w) for w in args[:1])):
+        raise Deny(f"unknown gh subcommand {t[0]!r} (fail closed)")
+    if t[:2] in (["alias", "set"], ["alias", "import"]):
+        raise Deny("gh alias set/import can hide commands (fail closed)")
     if t[:2] == ["pr", "merge"] and any(abbr(a, "--admin") for a in t):
         raise Deny("gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
     if t[:2] == ["workflow", "run"] and any("deploy" in a.lower() for a in t[2:]):
@@ -402,8 +434,7 @@ class Walker:
         saved = self.fed
         if n.get("Type") == "DeclClause":
             for a in n.get("Args", []):
-                if ((a.get("Name") or {}).get("Value") or "").upper().startswith("GIT_CONFIG"):
-                    raise Deny("GIT_CONFIG_* can inject git aliases/config (fail closed)")
+                env_name_check((a.get("Name") or {}).get("Value") or "", [])
         for r in n.get("Redirs", []):
             op = r.get("Op")
             if op in ("<<", "<<-"):
@@ -421,11 +452,12 @@ class Walker:
             if k == "Y" and n.get("Op") in ("|", "|&"):
                 self.fed = "pipe"
             cwd = self.walk(v, cwd, depth)
-        if n.get("Type") == "CallExpr" and n.get("Args"):
+        if n.get("Type") == "CallExpr":
+            seen = []
             for a in n.get("Assigns", []):
-                if a["Name"]["Value"].upper().startswith("GIT_CONFIG"):
-                    raise Deny("GIT_CONFIG_* can inject git aliases/config (fail closed)")
-            cwd = self.cmd([W(a) for a in n["Args"]], cwd, depth) or cwd
+                env_name_check(a["Name"]["Value"], seen)
+        if n.get("Type") == "CallExpr" and n.get("Args"):
+            cwd = self.cmd([W(a) for a in n["Args"]], cwd, depth, seen) or cwd
         self.fed = saved
         return cwd
 
@@ -445,9 +477,10 @@ class Walker:
             if " " in argv[k].text and not argv[k].dyn and base(argv[0]) in ("su", "script", "flock", "watch", "parallel"):
                 self.run(argv[k].text, cwd, depth + 1)
 
-    def cmd(self, argv, cwd, depth):
+    def cmd(self, argv, cwd, depth, seen=None):
+        seen = [] if seen is None else seen
         try:
-            argv = unwrap(argv)
+            argv = unwrap(argv, seen)
         except Resplit as r:
             self.run(str(r), cwd, depth + 1)
             return None
@@ -463,6 +496,8 @@ class Walker:
             if any(unk(w) for w in args):
                 raise Deny(f"cannot verify dynamic arguments to {name} (fail closed)")
         if name == "git":
+            if any(n.upper() in ("PAGER", "EDITOR") for n in seen):
+                raise Deny("PAGER/EDITOR assignment for git can run programs (fail closed)")
             check_git(args, cwd)
         elif name == "gh":
             check_gh(args)
@@ -472,9 +507,20 @@ class Walker:
                 if secret_arg(w.text, cwd, w.glob):
                     raise Deny(f"{name} reads/copies a credential-shaped file (AGENTS.md RULE-SEC-001).")
         if name not in SAFE_CMDS:
-            regex_scan(" ".join(w.text for w in argv))
+            keep, skip = [], False
+            for w in argv:  # free-text values (-m/--body/...) are inert; AST already exposes substitutions
+                if skip or name in ("git", "gh") and FREE_TEXT.match(w.text):
+                    skip = w.text in ("-m", "--message", "--body", "--title", "--description")
+                    continue
+                keep.append(w.text)
+                skip = name in ("git", "gh") and w.text in ("-m", "--message", "--body", "--title", "--description")
+            regex_scan(" ".join(keep))
         if name in CARRIERS:
             self.tail(argv, cwd, depth)
+        if name == "set" and (any(re.match(r"-[A-Za-z]*a", w.text) for w in args)
+                              or any(args[k].text in ("-o", "+o") and args[k + 1].text.startswith("a")
+                                     for k in range(len(args) - 1)) or any(unk(w) for w in args)):
+            raise Deny("set -a/allexport (or dynamic set args) can export injected variables (fail closed)")
         if name == "eval":
             if any(w.dyn for w in args):
                 raise Deny("cannot verify dynamic eval payload")
@@ -521,6 +567,9 @@ class Walker:
                         raise Deny(f"unknown shell option {t} (fail closed)")
                 else:
                     cl = t[1:]
+                    if "a" in cl and t[0] == "-" or re.search(r"[oO]", cl) and i + 1 < len(args) \
+                            and args[i + 1].text.startswith("a"):
+                        raise Deny("shell -a/allexport exports injected variables (fail closed)")
                     if t[0] == "-":
                         c, nflag, s_flag = c or "c" in cl, nflag or "n" in cl, s_flag or "s" in cl
                     if re.search(r"[oO]", cl):
