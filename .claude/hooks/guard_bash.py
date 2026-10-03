@@ -41,7 +41,7 @@ GAP = rf"(?:(?!{SEP}).)*?"
 # anchor patterns built on words that are also plausible in ordinary English
 # text (e.g. "deploy", "make", "release") so a commit message mentioning
 # them isn't denied — only an actual invocation is.
-_PREFIX = r"(?:\b(?:sudo|env(?:\s+\S+=\S*)*|command|exec|time|nice|nohup)\s+)*"
+_PREFIX = r"(?:(?:\b(?:sudo|env(?:\s+\S+=\S*)*|command|exec|time|nice|nohup)|\b[A-Za-z_][A-Za-z0-9_]*=\S*)\s+)*"
 ANCHOR = rf"(?:^|{SEP}|\bthen\b)\s*{_PREFIX}"
 
 # bash/sh/zsh/dash -c "..." / -lc '...' wrapper: extracts the quoted payload
@@ -143,7 +143,7 @@ def current_branch() -> str:
 
 
 SECRET_FILE_RE = re.compile(
-    r"(\.env(?:\.[A-Za-z]+)?\b|[^;&|\s\"']*\.pem\b|\bid_rsa(?:\.\w+)?\b|"
+    r"(\.env(?!\.(?:example|sample|template|dist)\b)(?:\.[A-Za-z]+)?\b|[^;&|\s\"']*\.pem\b|\bid_rsa(?:\.\w+)?\b|"
     r"\bcredentials\.json\b|\.ssh/[A-Za-z0-9_.-]*\b|\.aws/[A-Za-z0-9_.-]*\b)"
 )
 
@@ -168,7 +168,7 @@ def check_git_patterns(cmd: str) -> None:
     # 2. force push
     force_flag = r'(--force\b|--force-with-lease\b|(?:^|[\s,"\'])-f(?:[\s,"\']|$))'
     if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}{force_flag}", cmd) or \
-            re.search(rf"\bgit\b{GAP}\bpush\b{GAP}\s\+[^\s;&|]", cmd):
+            re.search(rf"\bgit\b{GAP}\bpush\b{GAP}\s['\"]?\+[^\s;&|]", cmd):
         deny(
             "Blocked: force push. Forbidden without explicit Founder "
             "approval this session (CLAUDE.md)."
