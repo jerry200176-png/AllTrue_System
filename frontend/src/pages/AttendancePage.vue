@@ -474,10 +474,11 @@
         <div class="att-quick-attend-form">
           <div class="att-quick-grid">
             <div class="form-group">
-              <label>課程 <span class="att-required">*</span></label>
+              <label for="att-quick-course">課程 <span class="att-required">*</span></label>
               <div v-if="teacherCoursesLoading" class="att-skeleton-bar"></div>
               <SearchableSelect
                 v-else
+                input-id="att-quick-course"
                 v-model="quickForm.studentClassId"
                 :options="teacherCourseOptions"
                 placeholder="搜尋課程（學生／科目）…"
@@ -485,8 +486,9 @@
               <p v-if="teacherCoursesError" class="att-field-err">{{ teacherCoursesError }}</p>
             </div>
             <div class="form-group">
-              <label>上課日期 <span class="att-required">*</span></label>
+              <label for="att-quick-date">上課日期 <span class="att-required">*</span></label>
               <input
+                id="att-quick-date"
                 v-model="quickForm.date"
                 type="date"
                 :min="quickMinDate"
@@ -495,17 +497,17 @@
               <p v-if="quickForm.date < quickMinDate" class="att-field-err">超出可補登範圍（14 天），請聯絡管理員</p>
             </div>
             <div class="form-group">
-              <label>開始時間 <span class="att-required">*</span></label>
-              <input v-model="quickForm.startTime" type="time" step="1800" />
+              <label for="att-quick-start">開始時間 <span class="att-required">*</span></label>
+              <input id="att-quick-start" v-model="quickForm.startTime" type="time" step="1800" />
             </div>
             <div class="form-group">
-              <label>結束時間 <span class="att-required">*</span></label>
-              <input v-model="quickForm.endTime" type="time" step="1800" />
+              <label for="att-quick-end">結束時間 <span class="att-required">*</span></label>
+              <input id="att-quick-end" v-model="quickForm.endTime" type="time" step="1800" />
               <p v-if="quickTimeError" class="att-field-err">{{ quickTimeError }}</p>
             </div>
             <div class="form-group">
-              <label>點名狀態 <span class="att-required">*</span></label>
-              <select v-model="quickForm.status">
+              <label for="att-quick-status">點名狀態 <span class="att-required">*</span></label>
+              <select id="att-quick-status" v-model="quickForm.status">
                 <option v-for="opt in allStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
@@ -558,8 +560,9 @@
         <!-- System student mode -->
         <div v-if="dirMode === 'system'" class="att-manual-grid">
           <div class="form-group">
-            <label>學生 <span class="att-required">*</span></label>
+            <label for="att-dir-student">學生 <span class="att-required">*</span></label>
             <SearchableSelect
+              input-id="att-dir-student"
               v-model="dirForm.studentId"
               :options="studentOptions"
               placeholder="搜尋學生姓名…"
@@ -567,10 +570,11 @@
             />
           </div>
           <div class="form-group">
-            <label>課程 <span class="att-required">*</span></label>
+            <label for="att-dir-course">課程 <span class="att-required">*</span></label>
             <div v-if="dirCoursesLoading" class="att-skeleton-bar"></div>
             <select
               v-else
+              id="att-dir-course"
               v-model="dirForm.studentClassId"
               :disabled="!dirForm.studentId || dirCourses.length === 0"
             >
@@ -579,21 +583,21 @@
             </select>
           </div>
           <div class="form-group">
-            <label>日期 <span class="att-required">*</span></label>
-            <input v-model="dirForm.date" type="date" />
+            <label for="att-dir-date">日期 <span class="att-required">*</span></label>
+            <input id="att-dir-date" v-model="dirForm.date" type="date" />
           </div>
           <div class="form-group">
-            <label>開始時間 <span class="att-required">*</span></label>
-            <input v-model="dirForm.startTime" type="time" step="1800" />
+            <label for="att-dir-start">開始時間 <span class="att-required">*</span></label>
+            <input id="att-dir-start" v-model="dirForm.startTime" type="time" step="1800" />
           </div>
           <div class="form-group">
-            <label>結束時間 <span class="att-required">*</span></label>
-            <input v-model="dirForm.endTime" type="time" step="1800" />
+            <label for="att-dir-end">結束時間 <span class="att-required">*</span></label>
+            <input id="att-dir-end" v-model="dirForm.endTime" type="time" step="1800" />
             <p v-if="dirTimeError" class="att-field-err">{{ dirTimeError }}</p>
           </div>
           <div class="form-group">
-            <label>狀態 <span class="att-required">*</span></label>
-            <select v-model="dirForm.status">
+            <label for="att-dir-status">狀態 <span class="att-required">*</span></label>
+            <select id="att-dir-status" v-model="dirForm.status">
               <option value="present">到班</option>
               <option value="late">遲到</option>
               <option value="leave">請假</option>
@@ -601,8 +605,8 @@
             </select>
           </div>
           <div class="form-group">
-            <label>備注</label>
-            <input v-model="dirForm.memo" type="text" placeholder="選填…" />
+            <label for="att-dir-memo">備注</label>
+            <input id="att-dir-memo" v-model="dirForm.memo" type="text" placeholder="選填…" />
           </div>
           <div class="form-group att-submit-wrap">
             <label>&nbsp;</label>
@@ -616,24 +620,25 @@
         <!-- External (original) mode -->
         <div v-else class="att-manual-grid">
           <div class="form-group">
-            <label>選擇學生 <span class="att-required">*</span></label>
+            <label for="att-man-student">選擇學生 <span class="att-required">*</span></label>
             <SearchableSelect
+              input-id="att-man-student"
               v-model="manualForm.personKey"
               :options="personOptions"
               placeholder="搜尋學生姓名…"
             />
           </div>
           <div class="form-group">
-            <label>日期</label>
-            <input v-model="manualForm.date" type="date" />
+            <label for="att-man-date">日期</label>
+            <input id="att-man-date" v-model="manualForm.date" type="date" />
           </div>
           <div class="form-group">
-            <label>時間</label>
-            <input v-model="manualForm.time" type="time" />
+            <label for="att-man-time">時間</label>
+            <input id="att-man-time" v-model="manualForm.time" type="time" />
           </div>
           <div class="form-group">
-            <label>狀態</label>
-            <select v-model="manualForm.status">
+            <label for="att-man-status">狀態</label>
+            <select id="att-man-status" v-model="manualForm.status">
               <option value="present">到班</option>
               <option value="late">遲到</option>
               <option value="leave">請假</option>
@@ -641,8 +646,8 @@
             </select>
           </div>
           <div class="form-group">
-            <label>備註</label>
-            <input v-model="manualForm.memo" type="text" placeholder="選填…" />
+            <label for="att-man-memo">備註</label>
+            <input id="att-man-memo" v-model="manualForm.memo" type="text" placeholder="選填…" />
           </div>
           <div class="form-group att-submit-wrap">
             <label>&nbsp;</label>
@@ -788,7 +793,7 @@
                 </template>
                 <!-- 編輯狀態 -->
                 <div v-else class="att-inline-edit">
-                  <select v-model="record._newStatus" class="att-status-select">
+                  <select v-model="record._newStatus" class="att-status-select" :aria-label="`${record.person_name || ''} 點名狀態`.trim()">
                     <option value="present">到班</option>
                     <option value="late">遲到</option>
                     <option value="leave">請假</option>
@@ -828,12 +833,12 @@
       </p>
       <div class="att-makeup-filters">
         <div class="form-group">
-          <label>起始日期</label>
-          <input v-model="makeupStartDate" type="date" />
+          <label for="att-makeup-start">起始日期</label>
+          <input id="att-makeup-start" v-model="makeupStartDate" type="date" />
         </div>
         <div class="form-group">
-          <label>結束日期</label>
-          <input v-model="makeupEndDate" type="date" />
+          <label for="att-makeup-end">結束日期</label>
+          <input id="att-makeup-end" v-model="makeupEndDate" type="date" />
         </div>
         <div class="form-group att-submit-wrap">
           <label>&nbsp;</label>
@@ -864,7 +869,7 @@
               <td>{{ s.subject_name || '—' }}</td>
               <td>{{ s.teacher_name || '—' }}</td>
               <td>
-                <select v-model="makeupMarkStatus[s.class_session_id]" class="att-status-select">
+                <select v-model="makeupMarkStatus[s.class_session_id]" class="att-status-select" :aria-label="`${s.student_name || ''} 補登點名狀態`.trim()">
                   <option value="present">到班</option>
                   <option value="late">遲到</option>
                   <option v-if="s.session_status === 'scheduled'" value="leave">請假</option>

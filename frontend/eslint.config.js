@@ -1,6 +1,7 @@
 import vuePlugin from 'eslint-plugin-vue';
 import vueParser from 'vue-eslint-parser';
 import globals from 'globals';
+import vueA11y from 'eslint-plugin-vuejs-accessibility';
 
 /**
  * Minimal, narrowly-scoped lint gate — added 2026-07-29 after a production P0
@@ -23,7 +24,7 @@ export default [
   },
   {
     files: ['src/**/*.js', 'src/**/*.vue'],
-    plugins: { vue: vuePlugin },
+    plugins: { vue: vuePlugin, 'vuejs-accessibility': vueA11y },
     languageOptions: {
       parser: vueParser,
       parserOptions: {
@@ -65,5 +66,14 @@ export default [
     rules: {
       'no-undef': 'error',
     },
+  },
+  {
+    // Every form control needs an accessible name (label/for, aria-label…).
+    // TODO: scoped to already-fixed pages; 207 violations remain in other pages
+    // (count when enabled repo-wide on 2026-10-03). Widen `files` as pages are fixed.
+    files: ['src/pages/AttendancePage.vue', 'src/pages/ProfileCenterPage.vue'],
+    plugins: { 'vuejs-accessibility': vueA11y },
+    languageOptions: { parser: vueParser },
+    rules: { 'vuejs-accessibility/form-control-has-label': 'error' },
   },
 ];
