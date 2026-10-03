@@ -237,6 +237,11 @@ class BugReporterTimeoutTest extends TestCase
         $this->assertFalse($rows->has($replied->id));
         $this->assertFalse($rows->has($internal->id));
         $this->assertFalse($rows->has($internalOnly->id), 'internal note is not a question');
+
+        $noted = $this->makeTriagedBug($admin->id, $reporter->id, $now->copy()->subDays(20), false);
+        $this->comment($noted, $admin->id, $now->copy()->subDays(20), false, '謝謝建議，我們已記錄這個需求，評估後再決定是否排入開發。');
+        $rows = collect(BugReportService::listEligibleForAwaitingReporterTimeout($now))->keyBy('bug_id');
+        $this->assertFalse($rows->has($noted->id), 'acknowledgement without a question waits on staff, not the reporter');
     }
 
     public function test_awaiting_dry_run_writes_nothing_and_apply_closes_with_public_comment(): void
@@ -344,12 +349,12 @@ class BugReporterTimeoutTest extends TestCase
         return $token;
     }
 
-    private function comment(BugReport $bug, int $authorId, Carbon $at, bool $internal = false): void
+    private function comment(BugReport $bug, int $authorId, Carbon $at, bool $internal = false, string $body = '訊息'): void
     {
         BugReportComment::create([
             'bug_report_id' => $bug->id,
             'author_user_id' => $authorId,
-            'body' => '訊息',
+            'body' => $body,
             'is_internal_note' => $internal,
             'created_at' => $at,
         ]);
@@ -366,7 +371,7 @@ class BugReporterTimeoutTest extends TestCase
             'status' => 'triaged',
         ]);
         if ($publicAsk) {
-            $this->comment($bug, $adminId, $askedAt);
+            $this->comment($bug, $adminId, $askedAt, false, '請回覆畫面上的合約起迄日期');
         }
         return $bug;
     }

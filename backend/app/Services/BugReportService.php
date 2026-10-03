@@ -44,6 +44,7 @@ class BugReportService
     ];
 
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
+    public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?:請|麻煩).{0,60}(?:回覆|確認|提供|告訴|說明)|[？?]/u';
 
     private const VALID_TRANSITIONS = [
         'new' => ['triaged', 'in_progress', 'closed'],
@@ -902,6 +903,10 @@ class BugReportService
             ->orderByDesc('id')
             ->first();
         if (!$last || (int) $last->author_user_id === $reporterId || $last->created_at->gt($cutoff)) {
+            return null;
+        }
+        // Only a real question waits on the reporter; "noted your suggestion" waits on us (in-app #290).
+        if (preg_match(self::AWAITING_REPORTER_QUESTION_PATTERN, (string) $last->body) !== 1) {
             return null;
         }
 
