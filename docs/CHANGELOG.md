@@ -2,6 +2,10 @@
 <!-- release-notes: silent_ship=silent-2026-10-03-form-control-labels -->
 - 點名與個人中心表單欄位補上 `label for`／`aria-label`（螢幕閱讀器可讀出欄位名稱），不改可見文字與流程；新增 `vuejs-accessibility/form-control-has-label` lint（限這兩頁），axe label／select-name BASELINE 歸零。
 
+## 2026-10-03 — fix(api): API errors are always JSON; 補卡 shows the real error (in-app #375)
+<!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
+- 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
+
 ## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
 <!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
 - 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。
