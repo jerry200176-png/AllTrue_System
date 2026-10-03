@@ -3468,11 +3468,10 @@ class StudentClassController extends Controller
             ], 422);
         }
 
-        // in-app #374: mirror purchaseBatch so preview never advertises an unconfirmable trial purchase.
-        if ($data['mode'] === 'purchase_batch'
-            && strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
+        // in-app #374: mirror purchaseBatch/renewMonthly so preview never advertises an unconfirmable trial renewal.
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
             return response()->json([
-                'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
+                'message' => '試聽課程不能直接加購或續約，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
             ], 422);
         }
@@ -3601,6 +3600,14 @@ class StudentClassController extends Controller
             return response()->json([
                 'message' => '輔導課無須繳費，不能建立收費續報。請先檢查課程資料。',
                 'code' => 'tutoring_no_payment_obligation',
+            ], 422);
+        }
+
+        // in-app #374: renewing a trial must not create another trial period.
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
+            return response()->json([
+                'message' => '試聽課程不能直接續約，請到課程管理使用「轉為正式課程」。',
+                'code' => 'trial_use_convert',
             ], 422);
         }
 

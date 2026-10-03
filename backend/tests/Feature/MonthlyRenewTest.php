@@ -42,6 +42,33 @@ class MonthlyRenewTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_renew_monthly_rejects_trial_source(): void
+    {
+        // in-app #374: a monthly trial must be converted, not renewed into another trial period.
+        $token = $this->createDirectorToken([1], 'director-renew-trial@example.com');
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, [
+            'ClassType'        => 'trial',
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'settlement_day'   => 15,
+            'monthly_sessions' => 8,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => '2026-04-30',
+            'week'             => 2,
+            'time'             => '18:00:00',
+            'SessionDuration'  => 120,
+        ]);
+        $before = StudentClass::count();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", ['end_date' => '2026-06-30'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'trial_use_convert');
+        $this->assertSame($before, StudentClass::count());
+    }
+
     public function test_renew_monthly_creates_new_period_course_and_settles_source_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-renew@example.com');
