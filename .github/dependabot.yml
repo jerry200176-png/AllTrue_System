@@ -37,5 +37,10 @@ updates:
     groups:
       github-actions:
         update-types: ["minor", "patch"]
+    # Major action bumps change the runner Node runtime and inputs; do them
+    # deliberately in one reviewed PR, same as npm/composer majors above.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     cooldown:
       default-days: 7
