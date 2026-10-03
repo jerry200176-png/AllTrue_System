@@ -22,7 +22,8 @@ def test_reconcile_classes():
         issue(1, "[in-app #11] fixed", labels=["bug"]),                     # resolved, issue open -> flag
         issue(2, "[in-app #9] old", labels=["bug"]),                         # closed (<= max_id), open -> flag
         issue(3, "[in-app #9] logged idea", labels=[reconcile_mod.LOGGED_LABEL]),  # logged suggestion -> keep
-        issue(4, "[in-app #10] still open", labels=["bug"]),                 # in-app open -> fine
+        issue(4, "[in-app #10] still open", labels=["bug"]),
+        issue(9, "[in-app #9] reviewed", labels=[reconcile_mod.FROZEN_LABEL]),  # frozen -> keep                 # in-app open -> fine
         issue(5, "[in-app #10] closed early", state="CLOSED", labels=["bug"]),  # issue closed, in-app open -> flag
         issue(6, "no labels"),                                               # unlabeled
         issue(7, "N+1 Query", body=span, author="app/sentry", labels=["x"]),

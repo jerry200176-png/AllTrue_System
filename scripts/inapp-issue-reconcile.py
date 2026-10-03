@@ -20,6 +20,8 @@ SOURCE_REF = re.compile(r"alltrue:bug_report:(\d+)")
 SENTRY_SPAN = re.compile(r"\*\*Offending Spans\*\*\s*\|\s*([^|\n]+)")
 # Logged suggestions (F12): the issue is the backlog, so it stays open after the in-app report closes.
 LOGGED_LABEL = "in-app:logged"
+# Reviewed long-term work (k8s lifecycle/frozen): kept open on purpose.
+FROZEN_LABEL = "lifecycle:frozen"
 
 
 def inapp_ids(issue):
@@ -42,7 +44,7 @@ def reconcile(open_bugs, resolved_bugs, max_id, issues):
         labels = {l["name"] for l in issue.get("labels", [])}
         is_open = issue.get("state", "OPEN").upper() == "OPEN"
         sts = {i: inapp_status(i) for i in ids}
-        if ids and is_open and LOGGED_LABEL not in labels and all(s in ("resolved", "closed") for s in sts.values()):
+        if ids and is_open and not labels & {LOGGED_LABEL, FROZEN_LABEL} and all(s in ("resolved", "closed") for s in sts.values()):
             out["inapp_done_issue_open"].append({"issue": issue["number"], "inapp": sts})
         if ids and not is_open and any(s in ("new", "triaged", "in_progress") for s in sts.values()):
             out["issue_closed_inapp_open"].append({"issue": issue["number"], "inapp": sts})
