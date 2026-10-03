@@ -878,6 +878,8 @@ Route::prefix('v1')->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
         Route::get('line/status', [LineWebhookController::class, 'status']);
         Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
+        Route::get('line/notify-settings', [LineWebhookController::class, 'notifySettings']);
+        Route::put('line/notify-settings', [LineWebhookController::class, 'saveNotifySettings']);
     });
 
     // ── Chat (director + teacher) ─────────────────────────────────────
