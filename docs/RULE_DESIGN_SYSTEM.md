@@ -54,6 +54,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | `--ds-primary-press` | `#D84315` | press（非白字大段文字） | — |
 | `--ds-primary-soft` | `#FFB300` | 圖表/UI 點綴（amber）| `--primary-light` |
 | `--ds-primary-wash` | `#FFF8E1` | 淡奶油暖底（tag/選中底）| `--primary-bg` |
+| `--ds-primary-text` | `#C2410C` | **橘色文字一律用此 token**（白底 5.18:1 AA）；`--ds-primary` 只用於填色／邊框／焦點，不可當文字色（3.08:1）。暗色主題為 `#FFB74D`。`frontend/src/lib/tokenContrast.test.js` 會讀 styles.css 驗證文字配對 ≥4.5:1 | — |
 | `--ds-cta` | `#C2410C` | **實心主 CTA 底**（白字 ≥4.5:1 AA） | — |
 | `--ds-cta-hover` | `#9A3412` | CTA hover | — |
 | `--ds-cta-press` | `#7C2D12` | CTA press | — |
@@ -65,7 +66,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | **裝飾**頂條／header；禁止白字疊在此上當 CTA | — |
 | `--ds-ink` | `#0d253d` | 內文主色（navy，非純黑）| `--text` `--porsche-ink` |
 | `--ds-ink-secondary` | `#273951` | 次要文字 | — |
-| `--ds-ink-mute` | `#64748d` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
+| `--ds-ink-mute` | `#607089` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
 | `--ds-canvas` | `#ffffff` | 主白面 | `--card-bg` `--modal-bg` |
 | `--ds-canvas-soft` | `#f6f9fc` | 冷調頁底、輸入底 | `--bg` `--input-bg` |
 | `--ds-hairline` | `#e3e8ee` | 卡片/表格 1px 邊框 | `--border` `--porsche-border` |
