@@ -160,4 +160,14 @@ class SwipePhotoTest extends TestCase
         $this->assertSame([1024, 576], [$w, $h]);
         Http::assertSent(fn ($req) => count($req['messages']) === 1 && $req['messages'][0]['type'] === 'flex');
     }
+
+    public function test_huge_declared_dimensions_are_not_decoded_and_fall_back_to_text_and_image(): void
+    {
+        $this->upload(['photo' => UploadedFile::fake()->image('bomb.png', 5000, 5000)])->assertOk();
+
+        $files = Storage::disk('local')->files("swipe-photos/{$this->campus->id}");
+        [$w] = getimagesize(Storage::disk('local')->path($files[0]));
+        $this->assertSame(5000, $w);
+        Http::assertSent(fn ($req) => array_column($req['messages'], 'type') === ['text', 'image']);
+    }
 }

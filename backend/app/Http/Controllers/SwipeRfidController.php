@@ -37,6 +37,7 @@ class SwipeRfidController extends Controller
     private const PHOTO_DIR = 'swipe-photos';
     private const PHOTO_TTL_DAYS = 7;
     private const FLEX_IMAGE_MAX_PX = 1024;
+    private const FLEX_RESIZE_MAX_PIXELS = 12_000_000; // 4000×3000 ≈ 48MB 解碼後
     private const PHOTO_TEXT_WINDOW_SECONDS = 120;
 
     /**
@@ -272,7 +273,8 @@ class SwipeRfidController extends Controller
         if ($w > 0 && $w <= self::FLEX_IMAGE_MAX_PX && $h <= self::FLEX_IMAGE_MAX_PX) {
             return true;
         }
-        if ($w <= 0 || !function_exists('imagescale')) {
+        // 1MB 的檔案可以宣稱 20000×20000；解碼前先擋，避免 GD 吃光記憶體。
+        if ($w <= 0 || $w * $h > self::FLEX_RESIZE_MAX_PIXELS || !function_exists('imagescale')) {
             return false;
         }
         $src = @imagecreatefromstring((string) file_get_contents($path));
