@@ -41,7 +41,7 @@ def run(cmd: str, cwd: str = None) -> str:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
     out = subprocess.run(
         [sys.executable, GUARD], input=payload, capture_output=True, text=True,
-        cwd=cwd or _feature_repo(),
+        cwd=cwd or _feature_repo(), timeout=5,  # hook timeout = fail open; catch regex blowups
     )
     return out.stdout.strip()
 
@@ -114,6 +114,7 @@ DANGEROUS = [
     "git push origin '+feature:feature'",
     "FOO=bar php artisan migrate --force",
     "AWS_PROFILE=prod terraform apply",
+    "env A=b " * 64 + "terraform apply",  # prefix regex must stay linear
     "cd backend && php artisan migrate --force",
     'bash -c "ssh pi.lifenet.com.tw uptime"',
     "git push --force origin main",

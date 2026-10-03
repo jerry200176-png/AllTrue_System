@@ -41,7 +41,9 @@ GAP = rf"(?:(?!{SEP}).)*?"
 # anchor patterns built on words that are also plausible in ordinary English
 # text (e.g. "deploy", "make", "release") so a commit message mentioning
 # them isn't denied — only an actual invocation is.
-_PREFIX = r"(?:(?:\b(?:sudo|env(?:\s+\S+=\S*)*|command|exec|time|nice|nohup)|\b[A-Za-z_][A-Za-z0-9_]*=\S*)\s+)*"
+# One alternative per token, so there is only one way to match a prefix run
+# (overlapping alternatives backtrack exponentially and time the hook out = allow).
+_PREFIX = r"(?:\b(?:sudo|env|command|exec|time|nice|nohup|[A-Za-z_][A-Za-z0-9_]*=\S*)\s+)*"
 ANCHOR = rf"(?:^|{SEP}|\bthen\b)\s*{_PREFIX}"
 
 # bash/sh/zsh/dash -c "..." / -lc '...' wrapper: extracts the quoted payload
