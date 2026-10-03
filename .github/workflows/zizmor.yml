@@ -1,0 +1,64 @@
+name: Workflow Security (zizmor)
+
+# zizmor audits workflow files for template injection, unpinned actions,
+# pull_request_target, excessive permissions, etc. CodeQL does not cover these.
+# (actionlint already runs in ci.yml via scripts/ci/actionlint.sh.)
+# Advisory until the existing findings are fixed: --no-exit-codes keeps findings
+# from failing the job, while tool errors (exit 1-3) still fail it. Then drop the flag.
+# The wheel is installed hash-pinned, so a swapped PyPI artifact cannot run with GH_TOKEN.
+# The full report goes to the job summary: GitHub only renders 10 annotations per step.
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/**"
+      - "zizmor.yml"
+      - "zizmor.yaml"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/**"
+      - "zizmor.yml"
+      - "zizmor.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zizmor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: zizmor (advisory)
+    # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor 1.30.1 (hash-pinned)
+        run: |
+          echo "zizmor==1.30.1 --hash=sha256:eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e" > "$RUNNER_TEMP/zizmor-req.txt"
+          python3 -m venv "$RUNNER_TEMP/zizmor-venv"
+          "$RUNNER_TEMP/zizmor-venv/bin/pip" install --quiet --require-hashes --only-binary=:all: -r "$RUNNER_TEMP/zizmor-req.txt"
+
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          "$RUNNER_TEMP/zizmor-venv/bin/zizmor" --no-exit-codes --format=plain --min-severity=medium .github/ > "$RUNNER_TEMP/zizmor.txt" 2>&1 || rc=$?
+          {
+            echo "### zizmor (medium+)"
+            echo '```'
+            cat "$RUNNER_TEMP/zizmor.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          tail -n 1 "$RUNNER_TEMP/zizmor.txt"
+          exit "$rc"
