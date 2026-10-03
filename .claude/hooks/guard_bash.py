@@ -11,6 +11,8 @@ This is a textual guardrail against ordinary mistakes and casual bypass
 attempts (bash -c wrapping, git -C, chained commands, python/node
 subprocess literals, etc.) — ported from portfolio-ops .claude/hooks (see its
 docs/hook-threat-model.md) plus an AllTrue production-host rule. It is not a sandbox.
+New text-matching bypasses are expected; server-side controls (GitHub ruleset,
+production-activation environment) remain the real boundary.
 
 Can be invoked standalone for testing:
   echo '{"tool_name":"Bash","tool_input":{"command":"git status"}}' | python3 guard_bash.py
@@ -25,7 +27,7 @@ import sys
 
 # Statement separators we treat as ending a "unit" a dangerous pattern must
 # stay within. Deliberately does not attempt real shell parsing (quotes,
-# subshells) — see docs/hook-threat-model.md.
+# subshells) — see the module docstring.
 SEP = r"[;&|\n]"
 
 # Gap between a keyword and the next: matches any run of characters that is
@@ -145,7 +147,7 @@ def current_branch() -> str:
 
 
 SECRET_FILE_RE = re.compile(
-    r"(\.env(?!\.(?:example|sample|template|dist)\b)(?:\.[A-Za-z]+)?\b|[^;&|\s\"']*\.pem\b|\bid_rsa(?:\.\w+)?\b|"
+    r"(\.env(?!\.(?:example|sample|template|dist)(?![.\w]))(?:\.[A-Za-z]+)?\b|[^;&|\s\"']*\.pem\b|\bid_rsa(?:\.\w+)?\b|"
     r"\bcredentials\.json\b|\.ssh/[A-Za-z0-9_.-]*\b|\.aws/[A-Za-z0-9_.-]*\b)"
 )
 
@@ -155,7 +157,7 @@ def check_git_patterns(cmd: str) -> None:
     # shapes are specific enough (and false negatives here are worse than
     # the rare false positive of a commit message literally containing
     # e.g. "git push --force") that we search anywhere in the command.
-    # See docs/hook-threat-model.md for the tradeoff.
+    # See the module docstring for the tradeoff.
 
     # 1. direct commit on main/master (flags between "git" and "commit"
     #    tolerated, e.g. `git -C /path commit`, `git --no-pager commit`).
@@ -168,7 +170,7 @@ def check_git_patterns(cmd: str) -> None:
             )
 
     # 2. force push
-    force_flag = r'(--force\b|--force-with-lease\b|(?:^|[\s,"\'])-f(?:[\s,"\']|$))'
+    force_flag = r'(--force\b|--force-with-lease\b|(?:^|[\s,"\'])-[a-zA-Z]*f[a-zA-Z]*(?:[\s,"\']|$))'
     if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}{force_flag}", cmd) or \
             re.search(rf"\bgit\b{GAP}\bpush\b{GAP}\s['\"]?\+[^\s;&|]", cmd):
         deny(
@@ -177,7 +179,7 @@ def check_git_patterns(cmd: str) -> None:
         )
 
     # 2b. direct push to main/master (R3: feature branch + PR only)
-    if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}[\s:](?:refs/heads/)?(?:main|master)\b(?![-/.\w])", cmd):
+    if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}[\s:]['\"]?(?:refs/heads/)?(?:main|master)\b(?![-/.\w])", cmd):
         deny("Blocked: push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
 
     # 3. git reset --hard
@@ -194,7 +196,9 @@ def check_git_patterns(cmd: str) -> None:
     # 5. force branch delete / remote ref deletion
     if re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}-[a-zA-Z]*D\b", cmd) or (
             re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}--delete\b", cmd)
-            and re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}(--force\b|\s-f\b)", cmd)):
+            and re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}(--force\b|\s-f\b)", cmd)) or (
+            re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}\s-[a-zA-Z]*d", cmd)
+            and re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}(--force\b|\s-[a-zA-Z]*f)", cmd)):
         deny(
             "Blocked: force branch delete. Forbidden without explicit "
             "Founder approval."
@@ -220,7 +224,7 @@ def check_deploy_patterns(cmd: str) -> None:
         rf"{ANCHOR}terraform\b{GAP}\bapply\b",
         rf"{ANCHOR}supabase\b{GAP}\bdb\b{GAP}\bpush\b",
         rf"{ANCHOR}prisma\b{GAP}\bmigrate\b{GAP}\bdeploy\b",
-        rf"{ANCHOR}php\b{GAP}\bartisan\b{GAP}\bmigrate\S*{GAP}--force\b",
+        rf"(?:{ANCHOR}php\b{GAP}|{ANCHOR}\S*/)artisan\b{GAP}\bmigrate\S*{GAP}--force\b",
         rf"{ANCHOR}kubectl\b{GAP}\bapply\b",
         rf"{ANCHOR}gh\b{GAP}\bworkflow\b{GAP}\brun\b{GAP}deploy",
         rf"{ANCHOR}(npm|yarn|pnpm)\b{GAP}\brun\b{GAP}\bdeploy\b",
@@ -239,12 +243,12 @@ def check_deploy_patterns(cmd: str) -> None:
 
 
 def check_credential_leak(cmd: str) -> None:
-    read_verbs = r"(cat|less|more|head|tail|echo|printf|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort)\b"
+    read_verbs = r"(cat|less|more|head|tail|echo|printf|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort|jq)\b"
     if re.search(rf"{ANCHOR}{read_verbs}{GAP}{SECRET_FILE_RE.pattern}", cmd):
         deny(
             "Blocked: command outputs a credential-shaped file. If this is "
             "legitimate, read it deliberately and never paste the value "
-            "into chat/logs (docs/security-boundaries.md)."
+            "into chat/logs (AGENTS.md RULE-SEC-001)."
         )
     if re.search(rf"{ANCHOR}(curl|scp|rsync)\b{GAP}{SECRET_FILE_RE.pattern}", cmd):
         deny("Blocked: command appears to transfer a credential-shaped file externally.")
@@ -275,23 +279,23 @@ def check_credential_leak(cmd: str) -> None:
                 deny(
                     "Blocked: path resolves (possibly via symlink) to a "
                     f"credential-shaped file: {os.path.basename(resolved)}. "
-                    "See docs/security-boundaries.md."
+                    "See AGENTS.md RULE-SEC-001."
                 )
 
 
 # AllTrue: the Raspberry Pi is production. Agents never SSH/copy to it
 # (CLAUDE.md R2/R6, incident C: `php artisan test` on the Pi wiped prod DB).
-PI_TARGET = r"(?:pi\.lifenet\.com\.tw\b|\$\{?PI_(?:SSH_)?(?:HOST|USER)\b)"
+PI_TARGET = r"(?i:pi\.lifenet\.com\.tw\b|\$\{?PI_(?:SSH_)?(?:HOST|USER)\b)"
 
 
 def _script_targets_pi(cmd: str) -> bool:
-    for tok in re.findall(r"[\w./-]+\.(?:sh|bash)\b", cmd):
+    for tok in re.findall(rf"{ANCHOR}(?:(?:bash|sh|zsh|source|\.)\s+)?([\w./-]+\.(?:sh|bash))\b", cmd):
         try:
             with open(tok, encoding="utf-8", errors="ignore") as fh:
                 body = fh.read(200_000)
         except OSError:
             continue
-        if re.search(r"pi\.lifenet\.com\.tw", body) and re.search(r"\b(?:ssh|scp|rsync)\b", body):
+        if re.search(r"(?i)pi\.lifenet\.com\.tw", body) and re.search(r"\b(?:ssh|scp|rsync)\b", body):
             return True
     return False
 
