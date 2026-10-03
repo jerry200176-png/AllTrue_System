@@ -63,7 +63,7 @@
   --ds-warning-wash: #fdf0e6;
   --ds-danger: #e11d48;
   --ds-danger-wash: #fdeaef;
-  --ds-info: #EF6C00;
+  --ds-info: #C2410C; /* also used as text: AA 4.87:1 on --ds-info-wash, 5.18:1 on white */
   --ds-info-wash: #FFF8E1;
   --ds-focus-ring: rgba(245, 124, 0, 0.22);
   --ds-shadow-1: 0 1px 3px rgba(0, 55, 112, 0.08);
@@ -222,6 +222,7 @@
   --ds-success-wash: #052e16;
   --ds-warning-wash: #431407;
   --ds-danger-wash: #450a0a;
+  --ds-info: #FFB74D;
   --ds-info-wash: rgba(255, 167, 38, 0.16);
   --ds-focus-ring: rgba(255, 183, 77, 0.30);
   --ds-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.4);

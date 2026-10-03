@@ -23,6 +23,8 @@ const TEXT_PAIRS = [
   ['ds-ink-mute', 'ds-surface-2'],
   ['ds-primary-text', 'ds-canvas'],
   ['ds-primary-text', 'ds-canvas-soft'],
+  ['ds-info', 'ds-canvas'],
+  ['ds-info', 'ds-canvas-soft'],
 ];
 
 describe('design token text contrast >= 4.5 (WCAG AA)', () => {
@@ -35,4 +37,8 @@ describe('design token text contrast >= 4.5 (WCAG AA)', () => {
       });
     }
   }
+});
+
+it('light: ds-info on ds-info-wash (status pills) >= 4.5', () => {
+  expect(wcagContrast(themes.light['ds-info'], themes.light['ds-info-wash'])).toBeGreaterThanOrEqual(4.5);
 });

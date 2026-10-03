@@ -37,7 +37,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 ## 2. Design Principles（設計原則）
 
 1. **淺色優先**：預設底色白／冷調近白；深色只用於側欄與夜間模式。
-2. **主色要稀有**：`--ds-primary`（橘黃暖色）只給主 CTA、連結強調、焦點環。一個區塊只放一顆實心主按鈕。
+2. **主色要稀有**：`--ds-primary`（橘黃暖色）只給主 CTA 填色、邊框、焦點環；連結與任何橘色文字用 `--ds-primary-text`。一個區塊只放一顆實心主按鈕。
 3. **navy 取代黑**：所有內文用 `--ds-ink`（#0d253d），不用純黑 #000。
 4. **色彩克制**：黑/白/灰/navy 撐起整頁；橘黃是行動/品牌，semantic 顏色只表達狀態。
 5. **金額必 tabular**：任何金額、堂數、人數、百分比用 `font-variant-numeric: tabular-nums`，避免跳動。
@@ -49,7 +49,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | DS Token | 值（light） | 用途 | 對應既有變數 |
 |---|---|---|---|
-| `--ds-primary` | `#EF6C00` | 連結、焦點、選中強調（logo 橘黃）；**不可**單獨當白字 CTA 底 | `--primary` `--accent` |
+| `--ds-primary` | `#EF6C00` | 填色、邊框、焦點、選中強調（logo 橘黃）；**不可當文字色**（含連結，用 `--ds-primary-text`）；**不可**單獨當白字 CTA 底 | `--primary` `--accent` |
 | `--ds-primary-deep` | `#E65100` | hover 加深、次要強調 | `--accent-hover` |
 | `--ds-primary-press` | `#D84315` | press（非白字大段文字） | — |
 | `--ds-primary-soft` | `#FFB300` | 圖表/UI 點綴（amber）| `--primary-light` |
@@ -74,7 +74,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | `--ds-success` | `#1a8245` | 完成/健康/已繳 | `--success` `--porsche-green` |
 | `--ds-warning` | `#b54708` | 繳費/期限/注意 | `--warning` `--porsche-amber` |
 | `--ds-danger` | `#e11d48` | 破壞性/緊急（Stripe ruby 系）| `--danger` `--porsche-red` |
-| `--ds-info` | `#533afd` | 資訊/導航（同 primary）| `--porsche-blue` |
+| `--ds-info` | `#C2410C` | 資訊狀態（文字、圖示、框線）；AA：淡黃 wash 上 4.87:1。暗色主題 `#FFB74D` | `--porsche-blue` |
 
 > Semantic 顏色**只**用於狀態（出缺勤、繳費、審核），不可拿來當裝飾或第二主色。
 
