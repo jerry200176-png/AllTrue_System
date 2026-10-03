@@ -91,7 +91,7 @@ function validate() {
   }
   if (!form.value.adjust_reason?.trim()) {
     e.adjust_reason = '補卡原因必填';
-  } else if (form.value.adjust_reason.trim().length < 2) {
+  } else if ([...form.value.adjust_reason.trim()].length < 2) {
     e.adjust_reason = '補卡原因至少 2 個字';
   }
   errors.value = e;
@@ -120,7 +120,7 @@ async function submit() {
       submitError.value = res.status === 404
         ? '這筆打卡紀錄已不存在，請重新整理後再試'
         : [403, 422, 423].includes(res.status) && json?.message
-          ? json.message
+          ? (Object.values(json.errors || {}).flat()[0] || json.message)
           : `補卡失敗（HTTP ${res.status}），請稍後再試`;
       return;
     }
