@@ -12,6 +12,8 @@ import AxeBuilder from '@axe-core/playwright';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 const BLOCKING_IMPACTS = new Set(['serious', 'critical']);
+// Mobile reveals controls hidden on desktop (e.g. .att-mobile-only). Same baseline at both widths today.
+const VIEWPORTS = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }];
 
 // Baseline 2026-10-03 (axe-core 4.13 via @axe-core/playwright 4.13).
 // Most color-contrast nodes are muted text #64748d on #f6f9fc (4.49:1, needs 4.5)
@@ -27,8 +29,9 @@ const BASELINE = {
   profile: { 'color-contrast': 2, label: 1 },
 };
 
-for (const [name, allowed] of Object.entries(BASELINE)) {
-  test(`axe WCAG A/AA: ${name} has no new serious/critical violations`, async ({ page }) => {
+for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {
+  test(`axe WCAG A/AA: ${name} (${vp.name}) has no new serious/critical violations`, async ({ page }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.route('**/api/**', (route) => route.fulfill({ contentType: 'application/json', body: '{"data":[]}' }));
     await page.goto(`/pilot-mount.html?page=${name}`);
     await expect(page.locator('[data-pilot-ready="1"]')).toHaveCount(1);
