@@ -380,7 +380,7 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
         [$admin, $reporter] = $this->seedUsers();
         $issue = 'https://github.com/jerry200176-png/AllTrue_System/issues/1';
-        $sha = 'abcdef1234567';
+        $sha = str_repeat('abcdef1234', 4);
 
         // A report closed by another path is not a logged close: rerun refuses, ship notice refuses.
         $other = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(15));
@@ -392,7 +392,10 @@ class BugReporterTimeoutTest extends TestCase
         BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, '已收進產品清單');
         $wrongIssue = 'https://github.com/jerry200176-png/AllTrue_System/issues/2';
         $this->assertSame('not_logged', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $wrongIssue, $sha, '1', '已上線')['code']);
-        $this->assertSame('invalid_evidence', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, 'main', '1', '已上線')['code']);
+        $this->assertSame('invalid_evidence', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, 'abcdef1', '1', '已上線')['code'], 'short SHA refused');
+        // Replay with another kind or issue is not "already closed".
+        $this->assertSame('closed_otherwise', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $wrongIssue, 'x')['code']);
+        $this->assertSame('already_closed', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, 'x')['action']);
 
         $this->assertSame('notified', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, $sha, '99', '已上線')['action']);
         $this->assertSame('already_notified', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, $sha, '99', '已上線')['action']);
@@ -403,6 +406,19 @@ class BugReporterTimeoutTest extends TestCase
         $this->assertTrue($loop['shipped']);
         $this->assertSame('SHIPPED', $loop['semantic_phase']);
         $this->assertSame($sha, $loop['production_revision']);
+        $this->assertSame('already_notified', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, strtoupper($sha), '99', '已上線')['action']);
+
+        // Reporter replies -> reopened. A replayed close is refused until staff answer; then the new close cycle is not "shipped".
+        $tokenR = $this->tokenFor($reporter);
+        $this->withHeaders(['Authorization' => "Bearer {$tokenR}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$bug->id}/comments", ['body' => '還要另一個功能'])->assertStatus(201);
+        $this->assertSame('triaged', $bug->fresh()->status);
+        $this->assertSame('reporter_reply_unanswered', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, '已收進產品清單')['code']);
+        Carbon::setTestNow(Carbon::now()->addMinute());
+        BugReportService::addComment($bug->id, $admin->id, '了解，另開一張');
+        $this->assertSame('closed', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $wrongIssue, '已收進產品清單 2')['action']);
+        $loop = BugReportService::getDetail($bug->id, true)['product_loop'];
+        $this->assertFalse($loop['shipped'], 'old ship evidence does not carry into a new close cycle');
 
         Carbon::setTestNow();
     }

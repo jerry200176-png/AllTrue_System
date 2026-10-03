@@ -23,7 +23,7 @@ on:
         required: true
         type: string
       production_revision:
-        description: Deployed git SHA (required when expected_status=closed)
+        description: Deployed full 40-char git SHA (required when expected_status=closed)
         required: false
         default: ""
         type: string
@@ -83,7 +83,7 @@ jobs:
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           if [[ "$EXPECTED_STATUS" == closed ]]; then
-            [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{7,40}$ ]] || { echo "closed follow-up needs production_revision"; exit 1; }
+            [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "closed follow-up needs the full 40-char production_revision"; exit 1; }
             [[ "$DEPLOY_RUN_ID" =~ ^[0-9]+$ ]] || { echo "closed follow-up needs deploy_run_id"; exit 1; }
           fi
           PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"

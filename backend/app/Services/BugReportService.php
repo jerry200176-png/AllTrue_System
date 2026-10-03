@@ -988,9 +988,25 @@ class BugReportService
                 return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
             }
             if ($bug->getAttribute('status') === 'closed') {
-                return self::loggedCloseDisposition($bugId) !== null
+                $prior = self::loggedCloseDisposition($bugId);
+                $same = $prior !== null
+                    && ($prior['kind'] ?? null) === $kind
+                    && ($prior['github_issue_url'] ?? null) === (($issueUrl === null || $issueUrl === '') ? null : $issueUrl);
+
+                return $same
                     ? ['ok' => true, 'action' => 'already_closed']
-                    : ['ok' => false, 'code' => 'closed_otherwise', 'message' => 'report was closed by another path'];
+                    : ['ok' => false, 'code' => 'closed_otherwise', 'message' => 'report is closed by another path or with another issue'];
+            }
+            // A reporter reply reopened it: staff must answer that reply before closing again,
+            // so a replayed dispatch cannot bury the reporter's new message.
+            $reopened = BugReportStatusLog::query()->where('bug_report_id', $bugId)
+                ->where('note', 'reopened_by_reporter_reply')->exists();
+            if ($reopened) {
+                $lastAuthor = BugReportComment::query()->where('bug_report_id', $bugId)
+                    ->where('is_internal_note', false)->orderByDesc('id')->value('author_user_id');
+                if ((int) $lastAuthor === (int) $bug->getAttribute('reporter_user_id')) {
+                    return ['ok' => false, 'code' => 'reporter_reply_unanswered', 'message' => 'answer the reporter reply before closing again'];
+                }
             }
             $options = ['disposition' => $kind];
             if ($issueUrl !== null && $issueUrl !== '') {
@@ -1026,6 +1042,15 @@ class BugReportService
         return self::parseMarkerPayload($note, self::DISPOSITION_MARKER) ?? [];
     }
 
+    /** Evidence source_ref prefix tying a ship notice to the latest close log of the report. */
+    private static function loggedShipRefPrefix(int $bugId): string
+    {
+        $closeLogId = (int) BugReportStatusLog::query()->where('bug_report_id', $bugId)
+            ->where('to_status', 'closed')->max('id');
+
+        return 'logged_ship:' . $closeLogId . ':';
+    }
+
     /**
      * F12 ship notice: a logged suggestion shipped. Records append-only production evidence and posts
      * the public notice in one transaction. Only for reports closed as logged with this same issue.
@@ -1040,8 +1065,9 @@ class BugReportService
         string $deployRunId,
         string $publicReply
     ): array {
-        if (preg_match('/^[0-9a-f]{7,40}$/i', $productionRevision) !== 1 || preg_match('/^\d+$/', $deployRunId) !== 1) {
-            return ['ok' => false, 'code' => 'invalid_evidence', 'message' => 'production_revision must be a git SHA and deploy_run_id numeric'];
+        $productionRevision = strtolower($productionRevision);
+        if (preg_match('/^[0-9a-f]{40}$/', $productionRevision) !== 1 || preg_match('/^\d+$/', $deployRunId) !== 1) {
+            return ['ok' => false, 'code' => 'invalid_evidence', 'message' => 'production_revision must be the full 40-char git SHA and deploy_run_id numeric'];
         }
         if (trim($publicReply) === '') {
             return ['ok' => false, 'code' => 'public_reply_required', 'message' => 'public reply is required'];
@@ -1056,7 +1082,8 @@ class BugReportService
             if ($logged === null || ($logged['github_issue_url'] ?? null) !== $issueUrl) {
                 return ['ok' => false, 'code' => 'not_logged', 'message' => 'report is not closed as a logged suggestion for this issue'];
             }
-            $sourceRef = 'logged_ship:' . $productionRevision;
+            // Bound to this close cycle: a later reopen + re-close does not inherit the old ship.
+            $sourceRef = self::loggedShipRefPrefix($bugId) . $productionRevision;
             $exists = BugReportEvidence::query()->where('bug_report_id', $bugId)->where('source_ref', $sourceRef)->exists();
             if ($exists) {
                 return ['ok' => true, 'action' => 'already_notified'];
@@ -1358,8 +1385,14 @@ class BugReportService
 
         $status = (string) $bug->getAttribute('status');
         // F12: a logged suggestion that shipped stays closed but carries ship evidence.
+        $latestCloseLogId = 0;
+        foreach ($statusLogs as $log) {
+            if ((string) $log->getAttribute('to_status') === 'closed') {
+                $latestCloseLogId = max($latestCloseLogId, (int) $log->getKey());
+            }
+        }
         $loggedShipped = $status === 'closed'
-            && str_starts_with((string) ($latestEvidence['source_ref'] ?? ''), 'logged_ship:');
+            && str_starts_with((string) ($latestEvidence['source_ref'] ?? ''), 'logged_ship:' . $latestCloseLogId . ':');
         $semantic = 'SUBMITTED';
         if ($loggedShipped) {
             $semantic = 'SHIPPED';
