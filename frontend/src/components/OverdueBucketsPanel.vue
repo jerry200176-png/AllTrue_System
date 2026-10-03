@@ -350,7 +350,7 @@ loadSummary();
   width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--card-bg); color: var(--text); cursor: pointer; transition: all 0.15s;
 }
-.obp-action-btn:hover { background: var(--bg); border-color: var(--primary-light); color: var(--primary); }
+.obp-action-btn:hover { background: var(--bg); border-color: var(--primary-light); color: var(--ds-primary-text); }
 .obp-action-btn .material-symbols-outlined { font-size: 16px; }
 
 .ghost {

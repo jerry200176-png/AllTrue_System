@@ -150,8 +150,8 @@
             <td>{{ t.oneOnThreeHours }}</td>
             <td>{{ t.tutoringHours }}</td>
             <td style="font-weight: 600;">{{ t.totalHours }}</td>
-            <td style="font-weight: 700; color: var(--primary);">{{ t.unitsWith }}</td>
-            <td style="font-weight: 700; color: var(--accent);">{{ t.unitsWithout }}</td>
+            <td style="font-weight: 700; color: var(--ds-primary-text);">{{ t.unitsWith }}</td>
+            <td style="font-weight: 700; color: var(--ds-primary-text);">{{ t.unitsWithout }}</td>
             <td style="width: 200px;">
               <div class="progress-bar-wrap">
                 <div class="progress-bar" :style="{ width: t.pct + '%' }"></div>
@@ -168,8 +168,8 @@
             <td>{{ totals.oneOnThreeHours }}</td>
             <td>{{ totals.tutoringHours }}</td>
             <td style="font-weight: 700;">{{ totals.totalHours }}</td>
-            <td style="font-weight: 800; color: var(--primary);">{{ totals.subjectCountWith }}</td>
-            <td style="font-weight: 800; color: var(--accent);">{{ totals.subjectCountWithout }}</td>
+            <td style="font-weight: 800; color: var(--ds-primary-text);">{{ totals.subjectCountWith }}</td>
+            <td style="font-weight: 800; color: var(--ds-primary-text);">{{ totals.subjectCountWithout }}</td>
             <td>100%</td>
           </tr>
         </tfoot>
@@ -222,7 +222,7 @@
               <td v-for="lb in levelBreakdownTotals" :key="'lvl-h-'+t.name+'-'+lb.level">
                 {{ (t.levelBreakdown.find(x => x.level === lb.level) || {}).totalHours || 0 }}
               </td>
-              <td v-for="lb in levelBreakdownTotals" :key="'lvl-u-'+t.name+'-'+lb.level" style="font-weight: 600; color: var(--primary);">
+              <td v-for="lb in levelBreakdownTotals" :key="'lvl-u-'+t.name+'-'+lb.level" style="font-weight: 600; color: var(--ds-primary-text);">
                 {{ (t.levelBreakdown.find(x => x.level === lb.level) || {}).unitsWith || 0 }}
               </td>
             </tr>

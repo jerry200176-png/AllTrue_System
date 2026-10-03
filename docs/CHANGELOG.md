@@ -12,7 +12,7 @@
 
 ## 2026-10-03 — fix(a11y): AA contrast for muted gray and orange text
 <!-- release-notes: silent_ship=silent-2026-10-03-text-contrast -->
-- 淡灰色說明文字（`--ds-ink-mute`）加深為 `#607089`，橘色文字改用新 token `--ds-primary-text`（`#C2410C`），皆達 WCAG AA 4.5:1；新增 `tokenContrast` 單元測試守門，axe color-contrast BASELINE 下修。
+- 淡灰色說明文字（`--ds-ink-mute`）加深為 `#5b6b84`，橘色文字改用新 token `--ds-primary-text`（`#C2410C`），皆達 WCAG AA 4.5:1；新增 `tokenContrast` 單元測試守門，axe color-contrast BASELINE 下修。
 
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->

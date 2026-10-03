@@ -1697,7 +1697,7 @@ onBeforeUnmount(() => {
 .leave-case__candidate-heading strong, .leave-case__candidate-heading span { display: block; }
 .leave-case__candidate-heading strong { color: var(--ds-ink); font-size: 13px; }
 .leave-case__candidate-heading span { margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; }
-.leave-case__text-button { border: 0; background: transparent; color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; cursor: pointer; }
+.leave-case__text-button { border: 0; background: transparent; color: var(--ds-primary-text); font-size: 12px; font-weight: 700; cursor: pointer; }
 .leave-case__text-button:disabled { opacity: 0.5; cursor: not-allowed; }
 .leave-case__candidate-list { display: grid; gap: 6px; }
 .leave-candidate { position: relative; display: flex; align-items: center; gap: 9px; min-height: 46px; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 9px; background: var(--ds-canvas); cursor: pointer; }

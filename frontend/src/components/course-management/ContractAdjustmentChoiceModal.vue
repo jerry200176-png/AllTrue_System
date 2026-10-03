@@ -97,7 +97,7 @@ function onChoose(action) {
 .choice-card:hover, .choice-card:focus-visible { border-color: var(--ds-primary); background: var(--ds-canvas); outline: none; }
 .choice-card--disabled, .choice-card:disabled { cursor: not-allowed; opacity: 0.72; }
 .choice-card--disabled:hover, .choice-card:disabled:hover { border-color: var(--ds-hairline); background: var(--ds-canvas-soft); }
-.choice-card__icon { flex: 0 0 28px; font-size: 22px; color: var(--ds-primary-deep); text-align: center; }
+.choice-card__icon { flex: 0 0 28px; font-size: 22px; color: var(--ds-primary-text); text-align: center; }
 .choice-card__copy { display: grid; gap: 4px; flex: 1; }
 .choice-card__copy strong { font-size: 14px; }
 .choice-card__copy small { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.45; }

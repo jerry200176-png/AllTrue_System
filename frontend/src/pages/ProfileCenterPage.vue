@@ -896,7 +896,7 @@ onMounted(loadData);
 
 .tab-btn.active {
   border-bottom-color: var(--ds-primary);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   background: transparent;
 }
 

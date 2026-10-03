@@ -1063,7 +1063,7 @@ onBeforeUnmount(() => {
 
 .th-work-queue__eyebrow {
   margin: 0 0 4px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -1107,7 +1107,7 @@ onBeforeUnmount(() => {
 }
 .th-next-action__marker .material-symbols-outlined { font-size: 20px; }
 .th-next-action__content { min-width: 0; }
-.th-next-action__eyebrow { margin: 0 0 4px; color: var(--ds-primary-deep); font-size: 12px; font-weight: 800; letter-spacing: 0.04em; }
+.th-next-action__eyebrow { margin: 0 0 4px; color: var(--ds-primary-text); font-size: 12px; font-weight: 800; letter-spacing: 0.04em; }
 .th-next-action__title-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
 .th-next-action__title-row h4 { margin: 0; color: var(--ds-ink); font-size: 16px; }
 .th-next-action__summary { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
@@ -1198,7 +1198,7 @@ onBeforeUnmount(() => {
 .th-companion__copy { position: relative; z-index: 1; min-width: 0; }
 .th-companion__eyebrow {
   margin: 0 0 5px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -1398,7 +1398,7 @@ onBeforeUnmount(() => {
   padding: 0; border: 0; color: inherit; background: transparent; font: inherit;
   text-align: left; cursor: pointer;
 }
-.th-event-details:hover { color: var(--primary); }
+.th-event-details:hover { color: var(--ds-primary-text); }
 .th-event-details:focus-visible { outline: 3px solid var(--ds-focus-ring); outline-offset: 3px; border-radius: 6px; }
 .th-event-details-icon { flex: 0 0 auto; color: var(--text-light); font-size: 18px; }
 .th-event-student { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1430,7 +1430,7 @@ onBeforeUnmount(() => {
 .th-fill-btn {
   background: var(--primary-bg); border: none; border-radius: 8px;
   width: var(--ds-control-height-touch, 44px); height: var(--ds-control-height-touch, 44px); display: flex; align-items: center; justify-content: center;
-  cursor: pointer; color: var(--primary); transition: var(--transition); flex-shrink: 0;
+  cursor: pointer; color: var(--ds-primary-text); transition: var(--transition); flex-shrink: 0;
 }
 .th-fill-btn:hover { background: var(--ds-primary); color: var(--ds-on-primary); }
 
@@ -1495,7 +1495,7 @@ onBeforeUnmount(() => {
   font-size: 22px;
 }
 .th-icon-empty   { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
-.th-icon-working { background: var(--primary-bg); color: var(--primary); }
+.th-icon-working { background: var(--primary-bg); color: var(--ds-primary-text); }
 .th-icon-done    { background: var(--success-bg); color: var(--success); }
 .th-icon-late    { background: var(--ds-danger-wash); color: var(--ds-danger); }
 
@@ -1510,7 +1510,7 @@ onBeforeUnmount(() => {
   padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600;
 }
 .th-badge-ok   { background: var(--success-bg); color: var(--success); }
-.th-badge-warn { background: var(--primary-bg);  color: var(--primary); }
+.th-badge-warn { background: var(--primary-bg);  color: var(--ds-primary-text); }
 .th-badge-late { background: var(--ds-danger-wash); color: var(--ds-danger); }
 
 /* Two chips row */
@@ -1526,7 +1526,7 @@ onBeforeUnmount(() => {
 .th-chip-label { font-size: 11px; color: var(--text-light); font-weight: 500; }
 .th-chip-val   { font-size: 16px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .th-chip-empty { color: var(--text-light); font-weight: 400; }
-.th-chip-warn  { color: var(--primary); font-size: 13px; font-weight: 600; }
+.th-chip-warn  { color: var(--ds-primary-text); font-size: 13px; font-weight: 600; }
 
 /* Skeleton animation */
 .th-chip-skeleton {

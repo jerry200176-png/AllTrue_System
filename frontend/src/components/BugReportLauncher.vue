@@ -673,7 +673,7 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
   border-color: var(--ds-primary-deep); background: var(--ds-primary-wash); outline: none;
 }
 .attachment-dropzone .material-symbols-outlined { font-size: 24px; color: var(--ds-primary-text); }
-.dropzone-link { color: var(--ds-primary-deep); font-weight: 600; }
+.dropzone-link { color: var(--ds-primary-text); font-weight: 600; }
 .dropzone-or { color: var(--ds-ink-mute); }
 .attachment-dropzone small { color: var(--ds-ink-mute); font-size: 12px; }
 .attachment-error { margin-top: 6px; color: var(--danger); font-size: 13px; }

@@ -432,7 +432,7 @@ watch(() => props.show, (v) => {
   padding: 6px 12px; border-radius: 20px;
   font-size: 13px; font-weight: 500; color: var(--text-light);
 }
-.batch-step.active { background: var(--primary-light, rgba(37,99,235,0.08)); color: var(--primary); font-weight: 700; }
+.batch-step.active { background: var(--primary-light, rgba(37,99,235,0.08)); color: var(--ds-primary-text); font-weight: 700; }
 .batch-step.done { color: var(--ds-success); }
 .batch-step-num {
   width: 24px; height: 24px; border-radius: 50%;

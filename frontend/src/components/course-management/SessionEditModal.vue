@@ -334,7 +334,7 @@ function onSaveClick() {
 .se-action-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .se-btn-leave { border-color: var(--ds-warning); color: var(--ds-warning); } .se-btn-leave:hover { background: var(--ds-warning-wash); }
 .se-btn-scheduled { border-color: var(--ds-ink-mute); color: var(--ds-ink-mute); } .se-btn-scheduled:hover { background: var(--ds-canvas-soft); }
-.se-btn-reschedule { border-color: var(--primary); color: var(--primary); font-weight: 600; } .se-btn-reschedule:hover { background: var(--primary-bg); }
+.se-btn-reschedule { border-color: var(--primary); color: var(--ds-primary-text); font-weight: 600; } .se-btn-reschedule:hover { background: var(--primary-bg); }
 .se-btn-substitute { border-color: var(--ds-ink-mute); color: var(--ds-ink); } .se-btn-substitute:hover { background: var(--ds-canvas-soft); }
 .se-sub-hint { font-size: 0.85em; color: var(--ds-ink-mute); margin: 0 0 12px; }
 .se-action-hint { font-size: 0.82em; color: var(--ds-ink-mute); margin: 10px 0 0; }
@@ -345,7 +345,7 @@ function onSaveClick() {
 .computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
 .btn-makeup-query {
   width: 100%; padding: 8px 12px !important; font-size: 13px !important; font-weight: 600;
-  border: 1px dashed var(--primary) !important; color: var(--primary) !important;
+  border: 1px dashed var(--primary) !important; color: var(--ds-primary-text) !important;
   border-radius: 8px; transition: var(--transition);
 }
 .btn-makeup-query:hover:not(:disabled) { background: var(--primary-bg) !important; }

@@ -2543,7 +2543,7 @@ watch(() => props.branchId, () => {
   border: 1px solid var(--ds-hairline);
   background: var(--ds-canvas);
 }
-.att-snapshot-eyebrow { margin: 0 0 3px; color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; }
+.att-snapshot-eyebrow { margin: 0 0 3px; color: var(--ds-primary-text); font-size: 12px; font-weight: 700; }
 .att-teacher-snapshot h3 { margin: 0; color: var(--ds-ink); font-size: 18px; }
 .att-snapshot-copy { margin: 5px 0 0; color: var(--ds-ink-secondary); font-size: 13px; line-height: 1.5; }
 .att-snapshot-copy strong { color: var(--ds-ink); font-variant-numeric: tabular-nums; }
@@ -2583,7 +2583,7 @@ watch(() => props.branchId, () => {
 }
 .att-workspace-eyebrow {
   margin: 0 0 3px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -2642,7 +2642,7 @@ watch(() => props.branchId, () => {
 
 /* Section */
 .att-section-title {
-  font-size: 15px; font-weight: 700; color: var(--primary);
+  font-size: 15px; font-weight: 700; color: var(--ds-primary-text);
   letter-spacing: 0.3px;
 }
 .att-checkin-header {
@@ -2860,7 +2860,7 @@ watch(() => props.branchId, () => {
   margin-top: 16px; border-top: 1px solid rgba(148,163,184,0.15); padding-top: 12px;
 }
 .att-manual-toggle {
-  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--primary);
+  cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ds-primary-text);
   padding: 6px 0; user-select: none;
 }
 .att-manual-toggle:hover { text-decoration: underline; }

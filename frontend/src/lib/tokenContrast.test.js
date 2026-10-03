@@ -35,3 +35,9 @@ describe('design token text contrast >= 4.5 (WCAG AA)', () => {
     }
   }
 });
+
+// surface-2 is only defined in the light :root (dark reuses other surfaces).
+it('light: ds-ink-mute on ds-surface-2', () => {
+  const t = themes.light;
+  expect(wcagContrast(t['ds-ink-mute'], t['ds-surface-2'])).toBeGreaterThanOrEqual(4.5);
+});

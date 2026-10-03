@@ -312,7 +312,7 @@ loadData();
   border-radius: 8px;
 }
 .tr-stat strong { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-.tr-stat--primary { color: var(--primary); font-weight: 600; }
+.tr-stat--primary { color: var(--ds-primary-text); font-weight: 600; }
 
 .tr-table-wrap { overflow-x: auto; background: var(--card-bg); border-radius: 14px; box-shadow: var(--ds-shadow-1); }
 .tr-table {

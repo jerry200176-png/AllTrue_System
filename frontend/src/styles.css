@@ -51,7 +51,7 @@
   --ds-brand-gradient: linear-gradient(135deg, #FFB300 0%, #F57C00 100%);
   --ds-ink: #0d253d;
   --ds-ink-secondary: #273951;
-  --ds-ink-mute: #607089; /* 4.76:1 on canvas-soft, 5.03:1 on white (WCAG AA) */
+  --ds-ink-mute: #5b6b84; /* 4.81:1 on surface-2, 5.12 on canvas-soft, 5.4 on white (WCAG AA) */
 
   --ds-canvas: #ffffff;
   --ds-canvas-soft: #f6f9fc;
@@ -782,7 +782,7 @@ body {
 .sidebar-more-kicker {
   display: block;
   margin-bottom: 4px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -869,7 +869,7 @@ body {
 
 .sidebar-more-item .material-symbols-outlined {
   width: 22px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 20px;
   text-align: center;
 }
@@ -1690,7 +1690,7 @@ tr:hover td {
 
 .tag {
   background: var(--primary-bg);
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
@@ -1869,7 +1869,7 @@ tr:hover td {
 .profile-modal h3 {
   margin: 0 0 20px 0;
   font-size: 18px;
-  color: var(--primary);
+  color: var(--ds-primary-text);
 }
 
 .profile-form-group {

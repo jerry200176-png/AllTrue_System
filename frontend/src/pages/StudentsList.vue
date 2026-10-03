@@ -3867,7 +3867,7 @@ table th { font-size: 12.5px; }
 }
 .invoice-status-chip.paid    { background: var(--ds-success-wash); color: var(--ds-success); }
 .invoice-status-chip.unpaid  { background: var(--ds-warning-wash); color: var(--ds-warning); }
-.invoice-status-chip.partial { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
+.invoice-status-chip.partial { background: var(--ds-primary-wash); color: var(--ds-primary-text); }
 .invoice-skeleton {
   height: 20px;
   width: 100%;
@@ -3953,7 +3953,7 @@ table th { font-size: 12.5px; }
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-variant-numeric: tabular-nums;
 }
 .bulk-btns {
@@ -4387,7 +4387,7 @@ table th { font-size: 12.5px; }
   justify-content: space-between;
 }
 .student-course-overview__eyebrow {
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   display: block;
   font-size: 11px;
   font-weight: 800;
@@ -4514,7 +4514,7 @@ table th { font-size: 12.5px; }
   padding: 2px 2px 0;
 }
 .student-course-detail__eyebrow {
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   display: block;
   font-size: 11px;
   font-weight: 800;
@@ -4869,7 +4869,7 @@ table th { font-size: 12.5px; }
   padding-top: 10px;
 }
 .student-course-card__actions summary {
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;
@@ -4933,7 +4933,7 @@ table th { font-size: 12.5px; }
 }
 /* one_on_one 對應 ds-primary（1對1=主打）、tutoring 對應 ds-success；
    1對2/1對3/trial 屬多態語意色（無對應 ds token），維持 raw。 */
-.status-tag.one_on_one { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
+.status-tag.one_on_one { background: var(--ds-primary-wash); color: var(--ds-primary-text); }
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
 .status-tag.tutoring { background: var(--ds-success-wash); color: var(--ds-success); }

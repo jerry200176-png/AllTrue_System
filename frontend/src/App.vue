@@ -3265,7 +3265,7 @@ function formatBuildTime(rawIso) {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  color: var(--accent);
+  color: var(--ds-primary-text);
   margin-bottom: 6px;
 }
 
@@ -3771,7 +3771,7 @@ function formatBuildTime(rawIso) {
 .dashboard-return-button:hover,
 .dashboard-return-button:focus-visible {
   border-color: var(--ds-primary);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
 }
 
 .account-menu {
@@ -4808,7 +4808,7 @@ function formatBuildTime(rawIso) {
 
 .update-banner-btn {
   background: var(--ds-canvas);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   border: none;
   border-radius: 6px;
   padding: 5px 16px;

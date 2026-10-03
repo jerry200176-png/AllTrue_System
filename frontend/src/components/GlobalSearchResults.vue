@@ -152,7 +152,7 @@ function emitSelection(kind, item) {
   border-color: rgba(239, 108, 0, 0.22);
 }
 .global-search-item:disabled { opacity: 0.55; cursor: not-allowed; }
-.global-search-item-icon { flex: 0 0 22px; color: var(--ds-primary-deep); font-size: 20px; text-align: center; }
+.global-search-item-icon { flex: 0 0 22px; color: var(--ds-primary-text); font-size: 20px; text-align: center; }
 .global-search-item-copy { min-width: 0; display: grid; gap: 2px; }
 .global-search-item-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .global-search-item-subtitle,

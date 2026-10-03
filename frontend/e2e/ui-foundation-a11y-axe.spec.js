@@ -18,15 +18,15 @@ const VIEWPORTS = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobil
 // Baseline 2026-10-03 (axe-core 4.13 via @axe-core/playwright 4.13).
 // Remaining color-contrast nodes are hardcoded hex / non-token colors (tokens now AA-safe).
 const BASELINE = {
-  teacher: { 'color-contrast': 2 },
+  teacher: {},
   students: {},
   admissions: {},
   calendar: { 'color-contrast': 10 },
   chat: { 'color-contrast': 1 },
   parent: { 'color-contrast': 1 },
-  attendance: { 'color-contrast': 6, label: 2 },
-  profile: { 'color-contrast': 1, label: 1 },
-  'attendance&role=teacher': { 'color-contrast': 6, label: 5, 'select-name': 1 },
+  attendance: { 'color-contrast': 2, label: 2 },
+  profile: { label: 1 },
+  'attendance&role=teacher': { 'color-contrast': 2, label: 5, 'select-name': 1 },
 };
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {

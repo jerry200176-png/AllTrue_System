@@ -436,7 +436,7 @@ onMounted(() => {
   border: 1px solid var(--accent);
   border-radius: 8px;
   background: transparent;
-  color: var(--accent);
+  color: var(--ds-primary-text);
   font-size: 13px;
   cursor: pointer;
 }
@@ -517,7 +517,7 @@ onMounted(() => {
 .nr-explainer summary::-webkit-details-marker { display: none; }
 .nr-explainer summary::after { content: '展開'; margin-left: auto; color: var(--text-light); font-size: 12px; font-weight: 500; }
 .nr-explainer[open] summary::after { content: '收合'; }
-.nr-explainer summary .material-symbols-outlined { color: var(--accent); font-size: 19px; }
+.nr-explainer summary .material-symbols-outlined { color: var(--ds-primary-text); font-size: 19px; }
 .nr-explainer-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -661,7 +661,7 @@ onMounted(() => {
 }
 
 .nr-sort-button:hover {
-  color: var(--accent);
+  color: var(--ds-primary-text);
 }
 
 .nr-sort-button:focus-visible {

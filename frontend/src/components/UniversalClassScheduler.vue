@@ -2841,7 +2841,7 @@ async function submit() {
   align-items: center;
   gap: 3px;
 }
-.slot-teacher-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+.slot-teacher-add-btn:hover { border-color: var(--primary); color: var(--ds-primary-text); }
 .slot-teacher-picker {
   grid-column: 2 / -1;
   display: flex;

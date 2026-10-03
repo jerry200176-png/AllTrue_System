@@ -93,7 +93,7 @@ const computedEndTime = computed(() => props.computeEndTime?.(props.form?.new_st
 .computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
 .btn-makeup-query {
   width: 100%; padding: 8px 12px !important; font-size: 13px !important; font-weight: 600;
-  border: 1px dashed var(--primary) !important; color: var(--primary) !important;
+  border: 1px dashed var(--primary) !important; color: var(--ds-primary-text) !important;
   border-radius: 8px; transition: var(--transition);
 }
 .btn-makeup-query:hover:not(:disabled) { background: var(--primary-bg) !important; }

@@ -66,7 +66,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | **裝飾**頂條／header；禁止白字疊在此上當 CTA | — |
 | `--ds-ink` | `#0d253d` | 內文主色（navy，非純黑）| `--text` `--porsche-ink` |
 | `--ds-ink-secondary` | `#273951` | 次要文字 | — |
-| `--ds-ink-mute` | `#607089` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
+| `--ds-ink-mute` | `#5b6b84` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
 | `--ds-canvas` | `#ffffff` | 主白面 | `--card-bg` `--modal-bg` |
 | `--ds-canvas-soft` | `#f6f9fc` | 冷調頁底、輸入底 | `--bg` `--input-bg` |
 | `--ds-hairline` | `#e3e8ee` | 卡片/表格 1px 邊框 | `--border` `--porsche-border` |
@@ -106,7 +106,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | 元件 | 規格 |
 |---|---|
 | **Button / Primary** | 藥丸；底 `--ds-cta`，字 `--ds-on-cta`（AA ≥4.5:1）；hover→`--ds-cta-hover`，press→`--ds-cta-press`。一區塊一顆。**禁止**白字疊 `--ds-brand-gradient`／`--ds-primary-soft`。 |
-| **Button / Secondary** | 藥丸；白底、`--ds-primary` 字與 1px 邊。 |
+| **Button / Secondary** | 藥丸；白底、`--ds-primary-text` 字（AA）與 `--ds-primary` 1px 邊。 |
 | **Button / Ghost** | 透明底、`--ds-ink` 字、`--ds-hairline` 邊。 |
 | **Button / Danger** | 藥丸；底 `--ds-danger`，字白。 |
 | **Input** | 白底、`--ds-hairline-input` 1px 邊、圓角 6–8；focus 邊框換 `--ds-primary` + 3px wash 外環。 |
