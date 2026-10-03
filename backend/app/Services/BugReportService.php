@@ -44,6 +44,7 @@ class BugReportService
     ];
 
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
+    public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請(?![求款假])|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
 
     private const VALID_TRANSITIONS = [
         'new' => ['triaged', 'in_progress', 'closed'],
@@ -902,6 +903,11 @@ class BugReportService
             ->orderByDesc('id')
             ->first();
         if (!$last || (int) $last->author_user_id === $reporterId || $last->created_at->gt($cutoff)) {
+            return null;
+        }
+        // Only a real question waits on the reporter; "noted your suggestion" waits on us (in-app #290).
+        // ponytail: keyword heuristic, a candidate filter only; individual review before apply is the real gate.
+        if (preg_match(self::AWAITING_REPORTER_QUESTION_PATTERN, (string) $last->body) !== 1) {
             return null;
         }
 
