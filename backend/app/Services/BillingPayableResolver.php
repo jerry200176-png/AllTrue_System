@@ -149,8 +149,8 @@ class BillingPayableResolver
         $current = $worst ?? collect($periods)->filter(fn ($row) => $row['invoice_ids'] !== [])->last();
         // Prefer an invoice that still has a balance when the worst period holds several.
         $currentInvoiceId = $current ? (int) (end($current['open_invoice_ids']) ?: end($current['invoice_ids']) ?: 0) : 0;
-        // A positive-Charge course whose non-void invoices are all zero-value is not settled: review.
-        $zeroValueOnly = $charge > 0 && !$hasBillableInvoice;
+        // A non-free course whose non-void invoices are all zero-value is not settled: review.
+        $zeroValueOnly = !$hasBillableInvoice; // free courses already returned above
 
         return $result(
             ($unattributed !== [] || $monthlyReview || $zeroValueOnly) ? 'review_required' : ($worst['status'] ?? 'paid'),

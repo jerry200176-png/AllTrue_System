@@ -194,4 +194,11 @@ class BillingCourseStatusResolverTest extends TestCase
 
         $this->assertSame('review_required', $r['status']);
     }
+
+    public function test_zero_value_invoice_does_not_settle_a_zero_charge_positive_rate_course(): void
+    {
+        $r = $this->resolve($this->course([['2026-08', 0, 'paid', []]], ['Charge' => 0, 'Rate' => 1500]));
+
+        $this->assertSame('review_required', $r['status']);
+    }
 }
