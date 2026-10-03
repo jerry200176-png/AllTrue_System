@@ -52,6 +52,8 @@ KNOWN_GIT = set("commit push reset clean branch config status log diff add fetch
 KNOWN_GH = set("pr issue repo run workflow release api auth browse config gist label project search secret status "
                "variable cache completion help ruleset org codespace ssh-key attestation version alias extension".split())
 FREE_TEXT = re.compile(r"--(?:body|title|message|description)=|-m.")
+NOPROP = {"Subshell", "CmdSubst", "ProcSubst", "FuncDecl"}
+UNCERTAIN = {"IfClause", "ForClause", "WhileClause", "CaseClause"}
 CARRIERS = {"su", "script", "flock", "watch", "parallel", "find", "xargs", "busybox"}
 PI_RE = re.compile(r"(?i)pi\.lifenet\.com\.tw|\bPI_(?:SSH_)?(?:HOST|USER)\b")
 SECRET_OK = {".env.example", ".env.sample", ".env.template", ".env.dist"}
@@ -337,10 +339,8 @@ def check_git(args, cwd):
     if sub == "commit":
         if branch_of(d) in ("main", "master"):
             raise Deny(f"direct commit on '{branch_of(d)}'. Branch first - see CLAUDE.md Git rules.")
-        for j, t in enumerate(texts[:-1]):
-            if t in ("-F", "--file") and secret_arg(texts[j + 1], cwd) or \
-                    t.startswith("--file=") and secret_arg(t, cwd):
-                raise Deny("a credential-shaped file would be published as a commit message.")
+        if file_flag_secret(texts, cwd):
+            raise Deny("a credential-shaped file would be published as a commit message.")
     elif sub == "push":
         pos = []
         for t in texts:
@@ -374,8 +374,23 @@ def check_git(args, cwd):
             raise Deny("force branch delete. Forbidden without explicit Founder approval.")
 
 
+def file_flag_secret(t, cwd):
+    """-F/--file/--body-file <path> and --file=<path> forms (including as the last argument)."""
+    return any(a in ("-F", "--body-file", "--file") and j + 1 < len(t) and secret_arg(t[j + 1], cwd)
+               or a.startswith(("--body-file=", "--file=")) and secret_arg(a, cwd) for j, a in enumerate(t))
+
+
 def check_gh(args):
-    t = [w.text for w in args]
+    allt = [w.text for w in args]
+    t, k = [], 0
+    while k < len(allt):  # -R/--repo is inherited by every subcommand and may appear anywhere
+        a = allt[k]
+        if a in ("-R", "--repo"):
+            k += 2
+            continue
+        if not (a.startswith("--repo=") or a.startswith("-R") and len(a) > 2):
+            t.append(a)
+        k += 1
     if t and (t[0] not in KNOWN_GH or any(unk(w) for w in args[:1])):
         raise Deny(f"unknown gh subcommand {t[0]!r} (fail closed)")
     if t[:2] in (["alias", "set"], ["alias", "import"]):
@@ -384,10 +399,28 @@ def check_gh(args):
         raise Deny("gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
     if t[:2] == ["workflow", "run"] and any("deploy" in a.lower() for a in t[2:]):
         raise Deny("gh workflow run deploy*: production deploy needs explicit Founder approval.")
-    for j, a in enumerate(t[:-1]):
-        if a in ("-F", "--body-file", "--file") and secret_arg(t[j + 1], os.getcwd()) or \
-                a.startswith(("--body-file=", "--file=")) and secret_arg(a, os.getcwd()):
-            raise Deny("a credential-shaped file would be published as a PR/issue body.")
+    if file_flag_secret(allt, os.getcwd()):
+        raise Deny("a credential-shaped file would be published as a PR/issue body.")
+
+
+PKG_RUN = {"run", "run-script", "rum", "urn"}
+PKG_BUILTIN = set("install add remove view info why list test build".split())
+PKG_VAL = {"--prefix", "-C", "--workspace", "-w", "--filter", "-F", "--cwd", "--dir"}
+
+
+def pkg_deploy(n, t):
+    words, k = [], 0
+    while k < len(t):  # drop options (and their separate values)
+        if t[k].startswith("-"):
+            k += 2 if t[k] in PKG_VAL else 1
+        else:
+            words.append(t[k])
+            k += 1
+    if not words:
+        return False
+    if words[0] in PKG_RUN:
+        return any(re.search(r"\bdeploy\b", a) for a in words[1:2])
+    return n != "npm" and words[0] not in PKG_BUILTIN and bool(re.search(r"\bdeploy\b", words[0]))
 
 
 def check_deploy(n, argv):
@@ -397,8 +430,8 @@ def check_deploy(n, argv):
         or n == "vercel" and any(a == "--prod" or a.startswith("--prod=") for a in t)
         or n == "supabase" and "db" in t and "push" in t[t.index("db"):]
         or n == "prisma" and "migrate" in t and "deploy" in t
-        or n in ("npm", "yarn", "pnpm") and any(re.search(r"\bdeploy\b", a) for a in t)
-        or n == "make" and any(a in ("deploy", "release") for a in t)
+        or n in ("npm", "yarn", "pnpm") and pkg_deploy(n, t)
+        or n == "make" and any(re.match(r"(?:deploy|release)", a) for a in t)
         or (n == "php" and any(base(w) == "artisan" for w in argv[1:]) or n == "artisan")
         and any(a.startswith("migrate") for a in t) and any(a == "--force" or a.startswith("--force=") for a in t)
     )
@@ -424,6 +457,7 @@ class Walker:
     def __init__(self, shfmt):
         self.shfmt = shfmt
         self.scripts = []  # (path, cwd)
+        self.alts = set()  # cwds from before uncertain constructs
         self.fed = None  # stdin of the command being walked: None | "pipe" | "file" | ("lit", text)
 
     def run(self, cmd, cwd, depth=0):
@@ -453,13 +487,21 @@ class Walker:
                 self.fed = "pipe" if w.dyn else ("lit", w.text)
             elif op == "<":
                 self.fed = "file"
+        entry = cwd
+        # cd is truly non-propagating only out of pipelines, subshells, substitutions and functions. After
+        # ||, && and if/for/while/case the cwd is uncertain: the pre-construct cwd is kept as an alternate
+        # for script resolution (self.alts).
+        op = n.get("Op") if n.get("Type") == "BinaryCmd" else None
+        seq = op not in ("|", "|&")
         for k, v in n.items():
             if k == "Redirs":
                 for r in v:
                     self.redirect(r, cwd)
             if k == "Y" and n.get("Op") in ("|", "|&"):
                 self.fed = "pipe"
-            cwd = self.walk(v, cwd, depth)
+            r = self.walk(v, cwd if seq else entry, depth)
+            if seq:
+                cwd = r
         if n.get("Type") == "CallExpr":
             seen = []
             for a in n.get("Assigns", []):
@@ -467,7 +509,9 @@ class Walker:
         if n.get("Type") == "CallExpr" and n.get("Args"):
             cwd = self.cmd([W(a) for a in n["Args"]], cwd, depth, seen) or cwd
         self.fed = saved
-        return cwd
+        if cwd != entry and (op in ("||", "&&") or n.get("Type") in UNCERTAIN):
+            self.alts.add(entry)
+        return entry if not seq or n.get("Type") in NOPROP else cwd
 
     def redirect(self, r, cwd):
         if r.get("Op") not in ("<<", "<<-", "<<<") and r.get("Word"):
@@ -608,18 +652,19 @@ class Walker:
         self.scripts.append((path, cwd))
         if len(self.scripts) > MAX_SCRIPTS:
             raise Deny("too many scripts to verify inside the hook timeout (fail closed)")
-        for c in {os.path.join(cwd, path), os.path.join(os.getcwd(), path)}:
+        found = False
+        for d in {cwd, os.getcwd()} | self.alts:  # every possible cwd; deny if any candidate matches
             try:
-                with open(c, encoding="utf-8", errors="ignore") as fh:
+                with open(os.path.join(d, path), encoding="utf-8", errors="ignore") as fh:
                     body = fh.read(200_000)
             except OSError:
                 continue
+            found = True
             if re.search(r"(?i)pi\.lifenet\.com\.tw", body) and re.search(r"\b(?:ssh|scp|rsync)\b", body):
                 raise Deny(f"script {path} targets the production Pi (CLAUDE.md R2/R6).")
             if strict:
-                self.run(body, cwd, depth + 1)
-            return
-        if strict:
+                self.run(body, d, depth + 1)
+        if strict and not found:
             raise Deny(f"script {path} cannot be opened to verify (fail closed)")
 
 
