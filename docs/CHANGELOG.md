@@ -1,3 +1,6 @@
+## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
+<!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
+- 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。
 ## 2026-10-03 — feat(line): directors can turn off swipe LINE notifications to parents
 <!-- release-notes: staff_update=staff-2026-10-03-swipe-line-switch -->
 - 「家長 LINE 通知」頁新增分校開關「刷卡通知家長」（`GET/PUT /api/v1/line/notify-settings`，存 SystemSetting `line_notify.campus.{id}`，未設定＝開）。關閉時 `swipe-photo` 不推 LINE、`swipe-rfid` 回 `LineIDs: []`，讀卡機也沒有對象可推；刷卡出勤照常記錄。主任只能改自己分校。
