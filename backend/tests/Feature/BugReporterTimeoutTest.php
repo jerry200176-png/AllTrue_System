@@ -242,7 +242,7 @@ class BugReporterTimeoutTest extends TestCase
         $this->comment($noted, $admin->id, $now->copy()->subDays(20), false, '謝謝建議，我們已記錄這個需求，評估後再決定是否排入開發。');
         $rows = collect(BugReportService::listEligibleForAwaitingReporterTimeout($now))->keyBy('bug_id');
         $this->assertFalse($rows->has($noted->id), 'acknowledgement without a question waits on staff, not the reporter');
-        foreach (['請補一張截圖。' => 1, '這份申請正在確認中，有進度會通知您。' => 0, '請回覆畫面上的合約起迄日期' => 1, '方便說一下是哪一天嗎？' => 1, '謝謝建議，已記錄。' => 0] as $text => $expected) {
+        foreach (['請補一張截圖。' => 1, '這份申請正在確認中，有進度會通知您。' => 0, '請回覆畫面上的合約起迄日期' => 1, '方便說一下是哪一天嗎？' => 1, '謝謝建議，已記錄。' => 0, '您的請求已提供給工程團隊，後續有消息會通知您。' => 0] as $text => $expected) {
             $this->assertSame($expected, preg_match(BugReportService::AWAITING_REPORTER_QUESTION_PATTERN, $text), $text);
         }
     }
