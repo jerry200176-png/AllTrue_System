@@ -117,6 +117,11 @@ class SwipePhotoTest extends TestCase
 
         $this->travel(2)->hours();
         $swipe()->assertJson(['action' => 'sign_out']);
+        // 簽退後 backfill 會插入較新的 presence-window 列（id 較大、時間較早），不能蓋掉離班。
+        DB::table('StudentSingIn')->insert([
+            'StudentID' => $this->student->id, 'CampusID' => $this->campus->id, 'Memo' => 'presence-window',
+            'SignInDT' => today()->setTime(10, 30), 'SignOutDT' => today()->setTime(11, 30),
+        ]);
         $this->upload()->assertOk();
 
         // 照片晚到超過 2 分鐘（或沒刷卡紀錄）→ 不猜到班/離班。

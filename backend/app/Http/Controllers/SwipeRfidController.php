@@ -267,6 +267,8 @@ class SwipeRfidController extends Controller
         $latest = StudentSignIn::query()
             ->where('StudentID', $student->getKey())
             ->whereDate('SignInDT', $now->toDateString())
+            // 只看刷卡寫的列；簽退後補的 presence-window、人工補登不算。
+            ->whereIn('Memo', ['swipe-rfid', 'self_study'])
             ->orderByDesc('id')
             ->first();
 
