@@ -2,6 +2,7 @@
   <div class="searchable-select" :class="{ open: isOpen, disabled: disabled }" ref="container">
     <div class="ss-input-wrap" @click="onWrapClick">
       <input
+        :id="inputId || undefined"
         ref="inputEl"
         type="text"
         class="ss-input"
@@ -46,6 +47,7 @@ const props = defineProps({
   modelValue: { type: [String, Number, null], default: null },
   placeholder: { type: String, default: '請選擇...' },
   disabled: { type: Boolean, default: false },
+  inputId: { type: String, default: '' }, // lets an external <label for> target the inner input
 });
 
 const emit = defineEmits(['update:modelValue']);

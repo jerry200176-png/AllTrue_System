@@ -24,9 +24,9 @@ const BASELINE = {
   calendar: { 'color-contrast': 8 },
   chat: { 'color-contrast': 1 },
   parent: { 'color-contrast': 1 },
-  attendance: { 'color-contrast': 2, label: 2 },
-  profile: { label: 1 },
-  'attendance&role=teacher': { 'color-contrast': 2, label: 5, 'select-name': 1 },
+  attendance: { 'color-contrast': 2 },
+  profile: {},
+  'attendance&role=teacher': { 'color-contrast': 2 },
 };
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {

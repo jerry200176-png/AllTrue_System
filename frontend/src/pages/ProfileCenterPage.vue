@@ -27,7 +27,7 @@
         <div class="profile-layout">
           <div class="avatar-panel">
             <div class="avatar-box">
-              <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" />
+              <img v-if="avatarUrl" :src="avatarUrl" alt="個人頭像" />
               <div v-else class="avatar-fallback">{{ avatarLetter }}</div>
             </div>
             <div v-if="avatarUrl" class="avatar-sidebar-preview-wrap">
@@ -39,6 +39,7 @@
             <input
               ref="avatarInputRef"
               type="file"
+              aria-label="上傳個人頭像"
               accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
               @change="onAvatarSelected"
             />
@@ -51,16 +52,16 @@
           <div class="form-panel">
             <div v-if="profileMsg" :class="['section-msg', profileMsg.type]">{{ profileMsg.text }}</div>
             <div class="form-group">
-              <label>姓名</label>
-              <input v-model.trim="profileForm.name" type="text" placeholder="請輸入姓名" />
+              <label for="pf-name">姓名</label>
+              <input id="pf-name" v-model.trim="profileForm.name" type="text" placeholder="請輸入姓名" />
             </div>
             <div class="form-group">
-              <label>登入帳號</label>
-              <input v-model.trim="profileForm.email" type="text" placeholder="請輸入登入帳號" />
+              <label for="pf-email">登入帳號</label>
+              <input id="pf-email" v-model.trim="profileForm.email" type="text" placeholder="請輸入登入帳號" />
             </div>
             <div class="form-group">
-              <label>手機（選填）</label>
-              <input v-model.trim="profileForm.phone" type="text" placeholder="09xxxxxxxx" />
+              <label for="pf-phone">手機（選填）</label>
+              <input id="pf-phone" v-model.trim="profileForm.phone" type="text" placeholder="09xxxxxxxx" />
             </div>
             <div class="actions">
               <AtButton shape="rect" variant="primary" :disabled="savingProfile" :loading="savingProfile" @click="submitProfile">
@@ -128,8 +129,8 @@
           </div>
 
           <div class="form-group">
-            <label>主分校</label>
-            <select v-model.number="teachingForm.branch_id">
+            <label for="pf-branch">主分校</label>
+            <select id="pf-branch" v-model.number="teachingForm.branch_id">
               <option v-for="b in branchOptions" :key="'tb-main-'+b.id" :value="b.id">{{ b.name }}</option>
             </select>
           </div>
@@ -182,6 +183,7 @@
                   <td v-for="lv in LEVEL_OPTIONS" :key="'tb-scope-'+subject.id+'-'+lv.value">
                     <input
                       type="checkbox"
+                      :aria-label="`${subject.name} ${lv.label}`"
                       :checked="hasScope(subject.id, lv.value)"
                       @change="toggleScope(subject.id, lv.value)"
                     />
@@ -206,17 +208,17 @@
         <div v-if="passwordMsg" :class="['section-msg', passwordMsg.type]">{{ passwordMsg.text }}</div>
         <div class="grid two">
           <div class="form-group">
-            <label>目前密碼</label>
-            <input v-model="passwordForm.currentPassword" type="password" autocomplete="current-password" />
+            <label for="pf-pw-current">目前密碼</label>
+            <input id="pf-pw-current" v-model="passwordForm.currentPassword" type="password" autocomplete="current-password" />
           </div>
           <div class="form-group">
-            <label>新密碼</label>
-            <input v-model="passwordForm.newPassword" type="password" autocomplete="new-password" />
+            <label for="pf-pw-new">新密碼</label>
+            <input id="pf-pw-new" v-model="passwordForm.newPassword" type="password" autocomplete="new-password" />
           </div>
         </div>
         <div class="form-group">
-          <label>確認新密碼</label>
-          <input v-model="passwordForm.confirmPassword" type="password" autocomplete="new-password" />
+          <label for="pf-pw-confirm">確認新密碼</label>
+          <input id="pf-pw-confirm" v-model="passwordForm.confirmPassword" type="password" autocomplete="new-password" />
         </div>
         <div class="actions">
           <AtButton shape="rect" variant="primary" :disabled="savingPassword" :loading="savingPassword" @click="submitPassword">
@@ -310,12 +312,12 @@
 
         <div class="grid two">
           <div class="form-group">
-            <label>勿擾開始時間</label>
-            <input v-model="prefs.quiet_hours_start" type="time" />
+            <label for="pf-quiet-start">勿擾開始時間</label>
+            <input id="pf-quiet-start" v-model="prefs.quiet_hours_start" type="time" />
           </div>
           <div class="form-group">
-            <label>勿擾結束時間</label>
-            <input v-model="prefs.quiet_hours_end" type="time" />
+            <label for="pf-quiet-end">勿擾結束時間</label>
+            <input id="pf-quiet-end" v-model="prefs.quiet_hours_end" type="time" />
           </div>
         </div>
 
