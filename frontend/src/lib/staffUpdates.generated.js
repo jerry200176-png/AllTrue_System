@@ -66,6 +66,39 @@ export const staffUpdates = [
     "version": "2026.10.02"
   },
   {
+    "id": "staff-2026-10-02-teacher-home-speed",
+    "publishedAt": "2026-10-02",
+    "effectiveAt": null,
+    "audiences": [
+      "teacher"
+    ],
+    "audience": [
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師首頁載入加快",
+    "summary": "今日課表讀取變快，已知待辦會先顯示。",
+    "items": [
+      "每分鐘更新今日課表時，不再逐筆重查已建立的調課堂次。",
+      "補填提醒或家長回覆仍在載入時，已知待辦先顯示並標「至少」。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "每分鐘更新今日課表時，不再逐筆重查已建立的調課堂次。",
+          "補填提醒或家長回覆仍在載入時，已知待辦先顯示並標「至少」。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:319",
+      "changelog:2026-10-02:teacher-home-speed"
+    ],
+    "date": "2026-10-02",
+    "version": "2026.10.02"
+  },
+  {
     "id": "staff-2026-10-02-report-context",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,

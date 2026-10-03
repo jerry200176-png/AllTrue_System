@@ -31,6 +31,12 @@ export const changelogDraftNotes = [
           "up courses no longer fill 1：3 slots",
           "page 前往課程核對 now opens course management"
         ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "same-day schedule read-repair; show known tasks early"
+        ]
       }
     ],
     "items": [
@@ -40,7 +46,8 @@ export const changelogDraftNotes = [
       "threads unanswered for 14 days drop out of 待回覆",
       "只看有課老師」 no longer shows empty teacher columns",
       "up courses no longer fill 1：3 slots",
-      "page 前往課程核對 now opens course management"
+      "page 前往課程核對 now opens course management",
+      "same-day schedule read-repair; show known tasks early"
     ]
   },
   {

@@ -3,6 +3,21 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-02-teacher-home-speed
+    published_at: "2026-10-02"
+    audiences:
+      - teacher
+    importance: digest
+    title: 老師首頁載入加快
+    summary: 今日課表讀取變快，已知待辦會先顯示。
+    items:
+      - category: improved
+        text: 每分鐘更新今日課表時，不再逐筆重查已建立的調課堂次。
+      - category: improved
+        text: 補填提醒或家長回覆仍在載入時，已知待辦先顯示並標「至少」。
+    source_refs:
+      - "alltrue:bug_report:319"
+      - "changelog:2026-10-02:teacher-home-speed"
   - id: staff-2026-10-02-awaiting-14d
     published_at: "2026-10-02"
     audiences:
