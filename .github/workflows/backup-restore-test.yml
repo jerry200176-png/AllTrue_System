@@ -5,6 +5,9 @@ on:
     - cron: '0 2 1 * *'   # 每月 1 日凌晨 2:00 UTC（台灣時間 10:00）
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   restore-test:
     name: DB Backup Integrity Test
@@ -17,6 +20,7 @@ jobs:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -128,10 +132,12 @@ jobs:
       - name: Report to GitHub Step Summary
         if: always()
         run: |
-          STATUS="${{ job.status }}"
+          STATUS="${JOB_STATUS}"
           if [ "$STATUS" = "success" ]; then
             echo "### ✅ Backup Restore Test — PASSED $(date '+%Y-%m-%d')" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "### ❌ Backup Restore Test — FAILED $(date '+%Y-%m-%d')" >> "$GITHUB_STEP_SUMMARY"
             echo "> 備份還原失敗！請立即檢查備份完整性。" >> "$GITHUB_STEP_SUMMARY"
           fi
+        env:
+          JOB_STATUS: ${{ job.status }}

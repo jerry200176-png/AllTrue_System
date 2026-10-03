@@ -53,6 +53,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust

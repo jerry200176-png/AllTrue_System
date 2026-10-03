@@ -28,6 +28,7 @@ jobs:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
@@ -36,7 +37,9 @@ jobs:
           host-key: ${{ secrets.PI_HOST_KEY }}
 
       - name: Guard read-only confirmation
-        run: test "${{ inputs.confirm_read_only }}" = "READ_ONLY_MONTHLY_LEAVE_INVENTORY"
+        run: test "${INPUTS_CONFIRM_READ_ONLY}" = "READ_ONLY_MONTHLY_LEAVE_INVENTORY"
+        env:
+          INPUTS_CONFIRM_READ_ONLY: ${{ inputs.confirm_read_only }}
 
       - name: Setup SSH
         env:

@@ -74,16 +74,21 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.meta.outputs.tag }}" -m "${{ steps.meta.outputs.title }}"
-          git push origin "${{ steps.meta.outputs.tag }}"
+          git tag -a "${STEPS_META_OUTPUTS_TAG}" -m "${STEPS_META_OUTPUTS_TITLE}"
+          git push origin "${STEPS_META_OUTPUTS_TAG}"
+        env:
+          STEPS_META_OUTPUTS_TAG: ${{ steps.meta.outputs.tag }}
+          STEPS_META_OUTPUTS_TITLE: ${{ steps.meta.outputs.title }}
 
       - name: Create GitHub Release
         if: steps.meta.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STEPS_META_OUTPUTS_TAG: ${{ steps.meta.outputs.tag }}
+          STEPS_META_OUTPUTS_TITLE: ${{ steps.meta.outputs.title }}
         run: |
           set -euo pipefail
-          gh release create "${{ steps.meta.outputs.tag }}" \
-            --title "${{ steps.meta.outputs.tag }} — ${{ steps.meta.outputs.title }}" \
+          gh release create "${STEPS_META_OUTPUTS_TAG}" \
+            --title "${STEPS_META_OUTPUTS_TAG} — ${STEPS_META_OUTPUTS_TITLE}" \
             --notes-file release-notes.md \
             --target "${{ github.sha }}"

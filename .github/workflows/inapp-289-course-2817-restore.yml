@@ -40,6 +40,7 @@ jobs:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - uses: ./.github/actions/production-ssh-trust
         with:

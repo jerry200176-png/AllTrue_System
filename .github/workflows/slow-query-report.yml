@@ -5,6 +5,9 @@ on:
     - cron: '0 8 * * 1'   # 每週一早上 8:00 UTC（台灣時間 16:00）
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   slow-query-check:
     name: MySQL Slow Query Analysis
@@ -17,6 +20,7 @@ jobs:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:

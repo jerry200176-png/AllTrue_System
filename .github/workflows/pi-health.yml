@@ -16,6 +16,9 @@ on:
         type: string
         default: ""
 
+permissions:
+  contents: read
+
 jobs:
   health-check:
     name: Pi System Health
@@ -24,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust

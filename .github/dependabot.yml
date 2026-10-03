@@ -12,6 +12,8 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "composer"
     directory: "/backend"
@@ -25,6 +27,8 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -33,3 +37,5 @@ updates:
     groups:
       github-actions:
         update-types: ["minor", "patch"]
+    cooldown:
+      default-days: 7

@@ -6,12 +6,18 @@ on:
     - cron: '0 16 1 * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   remind:
     name: Monthly MemPalace mine reminder
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Run docs integrity check
         run: node scripts/docs-integrity-check.mjs --strict

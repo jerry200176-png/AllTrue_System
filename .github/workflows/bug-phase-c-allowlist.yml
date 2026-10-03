@@ -34,6 +34,7 @@ jobs:
             .github/actions/production-ssh-trust
             operations/closeout/bug-phase-c-allowlist.request.md
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Select one target
         id: target
         env:

@@ -34,6 +34,7 @@ jobs:
             .github/actions/production-ssh-trust
             operations/closeout/bug-detail-dump.request.md
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust

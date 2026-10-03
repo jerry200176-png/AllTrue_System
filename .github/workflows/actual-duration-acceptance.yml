@@ -96,12 +96,20 @@ jobs:
         env:
           CONFIRM: ${{ github.event.inputs.confirm }}
           DRY_RUN: ${{ github.event.inputs.dry_run }}
+          GITHUB_EVENT_INPUTS_STUDENT_ID: ${{ github.event.inputs.student_id }}
+          GITHUB_EVENT_INPUTS_TEACHER_ID: ${{ github.event.inputs.teacher_id }}
+          GITHUB_EVENT_INPUTS_BRANCH_ID: ${{ github.event.inputs.branch_id }}
         run: |
           set -euo pipefail
+          # IDs are rendered into a remote quoted heredoc (SQL) downstream, where
+          # env vars don't reach; refuse anything that isn't a plain integer.
+          for v in "$GITHUB_EVENT_INPUTS_STUDENT_ID" "$GITHUB_EVENT_INPUTS_TEACHER_ID" "$GITHUB_EVENT_INPUTS_BRANCH_ID"; do
+            [[ "$v" =~ ^[0-9]+$ ]] || { echo "::error::student_id/teacher_id/branch_id must be integers"; exit 1; }
+          done
           echo "=== TARGET FOR THIS RUN ==="
-          echo "student_id = ${{ github.event.inputs.student_id }}"
-          echo "teacher_id = ${{ github.event.inputs.teacher_id }}"
-          echo "branch_id  = ${{ github.event.inputs.branch_id }}"
+          echo "student_id = ${GITHUB_EVENT_INPUTS_STUDENT_ID}"
+          echo "teacher_id = ${GITHUB_EVENT_INPUTS_TEACHER_ID}"
+          echo "branch_id  = ${GITHUB_EVENT_INPUTS_BRANCH_ID}"
           echo "dry_run    = ${DRY_RUN}"
           echo "==========================="
           if [ "$DRY_RUN" = "true" ]; then
@@ -114,7 +122,7 @@ jobs:
             exit 1
           fi
           echo "will_write=true" >> "$GITHUB_OUTPUT"
-          echo "confirmed -- this run WILL create a real course for student_id=${{ github.event.inputs.student_id }} on production."
+          echo "confirmed -- this run WILL create a real course for student_id=${GITHUB_EVENT_INPUTS_STUDENT_ID} on production."
 
   show_target_and_existing_courses:
     name: Read-only -- show target student's existing courses before any write
@@ -128,6 +136,7 @@ jobs:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -169,16 +178,21 @@ jobs:
         run: |
           {
             echo "action=show_target"
-            echo "will_write=${{ needs.guard.outputs.will_write }}"
-            echo "student_id=${{ github.event.inputs.student_id }}"
-            echo "teacher_id=${{ github.event.inputs.teacher_id }}"
-            echo "branch_id=${{ github.event.inputs.branch_id }}"
+            echo "will_write=${NEEDS_GUARD_OUTPUTS_WILL_WRITE}"
+            echo "student_id=${GITHUB_EVENT_INPUTS_STUDENT_ID}"
+            echo "teacher_id=${GITHUB_EVENT_INPUTS_TEACHER_ID}"
+            echo "branch_id=${GITHUB_EVENT_INPUTS_BRANCH_ID}"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- pre-flight (read-only) ----"
             cat /tmp/preflight-output.txt
           } > /tmp/preflight-audit.txt
+        env:
+          NEEDS_GUARD_OUTPUTS_WILL_WRITE: ${{ needs.guard.outputs.will_write }}
+          GITHUB_EVENT_INPUTS_STUDENT_ID: ${{ github.event.inputs.student_id }}
+          GITHUB_EVENT_INPUTS_TEACHER_ID: ${{ github.event.inputs.teacher_id }}
+          GITHUB_EVENT_INPUTS_BRANCH_ID: ${{ github.event.inputs.branch_id }}
 
       - name: Upload audit artifact
         uses: actions/upload-artifact@v4
@@ -200,6 +214,8 @@ jobs:
     steps:
       - name: Checkout (for scripts/smoke-auth-lib.sh -- the same proven login helper post-merge-smoke.sh uses)
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
@@ -211,6 +227,9 @@ jobs:
           BASE_URL: https://daan.lifenet.com.tw
           ACCEPTANCE_TEACHER_LOGIN: ${{ secrets.ACCEPTANCE_TEACHER_LOGIN }}
           ACCEPTANCE_TEACHER_PASSWORD: ${{ secrets.ACCEPTANCE_TEACHER_PASSWORD }}
+          GITHUB_EVENT_INPUTS_STUDENT_ID: ${{ github.event.inputs.student_id }}
+          GITHUB_EVENT_INPUTS_TEACHER_ID: ${{ github.event.inputs.teacher_id }}
+          GITHUB_EVENT_INPUTS_BRANCH_ID: ${{ github.event.inputs.branch_id }}
         run: |
           set -euo pipefail
           source scripts/smoke-auth-lib.sh
@@ -226,9 +245,9 @@ jobs:
           # payload.py so it is a plain, testable Python file rather than an
           # inline script embedded in this YAML.
           PAYLOAD="$(python3 scripts/actual-duration-acceptance-payload.py \
-            --student-id "${{ github.event.inputs.student_id }}" \
-            --teacher-id "${{ github.event.inputs.teacher_id }}" \
-            --branch-id "${{ github.event.inputs.branch_id }}")"
+            --student-id "${GITHUB_EVENT_INPUTS_STUDENT_ID}" \
+            --teacher-id "${GITHUB_EVENT_INPUTS_TEACHER_ID}" \
+            --branch-id "${GITHUB_EVENT_INPUTS_BRANCH_ID}")"
           echo "payload: $PAYLOAD"
 
           RESP="$(curl -sk -w '\n%{http_code}' -X POST "$BASE_URL/api/v1/class-sessions/batch" \
@@ -320,10 +339,10 @@ jobs:
           {
             echo "action=create_and_verify"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
-            echo "student_id=${{ github.event.inputs.student_id }}"
-            echo "teacher_id=${{ github.event.inputs.teacher_id }}"
-            echo "branch_id=${{ github.event.inputs.branch_id }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
+            echo "student_id=${GITHUB_EVENT_INPUTS_STUDENT_ID}"
+            echo "teacher_id=${GITHUB_EVENT_INPUTS_TEACHER_ID}"
+            echo "branch_id=${GITHUB_EVENT_INPUTS_BRANCH_ID}"
             echo "student_class_id=$(cat /tmp/student_class_id.txt 2>/dev/null || echo unknown)"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- ledger + schema verification (read-only) ----"
@@ -333,6 +352,10 @@ jobs:
             echo "---- pause confirmation ----"
             cat /tmp/pause-body.json 2>/dev/null || true
           } > /tmp/acceptance-audit.txt
+        env:
+          GITHUB_EVENT_INPUTS_STUDENT_ID: ${{ github.event.inputs.student_id }}
+          GITHUB_EVENT_INPUTS_TEACHER_ID: ${{ github.event.inputs.teacher_id }}
+          GITHUB_EVENT_INPUTS_BRANCH_ID: ${{ github.event.inputs.branch_id }}
 
       - name: Upload full evidence artifact
         if: always()

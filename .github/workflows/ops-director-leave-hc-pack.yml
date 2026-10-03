@@ -15,7 +15,6 @@ concurrency:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   pi-export:
@@ -29,6 +28,7 @@ jobs:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -320,11 +320,16 @@ jobs:
           if-no-files-found: warn
 
   comment-issues:
+    permissions:
+      contents: read
+      issues: write
     name: Comment Issues with evidence
     needs: pi-export
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: director-leave-hc-and-evidence

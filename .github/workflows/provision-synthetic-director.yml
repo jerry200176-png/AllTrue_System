@@ -39,6 +39,8 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Validate fixed scope and secret consumers
         env:
           MODE: ${{ inputs.mode }}
@@ -68,6 +70,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Login without printing credentials
         env:
