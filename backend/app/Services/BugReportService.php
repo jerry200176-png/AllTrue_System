@@ -45,7 +45,8 @@ class BugReportService
 
     /** Suggestion-style outcomes that close the in-app ticket; the GitHub issue is the backlog of record (F12). */
     public const LOGGED_CLOSE_KINDS = ['suggestion', 'ux_friction', 'not_planned', 'duplicate'];
-    public const CLOSED_AS_LOGGED_NOTE = 'closed_as_logged';
+    /** Machine marker line on the close log; stripped from note_display like the other markers. */
+    public const CLOSED_AS_LOGGED_NOTE = '[closed_as_logged]';
 
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
     public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請(?![求款假])|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
@@ -1012,7 +1013,7 @@ class BugReportService
             if ($issueUrl !== null && $issueUrl !== '') {
                 $options['github_issue_url'] = $issueUrl;
             }
-            $res = self::changeStatus($bugId, $actorId, 'closed', self::CLOSED_AS_LOGGED_NOTE, $options);
+            $res = self::changeStatus($bugId, $actorId, 'closed', self::CLOSED_AS_LOGGED_NOTE . "\n已收進產品清單", $options);
             if (!$res['ok']) {
                 return $res;
             }
@@ -1315,6 +1316,7 @@ class BugReportService
             $trim = ltrim($line);
             if (str_starts_with($trim, self::DISPOSITION_MARKER)
                 || str_starts_with($trim, self::RESOLUTION_EVIDENCE_MARKER)
+                || str_starts_with($trim, self::CLOSED_AS_LOGGED_NOTE)
             ) {
                 continue;
             }
@@ -1391,8 +1393,14 @@ class BugReportService
                 $latestCloseLogId = max($latestCloseLogId, (int) $log->getKey());
             }
         }
+        $latestRef = (string) ($latestEvidence['source_ref'] ?? '');
         $loggedShipped = $status === 'closed'
-            && str_starts_with((string) ($latestEvidence['source_ref'] ?? ''), 'logged_ship:' . $latestCloseLogId . ':');
+            && str_starts_with($latestRef, 'logged_ship:' . $latestCloseLogId . ':');
+        if (!$loggedShipped && str_starts_with($latestRef, 'logged_ship:')) {
+            // Ship evidence from an earlier close cycle must not describe the current one.
+            $productionRevision = null;
+            $deployRunId = null;
+        }
         $semantic = 'SUBMITTED';
         if ($loggedShipped) {
             $semantic = 'SHIPPED';

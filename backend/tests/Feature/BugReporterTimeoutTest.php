@@ -419,6 +419,10 @@ class BugReporterTimeoutTest extends TestCase
         $this->assertSame('closed', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $wrongIssue, '已收進產品清單 2')['action']);
         $loop = BugReportService::getDetail($bug->id, true)['product_loop'];
         $this->assertFalse($loop['shipped'], 'old ship evidence does not carry into a new close cycle');
+        $this->assertNull($loop['production_revision'], 'old cycle revision is not shown');
+        $this->assertNull($loop['deploy_run_id']);
+        $closeLog = BugReportStatusLog::where('bug_report_id', $bug->id)->where('to_status', 'closed')->orderByDesc('id')->first();
+        $this->assertSame('已收進產品清單', BugReportService::stripMachineMarkers((string) $closeLog->note), 'reporters never see the machine marker');
 
         Carbon::setTestNow();
     }

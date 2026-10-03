@@ -99,6 +99,12 @@ jobs:
           cd /home/admin/backend
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
           export BUG_ID EXPECTED_STATUS GITHUB_ISSUE_URL PUBLIC_REPLY PRODUCTION_REVISION DEPLOY_RUN_ID
+          if [[ "$EXPECTED_STATUS" == closed ]]; then
+            # Same gate as Phase-C: never announce a revision that is not in production.
+            PROD_HEAD=$(git rev-parse HEAD)
+            echo "prod_head=$PROD_HEAD"
+            git merge-base --is-ancestor "$PRODUCTION_REVISION" "$PROD_HEAD" || { echo "production_revision is not in production"; exit 1; }
+          fi
           php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
           $expected = (string)getenv("EXPECTED_STATUS");
