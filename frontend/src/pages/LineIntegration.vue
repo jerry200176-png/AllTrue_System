@@ -428,11 +428,15 @@ function notifyUrl() {
 
 // 每次讀取／儲存都拿新號碼；只有最新那次的回應能改畫面（防切分校、重新整理跟儲存互相蓋掉）。
 let notifySeq = 0;
-let savingBranch;
+let reloadAfterSave = false;
 
 async function loadNotify() {
-  // 同一分校正在儲存時不讀，避免讀到舊值蓋掉剛存好的。
-  if (notifySaving.value && savingBranch === props.branchId) return;
+  // 儲存中不讀（可能讀到舊值）：作廢進行中的請求，等存完再讀目前分校。
+  if (notifySaving.value) {
+    notifySeq++;
+    reloadAfterSave = true;
+    return;
+  }
   const seq = ++notifySeq;
   let data = null;
   try {
@@ -448,7 +452,6 @@ async function toggleNotify(key, input) {
   const value = input.checked;
   const branch = props.branchId;
   const seq = ++notifySeq;
-  savingBranch = branch;
   notifySaving.value = true;
   notifyMsg.value = '';
   let ok = false;
@@ -477,6 +480,12 @@ async function toggleNotify(key, input) {
       if (ok) notify.value = { ...notify.value, settings };
       else input.checked = !value; // 沒存成功 → 勾選框退回原狀
       setTimeout(() => { notifyMsg.value = ''; }, 4000);
+    } else if (!ok) {
+      input.checked = !value;
+    }
+    if (reloadAfterSave) {
+      reloadAfterSave = false;
+      loadNotify();
     }
   }
 }
