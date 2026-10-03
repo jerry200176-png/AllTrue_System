@@ -121,7 +121,7 @@
           type="checkbox"
           :checked="notify.settings.swipe"
           :disabled="notifySaving"
-          @change="toggleNotify('swipe', $event.target.checked)"
+          @change="toggleNotify('swipe', $event.target)"
         />
         <span>
           <strong>學生刷卡時，用 LINE 通知家長（到班／離班＋照片）</strong>
@@ -427,21 +427,27 @@ function notifyUrl() {
 }
 
 async function loadNotify() {
+  const branch = props.branchId;
+  let data = null;
   try {
     const res = await fetch(notifyUrl(), { headers: await getAuthHeaders(), credentials: 'include' });
-    notify.value = res.ok ? await res.json() : null;
+    data = res.ok ? await res.json() : null;
   } catch (e) {
-    notify.value = null;
     console.error('Failed to load LINE notify settings:', e);
   }
+  // 切分校時，舊分校較晚回來的結果不能蓋掉新分校。
+  if (branch === props.branchId) notify.value = data?.settings ? data : null;
 }
 
-async function toggleNotify(key, value) {
+async function toggleNotify(key, input) {
+  const value = input.checked;
+  const branch = props.branchId;
   notifySaving.value = true;
   notifyMsg.value = '';
+  let saved = false;
   try {
     const body = { settings: { [key]: value } };
-    if (props.branchId != null && props.branchId !== '') body.branch_id = Number(props.branchId);
+    if (branch != null && branch !== '') body.branch_id = Number(branch);
     const res = await fetch('/api/v1/line/notify-settings', {
       method: 'PUT',
       headers: await getAuthHeaders(),
@@ -451,11 +457,13 @@ async function toggleNotify(key, value) {
     const data = await res.json();
     notifyOk.value = res.ok;
     notifyMsg.value = res.ok ? '✅ 已儲存' : (data.message || '儲存失敗');
-    if (res.ok) notify.value = { ...notify.value, settings: data.settings };
+    saved = res.ok;
+    if (res.ok && branch === props.branchId) notify.value = { ...notify.value, settings: data.settings };
   } catch {
     notifyOk.value = false;
     notifyMsg.value = '連線錯誤，請稍後再試';
   } finally {
+    if (!saved) input.checked = !value; // 沒存成功 → 勾選框退回原狀
     notifySaving.value = false;
     setTimeout(() => { notifyMsg.value = ''; }, 4000);
   }
