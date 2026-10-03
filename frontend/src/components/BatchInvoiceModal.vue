@@ -480,6 +480,7 @@ watch(() => props.show, (v) => {
 .batch-class-info { display: flex; flex-direction: column; gap: 2px; }
 .batch-class-info strong { font-weight: 500; }
 .batch-class-info small { color: var(--text-light); font-size: 11px; }
+.batch-class-item.selected .batch-class-info small { color: var(--ds-on-brand); }
 
 .batch-step-actions {
   display: flex; justify-content: flex-end; gap: 8px;
