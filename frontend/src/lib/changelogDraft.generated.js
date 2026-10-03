@@ -43,8 +43,7 @@ export const changelogDraftNotes = [
       "names for attendance and profile form controls",
       "are always JSON; 補卡 shows the real error",
       "trial-to-formal conversion no longer leaves the trial stopped",
-      "contrast for muted gray and orange text",
-      "status resolver contract; mixed void receipts no longer cancel"
+      "contrast for muted gray and orange text"
     ]
   },
   {
