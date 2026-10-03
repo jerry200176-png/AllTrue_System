@@ -117,6 +117,17 @@ jobs:
               - 'frontend/src/components/design-system/**'
               - 'frontend/src/pages/NotificationsCenter.vue'
               - 'frontend/src/pages/StudentsList.vue'
+              # axe gate dependency (Dependabot bumps of @axe-core/playwright)
+              - 'frontend/package.json'
+              - 'frontend/package-lock.json'
+              # pages scanned by e2e/ui-foundation-a11y-axe.spec.js
+              - 'frontend/src/pages/TeacherHomePage.vue'
+              - 'frontend/src/pages/AdmissionInquiriesPage.vue'
+              - 'frontend/src/pages/SmartCalendar.vue'
+              - 'frontend/src/pages/ChatPage.vue'
+              - 'frontend/src/pages/ParentPortal.vue'
+              - 'frontend/src/pages/AttendancePage.vue'
+              - 'frontend/src/pages/ProfileCenterPage.vue'
               - 'frontend/src/styles.css'
               - 'frontend/e2e/fixtures/ui-foundation/**'
               - 'frontend/e2e/ui-foundation-*.spec.js'
