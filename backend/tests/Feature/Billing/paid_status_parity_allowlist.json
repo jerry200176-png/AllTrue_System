@@ -10,6 +10,7 @@
   "api.accounting.ledger": "pre-S3 known divergence (packet row B17)",
   "api.accounting.settled_courses": "pre-S3 known divergence (packet row B17 settledCourses: Paid=1 OR any Status=paid invoice)",
   "model.scopeEffectivelyUnpaid": "pre-S5 known divergence (packet row B1 unpaid twin, read by B21 SendTuitionReminders / B22 NotificationSync)",
+  "resolver.byStudentClassIds": "S1 resolver preserves the period engine (B15) review_required verdict (amount_discrepancy); target semantics ignore it (open product question for S3)",
   "monthly_period_payment.batch": "pre-S1 known divergence (packet row B15)",
   "amount.alerts.tuition.outstanding": "pre-S3 known divergence (packet row B4 outstanding, B5 stored-PA math)",
   "amount.ledger.outstanding": "pre-S3 known divergence (packet row B17 summary.outstanding_total)",
@@ -186,6 +187,8 @@
   {"site": "api.alerts.tuition.outstanding", "fixture": "amendment_after_payment_r115", "current": "paid", "target": "partial", "note": "R115 count->date conversion after payment keeps receipts and Paid=1 (correct, G-009); divergences are the pre-existing partial-Aug-invoice flag/any-row/latest-invoice-only reads"},
   {"site": "amount.alerts.tuition.outstanding", "fixture": "amendment_after_payment_r115", "current": "0", "target": "4000", "note": "R115 count->date conversion after payment keeps receipts and Paid=1 (correct, G-009); divergences are the pre-existing partial-Aug-invoice flag/any-row/latest-invoice-only reads"},
   {"site": "api.parent.dashboard.payment_status", "fixture": "amendment_after_payment_r115", "current": "paid", "target": "partial", "note": "R115 count->date conversion after payment keeps receipts and Paid=1 (correct, G-009); divergences are the pre-existing partial-Aug-invoice flag/any-row/latest-invoice-only reads"},
-  {"site": "api.accounting.settled_courses", "fixture": "amendment_after_payment_r115", "current": "paid", "target": "notpaid", "note": "R115 count->date conversion after payment keeps receipts and Paid=1 (correct, G-009); divergences are the pre-existing partial-Aug-invoice flag/any-row/latest-invoice-only reads"}
+  {"site": "api.accounting.settled_courses", "fixture": "amendment_after_payment_r115", "current": "paid", "target": "notpaid", "note": "R115 count->date conversion after payment keeps receipts and Paid=1 (correct, G-009); divergences are the pre-existing partial-Aug-invoice flag/any-row/latest-invoice-only reads"},
+  {"site": "resolver.byStudentClassIds", "fixture": "monthly_confirmed_sessions_unpaid", "current": "review_required", "target": "unpaid", "note": "S1 resolver keeps MonthlyPeriodPaymentService review_required (amount_discrepancy: confirmed sessions imply a different total than the stored invoice); amounts are exact, only the course status differs"},
+  {"site": "resolver.byStudentClassIds", "fixture": "monthly_paid_sessions_changed", "current": "review_required", "target": "paid", "note": "S1 resolver keeps MonthlyPeriodPaymentService review_required (amount_discrepancy: confirmed sessions imply a different total than the stored invoice); amounts are exact, only the course status differs"}
  ]
 }

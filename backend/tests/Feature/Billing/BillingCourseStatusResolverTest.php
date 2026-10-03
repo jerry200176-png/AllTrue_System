@@ -72,7 +72,8 @@ class BillingCourseStatusResolverTest extends TestCase
         $r = $this->resolve($course);
 
         // #3333: unpaid invoice with no net payment => confirmed sessions x rate (5 x 1500), July receipt stays on July.
-        $this->assertSame(['unpaid', 13500, 6000, 7500], [$r['status'], $r['payable_total'], $r['applied'], $r['outstanding']]);
+        // The period engine's amount_discrepancy review verdict is preserved at course level; period rows keep the facts.
+        $this->assertSame(['review_required', 13500, 6000, 7500], [$r['status'], $r['payable_total'], $r['applied'], $r['outstanding']]);
         $this->assertSame(['paid', 'unpaid'], array_column($r['periods'], 'status'));
         $this->assertSame($r['periods'][1]['invoice_ids'][0], $r['current_invoice_id']);
     }
@@ -109,5 +110,52 @@ class BillingCourseStatusResolverTest extends TestCase
         $r = $this->resolve($this->course([], ['ScheduleMode' => 'date', 'Paid' => 1], ['2026-07-03', '2026-08-04']));
 
         $this->assertSame(['review_required', 'none'], [$r['status'], $r['source']]);
+    }
+
+    public function test_period_engine_review_required_is_preserved(): void
+    {
+        // July-August contract with only a paid July invoice: B15 coverage gap (ambiguous), no unattributed row.
+        $r = $this->resolve($this->course([['2026-07', 6000, 'paid', [[6000, 'cash']]]], ['ScheduleMode' => 'date', 'Charge' => 6000]));
+
+        $this->assertSame('review_required', $r['status']);
+    }
+
+    public function test_current_invoice_is_an_unsettled_one_when_a_period_has_several(): void
+    {
+        $course = $this->course([['2026-08', 4000, 'unpaid', []], ['2026-08', 6000, 'paid', [[6000, 'cash']]]]);
+        $r = $this->resolve($course);
+
+        $this->assertSame('partial', $r['status']);
+        $this->assertSame((int) Invoice::query()->where('StudentClassID', $course->ID)->where('TotalAmount', 4000)->value('id'), $r['current_invoice_id']);
+    }
+
+    public function test_default_path_loads_package_state_without_per_course_queries(): void
+    {
+        $ids = [];
+        foreach (range(1, 6) as $i) {
+            $course = $this->course([]);
+            $pkg = \App\Models\CoursePackage::create(['student_id' => $course->StudentID, 'campus_id' => 1, 'name' => "p$i", 'billing_mode' => 'count',
+                'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session',
+                'class_type' => 'one_on_one', 'paid' => true, 'stop' => false, 'enabled' => true]);
+            $course->update(['PackageID' => $pkg->id]);
+            $ids[] = (int) $course->ID;
+        }
+        $count = function (array $subset): int {
+            \Illuminate\Support\Facades\DB::flushQueryLog();
+            \Illuminate\Support\Facades\DB::enableQueryLog();
+            app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($subset);
+
+            return count(\Illuminate\Support\Facades\DB::getQueryLog());
+        };
+
+        $this->assertSame($count(array_slice($ids, 0, 1)), $count($ids));
+        $this->assertSame('paid', app(BillingPayableResolver::class)->courseStatusesByStudentClassIds($ids)[$ids[0]]['status']);
+    }
+
+    public function test_positive_charge_with_only_a_zero_value_invoice_is_not_settled(): void
+    {
+        $r = $this->resolve($this->course([['2026-08', 0, 'paid', []]], ['Charge' => 10000]));
+
+        $this->assertSame('review_required', $r['status']);
     }
 }

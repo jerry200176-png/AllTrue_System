@@ -44,10 +44,13 @@ class BillingPayableResolver
                 $courseMap[(int) $course->getAttribute('ID')] = $course;
             }
         }
+        // One query for package paid state (isEffectivelyPaid would otherwise query per package member).
+        (new \Illuminate\Database\Eloquent\Collection($courseMap))->loadMissing('coursePackage');
         $invoicesByClass = Invoice::query()
             ->where(fn ($query) => $query->whereNull('Status')->orWhere('Status', '!=', 'void'))
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
             ->whereIn('StudentClassID', $ids->all())
+            ->orderBy('id')
             ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
@@ -57,7 +60,7 @@ class BillingPayableResolver
             $out[$classId] = $this->courseStatus(
                 $courseMap[$classId] ?? null,
                 $invoicesByClass->get($classId, collect()),
-                $monthlyByClass[$classId]['periods'] ?? [],
+                $monthlyByClass[$classId] ?? [],
             );
         }
 
@@ -71,7 +74,7 @@ class BillingPayableResolver
     }
 
     /** @param Collection<int, Invoice> $invoices */
-    private function courseStatus(?StudentClass $course, Collection $invoices, array $monthlyPeriods): array
+    private function courseStatus(?StudentClass $course, Collection $invoices, array $monthly): array
     {
         $result = fn (string $status, int $total, int $applied, int $overpaid, array $periods, string $source, ?int $invoiceId) => [
             'status' => $status, 'payable_total' => $total, 'applied' => $applied,
@@ -87,8 +90,10 @@ class BillingPayableResolver
         }
         // B15 is the period engine for monthly courses: a period it cannot attribute is review_required,
         // even without invoices (a legacy flag must not settle unattributed months).
-        $unattributed = collect($monthlyPeriods)->where('source', 'unattributed')->pluck('billing_period')->all();
-        if ($invoices->isEmpty() && $unattributed !== []) {
+        $unattributed = collect($monthly['periods'] ?? [])->where('source', 'unattributed')->pluck('billing_period')->all();
+        // B15's own verdict (ambiguous items/coverage gaps, out-of-contract sessions, amount discrepancy) is preserved.
+        $monthlyReview = (bool) ($monthly['review_required'] ?? false);
+        if ($invoices->isEmpty() && ($unattributed !== [] || $monthlyReview)) {
             $periods = array_map(fn ($billingPeriod) => $this->unattributedPeriod($billingPeriod), $unattributed);
 
             return $result('review_required', $charge, 0, 0, $periods, 'none', null);
@@ -109,8 +114,11 @@ class BillingPayableResolver
             $total = max(0, (int) $projection['total_amount']);
             $net = max(0, (int) $projection['net_applied']);
             $row = $periods[$key] ?? ['billing_period' => $projection['billing_period'], 'invoice_ids' => [], 'total' => 0,
-                'applied' => 0, 'overpaid' => 0, 'amount_discrepancy' => false];
+                'applied' => 0, 'overpaid' => 0, 'amount_discrepancy' => false, 'open_invoice_ids' => []];
             $row['invoice_ids'][] = (int) $invoice->getAttribute('id');
+            if ($total > min($total, $net)) {
+                $row['open_invoice_ids'][] = (int) $invoice->getAttribute('id');
+            }
             $row['total'] += $total;
             $row['applied'] += min($total, $net);
             $row['overpaid'] += max(0, $net - $total);
@@ -130,15 +138,19 @@ class BillingPayableResolver
 
         $worst = collect($periods)->first(fn ($row) => in_array($row['status'], ['unpaid', 'partial'], true));
         $current = $worst ?? collect($periods)->filter(fn ($row) => $row['invoice_ids'] !== [])->last();
+        // Prefer an invoice that still has a balance when the worst period holds several.
+        $currentInvoiceId = $current ? (int) (end($current['open_invoice_ids']) ?: end($current['invoice_ids']) ?: 0) : 0;
+        // A positive-Charge course whose non-void invoices are all zero-value is not settled: review.
+        $zeroValueOnly = $charge > 0 && !$hasBillableInvoice;
 
         return $result(
-            $unattributed !== [] ? 'review_required' : ($worst['status'] ?? 'paid'),
+            ($unattributed !== [] || $monthlyReview || $zeroValueOnly) ? 'review_required' : ($worst['status'] ?? 'paid'),
             (int) collect($periods)->sum('total'),
             (int) collect($periods)->sum('applied'),
             (int) collect($periods)->sum('overpaid'),
             $periods,
             'invoice',
-            $current && $current['invoice_ids'] !== [] ? (int) end($current['invoice_ids']) : null,
+            $currentInvoiceId ?: null,
         );
     }
 
