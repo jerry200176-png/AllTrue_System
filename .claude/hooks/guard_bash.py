@@ -94,6 +94,12 @@ class Deny(Exception):
     pass
 
 
+class Unverifiable(Deny):
+    """The AST can't prove the command safe or dangerous (dynamic words, script
+    bodies, unknown options...). Decided by the legacy regex guard instead, so
+    the AST guard is never weaker than it and never blocks more on uncertainty."""
+
+
 class Resplit(Exception):
     """env -S: the value is a command line to re-parse."""
 
@@ -184,7 +190,7 @@ def secret_arg(text, cwd, g=False):
 def unwrap(argv, seen):
     while argv:
         if argv[0].dyn or argv[0].glob and argv[0].text not in ("[", "[["):
-            raise Deny("cannot verify dynamic command name")
+            raise Unverifiable("cannot verify dynamic command name")
         n = base(argv[0])
         if n not in WRAPPERS:
             return argv
@@ -198,7 +204,7 @@ def unwrap(argv, seen):
             while i < len(argv):
                 t = argv[i].text
                 if argv[i].dyn:
-                    raise Deny(f"cannot verify dynamic {n} option")
+                    raise Unverifiable(f"cannot verify dynamic {n} option")
                 if t == "--":
                     i += 1
                     break
@@ -206,7 +212,7 @@ def unwrap(argv, seen):
                     att = t.split("=", 1)[1] if t.startswith("--") and "=" in t else t[2:] if not t.startswith("--") else ""
                     val, rest = (att, argv[i + 1:]) if att else (argv[i + 1].text if i + 1 < len(argv) else "", argv[i + 2:])
                     if any(w.dyn for w in rest) or any(w.dyn for w in argv):
-                        raise Deny("cannot verify dynamic env -S command")
+                        raise Unverifiable("cannot verify dynamic env -S command")
                     raise Resplit(val + " " + " ".join(shlex.quote(w.text) for w in rest))
                 if n == "env" and "=" in t and not t.startswith("-"):
                     env_name_check(t.split("=", 1)[0], seen)
@@ -295,14 +301,14 @@ def check_git(args, cwd):
     if i >= len(args):
         return
     if unk(args[i]):
-        raise Deny("cannot verify dynamic git subcommand")
+        raise Unverifiable("cannot verify dynamic git subcommand")
     sub, rest = args[i].text, args[i + 1:]
     texts = [w.text for w in rest]
     d = cwd
     for w in dirs:
         if w.dyn:
             if sub == "commit":
-                raise Deny("cannot verify dynamic git -C directory for commit")
+                raise Unverifiable("cannot verify dynamic git -C directory for commit")
             continue
         d = os.path.join(d, os.path.expanduser(w.text))
     if sub == "config" and not CFG_READ & set(texts):
@@ -326,7 +332,8 @@ def check_git(args, cwd):
             or sub == "filter-branch"):
         raise Deny(f"git {sub} can execute arbitrary programs (fail closed)")
     if sub in ("push", "reset", "clean", "branch") and any(unk(w) for w in rest):
-        raise Deny(f"cannot verify dynamic arguments to git {sub} (fail closed)")
+        # reset: `--soft $(git merge-base ...)` is routine; regex still catches a literal --hard
+        raise (Unverifiable if sub == "reset" else Deny)(f"cannot verify dynamic arguments to git {sub} (fail closed)")
     if sub == "commit":
         if branch_of(d) in ("main", "master"):
             raise Deny(f"direct commit on '{branch_of(d)}'. Branch first - see CLAUDE.md Git rules.")
@@ -421,7 +428,7 @@ class Walker:
 
     def run(self, cmd, cwd, depth=0):
         if depth > MAX_DEPTH:
-            raise Deny("shell payload nested too deeply to verify")
+            raise Unverifiable("shell payload nested too deeply to verify")
         self.walk(parse(self.shfmt, cmd), cwd, depth)
 
     def walk(self, n, cwd, depth):
@@ -439,7 +446,8 @@ class Walker:
             op = r.get("Op")
             if op in ("<<", "<<-"):
                 parts = (r.get("Hdoc") or {}).get("Parts", [])
-                self.fed = ("lit", "".join(p["Value"] for p in parts)) if all(p.get("Type") == "Lit" for p in parts) else "pipe"
+                lit = all(p.get("Type") == "Lit" for p in parts)
+                self.fed = ("lit" if lit else "dyn", "".join(p.get("Value", " DYN ") for p in parts))
             elif op == "<<<":
                 w = W(r["Word"])
                 self.fed = "pipe" if w.dyn else ("lit", w.text)
@@ -470,7 +478,7 @@ class Walker:
     def tail(self, argv, cwd, depth):
         """Payload carriers: treat any later literal word as a possible command start."""
         if depth > MAX_DEPTH:
-            raise Deny("carrier nested too deeply to verify")
+            raise Unverifiable("carrier nested too deeply to verify")
         for k in range(1, len(argv)):
             if not unk(argv[k]) and argv[k].text != ".":  # `.` is usually a find/path operand
                 self.cmd(argv[k:], cwd, depth + 1)
@@ -494,7 +502,7 @@ class Walker:
                 raise Deny("SSH/copy to the production Pi. Forbidden for agents - all changes go "
                            "branch -> PR -> CI -> deploy.yml (CLAUDE.md R2/R6).")
             if any(unk(w) for w in args):
-                raise Deny(f"cannot verify dynamic arguments to {name} (fail closed)")
+                raise Unverifiable(f"cannot verify dynamic arguments to {name} (fail closed)")
         if name == "git":
             if any(n.upper() in ("PAGER", "EDITOR") for n in seen):
                 raise Deny("PAGER/EDITOR assignment for git can run programs (fail closed)")
@@ -523,7 +531,7 @@ class Walker:
             raise Deny("set -a/allexport (or dynamic set args) can export injected variables (fail closed)")
         if name == "eval":
             if any(w.dyn for w in args):
-                raise Deny("cannot verify dynamic eval payload")
+                raise Unverifiable("cannot verify dynamic eval payload")
             self.run(" ".join(w.text for w in args), cwd, depth + 1)
         if name in SHELLS:
             self.shell(name, args, cwd, depth)
@@ -539,13 +547,13 @@ class Walker:
 
     def stdin_code(self, name, cwd, depth, shell):
         f = self.fed
-        if isinstance(f, tuple):
-            if shell:
-                self.run(f[1], cwd, depth + 1)
-            else:
-                regex_scan(f[1])
+        if isinstance(f, tuple) and (f[0] == "lit" or not shell):
+            # literal code, or an interpreter heredoc whose $vars are only data: scan the text
+            self.run(f[1], cwd, depth + 1) if shell else regex_scan(f[1])
+        elif f == "file" and not shell:
+            return  # `python3 < x.py` is the same as `python3 x.py`
         elif f is not None or shell:
-            raise Deny(f"{name} reading code from stdin/pipe/file cannot be verified (fail closed)")
+            raise Deny(f"{name} reading code from a pipe, variable or file cannot be verified (fail closed)")
 
     def shell(self, name, args, cwd, depth):
         if name in ("source", "."):
@@ -580,7 +588,7 @@ class Walker:
             ops = args[i:]
         if c:
             if not ops or unk(ops[0]):
-                raise Deny("cannot verify shell -c payload (fail closed)")
+                raise Unverifiable("cannot verify shell -c payload (fail closed)")
             return self.run(ops[0].text, cwd, depth + 1)
         if nflag:
             return
@@ -641,7 +649,11 @@ def main():
             import guard_bash_regex as rx
             rx.check_all(re.sub(r"\\\r?\n", " ", cmd))
             return
-        Walker(shfmt).run(cmd, os.getcwd())
+        try:
+            Walker(shfmt).run(cmd, os.getcwd())
+        except Unverifiable:
+            import guard_bash_regex as rx
+            rx.check_all(re.sub(r"\\\r?\n", " ", cmd))  # denies via its own emit + exit
     except Deny as e:
         emit_deny(f"Blocked (AST guard): {e}")
     except SystemExit:

@@ -336,11 +336,13 @@ AST_DANGEROUS = [
     "python3 <<'EOF'\nimport os; os.system('git push -f o x')\nEOF",
     "echo x | python3",
     "python3 - <<< \"$x\"",
-    "node < evil.js",
     # deploy
     "npm run deploy:prod",
 ]
 AST_SAFE = [
+    "node < build-step.js",  # same as `node build-step.js`: interpreter file args are not code-analysed
+    "S=/tmp/x; $S/actionlint -version",  # dynamic command name -> regex fallback, not a blanket deny
+    "git reset -q --soft $(git merge-base HEAD origin/main)",
     "git -C /tmp status",
     "git commit -m \"$(date)\"",
     "echo $HOME $(date) x",
