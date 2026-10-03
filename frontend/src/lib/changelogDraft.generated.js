@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.03",
     "date": "2026-10-03",
     "title": "2026.10.03 草稿（未發布）",
-    "summary": "reports awaiting the reporter close after 14 days; reporter reply reopens",
+    "summary": "photo pushes arrival/leave text together with the photo；reports awaiting the reporter close after 14 days; reporter reply reopens",
     "audience": [
       "teacher",
       "director"
@@ -18,11 +18,13 @@ export const changelogDraftNotes = [
       {
         "title": "新增內容",
         "items": [
+          "photo pushes arrival/leave text together with the photo",
           "reports awaiting the reporter close after 14 days; reporter reply reopens"
         ]
       }
     ],
     "items": [
+      "photo pushes arrival/leave text together with the photo",
       "reports awaiting the reporter close after 14 days; reporter reply reopens"
     ]
   },
