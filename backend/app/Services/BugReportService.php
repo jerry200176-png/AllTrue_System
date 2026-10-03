@@ -971,13 +971,13 @@ class BugReportService
      *
      * @return array{ok: bool, action?: string, code?: string, message?: string}
      */
-    public static function closeAsLogged(int $bugId, int $actorId, string $kind, ?string $issueUrl, string $publicReply): array
+    public static function closeAsLogged(int $bugId, int $actorId, string $kind, string $issueUrl, string $publicReply): array
     {
         if (!in_array($kind, self::LOGGED_CLOSE_KINDS, true)) {
             return ['ok' => false, 'code' => 'invalid_kind', 'message' => 'kind must be one of ' . implode(',', self::LOGGED_CLOSE_KINDS)];
         }
-        if ($kind !== 'not_planned' && ($issueUrl === null || $issueUrl === '')) {
-            return ['ok' => false, 'code' => 'github_issue_required', 'message' => 'a logged suggestion needs its GitHub issue'];
+        if ($issueUrl === '') {
+            return ['ok' => false, 'code' => 'github_issue_required', 'message' => 'a logged close needs its GitHub issue (not_planned too: record the reason there)'];
         }
         if (trim($publicReply) === '') {
             return ['ok' => false, 'code' => 'public_reply_required', 'message' => 'public reply is required'];
@@ -992,7 +992,7 @@ class BugReportService
                 $prior = self::loggedCloseDisposition($bugId);
                 $same = $prior !== null
                     && ($prior['kind'] ?? null) === $kind
-                    && ($prior['github_issue_url'] ?? null) === (($issueUrl === null || $issueUrl === '') ? null : $issueUrl);
+                    && ($prior['github_issue_url'] ?? null) === $issueUrl;
 
                 return $same
                     ? ['ok' => true, 'action' => 'already_closed']
@@ -1009,10 +1009,7 @@ class BugReportService
                     return ['ok' => false, 'code' => 'reporter_reply_unanswered', 'message' => 'answer the reporter reply before closing again'];
                 }
             }
-            $options = ['disposition' => $kind];
-            if ($issueUrl !== null && $issueUrl !== '') {
-                $options['github_issue_url'] = $issueUrl;
-            }
+            $options = ['disposition' => $kind, 'github_issue_url' => $issueUrl];
             $res = self::changeStatus($bugId, $actorId, 'closed', self::CLOSED_AS_LOGGED_NOTE . "\n已收進產品清單", $options);
             if (!$res['ok']) {
                 return $res;
@@ -1103,6 +1100,7 @@ class BugReportService
             ]);
             $evidence->save();
             self::addComment($bugId, $actorId, $publicReply);
+            $bug->touch(); // list unread state follows updated_at
 
             return ['ok' => true, 'action' => 'notified'];
         });

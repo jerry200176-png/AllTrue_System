@@ -352,7 +352,8 @@ class BugReporterTimeoutTest extends TestCase
         $issue = 'https://github.com/jerry200176-png/AllTrue_System/issues/1';
 
         $this->assertSame('invalid_kind', BugReportService::closeAsLogged($bug->id, $admin->id, 'bug', $issue, 'x')['code']);
-        $this->assertSame('github_issue_required', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', null, 'x')['code']);
+        $this->assertSame('github_issue_required', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', '', 'x')['code']);
+        $this->assertSame('github_issue_required', BugReportService::closeAsLogged($bug->id, $admin->id, 'not_planned', '', 'x')['code']);
         $this->assertSame('triaged', $bug->fresh()->status);
 
         $r1 = BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, '已收進產品清單');
@@ -369,8 +370,6 @@ class BugReporterTimeoutTest extends TestCase
             ->postJson("/api/v1/bugs/{$bug->id}/comments", ['body' => '補充一下'])->assertStatus(201);
         $this->assertSame('triaged', $bug->fresh()->status);
 
-        $notPlanned = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDay(), false);
-        $this->assertTrue(BugReportService::closeAsLogged($notPlanned->id, $admin->id, 'not_planned', null, '先不做，原因是…')['ok']);
 
         Carbon::setTestNow();
     }
@@ -397,7 +396,9 @@ class BugReporterTimeoutTest extends TestCase
         $this->assertSame('closed_otherwise', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $wrongIssue, 'x')['code']);
         $this->assertSame('already_closed', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, 'x')['action']);
 
+        Carbon::setTestNow(Carbon::now()->addHour());
         $this->assertSame('notified', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, $sha, '99', '已上線')['action']);
+        $this->assertTrue($bug->fresh()->updated_at->equalTo(Carbon::now()), 'ship notice bumps updated_at so the list shows it unread');
         $this->assertSame('already_notified', BugReportService::notifyLoggedSuggestionShipped($bug->id, $admin->id, $issue, $sha, '99', '已上線')['action']);
         $this->assertSame(1, BugReportComment::where('bug_report_id', $bug->id)->where('body', '已上線')->count());
         $this->assertSame('closed', $bug->fresh()->status);
@@ -434,6 +435,10 @@ class BugReporterTimeoutTest extends TestCase
             'CampusID' => 1, 'reporter_user_id' => $uid, 'title' => "{$page}-{$status}",
             'description' => 'D', 'severity' => 'low', 'status' => $status, 'page_key' => $page,
         ]);
+        $other = BugReport::create([
+            'CampusID' => 2, 'reporter_user_id' => $reporter->id, 'title' => 'other campus',
+            'description' => 'D', 'severity' => 'low', 'status' => 'triaged', 'page_key' => 'calendar',
+        ]);
         $mine = $make($reporter->id, 'calendar', 'triaged');
         $resolved = $make($reporter->id, 'calendar', 'resolved');
         $make($reporter->id, 'calendar', 'closed');
@@ -444,6 +449,10 @@ class BugReporterTimeoutTest extends TestCase
             ->getJson('/api/v1/bugs/open-on-page?page_key=calendar&branch_id=1')
             ->assertOk();
         $this->assertEqualsCanonicalizing([$mine->id, $resolved->id], array_column($res->json('data'), 'id'));
+        $this->assertNotContains($other->id, array_column($res->json('data'), 'id'), 'other campus never hinted');
+        $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($reporter), 'Accept' => 'application/json'])
+            ->getJson('/api/v1/bugs/open-on-page?page_key=calendar&branch_id=2')
+            ->assertJsonPath('data', []);
     }
 
     private function tokenFor(User $user): string

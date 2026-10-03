@@ -162,9 +162,15 @@ class BugReportController extends Controller
         if ($pageKey === '' || strlen($pageKey) > 100) {
             return response()->json(['data' => []]);
         }
+        // Only the campus the dialog is open in, so a hint never routes a problem into another campus's report.
+        $branchId = (int) $request->query('branch_id', '0');
+        $allowed = $this->resolveReporterCampusIds($request); // [] = super_admin, any campus
+        if ($branchId < 1 || ($allowed !== [] && !in_array($branchId, $allowed, true))) {
+            return response()->json(['data' => []]);
+        }
+
         return response()->json([
-            // Own reports only; super_admin gets [] = no campus filter.
-            'data' => BugReportService::openOnPageForReporter($userId, $this->resolveReporterCampusIds($request), $pageKey),
+            'data' => BugReportService::openOnPageForReporter($userId, [$branchId], $pageKey),
         ]);
     }
 
