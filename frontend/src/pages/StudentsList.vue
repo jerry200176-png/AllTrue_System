@@ -464,7 +464,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -1115,6 +1115,12 @@ const goToCourseMgmtOps = (course, studentName = '') => {
   });
 };
 
+// in-app #374: trial -> formal conversion lives only in Course Management's convert-trial modal.
+const goToTrialConversion = (course) => {
+  const name = students.value.find((s) => s.id === course?.student_id)?.name || '';
+  emit('navigate', { ...buildCourseMgmtOpsNav(course, { intent: 'convert-trial' }), studentName: name });
+};
+
 const goToBindingManagement = (student) => {
   emit('navigate', buildBindingManagementNav({
     studentId: student?._laravelId ?? student?.id,
@@ -1330,6 +1336,7 @@ const paymentNextActionLabel = (course) => {
   return '前往帳務中心';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
+const isTrialCourse = (course) => course?.class_type === 'trial';
 const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
 const shouldShowPaymentAction = (course) => !isTutoringCourse(course);
 const paymentStatusHelpTitle = (course) => {
@@ -1509,6 +1516,7 @@ const getActiveStudentCourses = (id) => {
 const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
   String(c?.payment_type || '').toLowerCase() === 'monthly'
   && !isTutoringCourse(c)
+  && !isTrialCourse(c)
   && String(c?.status || '').toLowerCase() !== 'inactive'
 ));
 const openBatchRenew = (student) => { batchRenewStudent.value = student; };
@@ -3397,6 +3405,10 @@ const deleteCourse = async (course) => {
 // --- Add Sessions (per-course) ---
 const openAddSessionsForCourse = (course) => {
   if (addSessionsSubmitting.value) return;
+  if (isTrialCourse(course)) {
+    goToTrialConversion(course);
+    return;
+  }
   if (isTutoringCourse(course) && isPackageMember(course)) {
     alert('此輔導課屬於共用方案，不能從這裡延續或加購；請先確認方案設定。');
     return;

@@ -3468,6 +3468,14 @@ class StudentClassController extends Controller
             ], 422);
         }
 
+        // in-app #374: mirror purchaseBatch/renewMonthly so preview never advertises an unconfirmable trial renewal.
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
+            return response()->json([
+                'message' => '試聽課程不能直接加購或續約，請使用「轉為正式課程」。',
+                'code' => 'trial_use_convert',
+            ], 422);
+        }
+
             $preview = $this->buildRenewalPreview($studentClass, $data);
             $preview = $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request));
 
@@ -3592,6 +3600,14 @@ class StudentClassController extends Controller
             return response()->json([
                 'message' => '輔導課無須繳費，不能建立收費續報。請先檢查課程資料。',
                 'code' => 'tutoring_no_payment_obligation',
+            ], 422);
+        }
+
+        // in-app #374: renewing a trial must not create another trial period.
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
+            return response()->json([
+                'message' => '試聽課程不能直接續約，請到課程管理使用「轉為正式課程」。',
+                'code' => 'trial_use_convert',
             ], 422);
         }
 
@@ -3994,6 +4010,16 @@ class StudentClassController extends Controller
             ], 422);
         }
 
+        // in-app #374: a trial must become a regular course via convert-trial, never a new trial batch.
+        // convertTrial reuses this method; the flag is a server-side request attribute, not client input.
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial'
+            && $request->attributes->get('trial_conversion') !== true) {
+            return response()->json([
+                'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
+                'code' => 'trial_use_convert',
+            ], 422);
+        }
+
         // 月結制課程不支援加購堂數，應使用 renew-monthly 端點
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
             return response()->json([
@@ -4327,10 +4353,12 @@ class StudentClassController extends Controller
                 'mode' => 'new_purchase',
                 'class_type' => $newClassType,
             ]);
+            $request->attributes->set('trial_conversion', true);
             try {
                 $response = $this->purchaseBatch($request, $source);
             } finally {
                 $request->replace($originalInput);
+                $request->attributes->remove('trial_conversion');
             }
 
             if ($response->getStatusCode() >= 400) {

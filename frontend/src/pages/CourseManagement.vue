@@ -1691,6 +1691,7 @@ const props = defineProps({
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentName: { type: String, default: '' },
+  initialCourseIntent: { type: String, default: '' },
 });
 const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
@@ -1732,6 +1733,8 @@ function closeCourseInPlace(course) {
 }
 
 const courses = ref([]);
+const pendingConvertTrialId = ref(0);
+const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
 let courseLoadRequestId = 0;
 const allStudents = ref([]);
@@ -3270,6 +3273,16 @@ function purchaseActionTitle(c) {
 
 function openPurchaseModal(course) {
   pendingMonthlyBooking.value = null;
+  // in-app #374: convert-trial is count-based; never let a monthly trial fall into renew-monthly (it would copy ClassType=trial).
+  if (course?.class_type === 'trial' && !isSessionMode(course)) {
+    alert('月結制試聽尚不支援直接轉為正式課程，請聯絡工程人員協助，避免建立另一筆試聽。');
+    return;
+  }
+  // convert-trial ignores package totals; a package-member trial must be handled in package settings first.
+  if (course?.class_type === 'trial' && (course?.PackageID || course?.package_id)) {
+    alert('此試聽屬於多科共用方案，不能直接轉為正式課程；請先調整方案設定，避免方案堂數錯誤。');
+    return;
+  }
   // Local only for trial convert-trial and package set-total (distinct semantics from students purchase-batch).
   if (!isSessionMode(course)) {
     renewMonthlyCourse.value = course;
@@ -4784,6 +4797,8 @@ const loadCourses = async (page = 1) => {
       if (filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
       if (filters.value.course_status) params.set('status', filters.value.course_status);
       if (filters.value.name) params.set('name', filters.value.name);
+      // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
+      if (pendingConvertTrialId.value && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
       const res = await fetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
@@ -5905,6 +5920,13 @@ watch(
   },
   { immediate: true },
 );
+watch(coursesLoading, (loading) => {
+  if (loading || !pendingConvertTrialId.value) return;
+  const trial = courses.value.find((c) => c.id === pendingConvertTrialId.value && c.class_type === 'trial');
+  pendingConvertTrialId.value = 0;
+  convertTrialStudentId.value = null;
+  if (trial) openPurchaseModal(trial);
+});
 watch(
   () => [props.initialStudentId, props.initialCourseId, props.initialStudentName],
   () => {
@@ -5912,6 +5934,12 @@ watch(
     const sid = props.initialStudentId;
     if (!name && (sid == null || sid === '')) return;
     if (name) filters.value.name = name.slice(0, 40);
+    // in-app #374: Students sends trial 「轉為正式課程」 here. Consumed by the coursesLoading watcher
+    // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
+    if (props.initialCourseIntent === 'convert-trial') {
+      pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
+      convertTrialStudentId.value = sid ?? null;
+    }
     loadCourses(1);
     emit('clear-initial-student');
   },
