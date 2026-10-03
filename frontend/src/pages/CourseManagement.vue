@@ -3278,6 +3278,11 @@ function openPurchaseModal(course) {
     alert('月結制試聽尚不支援直接轉為正式課程，請聯絡工程人員協助，避免建立另一筆試聽。');
     return;
   }
+  // convert-trial ignores package totals; a package-member trial must be handled in package settings first.
+  if (course?.class_type === 'trial' && (course?.PackageID || course?.package_id)) {
+    alert('此試聽屬於多科共用方案，不能直接轉為正式課程；請先調整方案設定，避免方案堂數錯誤。');
+    return;
+  }
   // Local only for trial convert-trial and package set-total (distinct semantics from students purchase-batch).
   if (!isSessionMode(course)) {
     renewMonthlyCourse.value = course;
