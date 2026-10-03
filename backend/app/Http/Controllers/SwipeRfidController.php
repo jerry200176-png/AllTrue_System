@@ -153,7 +153,7 @@ class SwipeRfidController extends Controller
     /**
      * POST /api/v1/swipe-photo（multipart）
      * Body: branch_code, rfid, photo（jpeg/png ≤1MB）
-     * 刷卡機拍照後呼叫：存照片（私有），推 LINE 文字（到班/離班）+圖片給該學生已驗證綁定的家長，並回傳 image_url。
+     * 刷卡機拍照後呼叫：存照片（私有），推 1 張 LINE Flex 卡（照片＋到班/離班文字）給該學生已驗證綁定的家長，並回傳 image_url。
      * 圖片網址是 APP_URL 上的簽章網址，所以刷卡機有沒有固定 IP 都沒差。
      */
     public function photo(Request $request)
@@ -229,11 +229,8 @@ class SwipeRfidController extends Controller
             try {
                 $delivered = Http::withToken($token)->timeout(5)->post('https://api.line.me/v2/bot/message/push', [
                     'to' => $binding->line_user_id,
-                    // 文字+圖一次推：讀卡機不再自己推文字，避免家長收兩則。
-                    'messages' => [
-                        ['type' => 'text', 'text' => $text],
-                        ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
-                    ],
+                    // 照片＋文字做成 1 張 Flex 卡＝家長收 1 則；altText 是通知列看到的字。
+                    'messages' => [$this->swipePhotoFlex($text, $imageUrl)],
                 ])->successful();
             } catch (\Throwable $e) {
                 Log::warning('swipe_photo_line_push_failed: ' . $e->getMessage());
@@ -255,6 +252,27 @@ class SwipeRfidController extends Controller
         }
 
         return $sent;
+    }
+
+    /** @return array<string,mixed> LINE Flex bubble：上面照片（點了看原圖），下面文字。 */
+    private function swipePhotoFlex(string $text, string $imageUrl): array
+    {
+        return [
+            'type' => 'flex',
+            'altText' => $text,
+            'contents' => [
+                'type' => 'bubble',
+                'hero' => [
+                    'type' => 'image', 'url' => $imageUrl, 'size' => 'full',
+                    'aspectRatio' => '4:3', 'aspectMode' => 'cover',
+                    'action' => ['type' => 'uri', 'uri' => $imageUrl],
+                ],
+                'body' => [
+                    'type' => 'box', 'layout' => 'vertical',
+                    'contents' => [['type' => 'text', 'text' => $text, 'weight' => 'bold', 'wrap' => true]],
+                ],
+            ],
+        ];
     }
 
     /**

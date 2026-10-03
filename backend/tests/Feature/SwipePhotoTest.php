@@ -79,14 +79,15 @@ class SwipePhotoTest extends TestCase
         Http::assertSentCount(1);
         $url = null;
         Http::assertSent(function ($req) use (&$url) {
-            [$text, $image] = $req['messages'];
-            $url = $image['originalContentUrl'];
+            $flex = $req['messages'][0];
+            $url = $flex['contents']['hero']['url'];
 
+            // 1 則訊息：照片＋文字同一張 Flex 卡。
             return $req['to'] === 'Uverified'
-                && count($req['messages']) === 2
-                && $text['type'] === 'text'
-                && $image['type'] === 'image'
-                && $image['previewImageUrl'] === $url
+                && count($req['messages']) === 1
+                && $flex['type'] === 'flex'
+                && $flex['altText'] === $flex['contents']['body']['contents'][0]['text']
+                && $flex['contents']['hero']['action']['uri'] === $url
                 && str_starts_with($url, 'https://alltrue.example/api/v1/swipe-photo/')
                 && str_contains($url, 'signature=');
         });
@@ -107,7 +108,7 @@ class SwipePhotoTest extends TestCase
         $texts = function (): array {
             return Http::recorded()
                 ->filter(fn ($pair) => str_contains($pair[0]->url(), 'api.line.me/v2/bot/message/push'))
-                ->map(fn ($pair) => $pair[0]['messages'][0]['text'])
+                ->map(fn ($pair) => $pair[0]['messages'][0]['altText'])
                 ->values()->all();
         };
         $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);

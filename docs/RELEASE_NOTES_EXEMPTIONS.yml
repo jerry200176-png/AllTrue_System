@@ -667,3 +667,8 @@ exemptions:
     changelog_date: "2026-10-03"
     changelog_title: "feat(rfid): swipe-photo pushes arrival/leave text together with the photo"
     reason: 只改讀卡機照片 API 推給家長的訊息內容，教職員畫面無變化。
+
+  - id: silent-2026-10-03-swipe-photo-flex
+    changelog_date: "2026-10-03"
+    changelog_title: "feat(rfid): swipe photo and text arrive as one LINE message"
+    reason: 只改讀卡機照片 API 推給家長的訊息格式，教職員畫面無變化。
