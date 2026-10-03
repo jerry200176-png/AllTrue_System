@@ -662,3 +662,8 @@ exemptions:
     changelog_date: "2026-10-02"
     changelog_title: "fix(rfid): swipe-rfid LineIDs only include the swiped campus's bindings"
     reason: 只收窄讀卡機 API 回應的家長 LINE ID 範圍，教職員畫面無變化。
+
+  - id: silent-2026-10-03-f7-s1-resolver
+    changelog_date: "2026-10-03"
+    changelog_title: "fix(billing): F7 S1 resolver contract; void receipts of mixed encodings no longer cancel"
+    reason: 新方法尚無呼叫端；沖銷加總只影響同一發票同時含負數列與 Method=void 正數列的罕見資料，畫面無新增功能。

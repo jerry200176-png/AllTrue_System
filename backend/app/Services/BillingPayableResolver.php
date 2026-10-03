@@ -57,8 +57,11 @@ class BillingPayableResolver
 
         $out = [];
         foreach ($ids as $classId) {
+            if (!isset($courseMap[$classId])) {
+                continue; // unknown course: never classify missing authoritative data as free
+            }
             $out[$classId] = $this->courseStatus(
-                $courseMap[$classId] ?? null,
+                $courseMap[$classId],
                 $invoicesByClass->get($classId, collect()),
                 $monthlyByClass[$classId] ?? [],
             );
@@ -74,7 +77,7 @@ class BillingPayableResolver
     }
 
     /** @param Collection<int, Invoice> $invoices */
-    private function courseStatus(?StudentClass $course, Collection $invoices, array $monthly): array
+    private function courseStatus(StudentClass $course, Collection $invoices, array $monthly): array
     {
         $result = fn (string $status, int $total, int $applied, int $overpaid, array $periods, string $source, ?int $invoiceId) => [
             'status' => $status, 'payable_total' => $total, 'applied' => $applied,
@@ -84,7 +87,8 @@ class BillingPayableResolver
         $charge = max(0, (int) ($course?->getAttribute('Charge') ?? 0));
         $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);
         $tutoring = strtolower(trim((string) ($course?->getAttribute('ClassType') ?? ''))) === 'tutoring';
-        $zeroFee = $charge <= 0 && (float) ($course?->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
+        $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
+        $zeroFee = !$isPackageMember && $charge <= 0 && (float) ($course?->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
         if ($tutoring || $zeroFee) {
             return $result('free', 0, 0, 0, [], 'none', null);
         }
@@ -100,8 +104,12 @@ class BillingPayableResolver
         }
         if ($invoices->isEmpty()) {
             // Legacy rule: the Paid flag (or paid package) counts only while no non-void invoice exists.
-            if ($course && $course->isEffectivelyPaid()) {
+            if ($course->isEffectivelyPaid()) {
                 return $result('paid', $charge, $charge, 0, [], 'legacy_flag', null);
+            }
+            // Package members carry Charge 0; the amount authority is the package (S3), so do not report 0 outstanding.
+            if ($isPackageMember && $charge <= 0) {
+                return $result('review_required', 0, 0, 0, [], 'none', null);
             }
 
             return $result('unbilled', $charge, 0, 0, [], 'none', null);

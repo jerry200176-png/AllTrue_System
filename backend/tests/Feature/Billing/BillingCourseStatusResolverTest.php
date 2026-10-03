@@ -158,4 +158,25 @@ class BillingCourseStatusResolverTest extends TestCase
 
         $this->assertSame('review_required', $r['status']);
     }
+
+    public function test_unknown_course_ids_are_omitted_not_free(): void
+    {
+        $this->assertSame([], app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([987654]));
+    }
+
+    public function test_package_member_with_zero_charge_is_not_free(): void
+    {
+        $member = fn (bool $paid) => (function () use ($paid) {
+            $course = $this->course([], ['Charge' => 0, 'Rate' => 0]);
+            $pkg = \App\Models\CoursePackage::create(['student_id' => $course->StudentID, 'campus_id' => 1, 'name' => 'pz', 'billing_mode' => 'count',
+                'total_sessions' => 10, 'remaining_sessions' => 10, 'used_sessions' => 0, 'rate' => 1000, 'rate_unit' => 'session',
+                'class_type' => 'one_on_one', 'paid' => $paid, 'stop' => false, 'enabled' => true]);
+            $course->update(['PackageID' => $pkg->id]);
+
+            return $this->resolve($course->fresh());
+        })();
+
+        $this->assertSame('review_required', $member(false)['status']);
+        $this->assertSame('paid', $member(true)['status']);
+    }
 }
