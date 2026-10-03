@@ -21,6 +21,10 @@ async function installMocks(page, savedBodies) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(status) });
       return;
     }
+    if (request.method() === 'GET' && url.pathname === '/api/v1/line/notify-settings') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ campus_id: 1, settings: { swipe: true } }) });
+      return;
+    }
     if (request.method() === 'POST' && url.pathname === '/api/v1/line/settings') {
       savedBodies.push(JSON.parse(request.postData() || '{}'));
       await route.fulfill({

@@ -9,6 +9,7 @@ use App\Models\SystemSetting;
 use App\Services\ParentBinding\ParentBindingObservability;
 use App\Services\ParentBinding\GuardianSyncService;
 use App\Support\ParentBinding\ParentBindingCodes;
+use App\Support\LineNotifySettings;
 use App\Support\StudentContactPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -417,6 +418,69 @@ class LineWebhookController extends Controller
 
         $campus = $this->getCampus($campusId);
         return response()->json(['message' => 'LINE 設定已儲存', 'status' => $this->buildStatus($campus, $request)]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Director API: GET/PUT /api/v1/line/notify-settings
+    // 每間分校「哪些事要用 LINE 通知」。主任只能改自己分校。
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function notifySettings(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $campus = $this->authorizedCampus($request, $request->query('branch_id'));
+        if ($campus instanceof \Illuminate\Http\JsonResponse) {
+            return $campus;
+        }
+
+        return response()->json([
+            'campus_id' => (int) $campus->id,
+            'settings' => LineNotifySettings::get((int) $campus->id),
+        ]);
+    }
+
+    public function saveNotifySettings(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $rules = ['branch_id' => 'nullable|integer', 'settings' => 'required|array'];
+        foreach (array_keys(LineNotifySettings::DEFAULTS) as $type) {
+            $rules["settings.{$type}"] = 'sometimes|boolean';
+        }
+        $data = $request->validate($rules);
+        $unknown = array_diff(array_keys($data['settings']), array_keys(LineNotifySettings::DEFAULTS));
+        if ($unknown) {
+            return response()->json(['message' => '不明的通知類型：' . implode(', ', $unknown)], 422);
+        }
+
+        $campus = $this->authorizedCampus($request, $data['branch_id'] ?? null);
+        if ($campus instanceof \Illuminate\Http\JsonResponse) {
+            return $campus;
+        }
+
+        LineNotifySettings::set((int) $campus->id, array_map('boolval', $data['settings']));
+        Log::info('[line_notify_settings_changed]', [
+            'operator_id' => $request->attributes->get('auth_user')->id ?? null,
+            'campus_id' => (int) $campus->id,
+            'settings' => $data['settings'],
+        ]);
+
+        return response()->json([
+            'message' => 'LINE 通知設定已儲存',
+            'settings' => LineNotifySettings::get((int) $campus->id),
+        ]);
+    }
+
+    /** super_admin 任一分校；其他人只能是自己 auth_campus_ids 裡的分校（空清單 = 沒權限）。 */
+    private function authorizedCampus(Request $request, mixed $branchId): object
+    {
+        $campusId = $branchId ? (int) $branchId : $this->getDirectorCampusId($request);
+        if (!$campusId) {
+            return response()->json(['message' => 'Campus not found'], 404);
+        }
+        $authCampusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if ($request->attributes->get('auth_role') !== 'super_admin' && !in_array($campusId, $authCampusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return $this->getCampus($campusId) ?? response()->json(['message' => 'Campus not found'], 404);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
