@@ -79,14 +79,16 @@ class SwipePhotoTest extends TestCase
         Http::assertSentCount(1);
         $url = null;
         Http::assertSent(function ($req) use (&$url) {
-            [$text, $image] = $req['messages'];
-            $url = $image['originalContentUrl'];
+            $flex = $req['messages'][0];
+            $url = $flex['contents']['hero']['url'];
 
+            // 1 則訊息：照片＋文字同一張 Flex 卡。
             return $req['to'] === 'Uverified'
-                && count($req['messages']) === 2
-                && $text['type'] === 'text'
-                && $image['type'] === 'image'
-                && $image['previewImageUrl'] === $url
+                && count($req['messages']) === 1
+                && $flex['type'] === 'flex'
+                && $flex['altText'] === $flex['contents']['body']['contents'][0]['text']
+                && $flex['contents']['hero']['aspectRatio'] === '64:64'
+                && !isset($flex['contents']['hero']['action'])
                 && str_starts_with($url, 'https://alltrue.example/api/v1/swipe-photo/')
                 && str_contains($url, 'signature=');
         });
@@ -107,7 +109,7 @@ class SwipePhotoTest extends TestCase
         $texts = function (): array {
             return Http::recorded()
                 ->filter(fn ($pair) => str_contains($pair[0]->url(), 'api.line.me/v2/bot/message/push'))
-                ->map(fn ($pair) => $pair[0]['messages'][0]['text'])
+                ->map(fn ($pair) => $pair[0]['messages'][0]['altText'])
                 ->values()->all();
         };
         $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
@@ -148,5 +150,26 @@ class SwipePhotoTest extends TestCase
         $this->assertCount(1, Storage::disk('local')->files("swipe-photos/{$this->campus->id}"));
         Storage::disk('local')->assertMissing($old);
         Http::assertNothingSent();
+    }
+
+    public function test_hd_photo_is_shrunk_to_flex_limit_and_still_one_message(): void
+    {
+        $this->upload(['photo' => UploadedFile::fake()->image('hd.jpg', 1920, 1080)])->assertOk();
+
+        $files = Storage::disk('local')->files("swipe-photos/{$this->campus->id}");
+        [$w, $h] = getimagesize(Storage::disk('local')->path($files[0]));
+        $this->assertSame([1024, 576], [$w, $h]);
+        Http::assertSent(fn ($req) => count($req['messages']) === 1
+            && $req['messages'][0]['contents']['hero']['aspectRatio'] === '1024:576');
+    }
+
+    public function test_huge_declared_dimensions_are_not_decoded_and_fall_back_to_text_and_image(): void
+    {
+        $this->upload(['photo' => UploadedFile::fake()->image('bomb.png', 5000, 5000)])->assertOk();
+
+        $files = Storage::disk('local')->files("swipe-photos/{$this->campus->id}");
+        [$w] = getimagesize(Storage::disk('local')->path($files[0]));
+        $this->assertSame(5000, $w);
+        Http::assertSent(fn ($req) => array_column($req['messages'], 'type') === ['text', 'image']);
     }
 }
