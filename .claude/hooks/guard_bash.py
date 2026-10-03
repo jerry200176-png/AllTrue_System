@@ -43,7 +43,7 @@ GAP = rf"(?:(?!{SEP}).)*?"
 # them isn't denied — only an actual invocation is.
 # One alternative per token, so there is only one way to match a prefix run
 # (overlapping alternatives backtrack exponentially and time the hook out = allow).
-_PREFIX = r"(?:\b(?:sudo|env|command|exec|time|nice|nohup|[A-Za-z_][A-Za-z0-9_]*=\S*)\s+)*"
+_PREFIX = r"(?:\b(?:sudo|env|command|exec|time|nice|nohup|[^\s=;&|]+=\S*)\s+)*"
 ANCHOR = rf"(?:^|{SEP}|\bthen\b)\s*{_PREFIX}"
 
 # bash/sh/zsh/dash -c "..." / -lc '...' wrapper: extracts the quoted payload

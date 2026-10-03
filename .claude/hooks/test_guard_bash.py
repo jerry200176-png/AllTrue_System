@@ -115,6 +115,8 @@ DANGEROUS = [
     "FOO=bar php artisan migrate --force",
     "AWS_PROFILE=prod terraform apply",
     "env A=b " * 64 + "terraform apply",  # prefix regex must stay linear
+    "env X-Y=1 terraform apply",
+    "env A.B=1 php artisan migrate --force",
     "cd backend && php artisan migrate --force",
     'bash -c "ssh pi.lifenet.com.tw uptime"',
     "git push --force origin main",
