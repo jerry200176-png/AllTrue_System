@@ -53,6 +53,7 @@ updates:
     source_refs:
       - "alltrue:inapp_rootcause_v2:F11-a"
   - id: staff-2026-10-03-suggestion-loop
+  - id: staff-2026-10-03-text-contrast
     published_at: "2026-10-03"
     audiences:
       - director
@@ -65,6 +66,13 @@ updates:
         text: 新功能或改善建議收進產品清單後會先結案，上線時在原回報通知你；直接留言就會重開。
       - category: improved
         text: 開回報視窗時，如果你在這頁還有處理中的回報，會提醒你直接補充到那筆。
+    title: 灰色與橘色文字更清楚
+    summary: 系統裡比較淡的灰字和橘色文字都加深了，亮色和暗色模式都更好讀。
+    items:
+      - category: improved
+        text: 灰色說明文字和橘色文字加深，螢幕反光或看久了也比較清楚。
+    source_refs:
+      - "github:jerry200176-png/AllTrue_System#3472"
   - id: staff-2026-10-02-teacher-home-speed
     published_at: "2026-10-02"
     audiences:

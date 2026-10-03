@@ -895,7 +895,7 @@ import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
 import { clearAllDraftsByTeacher } from './lib/learningRecordDrafts';
-import { latestReleaseVersionForRole } from './lib/releaseNotes';
+import { latestReleaseVersionForRole, isReleaseTokenSeen, addSeenReleaseToken } from './lib/releaseNotes';
 import {
   shouldShowPinModal,
   shouldBlurLock,
@@ -1165,7 +1165,10 @@ function onBrandActivity() {
 function markReleaseNotesSeen() {
   if (!releaseNudgeVersion.value) return;
   try {
-    localStorage.setItem(RELEASE_NOTES_SEEN_KEY, releaseNudgeVersion.value);
+    localStorage.setItem(
+      RELEASE_NOTES_SEEN_KEY,
+      addSeenReleaseToken(localStorage.getItem(RELEASE_NOTES_SEEN_KEY), role.value, releaseNudgeVersion.value),
+    );
   } catch (_) { /* ignore */ }
 }
 
@@ -2833,7 +2836,7 @@ watch([session, role, isPasswordChangeLocked], () => {
   // Playwright / WebDriver sessions hit production UI Smoke; skip the modal so
   // pointer-event layers do not block nav/tab clicks (force-click never runs Vue).
   const automated = typeof navigator !== 'undefined' && Boolean(navigator.webdriver);
-  releaseNudgeOpen.value = !automated && seenVersion !== latestVersion;
+  releaseNudgeOpen.value = !automated && !isReleaseTokenSeen(seenVersion, role.value, latestVersion);
 });
 
 watch(brandOverlayAllowed, (allowed) => {

@@ -7,6 +7,9 @@ import { changelogDraftNotes } from './changelogDraft.generated.js';
 import { staffUpdates } from './staffUpdates.generated.js';
 import {
   latestReleaseVersionForRole,
+  isReleaseTokenSeen,
+  addSeenReleaseToken,
+  releaseSeenToken,
   listActiveParentUpdates,
   notesForRole,
   parentReleaseNoteTeaser,
@@ -135,3 +138,25 @@ assert.match(progressHubNote.details, /觸控尺寸/);
 assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-10-parent-status-hierarchy');
 
 console.log('releaseNotes.test.js: ok');
+
+// Same-day cards: adding a second card on the same date must change the seen token.
+{
+  const one = [{ version: '2026.10.03', id: 'a' }, { version: '2026.10.02', id: 'old' }];
+  const two = [{ version: '2026.10.03', id: 'b' }, ...one];
+  assert.notEqual(releaseSeenToken(one), releaseSeenToken(two));
+  assert.equal(releaseSeenToken(one), releaseSeenToken([...one]));
+  assert.equal(releaseSeenToken([]), '');
+  console.log('releaseSeenToken same-day: ok');
+}
+
+// Dual-role users: dismissing one mode's feed never un-sees the other, however many times.
+{
+  let stored = '2026-10-02';
+  assert.ok(isReleaseTokenSeen(stored, 'teacher', '2026-10-02'), 'legacy plain value still counts as seen');
+  stored = addSeenReleaseToken(stored, 'teacher', 'T-token');
+  for (let i = 0; i < 10; i++) stored = addSeenReleaseToken(stored, 'director', `D-${i}`);
+  assert.ok(isReleaseTokenSeen(stored, 'teacher', 'T-token'), 'teacher token survives many director dismissals');
+  assert.ok(isReleaseTokenSeen(stored, 'director', 'D-9'));
+  assert.ok(!isReleaseTokenSeen(stored, 'director', 'D-8'), 'an older director token is not the current one');
+  assert.ok(!isReleaseTokenSeen(stored, 'teacher', 'T-new'));
+}
