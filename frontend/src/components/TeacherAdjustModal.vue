@@ -91,6 +91,8 @@ function validate() {
   }
   if (!form.value.adjust_reason?.trim()) {
     e.adjust_reason = '補卡原因必填';
+  } else if (form.value.adjust_reason.trim().length < 2) {
+    e.adjust_reason = '補卡原因至少 2 個字';
   }
   errors.value = e;
   return Object.keys(e).length === 0;
@@ -105,16 +107,16 @@ async function submit() {
     const token = session?.access_token;
     const res = await fetch(`/api/v1/teacher-attendance/${props.record.id}/adjust`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         new_signin_dt:  form.value.new_signin_dt.replace('T', ' '),
         new_signout_dt: form.value.new_signout_dt ? form.value.new_signout_dt.replace('T', ' ') : null,
         adjust_reason:  form.value.adjust_reason.trim(),
       }),
     });
-    const json = await res.json();
-    if (!res.ok) {
-      submitError.value = json?.message ?? '補卡失敗，請稍後再試';
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json) {
+      submitError.value = json?.message ?? `補卡失敗（HTTP ${res.status}），請稍後再試`;
       return;
     }
     emit('submitted', json);

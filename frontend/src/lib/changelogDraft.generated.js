@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "are always JSON; 補卡 shows the real error",
           "status resolver contract; mixed void receipts no longer cancel"
         ]
       }
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
     "items": [
       "photo pushes arrival/leave text together with the photo",
       "reports awaiting the reporter close after 14 days; reporter reply reopens",
+      "are always JSON; 補卡 shows the real error",
       "status resolver contract; mixed void receipts no longer cancel"
     ]
   },

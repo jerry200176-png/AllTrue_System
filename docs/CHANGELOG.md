@@ -1,3 +1,7 @@
+## 2026-10-03 — fix(api): API errors are always JSON; 補卡 shows the real error (in-app #375)
+<!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
+- 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
+
 ## 2026-10-03 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo
 <!-- release-notes: silent_ship=silent-2026-10-03-swipe-photo-text -->
 - `POST /api/v1/swipe-photo` 推給家長的 LINE 改為「文字＋照片」一次送出：文字由 AllTrue 依 2 分鐘內剛寫入的刷卡紀錄判斷「到班」或「離班」（例：`王小明 已於 10:00 到班`），照片早到、晚到或找不到紀錄時只寫「刷卡」不猜。讀卡機不需再自己推文字。
