@@ -83,6 +83,19 @@ export function latestReleaseVersionForRole(role) {
 }
 
 /**
+ * Seen tokens are kept as a short newline list so a director/teacher who
+ * switches modes does not re-open the nudge for a feed already dismissed.
+ */
+export function isReleaseTokenSeen(stored, token) {
+  return String(stored || '').split('\n').includes(token);
+}
+
+export function addSeenReleaseToken(stored, token, keep = 6) {
+  const list = String(stored || '').split('\n').filter((t) => t && t !== token);
+  return [token, ...list].slice(0, keep).join('\n');
+}
+
+/**
  * "Seen" token for the release nudge: newest version plus every note id that
  * shares it, so a second card published on the same day re-opens the nudge.
  */

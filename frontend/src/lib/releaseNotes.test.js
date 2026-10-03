@@ -7,6 +7,8 @@ import { changelogDraftNotes } from './changelogDraft.generated.js';
 import { staffUpdates } from './staffUpdates.generated.js';
 import {
   latestReleaseVersionForRole,
+  isReleaseTokenSeen,
+  addSeenReleaseToken,
   releaseSeenToken,
   listActiveParentUpdates,
   notesForRole,
@@ -145,4 +147,15 @@ console.log('releaseNotes.test.js: ok');
   assert.equal(releaseSeenToken(one), releaseSeenToken([...one]));
   assert.equal(releaseSeenToken([]), '');
   console.log('releaseSeenToken same-day: ok');
+}
+
+// Dual-role users: dismissing the teacher feed must not un-see the director feed.
+{
+  let stored = '2026-10-02';
+  assert.ok(isReleaseTokenSeen(stored, '2026-10-02'), 'legacy scalar value still counts as seen');
+  stored = addSeenReleaseToken(stored, 'D-token');
+  stored = addSeenReleaseToken(stored, 'T-token');
+  assert.ok(isReleaseTokenSeen(stored, 'D-token') && isReleaseTokenSeen(stored, 'T-token'));
+  assert.ok(!isReleaseTokenSeen(stored, 'new-token'));
+  assert.equal(addSeenReleaseToken('a\nb\nc', 'd', 2), 'd\na');
 }
