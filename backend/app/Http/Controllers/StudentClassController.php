@@ -4294,8 +4294,8 @@ class StudentClassController extends Controller
             }
 
             // Remove the source trial from occupancy before checking the new
-            // contract. The transaction rolls this back if another course is
-            // actually occupying one of the proposed slots.
+            // contract. Every error exit below throws HttpResponseException (a plain
+            // return would COMMIT these mutations) so the transaction rolls back.
             $cancelledTrialSessions = $this->cancelFutureScheduledSessions($source, 'trial_conversion');
             $source->setAttribute('Stop', 1);
             $source->setAttribute('closed_reason', 'converted_trial');
@@ -4312,12 +4312,12 @@ class StudentClassController extends Controller
                 (int) ($source->getAttribute('StudentID') ?? 0) ?: null
             );
             if (!empty($conflicts)) {
-                return response()->json([
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
                     'message' => $conflicts[0]['message'] ?? '正式課程的固定時段與其他課程衝堂，試聽紀錄未變更。',
                     'code' => 'trial_conversion_schedule_conflict',
                     'conflicts' => $conflicts,
                     'suggested_actions' => $conflicts[0]['suggested_actions'] ?? [],
-                ], 409);
+                ], 409));
             }
 
             $originalInput = $request->all();
@@ -4334,13 +4334,15 @@ class StudentClassController extends Controller
             }
 
             if ($response->getStatusCode() >= 400) {
-                return $response;
+                throw new \Illuminate\Http\Exceptions\HttpResponseException($response);
             }
 
             $result = method_exists($response, 'getData') ? $response->getData(true) : [];
             $newCourseId = (int) ($result['new_course']['id'] ?? 0);
             if ($newCourseId <= 0) {
-                return response()->json(['message' => '正式課程建立失敗，試聽紀錄未完成轉換。'], 500);
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                    response()->json(['message' => '正式課程建立失敗，試聽紀錄未完成轉換。'], 500)
+                );
             }
 
             $source->setAttribute('trial_converted_to_id', $newCourseId);
