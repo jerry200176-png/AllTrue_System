@@ -987,7 +987,7 @@ class BugReportService
             if (!$bug) {
                 return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
             }
-            if ($bug->status === 'closed') {
+            if ($bug->getAttribute('status') === 'closed') {
                 return ['ok' => true, 'action' => 'already_closed'];
             }
             $options = ['disposition' => $kind];
@@ -1019,12 +1019,13 @@ class BugReportService
             ->whereIn('status', ['new', 'triaged', 'in_progress'])
             ->orderByDesc('id')
             ->limit($limit)
+            ->toBase()
             ->get(['id', 'title', 'status', 'created_at'])
-            ->map(fn (BugReport $b) => [
+            ->map(fn (object $b) => [
                 'id' => (int) $b->id,
                 'title' => (string) $b->title,
                 'status' => (string) $b->status,
-                'created_at' => $b->created_at?->toIso8601String(),
+                'created_at' => $b->created_at ? Carbon::parse($b->created_at)->toIso8601String() : null,
             ])
             ->all();
     }
