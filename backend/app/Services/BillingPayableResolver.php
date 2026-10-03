@@ -64,6 +64,12 @@ class BillingPayableResolver
         return $out;
     }
 
+    private function unattributedPeriod(?string $billingPeriod): array
+    {
+        return ['billing_period' => $billingPeriod, 'invoice_ids' => [], 'total' => null, 'applied' => null,
+            'overpaid' => null, 'amount_discrepancy' => false, 'outstanding' => null, 'status' => 'review_required'];
+    }
+
     /** @param Collection<int, Invoice> $invoices */
     private function courseStatus(?StudentClass $course, Collection $invoices, array $monthlyPeriods): array
     {
@@ -78,6 +84,14 @@ class BillingPayableResolver
         $zeroFee = $charge <= 0 && (float) ($course?->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
         if ($tutoring || $zeroFee) {
             return $result('free', 0, 0, 0, [], 'none', null);
+        }
+        // B15 is the period engine for monthly courses: a period it cannot attribute is review_required,
+        // even without invoices (a legacy flag must not settle unattributed months).
+        $unattributed = collect($monthlyPeriods)->where('source', 'unattributed')->pluck('billing_period')->all();
+        if ($invoices->isEmpty() && $unattributed !== []) {
+            $periods = array_map(fn ($billingPeriod) => $this->unattributedPeriod($billingPeriod), $unattributed);
+
+            return $result('review_required', $charge, 0, 0, $periods, 'none', null);
         }
         if ($invoices->isEmpty()) {
             // Legacy rule: the Paid flag (or paid package) counts only while no non-void invoice exists.
@@ -109,12 +123,9 @@ class BillingPayableResolver
             $row['status'] = $row['outstanding'] <= 0 ? 'paid' : ($row['applied'] > 0 ? 'partial' : 'unpaid');
         }
         unset($row);
-        // B15 is the period engine for monthly courses: a period it cannot attribute to an invoice is review_required.
         $periods = array_values($periods);
-        $unattributed = collect($monthlyPeriods)->where('source', 'unattributed')->pluck('billing_period')->all();
         foreach ($unattributed as $billingPeriod) {
-            $periods[] = ['billing_period' => $billingPeriod, 'invoice_ids' => [], 'total' => null, 'applied' => null,
-                'overpaid' => null, 'amount_discrepancy' => false, 'outstanding' => null, 'status' => 'review_required'];
+            $periods[] = $this->unattributedPeriod($billingPeriod);
         }
 
         $worst = collect($periods)->first(fn ($row) => in_array($row['status'], ['unpaid', 'partial'], true));

@@ -103,4 +103,11 @@ class BillingCourseStatusResolverTest extends TestCase
         $billed = $this->resolve($this->course([['2026-08', 5000, 'unpaid', []]], ['Charge' => 0, 'Rate' => 0]));
         $this->assertSame(['unpaid', 5000], [$billed['status'], $billed['outstanding']]);
     }
+
+    public function test_multi_month_date_course_without_invoice_is_review_required_even_with_legacy_flag(): void
+    {
+        $r = $this->resolve($this->course([], ['ScheduleMode' => 'date', 'Paid' => 1], ['2026-07-03', '2026-08-04']));
+
+        $this->assertSame(['review_required', 'none'], [$r['status'], $r['source']]);
+    }
 }
