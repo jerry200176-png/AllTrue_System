@@ -369,7 +369,7 @@
             <div class="resolution-content">
               <strong>已關閉</strong>
               <span v-if="resolutionNote" class="resolution-note">{{ resolutionNote }}</span>
-              <span v-else class="resolution-note resolution-note--empty">此問題已關閉，如需重新開啟請聯繫管理員。</span>
+              <span v-else class="resolution-note resolution-note--empty">此問題已關閉，如需重新開啟請聯繫管理員；若是因逾期未回覆而結案，直接在下方留言即可重開。</span>
             </div>
           </div>
 

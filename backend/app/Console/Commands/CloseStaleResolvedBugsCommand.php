@@ -40,8 +40,8 @@ class CloseStaleResolvedBugsCommand extends Command
             $actorId = $raw !== null ? (int) $raw : 0;
         }
 
-        if ($actorId <= 0) {
-            $this->error('No actor user id (pass --actor= or ensure a type=S user exists)');
+        if ($actorId <= 0 || !User::query()->where('id', $actorId)->where('type', 'S')->exists()) {
+            $this->error('No actor user id (pass --actor= of a type=S super_admin, or ensure one exists)');
             return self::FAILURE;
         }
 

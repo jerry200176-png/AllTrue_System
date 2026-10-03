@@ -302,6 +302,11 @@ class BugReporterTimeoutTest extends TestCase
             'bug_report_id' => $timeout->id, 'to_status' => 'triaged', 'note' => 'reopened_by_reporter_reply',
         ]);
 
+        $resolved = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(10), true);
+        BugReportService::closeByReporterTimeout($resolved->id, $admin->id, false, 7);
+        $post($tokenR, $resolved->id)->assertStatus(201);
+        $this->assertSame('in_progress', $resolved->fresh()->status, 'resolved-timeout regression goes back to in_progress');
+
         $verified = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(15));
         BugReportService::changeStatus($verified->id, $reporter->id, 'closed', 'closed_by_reporter');
         $post($tokenR, $verified->id)->assertStatus(201);

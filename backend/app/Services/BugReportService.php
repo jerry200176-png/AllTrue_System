@@ -894,7 +894,7 @@ class BugReportService
     }
 
     /**
-     * A reporter reply on a timeout-closed bug reopens it to triaged.
+     * A reporter reply on a timeout-closed bug reopens it (triaged, or in_progress for resolved-verification timeouts).
      */
     public static function reopenIfClosedByTimeout(int $bugId, int $reporterId): void
     {
@@ -908,7 +908,9 @@ class BugReportService
             ->orderByDesc('id')
             ->first();
         if ($closeLog && str_contains((string) $closeLog->note, 'closed_by_timeout')) {
-            self::changeStatus($bugId, $reporterId, 'triaged', 'reopened_by_reporter_reply');
+            // Resolved-verification timeouts return to in_progress (regression state); awaiting-info ones to triaged.
+            $target = str_contains((string) $closeLog->note, 'Evidence Contract') ? 'in_progress' : 'triaged';
+            self::changeStatus($bugId, $reporterId, $target, 'reopened_by_reporter_reply');
         }
     }
 
@@ -961,12 +963,27 @@ class BugReportService
         }
 
         if ($awaiting) {
-            self::addComment($bugId, $actorUserId, '超過 ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
             $note = 'closed_by_timeout — awaiting reporter reply ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' days';
+            // Lock + recheck so comment and status commit together and a duplicate apply is a no-op.
+            $result = DB::transaction(function () use ($bugId, $actorUserId, $note) {
+                $locked = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+                $stillEligible = $locked && $locked->status === 'triaged'
+                    && in_array($bugId, array_column(self::listEligibleForAwaitingReporterTimeout(), 'bug_id'), true);
+                if (!$stillEligible) {
+                    return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
+                }
+                self::addComment($bugId, $actorUserId, '超過 ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
+                $res = self::changeStatus($bugId, $actorUserId, 'closed', $note);
+                if (!$res['ok']) {
+                    throw new \RuntimeException($res['message'] ?? 'close failed');
+                }
+
+                return $res;
+            });
         } else {
             $note = 'closed_by_timeout — Evidence Contract 7-day reporter-verify timeout; no reporter reply';
+            $result = self::changeStatus($bugId, $actorUserId, 'closed', $note);
         }
-        $result = self::changeStatus($bugId, $actorUserId, 'closed', $note);
         if (!$result['ok']) {
             return [
                 'ok' => false,
