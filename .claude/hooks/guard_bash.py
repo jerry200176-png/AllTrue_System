@@ -296,7 +296,7 @@ def _script_targets_pi(cmd: str) -> bool:
     # Any segment may run a script (bash -x, timeout, wrappers...), except ones
     # whose program only views files.
     viewers = {"git", "sed", "cat", "less", "more", "head", "tail", "grep", "rg",
-               "diff", "wc", "ls", "stat", "file", "awk", "jq", "nl", "tac",
+               "diff", "wc", "ls", "stat", "file", "jq", "nl", "tac",
                "shellcheck", "chmod"}
     toks = []
     for seg in re.split(SEP, cmd):
@@ -323,6 +323,12 @@ def check_production_host(cmd: str) -> None:
         )
 
 
+def check_redirect_read(cmd: str) -> None:
+    # `< .env`, `$(<.env)`: the shell itself reads the file, whatever the command.
+    if re.search(rf"<\s*['\"]?[^\s;&|'\"()]*{SECRET_FILE_RE.pattern}", cmd):
+        deny("Blocked: shell redirection reads a credential-shaped file (AGENTS.md RULE-SEC-001).")
+
+
 def check_file_flags(cmd: str) -> None:
     # git commit -F <file> / gh --body-file <file> publish the file's contents.
     if re.search(rf"(?:\s-F|--body-file|--file)\s*=?\s*['\"]?[^\s;&|'\"]*{SECRET_FILE_RE.pattern}", cmd):
@@ -336,6 +342,7 @@ def check_all(cmd: str, depth: int = 0) -> None:
     check_credential_leak(scan_cmd)
     check_production_host(scan_cmd)
     check_file_flags(scan_cmd)
+    check_redirect_read(scan_cmd)
 
     if depth >= MAX_UNWRAP_DEPTH:
         return
