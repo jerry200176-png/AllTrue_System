@@ -1516,6 +1516,7 @@ const getActiveStudentCourses = (id) => {
 const getRenewableMonthlyCourses = (id) => getActiveStudentCourses(id).filter((c) => (
   String(c?.payment_type || '').toLowerCase() === 'monthly'
   && !isTutoringCourse(c)
+  && !isTrialCourse(c)
   && String(c?.status || '').toLowerCase() !== 'inactive'
 ));
 const openBatchRenew = (student) => { batchRenewStudent.value = student; };
