@@ -1167,7 +1167,7 @@ function markReleaseNotesSeen() {
   try {
     localStorage.setItem(
       RELEASE_NOTES_SEEN_KEY,
-      addSeenReleaseToken(localStorage.getItem(RELEASE_NOTES_SEEN_KEY), releaseNudgeVersion.value),
+      addSeenReleaseToken(localStorage.getItem(RELEASE_NOTES_SEEN_KEY), role.value, releaseNudgeVersion.value),
     );
   } catch (_) { /* ignore */ }
 }
@@ -2836,7 +2836,7 @@ watch([session, role, isPasswordChangeLocked], () => {
   // Playwright / WebDriver sessions hit production UI Smoke; skip the modal so
   // pointer-event layers do not block nav/tab clicks (force-click never runs Vue).
   const automated = typeof navigator !== 'undefined' && Boolean(navigator.webdriver);
-  releaseNudgeOpen.value = !automated && !isReleaseTokenSeen(seenVersion, latestVersion);
+  releaseNudgeOpen.value = !automated && !isReleaseTokenSeen(seenVersion, role.value, latestVersion);
 });
 
 watch(brandOverlayAllowed, (allowed) => {

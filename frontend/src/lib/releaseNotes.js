@@ -83,16 +83,26 @@ export function latestReleaseVersionForRole(role) {
 }
 
 /**
- * Seen tokens are kept as a short newline list so a director/teacher who
- * switches modes does not re-open the nudge for a feed already dismissed.
+ * Seen state is one token per staff mode ({"director": "...", "teacher": "..."}),
+ * so a director/teacher switching modes never re-opens a feed already dismissed.
+ * A legacy plain-string value still counts as seen for any mode.
  */
-export function isReleaseTokenSeen(stored, token) {
-  return String(stored || '').split('\n').includes(token);
+function parseSeenTokens(stored) {
+  if (!stored) return {};
+  try {
+    const parsed = JSON.parse(stored);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch { /* legacy plain token */ }
+  return { _legacy: String(stored) };
 }
 
-export function addSeenReleaseToken(stored, token, keep = 6) {
-  const list = String(stored || '').split('\n').filter((t) => t && t !== token);
-  return [token, ...list].slice(0, keep).join('\n');
+export function isReleaseTokenSeen(stored, role, token) {
+  const seen = parseSeenTokens(stored);
+  return seen[role] === token || seen._legacy === token;
+}
+
+export function addSeenReleaseToken(stored, role, token) {
+  return JSON.stringify({ ...parseSeenTokens(stored), [role]: token });
 }
 
 /**

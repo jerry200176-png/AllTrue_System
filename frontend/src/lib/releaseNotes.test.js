@@ -149,13 +149,14 @@ console.log('releaseNotes.test.js: ok');
   console.log('releaseSeenToken same-day: ok');
 }
 
-// Dual-role users: dismissing the teacher feed must not un-see the director feed.
+// Dual-role users: dismissing one mode's feed never un-sees the other, however many times.
 {
   let stored = '2026-10-02';
-  assert.ok(isReleaseTokenSeen(stored, '2026-10-02'), 'legacy scalar value still counts as seen');
-  stored = addSeenReleaseToken(stored, 'D-token');
-  stored = addSeenReleaseToken(stored, 'T-token');
-  assert.ok(isReleaseTokenSeen(stored, 'D-token') && isReleaseTokenSeen(stored, 'T-token'));
-  assert.ok(!isReleaseTokenSeen(stored, 'new-token'));
-  assert.equal(addSeenReleaseToken('a\nb\nc', 'd', 2), 'd\na');
+  assert.ok(isReleaseTokenSeen(stored, 'teacher', '2026-10-02'), 'legacy plain value still counts as seen');
+  stored = addSeenReleaseToken(stored, 'teacher', 'T-token');
+  for (let i = 0; i < 10; i++) stored = addSeenReleaseToken(stored, 'director', `D-${i}`);
+  assert.ok(isReleaseTokenSeen(stored, 'teacher', 'T-token'), 'teacher token survives many director dismissals');
+  assert.ok(isReleaseTokenSeen(stored, 'director', 'D-9'));
+  assert.ok(!isReleaseTokenSeen(stored, 'director', 'D-8'), 'an older director token is not the current one');
+  assert.ok(!isReleaseTokenSeen(stored, 'teacher', 'T-new'));
 }
