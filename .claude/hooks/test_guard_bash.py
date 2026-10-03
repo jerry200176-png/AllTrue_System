@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Regression suite for guard_bash.py — safe commands must ALLOW, dangerous
+"""Regression suite for guard_bash.py (AST mode; GUARD_TEST_FALLBACK=1 runs
+the original cases against the regex fallback with shfmt hidden) — safe commands must ALLOW, dangerous
 and known-bypass-shaped commands must DENY. Run directly:
 
   python3 test_guard_bash.py
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GUARD = os.path.join(HERE, "guard_bash.py")
@@ -37,11 +39,19 @@ def _feature_repo() -> str:
     return _FEATURE_REPO
 
 
-def run(cmd: str, cwd: str = None) -> str:
+FALLBACK = os.environ.get("GUARD_TEST_FALLBACK") == "1"
+
+
+def run(cmd: str, cwd: str = None, env_extra: dict = None, timeout: int = 5) -> str:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
+    env = dict(os.environ, **(env_extra or {}))
+    if FALLBACK:
+        env["ALLTRUE_SHFMT"] = "/nonexistent"
+        env["PATH"] = os.pathsep.join(d for d in env["PATH"].split(os.pathsep)
+                                      if not os.path.exists(os.path.join(d, "shfmt")))
     out = subprocess.run(
-        [sys.executable, GUARD], input=payload, capture_output=True, text=True,
-        cwd=cwd or _feature_repo(), timeout=5,  # hook timeout = fail open; catch regex blowups
+        [sys.executable, GUARD], input=payload, capture_output=True, text=True, env=env,
+        cwd=cwd or _feature_repo(), timeout=timeout,  # hook timeout = fail open; catch regex blowups
     )
     return out.stdout.strip()
 
@@ -204,6 +214,75 @@ DANGEROUS = [
     'bash -c "$(cat <<\'EOF\'\ngit reset --hard\nEOF\n)"',
 ]
 
+# Known regex bypasses: only the AST guard catches these.
+AST_DANGEROUS = [
+    "git -C . push origin main",
+    "git 'push' --force origin x",
+    "/usr/bin/git push -f origin x",
+    "cd scripts && bash post-merge-smoke.sh",
+    "x=--force; git push $x origin y",
+    'eval "git push --force"',
+    "command git push -f o x",
+    "git push --force-with-lease origin x",
+    "git push origin HEAD:refs/heads/master",
+    "git push origin :topic",
+    "git -c alias.p=push p -f o x",
+    "git push --{force,x} o b",
+    "echo x | bash",
+    "cat <<EOF | sh\ngit reset --hard\nEOF",
+    "ssh $(echo pi.lifenet.com.tw) uptime",
+    "gh pr merge 1 --adm",
+]
+AST_SAFE = [
+    "git -C /tmp status",
+    "git commit -m \"$(date)\"",
+    "echo $HOME $(date) x",
+    "git push origin feature-x:feature-x && git status",
+    "ssh -G alltrue.daan.lifenet.com.tw",
+]
+
+
+def test_ast_only() -> bool:
+    if FALLBACK:
+        return True
+    ok = True
+    for c in AST_DANGEROUS:
+        if not run(c):
+            ok = False
+            print(f"FAIL (expected DENY, got ALLOW): {c!r}")
+    for c in AST_SAFE:
+        out = run(c)
+        if out:
+            ok = False
+            print(f"FAIL (expected ALLOW, got DENY): {c!r}\n  -> {out}")
+    return ok
+
+
+def test_fail_closed() -> bool:
+    if FALLBACK:
+        return True
+    ok = True
+    tmp = tempfile.mkdtemp(prefix="guard-shfmt-stub-")
+    try:
+        for name, body, limit in (("exit1", "#!/bin/sh\nexit 1\n", 5), ("sleep", "#!/bin/sh\nsleep 10\n", 5),
+                                  ("garbage", "#!/bin/sh\necho not-json\n", 5)):
+            stub = os.path.join(tmp, name)
+            with open(stub, "w") as fh:
+                fh.write(body)
+            os.chmod(stub, 0o755)
+            t0 = time.time()
+            out = run("git status", env_extra={"ALLTRUE_SHFMT": stub}, timeout=limit)
+            dt = time.time() - t0
+            if '"deny"' not in out or dt > 4.5:
+                ok = False
+                print(f"FAIL: shfmt stub {name} did not fail closed in time (took {dt:.1f}s): {out!r}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    if '"deny"' not in run("echo 'unterminated"):
+        ok = False
+        print("FAIL: unparseable command was allowed")
+    return ok
+
 
 def test_safe_and_dangerous() -> bool:
     ok = True
@@ -283,10 +362,13 @@ def main() -> None:
         test_safe_and_dangerous(),
         test_commit_on_branch(),
         test_symlink_credential(),
+        test_ast_only(),
+        test_fail_closed(),
     ]
     shutil.rmtree(_feature_repo(), ignore_errors=True)
     if all(results):
-        print(f"OK: all {len(SAFE)} safe + {len(DANGEROUS)} dangerous + branch/symlink cases passed")
+        extra = "" if FALLBACK else f" + {len(AST_SAFE)} AST-safe + {len(AST_DANGEROUS)} AST-dangerous + fail-closed"
+        print(f"OK ({'regex fallback' if FALLBACK else 'AST'}): {len(SAFE)} safe + {len(DANGEROUS)} dangerous + branch/symlink{extra} cases passed")
         sys.exit(0)
     else:
         print("FAILURES ABOVE")

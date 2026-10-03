@@ -6,7 +6,11 @@
       "Bash(git reset --hard*)",
       "Bash(git clean -f*)",
       "Bash(git clean -d*)",
-      "Bash(rm -rf /*)"
+      "Bash(rm -rf /*)",
+      "Bash(git push --force *)",
+      "Bash(gh pr merge * --admin*)",
+      "Bash(ssh *pi.lifenet.com.tw*)",
+      "Bash(php artisan migrate* --force*)"
     ]
   },
   "hooks": {
