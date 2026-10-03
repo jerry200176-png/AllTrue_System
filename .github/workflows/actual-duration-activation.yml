@@ -102,7 +102,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -152,7 +152,7 @@ jobs:
           GITHUB_EVENT_INPUTS_DETAILS: ${{ github.event.inputs.details }}
 
       - name: Upload audit artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-inventory-${{ github.run_id }}
           path: /tmp/inventory-audit.txt
@@ -166,7 +166,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -334,7 +334,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-enable-${{ github.run_id }}
           path: /tmp/enable-audit.txt
@@ -352,7 +352,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -454,7 +454,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-disable-${{ github.run_id }}
           path: /tmp/disable-audit.txt
@@ -472,7 +472,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -536,7 +536,7 @@ jobs:
           } > /tmp/verify-audit.txt
 
       - name: Upload audit artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-verify-${{ github.run_id }}
           path: /tmp/verify-audit.txt

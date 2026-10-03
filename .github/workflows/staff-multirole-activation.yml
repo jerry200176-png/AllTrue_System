@@ -141,7 +141,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and read-only scripts
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-preflight-${{ github.run_id }}
           path: /tmp/preflight-audit.txt
@@ -225,7 +225,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and grant script
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -279,7 +279,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-pilot-dryrun-${{ github.run_id }}
           path: /tmp/pilot-result.txt
@@ -298,7 +298,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and grant script
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -370,7 +370,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-pilot-${{ github.run_id }}
           path: /tmp/pilot-audit.txt
@@ -389,7 +389,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout pinned SSH trust helper and diff script
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -623,7 +623,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-enable-${{ github.run_id }}
           path: /tmp/enable-audit.txt
@@ -642,7 +642,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -753,7 +753,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-disable-${{ github.run_id }}
           path: /tmp/disable-audit.txt
