@@ -4,6 +4,36 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-03-trial-convert-from-students",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "試聽課在學生管理改為轉正式課程",
+    "summary": "學生管理的試聽課改按「轉為正式課程」，會帶你到課程管理轉換，不再多建一筆試聽。",
+    "items": [
+      "試聽課按「轉為正式課程」，保留試聽紀錄，不再多建一筆試聽。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "試聽課按「轉為正式課程」，保留試聽紀錄，不再多建一筆試聽。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:374"
+    ],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-03-awaiting-reporter-timeout",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,

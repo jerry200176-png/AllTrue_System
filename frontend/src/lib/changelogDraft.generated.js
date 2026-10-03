@@ -26,6 +26,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "courses convert to a regular course instead of a new trial batch",
           "names for attendance and profile form controls",
           "are always JSON; 補卡 shows the real error",
           "trial-to-formal conversion no longer leaves the trial stopped",
@@ -37,6 +38,7 @@ export const changelogDraftNotes = [
       "photo pushes arrival/leave text together with the photo",
       "reports awaiting the reporter close after 14 days; reporter reply reopens",
       "photo and text arrive as one LINE message",
+      "courses convert to a regular course instead of a new trial batch",
       "names for attendance and profile form controls",
       "are always JSON; 補卡 shows the real error",
       "trial-to-formal conversion no longer leaves the trial stopped",

@@ -29,7 +29,7 @@ export function buildStudentsCommercialNav(courseOrRow, { intent = 'edit' } = {}
 }
 
 /** Session scheduling ops live on course-mgmt. */
-export function buildCourseMgmtOpsNav(courseOrRow, { teacherId = null } = {}) {
+export function buildCourseMgmtOpsNav(courseOrRow, { teacherId = null, intent = '' } = {}) {
   const studentId = normalizeNavigationId(
     courseOrRow?.student_id ?? courseOrRow?.StudentID ?? courseOrRow?.studentId,
   );
@@ -40,6 +40,7 @@ export function buildCourseMgmtOpsNav(courseOrRow, { teacherId = null } = {}) {
     studentId,
     courseId,
     teacherId: tid,
+    ...(intent ? { intent } : {}),
   };
 }
 
