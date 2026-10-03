@@ -185,6 +185,64 @@ class StudentClassPurchaseBatchTest extends TestCase
         );
     }
 
+    public function test_purchase_batch_rejects_trial_source_and_points_to_convert(): void
+    {
+        // in-app #374: renewing from a trial must not create another trial batch.
+        $token = $this->createDirectorToken([1], 'director-trial-purchase@example.com');
+        $student = Student::create([
+            'name' => '試聽學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $source = $this->createStudentClass($student->id, [
+            'ClassType' => 'trial',
+            'SessionCount' => 1,
+            'RemainingSessions' => 0,
+            'UsedSessions' => 1,
+            'StartDate' => '2026-03-01',
+            'week' => 2,
+            'time' => '20:00:00',
+        ]);
+        $before = StudentClass::count();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+            'sessions' => 4,
+            'start_date' => '2026-04-07',
+            'mode' => 'new_purchase',
+        ])->assertStatus(422)->assertJsonPath('code', 'trial_use_convert');
+
+        $this->assertSame($before, StudentClass::count());
+    }
+
+    public function test_renewal_preview_rejects_trial_source_for_purchase_batch(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-trial-preview@example.com');
+        $student = Student::create([
+            'name' => '試聽預覽學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $source = $this->createStudentClass($student->id, ['ClassType' => 'trial']);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
+            'mode' => 'purchase_batch',
+            'sessions' => 4,
+            'start_date' => '2026-04-07',
+        ])->assertStatus(422)->assertJsonPath('code', 'trial_use_convert');
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName): string
     {
         $user = User::create([

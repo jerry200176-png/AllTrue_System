@@ -1,3 +1,7 @@
+## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
+<!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
+- 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
+
 ## 2026-10-03 — fix(a11y): accessible names for attendance and profile form controls
 <!-- release-notes: silent_ship=silent-2026-10-03-form-control-labels -->
 - 點名與個人中心表單欄位補上 `label for`／`aria-label`（螢幕閱讀器可讀出欄位名稱），不改可見文字與流程；新增 `vuejs-accessibility/form-control-has-label` lint（限這兩頁），axe label／select-name BASELINE 歸零。
