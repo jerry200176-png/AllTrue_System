@@ -116,7 +116,12 @@ async function submit() {
     });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json) {
-      submitError.value = json?.message ?? `補卡失敗（HTTP ${res.status}），請稍後再試`;
+      // 422/423/403 carry staff-readable messages; never show raw server text for other statuses.
+      submitError.value = res.status === 404
+        ? '這筆打卡紀錄已不存在，請重新整理後再試'
+        : [403, 422, 423].includes(res.status) && json?.message
+          ? json.message
+          : `補卡失敗（HTTP ${res.status}），請稍後再試`;
       return;
     }
     emit('submitted', json);
