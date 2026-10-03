@@ -1126,7 +1126,7 @@ onUnmounted(() => {
 .payment-method-option.active {
   border-color: var(--primary);
   background: var(--primary-bg);
-  color: var(--primary);
+  color: var(--ds-primary-text);
 }
 
 .modal-hint {
@@ -1165,7 +1165,7 @@ onUnmounted(() => {
 
 .at-tab.active .tab-badge {
   background: var(--ds-primary-wash);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
 }
 
 /* ── Controls ── */
@@ -1329,7 +1329,7 @@ onUnmounted(() => {
 
 .type-tuition {
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .type-learning_review {
@@ -1389,7 +1389,7 @@ onUnmounted(() => {
 
 .severity-medium {
   background: var(--ds-primary-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .severity-low,

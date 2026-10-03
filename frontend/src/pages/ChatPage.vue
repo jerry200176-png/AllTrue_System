@@ -1041,7 +1041,7 @@ function formatTime(iso) {
 .chat-page { height: calc(100vh - 80px); height: calc(100dvh - 80px); display: flex; flex-direction: column; }
 .page-header { padding: 16px 24px 8px; flex-shrink: 0; }
 .page-header h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
-.header-icon { font-size: 28px; color: var(--primary); }
+.header-icon { font-size: 28px; color: var(--ds-primary-text); }
 .page-desc { color: var(--text-light); font-size: 14px; margin-top: 2px; }
 .page-desc-sub { color: var(--text-light); font-size: 13px; margin-top: 6px; max-width: 720px; line-height: 1.45; }
 .empty-card { margin: 24px; padding: 32px; text-align: center; }
@@ -1092,7 +1092,7 @@ function formatTime(iso) {
   background: var(--primary-bg); display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.thread-avatar .material-symbols-outlined { color: var(--primary); font-size: 22px; }
+.thread-avatar .material-symbols-outlined { color: var(--ds-primary-text); font-size: 22px; }
 .thread-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
 .message-header-avatar { width: 36px; height: 36px; }
 
@@ -1131,7 +1131,7 @@ function formatTime(iso) {
    min-width: 44px; min-height: 44px;
    cursor: pointer; color: var(--text-light); border-radius: 6px;
 }
-.btn-header-action:hover { background: var(--primary-bg); color: var(--primary); }
+.btn-header-action:hover { background: var(--primary-bg); color: var(--ds-primary-text); }
 .btn-danger-text:hover { color: var(--danger); background: #fee2e2; }
 
 .message-list {
@@ -1153,7 +1153,7 @@ function formatTime(iso) {
 }
 .msg-avatar-wrap.own { background: var(--primary-bg); }
 .msg-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.msg-avatar-fallback { font-size: 18px; color: var(--primary); }
+.msg-avatar-fallback { font-size: 18px; color: var(--ds-primary-text); }
 
 .msg-body-col { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .message-row.own .msg-body-col { align-items: flex-end; }
@@ -1199,9 +1199,9 @@ function formatTime(iso) {
   padding: 8px 16px; background: var(--primary-bg); border-top: 1px solid var(--border);
   font-size: 13px;
 }
-.reply-bar-icon { font-size: 18px; color: var(--primary); flex-shrink: 0; }
+.reply-bar-icon { font-size: 18px; color: var(--ds-primary-text); flex-shrink: 0; }
 .reply-bar-content { flex: 1; min-width: 0; }
-.reply-bar-sender { font-weight: 600; color: var(--primary); display: block; }
+.reply-bar-sender { font-weight: 600; color: var(--ds-primary-text); display: block; }
 .reply-bar-body { color: var(--text-light); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
  .reply-bar-close { min-width: 44px; min-height: 44px; cursor: pointer; color: var(--text-light); }
 .reply-bar-close:hover { color: var(--danger); }
@@ -1215,7 +1215,7 @@ function formatTime(iso) {
   cursor: pointer; color: var(--text-light); border-radius: 50%;
   flex-shrink: 0;
 }
-.btn-attach:hover { background: var(--primary-bg); color: var(--primary); }
+.btn-attach:hover { background: var(--primary-bg); color: var(--ds-primary-text); }
 .msg-input {
   flex: 1; min-height: 44px; padding: 10px 16px; border: 1px solid var(--border);
   border-radius: 24px; font-size: 14px; outline: none;
@@ -1337,7 +1337,7 @@ function formatTime(iso) {
 }
 .btn-small:hover { background: var(--primary-bg); }
 .btn-link {
-  background: none; border: none; cursor: pointer; color: var(--primary);
+  background: none; border: none; cursor: pointer; color: var(--ds-primary-text);
   font-size: 12px; padding: 2px 6px;
 }
 .btn-link:hover { text-decoration: underline; }
@@ -1372,11 +1372,11 @@ function formatTime(iso) {
   flex-shrink: 0; overflow: hidden;
 }
 .member-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.member-avatar .material-symbols-outlined { font-size: 18px; color: var(--primary); }
+.member-avatar .material-symbols-outlined { font-size: 18px; color: var(--ds-primary-text); }
 .member-name { flex: 1; font-size: 14px; }
 .role-badge {
   padding: 2px 8px; border-radius: 10px; font-size: 11px;
-  background: var(--primary-bg); color: var(--primary); font-weight: 600;
+  background: var(--primary-bg); color: var(--ds-primary-text); font-weight: 600;
 }
 .member-actions { display: flex; gap: 4px; align-items: center; }
 .add-members-section { margin-bottom: 16px; }
@@ -1409,7 +1409,7 @@ function formatTime(iso) {
   padding: 2px 8px; border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--primary-bg, #f3f4f6);
-  color: var(--primary, #c2410c);
+  color: var(--ds-primary-text);
 }
 .dm-staff-empty { padding: 14px; font-size: 13px; color: var(--text-light); text-align: center; }
 

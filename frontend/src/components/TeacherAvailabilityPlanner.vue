@@ -272,7 +272,7 @@ function buildHalfHourTimeOptions() {
 <style scoped>
 .schedule-coordination-card { margin-top: 14px; padding: 14px; border: 1px solid var(--ds-primary); border-radius: 14px; background: var(--ds-primary-wash); }
 .schedule-coordination-heading { display: flex; justify-content: space-between; gap: 12px; }
-.schedule-coordination-heading h5 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--ds-primary-deep, var(--ds-primary)); font-size: 14px; }
+.schedule-coordination-heading h5 { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--ds-primary-text); font-size: 14px; }
 .schedule-coordination-heading h5 .material-symbols-outlined { font-size: 18px; }
 .schedule-coordination-heading p { margin: 4px 0 0; color: var(--text-light); font-size: 12px; }
 .coordination-branch-badge, .coordination-candidate-status { padding: 3px 8px; border-radius: 999px; background: var(--ds-success-wash); color: var(--ds-success); font-size: 11px; font-weight: 700; }

@@ -10,13 +10,13 @@
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
-## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
-<!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
-- 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。
-
 ## 2026-10-03 — feat(line): directors can turn off swipe LINE notifications to parents
 <!-- release-notes: staff_update=staff-2026-10-03-swipe-line-switch -->
 - 「家長 LINE 通知」頁新增分校開關「刷卡通知家長」（`GET/PUT /api/v1/line/notify-settings`，存 SystemSetting `line_notify.campus.{id}`，未設定＝開）。關閉時 `swipe-photo` 不推 LINE、`swipe-rfid` 回 `LineIDs: []`，讀卡機也沒有對象可推；刷卡出勤照常記錄。主任只能改自己分校。
+
+## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
+<!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
+- 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。
 
 ## 2026-10-03 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo
 <!-- release-notes: silent_ship=silent-2026-10-03-swipe-photo-text -->
@@ -25,6 +25,10 @@
 ## 2026-10-03 — feat(bug-report): triaged reports awaiting the reporter close after 14 days; reporter reply reopens
 <!-- release-notes: staff_update=staff-2026-10-03-awaiting-reporter-timeout -->
 - 已分流且最後一則公開留言是客服提問、14 天沒有回報人回覆的回報，經人工審核後會先結案並留下公開說明；回報人再於該筆留言會自動重開為已分流（一般結案不受影響）
+
+## 2026-10-03 — fix(a11y): AA contrast for muted gray and orange text
+<!-- release-notes: silent_ship=silent-2026-10-03-text-contrast -->
+- 淡灰色說明文字（`--ds-ink-mute`）加深為 `#5b6b84`，橘色文字改用新 token `--ds-primary-text`（`#C2410C`），皆達 WCAG AA 4.5:1；新增 `tokenContrast` 單元測試守門，axe color-contrast BASELINE 下修。
 
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->

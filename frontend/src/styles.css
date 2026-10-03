@@ -36,6 +36,8 @@
   --ds-primary-press: #D84315;
   --ds-primary-soft: #FFB300;
   --ds-primary-wash: #FFF8E1;
+  /* Orange as TEXT on white/soft: --ds-primary is 3.08:1 (fails AA); this is 5.18:1. */
+  --ds-primary-text: #C2410C;
   --ds-on-primary: #ffffff;
   /* Solid CTA fill: white text must meet WCAG AA ≥4.5:1 (brand amber/orange + white fails). */
   --ds-cta: #C2410C;
@@ -49,7 +51,8 @@
   --ds-brand-gradient: linear-gradient(135deg, #FFB300 0%, #F57C00 100%);
   --ds-ink: #0d253d;
   --ds-ink-secondary: #273951;
-  --ds-ink-mute: #64748d;
+  --ds-ink-mute: #5b6b84; /* 4.81:1 on surface-2, 5.12 on canvas-soft, 5.4 on white (WCAG AA) */
+
   --ds-canvas: #ffffff;
   --ds-canvas-soft: #f6f9fc;
   --ds-hairline: #e3e8ee;
@@ -60,7 +63,7 @@
   --ds-warning-wash: #fdf0e6;
   --ds-danger: #e11d48;
   --ds-danger-wash: #fdeaef;
-  --ds-info: #EF6C00;
+  --ds-info: #C2410C; /* also used as text: AA 4.87:1 on --ds-info-wash, 5.18:1 on white */
   --ds-info-wash: #FFF8E1;
   --ds-focus-ring: rgba(245, 124, 0, 0.22);
   --ds-shadow-1: 0 1px 3px rgba(0, 55, 112, 0.08);
@@ -195,6 +198,7 @@
 /* ===== 夜間模式（Dark Theme） ===== */
 [data-theme="dark"] {
   --ds-primary: #FFB74D;
+  --ds-primary-text: #FFB74D;
   --ds-primary-deep: #FFCC80;
   --ds-primary-press: #FB8C00;
   --ds-primary-soft: #FFCC80;
@@ -212,11 +216,13 @@
   --ds-ink-mute: #94a3b8;
   --ds-canvas: #1e293b;
   --ds-canvas-soft: #0f172a;
+  --ds-surface-2: #0f172a;
   --ds-hairline: #334155;
   --ds-hairline-input: #475569;
   --ds-success-wash: #052e16;
   --ds-warning-wash: #431407;
   --ds-danger-wash: #450a0a;
+  --ds-info: #FFB74D;
   --ds-info-wash: rgba(255, 167, 38, 0.16);
   --ds-focus-ring: rgba(255, 183, 77, 0.30);
   --ds-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.4);
@@ -768,7 +774,7 @@ body {
   margin-top: 8px;
   padding: 4px 10px;
   font-size: 12px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash);
   border: none;
   border-radius: 6px;
@@ -778,7 +784,7 @@ body {
 .sidebar-more-kicker {
   display: block;
   margin-bottom: 4px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -865,7 +871,7 @@ body {
 
 .sidebar-more-item .material-symbols-outlined {
   width: 22px;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 20px;
   text-align: center;
 }
@@ -1686,7 +1692,7 @@ tr:hover td {
 
 .tag {
   background: var(--primary-bg);
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
@@ -1865,7 +1871,7 @@ tr:hover td {
 .profile-modal h3 {
   margin: 0 0 20px 0;
   font-size: 18px;
-  color: var(--primary);
+  color: var(--ds-primary-text);
 }
 
 .profile-form-group {

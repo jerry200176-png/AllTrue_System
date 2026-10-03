@@ -153,7 +153,7 @@ watch(mode, () => emit('preview-change', finalEndDate.value));
   width: 42px;
   height: 42px;
   border-radius: 16px;
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash, var(--ds-primary-wash));
   border: 1px solid rgba(245, 124, 0, 0.3);
   box-shadow: 0 10px 26px rgba(245,124,0,0.18);

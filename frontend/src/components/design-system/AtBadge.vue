@@ -48,7 +48,7 @@ const classes = computed(() => ['at-badge', `at-badge--${props.tone}`]);
 
 .at-badge--neutral { color: var(--ds-text-secondary); }
 .at-badge--info {
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash);
   border-color: transparent;
 }

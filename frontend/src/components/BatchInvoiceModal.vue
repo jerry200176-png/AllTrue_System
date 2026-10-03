@@ -432,7 +432,7 @@ watch(() => props.show, (v) => {
   padding: 6px 12px; border-radius: 20px;
   font-size: 13px; font-weight: 500; color: var(--text-light);
 }
-.batch-step.active { background: var(--primary-light, rgba(37,99,235,0.08)); color: var(--primary); font-weight: 700; }
+.batch-step.active { background: var(--primary-light, rgba(37,99,235,0.08)); color: var(--ds-on-brand); font-weight: 700; }
 .batch-step.done { color: var(--ds-success); }
 .batch-step-num {
   width: 24px; height: 24px; border-radius: 50%;
@@ -475,11 +475,12 @@ watch(() => props.show, (v) => {
 }
 .batch-class-item:last-child { border-bottom: none; }
 .batch-class-item:hover { background: var(--bg); }
-.batch-class-item.selected { background: var(--primary-light, rgba(37,99,235,0.06)); }
+.batch-class-item.selected { background: var(--primary-light, rgba(37,99,235,0.06)); color: var(--ds-on-brand); }
 .batch-class-check { margin: 0; }
 .batch-class-info { display: flex; flex-direction: column; gap: 2px; }
 .batch-class-info strong { font-weight: 500; }
 .batch-class-info small { color: var(--text-light); font-size: 11px; }
+.batch-class-item.selected .batch-class-info small { color: var(--ds-on-brand); }
 
 .batch-step-actions {
   display: flex; justify-content: flex-end; gap: 8px;

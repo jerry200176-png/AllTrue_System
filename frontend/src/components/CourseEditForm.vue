@@ -822,7 +822,7 @@ function computeEndTime(startRaw, durHours) {
 .day-chip.selected {
   background: var(--primary-bg, var(--ds-canvas-soft));
   border-color: var(--primary, var(--ds-ink-mute));
-  color: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-primary-text);
   font-weight: 700;
 }
 
@@ -855,7 +855,7 @@ function computeEndTime(startRaw, durHours) {
   border-radius: 8px;
   border: 1px dashed var(--border, var(--ds-canvas-soft));
   background: var(--surface-2, var(--ds-canvas-soft));
-  color: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-primary-text);
   font-size: 13px;
   cursor: pointer;
   width: fit-content;
@@ -910,7 +910,7 @@ function computeEndTime(startRaw, durHours) {
   padding: 8px 10px;
   border-radius: 6px;
   background: var(--primary-bg, var(--ds-canvas-soft));
-  color: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 

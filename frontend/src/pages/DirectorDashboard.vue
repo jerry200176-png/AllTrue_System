@@ -1697,7 +1697,7 @@ onBeforeUnmount(() => {
 .leave-case__candidate-heading strong, .leave-case__candidate-heading span { display: block; }
 .leave-case__candidate-heading strong { color: var(--ds-ink); font-size: 13px; }
 .leave-case__candidate-heading span { margin-top: 2px; color: var(--ds-ink-mute); font-size: 11px; }
-.leave-case__text-button { border: 0; background: transparent; color: var(--ds-primary-deep); font-size: 12px; font-weight: 700; cursor: pointer; }
+.leave-case__text-button { border: 0; background: transparent; color: var(--ds-primary-text); font-size: 12px; font-weight: 700; cursor: pointer; }
 .leave-case__text-button:disabled { opacity: 0.5; cursor: not-allowed; }
 .leave-case__candidate-list { display: grid; gap: 6px; }
 .leave-candidate { position: relative; display: flex; align-items: center; gap: 9px; min-height: 46px; padding: 8px 10px; border: 1px solid var(--ds-hairline); border-radius: 9px; background: var(--ds-canvas); cursor: pointer; }
@@ -2593,7 +2593,7 @@ onBeforeUnmount(() => {
 .badge-orange {
   display: inline-block;
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-size: 11px;
   padding: 3px 9px;
   border-radius: 999px;
@@ -2783,7 +2783,7 @@ onBeforeUnmount(() => {
 /* ===== 匯入格式連結 ===== */
 .ac__format-link {
   font-size: 11px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   background: none;
   border: none;
   cursor: pointer;
@@ -3137,7 +3137,7 @@ onBeforeUnmount(() => {
 .director-leave-case__hint { display: flex; align-items: flex-start; gap: 7px; margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
 .director-leave-case__hint .material-symbols-outlined { color: var(--ds-warning); font-size: 17px; }
 .director-leave-case__window { display: flex; align-items: center; gap: 6px; margin: 14px 0 0; color: var(--ds-ink-mute); font-size: 11px; line-height: 1.5; }
-.director-leave-case__window .material-symbols-outlined { color: var(--ds-primary); font-size: 17px; }
+.director-leave-case__window .material-symbols-outlined { color: var(--ds-primary-text); font-size: 17px; }
 .director-leave-case__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 11px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; background: var(--ds-canvas); color: var(--ds-ink-secondary); font-size: 12px; font-weight: 800; }
 .button:hover { border-color: var(--ds-ink-secondary); color: var(--ds-ink); }

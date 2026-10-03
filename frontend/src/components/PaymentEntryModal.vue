@@ -321,7 +321,7 @@ async function submit() {
 .pe-radio.active {
   border-color: var(--primary);
   background: var(--primary-bg);
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 

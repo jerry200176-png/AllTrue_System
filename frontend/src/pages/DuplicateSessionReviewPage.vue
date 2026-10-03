@@ -780,7 +780,7 @@ onMounted(() => {
   white-space: nowrap;
 }
 .dsr-tab.active {
-  color: var(--primary);
+  color: var(--ds-primary-text);
   border-bottom-color: var(--primary);
 }
 .dsr-tab-badge {

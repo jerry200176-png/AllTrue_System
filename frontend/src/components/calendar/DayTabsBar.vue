@@ -60,12 +60,12 @@ defineEmits(['select']);
 .day-tab:hover { background: var(--ds-canvas-soft); color: var(--text-color, var(--ds-ink)); }
 .day-tab.active {
   background: var(--ds-canvas);
-  color: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-primary-text);
   box-shadow: 0 -2px 0 var(--primary, var(--ds-ink-mute)) inset;
 }
 .day-tab-today:not(.active) {
   background: var(--ds-primary-wash);
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
 }
 .day-tab-today-pill {
   display: inline-block;

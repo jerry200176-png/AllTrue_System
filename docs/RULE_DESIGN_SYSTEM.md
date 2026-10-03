@@ -37,7 +37,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 ## 2. Design Principles（設計原則）
 
 1. **淺色優先**：預設底色白／冷調近白；深色只用於側欄與夜間模式。
-2. **主色要稀有**：`--ds-primary`（橘黃暖色）只給主 CTA、連結強調、焦點環。一個區塊只放一顆實心主按鈕。
+2. **主色要稀有**：`--ds-primary`（橘黃暖色）只給主 CTA 填色、邊框、焦點環；連結與任何橘色文字用 `--ds-primary-text`。一個區塊只放一顆實心主按鈕。
 3. **navy 取代黑**：所有內文用 `--ds-ink`（#0d253d），不用純黑 #000。
 4. **色彩克制**：黑/白/灰/navy 撐起整頁；橘黃是行動/品牌，semantic 顏色只表達狀態。
 5. **金額必 tabular**：任何金額、堂數、人數、百分比用 `font-variant-numeric: tabular-nums`，避免跳動。
@@ -49,11 +49,12 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | DS Token | 值（light） | 用途 | 對應既有變數 |
 |---|---|---|---|
-| `--ds-primary` | `#EF6C00` | 連結、焦點、選中強調（logo 橘黃）；**不可**單獨當白字 CTA 底 | `--primary` `--accent` |
+| `--ds-primary` | `#EF6C00` | 填色、邊框、焦點、選中強調（logo 橘黃）；**不可當文字色**（含連結，用 `--ds-primary-text`）；**不可**單獨當白字 CTA 底 | `--primary` `--accent` |
 | `--ds-primary-deep` | `#E65100` | hover 加深、次要強調 | `--accent-hover` |
 | `--ds-primary-press` | `#D84315` | press（非白字大段文字） | — |
 | `--ds-primary-soft` | `#FFB300` | 圖表/UI 點綴（amber）| `--primary-light` |
 | `--ds-primary-wash` | `#FFF8E1` | 淡奶油暖底（tag/選中底）| `--primary-bg` |
+| `--ds-primary-text` | `#C2410C` | **橘色文字一律用此 token**（白底 5.18:1 AA）；`--ds-primary` 只用於填色／邊框／焦點，不可當文字色（3.08:1）。暗色主題為 `#FFB74D`。`frontend/src/lib/tokenContrast.test.js` 會讀 styles.css 驗證文字配對 ≥4.5:1 | — |
 | `--ds-cta` | `#C2410C` | **實心主 CTA 底**（白字 ≥4.5:1 AA） | — |
 | `--ds-cta-hover` | `#9A3412` | CTA hover | — |
 | `--ds-cta-press` | `#7C2D12` | CTA press | — |
@@ -65,7 +66,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | **裝飾**頂條／header；禁止白字疊在此上當 CTA | — |
 | `--ds-ink` | `#0d253d` | 內文主色（navy，非純黑）| `--text` `--porsche-ink` |
 | `--ds-ink-secondary` | `#273951` | 次要文字 | — |
-| `--ds-ink-mute` | `#64748d` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
+| `--ds-ink-mute` | `#5b6b84` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
 | `--ds-canvas` | `#ffffff` | 主白面 | `--card-bg` `--modal-bg` |
 | `--ds-canvas-soft` | `#f6f9fc` | 冷調頁底、輸入底 | `--bg` `--input-bg` |
 | `--ds-hairline` | `#e3e8ee` | 卡片/表格 1px 邊框 | `--border` `--porsche-border` |
@@ -73,7 +74,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | `--ds-success` | `#1a8245` | 完成/健康/已繳 | `--success` `--porsche-green` |
 | `--ds-warning` | `#b54708` | 繳費/期限/注意 | `--warning` `--porsche-amber` |
 | `--ds-danger` | `#e11d48` | 破壞性/緊急（Stripe ruby 系）| `--danger` `--porsche-red` |
-| `--ds-info` | `#533afd` | 資訊/導航（同 primary）| `--porsche-blue` |
+| `--ds-info` | `#C2410C` | 資訊狀態（文字、圖示、框線）；AA：淡黃 wash 上 4.87:1。暗色主題 `#FFB74D` | `--porsche-blue` |
 
 > Semantic 顏色**只**用於狀態（出缺勤、繳費、審核），不可拿來當裝飾或第二主色。
 
@@ -105,7 +106,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | 元件 | 規格 |
 |---|---|
 | **Button / Primary** | 藥丸；底 `--ds-cta`，字 `--ds-on-cta`（AA ≥4.5:1）；hover→`--ds-cta-hover`，press→`--ds-cta-press`。一區塊一顆。**禁止**白字疊 `--ds-brand-gradient`／`--ds-primary-soft`。 |
-| **Button / Secondary** | 藥丸；白底、`--ds-primary` 字與 1px 邊。 |
+| **Button / Secondary** | 藥丸；白底、`--ds-primary-text` 字（AA）與 `--ds-primary` 1px 邊。 |
 | **Button / Ghost** | 透明底、`--ds-ink` 字、`--ds-hairline` 邊。 |
 | **Button / Danger** | 藥丸；底 `--ds-danger`，字白。 |
 | **Input** | 白底、`--ds-hairline-input` 1px 邊、圓角 6–8；focus 邊框換 `--ds-primary` + 3px wash 外環。 |

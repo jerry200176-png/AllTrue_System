@@ -5111,7 +5111,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 
 .lr-more-filters-toggle.active {
   border-color: var(--ds-primary);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
 }
 
 .lr-more-filters-chev {
@@ -5214,13 +5214,13 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .lr-fill-segment__btn + .lr-fill-segment__btn { border-left: 1px solid var(--ds-hairline); }
 .lr-fill-segment__btn.active {
   background: var(--ds-primary-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 .lr-select-mode-btn.active {
   background: var(--ds-primary-wash);
   border-color: var(--ds-primary);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 /* ── Batch Action Bar ── */
@@ -5269,7 +5269,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .lr-batch-count {
   font-size: 13px;
   font-weight: 600;
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5295,12 +5295,12 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .lr-phrase-btn:hover {
   background: var(--ds-primary-wash);
   border-color: var(--ds-primary-soft);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
 }
 
 .lr-phrase-toggle {
   border-style: dashed;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash);
 }
 
@@ -5499,7 +5499,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .ts-time {
   font-weight: 700;
   font-size: 15px;
-  color: var(--primary);
+  color: var(--ds-primary-text);
   min-width: 48px;
 }
 
@@ -5757,7 +5757,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 
 .ts-fill-hint {
   font-size: 10px;
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
   margin-top: 2px;
 }
@@ -6364,7 +6364,7 @@ select.lr-input {
   font-size: 12px;
   font-weight: 600;
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .lr-group-hint {
@@ -6890,7 +6890,7 @@ select.lr-input {
 }
 .fill-badge.fill-missing {
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 .fill-badge.fill-done {
   background: var(--ds-success-wash);
@@ -7146,7 +7146,7 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 
 .lrc-status.pending {
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .lrc-status.rejected {
@@ -7347,7 +7347,7 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 .lr-download-btn:hover:not(:disabled) {
   background: var(--bg);
   border-color: var(--primary);
-  color: var(--primary);
+  color: var(--ds-primary-text);
 }
 .lr-download-btn:disabled {
   opacity: 0.5;
@@ -7397,7 +7397,7 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 .lr-form-section-title {
   font-size: 13px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--ds-primary-text);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 14px;
@@ -7505,7 +7505,7 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 .lr-radio:has(input:checked) {
   border-color: var(--primary);
   background: var(--primary-bg);
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 
@@ -7576,7 +7576,7 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 .bulk-date-item.selected {
   border-color: var(--primary);
   background: var(--primary-bg);
-  color: var(--primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 

@@ -1105,7 +1105,7 @@ function formatDate(iso) {
 .pf-page-btn:disabled { opacity: .4; cursor: not-allowed; }
 .page-header { padding: 16px 24px 8px; }
 .page-header h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
-.header-icon { font-size: 28px; color: var(--primary); }
+.header-icon { font-size: 28px; color: var(--ds-primary-text); }
 .page-desc { color: var(--text-light); font-size: 14px; margin-top: 2px; }
 
 .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); margin: 0 16px 16px; padding: 16px; }
@@ -1172,7 +1172,7 @@ function formatDate(iso) {
 }
 .filter-field.is-active .filter-icon,
 .filter-field:focus-within .filter-icon {
-  color: var(--primary);
+  color: var(--ds-primary-text);
 }
 
 .filter-select {
@@ -1242,7 +1242,7 @@ function formatDate(iso) {
   background: color-mix(in srgb, var(--primary) 8%, var(--card-bg));
 }
 .filter-date-group .filter-icon { color: var(--text-light); }
-.filter-date-group.is-active .filter-icon { color: var(--primary); }
+.filter-date-group.is-active .filter-icon { color: var(--ds-primary-text); }
 
 .filter-date {
   border: none;
@@ -1344,7 +1344,7 @@ function formatDate(iso) {
   font-size: 11px; font-weight: 600;
 }
 .status-tag.new { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
-.status-tag.triaged { background: var(--ds-warning-wash); color: var(--ds-primary); }
+.status-tag.triaged { background: var(--ds-warning-wash); color: var(--ds-primary-text); }
 .status-tag.in_progress { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
 .status-tag.resolved { background: var(--success-bg); color: var(--success); }
 .status-tag.closed { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }

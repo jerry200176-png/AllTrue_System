@@ -62,7 +62,7 @@ const preview = computed(() => buildLearningRecordPreview(props.record));
 
 .learning-record-preview__header .material-symbols-outlined {
   font-size: 16px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .learning-record-preview__hint {

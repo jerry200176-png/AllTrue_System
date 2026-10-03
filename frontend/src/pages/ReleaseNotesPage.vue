@@ -191,7 +191,7 @@ function importanceLabel(importance) {
   min-height: 44px;
   padding: 8px 12px;
   border-radius: var(--ds-radius-md);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   font-size: 13px;
   font-weight: 700;
 }
@@ -298,7 +298,7 @@ function importanceLabel(importance) {
   border: 1px solid var(--border);
   border-radius: var(--ds-radius-md);
   background: var(--ds-canvas-soft);
-  color: var(--ds-primary-deep);
+  color: var(--ds-primary-text);
   cursor: pointer;
   font-size: 13px;
   font-weight: 700;

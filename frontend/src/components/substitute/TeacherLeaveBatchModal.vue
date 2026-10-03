@@ -357,7 +357,7 @@ async function submit() {
 }
 .tlb-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--ds-ink); }
 .tlb-stepper { font-size: 12px; color: var(--ds-ink-mute); display: flex; align-items: center; gap: 6px; }
-.tlb-step--active { color: var(--ds-primary-deep, var(--ds-primary)); font-weight: 700; }
+.tlb-step--active { color: var(--ds-primary-text); font-weight: 700; }
 .tlb-close { background: transparent; border: 0; color: var(--ds-ink-mute); cursor: pointer; font-size: 14px; }
 
 /* Step 1 */

@@ -205,7 +205,7 @@ defineExpose({ show, dismiss });
 }
 .twu__undo {
   background: transparent;
-  color: var(--ds-primary-deep, var(--ds-primary));
+  color: var(--ds-primary-text);
   border: 1px solid rgba(245, 124, 0, 0.4);
   border-radius: 6px;
   padding: 4px 10px;
