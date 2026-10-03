@@ -68,6 +68,7 @@ describe('tutoring continuation async identity', () => {
     expect(buildCourseMgmtOpsNav({ id: 31, student_id: 8 }, { intent: 'convert-trial' })).toMatchObject({ target: 'course-mgmt', courseId: 31, intent: 'convert-trial' });
     const cm = readFileSync(`${process.cwd()}/src/pages/CourseManagement.vue`, 'utf8');
     expect(cm).toMatch(/initialCourseIntent === 'convert-trial'[\s\S]*pendingConvertTrialId\.value = Number/);
+    expect(cm).toMatch(/pendingConvertTrialId\.value && convertTrialStudentId\.value\) params\.set\('student_id'/);
     expect(cm).toMatch(/watch\(coursesLoading[\s\S]*openPurchaseModal\(trial\)/);
     expect(submit).not.toContain('convert-trial');
   });

@@ -1733,6 +1733,8 @@ function closeCourseInPlace(course) {
 }
 
 const courses = ref([]);
+const pendingConvertTrialId = ref(0);
+const convertTrialStudentId = ref(null);
 const coursesLoading = ref(true); // 首次載入完成前顯示骨架，避免「0 位學生」假空狀態
 let courseLoadRequestId = 0;
 const allStudents = ref([]);
@@ -4785,6 +4787,8 @@ const loadCourses = async (page = 1) => {
       if (filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
       if (filters.value.course_status) params.set('status', filters.value.course_status);
       if (filters.value.name) params.set('name', filters.value.name);
+      // convert-trial deep link: pin the target student so same-name/pagination can't hide the course.
+      if (pendingConvertTrialId.value && convertTrialStudentId.value) params.set('student_id', String(convertTrialStudentId.value));
       const res = await fetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
@@ -5906,11 +5910,11 @@ watch(
   },
   { immediate: true },
 );
-const pendingConvertTrialId = ref(0);
 watch(coursesLoading, (loading) => {
   if (loading || !pendingConvertTrialId.value) return;
   const trial = courses.value.find((c) => c.id === pendingConvertTrialId.value && c.class_type === 'trial');
   pendingConvertTrialId.value = 0;
+  convertTrialStudentId.value = null;
   if (trial) openPurchaseModal(trial);
 });
 watch(
@@ -5922,7 +5926,10 @@ watch(
     if (name) filters.value.name = name.slice(0, 40);
     // in-app #374: Students sends trial 「轉為正式課程」 here. Consumed by the coursesLoading watcher
     // below, so it survives the mount-time reload (stale requests never set coursesLoading=false).
-    if (props.initialCourseIntent === 'convert-trial') pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
+    if (props.initialCourseIntent === 'convert-trial') {
+      pendingConvertTrialId.value = Number(props.initialCourseId) || 0;
+      convertTrialStudentId.value = sid ?? null;
+    }
     loadCourses(1);
     emit('clear-initial-student');
   },
