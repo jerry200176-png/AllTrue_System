@@ -20,6 +20,16 @@ class Handler extends ExceptionHandler
         'password_confirmation',
     ];
 
+    /**
+     * API callers always get JSON errors (validation 422, 404, 500), even when a
+     * fetch forgot `Accept: application/json`. Otherwise Laravel redirects or
+     * renders HTML and the UI shows a misleading 「網路錯誤」 (in-app #375).
+     */
+    protected function shouldReturnJson($request, Throwable $e)
+    {
+        return $request->is('api/*') || parent::shouldReturnJson($request, $e);
+    }
+
     public function register(): void
     {
         $this->reportable(function (Throwable $e) {
