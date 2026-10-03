@@ -1,3 +1,7 @@
+## 2026-10-03 — fix(a11y): accessible names for attendance and profile form controls
+<!-- release-notes: silent_ship=silent-2026-10-03-form-control-labels -->
+- 點名與個人中心表單欄位補上 `label for`／`aria-label`（螢幕閱讀器可讀出欄位名稱），不改可見文字與流程；新增 `vuejs-accessibility/form-control-has-label` lint（限這兩頁），axe label／select-name BASELINE 歸零。
+
 ## 2026-10-03 — fix(api): API errors are always JSON; 補卡 shows the real error (in-app #375)
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
