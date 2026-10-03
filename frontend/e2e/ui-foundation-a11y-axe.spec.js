@@ -3,9 +3,9 @@
  * Automated WCAG 2.1 A/AA scan (axe-core) of real Vue pages on the pilot mount,
  * with every API call answered by an empty list.
  *
- * Ratchet: BASELINE holds today's serious/critical violations (rule id → node count).
- * A new rule, or more nodes for a known rule, fails. When you fix one, lower or
- * delete its entry so it cannot come back.
+ * Ratchet: BASELINE holds today's serious/critical violations (rule id → node count)
+ * and must match exactly. More nodes or a new rule fails as a regression; fewer
+ * nodes fails too, asking you to lower the entry, so fixed debt cannot come back.
  */
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
@@ -32,6 +32,8 @@ const BASELINE = {
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {
   test(`axe WCAG A/AA: ${name} (${vp.name}) has no new serious/critical violations`, async ({ page }) => {
+    const pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(err.message));
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await page.route('**/api/**', (route) => route.fulfill({ contentType: 'application/json', body: '{"data":[]}' }));
     await page.goto(`/pilot-mount.html?page=${name}`);
@@ -39,8 +41,9 @@ for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPOR
     await page.waitForLoadState('networkidle');
 
     const { violations } = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
-    const regressions = violations
-      .filter((v) => BLOCKING_IMPACTS.has(v.impact ?? ''))
+    expect(pageErrors, 'page threw while mounting, so the scan is not trustworthy').toEqual([]);
+    const blocking = violations.filter((v) => BLOCKING_IMPACTS.has(v.impact ?? ''));
+    const regressions = blocking
       .filter((v) => v.nodes.length > (allowed[v.id] ?? 0))
       .map((v) => ({
         rule: v.id,
@@ -51,5 +54,10 @@ for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPOR
         targets: v.nodes.slice(0, 5).map((n) => n.target.join(' ')),
       }));
     expect(regressions).toEqual([]);
+    const found = Object.fromEntries(blocking.map((v) => [v.id, v.nodes.length]));
+    const staleBaseline = Object.entries(allowed)
+      .filter(([rule, count]) => (found[rule] ?? 0) < count)
+      .map(([rule, count]) => `${name}.${rule}: baseline ${count}, now ${found[rule] ?? 0}; lower BASELINE`);
+    expect(staleBaseline).toEqual([]);
   });
 }
