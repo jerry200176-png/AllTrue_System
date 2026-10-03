@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\TempRfid;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
+use App\Support\LineNotifySettings;
 use App\Models\SecurityAuditEvent;
 use App\Models\StudentSignIn;
 use App\Models\TeacherSignIn;
@@ -217,7 +218,7 @@ class SwipeRfidController extends Controller
     private function pushPhotoToParents(Student $student, Campus $campus, string $imageUrl, ?string $flexRatio): int
     {
         $token = (string) ($campus->messaging_channel_token ?? '');
-        if ($token === '') {
+        if ($token === '' || !LineNotifySettings::enabled((int) $campus->getKey(), 'swipe')) {
             return 0;
         }
         $bindings = StudentLineBinding::query()->where('student_id', $student->getKey())
@@ -507,20 +508,23 @@ class SwipeRfidController extends Controller
 
     /**
      * 刷卡回應的學生資訊。LineIDs = 已驗證綁定的家長 LINE userId，供讀卡機用 LINE Bot 推播。
+     * 分校關掉刷卡 LINE 通知時回空陣列，讀卡機就沒有對象可推。
      */
     private function studentPayload(Student $student): array
     {
+        $campusId = (int) $student->getAttribute('CampusID');
+
         return [
             'id'          => $student->id,
             'name'        => $student->name,
             'TelegramID'  => $student->TelegramID,
             'TelegramID1' => $student->TelegramID1,
             'TelegramID2' => $student->TelegramID2,
-            'LineIDs'     => StudentLineBinding::query()->where('student_id', $student->id)
+            'LineIDs'     => !LineNotifySettings::enabled($campusId, 'swipe') ? [] : StudentLineBinding::query()->where('student_id', $student->id)
                 ->whereNotNull('verified_at')
                 // 只給刷卡分校頻道的綁定：學生是以 CampusID = 刷卡分校查出來的，所以等於刷卡分校；
                 // 轉校殘留／舊匯入的別校綁定不能交給這台讀卡機（跨分校）。
-                ->where('campus_id', (int) $student->getAttribute('CampusID'))
+                ->where('campus_id', $campusId)
                 ->pluck('line_user_id')
                 ->values()
                 ->all(),

@@ -8,7 +8,7 @@
       data-guide="line-header"
     >
       <template #actions>
-        <AtButton shape="rect" variant="ghost" icon="refresh" :disabled="loading" @click="loadStatus">重新整理</AtButton>
+        <AtButton shape="rect" variant="ghost" icon="refresh" :disabled="loading" @click="loadAll">重新整理</AtButton>
       </template>
     </AtPageHeader>
 
@@ -113,6 +113,24 @@
       </div>
     </div>
 
+    <!-- 刷卡 LINE 通知開關（每間分校自己決定） -->
+    <div class="card" v-if="notify">
+      <h3>🔔 刷卡通知家長</h3>
+      <label class="notify-row">
+        <input
+          type="checkbox"
+          :checked="notify.settings.swipe"
+          :disabled="notifySaving"
+          @change="toggleNotify('swipe', $event.target)"
+        />
+        <span>
+          <strong>學生刷卡時，用 LINE 通知家長（到班／離班＋照片）</strong>
+          <span class="field-hint notify-desc">關掉後刷卡照常記錄出勤，只是不傳 LINE 給家長。</span>
+        </span>
+      </label>
+      <span v-if="notifyMsg" class="save-msg" :class="notifyOk ? 'ok' : 'err'" role="status" aria-live="polite">{{ notifyMsg }}</span>
+    </div>
+
     <!-- Webhook URL -->
     <div class="card" v-if="status">
       <h3>📡 Webhook 網址</h3>
@@ -206,6 +224,10 @@ const saveMsg = ref('');
 const saveOk  = ref(true);
 const copied  = ref('');
 const openStep = ref(0);
+const notify = ref(null);
+const notifySaving = ref(false);
+const notifyMsg = ref('');
+const notifyOk = ref(true);
 
 const form = ref({ messaging_channel_token: '', messaging_channel_secret: '', liff_id: '' });
 const show = ref({ token: false, secret: false });
@@ -400,8 +422,81 @@ function copyParentGuide(mode = 'short') {
   copy(shortText, 'guide-short');
 }
 
-onMounted(loadStatus);
-watch(() => props.branchId, () => { status.value = null; loadStatus(); });
+function notifyUrl() {
+  return props.branchId ? `/api/v1/line/notify-settings?branch_id=${props.branchId}` : '/api/v1/line/notify-settings';
+}
+
+// 每次讀取／儲存都拿新號碼；只有最新那次的回應能改畫面（防切分校、重新整理跟儲存互相蓋掉）。
+let notifySeq = 0;
+let reloadAfterSave = false;
+
+async function loadNotify() {
+  // 儲存中不讀（可能讀到舊值）：作廢進行中的請求，等存完再讀目前分校。
+  if (notifySaving.value) {
+    notifySeq++;
+    reloadAfterSave = true;
+    return;
+  }
+  const seq = ++notifySeq;
+  let data = null;
+  try {
+    const res = await fetch(notifyUrl(), { headers: await getAuthHeaders(), credentials: 'include' });
+    data = res.ok ? await res.json() : null;
+  } catch (e) {
+    console.error('Failed to load LINE notify settings:', e);
+  }
+  if (seq === notifySeq) notify.value = data?.settings ? data : null;
+}
+
+async function toggleNotify(key, input) {
+  const value = input.checked;
+  const branch = props.branchId;
+  const seq = ++notifySeq;
+  notifySaving.value = true;
+  notifyMsg.value = '';
+  let ok = false;
+  let msg = '連線錯誤，請稍後再試';
+  let settings = null;
+  try {
+    const body = { settings: { [key]: value } };
+    if (branch != null && branch !== '') body.branch_id = Number(branch);
+    const res = await fetch('/api/v1/line/notify-settings', {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    ok = res.ok;
+    msg = res.ok ? '✅ 已儲存' : (data.message || '儲存失敗');
+    settings = data.settings;
+  } catch {
+    // msg 維持連線錯誤
+  } finally {
+    notifySaving.value = false;
+    if (seq === notifySeq) {
+      notifyOk.value = ok;
+      notifyMsg.value = msg;
+      if (ok) notify.value = { ...notify.value, settings };
+      else input.checked = !value; // 沒存成功 → 勾選框退回原狀
+      setTimeout(() => { notifyMsg.value = ''; }, 4000);
+    } else if (!ok) {
+      input.checked = !value;
+    }
+    if (reloadAfterSave) {
+      reloadAfterSave = false;
+      loadNotify();
+    }
+  }
+}
+
+function loadAll() {
+  loadStatus();
+  loadNotify();
+}
+
+onMounted(loadAll);
+watch(() => props.branchId, () => { status.value = null; notify.value = null; loadAll(); });
 </script>
 
 <style scoped>
@@ -563,6 +658,9 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ds-ink); 
 
 .save-row { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
 .save-msg { font-size: 13px; font-weight: 600; }
+.notify-row { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+.notify-row input { margin-top: 3px; }
+.notify-desc { display: block; }
 .save-msg.ok { color: var(--ds-success); }
 .save-msg.err { color: var(--ds-danger); }
 

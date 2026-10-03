@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Campus;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
+use App\Support\LineNotifySettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -101,6 +102,22 @@ class SwipePhotoTest extends TestCase
         $this->getJson(parse_url($url, PHP_URL_PATH))->assertForbidden();
         $this->travel(8)->days();
         $this->getJson($path)->assertForbidden();
+    }
+
+    public function test_campus_switch_off_stops_both_photo_push_and_reader_line_ids(): void
+    {
+        LineNotifySettings::set($this->campus->id, ['swipe' => false]);
+        $swipe = fn () => $this->postJson('/api/v1/swipe-rfid', ['branch_code' => (string) $this->campus->id, 'rfid' => 'PHOTO-1'], ['Authorization' => 'Bearer photo-token']);
+
+        // 刷卡本身照常記錄，但讀卡機拿不到家長 LINE；照片照存、不推。
+        $swipe()->assertJson(['action' => 'sign_in'])->assertJsonPath('student.LineIDs', []);
+        $this->upload()->assertOk()->assertJson(['ok' => true, 'sent' => 0]);
+        Http::assertNothingSent();
+
+        LineNotifySettings::set($this->campus->id, ['swipe' => true]);
+        $this->travel(3)->minutes();
+        $swipe()->assertJsonPath('student.LineIDs', ['Uverified']);
+        $this->upload()->assertOk()->assertJson(['sent' => 1]);
     }
 
     public function test_text_says_arrive_or_leave_from_the_swipe_just_recorded(): void
