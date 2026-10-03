@@ -43,3 +43,18 @@ describe('design token text contrast >= 4.5 (WCAG AA)', () => {
 it('light: ds-info on ds-info-wash (status pills) >= 4.5', () => {
   expect(wcagContrast(themes.light['ds-info'], themes.light['ds-info-wash'])).toBeGreaterThanOrEqual(4.5);
 });
+
+// Structural guard: any rule painting the warm soft fill must also set the on-brand foreground
+// (orange or inherited text on that fill fails AA in both themes).
+it('warm soft fills always set color: var(--ds-on-brand)', async () => {
+  const { globSync } = await import('node:fs');
+  const files = [...globSync('src/**/*.vue'), 'src/styles.css'];
+  const bad = [];
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (/background(-color)?\s*:\s*var\(--(primary-light|ds-primary-soft)\b/.test(m[2])
+        && !/(^|[;\s])color\s*:\s*var\(--ds-on-brand\)/.test(m[2])) bad.push(`${f}: ${m[1].trim().slice(-60)}`);
+    }
+  }
+  expect(bad).toEqual([]);
+});

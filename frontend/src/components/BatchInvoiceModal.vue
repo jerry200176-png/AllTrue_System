@@ -475,7 +475,7 @@ watch(() => props.show, (v) => {
 }
 .batch-class-item:last-child { border-bottom: none; }
 .batch-class-item:hover { background: var(--bg); }
-.batch-class-item.selected { background: var(--primary-light, rgba(37,99,235,0.06)); }
+.batch-class-item.selected { background: var(--primary-light, rgba(37,99,235,0.06)); color: var(--ds-on-brand); }
 .batch-class-check { margin: 0; }
 .batch-class-info { display: flex; flex-direction: column; gap: 2px; }
 .batch-class-info strong { font-weight: 500; }

@@ -7398,7 +7398,7 @@ button.danger:disabled {
   background: var(--ds-primary-soft);
   border-color: var(--ds-primary);
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(245, 124, 0, 0.18);
+  box-shadow: 0 10px 24px rgba(245, 124, 0, 0.18); color: var(--ds-on-brand);
 }
 .btn-add-session:disabled,
 .btn-add-session.disabled {

@@ -2735,7 +2735,7 @@ loadAlerts();
 }
 .tc-tab:hover { color: var(--text); background: var(--bg); }
 .tc-tab--active {
-  color: var(--ds-primary-text);
+  color: var(--ds-on-brand);
   border-bottom-color: var(--primary);
   background: var(--primary-light, rgba(37,99,235,0.06));
 }
@@ -2911,7 +2911,7 @@ loadAlerts();
   color: var(--ds-primary-text);
   font-weight: 600;
 }
-.tc-btn--batch:hover { background: var(--primary-light, rgba(37,99,235,0.08)); border-color: var(--primary); }
+.tc-btn--batch:hover { background: var(--primary-light, rgba(37,99,235,0.08)); border-color: var(--primary); color: var(--ds-on-brand); }
 
 .tc-cell-name { font-weight: 500; }
 .tc-col-check {
