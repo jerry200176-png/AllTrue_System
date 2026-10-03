@@ -4120,7 +4120,7 @@ table th { font-size: 12.5px; }
   background: var(--ds-surface-0, var(--ds-canvas-soft));
 }
 .students-list-state strong { color: var(--ds-ink); font-size: 14px; }
-.students-list-state .material-symbols-outlined { color: var(--ds-primary); }
+.students-list-state .material-symbols-outlined { color: var(--ds-primary-text); }
 .students-list-state--error .material-symbols-outlined,
 .students-refresh-state--error .material-symbols-outlined { color: var(--ds-danger); }
 .students-list-state__action,
@@ -4189,7 +4189,7 @@ table th { font-size: 12.5px; }
   white-space: nowrap;
   font-size: 12px;
   font-family: monospace;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -4338,7 +4338,7 @@ table th { font-size: 12.5px; }
   gap: 6px;
   font-size: 16px;
   font-weight: 700;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   margin: 0;
 }
 .student-note-line {
@@ -4706,7 +4706,7 @@ table th { font-size: 12.5px; }
   border-color: var(--ds-warning-wash);
 }
 .student-course-card__next-step > .material-symbols-outlined {
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-size: 21px;
   margin-top: 1px;
 }
@@ -4795,7 +4795,7 @@ table th { font-size: 12.5px; }
   color: var(--ds-warning);
 }
 .student-course-card__cadence .material-symbols-outlined {
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-size: 19px;
 }
 .student-course-card__meta {
@@ -4970,7 +4970,7 @@ table th { font-size: 12.5px; }
 .form-section-title {
   font-size: 13px;
   font-weight: 700;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   margin: 16px 0 8px 0;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--ds-hairline);
@@ -5015,7 +5015,7 @@ table th { font-size: 12.5px; }
 .cost-preview-value {
   font-size: 28px;
   font-weight: 800;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   margin: 4px 0;
   font-variant-numeric: tabular-nums;
 }

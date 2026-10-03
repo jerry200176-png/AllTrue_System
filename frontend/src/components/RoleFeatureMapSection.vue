@@ -77,7 +77,7 @@ const filteredGroups = computed(() => {
 <style scoped>
 .role-feature-map { width: 100%; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--ds-primary-wash); text-align: left; }
 .rfm-header { margin-bottom: 14px; }
-.rfm-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--ds-primary); background: var(--ds-primary-wash); padding: 3px 8px; border-radius: 99px; margin-bottom: 6px; }
+.rfm-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--ds-primary-text); background: var(--ds-primary-wash); padding: 3px 8px; border-radius: 99px; margin-bottom: 6px; }
 .rfm-badge .material-symbols-outlined { font-size: 15px; }
 .rfm-title { margin: 0 0 4px; font-size: 17px; font-weight: 700; color: var(--ds-ink); }
 .rfm-sub { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ds-ink-mute); }
@@ -86,7 +86,7 @@ const filteredGroups = computed(() => {
 .rfm-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin: 12px 0 14px; }
 .rfm-filters { display: flex; gap: 4px; background: var(--ds-canvas-soft); padding: 3px; border-radius: 8px; }
 .rfm-btn { padding: 5px 10px; border: none; background: transparent; color: var(--ds-ink-mute); font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; transition: all .15s; }
-.rfm-btn.active { background: var(--ds-canvas); color: var(--ds-primary); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.rfm-btn.active { background: var(--ds-canvas); color: var(--ds-primary-text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
 .rfm-search { position: relative; display: flex; align-items: center; min-width: 180px; flex: 1; max-width: 260px; }
 .search-icon { position: absolute; left: 8px; font-size: 16px; color: var(--ds-ink-mute); pointer-events: none; }
 .search-input { width: 100%; padding: 6px 12px 6px 28px; border: 1px solid var(--ds-hairline-input); border-radius: 6px; font-size: 12px; outline: none; }
@@ -104,13 +104,13 @@ const filteredGroups = computed(() => {
 .rfm-card.is-high { border-left: 3px solid var(--ds-primary); }
 .rfm-card.is-advanced { border-left: 3px solid var(--ds-hairline-input); }
 .card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-.card-ico { font-size: 17px; color: var(--ds-primary); }
+.card-ico { font-size: 17px; color: var(--ds-primary-text); }
 .card-name { font-size: 12px; font-weight: 700; color: var(--ds-ink); flex: 1; }
 .card-tag { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 4px; }
 .card-tag.high { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
 .card-tag.advanced { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
 .card-desc { margin: 0 0 8px; font-size: 11px; line-height: 1.4; color: var(--ds-ink-secondary); flex: 1; }
-.card-foot { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 600; color: var(--ds-primary); border-top: 1px dashed var(--ds-hairline); padding-top: 5px; }
+.card-foot { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 600; color: var(--ds-primary-text); border-top: 1px dashed var(--ds-hairline); padding-top: 5px; }
 .card-foot .material-symbols-outlined { font-size: 13px; }
 @media (max-width: 640px) { .rfm-controls { flex-direction: column; align-items: stretch; } .rfm-search { max-width: none; } .rfm-grid { grid-template-columns: 1fr; } }
 </style>

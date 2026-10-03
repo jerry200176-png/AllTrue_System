@@ -141,7 +141,7 @@ const isDisabled = computed(() => props.disabled || props.loading);
 /* Secondary: 白底 + 主色字與邊框 */
 .at-btn--secondary {
   background: var(--ds-canvas);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   border-color: var(--ds-primary);
 }
 .at-btn--secondary:hover:not(:disabled) {

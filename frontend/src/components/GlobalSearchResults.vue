@@ -114,7 +114,7 @@ function emitSelection(kind, item) {
   display: block;
   margin: 10px auto 0;
   padding: 5px 10px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash);
   border: 0;
   border-radius: 6px;

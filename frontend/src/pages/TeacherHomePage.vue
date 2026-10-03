@@ -1289,7 +1289,7 @@ onBeforeUnmount(() => {
 .th-streak-icon {
   font-size: 16px;
   vertical-align: -3px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 .th-streak-longest {
   opacity: 0.75;
@@ -1319,7 +1319,7 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; gap: 6px;
   font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px;
 }
-.th-section-icon { font-size: 20px; color: var(--ds-primary); }
+.th-section-icon { font-size: 20px; color: var(--ds-primary-text); }
 /* ──────── B. Weekly Schedule ──────── */
 .th-week { padding: 20px; }
 .th-week-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }

@@ -1329,7 +1329,7 @@ onUnmounted(() => {
 
 .type-tuition {
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .type-learning_review {
@@ -1389,7 +1389,7 @@ onUnmounted(() => {
 
 .severity-medium {
   background: var(--ds-primary-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .severity-low,

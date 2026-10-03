@@ -91,7 +91,7 @@ function runAction(t) {
 .at-toast--success .at-toast__icon { color: var(--ds-success); }
 .at-toast--error .at-toast__icon { color: var(--ds-danger); }
 .at-toast--warning .at-toast__icon { color: var(--ds-warning); }
-.at-toast--info .at-toast__icon { color: var(--ds-primary); }
+.at-toast--info .at-toast__icon { color: var(--ds-primary-text); }
 .at-toast--undo .at-toast__icon { color: var(--ds-ink-mute); }
 
 .at-toast__body { flex: 1; min-width: 0; }
@@ -102,7 +102,7 @@ function runAction(t) {
   flex-shrink: 0;
   background: none;
   border: none;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;

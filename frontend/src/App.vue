@@ -4376,7 +4376,7 @@ function formatBuildTime(rawIso) {
 .onboarding-check-icon,
 .guide-tour-checklist .material-symbols-outlined {
   flex: 0 0 auto;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-size: 17px;
 }
 

@@ -45,6 +45,19 @@ updates:
     source_refs:
       - "alltrue:bug_report:295"
       - "changelog:2026-10-02:awaiting-14d"
+  - id: staff-2026-10-03-text-contrast
+    published_at: "2026-10-03"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 灰色與橘色文字更清楚
+    summary: 畫面上的淡灰色說明文字與橘色文字加深，更容易閱讀。
+    items:
+      - category: improved
+        text: 淡灰色說明文字與橘色文字顏色加深，符合無障礙對比標準，行動裝置與強光下更好讀。
+    source_refs:
+      - "changelog:2026-10-03:a11y-contrast"
   - id: staff-2026-10-02-tuition-course-check-link
     published_at: "2026-10-02"
     audiences:

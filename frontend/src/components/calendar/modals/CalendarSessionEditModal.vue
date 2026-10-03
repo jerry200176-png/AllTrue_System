@@ -339,7 +339,7 @@ defineEmits([
 .session-edit-modal__close:hover,
 .session-edit-modal__close:focus-visible {
   border-color: var(--ds-primary);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 .conflict-box {
   background: var(--ds-danger-wash);
@@ -491,7 +491,7 @@ defineEmits([
   font-family: inherit;
   line-height: 1.4;
 }
-.action-btn.leave { background: var(--ds-warning-wash); color: var(--ds-primary); border-color: var(--ds-warning); }
+.action-btn.leave { background: var(--ds-warning-wash); color: var(--ds-primary-text); border-color: var(--ds-warning); }
 .action-btn.leave:hover { background: var(--ds-warning-wash); }
 .action-btn.attendance { background: var(--ds-success-wash); color: var(--ds-success); border-color: var(--ds-success); }
 .action-btn.attendance:hover { background: var(--ds-success-wash); }
@@ -578,7 +578,7 @@ defineEmits([
 .eval-summary-table th { color: var(--ds-ink-mute); font-weight: 600; font-size: 11px; }
 .eval-status-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .eval-status-tag.approved { background: var(--ds-success-wash); color: var(--ds-success); }
-.eval-status-tag.pending { background: var(--ds-warning-wash); color: var(--ds-primary); }
+.eval-status-tag.pending { background: var(--ds-warning-wash); color: var(--ds-primary-text); }
 .eval-loading, .eval-empty {
   padding: 8px;
   font-size: 13px;

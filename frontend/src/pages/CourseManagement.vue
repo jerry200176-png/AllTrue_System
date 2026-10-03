@@ -7121,7 +7121,7 @@ onUnmounted(() => {
   color: var(--ds-ink-mute);
 }
 .upcoming-session-preview__overflow {
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-weight: 700;
 }
 .upcoming-session-preview__retry {
@@ -7342,7 +7342,7 @@ button.danger:disabled {
   margin: 0 !important;
   border-color: var(--ds-primary) !important;
   background: var(--ds-canvas-soft) !important;
-  color: var(--ds-primary) !important;
+  color: var(--ds-primary-text) !important;
   font-weight: 800 !important;
   white-space: nowrap;
 }

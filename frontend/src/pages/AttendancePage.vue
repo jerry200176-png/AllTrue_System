@@ -2625,7 +2625,7 @@ watch(() => props.branchId, () => {
   font-weight: 700;
   list-style-position: inside;
 }
-.att-secondary-summary > summary::marker { color: var(--ds-primary); }
+.att-secondary-summary > summary::marker { color: var(--ds-primary-text); }
 .att-secondary-summary > summary span {
   color: var(--ds-ink-mute);
   font-size: 12px;
@@ -2881,7 +2881,7 @@ watch(() => props.branchId, () => {
 .att-search-input { width: 150px; padding: 7px 12px; font-size: 13px; }
 .att-filter-select { width: 100px; padding: 7px 10px; font-size: 13px; }
 .att-date-input { width: 140px; padding: 7px 10px; font-size: 13px; }
-.att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--ds-primary); background: var(--ds-canvas-soft); border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
+.att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--ds-primary-text); background: var(--ds-canvas-soft); border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
 .att-mode-toggle { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--ds-hairline); }
 .att-mode-btn { padding: 5px 12px; font-size: 12px; font-weight: 600; border: none; background: var(--ds-canvas); color: var(--text-light); cursor: pointer; transition: all 0.15s; border-right: 1px solid var(--ds-hairline); }
 .att-mode-btn:last-child { border-right: none; }
@@ -2902,7 +2902,7 @@ watch(() => props.branchId, () => {
 .att-inline-edit .att-status-select { font-size: 12px; padding: 2px 4px; }
 
 /* Tags */
-.status-tag.excused, .status-tag.leave { background: var(--ds-canvas-soft); color: var(--ds-primary); }
+.status-tag.excused, .status-tag.leave { background: var(--ds-canvas-soft); color: var(--ds-primary-text); }
 .status-tag.rejected { background: var(--danger-bg); color: var(--danger); }
 .att-self-study-tag { background: var(--ds-warning-wash); color: var(--ds-warning); border: 1px solid var(--ds-warning); }
 
@@ -3190,7 +3190,7 @@ watch(() => props.branchId, () => {
 }
 .att-report-badge-acknowledged {
   background: var(--ds-canvas-soft);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   border-color: var(--ds-hairline);
 }
 .att-report-badge-resolved {
@@ -3221,7 +3221,7 @@ watch(() => props.branchId, () => {
   margin-left: auto;
   background: none;
   border: 0;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -3229,7 +3229,7 @@ watch(() => props.branchId, () => {
   min-height: 44px;
   text-decoration: underline;
 }
-.att-missing-link:hover { color: var(--ds-primary); }
+.att-missing-link:hover { color: var(--ds-primary-text); }
 
 /* Toast */
 .sd-toast {

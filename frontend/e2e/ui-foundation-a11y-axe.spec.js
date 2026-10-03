@@ -16,18 +16,17 @@ const BLOCKING_IMPACTS = new Set(['serious', 'critical']);
 const VIEWPORTS = [{ name: 'desktop', width: 1280, height: 900 }, { name: 'mobile', width: 390, height: 844 }];
 
 // Baseline 2026-10-03 (axe-core 4.13 via @axe-core/playwright 4.13).
-// Most color-contrast nodes are muted text #64748d on #f6f9fc (4.49:1, needs 4.5)
-// and orange #ef6c00 with white (3.08:1).
+// Remaining color-contrast nodes are hardcoded hex / non-token colors (tokens now AA-safe).
 const BASELINE = {
-  teacher: { 'color-contrast': 3 },
-  students: { 'color-contrast': 4 },
-  admissions: { 'color-contrast': 11 },
-  calendar: { 'color-contrast': 21 },
-  chat: { 'color-contrast': 2 },
+  teacher: { 'color-contrast': 2 },
+  students: {},
+  admissions: {},
+  calendar: { 'color-contrast': 10 },
+  chat: { 'color-contrast': 1 },
   parent: { 'color-contrast': 1 },
-  attendance: { 'color-contrast': 11, label: 2 },
-  profile: { 'color-contrast': 2, label: 1 },
-  'attendance&role=teacher': { 'color-contrast': 10, label: 5, 'select-name': 1 },
+  attendance: { 'color-contrast': 6, label: 2 },
+  profile: { 'color-contrast': 1, label: 1 },
+  'attendance&role=teacher': { 'color-contrast': 6, label: 5, 'select-name': 1 },
 };
 
 for (const [name, allowed] of Object.entries(BASELINE)) for (const vp of VIEWPORTS) {

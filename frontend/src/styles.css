@@ -36,6 +36,8 @@
   --ds-primary-press: #D84315;
   --ds-primary-soft: #FFB300;
   --ds-primary-wash: #FFF8E1;
+  /* Orange as TEXT on white/soft: --ds-primary is 3.08:1 (fails AA); this is 5.18:1. */
+  --ds-primary-text: #C2410C;
   --ds-on-primary: #ffffff;
   /* Solid CTA fill: white text must meet WCAG AA ≥4.5:1 (brand amber/orange + white fails). */
   --ds-cta: #C2410C;
@@ -49,7 +51,8 @@
   --ds-brand-gradient: linear-gradient(135deg, #FFB300 0%, #F57C00 100%);
   --ds-ink: #0d253d;
   --ds-ink-secondary: #273951;
-  --ds-ink-mute: #64748d;
+  --ds-ink-mute: #607089; /* 4.76:1 on canvas-soft, 5.03:1 on white (WCAG AA) */
+
   --ds-canvas: #ffffff;
   --ds-canvas-soft: #f6f9fc;
   --ds-hairline: #e3e8ee;
@@ -195,6 +198,7 @@
 /* ===== 夜間模式（Dark Theme） ===== */
 [data-theme="dark"] {
   --ds-primary: #FFB74D;
+  --ds-primary-text: #FFB74D;
   --ds-primary-deep: #FFCC80;
   --ds-primary-press: #FB8C00;
   --ds-primary-soft: #FFCC80;
@@ -768,7 +772,7 @@ body {
   margin-top: 8px;
   padding: 4px 10px;
   font-size: 12px;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash);
   border: none;
   border-radius: 6px;

@@ -408,7 +408,7 @@ onMounted(loadData);
 .eligibility-page :deep(.eligibility-input-panel textarea) { min-height: 44px; }
 .page-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; }
 .page-header-left { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.page-icon { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:var(--ds-primary-wash); color:var(--ds-primary); }
+.page-icon { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:var(--ds-primary-wash); color:var(--ds-primary-text); }
 .title-group h2 { margin:0; }.title-sub { margin:4px 0 0; color:var(--ds-ink-mute); }
 .privilege-chip { padding:4px 10px; border-radius:999px; background:var(--ds-warning-wash); color:var(--ds-warning); font-size:12px; }
 .header-actions { display:flex; gap:8px; flex-wrap:wrap; }
@@ -426,12 +426,12 @@ onMounted(loadData);
 .multiplier-cell { min-width:150px; white-space:nowrap; }
 .weekly-segment-cell { min-width: 300px; }
 .weekly-trace { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
-.weekly-trace summary { cursor: pointer; color: var(--ds-primary); font-size: 12px; }
+.weekly-trace summary { cursor: pointer; color: var(--ds-primary-text); font-size: 12px; }
 .course-trace-row { display:flex; justify-content:space-between; gap:12px; padding:5px 0; font-size:12px; color:var(--ds-ink-mute); }
 .mobile-weekly-trace { margin: 8px 0 12px; }
 .multiplier-input { width:84px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--ds-canvas); color:inherit; margin-right:4px; }
 .money-pos { color:var(--ds-success); font-variant-numeric:tabular-nums; }
-.total-cell strong { font-variant-numeric:tabular-nums; color:var(--ds-primary); }
+.total-cell strong { font-variant-numeric:tabular-nums; color:var(--ds-primary-text); }
 .adj-chip { display:inline-flex; margin:0 6px 6px 0; padding:3px 8px; border-radius:999px; font-size:12px; }
 .adj-chip.pos { background:var(--ds-success-wash); color:var(--ds-success); }
 .adj-chip.neg { background:var(--ds-danger-wash); color:var(--ds-danger); }

@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-03-text-contrast",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "灰色與橘色文字更清楚",
+    "summary": "畫面上的淡灰色說明文字與橘色文字加深，更容易閱讀。",
+    "items": [
+      "淡灰色說明文字與橘色文字顏色加深，符合無障礙對比標準，行動裝置與強光下更好讀。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "淡灰色說明文字與橘色文字顏色加深，符合無障礙對比標準，行動裝置與強光下更好讀。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-03:a11y-contrast"
+    ],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-03-awaiting-reporter-timeout",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,

@@ -5214,13 +5214,13 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 .lr-fill-segment__btn + .lr-fill-segment__btn { border-left: 1px solid var(--ds-hairline); }
 .lr-fill-segment__btn.active {
   background: var(--ds-primary-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   font-weight: 600;
 }
 .lr-select-mode-btn.active {
   background: var(--ds-primary-wash);
   border-color: var(--ds-primary);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 /* ── Batch Action Bar ── */
@@ -5300,7 +5300,7 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 
 .lr-phrase-toggle {
   border-style: dashed;
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash);
 }
 
@@ -6364,7 +6364,7 @@ select.lr-input {
   font-size: 12px;
   font-weight: 600;
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .lr-group-hint {
@@ -6890,7 +6890,7 @@ select.lr-input {
 }
 .fill-badge.fill-missing {
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 .fill-badge.fill-done {
   background: var(--ds-success-wash);
@@ -7146,7 +7146,7 @@ tr.lr-row-unread { border-left: 3px solid var(--ds-warning); background: rgba(24
 
 .lrc-status.pending {
   background: var(--ds-warning-wash);
-  color: var(--ds-primary);
+  color: var(--ds-primary-text);
 }
 
 .lrc-status.rejected {

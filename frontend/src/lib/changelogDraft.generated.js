@@ -27,6 +27,7 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "trial-to-formal conversion no longer leaves the trial stopped",
+          "contrast for muted gray and orange text",
           "status resolver contract; mixed void receipts no longer cancel"
         ]
       }
@@ -36,6 +37,7 @@ export const changelogDraftNotes = [
       "reports awaiting the reporter close after 14 days; reporter reply reopens",
       "photo and text arrive as one LINE message",
       "trial-to-formal conversion no longer leaves the trial stopped",
+      "contrast for muted gray and orange text",
       "status resolver contract; mixed void receipts no longer cancel"
     ]
   },

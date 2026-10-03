@@ -1344,7 +1344,7 @@ function formatDate(iso) {
   font-size: 11px; font-weight: 600;
 }
 .status-tag.new { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
-.status-tag.triaged { background: var(--ds-warning-wash); color: var(--ds-primary); }
+.status-tag.triaged { background: var(--ds-warning-wash); color: var(--ds-primary-text); }
 .status-tag.in_progress { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
 .status-tag.resolved { background: var(--success-bg); color: var(--success); }
 .status-tag.closed { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
