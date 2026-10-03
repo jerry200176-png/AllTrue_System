@@ -182,6 +182,10 @@ def check_git_patterns(cmd: str) -> None:
     if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}[\s:]['\"]?(?:refs/heads/)?(?:main|master)\b(?![-/.\w])", cmd):
         deny("Blocked: push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
 
+    # 2c. admin merge bypasses required checks (AGENTS.md machine ban on --admin)
+    if re.search(rf"\bgh\b{GAP}\bpr\b{GAP}\bmerge\b{GAP}--admin\b", cmd):
+        deny("Blocked: gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
+
     # 3. git reset --hard
     if re.search(rf"\bgit\b{GAP}\breset\b{GAP}--hard\b", cmd):
         deny("Blocked: git reset --hard. Forbidden — see CLAUDE.md.")
@@ -243,7 +247,7 @@ def check_deploy_patterns(cmd: str) -> None:
 
 
 def check_credential_leak(cmd: str) -> None:
-    read_verbs = r"(cat|less|more|head|tail|echo|printf|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort|jq)\b"
+    read_verbs = r"(cat|less|more|head|tail|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort|jq)\b"
     if re.search(rf"{ANCHOR}{read_verbs}{GAP}{SECRET_FILE_RE.pattern}", cmd):
         deny(
             "Blocked: command outputs a credential-shaped file. If this is "
@@ -292,11 +296,12 @@ def _script_targets_pi(cmd: str) -> bool:
     # Any segment may run a script (bash -x, timeout, wrappers...), except ones
     # whose program only views files.
     viewers = {"git", "sed", "cat", "less", "more", "head", "tail", "grep", "rg",
-               "diff", "wc", "ls", "stat", "file", "awk", "jq", "nl", "tac"}
+               "diff", "wc", "ls", "stat", "file", "awk", "jq", "nl", "tac",
+               "shellcheck", "chmod"}
     toks = []
     for seg in re.split(SEP, cmd):
         words = seg.split()
-        if words and words[0] in viewers:
+        if words and (words[0] in viewers or re.match(r"(?:bash|sh|zsh)\s+-n\b", seg.strip())):
             continue
         toks += re.findall(r"[\w./-]+\.(?:sh|bash)\b", seg)
     for tok in toks:
