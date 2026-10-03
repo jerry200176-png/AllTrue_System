@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Http\Controllers\AlertController;
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\ParentSession;
@@ -172,6 +173,25 @@ class PaidStatusParityTest extends TestCase
             // (assumption for S1: it counts only while the member has no non-void invoice).
             'package_paid_member' => ['flag' => 0, 'charge' => 10000, 'package_paid' => true, 'invoices' => []],
             'package_unpaid_member' => ['flag' => 0, 'charge' => 10000, 'package_paid' => false, 'invoices' => []],
+            // #3333 confirmed-session billing: Aug invoice stored 6000 but 5 attended sessions x 1500 = 7500.
+            // Unpaid with no net payment, so the session amount is the effective total (target 7500).
+            'monthly_confirmed_sessions_unpaid' => ['mode' => 'date', 'flag' => 0, 'charge' => 6000, 'rate' => 1500,
+                'sessions' => ['2026-08-03', '2026-08-06', '2026-08-10', '2026-08-13', '2026-08-17'], 'invoices' => [
+                    $inv('2026-07', 6000, 6000, 'paid', [$cash(6000)]),
+                    $inv('2026-08', 6000, 0, 'unpaid') + ['effective_total' => 7500],
+                ]],
+            // Same sessions, but Aug was paid at 6000 before the sessions changed: stored total is kept (target 6000, paid).
+            'monthly_paid_sessions_changed' => ['mode' => 'date', 'flag' => 1, 'charge' => 6000, 'rate' => 1500,
+                'sessions' => ['2026-08-03', '2026-08-06', '2026-08-10', '2026-08-13', '2026-08-17'], 'invoices' => [
+                    $inv('2026-07', 6000, 6000, 'paid', [$cash(6000)]),
+                    $inv('2026-08', 6000, 6000, 'paid', [$cash(6000)]),
+                ]],
+            // R115: count -> date conversion after payment. Confirmed receipts and Paid=1 stay (no void rows, no reversal);
+            // the partial Aug invoice is kept too.
+            'amendment_after_payment_r115' => ['mode' => 'date', 'flag' => 1, 'charge' => 6000, 'rate' => 1500, 'invoices' => [
+                $inv('2026-07', 6000, 6000, 'paid', [$cash(6000)]) + ['issue_mode' => 'count'],
+                $inv('2026-08', 6000, 2000, 'partial', [$cash(2000)]) + ['issue_mode' => 'count'],
+            ]],
         ];
     }
 
@@ -224,7 +244,7 @@ class PaidStatusParityTest extends TestCase
 
             return ['total' => (int) $fx['charge'], 'applied' => $applied, 'outstanding' => (int) $fx['charge'] - $applied];
         }
-        $total = array_sum(array_column($invoices, 'total'));
+        $total = array_sum(array_map(fn ($i) => $i['effective_total'] ?? $i['total'], $invoices));
         $applied = array_sum(array_map(fn ($i) => $this->applied($i), $invoices));
 
         return ['total' => $total, 'applied' => $applied, 'outstanding' => $total - $applied];
@@ -482,6 +502,10 @@ class PaidStatusParityTest extends TestCase
             'monthly_sessions' => null,
         ]);
 
+        foreach ($fx['sessions'] ?? [] as $date) {
+            ClassSession::create(['StudentClassID' => $course->ID, 'SessionDate' => $date, 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'attended']);
+        }
+
         $invoiceIds = [];
         foreach ($fx['invoices'] as $row) {
             $invoice = Invoice::create([
@@ -493,6 +517,7 @@ class PaidStatusParityTest extends TestCase
                 'PaidAmount' => $row['stored_paid'],
                 'Status' => $row['status'],
                 'billing_period' => $row['period'],
+                'ScheduleModeAtIssue' => $row['issue_mode'] ?? null,
             ]);
             $invoiceIds[] = (int) $invoice->id;
             foreach ($row['payments'] as $payment) {
