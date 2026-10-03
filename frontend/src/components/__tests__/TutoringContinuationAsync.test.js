@@ -14,7 +14,7 @@ function setup() {
     selectedStudent: { value: { id: 8 } }, props: { branchId: 16 },
     addSessionCount: { value: 4 }, addSessionStartDate: { value: '2026-10-01' }, tutoringEndDate: { value: '' },
     addSessionsError: { value: '' },
-    isTutoringCourse: c => c?.class_type === 'tutoring', isPackageMember: c => Boolean(c?.PackageID),
+    isTutoringCourse: c => c?.class_type === 'tutoring', isTrialCourse: c => c?.class_type === 'trial', isPackageMember: c => Boolean(c?.PackageID),
     getSubjectLabel: subject => subject === 'Science' ? '自然科學' : subject,
     formatDuplicatePurchaseHint: ({ subject }) => `\\n\\n已有相同「${subject}」加購批次，請先確認是否已經續報過。`,
     supabase: { auth: { getSession: () => auth } },

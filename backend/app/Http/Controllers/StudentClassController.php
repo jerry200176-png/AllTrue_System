@@ -3995,7 +3995,9 @@ class StudentClassController extends Controller
         }
 
         // in-app #374: a trial must become a regular course via convert-trial, never a new trial batch.
-        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
+        // convertTrial reuses this method; the flag is a server-side request attribute, not client input.
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial'
+            && $request->attributes->get('trial_conversion') !== true) {
             return response()->json([
                 'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
                 'code' => 'trial_use_convert',
@@ -4335,10 +4337,12 @@ class StudentClassController extends Controller
                 'mode' => 'new_purchase',
                 'class_type' => $newClassType,
             ]);
+            $request->attributes->set('trial_conversion', true);
             try {
                 $response = $this->purchaseBatch($request, $source);
             } finally {
                 $request->replace($originalInput);
+                $request->attributes->remove('trial_conversion');
             }
 
             if ($response->getStatusCode() >= 400) {
