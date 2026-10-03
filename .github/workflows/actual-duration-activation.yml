@@ -102,11 +102,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -140,16 +141,18 @@ jobs:
         run: |
           {
             echo "action=inventory"
-            echo "details_requested=${{ github.event.inputs.details }}"
+            echo "details_requested=${GITHUB_EVENT_INPUTS_DETAILS}"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- command output ----"
             cat /tmp/inventory-output.txt
           } > /tmp/inventory-audit.txt
+        env:
+          GITHUB_EVENT_INPUTS_DETAILS: ${{ github.event.inputs.details }}
 
       - name: Upload audit artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-inventory-${{ github.run_id }}
           path: /tmp/inventory-audit.txt
@@ -163,11 +166,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -319,16 +323,18 @@ jobs:
           {
             echo "action=enable_backend"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
-            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
+            echo "expected_head_sha=${GITHUB_EVENT_INPUTS_EXPECTED_HEAD_SHA}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- redacted result log ----"
             grep -vE 'DB_PASS|SMOKE_TEACHER_PASSWORD|password' /tmp/enable-result.txt 2>/dev/null || true
           } > /tmp/enable-audit.txt
+        env:
+          GITHUB_EVENT_INPUTS_EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-enable-${{ github.run_id }}
           path: /tmp/enable-audit.txt
@@ -346,11 +352,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -439,7 +446,7 @@ jobs:
           {
             echo "action=disable_backend"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- redacted result log ----"
             grep -vE 'DB_PASS|password' /tmp/disable-result.txt 2>/dev/null || true
@@ -447,7 +454,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-disable-${{ github.run_id }}
           path: /tmp/disable-audit.txt
@@ -465,11 +472,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -521,14 +529,14 @@ jobs:
           {
             echo "action=verify_backend"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- output ----"
             grep -vE 'DB_PASS|password' /tmp/verify-output.txt 2>/dev/null || true
           } > /tmp/verify-audit.txt
 
       - name: Upload audit artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: actual-duration-verify-${{ github.run_id }}
           path: /tmp/verify-audit.txt

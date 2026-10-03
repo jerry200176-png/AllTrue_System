@@ -103,11 +103,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -133,7 +134,7 @@ jobs:
           php artisan guardians:sync-from-legacy --dry-run "--limit=${LIMIT}"
           ENDSSH
           grep -q '"mode":"dry-run"' /tmp/mg-dryrun.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: multi-guardian-dryrun-${{ github.run_id }}
@@ -148,11 +149,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -192,7 +194,7 @@ jobs:
           ENDSSH
           grep -q '^apply-result=SUCCESS$' /tmp/mg-apply.txt
           grep -q 'VERIFY_OK' /tmp/mg-apply.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: multi-guardian-apply-${{ github.run_id }}
@@ -207,11 +209,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -239,7 +242,7 @@ jobs:
           ENDSSH
           grep -q 'VERIFY_OK' /tmp/mg-verify.txt
           grep -q 'CUTOVER_AUDIT_OK' /tmp/mg-verify.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: multi-guardian-verify-${{ github.run_id }}
@@ -254,11 +257,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -341,7 +345,7 @@ jobs:
           echo "enable-result=SUCCESS"
           ENDSSH
           grep -q '^enable-result=SUCCESS$' /tmp/mg-enable.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: multi-guardian-enable-${{ github.run_id }}
@@ -356,11 +360,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -409,11 +414,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -532,7 +538,7 @@ jobs:
           echo "staff-acceptance-result=SUCCESS"
           ENDSSH
           grep -q '^staff-acceptance-result=SUCCESS$' /tmp/mg-staff.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: multi-guardian-staff-${{ github.run_id }}

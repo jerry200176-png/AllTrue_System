@@ -35,11 +35,12 @@ jobs:
     environment:
       name: production-activation
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - uses: ./.github/actions/production-ssh-trust
         with:
@@ -463,7 +464,7 @@ jobs:
           echo 'rollback_boundary=delete_only_if_all_19_rows_still_match_approved_hashes_and_no_legitimate_dependents'
           REMOTE
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: inapp-289-course-2817-restore

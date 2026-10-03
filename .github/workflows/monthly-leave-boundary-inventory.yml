@@ -23,11 +23,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
@@ -36,7 +37,9 @@ jobs:
           host-key: ${{ secrets.PI_HOST_KEY }}
 
       - name: Guard read-only confirmation
-        run: test "${{ inputs.confirm_read_only }}" = "READ_ONLY_MONTHLY_LEAVE_INVENTORY"
+        run: test "${INPUTS_CONFIRM_READ_ONLY}" = "READ_ONLY_MONTHLY_LEAVE_INVENTORY"
+        env:
+          INPUTS_CONFIRM_READ_ONLY: ${{ inputs.confirm_read_only }}
 
       - name: Setup SSH
         env:
@@ -71,7 +74,7 @@ jobs:
 
       - name: Upload bounded inventory evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: monthly-leave-boundary-inventory-${{ github.run_id }}
           path: out/monthly-leave-boundary-inventory.json

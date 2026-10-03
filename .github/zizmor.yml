@@ -1,0 +1,47 @@
+# zizmor policy for AllTrue. Every exception names why it is safe; review when
+# the referenced workflow changes.
+rules:
+  # GitHub has no documented `$/` self-repository syntax that actionlint (our
+  # CI parser) accepts; `./.github/actions/...` is the supported form.
+  self-repository:
+    disable: true
+  dangerous-triggers:
+    ignore:
+      # pull_request_target: checks out the BASE sha only, same-repo heads only,
+      # never runs PR code; write scope is limited to the enable-auto-merge job.
+      - auto-merge-safe.yml
+      # Only calls gh api with github.token; no checkout of PR code.
+      - autonomous-convergence.yml
+      # workflow_run restricted to branches [main]; target SHA must have a
+      # successful main CI run before deploy.
+      - deploy.yml
+      # workflow_run on "Deploy to Pi" for main only; contents: read.
+      - calendar-course-acceptance.yml
+  github-env:
+    ignore:
+      # Writes a base64 smoke session token we generated, not user input.
+      - calendar-course-acceptance.yml
+      - deploy.yml
+  template-injection:
+    ignore:
+      # Values are rendered into a remote, quoted SSH heredoc (`<< 'ENDSSH'`),
+      # where runner env vars do not exist, so env indirection would send empty
+      # values. Inputs are workflow_dispatch-only and validated first:
+      # student_id/teacher_id/branch_id must be integers (guard job), and
+      # expected_head_sha must be 40-char hex (guard job).
+      - actual-duration-acceptance.yml:153
+      - actual-duration-activation.yml:188
+  artipacked:
+    ignore:
+      # These jobs push branches/tags/issues with the checkout credentials.
+      - branch-hygiene.yml
+      - open-followup-issues.yml
+      - release.yml
+      # Fetches a recovery SHA outside main's history; keep auth for that fetch.
+      - security-1124-restore-recovered-uploads.yml
+      # Production deploy workflow: deferred to a dedicated reviewed change.
+      - deploy.yml
+  adhoc-packages:
+    ignore:
+      # Pinned npm CLI version installed only for the audit step.
+      - ci.yml
