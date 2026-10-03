@@ -66,6 +66,36 @@ export const staffUpdates = [
     "version": "2026.10.03"
   },
   {
+    "id": "staff-2026-10-03-adjust-error-message",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "補卡失敗會顯示真正原因",
+    "summary": "補卡送不出去時，會顯示真正原因，不再只寫網路錯誤。",
+    "items": [
+      "補卡原因至少要寫兩個字；送不出去時會顯示真正原因，不再只寫「網路錯誤」。"
+    ],
+    "sections": [
+      {
+        "title": "我們修好了",
+        "items": [
+          "補卡原因至少要寫兩個字；送不出去時會顯示真正原因，不再只寫「網路錯誤」。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:375"
+    ],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-02-used-up-course-seat",
     "publishedAt": "2026-10-02",
     "effectiveAt": null,

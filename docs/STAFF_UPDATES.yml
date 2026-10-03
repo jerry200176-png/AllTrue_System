@@ -15,6 +15,18 @@ updates:
         text: 試聽課按「轉為正式課程」，保留試聽紀錄，不再多建一筆試聽。
     source_refs:
       - "alltrue:bug_report:374"
+  - id: staff-2026-10-03-adjust-error-message
+    published_at: "2026-10-03"
+    audiences:
+      - director
+    importance: digest
+    title: 補卡失敗會顯示真正原因
+    summary: 補卡送不出去時，會顯示真正原因，不再只寫網路錯誤。
+    items:
+      - category: fixed
+        text: 補卡原因至少要寫兩個字；送不出去時會顯示真正原因，不再只寫「網路錯誤」。
+    source_refs:
+      - "alltrue:bug_report:375"
   - id: staff-2026-10-03-awaiting-reporter-timeout
     published_at: "2026-10-03"
     audiences:
