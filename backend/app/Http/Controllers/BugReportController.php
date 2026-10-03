@@ -214,6 +214,9 @@ class BugReportController extends Controller
         }
 
         $comment = BugReportService::addComment($bugId, $userId, $request->input('body'), $isInternal);
+        if (!$isInternal && !$isSuperAdmin) {
+            BugReportService::reopenIfClosedByTimeout($bugId, (int) $userId);
+        }
 
         return response()->json([
             'id' => $comment->id,

@@ -43,12 +43,14 @@ class BugReportService
         'needs_info',
     ];
 
+    public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
+
     private const VALID_TRANSITIONS = [
         'new' => ['triaged', 'in_progress', 'closed'],
         'triaged' => ['in_progress', 'closed'],
         'in_progress' => ['resolved', 'closed'],
         'resolved' => ['in_progress', 'closed'],
-        'closed' => ['in_progress'],
+        'closed' => ['in_progress', 'triaged'],
     ];
 
     /** Disposition kinds that normally do not require engineering work. */
@@ -861,6 +863,56 @@ class BugReportService
     }
 
     /**
+     * Triaged bugs where staff publicly asked something >= 14 days ago and the
+     * reporter has not replied since (latest public comment is staff's).
+     *
+     * @return list<array{bug_id:int,asked_at:string,days_waiting:int}>
+     */
+    public static function listEligibleForAwaitingReporterTimeout(?Carbon $now = null): array
+    {
+        $now = $now ?: Carbon::now();
+        $cutoff = $now->copy()->subDays(self::AWAITING_REPORTER_TIMEOUT_DAYS);
+        $out = [];
+        foreach (BugReport::query()->where('status', 'triaged')->pluck('reporter_user_id', 'id') as $bugId => $reporterId) {
+            $last = BugReportComment::query()
+                ->where('bug_report_id', (int) $bugId)
+                ->where('is_internal_note', false)
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->first();
+            if (!$last || (int) $last->author_user_id === (int) $reporterId || $last->created_at->gt($cutoff)) {
+                continue;
+            }
+            $out[] = [
+                'bug_id' => (int) $bugId,
+                'asked_at' => $last->created_at->toIso8601String(),
+                'days_waiting' => (int) $last->created_at->diffInDays($now, true),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * A reporter reply on a timeout-closed bug reopens it to triaged.
+     */
+    public static function reopenIfClosedByTimeout(int $bugId, int $reporterId): void
+    {
+        $bug = BugReport::find($bugId);
+        if (!$bug || $bug->status !== 'closed') {
+            return;
+        }
+        $closeLog = BugReportStatusLog::query()
+            ->where('bug_report_id', $bugId)
+            ->where('to_status', 'closed')
+            ->orderByDesc('id')
+            ->first();
+        if ($closeLog && str_contains((string) $closeLog->note, 'closed_by_timeout')) {
+            self::changeStatus($bugId, $reporterId, 'triaged', 'reopened_by_reporter_reply');
+        }
+    }
+
+    /**
      * Close one eligible bug with closed_by_timeout note. Idempotent if already closed.
      *
      * @return array{ok:bool,action:string,code?:string,message?:string}
@@ -886,11 +938,15 @@ class BugReportService
                 'action' => $already ? 'already_closed_by_timeout' : 'already_closed',
             ];
         }
-        if ($bug->status !== 'resolved') {
+        $awaiting = $bug->status === 'triaged';
+        if ($bug->status !== 'resolved' && !$awaiting) {
             return ['ok' => false, 'action' => 'skip', 'code' => 'not_resolved', 'message' => 'Bug is not resolved'];
         }
 
-        $eligibleIds = array_column(self::listEligibleForReporterTimeout($days), 'bug_id');
+        $eligibleIds = array_column(
+            $awaiting ? self::listEligibleForAwaitingReporterTimeout() : self::listEligibleForReporterTimeout($days),
+            'bug_id'
+        );
         if (!in_array($bugId, $eligibleIds, true)) {
             return [
                 'ok' => false,
@@ -904,7 +960,12 @@ class BugReportService
             return ['ok' => true, 'action' => 'would_close'];
         }
 
-        $note = 'closed_by_timeout — Evidence Contract 7-day reporter-verify timeout; no reporter reply';
+        if ($awaiting) {
+            self::addComment($bugId, $actorUserId, '超過 ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' 天沒收到回覆，先結案。直接在這裡回覆就會重開。');
+            $note = 'closed_by_timeout — awaiting reporter reply ' . self::AWAITING_REPORTER_TIMEOUT_DAYS . ' days';
+        } else {
+            $note = 'closed_by_timeout — Evidence Contract 7-day reporter-verify timeout; no reporter reply';
+        }
         $result = self::changeStatus($bugId, $actorUserId, 'closed', $note);
         if (!$result['ok']) {
             return [

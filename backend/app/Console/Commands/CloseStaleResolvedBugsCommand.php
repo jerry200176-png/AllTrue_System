@@ -45,7 +45,18 @@ class CloseStaleResolvedBugsCommand extends Command
             return self::FAILURE;
         }
 
-        $eligible = BugReportService::listEligibleForReporterTimeout($days);
+        $queues = [];
+        $eligible = [];
+        $lists = [
+            'resolved' => BugReportService::listEligibleForReporterTimeout($days),
+            'awaiting_reporter' => BugReportService::listEligibleForAwaitingReporterTimeout(),
+        ];
+        foreach ($lists as $queue => $rows) {
+            foreach ($rows as $row) {
+                $queues[(int) $row['bug_id']] = $queue;
+                $eligible[] = $row;
+            }
+        }
         $eligibleIds = array_map('intval', array_column($eligible, 'bug_id'));
         $reviewedIds = [];
         if (!$dryRun) {
@@ -67,13 +78,13 @@ class CloseStaleResolvedBugsCommand extends Command
         foreach ($eligible as $row) {
             $bugId = (int) $row['bug_id'];
             if (!$dryRun && !in_array($bugId, $reviewedIds, true)) {
-                $this->line("bug #{$bugId}: awaiting_individual_review");
+                $this->line("bug #{$bugId} [{$queues[$bugId]}]: awaiting_individual_review");
                 $skipped++;
                 continue;
             }
             $result = BugReportService::closeByReporterTimeout($bugId, $actorId, $dryRun, $days);
             $action = $result['action'];
-            $this->line("bug #{$bugId}: {$action}");
+            $this->line("bug #{$bugId} [{$queues[$bugId]}]: {$action}");
             if ($result['ok'] && in_array($action, ['closed', 'would_close'], true)) {
                 $closed++;
             } else {
