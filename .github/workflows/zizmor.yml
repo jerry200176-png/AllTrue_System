@@ -1,0 +1,55 @@
+name: Workflow Security (zizmor)
+
+# zizmor audits workflow files for template injection, unpinned actions,
+# pull_request_target, excessive permissions, etc. CodeQL does not cover these.
+# (actionlint already runs in ci.yml via scripts/ci/actionlint.sh.)
+# Advisory until the existing findings are fixed; then drop continue-on-error.
+# The full report goes to the job summary: GitHub only renders 10 annotations per step.
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zizmor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: zizmor (advisory)
+    # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor 1.30.1
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rc=0
+          pipx run --spec zizmor==1.30.1 zizmor --format=plain --min-severity=medium .github/ > "$RUNNER_TEMP/zizmor.txt" 2>&1 || rc=$?
+          {
+            echo "### zizmor (medium+)"
+            echo '```'
+            cat "$RUNNER_TEMP/zizmor.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          tail -n 1 "$RUNNER_TEMP/zizmor.txt"
+          exit "$rc"
