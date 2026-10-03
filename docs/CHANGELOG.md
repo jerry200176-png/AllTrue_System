@@ -2,6 +2,10 @@
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
 
+## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
+<!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
+- 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。
+
 ## 2026-10-03 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo
 <!-- release-notes: silent_ship=silent-2026-10-03-swipe-photo-text -->
 - `POST /api/v1/swipe-photo` 推給家長的 LINE 改為「文字＋照片」一次送出：文字由 AllTrue 依 2 分鐘內剛寫入的刷卡紀錄判斷「到班」或「離班」（例：`王小明 已於 10:00 到班`），照片早到、晚到或找不到紀錄時只寫「刷卡」不猜。讀卡機不需再自己推文字。

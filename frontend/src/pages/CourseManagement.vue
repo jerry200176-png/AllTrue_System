@@ -3273,6 +3273,11 @@ function purchaseActionTitle(c) {
 
 function openPurchaseModal(course) {
   pendingMonthlyBooking.value = null;
+  // in-app #374: convert-trial is count-based; never let a monthly trial fall into renew-monthly (it would copy ClassType=trial).
+  if (course?.class_type === 'trial' && !isSessionMode(course)) {
+    alert('月結制試聽尚不支援直接轉為正式課程，請聯絡工程人員協助，避免建立另一筆試聽。');
+    return;
+  }
   // Local only for trial convert-trial and package set-total (distinct semantics from students purchase-batch).
   if (!isSessionMode(course)) {
     renewMonthlyCourse.value = course;

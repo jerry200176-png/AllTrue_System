@@ -135,6 +135,51 @@ class TrialConversionTest extends TestCase
             ])->assertStatus(409)->assertJsonPath('code', 'trial_already_converted');
     }
 
+    public function test_schedule_conflict_rolls_back_source_trial_mutations(): void
+    {
+        $token = $this->directorToken();
+        $teacher = User::create([
+            'LoginName' => 'trial-conflict-teacher-' . uniqid() . '@example.com',
+            'Name' => '衝堂老師', 'PSW' => 'secret', 'type' => 'T',
+            'phone' => '0921234568', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+        $mk = fn (string $name) => Student::create([
+            'name' => $name, 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $mkCourse = fn (Student $st, string $type) => StudentClass::create([
+            'StudentID' => $st->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => $teacher->id, 'ClassType' => $type, 'by1' => 1, 'Period' => 4,
+            'StartDate' => '2026-08-25', 'SessionCount' => 1, 'SessionDuration' => 120,
+            'RemainingSessions' => 1, 'UsedSessions' => 0, 'TotalHours' => 2,
+            'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'count', 'week' => 2, 'time' => '16:00:00',
+        ]);
+        $trial = $mkCourse($mk('衝堂試聽生'), 'trial');
+        $future = ClassSession::create([
+            'StudentClassID' => $trial->ID, 'SessionDate' => '2026-08-29',
+            'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'scheduled',
+        ]);
+        // Another student's one_on_one course occupies the proposed Tuesday slot.
+        $other = $mkCourse($mk('佔用時段學生'), 'one_on_one');
+        ClassSession::create([
+            'StudentClassID' => $other->ID, 'SessionDate' => '2026-09-01',
+            'StartTime' => '16:00:00', 'EndTime' => '18:00:00', 'Status' => 'scheduled',
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson("/api/v1/student-classes/{$trial->ID}/convert-trial", [
+                'sessions' => 8, 'start_date' => '2026-09-01', 'class_type' => 'one_on_one',
+            ])->assertStatus(409)->assertJsonPath('code', 'trial_conversion_schedule_conflict');
+
+        $trial->refresh();
+        $this->assertSame(0, (int) $trial->Stop);
+        $this->assertNull($trial->closed_reason);
+        $this->assertNull($trial->trial_converted_to_id);
+        $this->assertSame('scheduled', strtolower((string) $future->fresh()->Status));
+    }
+
     private function directorToken(): string
     {
         $director = User::create([
