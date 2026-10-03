@@ -289,7 +289,17 @@ PI_TARGET = r"(?i:pi\.lifenet\.com\.tw\b|\$\{?PI_(?:SSH_)?(?:HOST|USER)\b)"
 
 
 def _script_targets_pi(cmd: str) -> bool:
-    for tok in re.findall(rf"{ANCHOR}(?:(?:bash|sh|zsh|source|\.)\s+)?([\w./-]+\.(?:sh|bash))\b", cmd):
+    # Any segment may run a script (bash -x, timeout, wrappers...), except ones
+    # whose program only views files.
+    viewers = {"git", "sed", "cat", "less", "more", "head", "tail", "grep", "rg",
+               "diff", "wc", "ls", "stat", "file", "awk", "jq", "nl", "tac"}
+    toks = []
+    for seg in re.split(SEP, cmd):
+        words = seg.split()
+        if words and words[0] in viewers:
+            continue
+        toks += re.findall(r"[\w./-]+\.(?:sh|bash)\b", seg)
+    for tok in toks:
         try:
             with open(tok, encoding="utf-8", errors="ignore") as fh:
                 body = fh.read(200_000)
