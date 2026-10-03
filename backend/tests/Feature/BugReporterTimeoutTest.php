@@ -215,6 +215,162 @@ class BugReporterTimeoutTest extends TestCase
         }
     }
 
+    public function test_awaiting_reporter_boundary_reply_and_internal_note(): void
+    {
+        $now = Carbon::parse('2026-10-03 12:00:00');
+        [$admin, $reporter] = $this->seedUsers();
+        $b13 = $this->makeTriagedBug($admin->id, $reporter->id, $now->copy()->subDays(13));
+        $b15 = $this->makeTriagedBug($admin->id, $reporter->id, $now->copy()->subDays(15));
+        $replied = $this->makeTriagedBug($admin->id, $reporter->id, $now->copy()->subDays(20));
+        $this->comment($replied, $reporter->id, $now->copy()->subDays(19));
+        $internal = $this->makeTriagedBug($admin->id, $reporter->id, $now->copy()->subDays(20));
+        $this->comment($internal, $admin->id, $now->copy()->subDays(1), true);
+        $this->comment($internal, $reporter->id, $now->copy()->subDays(19));
+        $internalOnly = $this->makeTriagedBug($admin->id, $reporter->id, $now->copy()->subDays(20), false);
+        $this->comment($internalOnly, $reporter->id, $now->copy()->subDays(16));
+        $this->comment($internalOnly, $admin->id, $now->copy()->subDays(15), true);
+
+        $rows = collect(BugReportService::listEligibleForAwaitingReporterTimeout($now))->keyBy('bug_id');
+        $this->assertFalse($rows->has($b13->id));
+        $this->assertTrue($rows->has($b15->id));
+        $this->assertSame(15, $rows->get($b15->id)['days_waiting']);
+        $this->assertFalse($rows->has($replied->id));
+        $this->assertFalse($rows->has($internal->id));
+        $this->assertFalse($rows->has($internalOnly->id), 'internal note is not a question');
+    }
+
+    public function test_awaiting_dry_run_writes_nothing_and_apply_closes_with_public_comment(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(15));
+
+        $dry = BugReportService::closeByReporterTimeout($bug->id, $admin->id, true);
+        $this->assertSame('would_close', $dry['action']);
+        $this->assertSame('triaged', $bug->fresh()->status);
+        $this->assertSame(1, BugReportComment::where('bug_report_id', $bug->id)->count());
+
+        $this->assertSame('closed', BugReportService::closeByReporterTimeout($bug->id, $admin->id)['action']);
+        $this->assertSame('closed', $bug->fresh()->status);
+        $this->assertDatabaseHas('bug_report_comments', [
+            'bug_report_id' => $bug->id,
+            'author_user_id' => $admin->id,
+            'is_internal_note' => false,
+            'body' => '超過 14 天沒收到回覆，先結案。直接在這裡回覆就會重開。',
+        ]);
+        $this->assertDatabaseHas('bug_report_status_logs', [
+            'bug_report_id' => $bug->id,
+            'to_status' => 'closed',
+            'note' => 'closed_by_timeout — awaiting reporter reply 14 days',
+        ]);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_artisan_lists_awaiting_queue_and_apply_gate_applies(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(15));
+
+        $this->artisan('bugs:close-stale-resolved', ['--dry-run' => true, '--actor' => $admin->id])
+            ->expectsOutput("bug #{$bug->id} [awaiting_reporter]: would_close")
+            ->assertExitCode(0);
+        $this->artisan('bugs:close-stale-resolved', ['--actor' => $admin->id, '--reviewed-ids' => (string) $bug->id])
+            ->assertExitCode(0);
+        $this->assertSame('closed', $bug->fresh()->status);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_reporter_comment_reopens_only_timeout_closed_bug(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $tokenR = $this->tokenFor($reporter);
+        $tokenA = $this->tokenFor($admin);
+        $post = fn (string $t, int $id) => $this->withHeaders(['Authorization' => "Bearer {$t}", 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$id}/comments", ['body' => 'ok']);
+
+        $timeout = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(15));
+        BugReportService::closeByReporterTimeout($timeout->id, $admin->id);
+        $post($tokenA, $timeout->id)->assertStatus(201);
+        $this->assertSame('closed', $timeout->fresh()->status, 'staff comment never reopens');
+        $post($tokenR, $timeout->id)->assertStatus(201);
+        $this->assertSame('triaged', $timeout->fresh()->status);
+        $this->assertDatabaseHas('bug_report_status_logs', [
+            'bug_report_id' => $timeout->id, 'to_status' => 'triaged', 'note' => 'reopened_by_reporter_reply',
+        ]);
+
+        $resolved = $this->makeResolvedBug($admin->id, $reporter->id, Carbon::now()->subDays(10), true);
+        BugReportService::closeByReporterTimeout($resolved->id, $admin->id, false, 7);
+        $post($tokenR, $resolved->id)->assertStatus(201);
+        $this->assertSame('in_progress', $resolved->fresh()->status, 'resolved-timeout regression goes back to in_progress');
+
+        $verified = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(15));
+        BugReportService::changeStatus($verified->id, $reporter->id, 'closed', 'closed_by_reporter');
+        $post($tokenR, $verified->id)->assertStatus(201);
+        $this->assertSame('closed', $verified->fresh()->status);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_days_option_ignored_and_admin_api_cannot_reopen_closed_to_triaged(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDays(10));
+
+        $this->artisan('bugs:close-stale-resolved', ['--dry-run' => true, '--days' => 7, '--actor' => $admin->id])
+            ->doesntExpectOutput("bug #{$bug->id} [awaiting_reporter]: would_close")
+            ->assertExitCode(0);
+        $this->assertSame('triaged', $bug->fresh()->status);
+
+        BugReportService::changeStatus($bug->id, $admin->id, 'closed', 'manual');
+        $r = BugReportService::changeStatus($bug->id, $admin->id, 'triaged', 'x');
+        $this->assertSame('invalid_transition', $r['code']);
+        $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($admin), 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$bug->id}/status", ['status' => 'triaged']);
+        $this->assertSame('closed', $bug->fresh()->status);
+
+        Carbon::setTestNow();
+    }
+
+    private function tokenFor(User $user): string
+    {
+        UserCampus::firstOrCreate(['CampusID' => 1, 'UserID' => $user->id], ['Admin' => $user->type === 'S' ? 1 : 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        return $token;
+    }
+
+    private function comment(BugReport $bug, int $authorId, Carbon $at, bool $internal = false): void
+    {
+        BugReportComment::create([
+            'bug_report_id' => $bug->id,
+            'author_user_id' => $authorId,
+            'body' => '訊息',
+            'is_internal_note' => $internal,
+            'created_at' => $at,
+        ]);
+    }
+
+    private function makeTriagedBug(int $adminId, int $reporterId, Carbon $askedAt, bool $publicAsk = true): BugReport
+    {
+        $bug = BugReport::create([
+            'CampusID' => 1,
+            'reporter_user_id' => $reporterId,
+            'title' => 'Awaiting reporter',
+            'description' => 'D',
+            'severity' => 'low',
+            'status' => 'triaged',
+        ]);
+        if ($publicAsk) {
+            $this->comment($bug, $adminId, $askedAt);
+        }
+        return $bug;
+    }
+
     private function seedUsers(): array
     {
         $user = User::create([

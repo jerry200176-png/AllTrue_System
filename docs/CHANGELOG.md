@@ -1,3 +1,7 @@
+## 2026-10-03 — feat(bug-report): triaged reports awaiting the reporter close after 14 days; reporter reply reopens
+<!-- release-notes: staff_update=staff-2026-10-03-awaiting-reporter-timeout -->
+- 已分流且最後一則公開留言是客服提問、14 天沒有回報人回覆的回報，經人工審核後會先結案並留下公開說明；回報人再於該筆留言會自動重開為已分流（一般結案不受影響）
+
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->
 - 學生管理與課程管理的建課老師選單只顯示可指派的老師；一般課程、多老師時段及多科共用方案在儲存時再次驗證，停用或待審核老師不會被新指派。既有課程保留原授課老師與歷史顯示。

@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.10.03",
     "date": "2026-10-03",
     "title": "2026.10.03 草稿（未發布）",
-    "summary": "status resolver contract; mixed void receipts no longer cancel",
+    "summary": "reports awaiting the reporter close after 14 days; reporter reply reopens；status resolver contract; mixed void receipts no longer cancel",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "reports awaiting the reporter close after 14 days; reporter reply reopens"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "reports awaiting the reporter close after 14 days; reporter reply reopens",
       "status resolver contract; mixed void receipts no longer cancel"
     ]
   },
