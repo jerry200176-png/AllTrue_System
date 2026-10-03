@@ -19,7 +19,7 @@ function setup() {
     formatDuplicatePurchaseHint: ({ subject }) => `\\n\\n已有相同「${subject}」加購批次，請先確認是否已經續報過。`,
     supabase: { auth: { getSession: () => auth } },
     fetch: vi.fn(async () => ({ ok: false, json: async () => ({ message: 'conflict' }) })),
-    alert: vi.fn(),
+    alert: vi.fn(), goToTrialConversion: vi.fn(),
   };
   vm.createContext(context);
   vm.runInContext(`${open}\n${submit}\nglobalThis.handlers = { openAddSessionsForCourse, submitAddSessions };`, context);
@@ -47,6 +47,28 @@ describe('tutoring continuation async identity', () => {
     expect(c.alert.mock.calls[0][0]).toContain(expected);
     expect(c.alert.mock.calls[0][0]).not.toMatch(/#7|#99|null|undefined/);
     expect(c.showSessionsModal.value).toBe(false);
+  });
+
+  it.each([
+    ['session', {}],
+    ['package-member', { PackageID: 5 }],
+    ['monthly', { payment_type: 'monthly' }],
+  ])('sends %s trial to Course Management conversion instead of a purchase modal', (_, extra) => {
+    const { context: c } = setup();
+    c.showSessionsModal = { value: false };
+    const course = { id: 31, class_type: 'trial', ...extra };
+    c.handlers.openAddSessionsForCourse(course);
+    expect(c.goToTrialConversion).toHaveBeenCalledWith(course);
+    expect(c.showSessionsModal.value).toBe(false);
+    expect(c.fetch).not.toHaveBeenCalled();
+  });
+
+  it('deep-links trial conversion to the Course Management convert-trial modal', async () => {
+    const { buildCourseMgmtOpsNav } = await import('../../lib/authoritativeMutationRoutes.js');
+    expect(buildCourseMgmtOpsNav({ id: 31, student_id: 8 }, { intent: 'convert-trial' })).toMatchObject({ target: 'course-mgmt', courseId: 31, intent: 'convert-trial' });
+    const cm = readFileSync(`${process.cwd()}/src/pages/CourseManagement.vue`, 'utf8');
+    expect(cm).toMatch(/initialCourseIntent === 'convert-trial'[\s\S]*openPurchaseModal\(trial\)/);
+    expect(submit).not.toContain('convert-trial');
   });
 
   it('freezes payload before auth and prevents opening paid B while A submits', async () => {

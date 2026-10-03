@@ -220,6 +220,29 @@ class StudentClassPurchaseBatchTest extends TestCase
         $this->assertSame($before, StudentClass::count());
     }
 
+    public function test_renewal_preview_rejects_trial_source_for_purchase_batch(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-trial-preview@example.com');
+        $student = Student::create([
+            'name' => '試聽預覽學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $source = $this->createStudentClass($student->id, ['ClassType' => 'trial']);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
+            'mode' => 'purchase_batch',
+            'sessions' => 4,
+            'start_date' => '2026-04-07',
+        ])->assertStatus(422)->assertJsonPath('code', 'trial_use_convert');
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName): string
     {
         $user = User::create([

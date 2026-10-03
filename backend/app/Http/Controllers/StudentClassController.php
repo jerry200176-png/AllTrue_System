@@ -3468,6 +3468,15 @@ class StudentClassController extends Controller
             ], 422);
         }
 
+        // in-app #374: mirror purchaseBatch so preview never advertises an unconfirmable trial purchase.
+        if ($data['mode'] === 'purchase_batch'
+            && strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
+            return response()->json([
+                'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
+                'code' => 'trial_use_convert',
+            ], 422);
+        }
+
             $preview = $this->buildRenewalPreview($studentClass, $data);
             $preview = $this->redactRenewalDiscount($preview, $this->canApplyTransactionDiscount($request));
 

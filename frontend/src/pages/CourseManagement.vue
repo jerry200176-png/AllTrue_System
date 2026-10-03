@@ -1691,6 +1691,7 @@ const props = defineProps({
   initialStudentId: [String, Number],
   initialCourseId: [String, Number],
   initialStudentName: { type: String, default: '' },
+  initialCourseIntent: { type: String, default: '' },
 });
 const allowFinancialDiscount = computed(() => ['director', 'admin', 'super_admin'].includes(props.userRole));
 const emit = defineEmits(['clear-initial-teacher', 'clear-initial-student', 'navigate']);
@@ -5907,13 +5908,20 @@ watch(
 );
 watch(
   () => [props.initialStudentId, props.initialCourseId, props.initialStudentName],
-  () => {
+  async () => {
     const name = String(props.initialStudentName || '').trim();
     const sid = props.initialStudentId;
     if (!name && (sid == null || sid === '')) return;
     if (name) filters.value.name = name.slice(0, 40);
-    loadCourses(1);
+    const convertTrialId = props.initialCourseIntent === 'convert-trial' ? Number(props.initialCourseId) : 0;
+    const loading = loadCourses(1);
     emit('clear-initial-student');
+    // in-app #374: Students page sends trial 「轉為正式課程」 here.
+    if (convertTrialId) {
+      await loading;
+      const trial = courses.value.find((c) => c.id === convertTrialId && c.class_type === 'trial');
+      if (trial) openPurchaseModal(trial);
+    }
   },
   { immediate: true },
 );

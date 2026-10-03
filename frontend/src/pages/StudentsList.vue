@@ -838,7 +838,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
-        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : isTrialCourse(selectedCourse) ? '試聽轉為正式課程' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -1113,6 +1113,12 @@ const goToCourseMgmtOps = (course, studentName = '') => {
     ...buildCourseMgmtOpsNav(course),
     studentName,
   });
+};
+
+// in-app #374: trial -> formal conversion lives only in Course Management's convert-trial modal.
+const goToTrialConversion = (course) => {
+  const name = students.value.find((s) => s.id === course?.student_id)?.name || '';
+  emit('navigate', { ...buildCourseMgmtOpsNav(course, { intent: 'convert-trial' }), studentName: name });
 };
 
 const goToBindingManagement = (student) => {
@@ -3398,6 +3404,10 @@ const deleteCourse = async (course) => {
 // --- Add Sessions (per-course) ---
 const openAddSessionsForCourse = (course) => {
   if (addSessionsSubmitting.value) return;
+  if (isTrialCourse(course)) {
+    goToTrialConversion(course);
+    return;
+  }
   if (isTutoringCourse(course) && isPackageMember(course)) {
     alert('此輔導課屬於共用方案，不能從這裡延續或加購；請先確認方案設定。');
     return;
@@ -3548,12 +3558,9 @@ const submitAddSessions = async () => {
     }
 
     if (props.branchId !== submittedBranch || selectedCourse.value?.id !== course.id) return;
-    const trial = isTrialCourse(course);
     const endpoint = tutoring
       ? `/api/v1/student-classes/${course.id}/continue-tutoring`
-      : trial
-        ? `/api/v1/student-classes/${course.id}/convert-trial`
-        : `/api/v1/student-classes/${course.id}/purchase-batch`;
+      : `/api/v1/student-classes/${course.id}/purchase-batch`;
     const res = await fetch(endpoint, {
       method: 'POST',
       credentials: 'include',
@@ -3567,9 +3574,7 @@ const submitAddSessions = async () => {
         start_date: submittedStart,
         ...(tutoring
           ? (course.payment_type === 'monthly' ? { end_date: submittedEnd } : {})
-          : trial
-            ? { class_type: 'one_on_one' }
-            : {
+          : {
             mode: 'new_purchase',
             ...(typeof purchaseDiscount !== 'undefined'
               && purchaseDiscount?.type
