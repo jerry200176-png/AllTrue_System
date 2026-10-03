@@ -14,15 +14,19 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-INAPP_REF = re.compile(r"in-app\s*#(\d+)|alltrue:bug_report:(\d+)", re.I)
+# Title "in-app #N" or body SourceRef only; free-text body mentions ("related to in-app #173") are not ownership.
+TITLE_REF = re.compile(r"in-app\s*#(\d+)(?:\s*/\s*#(\d+))*", re.I)
+SOURCE_REF = re.compile(r"alltrue:bug_report:(\d+)")
 SENTRY_SPAN = re.compile(r"\*\*Offending Spans\*\*\s*\|\s*([^|\n]+)")
 # Logged suggestions (F12): the issue is the backlog, so it stays open after the in-app report closes.
 LOGGED_LABEL = "in-app:logged"
 
 
 def inapp_ids(issue):
-    text = f"{issue.get('title', '')}\n{issue.get('body') or ''}"
-    return sorted({int(a or b) for a, b in INAPP_REF.findall(text)})
+    title = issue.get("title", "")
+    ids = {int(x) for x in re.findall(r"#(\d+)", " ".join(m.group(0) for m in TITLE_REF.finditer(title)))}
+    ids |= {int(x) for x in SOURCE_REF.findall(issue.get("body") or "")}
+    return sorted(ids)
 
 
 def reconcile(open_bugs, resolved_bugs, max_id, issues):

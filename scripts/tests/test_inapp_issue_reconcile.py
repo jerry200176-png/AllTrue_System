@@ -41,7 +41,18 @@ def test_body_source_ref_counts():
     assert [r["issue"] for r in out["inapp_done_issue_open"]] == [1]
 
 
+def test_free_text_mentions_and_multi_title_refs():
+    resolved = [{"id": 3, "status": "resolved"}, {"id": 4, "status": "resolved"}]
+    out = reconcile_mod.reconcile([{"id": 5, "status": "triaged"}], resolved, 5, [
+        issue(1, "[epic] long-term work", labels=["x"], body="related to in-app #3"),  # mention only -> ignored
+        issue(2, "[in-app #3/#4] two reports", labels=["x"]),                          # both done -> flag
+        issue(3, "[in-app #4/#5] mixed", labels=["x"]),                                # #5 still open -> fine
+    ])
+    assert [r["issue"] for r in out["inapp_done_issue_open"]] == [2]
+
+
 if __name__ == "__main__":
     test_reconcile_classes()
     test_body_source_ref_counts()
+    test_free_text_mentions_and_multi_title_refs()
     print("test_inapp_issue_reconcile.py: ok")
