@@ -87,7 +87,8 @@ class SwipePhotoTest extends TestCase
                 && count($req['messages']) === 1
                 && $flex['type'] === 'flex'
                 && $flex['altText'] === $flex['contents']['body']['contents'][0]['text']
-                && $flex['contents']['hero']['action']['uri'] === $url
+                && $flex['contents']['hero']['aspectRatio'] === '64:64'
+                && !isset($flex['contents']['hero']['action'])
                 && str_starts_with($url, 'https://alltrue.example/api/v1/swipe-photo/')
                 && str_contains($url, 'signature=');
         });
@@ -158,7 +159,8 @@ class SwipePhotoTest extends TestCase
         $files = Storage::disk('local')->files("swipe-photos/{$this->campus->id}");
         [$w, $h] = getimagesize(Storage::disk('local')->path($files[0]));
         $this->assertSame([1024, 576], [$w, $h]);
-        Http::assertSent(fn ($req) => count($req['messages']) === 1 && $req['messages'][0]['type'] === 'flex');
+        Http::assertSent(fn ($req) => count($req['messages']) === 1
+            && $req['messages'][0]['contents']['hero']['aspectRatio'] === '1024:576');
     }
 
     public function test_huge_declared_dimensions_are_not_decoded_and_fall_back_to_text_and_image(): void
