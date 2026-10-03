@@ -7,6 +7,7 @@ import { changelogDraftNotes } from './changelogDraft.generated.js';
 import { staffUpdates } from './staffUpdates.generated.js';
 import {
   latestReleaseVersionForRole,
+  releaseSeenToken,
   listActiveParentUpdates,
   notesForRole,
   parentReleaseNoteTeaser,
@@ -135,3 +136,13 @@ assert.match(progressHubNote.details, /觸控尺寸/);
 assert.strictEqual(currentParentNotes[0].id, 'parent-update-2026-09-10-parent-status-hierarchy');
 
 console.log('releaseNotes.test.js: ok');
+
+// Same-day cards: adding a second card on the same date must change the seen token.
+{
+  const one = [{ version: '2026.10.03', id: 'a' }, { version: '2026.10.02', id: 'old' }];
+  const two = [{ version: '2026.10.03', id: 'b' }, ...one];
+  assert.notEqual(releaseSeenToken(one), releaseSeenToken(two));
+  assert.equal(releaseSeenToken(one), releaseSeenToken([...one]));
+  assert.equal(releaseSeenToken([]), '');
+  console.log('releaseSeenToken same-day: ok');
+}

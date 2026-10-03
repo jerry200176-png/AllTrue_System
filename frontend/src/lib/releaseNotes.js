@@ -79,8 +79,18 @@ export function notesForRole(role) {
 }
 
 export function latestReleaseVersionForRole(role) {
-  const notes = notesForRole(role);
-  return notes.length > 0 ? notes[0].version : '';
+  return releaseSeenToken(notesForRole(role));
+}
+
+/**
+ * "Seen" token for the release nudge: newest version plus every note id that
+ * shares it, so a second card published on the same day re-opens the nudge.
+ */
+export function releaseSeenToken(notes) {
+  if (!notes || notes.length === 0) return '';
+  const latest = notes[0].version;
+  const ids = notes.filter((n) => n.version === latest).map((n) => n.id || '').sort().join(',');
+  return ids ? `${latest}#${ids}` : latest;
 }
 
 /**
