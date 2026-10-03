@@ -239,5 +239,5 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh issue list --state all --limit 3000 --json number,title,body,state,labels,author > issues.json
+          gh issue list --state all --limit 3000 --json number,title,body,comments,state,labels,author > issues.json
           python3 scripts/inapp-issue-reconcile.py --dump out --issues issues.json | tee -a "$GITHUB_STEP_SUMMARY"

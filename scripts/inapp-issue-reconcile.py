@@ -2,7 +2,7 @@
 """F14: report where in-app reports and GitHub issues disagree.
 
 Read-only. Inputs are the bug-queue-dump artifact directory and
-`gh issue list --state all --json number,title,body,state,labels,author`.
+`gh issue list --state all --json number,title,body,comments,state,labels,author`.
 In-app ids missing from open/resolved (and <= max_id) are closed.
 
 Usage:
@@ -27,7 +27,9 @@ FROZEN_LABEL = "lifecycle:frozen"
 def inapp_ids(issue):
     title = issue.get("title", "")
     ids = {int(x) for x in re.findall(r"#(\d+)", " ".join(m.group(0) for m in TITLE_REF.finditer(title)))}
-    ids |= {int(x) for x in SOURCE_REF.findall(issue.get("body") or "")}
+    # SourceRef may live in the body or in a comment (shared issues get one comment per report).
+    texts = [issue.get("body") or ""] + [c.get("body") or "" for c in issue.get("comments") or []]
+    ids |= {int(x) for t in texts for x in SOURCE_REF.findall(t)}
     return sorted(ids)
 
 
@@ -44,7 +46,7 @@ def reconcile(open_bugs, resolved_bugs, max_id, issues):
         labels = {l["name"] for l in issue.get("labels", [])}
         is_open = issue.get("state", "OPEN").upper() == "OPEN"
         sts = {i: inapp_status(i) for i in ids}
-        if ids and is_open and not labels & {LOGGED_LABEL, FROZEN_LABEL} and all(s in ("resolved", "closed") for s in sts.values()):
+        if ids and is_open and not labels & {LOGGED_LABEL, FROZEN_LABEL, "type:epic"} and all(s in ("resolved", "closed") for s in sts.values()):
             out["inapp_done_issue_open"].append({"issue": issue["number"], "inapp": sts})
         if ids and not is_open and any(s in ("new", "triaged", "in_progress") for s in sts.values()):
             out["issue_closed_inapp_open"].append({"issue": issue["number"], "inapp": sts})

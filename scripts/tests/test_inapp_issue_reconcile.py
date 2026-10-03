@@ -48,8 +48,10 @@ def test_free_text_mentions_and_multi_title_refs():
         issue(1, "[epic] long-term work", labels=["x"], body="related to in-app #3"),  # mention only -> ignored
         issue(2, "[in-app #3/#4] two reports", labels=["x"]),                          # both done -> flag
         issue(3, "[in-app #4/#5] mixed", labels=["x"]),                                # #5 still open -> fine
+        issue(4, "[in-app #3] epic", labels=["type:epic"]),                            # epic -> kept open on purpose
+        dict(issue(5, "shared issue", labels=["x"]), comments=[{"body": "SourceRef alltrue:bug_report:4"}]),  # comment ref
     ])
-    assert [r["issue"] for r in out["inapp_done_issue_open"]] == [2]
+    assert [r["issue"] for r in out["inapp_done_issue_open"]] == [2, 5]
 
 
 if __name__ == "__main__":

@@ -840,12 +840,16 @@ jobs:
             $fresh = \App\Models\BugReport::find($bugId);
             $results[] = [
               "id" => $bugId,
-              "issue" => preg_match("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $issueMatch) ? (int)$issueMatch[1] : null,
               "action" => $ok ? "resolved" : "failed",
               "from" => $status,
               "final" => $fresh ? $fresh->status : "missing",
               "last" => $last,
             ];
+          }
+          // F14: every allowlisted target carries its issue, so a retry after a failed close-issue job still closes it.
+          foreach ($results as $i => $row) {
+            $reply = (string)($items[$row["id"]]["reply"] ?? "");
+            $results[$i]["issue"] = preg_match("#/AllTrue_System/issues/([0-9]+)#", $reply, $issueMatch) ? (int)$issueMatch[1] : null;
           }
           echo "---RESULTS---", PHP_EOL;
           echo json_encode(["prod_head" => $prodHead, "actor" => $actor, "results" => $results], JSON_UNESCAPED_UNICODE), PHP_EOL;
@@ -861,7 +865,7 @@ jobs:
           import json
           lines = open("out/phase-c.log", encoding="utf-8").read().splitlines()
           data = json.loads(lines[lines.index("---RESULTS---") + 1])
-          issues = sorted({r["issue"] for r in data["results"] if r.get("action") == "resolved" and isinstance(r.get("issue"), int)})
+          issues = sorted({r["issue"] for r in data["results"] if r.get("action") in ("resolved", "skip_already") and isinstance(r.get("issue"), int)})
           print("issues=" + " ".join(str(i) for i in issues))
           print("prod_head=" + str(data.get("prod_head", ""))[:40])
           PY
