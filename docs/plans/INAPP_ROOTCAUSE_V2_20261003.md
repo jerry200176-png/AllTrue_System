@@ -6,8 +6,9 @@ v2 修的是「回報一直卡著、關不掉」。
 ## 1. 現況證據
 
 - Queue dump run `37091903724`（2026-10-03 03:03Z）：open 32（全部 `triaged`）、resolved 108、closed 233。
-- v1 全部已合併：#3432 #3433 #3434 #3435 #3436 #3438 #3444，加上 #3447 #3449。
-  **但正式站還在 `44ab1b3`（10-02 03:43Z）。** 這些修正都還沒上線，等 Founder 部署核准。
+- v1 全部已合併。正式站還在 `44ab1b3`（10-02 03:43Z）。分開看：
+  - 等部署才生效（runtime）：#3433（#295）、#3435（F10 回報帶線索）、#3436（F8 佔位）、#3447（月結開課日）、#3449（#319）。
+  - 合併即生效（文件／CI／測試，不用部署）：#3432、#3434（F9 CI）、#3438、#3444、#3451。
 - Reporter-timeout dry-run `37092145562`：108 筆 resolved 只有 3 筆（266、277、366）可以結案。
   其餘 105 筆沒有「請重新測試」留言或沒有上線證據 → 機器規則永遠不會讓它們結案。
 - 回報者在已結案回報下留言，`BugReportService::addComment` 只寫留言，**不會重開**。
@@ -38,20 +39,23 @@ v2 修的是「回報一直卡著、關不掉」。
 
 **原則**：每個「等某人」的狀態都要有時鐘和出口；對方一回覆就自動回到處理中。
 
-### F11-a 等回報者時鐘（新 code，R2）
+### F11-a 等回報者時鐘（新 code，R3／T3，**PLAN_REQUIRED：Founder GO 才合併**）
+- 新的自動結案＋新狀態轉換 → 依 `INAPP_PRODUCT_LOOP_EXECUTION_POLICY_V1.md` 屬 `PLAN_REQUIRED`；本節即 Decision Packet。
+- 合併前同一 PR 要更新正式規則：`docs/governance/EVIDENCE_CONTRACT.md` 加入 triaged 等回報者 timeout（目前只允許 resolved timeout）。
+- 門檻分開：resolved 沿用 workflow `days`（預設 7）；等回報者固定 `AWAITING_REPORTER_TIMEOUT_DAYS = 14`，不吃 `days`。
 - 範圍：`triaged`，最後一則是公開員工提問，回報者之後沒有留言。
-- 第 14 天：`closed_by_timeout`，公開留言「超過 14 天沒收到回覆，先結案。直接在這裡回覆就會重開。」
+- 第 14 天：`closed_by_timeout`，公開留言「超過兩週沒收到回覆，先結案。直接在這裡回覆就會重開。」留言與關單同一個 transaction，重跑不會重複留言。
 - 沿用現有 `bugs:close-stale-resolved` 的 dry-run／逐筆 review／apply 流程與 workflow，不另做 scheduler。
-- 回報者在 `closed_by_timeout` 單子下留言 → 自動回 `triaged`，寫 status log。
+- 回報者在 `closed_by_timeout` 單子下留言 → 自動重開，寫 status log：等回報者關掉的回 `triaged`；已修待確認（resolved timeout）關掉的回 `in_progress`（= 修了還壞，依 Evidence Contract）。
 - 測試：14 天邊界、回報者有回就排除、內部備註不算提問、留言重開。
 
 ### F11-b 舊 resolved 清倉（一次性，Founder 決定）
 - 105 筆舊單沒有重測提問。選項：
-  - A（推薦）：對 resolved 超過 30 天、resolve 後回報者沒留言的單，一次發一則「已修好；有問題直接回覆會重開」，7 天後走現有 timeout。
+  - A（推薦）：只挑**有上線證據**（`[resolution_evidence]` 或 append-only production evidence）、resolved 超過 30 天、resolve 後回報者沒留言的單，發一則重測提問，7 天後走現有 timeout。沒有上線證據的單不發「已修好」，另列清單逐筆補證據或維持 resolved。
   - B：維持現狀，只處理新單。
 
 ### F11-c 截圖
-- 5 筆截圖 agent 讀不到。推薦：Founder 或該校主任看圖，在 issue 補一句「哪個學生頁／哪個日期／哪個按鈕」。不做新的 agent 讀圖通道（避免新增個資外流面）。
+- 5 筆截圖 agent 讀不到。推薦：Founder 或該校主任看圖，在 in-app 單內部備註（不是 GitHub）寫「哪個頁面／哪個按鈕／看到什麼」。GitHub issue 只寫去識別化描述，不寫學生姓名、日期等可識別資料。不做新的 agent 讀圖通道（避免新增個資外流面）。
 
 ## 4. 其他根治線（延續 v1）
 
@@ -62,11 +66,11 @@ v2 修的是「回報一直卡著、關不掉」。
 
 ## 5. 執行順序與停點
 
-1. 本 plan 合併（docs，R2）。
+1. 本 plan 合併（docs only，R0／T0）。
 2. F7 S0b（R1，背景）。
 3. **停：Founder 部署核准**（一次包含 v1 全部 + #3449）。
 4. 部署後：驗 `deployment.json` SHA → 295、319 走 Phase-C（附重測提問）。
-5. F11-a 寫 code + 測試 → PR 綠 → 合併（R2）→ 部署後第一次 dry-run。
+5. F11-a（#3452）PR 綠 → **停，Founder GO** → 合併 → 部署 → 第一次 dry-run。
 6. F11-b、F11-c 等 Founder 一次回覆。
 7. F7 S1：PR 綠後停，問 GO。
 
@@ -74,4 +78,5 @@ v2 修的是「回報一直卡著、關不掉」。
 
 - 部署：`deployment.json.backend_sha` = 目標 SHA；health OK。
 - F11-a：PHPUnit 邊界測試；把重開邏輯拿掉測試要 fail；上線後 dry-run 名單逐筆人工看過才 apply。
+- 重開路徑的正式站證據：第一筆被重開的單，用 `bug-detail-dump` 確認 status log 有 `reopened_by_reporter_reply`；沒觀測到前標 production user-path = NO。
 - 結束前重抓 queue dump，分開「本輪處理／新進」。
