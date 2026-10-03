@@ -47,9 +47,10 @@ class InvoiceAmountReconciliationService
         $positiveTotal = (int) $payments
             ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
             ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
-        $voidedTotal = abs((int) $payments
+        // Reversals come as a negative row OR a positive Method=void row: abs each one, never net them first.
+        $voidedTotal = (int) $payments
             ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
-            ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
+            ->sum(fn ($payment) => abs((int) ($payment->Amount ?? 0)));
         $netApplied = max(0, $positiveTotal - $voidedTotal);
 
         $totalAmount = $storedTotalAmount;
