@@ -57,6 +57,8 @@ class PaidStatusParityTest extends TestCase
 
         return [
             'resolver.byStudentClassIds' => $all,
+            'resolver.live.byStudentClassIds' => $all,
+            'amount.resolver.live.outstanding' => $all,
             'api.student_classes.payment_status' => $all,
             'api.parent.dashboard.payment_status' => $all,
             'api.accounting.ledger' => $all,
@@ -83,7 +85,7 @@ class PaidStatusParityTest extends TestCase
 
     /** Numeric sites: total / applied / outstanding (as strings) must equal expectedAmounts(), not just the status. */
     private const AMOUNT_SITES = [
-        'amount.resolver.outstanding' => 'outstanding', 'amount.alerts.tuition.outstanding' => 'outstanding',
+        'amount.resolver.outstanding' => 'outstanding', 'amount.resolver.live.outstanding' => 'outstanding', 'amount.alerts.tuition.outstanding' => 'outstanding',
         'amount.ledger.outstanding' => 'outstanding', 'amount.resolver.total' => 'total', 'amount.resolver.applied' => 'applied',
         'amount.ledger.total' => 'total', 'amount.ledger.applied' => 'applied',
     ];
@@ -390,6 +392,16 @@ class PaidStatusParityTest extends TestCase
         $out['amount.resolver.total'] = (string) (int) $r['payable_total'];
         $out['amount.resolver.applied'] = (string) (int) $r['applied'];
         $out['resolver.byStudentClassIds'] = $r['status'] === 'unbilled' ? 'unpaid' : $r['status'];
+
+        // B12 live path (AlertController / PaymentReport / modals still call this): kept in the matrix until S3 migrates callers.
+        $live = app(BillingPayableResolver::class)->byStudentClassIds([$id], [$course])[$id];
+        $out['amount.resolver.live.outstanding'] = $live['payable_outstanding'] === null ? 'null' : (string) (int) $live['payable_outstanding'];
+        if ($live['payable_status'] === 'unbilled') {
+            $out['resolver.live.byStudentClassIds'] = 'unpaid';
+        } else {
+            $liveApplied = (int) $live['payable_amount'] - (int) $live['payable_outstanding'];
+            $out['resolver.live.byStudentClassIds'] = (int) $live['payable_outstanding'] === 0 ? 'paid' : ($liveApplied > 0 ? 'partial' : 'unpaid');
+        }
 
         // B15: monthly per-period engine (date mode only).
         $mpp = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]));
