@@ -40,6 +40,19 @@ updates:
         text: 回報問題：如果我們問你問題後超過兩週沒回覆，會先結案；你直接在那筆回報留言就會自動重開。
     source_refs:
       - "alltrue:inapp_rootcause_v2:F11-a"
+  - id: staff-2026-10-03-text-contrast
+    published_at: "2026-10-03"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 灰色與橘色文字更清楚
+    summary: 系統裡比較淡的灰字和橘色文字都加深了，亮色和暗色模式都更好讀。
+    items:
+      - category: improved
+        text: 灰色說明文字和橘色文字加深，螢幕反光或看久了也比較清楚。
+    source_refs:
+      - "github:jerry200176-png/AllTrue_System#3472"
   - id: staff-2026-10-02-teacher-home-speed
     published_at: "2026-10-02"
     audiences:
