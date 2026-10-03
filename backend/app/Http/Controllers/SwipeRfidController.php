@@ -36,6 +36,7 @@ class SwipeRfidController extends Controller
 {
     private const PHOTO_DIR = 'swipe-photos';
     private const PHOTO_TTL_DAYS = 7;
+    private const FLEX_IMAGE_MAX_PX = 1024;
     private const PHOTO_TEXT_WINDOW_SECONDS = 120;
 
     /**
@@ -181,6 +182,7 @@ class SwipeRfidController extends Controller
         $dir = self::PHOTO_DIR . '/' . $campus->getKey();
         $this->prunePhotos($dir);
         $file = Str::uuid() . '.' . $request->file('photo')->extension();
+        $fitsFlex = $this->fitPhotoForFlex($request->file('photo')->getRealPath());
         $request->file('photo')->storeAs($dir, $file, 'local');
 
         $signed = URL::temporarySignedRoute(
@@ -191,7 +193,7 @@ class SwipeRfidController extends Controller
         );
         $imageUrl = rtrim((string) config('app.url'), '/') . $signed;
 
-        $sent = $this->pushPhotoToParents($student, $campus, $imageUrl);
+        $sent = $this->pushPhotoToParents($student, $campus, $imageUrl, $fitsFlex);
 
         return response()->json(['ok' => true, 'sent' => $sent, 'image_url' => $imageUrl]);
     }
@@ -211,7 +213,7 @@ class SwipeRfidController extends Controller
         return response()->file(Storage::path($path)); // default disk = local
     }
 
-    private function pushPhotoToParents(Student $student, Campus $campus, string $imageUrl): int
+    private function pushPhotoToParents(Student $student, Campus $campus, string $imageUrl, bool $fitsFlex): int
     {
         $token = (string) ($campus->messaging_channel_token ?? '');
         if ($token === '') {
@@ -229,8 +231,14 @@ class SwipeRfidController extends Controller
             try {
                 $delivered = Http::withToken($token)->timeout(5)->post('https://api.line.me/v2/bot/message/push', [
                     'to' => $binding->line_user_id,
-                    // 照片＋文字做成 1 張 Flex 卡＝家長收 1 則；altText 是通知列看到的字。
-                    'messages' => [$this->swipePhotoFlex($text, $imageUrl)],
+                    // 照片＋文字做成 1 張 Flex 卡＝聊天室 1 則；altText 是通知列看到的字。
+                    // 照片超過 Flex 上限又縮不了 → 退回文字＋圖片 2 則，家長至少收得到。
+                    'messages' => $fitsFlex
+                        ? [$this->swipePhotoFlex($text, $imageUrl)]
+                        : [
+                            ['type' => 'text', 'text' => $text],
+                            ['type' => 'image', 'originalContentUrl' => $imageUrl, 'previewImageUrl' => $imageUrl],
+                        ],
                 ])->successful();
             } catch (\Throwable $e) {
                 Log::warning('swipe_photo_line_push_failed: ' . $e->getMessage());
@@ -254,6 +262,34 @@ class SwipeRfidController extends Controller
         return $sent;
     }
 
+    /**
+     * LINE Flex 圖片上限 1024×1024。超過就用 GD 等比縮到 1024 並覆寫上傳暫存檔。
+     * 回傳 false = 超過又縮不了（沒有 GD 或讀不了圖），呼叫端改推一般圖片訊息。
+     */
+    private function fitPhotoForFlex(string $path): bool
+    {
+        [$w, $h, $type] = @getimagesize($path) ?: [0, 0, 0];
+        if ($w > 0 && $w <= self::FLEX_IMAGE_MAX_PX && $h <= self::FLEX_IMAGE_MAX_PX) {
+            return true;
+        }
+        if ($w <= 0 || !function_exists('imagescale')) {
+            return false;
+        }
+        $src = @imagecreatefromstring((string) file_get_contents($path));
+        if ($src === false) {
+            return false;
+        }
+        $scale = self::FLEX_IMAGE_MAX_PX / max($w, $h);
+        $dst = imagescale($src, max(1, (int) floor($w * $scale)), max(1, (int) floor($h * $scale)));
+        if ($dst === false) {
+            return false;
+        }
+
+        return $type === IMAGETYPE_PNG
+            ? imagepng($dst, $path)
+            : imagejpeg($dst, $path, 85);
+    }
+
     /** @return array<string,mixed> LINE Flex bubble：上面照片（點了看原圖），下面文字。 */
     private function swipePhotoFlex(string $text, string $imageUrl): array
     {
@@ -265,7 +301,7 @@ class SwipeRfidController extends Controller
                 'hero' => [
                     'type' => 'image', 'url' => $imageUrl, 'size' => 'full',
                     'aspectRatio' => '4:3', 'aspectMode' => 'cover',
-                    'action' => ['type' => 'uri', 'uri' => $imageUrl],
+                    'action' => ['type' => 'uri', 'label' => '查看原始照片', 'uri' => $imageUrl],
                 ],
                 'body' => [
                     'type' => 'box', 'layout' => 'vertical',

@@ -150,4 +150,14 @@ class SwipePhotoTest extends TestCase
         Storage::disk('local')->assertMissing($old);
         Http::assertNothingSent();
     }
+
+    public function test_hd_photo_is_shrunk_to_flex_limit_and_still_one_message(): void
+    {
+        $this->upload(['photo' => UploadedFile::fake()->image('hd.jpg', 1920, 1080)])->assertOk();
+
+        $files = Storage::disk('local')->files("swipe-photos/{$this->campus->id}");
+        [$w, $h] = getimagesize(Storage::disk('local')->path($files[0]));
+        $this->assertSame([1024, 576], [$w, $h]);
+        Http::assertSent(fn ($req) => count($req['messages']) === 1 && $req['messages'][0]['type'] === 'flex');
+    }
 }

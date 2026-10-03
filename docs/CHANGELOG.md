@@ -12,7 +12,7 @@
 
 ## 2026-10-03 — feat(rfid): swipe photo and text arrive as one LINE message
 <!-- release-notes: silent_ship=silent-2026-10-03-swipe-photo-flex -->
-- `POST /api/v1/swipe-photo` 推給家長的照片與「到班／離班」文字合成 1 張 LINE Flex 卡（上面照片、下面文字，點照片看原圖），家長只收到 1 則、只算 1 則額度。通知列顯示的仍是文字。
+- `POST /api/v1/swipe-photo` 推給家長的照片與「到班／離班」文字合成 1 張 LINE Flex 卡（上面照片、下面文字，點照片看原圖），家長聊天室只看到 1 則。照片超過 LINE 卡片上限（1024×1024）會先等比縮小；萬一縮不了才退回「文字＋照片」2 則。通知列顯示的仍是文字。
 
 ## 2026-10-01 — fix(qa): production calendar and tutoring acceptance follow actual contracts
 <!-- release-notes: silent_ship=silent-2026-10-01-calendar-tutoring-acceptance -->
