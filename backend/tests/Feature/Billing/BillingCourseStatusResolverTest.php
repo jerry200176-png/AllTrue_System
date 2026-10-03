@@ -186,4 +186,12 @@ class BillingCourseStatusResolverTest extends TestCase
             $this->assertSame('review_required', $this->resolve($this->course([], ['Charge' => 0, 'Rate' => 1500, 'Paid' => $paid]))['status']);
         }
     }
+
+    public function test_zero_columns_do_not_hide_a_monthly_review_verdict_as_free(): void
+    {
+        // Raw Charge/Rate are 0 but the period engine (sessions in two months, no invoice) demands review.
+        $r = $this->resolve($this->course([], ['ScheduleMode' => 'date', 'Charge' => 0, 'Rate' => 0], ['2026-07-03', '2026-08-04']));
+
+        $this->assertSame('review_required', $r['status']);
+    }
 }

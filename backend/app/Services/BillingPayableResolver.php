@@ -87,16 +87,16 @@ class BillingPayableResolver
         $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
         $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);
         $tutoring = strtolower(trim((string) ($course->getAttribute('ClassType') ?? ''))) === 'tutoring';
-        $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
-        $zeroFee = !$isPackageMember && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
-        if ($tutoring || $zeroFee) {
-            return $result('free', 0, 0, 0, [], 'none', null);
-        }
         // B15 is the period engine for monthly courses: a period it cannot attribute is review_required,
         // even without invoices (a legacy flag must not settle unattributed months).
         $unattributed = collect($monthly['periods'] ?? [])->where('source', 'unattributed')->pluck('billing_period')->all();
         // B15's own verdict (ambiguous items/coverage gaps, out-of-contract sessions, amount discrepancy) is preserved.
         $monthlyReview = (bool) ($monthly['review_required'] ?? false);
+        $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
+        $zeroFee = !$isPackageMember && !$monthlyReview && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
+        if ($tutoring || $zeroFee) {
+            return $result('free', 0, 0, 0, [], 'none', null);
+        }
         if ($invoices->isEmpty() && ($unattributed !== [] || $monthlyReview)) {
             $periods = array_map(fn ($billingPeriod) => $this->unattributedPeriod($billingPeriod), $unattributed);
 
