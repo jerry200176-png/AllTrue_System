@@ -11,8 +11,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
   checks: read
 
 concurrency:
@@ -32,9 +32,10 @@ jobs:
       tier: ${{ steps.classify.outputs.tier }}
     steps:
       - name: Checkout base revision only
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
 
       - name: Classify pull request without executing its code
         id: classify
@@ -98,6 +99,10 @@ jobs:
           PY
 
   enable-auto-merge:
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
     name: Enable GitHub auto-merge for safe PR
     needs: classify
     if: ${{ needs.classify.result == 'success' && needs.classify.outputs.decision == 'auto' }}

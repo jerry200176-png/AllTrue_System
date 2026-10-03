@@ -33,9 +33,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout (full history for revert simulation)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run rollback readiness checks
         run: bash scripts/rollback-readiness.sh
