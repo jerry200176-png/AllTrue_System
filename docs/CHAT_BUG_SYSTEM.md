@@ -182,6 +182,8 @@ last_reviewed: 2026-08-23
 | GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Closes #nnn`；必要時補 comment |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 等驗收 → `closed` |
 
+**GitHub issue 自動關閉（F14）**：`bug-phase-c-allowlist.yml` 回寫成功後，會用回覆裡的 issue 連結自動關 issue（`type:epic` 除外）。`bug-queue-dump.yml` 每次都附「in-app ↔ issue 不一致」報表（`scripts/inapp-issue-reconcile.py`），分診前先看。
+
 **Reporter-verify timeout**：見 [`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)（預設 7 日無回覆且無回歸訊號，可 `closed` 並註明 `closed_by_timeout`）。
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。

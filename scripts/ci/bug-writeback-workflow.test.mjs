@@ -439,3 +439,16 @@ console.log('bug-writeback-workflow.test.mjs: ok');
 assert.match(phaseCSource,
   /329 => \[[\s\S]*?"rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",[\s\S]*?"deploy" => "36218370051",/,
   'in-app329 closeout requires its exact confirmed containing revision and successful deployment');
+
+// F14: the linked GitHub issue closes when Phase-C ships, in a separate least-privilege job.
+{
+  const top = phaseCSource.split('\njobs:')[0];
+  assert.match(top, /permissions:\s+contents: read/, 'Phase-C top-level token stays read-only');
+  const closeJob = phaseCSource.split('\n  close-issue:')[1];
+  assert.ok(closeJob, 'Phase-C must have a close-issue job');
+  assert.match(closeJob, /needs: resolve/, 'close-issue runs only after resolve succeeds');
+  assert.match(closeJob, /permissions:\s+issues: write/, 'close-issue has only issues: write');
+  assert.match(closeJob, /type:epic/, 'epics are never auto-closed');
+  assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
+  assert.match(phaseCSource, /r\.get\("action"\) == "resolved"/, 'only resolved results close issues');
+}

@@ -79,6 +79,8 @@ jobs:
 
       - name: Test bug detail dump contract
         run: python3 scripts/tests/test_bug_detail_dump.py
+      - name: In-app ↔ issue reconcile tests (F14)
+        run: python3 scripts/tests/test_inapp_issue_reconcile.py
 
       - name: Test production identity evidence transport
         run: python3 scripts/tests/test_production_identity.py

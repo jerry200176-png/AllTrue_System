@@ -26,6 +26,10 @@ jobs:
   resolve:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      bug_id: ${{ steps.target.outputs.bug_id }}
+      issues: ${{ steps.shipped.outputs.issues }}
+      prod_head: ${{ steps.shipped.outputs.prod_head }}
     steps:
       - name: Checkout pinned SSH trust helper and request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -836,6 +840,7 @@ jobs:
             $fresh = \App\Models\BugReport::find($bugId);
             $results[] = [
               "id" => $bugId,
+              "issue" => preg_match("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $issueMatch) ? (int)$issueMatch[1] : null,
               "action" => $ok ? "resolved" : "failed",
               "from" => $status,
               "final" => $fresh ? $fresh->status : "missing",
@@ -847,9 +852,48 @@ jobs:
           '
           REMOTE
 
+      # F14: the GitHub issue closes when the fix is live (Phase-C), not when a PR merges.
+      - name: Collect shipped issues
+        id: shipped
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          lines = open("out/phase-c.log", encoding="utf-8").read().splitlines()
+          data = json.loads(lines[lines.index("---RESULTS---") + 1])
+          issues = sorted({r["issue"] for r in data["results"] if r.get("action") == "resolved" and isinstance(r.get("issue"), int)})
+          print("issues=" + " ".join(str(i) for i in issues))
+          print("prod_head=" + str(data.get("prod_head", ""))[:40])
+          PY
+
       - name: Upload phase-c log
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bug-phase-c-allowlist
           path: out/
           retention-days: 14
+
+  close-issue:
+    needs: resolve
+    if: needs.resolve.outputs.issues != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Close shipped GitHub issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUES: ${{ needs.resolve.outputs.issues }}
+          PROD_HEAD: ${{ needs.resolve.outputs.prod_head }}
+          BUG_ID: ${{ needs.resolve.outputs.bug_id }}
+        run: |
+          set -euo pipefail
+          for n in $ISSUES; do
+            [[ "$n" =~ ^[0-9]+$ ]] || continue
+            state="$(gh issue view "$n" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')"
+            # Epics stay open until their last phase ships (PR template rule).
+            case " $state " in *" CLOSED "*|*" type:epic "*) echo "skip #$n: $state"; continue ;; esac
+            gh issue close "$n" --reason completed --comment "已上線（production ${PROD_HEAD:0:9}），in-app #${BUG_ID} 已由 Phase-C 回寫。Closed automatically on ship (F14)."
+          done
