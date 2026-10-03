@@ -724,6 +724,9 @@ const resolutionNote = computed(() => {
   const log = [...detail.value.status_logs]
     .reverse()
     .find(l => terminal.includes(l.to_status));
+  if (log?.to_status === 'closed' && String(log.note || '').includes('closed_by_timeout')) {
+    return '因逾期未回覆而結案；直接在下方留言即可重開。';
+  }
   return statusLogDisplayNote(log);
 });
 

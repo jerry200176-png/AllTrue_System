@@ -876,36 +876,68 @@ class BugReportService
     public static function listEligibleForAwaitingReporterTimeout(?Carbon $now = null): array
     {
         $now = $now ?: Carbon::now();
-        $cutoff = $now->copy()->subDays(self::AWAITING_REPORTER_TIMEOUT_DAYS);
         $out = [];
         foreach (BugReport::query()->where('status', 'triaged')->pluck('reporter_user_id', 'id') as $bugId => $reporterId) {
-            $last = BugReportComment::query()
-                ->where('bug_report_id', (int) $bugId)
-                ->where('is_internal_note', false)
-                ->orderByDesc('created_at')
-                ->orderByDesc('id')
-                ->first();
-            if (!$last || (int) $last->author_user_id === (int) $reporterId || $last->created_at->gt($cutoff)) {
-                continue;
+            $row = self::awaitingReporterRow((int) $bugId, (int) $reporterId, $now);
+            if ($row !== null) {
+                $out[] = $row;
             }
-            $out[] = [
-                'bug_id' => (int) $bugId,
-                'asked_at' => $last->created_at->toIso8601String(),
-                'days_waiting' => (int) $last->created_at->diffInDays($now, true),
-            ];
         }
 
         return $out;
     }
 
     /**
+     * Single-report awaiting-reporter predicate (shared by the list and the locked apply recheck).
+     *
+     * @return array{bug_id:int,asked_at:string,days_waiting:int}|null
+     */
+    private static function awaitingReporterRow(int $bugId, int $reporterId, Carbon $now): ?array
+    {
+        $cutoff = $now->copy()->subDays(self::AWAITING_REPORTER_TIMEOUT_DAYS);
+        $last = BugReportComment::query()
+            ->where('bug_report_id', $bugId)
+            ->where('is_internal_note', false)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+        if (!$last || (int) $last->author_user_id === $reporterId || $last->created_at->gt($cutoff)) {
+            return null;
+        }
+
+        return [
+            'bug_id' => $bugId,
+            'asked_at' => $last->created_at->toIso8601String(),
+            'days_waiting' => (int) $last->created_at->diffInDays($now, true),
+        ];
+    }
+
+    /**
+     * Reporter public comment + timeout reopen in one locked transaction; a failed reopen rolls the comment back.
+     */
+    public static function addReporterCommentAndReopen(int $bugId, int $reporterId, string $body): BugReportComment
+    {
+        return DB::transaction(function () use ($bugId, $reporterId, $body) {
+            BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+            $comment = self::addComment($bugId, $reporterId, $body);
+            $res = self::reopenIfClosedByTimeout($bugId, $reporterId);
+            if ($res !== null && !$res['ok']) {
+                throw new \RuntimeException($res['message'] ?? 'reopen failed');
+            }
+
+            return $comment;
+        });
+    }
+
+    /**
      * A reporter reply on a timeout-closed bug reopens it (triaged, or in_progress for resolved-verification timeouts).
      */
-    public static function reopenIfClosedByTimeout(int $bugId, int $reporterId): void
+    /** @return array{ok: bool, code?: string, message?: string}|null null when nothing to reopen */
+    public static function reopenIfClosedByTimeout(int $bugId, int $reporterId): ?array
     {
         $bug = BugReport::query()->where('id', $bugId)->first();
         if (!$bug || $bug->status !== 'closed') {
-            return;
+            return null;
         }
         $closeLog = BugReportStatusLog::query()
             ->where('bug_report_id', $bugId)
@@ -915,8 +947,10 @@ class BugReportService
         if ($closeLog && str_contains((string) $closeLog->note, 'closed_by_timeout')) {
             // Resolved-verification timeouts return to in_progress (regression state); awaiting-info ones to triaged.
             $target = str_contains((string) $closeLog->note, 'Evidence Contract') ? 'in_progress' : 'triaged';
-            self::changeStatus($bugId, $reporterId, $target, 'reopened_by_reporter_reply', ['reopen_by_timeout' => true]);
+            return self::changeStatus($bugId, $reporterId, $target, 'reopened_by_reporter_reply', ['reopen_by_timeout' => true]);
         }
+
+        return null;
     }
 
     /**
@@ -973,7 +1007,7 @@ class BugReportService
             $result = DB::transaction(function () use ($bugId, $actorUserId, $note) {
                 $locked = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
                 $stillEligible = $locked && $locked->status === 'triaged'
-                    && in_array($bugId, array_column(self::listEligibleForAwaitingReporterTimeout(), 'bug_id'), true);
+                    && self::awaitingReporterRow($bugId, (int) $locked->reporter_user_id, Carbon::now()) !== null;
                 if (!$stillEligible) {
                     return ['ok' => false, 'code' => 'not_eligible', 'message' => 'No longer eligible'];
                 }

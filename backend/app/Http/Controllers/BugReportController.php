@@ -213,10 +213,9 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $comment = BugReportService::addComment($bugId, $userId, $request->input('body'), $isInternal);
-        if (!$isInternal && !$isSuperAdmin) {
-            BugReportService::reopenIfClosedByTimeout($bugId, (int) $userId);
-        }
+        $comment = (!$isInternal && !$isSuperAdmin)
+            ? BugReportService::addReporterCommentAndReopen($bugId, (int) $userId, $request->input('body'))
+            : BugReportService::addComment($bugId, $userId, $request->input('body'), $isInternal);
 
         return response()->json([
             'id' => $comment->id,
