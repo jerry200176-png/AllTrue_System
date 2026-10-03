@@ -57,6 +57,11 @@ _WRAPPER_RE = re.compile(
 
 MAX_UNWRAP_DEPTH = 3
 
+# A hook that times out is treated as "allow", and some patterns here are
+# quadratic. Refuse commands too long to scan well inside the 10s hook timeout
+# (12k chars worst case is about 1s). Long text belongs in --body-file / -F.
+MAX_COMMAND_CHARS = 12_000
+
 # Descriptive-text-only flags: their entire purpose is free-form human text
 # (commit message, PR/issue body/title) — never a path, ref, or nested
 # command. Scoped narrowly on purpose: this is NOT "any quoted string" or
@@ -373,6 +378,12 @@ def main() -> None:
     # command isn't split into separate "statements" that individually
     # look safe.
     cmd = re.sub(r"\\\r?\n", " ", cmd)
+
+    if len(cmd) > MAX_COMMAND_CHARS:
+        deny(
+            f"Blocked: command is {len(cmd)} chars, over the guard's {MAX_COMMAND_CHARS}-char "
+            "scan limit. Put long text in a file (--body-file / -F) and pass the path."
+        )
 
     check_all(cmd)
 
