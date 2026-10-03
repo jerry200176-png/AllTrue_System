@@ -384,18 +384,12 @@ class PaidStatusParityTest extends TestCase
         $paidAmount = (int) (AlertController::invoiceAggregateByStudentClassIds([$id])[$id]['paid_amount'] ?? 0);
         $out['model.isFullyPaidWithInvoiceAmount'] = $course->isFullyPaidWithInvoiceAmount($paidAmount, (int) $course->Charge) ? 'paid' : 'notpaid';
 
-        // B12: payable resolver (invoice only, no flag, no free state; `unbilled` reads as nothing paid).
-        $r = app(BillingPayableResolver::class)->byStudentClassIds([$id], [$course])[$id];
-        $out['amount.resolver.outstanding'] = $r['payable_outstanding'] === null ? 'null' : (string) (int) $r['payable_outstanding'];
-        $out['amount.resolver.total'] = $r['payable_amount'] === null ? 'null' : (string) (int) $r['payable_amount'];
-        $out['amount.resolver.applied'] = $r['payable_amount'] === null ? 'null'
-            : (string) ((int) $r['payable_amount'] - (int) $r['payable_outstanding']);
-        if ($r['payable_status'] === 'unbilled') {
-            $out['resolver.byStudentClassIds'] = 'unpaid';
-        } else {
-            $applied = (int) $r['payable_amount'] - (int) $r['payable_outstanding'];
-            $out['resolver.byStudentClassIds'] = (int) $r['payable_outstanding'] === 0 ? 'paid' : ($applied > 0 ? 'partial' : 'unpaid');
-        }
+        // B12 (F7 S1 contract): course-level resolver over all non-void invoices. `unbilled` (no invoice, no flag) reads as unpaid.
+        $r = app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$id], [$course])[$id];
+        $out['amount.resolver.outstanding'] = (string) (int) $r['outstanding'];
+        $out['amount.resolver.total'] = (string) (int) $r['payable_total'];
+        $out['amount.resolver.applied'] = (string) (int) $r['applied'];
+        $out['resolver.byStudentClassIds'] = $r['status'] === 'unbilled' ? 'unpaid' : $r['status'];
 
         // B15: monthly per-period engine (date mode only).
         $mpp = app(MonthlyPeriodPaymentService::class)->batch(collect([$course]));
