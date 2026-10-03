@@ -1,3 +1,7 @@
+## 2026-10-03 — fix(a11y): accessible names for attendance and profile form controls
+<!-- release-notes: silent_ship=silent-2026-10-03-form-control-labels -->
+- 點名與個人中心表單欄位補上 `label for`／`aria-label`（螢幕閱讀器可讀出欄位名稱），不改可見文字與流程；新增 `vuejs-accessibility/form-control-has-label` lint（限這兩頁），axe label／select-name BASELINE 歸零。
+
 ## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
 <!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
 - 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。
