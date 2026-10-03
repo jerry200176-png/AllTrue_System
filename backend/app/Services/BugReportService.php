@@ -44,7 +44,7 @@ class BugReportService
     ];
 
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
-    public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?:請|麻煩).{0,60}(?:回覆|確認|提供|告訴|說明)|[？?]/u';
+    public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
 
     private const VALID_TRANSITIONS = [
         'new' => ['triaged', 'in_progress', 'closed'],
