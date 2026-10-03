@@ -983,6 +983,7 @@ async function doAddComment() {
     newComment.value = '';
     commentIsInternal.value = false;
     await selectBug(activeBug.value);
+    loadBugs();
   } catch (e) {
     actionFeedback.value = { tone: 'error', text: '留言失敗：' + e.message };
   }

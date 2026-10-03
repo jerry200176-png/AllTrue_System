@@ -1,3 +1,7 @@
+## 2026-10-03 — feat(bug-report): triaged reports awaiting the reporter close after 14 days; reporter reply reopens
+<!-- release-notes: staff_update=staff-2026-10-03-awaiting-reporter-timeout -->
+- 已分流且最後一則公開留言是客服提問、14 天沒有回報人回覆的回報，經人工審核後會先結案並留下公開說明；回報人再於該筆留言會自動重開為已分流（一般結案不受影響）
+
 ## 2026-10-01 — fix(course): suspended teachers cannot be assigned to new courses
 <!-- release-notes: staff_update=staff-2026-10-01-active-teachers-only -->
 - 學生管理與課程管理的建課老師選單只顯示可指派的老師；一般課程、多老師時段及多科共用方案在儲存時再次驗證，停用或待審核老師不會被新指派。既有課程保留原授課老師與歷史顯示。
@@ -9,10 +13,6 @@
 ## 2026-10-02 — fix(schedule): monthly preview keeps a fixed-weekday opening date as the first lesson
 <!-- release-notes: staff_update=staff-2026-10-02-monthly-opening-preview -->
 - 新增月結課程時，若開課日剛好是固定上課星期，預覽清單與「共 N 堂」會把開課日算成首堂，和系統實際建立的堂次一致；在日曆手動調整後送出的堂次也不會再漏掉開課日那一堂。開課日不在固定星期時的既有規則不變。未改既有課程或帳務資料。
-
-## 2026-10-03 — feat(bug-report): triaged reports awaiting the reporter close after 14 days; reporter reply reopens
-<!-- release-notes: staff_update=staff-2026-10-03-awaiting-reporter-timeout -->
-- 已分流且最後一則公開留言是客服提問、14 天沒有回報人回覆的回報，經人工審核後會先結案並留下公開說明；回報人再於該筆留言會自動重開為已分流（一般結案不受影響）
 
 ## 2026-10-02 — perf(teacher-home): batch same-day schedule read-repair; show known tasks early (in-app #319)
 <!-- release-notes: staff_update=staff-2026-10-02-teacher-home-speed -->
