@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
+## 2026-10-03 — feat(bug-report): suggestions close as logged and reopen on reply; form shows your open reports on the page
+<!-- release-notes: staff_update=staff-2026-10-03-suggestion-loop -->
+- 建議／改善／不做／重複的回報可用 `closeAsLogged` 結案（GitHub issue 為產品清單），回報人留言自動重開；上線後可用 follow-up 通知已結案建議。回報視窗會列出自己在同頁仍處理中的回報，可直接補充。
+
 ## 2026-10-03 — fix(trial): failed trial-to-formal conversion no longer leaves the trial stopped
 <!-- release-notes: silent_ship=silent-2026-10-03-trial-convert-atomic -->
 - 試聽「轉為正式課程」若因衝堂或建立失敗被拒絕，試聽課程與其未來堂次現在會完整保留（原本可能已被結案、未來堂次已取消，卻沒有正式課程接手）；成功轉換的行為不變。

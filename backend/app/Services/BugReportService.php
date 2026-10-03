@@ -43,6 +43,10 @@ class BugReportService
         'needs_info',
     ];
 
+    /** Suggestion-style outcomes that close the in-app ticket; the GitHub issue is the backlog of record (F12). */
+    public const LOGGED_CLOSE_KINDS = ['suggestion', 'ux_friction', 'not_planned', 'duplicate'];
+    public const CLOSED_AS_LOGGED_NOTE = 'closed_as_logged';
+
     public const AWAITING_REPORTER_TIMEOUT_DAYS = 14;
     public const AWAITING_REPORTER_QUESTION_PATTERN = '/(?<![申邀聲])(?:請(?![求款假])|麻煩).{0,60}?(?:回覆|回答|確認|提供|告訴|告知|說明|補|上傳)|[？?]/u';
 
@@ -936,7 +940,7 @@ class BugReportService
     }
 
     /**
-     * A reporter reply on a timeout-closed bug reopens it (triaged, or in_progress for resolved-verification timeouts).
+     * A reporter reply on a timeout- or logged-closed bug reopens it (triaged, or in_progress for resolved-verification timeouts).
      */
     /** @return array{ok: bool, code?: string, message?: string}|null null when nothing to reopen */
     public static function reopenIfClosedByTimeout(int $bugId, int $reporterId): ?array
@@ -950,13 +954,79 @@ class BugReportService
             ->where('to_status', 'closed')
             ->orderByDesc('id')
             ->first();
-        if ($closeLog && str_contains((string) $closeLog->note, 'closed_by_timeout')) {
-            // Resolved-verification timeouts return to in_progress (regression state); awaiting-info ones to triaged.
-            $target = str_contains((string) $closeLog->note, 'Evidence Contract') ? 'in_progress' : 'triaged';
+        $note = (string) ($closeLog->note ?? '');
+        if (str_contains($note, 'closed_by_timeout') || str_contains($note, self::CLOSED_AS_LOGGED_NOTE)) {
+            // Resolved-verification timeouts return to in_progress (regression state); the rest to triaged.
+            $target = str_contains($note, 'Evidence Contract') ? 'in_progress' : 'triaged';
             return self::changeStatus($bugId, $reporterId, $target, 'reopened_by_reporter_reply', ['reopen_by_timeout' => true]);
         }
 
         return null;
+    }
+
+    /**
+     * F12: close a suggestion / ux / not-planned / duplicate report once it is logged, with one public reply,
+     * in one transaction. Idempotent: an already-closed report is left alone. A reporter reply reopens it.
+     *
+     * @return array{ok: bool, action?: string, code?: string, message?: string}
+     */
+    public static function closeAsLogged(int $bugId, int $actorId, string $kind, ?string $issueUrl, string $publicReply): array
+    {
+        if (!in_array($kind, self::LOGGED_CLOSE_KINDS, true)) {
+            return ['ok' => false, 'code' => 'invalid_kind', 'message' => 'kind must be one of ' . implode(',', self::LOGGED_CLOSE_KINDS)];
+        }
+        if ($kind !== 'not_planned' && ($issueUrl === null || $issueUrl === '')) {
+            return ['ok' => false, 'code' => 'github_issue_required', 'message' => 'a logged suggestion needs its GitHub issue'];
+        }
+        if (trim($publicReply) === '') {
+            return ['ok' => false, 'code' => 'public_reply_required', 'message' => 'public reply is required'];
+        }
+
+        return DB::transaction(function () use ($bugId, $actorId, $kind, $issueUrl, $publicReply) {
+            $bug = BugReport::query()->where('id', $bugId)->lockForUpdate()->first();
+            if (!$bug) {
+                return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
+            }
+            if ($bug->status === 'closed') {
+                return ['ok' => true, 'action' => 'already_closed'];
+            }
+            $options = ['disposition' => $kind];
+            if ($issueUrl !== null && $issueUrl !== '') {
+                $options['github_issue_url'] = $issueUrl;
+            }
+            $res = self::changeStatus($bugId, $actorId, 'closed', self::CLOSED_AS_LOGGED_NOTE, $options);
+            if (!$res['ok']) {
+                return $res;
+            }
+            self::addComment($bugId, $actorId, $publicReply);
+
+            return ['ok' => true, 'action' => 'closed'];
+        });
+    }
+
+    /**
+     * F13: the reporter's own unfinished reports on one page, so the form can offer "add to this one".
+     * Read-only (does not mark the inbox seen).
+     *
+     * @return list<array{id: int, title: string, status: string, created_at: ?string}>
+     */
+    public static function openOnPageForReporter(int $reporterId, array $campusIds, string $pageKey, int $limit = 3): array
+    {
+        return BugReport::query()
+            ->where('reporter_user_id', $reporterId)
+            ->when($campusIds !== [], fn ($q) => $q->whereIn('CampusID', $campusIds))
+            ->where('page_key', $pageKey)
+            ->whereIn('status', ['new', 'triaged', 'in_progress'])
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get(['id', 'title', 'status', 'created_at'])
+            ->map(fn (BugReport $b) => [
+                'id' => (int) $b->id,
+                'title' => (string) $b->title,
+                'status' => (string) $b->status,
+                'created_at' => $b->created_at?->toIso8601String(),
+            ])
+            ->all();
     }
 
     /**

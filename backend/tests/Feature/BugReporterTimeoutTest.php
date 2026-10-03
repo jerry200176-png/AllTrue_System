@@ -344,6 +344,55 @@ class BugReporterTimeoutTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_close_as_logged_closes_once_with_disposition_and_reporter_reply_reopens(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-03 12:00:00'));
+        [$admin, $reporter] = $this->seedUsers();
+        $bug = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDay(), false);
+        $issue = 'https://github.com/jerry200176-png/AllTrue_System/issues/1';
+
+        $this->assertSame('invalid_kind', BugReportService::closeAsLogged($bug->id, $admin->id, 'bug', $issue, 'x')['code']);
+        $this->assertSame('github_issue_required', BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', null, 'x')['code']);
+        $this->assertSame('triaged', $bug->fresh()->status);
+
+        $r1 = BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, '已收進產品清單');
+        $r2 = BugReportService::closeAsLogged($bug->id, $admin->id, 'suggestion', $issue, '已收進產品清單');
+        $this->assertSame('closed', $r1['action']);
+        $this->assertSame('already_closed', $r2['action']);
+        $this->assertSame('closed', $bug->fresh()->status);
+        $this->assertSame(1, BugReportComment::where('bug_report_id', $bug->id)->where('body', '已收進產品清單')->count());
+        $log = BugReportStatusLog::where('bug_report_id', $bug->id)->where('to_status', 'closed')->first();
+        $this->assertStringContainsString(BugReportService::DISPOSITION_MARKER, (string) $log->note);
+        $this->assertStringContainsString(BugReportService::CLOSED_AS_LOGGED_NOTE, (string) $log->note);
+
+        $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($reporter), 'Accept' => 'application/json'])
+            ->postJson("/api/v1/bugs/{$bug->id}/comments", ['body' => '補充一下'])->assertStatus(201);
+        $this->assertSame('triaged', $bug->fresh()->status);
+
+        $notPlanned = $this->makeTriagedBug($admin->id, $reporter->id, Carbon::now()->subDay(), false);
+        $this->assertTrue(BugReportService::closeAsLogged($notPlanned->id, $admin->id, 'not_planned', null, '先不做，原因是…')['ok']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_open_on_page_lists_only_own_unfinished_reports_on_that_page(): void
+    {
+        [$admin, $reporter] = $this->seedUsers();
+        $make = fn (int $uid, string $page, string $status) => BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $uid, 'title' => "{$page}-{$status}",
+            'description' => 'D', 'severity' => 'low', 'status' => $status, 'page_key' => $page,
+        ]);
+        $mine = $make($reporter->id, 'calendar', 'triaged');
+        $make($reporter->id, 'calendar', 'closed');
+        $make($reporter->id, 'students', 'triaged');
+        $make($admin->id, 'calendar', 'triaged');
+
+        $res = $this->withHeaders(['Authorization' => 'Bearer ' . $this->tokenFor($reporter), 'Accept' => 'application/json'])
+            ->getJson('/api/v1/bugs/open-on-page?page_key=calendar&branch_id=1')
+            ->assertOk();
+        $this->assertSame([$mine->id], array_column($res->json('data'), 'id'));
+    }
+
     private function tokenFor(User $user): string
     {
         UserCampus::firstOrCreate(['CampusID' => 1, 'UserID' => $user->id], ['Admin' => $user->type === 'S' ? 1 : 0, 'Approved' => 1]);

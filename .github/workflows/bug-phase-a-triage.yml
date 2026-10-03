@@ -1,7 +1,8 @@
 name: Bug Phase-A triage write-back
 
 # Narrow, auditable write-back for a freshly verified in-app bug.
-# This workflow never resolves or closes a bug.
+# This workflow never resolves a bug. With close_as_logged it closes a
+# suggestion/ux/not-planned/duplicate report via BugReportService::closeAsLogged (F12).
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +23,11 @@ on:
         description: Public reply to post on the in-app bug
         required: true
         type: string
+      close_as_logged:
+        description: Close as logged (suggestion, ux_friction, not_planned, duplicate); reporter reply reopens
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -64,12 +70,14 @@ jobs:
           GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
           DISPOSITION: ${{ inputs.disposition }}
           PUBLIC_REPLY: ${{ inputs.public_reply }}
+          CLOSE_AS_LOGGED: ${{ inputs.close_as_logged }}
         run: |
           set -euo pipefail
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$DISPOSITION" =~ ^[a-z_]+$ ]] || { echo "invalid disposition syntax"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
+          [[ "$CLOSE_AS_LOGGED" =~ ^(true|false)$ ]] || { echo "invalid close_as_logged"; exit 1; }
           PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
@@ -78,11 +86,11 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "${PI_SSH_USER}@${PI_SSH_HOST}" \
-            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
+            "BUG_ID='$BUG_ID' GITHUB_ISSUE_URL='$GITHUB_ISSUE_URL' DISPOSITION='$DISPOSITION' CLOSE_AS_LOGGED='$CLOSE_AS_LOGGED' PUBLIC_REPLY_B64='$PUBLIC_REPLY_B64' bash -s" <<'REMOTE'
           set -euo pipefail
           cd /home/admin/backend
           PUBLIC_REPLY="$(printf '%s' "$PUBLIC_REPLY_B64" | base64 -d)"
-          export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY
+          export BUG_ID GITHUB_ISSUE_URL DISPOSITION PUBLIC_REPLY CLOSE_AS_LOGGED
           php artisan tinker --execute='
           $bugId = (int)getenv("BUG_ID");
           $issueUrl = (string)getenv("GITHUB_ISSUE_URL");
@@ -98,6 +106,11 @@ jobs:
               ->where("Admin", 1)->where("Approved", 1)->orderBy("UserID")->value("UserID");
           $actor = $admin ? (int)$admin : 1;
           $svc = \App\Services\BugReportService::class;
+          if (getenv("CLOSE_AS_LOGGED") === "true") {
+              $closed = $svc::closeAsLogged($bugId, $actor, $disposition, $issueUrl, $reply);
+              if (!($closed["ok"] ?? false)) { throw new \RuntimeException(json_encode($closed)); }
+              echo json_encode(["bug_id" => $bugId, "from" => $status, "close_as_logged" => $closed, "issue" => $issueUrl], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          } else {
           $validatedDisposition = $svc::normalizeDispositionOptions([
               "disposition" => $disposition,
               "github_issue_url" => $issueUrl,
@@ -127,5 +140,6 @@ jobs:
               "comment" => $comment,
               "issue" => $issueUrl,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          }
           '
           REMOTE

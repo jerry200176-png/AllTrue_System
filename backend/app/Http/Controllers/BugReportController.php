@@ -151,6 +151,23 @@ class BugReportController extends Controller
         return response()->json($detail);
     }
 
+    /** F13: own unfinished reports on this page, shown in the form before a duplicate is sent. */
+    public function openOnPage(Request $request)
+    {
+        $userId = $this->resolveUserId($request);
+        if (!$userId) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+        $pageKey = (string) $request->query('page_key', '');
+        if ($pageKey === '' || strlen($pageKey) > 100) {
+            return response()->json(['data' => []]);
+        }
+        return response()->json([
+            // Own reports only; super_admin gets [] = no campus filter.
+            'data' => BugReportService::openOnPageForReporter($userId, $this->resolveReporterCampusIds($request), $pageKey),
+        ]);
+    }
+
     public function unreadBadge(Request $request)
     {
         $userId = $this->resolveUserId($request);

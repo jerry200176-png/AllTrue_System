@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       expected_status:
-        description: Current status that must remain unchanged (triaged, in_progress, or resolved)
+        description: Current status that must remain unchanged (triaged, in_progress, resolved, or closed for a logged suggestion that shipped)
         required: true
         type: string
       github_issue_url:
@@ -65,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
-          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved)$ ]] || { echo "invalid expected_status"; exit 1; }
+          [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           PUBLIC_REPLY_B64="$(printf '%s' "$PUBLIC_REPLY" | base64 | tr -d '\n')"

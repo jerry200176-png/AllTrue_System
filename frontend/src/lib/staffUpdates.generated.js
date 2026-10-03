@@ -34,6 +34,38 @@ export const staffUpdates = [
     "version": "2026.10.03"
   },
   {
+    "id": "staff-2026-10-03-suggestion-loop",
+    "publishedAt": "2026-10-03",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "回報建議會告訴你進度",
+    "summary": "建議收進產品清單後先結案，上線會通知你；同頁已有回報會提醒你補充。",
+    "items": [
+      "新功能或改善建議收進產品清單後會先結案，上線時在原回報通知你；直接留言就會重開。",
+      "開回報視窗時，如果你在這頁還有處理中的回報，會提醒你直接補充到那筆。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "新功能或改善建議收進產品清單後會先結案，上線時在原回報通知你；直接留言就會重開。",
+          "開回報視窗時，如果你在這頁還有處理中的回報，會提醒你直接補充到那筆。"
+        ]
+      }
+    ],
+    "sourceRefs": [],
+    "date": "2026-10-03",
+    "version": "2026.10.03"
+  },
+  {
     "id": "staff-2026-10-03-awaiting-reporter-timeout",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,

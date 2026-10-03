@@ -40,6 +40,19 @@ updates:
         text: 回報問題：如果我們問你問題後超過兩週沒回覆，會先結案；你直接在那筆回報留言就會自動重開。
     source_refs:
       - "alltrue:inapp_rootcause_v2:F11-a"
+  - id: staff-2026-10-03-suggestion-loop
+    published_at: "2026-10-03"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 回報建議會告訴你進度
+    summary: 建議收進產品清單後先結案，上線會通知你；同頁已有回報會提醒你補充。
+    items:
+      - category: improved
+        text: 新功能或改善建議收進產品清單後會先結案，上線時在原回報通知你；直接留言就會重開。
+      - category: improved
+        text: 開回報視窗時，如果你在這頁還有處理中的回報，會提醒你直接補充到那筆。
   - id: staff-2026-10-02-teacher-home-speed
     published_at: "2026-10-02"
     audiences:

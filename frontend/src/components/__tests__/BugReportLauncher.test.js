@@ -11,10 +11,11 @@ import {
   namePastedImage,
   validateBugAttachments,
 } from '../../lib/bugReportAttachments';
-import { submitBugReport } from '../../lib/bugReportsApi';
+import { submitBugReport, fetchOpenReportsOnPage } from '../../lib/bugReportsApi';
 
 vi.mock('../../lib/bugReportsApi', () => ({
   submitBugReport: vi.fn(() => Promise.resolve({ id: 1 })),
+  fetchOpenReportsOnPage: vi.fn(() => Promise.resolve([])),
 }));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -361,5 +362,30 @@ describe('bug report composer accessibility', () => {
     const globalStyles = readFileSync(resolve(__dirname, '../../styles.css'), 'utf8');
     expect(globalStyles).toMatch(/--ds-z-modal:\s*12001/);
     expect(globalStyles).toMatch(/\.mobile-bottom-nav[\s\S]*?z-index:\s*10000/);
+  });
+});
+
+describe('open reports on this page (F13)', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('offers to add to an unfinished report on the same page instead of sending a duplicate', async () => {
+    fetchOpenReportsOnPage.mockResolvedValueOnce([{ id: 359, title: '9/26 顯示跨校忙碌', status: 'triaged' }]);
+    const wrapper = await openLauncher({ currentPageKey: 'calendar' });
+    await flushPromises();
+
+    expect(fetchOpenReportsOnPage).toHaveBeenCalledWith(9, 'calendar');
+    bodyElement('.open-on-page-link').click();
+    await flushPromises();
+    expect(wrapper.emitted('open-bugs')).toEqual([[359]]);
+    wrapper.unmount();
+  });
+
+  it('shows nothing when there is no unfinished report on the page', async () => {
+    const wrapper = await openLauncher();
+    await flushPromises();
+    expect(bodyCount('.open-on-page')).toBe(0);
+    wrapper.unmount();
   });
 });

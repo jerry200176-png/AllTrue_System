@@ -82,6 +82,13 @@ export async function fetchBugReports(branchId, filters = {}, perPage = 20, page
   return json(res);
 }
 
+/** F13: the reporter's own unfinished reports on this page (read-only; does not mark the inbox seen). */
+export async function fetchOpenReportsOnPage(branchId, pageKey) {
+  const params = new URLSearchParams({ branch_id: branchId, page_key: pageKey });
+  const res = await fetch(`${API}/bugs/open-on-page?${params}`, { headers: headers() });
+  return (await json(res)).data || [];
+}
+
 export async function fetchBugDetail(bugId) {
   const res = await fetch(`${API}/bugs/${bugId}`, { headers: headers() });
   return json(res);
