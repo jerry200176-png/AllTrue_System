@@ -3,11 +3,19 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-03-adjust-error-message
   - id: staff-2026-10-03-swipe-line-switch
     published_at: "2026-10-03"
     audiences:
       - director
     importance: digest
+    title: 補卡失敗會顯示真正原因
+    summary: 補卡送不出去時，會顯示真正原因，不再只寫網路錯誤。
+    items:
+      - category: fixed
+        text: 補卡原因至少要寫兩個字；送不出去時會顯示真正原因，不再只寫「網路錯誤」。
+    source_refs:
+      - "alltrue:bug_report:375"
     title: 可以關掉刷卡 LINE 通知家長
     summary: 主任可關掉自己分校的刷卡 LINE 通知，預設開著。
     items:
