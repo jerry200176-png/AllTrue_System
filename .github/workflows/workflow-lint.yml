@@ -1,0 +1,82 @@
+name: Workflow Lint
+
+# Static checks for the CI surface itself (CodeQL does not cover workflow files).
+#  - actionlint: syntax / expression / runner-label errors. Blocking (repo is clean today).
+#    shellcheck integration is off until its existing findings are triaged.
+#  - zizmor: workflow security audit (template injection, unpinned actions,
+#    pull_request_target, excessive permissions). Advisory until the existing
+#    findings are fixed; then drop continue-on-error.
+# Tool versions are pinned; the actionlint tarball is checksum-verified.
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-lint-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    name: actionlint
+    # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install actionlint 1.7.12
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
+        run: |
+          set -euo pipefail
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+
+      - name: Run actionlint
+        run: '"$RUNNER_TEMP/actionlint" -color -shellcheck='
+
+  zizmor:
+    name: zizmor (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor 1.30.1
+        # Advisory: findings show as PR annotations and in the job summary,
+        # but do not fail the PR yet.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          pipx run --spec zizmor==1.30.1 zizmor --format=github --min-severity=medium .github/
+          rc=$?
+          {
+            echo "### zizmor"
+            pipx run --spec zizmor==1.30.1 zizmor --format=plain .github/ 2>/dev/null | tail -n 1
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
