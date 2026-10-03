@@ -1,3 +1,7 @@
+## 2026-10-03 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo
+<!-- release-notes: silent_ship=silent-2026-10-03-swipe-photo-text -->
+- `POST /api/v1/swipe-photo` 推給家長的 LINE 改為「文字＋照片」一次送出：文字由 AllTrue 依 2 分鐘內剛寫入的刷卡紀錄判斷「到班」或「離班」（例：`王小明 已於 10:00 到班`），照片早到、晚到或找不到紀錄時只寫「刷卡」不猜。讀卡機不需再自己推文字。
+
 ## 2026-10-03 — feat(bug-report): triaged reports awaiting the reporter close after 14 days; reporter reply reopens
 <!-- release-notes: staff_update=staff-2026-10-03-awaiting-reporter-timeout -->
 - 已分流且最後一則公開留言是客服提問、14 天沒有回報人回覆的回報，經人工審核後會先結案並留下公開說明；回報人再於該筆留言會自動重開為已分流（一般結案不受影響）
