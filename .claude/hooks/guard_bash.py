@@ -46,7 +46,7 @@ GAP = rf"(?:(?!{SEP}).)*?"
 # One alternative per token, so there is only one way to match a prefix run
 # (overlapping alternatives backtrack exponentially and time the hook out = allow).
 _PREFIX = r"(?:\b(?:sudo|env|command|exec|time|nice|nohup|[^\s=;&|]+=\S*)\s+)*"
-ANCHOR = rf"(?:^|{SEP}|\bthen\b)\s*{_PREFIX}"
+ANCHOR = rf"(?:^|{SEP}|\bthen\b|\$\(|`)\s*{_PREFIX}"
 
 # bash/sh/zsh/dash -c "..." / -lc '...' wrapper: extracts the quoted payload
 # so it can be re-checked as its own command, since ANCHOR-based patterns
@@ -56,6 +56,11 @@ _WRAPPER_RE = re.compile(
 )
 
 MAX_UNWRAP_DEPTH = 3
+
+# A hook that times out is treated as "allow", and some patterns here are
+# quadratic. Refuse commands too long to scan well inside the 10s hook timeout
+# (12k chars worst case is about 1s). Long text belongs in --body-file / -F.
+MAX_COMMAND_CHARS = 12_000
 
 # Descriptive-text-only flags: their entire purpose is free-form human text
 # (commit message, PR/issue body/title) — never a path, ref, or nested
@@ -82,7 +87,7 @@ _DESC_HEREDOC_RE = re.compile(
 )
 
 
-_SUBST_RE = re.compile(r"\$\(|`")
+_SUBST_RE = re.compile(r"\$\(|`|[<>]\(")
 
 
 def _blank(s: str) -> str:
@@ -182,6 +187,10 @@ def check_git_patterns(cmd: str) -> None:
     if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}[\s:]['\"]?(?:refs/heads/)?(?:main|master)\b(?![-/.\w])", cmd):
         deny("Blocked: push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
 
+    # 2c. admin merge bypasses required checks (AGENTS.md machine ban on --admin)
+    # (checked on the raw command in check_all: for gh pr merge, -m is the merge
+    # strategy, so its "value" is not inert text)
+
     # 3. git reset --hard
     if re.search(rf"\bgit\b{GAP}\breset\b{GAP}--hard\b", cmd):
         deny("Blocked: git reset --hard. Forbidden — see CLAUDE.md.")
@@ -243,7 +252,7 @@ def check_deploy_patterns(cmd: str) -> None:
 
 
 def check_credential_leak(cmd: str) -> None:
-    read_verbs = r"(cat|less|more|head|tail|echo|printf|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort|jq)\b"
+    read_verbs = r"(cat|less|more|head|tail|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort|jq)\b"
     if re.search(rf"{ANCHOR}{read_verbs}{GAP}{SECRET_FILE_RE.pattern}", cmd):
         deny(
             "Blocked: command outputs a credential-shaped file. If this is "
@@ -292,13 +301,18 @@ def _script_targets_pi(cmd: str) -> bool:
     # Any segment may run a script (bash -x, timeout, wrappers...), except ones
     # whose program only views files.
     viewers = {"git", "sed", "cat", "less", "more", "head", "tail", "grep", "rg",
-               "diff", "wc", "ls", "stat", "file", "awk", "jq", "nl", "tac"}
+               "diff", "wc", "ls", "stat", "file", "jq", "nl", "tac",
+               "shellcheck", "chmod"}
     toks = []
     for seg in re.split(SEP, cmd):
         words = seg.split()
-        if words and words[0] in viewers:
+        if words and not _SUBST_RE.search(seg) and (
+                words[0] in viewers or re.match(r"(?:bash|sh|zsh)\s+-n\b", seg.strip())):
             continue
         toks += re.findall(r"[\w./-]+\.(?:sh|bash)\b", seg)
+    toks = list(dict.fromkeys(toks))
+    if len(toks) > 20:
+        return True  # too many to read inside the hook timeout; fail closed
     for tok in toks:
         try:
             with open(tok, encoding="utf-8", errors="ignore") as fh:
@@ -318,6 +332,18 @@ def check_production_host(cmd: str) -> None:
         )
 
 
+def check_redirect_read(cmd: str) -> None:
+    # `< .env`, `$(<.env)`: the shell itself reads the file, whatever the command.
+    if re.search(rf"<\s*['\"]?[^\s;&|'\"()]*{SECRET_FILE_RE.pattern}", cmd):
+        deny("Blocked: shell redirection reads a credential-shaped file (AGENTS.md RULE-SEC-001).")
+
+
+def check_redirect_write(cmd: str) -> None:
+    # `> .env`, `>> ~/.ssh/config`, `| tee .env`: overwriting credentials.
+    if re.search(rf"(?:>>?|\btee\b(?:\s+-\S+)*)\s*['\"]?[^\s;&|'\"()]*{SECRET_FILE_RE.pattern}", cmd):
+        deny("Blocked: command writes to a credential-shaped file (AGENTS.md RULE-SEC-001).")
+
+
 def check_file_flags(cmd: str) -> None:
     # git commit -F <file> / gh --body-file <file> publish the file's contents.
     if re.search(rf"(?:\s-F|--body-file|--file)\s*=?\s*['\"]?[^\s;&|'\"]*{SECRET_FILE_RE.pattern}", cmd):
@@ -325,12 +351,16 @@ def check_file_flags(cmd: str) -> None:
 
 
 def check_all(cmd: str, depth: int = 0) -> None:
+    if re.search(rf"\bgh\b{GAP}\bpr\b{GAP}\bmerge\b{GAP}--admin\b", cmd):
+        deny("Blocked: gh pr merge --admin bypasses required checks. Forbidden (AGENTS.md).")
     scan_cmd = _strip_non_executed_text(cmd)
     check_git_patterns(scan_cmd)
     check_deploy_patterns(scan_cmd)
     check_credential_leak(scan_cmd)
     check_production_host(scan_cmd)
     check_file_flags(scan_cmd)
+    check_redirect_read(scan_cmd)
+    check_redirect_write(scan_cmd)
 
     if depth >= MAX_UNWRAP_DEPTH:
         return
@@ -361,6 +391,12 @@ def main() -> None:
     # command isn't split into separate "statements" that individually
     # look safe.
     cmd = re.sub(r"\\\r?\n", " ", cmd)
+
+    if len(cmd) > MAX_COMMAND_CHARS:
+        deny(
+            f"Blocked: command is {len(cmd)} chars, over the guard's {MAX_COMMAND_CHARS}-char "
+            "scan limit. Put long text in a file (--body-file / -F) and pass the path."
+        )
 
     check_all(cmd)
 

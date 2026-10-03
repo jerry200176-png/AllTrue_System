@@ -23,6 +23,7 @@ export default defineConfig({
     // Executed by the required foundation suite against the dedicated Vue fixture server.
     /assessment-clarity\.spec\.js$/,
     /ui-foundation-pages\.spec\.js$/,
+    /ui-foundation-a11y-axe\.spec\.js$/,
     /ui-foundation-role-matrix\.spec\.js$/,
     /learning-records-polish\.spec\.js$/,
     /learning-records-preview\.spec\.js$/,
