@@ -20,11 +20,28 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GUARD = os.path.join(HERE, "guard_bash.py")
 
 
+_FEATURE_REPO = None
+
+
+def _feature_repo() -> str:
+    """Throwaway repo on a feature branch, so SAFE `git commit` cases don't
+    depend on which branch the suite was launched from. Contains a copy of
+    the repo's Pi-touching script so the script-content check is exercised."""
+    global _FEATURE_REPO
+    if _FEATURE_REPO is None:
+        _FEATURE_REPO = tempfile.mkdtemp(prefix="guard-feature-")
+        subprocess.run(["git", "init", "-q", "-b", "feature/x", _FEATURE_REPO], check=True)
+        os.makedirs(os.path.join(_FEATURE_REPO, "scripts"))
+        with open(os.path.join(_FEATURE_REPO, "scripts", "post-merge-smoke.sh"), "w") as fh:
+            fh.write('PI_SSH="admin@pi.lifenet.com.tw"\nssh "$PI_SSH" uptime\n')
+    return _FEATURE_REPO
+
+
 def run(cmd: str, cwd: str = None) -> str:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}})
     out = subprocess.run(
         [sys.executable, GUARD], input=payload, capture_output=True, text=True,
-        cwd=cwd or HERE,
+        cwd=cwd or _feature_repo(),
     )
     return out.stdout.strip()
 
@@ -33,6 +50,15 @@ SAFE = [
     # AllTrue: local tests and docs that mention the Pi are fine
     "cd backend && vendor/bin/phpunit tests/Unit",
     "bash scripts/phpunit-isolated.sh",
+    "ssh -L 18080:127.0.0.1:18080 -i ~/.ssh/alltrue_daan_stage admin@alltrue.daan.lifenet.com.tw",
+    "git push origin feature-x:feature-x",
+    "git push -u origin HEAD:refs/heads/feature-x",
+    "git push -u origin chore/task-main-cleanup",
+    "git fetch origin main",
+    "git commit -F /tmp/msg.txt",
+    "gh pr create --body-file /tmp/pr.md",
+    "git commit -m 'inert $(not run) in single quotes'",
+    "php artisan migrate:status",
     "grep -rn pi.lifenet.com.tw docs/",
     "git commit -m 'never ssh admin@pi.lifenet.com.tw'",
     "git status",
@@ -64,7 +90,26 @@ DANGEROUS = [
     "ssh admin@pi.lifenet.com.tw 'cd /home/admin && php artisan test'",
     "ssh -i ~/.ssh/pi admin@pi.lifenet.com.tw",
     'scp backend/.env "$PI_SSH_USER@$PI_SSH_HOST:/tmp/"',
-    "rsync -av dist/ admin@192.168.1.10:/home/admin/public",
+    "bash scripts/post-merge-smoke.sh",
+    'git commit -m "$(git push --force origin main)"',
+    'gh pr create --body "$(ssh admin@pi.lifenet.com.tw uptime)"',
+    "git push origin +main",
+    "git push origin +feature:feature",
+    "git push -d origin topic",
+    "git push --prune origin",
+    "git push --mirror origin",
+    "git push origin main",
+    "git push origin HEAD:main",
+    "git branch --delete --force topic",
+    "git commit -F .env",
+    "gh pr create --body-file backend/.env",
+    "sed -n 1p .env",
+    "awk '{print}' .env",
+    "rg TOKEN .env",
+    "base64 .env",
+    "cat ~/.aws/credentials",
+    "php artisan migrate --force",
+    "cd backend && php artisan migrate --force",
     'bash -c "ssh pi.lifenet.com.tw uptime"',
     "git push --force origin main",
     "git push -f origin main",
@@ -190,6 +235,7 @@ def main() -> None:
         test_commit_on_branch(),
         test_symlink_credential(),
     ]
+    shutil.rmtree(_feature_repo(), ignore_errors=True)
     if all(results):
         print(f"OK: all {len(SAFE)} safe + {len(DANGEROUS)} dangerous + branch/symlink cases passed")
         sys.exit(0)

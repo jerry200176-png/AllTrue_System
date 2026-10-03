@@ -59,7 +59,7 @@ MAX_UNWRAP_DEPTH = 3
 # "any heredoc" (that would let e.g. `bash -c "$(cat <<'EOF' ... EOF)"`
 # smuggle a real command past the scan) — only text captured specifically
 # as the value of one of these flags is treated as non-executed.
-_DESC_FLAGS = r"(?:--body|--title|--description|--message|-m|-F|--body-file)"
+_DESC_FLAGS = r"(?:--body|--title|--description|--message|-m)"
 
 # Case 1: `<flag> "...text..."` — plain quoted string.
 _DESC_QUOTED_RE = re.compile(
@@ -73,9 +73,12 @@ _DESC_QUOTED_RE = re.compile(
 _DESC_HEREDOC_RE = re.compile(
     rf"{_DESC_FLAGS}\s*=?\s*(['\"]?)\$\(\s*cat\s+<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2[ \t]*\r?\n"
     r"(.*?\r?\n)"
-    r"[ \t]*\3[ \t]*\)\1",
+    r"[ \t]*\3\s*\)\1",
     re.DOTALL,
 )
+
+
+_SUBST_RE = re.compile(r"\$\(|`")
 
 
 def _blank(s: str) -> str:
@@ -91,12 +94,16 @@ def _strip_non_executed_text(cmd: str) -> str:
     see module docstring on why full shell parsing is out of scope."""
 
     def _blank_heredoc(m: "re.Match") -> str:
+        if not m.group(2) and _SUBST_RE.search(m.group(4)):
+            return m.group(0)  # unquoted delimiter: $(...) / backticks still execute
         return m.group(0)[: m.start(4) - m.start(0)] + _blank(m.group(4)) + \
             m.group(0)[m.end(4) - m.start(0):]
 
     cmd = _DESC_HEREDOC_RE.sub(_blank_heredoc, cmd)
 
     def _blank_quoted(m: "re.Match") -> str:
+        if m.group(2) == '"' and _SUBST_RE.search(m.group(3)):
+            return m.group(0)  # "$(...)" / backticks execute inside double quotes
         return m.group(0)[: m.start(3) - m.start(0)] + _blank(m.group(3)) + \
             m.group(0)[m.end(3) - m.start(0):]
 
@@ -137,7 +144,7 @@ def current_branch() -> str:
 
 SECRET_FILE_RE = re.compile(
     r"(\.env(?:\.[A-Za-z]+)?\b|[^;&|\s\"']*\.pem\b|\bid_rsa(?:\.\w+)?\b|"
-    r"\bcredentials\.json\b|\.ssh/[A-Za-z0-9_.-]*\b)"
+    r"\bcredentials\.json\b|\.ssh/[A-Za-z0-9_.-]*\b|\.aws/[A-Za-z0-9_.-]*\b)"
 )
 
 
@@ -160,11 +167,16 @@ def check_git_patterns(cmd: str) -> None:
 
     # 2. force push
     force_flag = r'(--force\b|--force-with-lease\b|(?:^|[\s,"\'])-f(?:[\s,"\']|$))'
-    if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}{force_flag}", cmd):
+    if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}{force_flag}", cmd) or \
+            re.search(rf"\bgit\b{GAP}\bpush\b{GAP}\s\+[^\s;&|]", cmd):
         deny(
             "Blocked: force push. Forbidden without explicit Founder "
             "approval this session (CLAUDE.md)."
         )
+
+    # 2b. direct push to main/master (R3: feature branch + PR only)
+    if re.search(rf"\bgit\b{GAP}\bpush\b{GAP}[\s:](?:refs/heads/)?(?:main|master)\b(?![-/.\w])", cmd):
+        deny("Blocked: push to main/master. Push a feature branch and open a PR (CLAUDE.md R3).")
 
     # 3. git reset --hard
     if re.search(rf"\bgit\b{GAP}\breset\b{GAP}--hard\b", cmd):
@@ -178,13 +190,15 @@ def check_git_patterns(cmd: str) -> None:
         )
 
     # 5. force branch delete / remote ref deletion
-    if re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}-[a-zA-Z]*D\b", cmd):
+    if re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}-[a-zA-Z]*D\b", cmd) or (
+            re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}--delete\b", cmd)
+            and re.search(rf"\bgit\b{GAP}\bbranch\b{GAP}(--force\b|\s-f\b)", cmd)):
         deny(
             "Blocked: force branch delete. Forbidden without explicit "
             "Founder approval."
         )
     if re.search(
-        rf"\bgit\b{GAP}\bpush\b{GAP}(--delete\b|:[A-Za-z0-9/_.-]+(?:\s|$))",
+        rf"\bgit\b{GAP}\bpush\b{GAP}(--delete\b|--prune\b|--mirror\b|\s-d\b|\s:[A-Za-z0-9/_.-]+(?:\s|$))",
         cmd,
     ):
         deny(
@@ -204,6 +218,7 @@ def check_deploy_patterns(cmd: str) -> None:
         rf"{ANCHOR}terraform\b{GAP}\bapply\b",
         rf"{ANCHOR}supabase\b{GAP}\bdb\b{GAP}\bpush\b",
         rf"{ANCHOR}prisma\b{GAP}\bmigrate\b{GAP}\bdeploy\b",
+        rf"{ANCHOR}php\b{GAP}\bartisan\b{GAP}\bmigrate\S*{GAP}--force\b",
         rf"{ANCHOR}kubectl\b{GAP}\bapply\b",
         rf"{ANCHOR}gh\b{GAP}\bworkflow\b{GAP}\brun\b{GAP}deploy",
         rf"{ANCHOR}(npm|yarn|pnpm)\b{GAP}\brun\b{GAP}\bdeploy\b",
@@ -222,7 +237,7 @@ def check_deploy_patterns(cmd: str) -> None:
 
 
 def check_credential_leak(cmd: str) -> None:
-    read_verbs = r"(cat|less|more|head|tail|echo|printf)\b"
+    read_verbs = r"(cat|less|more|head|tail|echo|printf|sed|awk|grep|rg|base64|xxd|od|strings|nl|tac|cut|sort)\b"
     if re.search(rf"{ANCHOR}{read_verbs}{GAP}{SECRET_FILE_RE.pattern}", cmd):
         deny(
             "Blocked: command outputs a credential-shaped file. If this is "
@@ -241,7 +256,8 @@ def check_credential_leak(cmd: str) -> None:
         if not segment:
             continue
         tokens = segment.split()
-        if not tokens or tokens[0] not in ("cat", "head", "tail", "less", "more"):
+        if not tokens or tokens[0] not in ("cat", "head", "tail", "less", "more", "sed", "awk",
+                                           "grep", "rg", "base64", "xxd", "od", "strings", "nl", "tac"):
             continue
         for tok in tokens[1:]:
             if tok.startswith("-"):
@@ -263,15 +279,33 @@ def check_credential_leak(cmd: str) -> None:
 
 # AllTrue: the Raspberry Pi is production. Agents never SSH/copy to it
 # (CLAUDE.md R2/R6, incident C: `php artisan test` on the Pi wiped prod DB).
-PI_TARGET = r"(?:pi\.lifenet\.com\.tw\b|\badmin@|\$\{?PI_(?:SSH_)?HOST\b)"
+PI_TARGET = r"(?:pi\.lifenet\.com\.tw\b|\$\{?PI_(?:SSH_)?(?:HOST|USER)\b)"
+
+
+def _script_targets_pi(cmd: str) -> bool:
+    for tok in re.findall(r"[\w./-]+\.(?:sh|bash)\b", cmd):
+        try:
+            with open(tok, encoding="utf-8", errors="ignore") as fh:
+                body = fh.read(200_000)
+        except OSError:
+            continue
+        if re.search(r"pi\.lifenet\.com\.tw", body) and re.search(r"\b(?:ssh|scp|rsync)\b", body):
+            return True
+    return False
 
 
 def check_production_host(cmd: str) -> None:
-    if re.search(rf"\b(?:ssh|scp|sftp|rsync)\b{GAP}{PI_TARGET}", cmd):
+    if re.search(rf"\b(?:ssh|scp|sftp|rsync)\b{GAP}{PI_TARGET}", cmd) or _script_targets_pi(cmd):
         deny(
             "Blocked: SSH/copy to the production Pi. Forbidden for agents — "
             "all changes go branch -> PR -> CI -> deploy.yml (CLAUDE.md R2/R6)."
         )
+
+
+def check_file_flags(cmd: str) -> None:
+    # git commit -F <file> / gh --body-file <file> publish the file's contents.
+    if re.search(rf"(?:\s-F|--body-file|--file)\s*=?\s*['\"]?[^\s;&|'\"]*{SECRET_FILE_RE.pattern}", cmd):
+        deny("Blocked: a credential-shaped file would be published as a commit message or PR/issue body.")
 
 
 def check_all(cmd: str, depth: int = 0) -> None:
@@ -280,6 +314,7 @@ def check_all(cmd: str, depth: int = 0) -> None:
     check_deploy_patterns(scan_cmd)
     check_credential_leak(scan_cmd)
     check_production_host(scan_cmd)
+    check_file_flags(scan_cmd)
 
     if depth >= MAX_UNWRAP_DEPTH:
         return
