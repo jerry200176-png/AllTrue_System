@@ -78,4 +78,15 @@ putenv('APP_ENV=testing');
     }
 })();
 
+// ── 本機每個 worktree 用自己的測試 DB ────────────────────────────────────────
+// 多個 agent 同時跑 RefreshDatabase 會互相 DROP 同一個 AllTrue_test。
+// 借用 Laravel 內建 ParallelTesting：有 TEST_TOKEN 時自動改用並建立
+// AllTrue_test_test_{token}（Illuminate\Testing\Concerns\TestDatabases）。
+// CI 一個 job 一個 DB，不需要；paratest/--parallel 自己給 token 時也不覆蓋。
+// ponytail: 每個 worktree 留一個 DB；太多時手動 DROP DATABASE AllTrue_test_test_%。
+if (!getenv('CI') && empty($_SERVER['TEST_TOKEN'])) {
+    $_SERVER['LARAVEL_PARALLEL_TESTING'] = 1;
+    $_SERVER['TEST_TOKEN'] = substr(preg_replace('/[^A-Za-z0-9]+/', '_', basename(dirname(__DIR__, 2))), 0, 40);
+}
+
 require __DIR__ . '/../vendor/autoload.php';
