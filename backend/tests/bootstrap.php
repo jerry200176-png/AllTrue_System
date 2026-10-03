@@ -78,14 +78,21 @@ putenv('APP_ENV=testing');
     }
 })();
 
-// ── 本機禁止直接用共用 AllTrue_test ─────────────────────────────────────────
+// ── 本機共用 AllTrue_test：排隊，不要互相清空 ────────────────────────────────
 // 多個 agent 同時跑 RefreshDatabase 會互相 DROP 同一個 AllTrue_test（2026-10-03）。
-// 本機一律走 scripts/phpunit-isolated.sh（每次一個臨時 MariaDB + 唯一 schema）。
-// CI 一個 job 一個 DB，不受影響。
-if (!getenv('CI') && getenv('DB_DATABASE') === 'AllTrue_test') {
-    fwrite(STDERR, "\n⛔ 本機不要直接跑 phpunit（共用 AllTrue_test 會被其他 session 清空）。\n"
-        . "   改用（在 repo 根目錄）：bash scripts/phpunit-isolated.sh --filter <Test>\n\n");
-    exit(1);
+// 直接跑 phpunit / artisan test 時先拿 flock，別人在用就等；鎖跟著 process 結束釋放。
+// 想並行就用 scripts/phpunit-isolated.sh（自己的臨時 MariaDB，不用排隊）。
+// GitHub Actions 一個 job 一個 DB；Laravel --parallel 每個 worker 自己的 DB：都不鎖。
+if (getenv('GITHUB_ACTIONS') !== 'true' && empty($_SERVER['LARAVEL_PARALLEL_TESTING'])
+    && getenv('DB_DATABASE') === 'AllTrue_test') {
+    $lock = @fopen('/tmp/alltrue-shared-test-db.lock', 'c');
+    if ($lock === false) {
+        fwrite(STDERR, "⚠️ 拿不到共用測試 DB 鎖，直接跑（可能和其他 session 互相清空）。\n");
+    } elseif (!flock($lock, LOCK_EX | LOCK_NB)) {
+        fwrite(STDERR, "⏳ 其他 session 正在用共用 AllTrue_test，排隊中…（不想等：bash scripts/phpunit-isolated.sh）\n");
+        flock($lock, LOCK_EX);
+    }
+    $GLOBALS['__alltrue_shared_test_db_lock'] = $lock;
 }
 
 require __DIR__ . '/../vendor/autoload.php';
