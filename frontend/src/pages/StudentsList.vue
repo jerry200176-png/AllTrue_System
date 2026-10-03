@@ -4225,7 +4225,7 @@ table th { font-size: 12.5px; }
   padding: 4px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--ds-primary, var(--primary));
+  color: var(--ds-primary-text);
   background: var(--ds-primary-wash, rgba(232, 121, 36, 0.08));
   border: 1px solid var(--ds-primary-wash, rgba(232, 121, 36, 0.25));
   border-radius: 6px;

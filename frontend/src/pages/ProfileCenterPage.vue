@@ -975,7 +975,7 @@ onMounted(loadData);
 
 .avatar-uploading {
   font-size: 13px;
-  color: var(--primary, #f97316);
+  color: var(--ds-primary-text);
   margin: 0;
 }
 

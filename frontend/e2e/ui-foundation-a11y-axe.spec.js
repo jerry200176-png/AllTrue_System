@@ -21,7 +21,7 @@ const BASELINE = {
   teacher: {},
   students: {},
   admissions: {},
-  calendar: { 'color-contrast': 10 },
+  calendar: { 'color-contrast': 8 },
   chat: { 'color-contrast': 1 },
   parent: { 'color-contrast': 1 },
   attendance: { 'color-contrast': 2, label: 2 },

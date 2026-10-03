@@ -1409,7 +1409,7 @@ function formatTime(iso) {
   padding: 2px 8px; border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--primary-bg, #f3f4f6);
-  color: var(--primary, #c2410c);
+  color: var(--ds-primary-text);
 }
 .dm-staff-empty { padding: 14px; font-size: 13px; color: var(--text-light); text-align: center; }
 

@@ -639,7 +639,7 @@ onBeforeUnmount(() => {
 .sdp-time-has-correction { text-decoration: line-through; text-decoration-color: #cbd5e1; }
 .sdp-time-arrow { font-size: 14px; color: var(--text-light, #9ca3af); margin: 0 2px; line-height: 1; }
 .sdp-time-corrected {
-  color: var(--primary, #2563eb);
+  color: var(--ds-primary-text);
   font-weight: 600;
   background: rgba(37, 99, 235, 0.08);
   padding: 1px 6px;
@@ -663,8 +663,8 @@ onBeforeUnmount(() => {
   font-size: 14px;
 }
 .sdp-detail-time-original { color: var(--text-light, #64748b); text-decoration: line-through; text-decoration-color: #cbd5e1; }
-.sdp-detail-arrow { color: var(--primary, #2563eb); font-size: 18px; }
-.sdp-detail-time-corrected { color: var(--primary, #2563eb); font-weight: 600; font-size: 15px; }
+.sdp-detail-arrow { color: var(--ds-primary-text); font-size: 18px; }
+.sdp-detail-time-corrected { color: var(--ds-primary-text); font-weight: 600; font-size: 15px; }
 .sdp-copy-btn {
   margin-left: auto;
   display: inline-flex;
@@ -672,7 +672,7 @@ onBeforeUnmount(() => {
   gap: 4px;
   border: 1px solid var(--primary, #2563eb);
   background: transparent;
-  color: var(--primary, #2563eb);
+  color: var(--ds-primary-text);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 12px;

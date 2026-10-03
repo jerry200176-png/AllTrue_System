@@ -495,7 +495,7 @@ defineEmits([
 .action-btn.leave:hover { background: var(--ds-warning-wash); }
 .action-btn.attendance { background: var(--ds-success-wash); color: var(--ds-success); border-color: var(--ds-success); }
 .action-btn.attendance:hover { background: var(--ds-success-wash); }
-.action-btn.learning { background: var(--ds-primary-wash); color: var(--ds-primary-deep, var(--ds-primary)); border-color: var(--ds-primary-wash); }
+.action-btn.learning { background: var(--ds-primary-wash); color: var(--ds-primary-text); border-color: var(--ds-primary-wash); }
 .action-btn.learning:hover { background: var(--ds-canvas-soft); }
 .action-btn.reschedule { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); border-color: var(--ds-ink-mute); }
 .action-btn.reschedule:hover { background: var(--ds-canvas-soft); }

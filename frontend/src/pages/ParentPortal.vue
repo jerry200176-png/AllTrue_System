@@ -2007,7 +2007,7 @@ onMounted(async () => {
 .pp-login-card { padding: 24px 20px; }
 .pp-login-header { text-align: center; margin-bottom: 20px; }
 .pp-login-icon { margin-bottom: 8px; }
-.pp-login-icon .material-symbols-outlined { font-size: 40px; color: var(--primary, var(--ds-primary)); }
+.pp-login-icon .material-symbols-outlined { font-size: 40px; color: var(--ds-primary-text); }
 .pp-login-header h2 { margin: 0; font-size: 1.3em; color: var(--ds-ink); }
 .pp-login-form { display: flex; flex-direction: column; gap: 14px; }
 .pp-field label {
