@@ -374,6 +374,33 @@ class TeacherAttendanceApiTest extends TestCase
     }
 
     /** @test */
+    public function api_validation_error_is_json_even_without_accept_header(): void
+    {
+        // in-app #375: the 補卡 modal sends no Accept header; a 1-char reason failed
+        // validation as a 302 redirect and the UI showed 「網路錯誤」.
+        $director = $this->makeDirector(1);
+        $teacher  = $this->makeTeacherUser(1);
+        $signin   = $this->makeSignIn($teacher['user']->id, 1);
+
+        $this->withHeaders(['Authorization' => "Bearer {$director['token']}"])
+            ->post("/api/v1/teacher-attendance/{$signin->id}/adjust", [
+                'new_signin_dt' => now()->toDateTimeString(),
+                'adjust_reason' => '忘',
+            ])
+            ->assertStatus(422)
+            ->assertJsonStructure(['message', 'errors' => ['adjust_reason']])
+            ->assertJsonPath('errors.adjust_reason.0', '補卡原因至少要寫兩個字');
+
+        $this->withHeaders(['Authorization' => "Bearer {$director['token']}"])
+            ->post('/api/v1/teacher-attendance/999999999/adjust', [
+                'new_signin_dt' => now()->toDateTimeString(),
+                'adjust_reason' => '忘記簽退',
+            ])
+            ->assertStatus(404)
+            ->assertJsonStructure(['message']);
+    }
+
+    /** @test */
     public function director_cannot_adjust_other_campus_record(): void
     {
         $director = $this->makeDirector(1);   // campus 1
