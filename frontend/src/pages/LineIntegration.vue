@@ -426,8 +426,14 @@ function notifyUrl() {
   return props.branchId ? `/api/v1/line/notify-settings?branch_id=${props.branchId}` : '/api/v1/line/notify-settings';
 }
 
+// 每次讀取／儲存都拿新號碼；只有最新那次的回應能改畫面（防切分校、重新整理跟儲存互相蓋掉）。
+let notifySeq = 0;
+let savingBranch;
+
 async function loadNotify() {
-  const branch = props.branchId;
+  // 同一分校正在儲存時不讀，避免讀到舊值蓋掉剛存好的。
+  if (notifySaving.value && savingBranch === props.branchId) return;
+  const seq = ++notifySeq;
   let data = null;
   try {
     const res = await fetch(notifyUrl(), { headers: await getAuthHeaders(), credentials: 'include' });
@@ -435,16 +441,19 @@ async function loadNotify() {
   } catch (e) {
     console.error('Failed to load LINE notify settings:', e);
   }
-  // 切分校時，舊分校較晚回來的結果不能蓋掉新分校。
-  if (branch === props.branchId) notify.value = data?.settings ? data : null;
+  if (seq === notifySeq) notify.value = data?.settings ? data : null;
 }
 
 async function toggleNotify(key, input) {
   const value = input.checked;
   const branch = props.branchId;
+  const seq = ++notifySeq;
+  savingBranch = branch;
   notifySaving.value = true;
   notifyMsg.value = '';
-  let saved = false;
+  let ok = false;
+  let msg = '連線錯誤，請稍後再試';
+  let settings = null;
   try {
     const body = { settings: { [key]: value } };
     if (branch != null && branch !== '') body.branch_id = Number(branch);
@@ -455,17 +464,20 @@ async function toggleNotify(key, input) {
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    notifyOk.value = res.ok;
-    notifyMsg.value = res.ok ? '✅ 已儲存' : (data.message || '儲存失敗');
-    saved = res.ok;
-    if (res.ok && branch === props.branchId) notify.value = { ...notify.value, settings: data.settings };
+    ok = res.ok;
+    msg = res.ok ? '✅ 已儲存' : (data.message || '儲存失敗');
+    settings = data.settings;
   } catch {
-    notifyOk.value = false;
-    notifyMsg.value = '連線錯誤，請稍後再試';
+    // msg 維持連線錯誤
   } finally {
-    if (!saved) input.checked = !value; // 沒存成功 → 勾選框退回原狀
     notifySaving.value = false;
-    setTimeout(() => { notifyMsg.value = ''; }, 4000);
+    if (seq === notifySeq) {
+      notifyOk.value = ok;
+      notifyMsg.value = msg;
+      if (ok) notify.value = { ...notify.value, settings };
+      else input.checked = !value; // 沒存成功 → 勾選框退回原狀
+      setTimeout(() => { notifyMsg.value = ''; }, 4000);
+    }
   }
 }
 
