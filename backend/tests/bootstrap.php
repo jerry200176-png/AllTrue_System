@@ -78,4 +78,21 @@ putenv('APP_ENV=testing');
     }
 })();
 
+// ── 本機共用 AllTrue_test：排隊，不要互相清空 ────────────────────────────────
+// 多個 agent 同時跑 RefreshDatabase 會互相 DROP 同一個 AllTrue_test（2026-10-03）。
+// 直接跑 phpunit / artisan test 時先拿 flock，別人在用就等；鎖跟著 process 結束釋放。
+// 想並行就用 scripts/phpunit-isolated.sh（自己的臨時 MariaDB，不用排隊）。
+// GitHub Actions 一個 job 一個 DB，不鎖。--parallel 也鎖（沒用 DB trait 的測試仍在共用 schema）。
+if (getenv('GITHUB_ACTIONS') !== 'true' && getenv('DB_DATABASE') === 'AllTrue_test') {
+    $lock = @fopen('/tmp/alltrue-shared-test-db.lock', 'c');
+    if ($lock === false) {
+        fwrite(STDERR, "⛔ 拿不到 /tmp/alltrue-shared-test-db.lock，不跑（會和其他 session 互相清空）。改用：bash scripts/phpunit-isolated.sh\n");
+        exit(1);
+    } elseif (!flock($lock, LOCK_EX | LOCK_NB)) {
+        fwrite(STDERR, "⏳ 其他 session 正在用共用 AllTrue_test，排隊中…（不想等：bash scripts/phpunit-isolated.sh）\n");
+        flock($lock, LOCK_EX);
+    }
+    $GLOBALS['__alltrue_shared_test_db_lock'] = $lock;
+}
+
 require __DIR__ . '/../vendor/autoload.php';
