@@ -15,7 +15,6 @@ concurrency:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   pi-export:
@@ -24,11 +23,12 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -311,7 +311,7 @@ jobs:
           print("DIRECTOR_SUMMARY", summ.exists())
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: director-leave-hc-and-evidence
@@ -320,12 +320,17 @@ jobs:
           if-no-files-found: warn
 
   comment-issues:
+    permissions:
+      contents: read
+      issues: write
     name: Comment Issues with evidence
     needs: pi-export
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: director-leave-hc-and-evidence
           path: out

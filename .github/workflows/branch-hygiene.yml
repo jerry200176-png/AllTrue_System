@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # 需要完整 remote branch 資訊
 
@@ -47,7 +47,7 @@ jobs:
           echo "## 🌿 Branch Hygiene Report ($(date +'%Y-%m-%d'))" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "${{ steps.hygiene.outputs.has_stale }}" == "true" ]]; then
+          if [[ "${STEPS_HYGIENE_OUTPUTS_HAS_STALE}" == "true" ]]; then
             echo "⚠️ **有已合併分支可清理** — 請確認後執行 \`./scripts/branch-hygiene.sh --apply\`" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "✅ 分支狀態乾淨，無需清理" >> "$GITHUB_STEP_SUMMARY"
@@ -57,6 +57,9 @@ jobs:
           echo "<details><summary>詳細輸出</summary>" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "${{ steps.hygiene.outputs.output }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "${STEPS_HYGIENE_OUTPUTS_OUTPUT}" >> "$GITHUB_STEP_SUMMARY"
           echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
           echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          STEPS_HYGIENE_OUTPUTS_HAS_STALE: ${{ steps.hygiene.outputs.has_stale }}
+          STEPS_HYGIENE_OUTPUTS_OUTPUT: ${{ steps.hygiene.outputs.output }}

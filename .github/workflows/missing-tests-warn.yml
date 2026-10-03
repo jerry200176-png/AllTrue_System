@@ -25,9 +25,10 @@ jobs:
     if: ${{ !github.event.pull_request.draft }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Detect missing-tests pattern
         id: detect
@@ -66,7 +67,7 @@ jobs:
 
       - name: Post warning comment
         if: steps.detect.outputs.missing == 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const marker = '<!-- missing-tests-warn -->';
@@ -83,7 +84,7 @@ jobs:
 
       - name: Clear stale warning when tests added
         if: steps.detect.outputs.missing == 'false'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const marker = '<!-- missing-tests-warn -->';

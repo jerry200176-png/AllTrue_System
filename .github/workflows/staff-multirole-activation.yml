@@ -141,12 +141,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and read-only scripts
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
             scripts/ops/staff-multirole-role-diff.php
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -198,7 +199,7 @@ jobs:
           {
             echo "action=preflight"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- output ----"
             grep -vE 'DB_PASS|password' /tmp/preflight-output.txt 2>/dev/null || true
@@ -206,7 +207,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-preflight-${{ github.run_id }}
           path: /tmp/preflight-audit.txt
@@ -224,12 +225,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and grant script
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
             scripts/ops/staff-multirole-pilot-grant.php
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -277,7 +279,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-pilot-dryrun-${{ github.run_id }}
           path: /tmp/pilot-result.txt
@@ -296,12 +298,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout pinned SSH trust helper and grant script
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
             scripts/ops/staff-multirole-pilot-grant.php
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -351,19 +354,23 @@ jobs:
         if: always()
         run: |
           {
-            echo "action=${{ github.event.inputs.action }}"
-            echo "user_id=${{ github.event.inputs.user_id }}"
-            echo "campus_id=${{ github.event.inputs.campus_id }}"
+            echo "action=${GITHUB_EVENT_INPUTS_ACTION}"
+            echo "user_id=${GITHUB_EVENT_INPUTS_USER_ID}"
+            echo "campus_id=${GITHUB_EVENT_INPUTS_CAMPUS_ID}"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- output ----"
             grep -vE 'DB_PASS|password' /tmp/pilot-result.txt 2>/dev/null || true
           } > /tmp/pilot-audit.txt
+        env:
+          GITHUB_EVENT_INPUTS_ACTION: ${{ github.event.inputs.action }}
+          GITHUB_EVENT_INPUTS_USER_ID: ${{ github.event.inputs.user_id }}
+          GITHUB_EVENT_INPUTS_CAMPUS_ID: ${{ github.event.inputs.campus_id }}
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-pilot-${{ github.run_id }}
           path: /tmp/pilot-audit.txt
@@ -382,12 +389,13 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout pinned SSH trust helper and diff script
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
             scripts/ops/staff-multirole-role-diff.php
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -600,18 +608,22 @@ jobs:
           {
             echo "action=enable"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
-            echo "expected_head_sha=${{ github.event.inputs.expected_head_sha }}"
-            echo "expected_pilot_user_id=${{ github.event.inputs.expected_pilot_user_id }}"
-            echo "acknowledge_narrowing=${{ github.event.inputs.acknowledge_narrowing }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
+            echo "expected_head_sha=${GITHUB_EVENT_INPUTS_EXPECTED_HEAD_SHA}"
+            echo "expected_pilot_user_id=${GITHUB_EVENT_INPUTS_EXPECTED_PILOT_USER_ID}"
+            echo "acknowledge_narrowing=${GITHUB_EVENT_INPUTS_ACKNOWLEDGE_NARROWING}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- redacted result log ----"
             grep -vE 'DB_PASS|SMOKE_TEACHER_PASSWORD|password' /tmp/enable-result.txt 2>/dev/null || true
           } > /tmp/enable-audit.txt
+        env:
+          GITHUB_EVENT_INPUTS_EXPECTED_HEAD_SHA: ${{ github.event.inputs.expected_head_sha }}
+          GITHUB_EVENT_INPUTS_EXPECTED_PILOT_USER_ID: ${{ github.event.inputs.expected_pilot_user_id }}
+          GITHUB_EVENT_INPUTS_ACKNOWLEDGE_NARROWING: ${{ github.event.inputs.acknowledge_narrowing }}
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-enable-${{ github.run_id }}
           path: /tmp/enable-audit.txt
@@ -630,11 +642,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
         with:
@@ -732,7 +745,7 @@ jobs:
           {
             echo "action=disable"
             echo "workflow_run_id=${{ github.run_id }}"
-            echo "triggered_by=${{ github.actor }}"
+            echo "triggered_by=${GITHUB_ACTOR}"
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "---- redacted result log ----"
             grep -vE 'DB_PASS|password' /tmp/disable-result.txt 2>/dev/null || true
@@ -740,7 +753,7 @@ jobs:
 
       - name: Upload audit artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: staff-multirole-disable-${{ github.run_id }}
           path: /tmp/disable-audit.txt

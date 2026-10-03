@@ -20,7 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
@@ -30,7 +32,9 @@ jobs:
       - name: Guard confirm phrase
         run: |
           set -euo pipefail
-          test "${{ inputs.confirm_read_only }}" = "READ_ONLY_XINDIAN_CAPACITY"
+          test "${INPUTS_CONFIRM_READ_ONLY}" = "READ_ONLY_XINDIAN_CAPACITY"
+        env:
+          INPUTS_CONFIRM_READ_ONLY: ${{ inputs.confirm_read_only }}
 
       - name: Setup SSH
         env:
@@ -69,7 +73,7 @@ jobs:
 
       - name: Upload evidence artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: xindian-capacity-diagnose-${{ github.run_id }}
           path: out/xindian-capacity.txt

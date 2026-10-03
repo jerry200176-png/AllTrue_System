@@ -75,7 +75,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Checkout workflow revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
@@ -166,7 +166,7 @@ jobs:
       runtime_state: ${{ steps.detect.outputs.runtime_state }}
     steps:
       - name: Checkout target revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -446,7 +446,7 @@ jobs:
       reason: ${{ steps.classify.outputs.reason }}
     steps:
       - name: Checkout target revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -970,7 +970,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - name: Checkout target revision for gate policy
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -1119,7 +1119,7 @@ jobs:
 
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -1611,7 +1611,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout exact smoke revision
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve-target.outputs.target_sha }}
 
@@ -1783,7 +1783,7 @@ jobs:
             echo "- normal campus/student selectors: synthetic IDs absent"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22'
           cache: npm
@@ -1806,7 +1806,7 @@ jobs:
 
       - name: Upload Parent Portal smoke report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: parent-portal-production-smoke-${{ github.run_id }}
           path: frontend/playwright-report/
@@ -1826,7 +1826,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
@@ -1968,7 +1968,7 @@ jobs:
       name: production-activation
     steps:
       - name: Checkout pinned SSH trust helper
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
