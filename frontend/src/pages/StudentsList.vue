@@ -464,7 +464,7 @@
                         <span :class="['small', 'payment-status-badge', paymentStatusButtonClass(course)]" role="status" :title="paymentStatusHelpTitle(course)">{{ paymentStatusButtonLabel(course) }}</span>
                         <span v-if="isTutoringBillingAnomaly(course)" class="payment-anomaly-hint" role="alert">帳務資料需由主任檢查，暫不提供付款操作。</span>
                         <button v-if="shouldShowPaymentAction(course)" type="button" class="small ghost" @click="goToTuitionBilling(course)">{{ paymentNextActionLabel(course) }}</button>
-                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
+                        <button type="button" class="small ghost" @click="openAddSessionsForCourse(course)">{{ isTutoringCourse(course) ? '延續輔導課（不收費）' : isTrialCourse(course) ? '轉為正式課程' : course.payment_type === 'monthly' ? '結算 / 續約下月' : isSessionPaymentLowRemaining(course) ? '再次續報加購' : '加購' }}</button>
                         <button v-if="course.payment_type === 'monthly'" type="button" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button v-if="isSessionPaymentLowRemaining(course)" type="button" class="small ghost" @click="editCourse(course)">編輯課程</button>
                         <button v-if="canCloseCourse(course)" type="button" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
@@ -838,7 +838,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="sessions-modal-title" @click.self="!addSessionsSubmitting && (showSessionsModal = false)">
       <div class="modal">
-        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
+        <h3 id="sessions-modal-title">{{ isTutoringCourse(selectedCourse) ? '延續輔導課（不收費）' : isTrialCourse(selectedCourse) ? '試聽轉為正式課程' : '加購堂數' }} — {{ getStudentCourseSubjectDisplayLabel(selectedCourse) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -1330,6 +1330,7 @@ const paymentNextActionLabel = (course) => {
   return '前往帳務中心';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
+const isTrialCourse = (course) => course?.class_type === 'trial';
 const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
 const shouldShowPaymentAction = (course) => !isTutoringCourse(course);
 const paymentStatusHelpTitle = (course) => {
@@ -3547,9 +3548,12 @@ const submitAddSessions = async () => {
     }
 
     if (props.branchId !== submittedBranch || selectedCourse.value?.id !== course.id) return;
+    const trial = isTrialCourse(course);
     const endpoint = tutoring
       ? `/api/v1/student-classes/${course.id}/continue-tutoring`
-      : `/api/v1/student-classes/${course.id}/purchase-batch`;
+      : trial
+        ? `/api/v1/student-classes/${course.id}/convert-trial`
+        : `/api/v1/student-classes/${course.id}/purchase-batch`;
     const res = await fetch(endpoint, {
       method: 'POST',
       credentials: 'include',
@@ -3563,7 +3567,9 @@ const submitAddSessions = async () => {
         start_date: submittedStart,
         ...(tutoring
           ? (course.payment_type === 'monthly' ? { end_date: submittedEnd } : {})
-          : {
+          : trial
+            ? { class_type: 'one_on_one' }
+            : {
             mode: 'new_purchase',
             ...(typeof purchaseDiscount !== 'undefined'
               && purchaseDiscount?.type

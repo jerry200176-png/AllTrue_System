@@ -3994,6 +3994,14 @@ class StudentClassController extends Controller
             ], 422);
         }
 
+        // in-app #374: a trial must become a regular course via convert-trial, never a new trial batch.
+        if (strtolower(trim((string) ($studentClass->ClassType ?? ''))) === 'trial') {
+            return response()->json([
+                'message' => '試聽課程不能直接加購，請使用「轉為正式課程」。',
+                'code' => 'trial_use_convert',
+            ], 422);
+        }
+
         // 月結制課程不支援加購堂數，應使用 renew-monthly 端點
         if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
             return response()->json([

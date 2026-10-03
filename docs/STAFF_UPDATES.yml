@@ -3,6 +3,18 @@
 # audiences: director|teacher only. After edit: cd frontend && npm run sync-release-notes
 
 updates:
+  - id: staff-2026-10-03-trial-convert-from-students
+    published_at: "2026-10-03"
+    audiences:
+      - director
+    importance: digest
+    title: 試聽課在學生管理改為轉正式課程
+    summary: 學生管理裡的試聽課，按鈕改成「轉為正式課程」，不會再建立另一筆試聽課。
+    items:
+      - category: fixed
+        text: 試聽課按「轉為正式課程」，保留試聽紀錄，不再多建一筆試聽。
+    source_refs:
+      - "alltrue:bug_report:374"
   - id: staff-2026-10-03-awaiting-reporter-timeout
     published_at: "2026-10-03"
     audiences:

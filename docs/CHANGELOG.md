@@ -1,3 +1,7 @@
+## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
+<!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
+- 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
+
 ## 2026-10-03 — feat(rfid): swipe-photo pushes arrival/leave text together with the photo
 <!-- release-notes: silent_ship=silent-2026-10-03-swipe-photo-text -->
 - `POST /api/v1/swipe-photo` 推給家長的 LINE 改為「文字＋照片」一次送出：文字由 AllTrue 依 2 分鐘內剛寫入的刷卡紀錄判斷「到班」或「離班」（例：`王小明 已於 10:00 到班`），照片早到、晚到或找不到紀錄時只寫「刷卡」不猜。讀卡機不需再自己推文字。

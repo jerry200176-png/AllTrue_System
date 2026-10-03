@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "courses convert to a regular course instead of a new trial batch",
           "status resolver contract; mixed void receipts no longer cancel"
         ]
       }
@@ -32,6 +33,7 @@ export const changelogDraftNotes = [
     "items": [
       "photo pushes arrival/leave text together with the photo",
       "reports awaiting the reporter close after 14 days; reporter reply reopens",
+      "courses convert to a regular course instead of a new trial batch",
       "status resolver contract; mixed void receipts no longer cancel"
     ]
   },
