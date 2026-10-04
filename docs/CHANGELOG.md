@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(scheduling): availability counts the same live lessons as booking; course slot edits don't block on their own lessons (in-app #338 #347 #359 #363 #365 #327)
 <!-- release-notes: silent_ship=silent-2026-10-04-availability-parity -->
 - 代課挑選與跨校衝堂檢查改用與排課相同的「有效堂次」規則（不再把停課、請假調整、作廢、已改期的堂次算成已滿／他校有課），他校衝突顯示「他校有課」；修改課程時段不再被自己舊時段的堂次或不同日期的學生加總擋下
+## 2026-10-04 — fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)
+<!-- release-notes: silent_ship=silent-2026-10-04-paused-projection -->
+- 暫停中的課程不再顯示「預排」日期（已建立的正式堂次照舊），點到暫停課程的預排日期改顯示「課程暫停中，恢復後才會排課」；已取消的堂次所在日期不再同時出現預排；課程管理「堂次」分頁預設改為清單（第N堂＋狀態），月曆可手動切換
 ## 2026-10-04 — fix: learning-record form opens the lesson you clicked; multi-teacher courses keep their own slots (in-app #334 #333)
 <!-- release-notes: silent_ship=silent-2026-10-04-lr-form-multiteacher -->
 - 評量表依點選的堂次帶入上課時間，不再被同日其他堂次覆蓋；同科目多位老師開課時，每位老師只保留自己的時段，不再產生重疊堂次

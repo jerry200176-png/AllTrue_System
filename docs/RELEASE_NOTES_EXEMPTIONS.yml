@@ -691,6 +691,10 @@ exemptions:
     changelog_date: "2026-10-04"
     changelog_title: "fix(scheduling): availability counts the same live lessons as booking; course slot edits don't block on their own lessons (in-app #338 #347 #359 #363 #365 #327)"
     reason: 代課挑選與課程時段編輯的可見變化（他校有課、不再擋自己的課）待正式站驗證後另 PR 發布教職員卡片
+  - id: silent-2026-10-04-paused-projection
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)"
+    reason: 修正主任回報（#340/#342/#343）的顯示錯誤，屬單一分校的個案修正，不需另發全員版本更新卡。
   - id: silent-2026-10-04-lr-form-multiteacher
     changelog_date: "2026-10-04"
     changelog_title: "fix: learning-record form opens the lesson you clicked; multi-teacher courses keep their own slots (in-app #334 #333)"
