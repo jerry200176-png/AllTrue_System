@@ -2,6 +2,10 @@
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
 
+## 2026-10-04 — fix(course-edit): slot edits don't block on the course's own lessons; one shared same-day remap plan for guard and sync (in-app #347)
+<!-- release-notes: silent_ship=silent-2026-10-04-course-edit-remap -->
+- 修改課程時段時，不再被自己舊時段的堂次或不同日期的學生加總擋下；檢查與實際搬移共用同一份「同日重排計畫」（已簽到／已核准紀錄的堂次不搬、剛好落在新時段的堂次佔用該時段），修正搬移後可能兩堂重疊的問題
+
 ## 2026-10-03 — fix(a11y): accessible names for attendance and profile form controls
 <!-- release-notes: silent_ship=silent-2026-10-03-form-control-labels -->
 - 點名與個人中心表單欄位補上 `label for`／`aria-label`（螢幕閱讀器可讀出欄位名稱），不改可見文字與流程；新增 `vuejs-accessibility/form-control-has-label` lint（限這兩頁），axe label／select-name BASELINE 歸零。

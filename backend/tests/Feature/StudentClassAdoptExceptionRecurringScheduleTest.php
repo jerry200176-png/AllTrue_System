@@ -14,6 +14,7 @@ use App\Models\UserCampus;
 use App\Services\ClassSessionContractReflowService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Mockery;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -268,6 +269,177 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
             ->putJson("/api/v1/student-classes/{$courseA->ID}", $payload);
         $conflictResponse->assertStatus(409);
         $this->assertSame('teacher_schedule_conflict', $conflictResponse->json('code'));
+    }
+
+    /**
+     * In-app #347：把課程時段 17:00-18:00 改到 17:30（部分重疊）時，自己的舊堂次不可擋住自己。
+     */
+    public function test_partial_overlap_move_ignores_own_regular_sessions_but_not_other_students(): void
+    {
+        [$token, $course, $teacherId] = $this->seedMondayCourseWithWednesdayException();
+        $slots = [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]];
+
+        $this->updateFixedSlots($token, $course, [1], $slots)->assertOk();
+
+        $other = Student::create(['name' => '真衝突', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $otherCourse = $this->createCourseRecord($other->id, $teacherId, ['week' => 5]);
+        $this->createSessionRecord($otherCourse->ID, '2026-04-27', '17:30:00', '18:30:00');
+        $this->updateFixedSlots($token, $course->fresh(), [1], $slots)->assertStatus(409);
+    }
+
+    /**
+     * In-app #347：不同日期的學生不可跨日加總成「已滿」。
+     */
+    public function test_students_on_different_dates_are_not_pooled_into_full(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $teacherId = 159;
+        $mine = Student::create(['name' => '編輯者', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($mine->id, $teacherId, ['ClassType' => 'one_on_two', 'week' => 3]);
+        foreach (['2026-04-18', '2026-04-25'] as $d) { // two Saturdays, one student each
+            $s = Student::create(['name' => 'S' . $d, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+            $c = $this->createCourseRecord($s->id, $teacherId, ['ClassType' => 'one_on_two', 'week' => 5]);
+            $this->createSessionRecord($c->ID, $d, '17:00:00', '18:00:00');
+        }
+        $resp = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
+                'days_of_week' => [6], 'start_time' => '17:00', 'payment_type' => 'session',
+                'day_time_slots' => [['day' => 6, 'start_time' => '17:00', 'duration_minutes' => 60]],
+            ]);
+        $resp->assertOk();
+    }
+
+    /**
+     * Two own regular rows on one date but only one new slot that day: the excess row is not remapped,
+     * so a new slot partially overlapping it must still conflict.
+     */
+    public function test_excess_own_regular_row_still_conflicts_when_slots_shrink(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '縮減時段', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60]])
+            ->assertStatus(409);
+        // 15:00 moves to 16:30 and the excess 17:00 row stays: overlap. An exact match to an existing row is fine.
+        $this->updateFixedSlots($token, $course->fresh(), [1], [['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60]])
+            ->assertOk();
+    }
+
+    /**
+     * A session locked by a sign-in is not remapped by the edit, so it is never excused as "will move":
+     * it stays at 15:00-16:00 and overlaps the new 15:30 slot.
+     */
+    public function test_locked_own_row_still_conflicts_even_when_slot_count_covers_rows(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定列', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [
+            ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
+            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
+        ])->assertStatus(409);
+    }
+
+    /** A pending-leave session is never moved by the sync, so it must still conflict with an overlapping new slot. */
+    public function test_pending_leave_row_is_not_treated_as_remapped(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '請假待審', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00', 'leave_requested');
+
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]])
+            ->assertStatus(409);
+    }
+
+    /** A locked row already on a new slot keeps it; unlocked rows pair with the remaining slots. */
+    public function test_aligned_locked_row_consumes_its_slot(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定對齊', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '16:00:00', '17:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '18:00:00', '19:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [
+            ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60],
+            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
+        ])->assertOk();
+
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
+        $this->assertSame(['15:00', '16:30', '18:00'], $starts);
+    }
+
+    /** Locked rows do not count toward the remap budget: 2 remappable rows still fit 2 new slots. */
+    public function test_locked_row_far_from_slots_does_not_inflate_remap_count(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定計數', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '09:00:00', '10:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 09:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [
+            ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
+            ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60],
+        ])->assertOk();
+
+        // Slots pair with unlocked rows only: 15:00→15:30, 17:00→17:30, locked 09:00 stays (no overlap).
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
+        $this->assertSame(['09:00', '15:30', '17:30'], $starts);
+    }
+
+    /**
+     * A locked exception exactly on a new slot is adopted and consumes it, so only one unlocked row moves:
+     * 16:00→17:30, 18:00 stays and overlaps 17:30-18:30. Guard and sync must agree (409).
+     */
+    public function test_locked_adopted_exception_consumes_its_slot_so_excess_row_conflicts(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定例外', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00', 'scheduled', 1);
+        $this->createSessionRecord($course->ID, '2026-04-27', '16:00:00', '17:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '18:00:00', '19:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [
+            ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60],
+            ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60],
+        ])->assertStatus(409);
+    }
+
+    /** A moved own session's paired schedules row moves with it and must not self-conflict on a partial shift. */
+    public function test_paired_schedule_row_of_moved_session_does_not_self_conflict(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '配對排程', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        DB::table('schedules')->insert(['student_id' => $student->id, 'branch_id' => 1, 'teacher_id' => 159,
+            'student_course_id' => $course->ID, 'day_of_week' => 1, 'schedule_date' => '2026-04-27',
+            'start_time' => '17:00:00', 'end_time' => '18:00:00', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]])
+            ->assertOk();
+
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+            ->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
+        $this->assertSame(['17:30'], $starts);
     }
 
     private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
