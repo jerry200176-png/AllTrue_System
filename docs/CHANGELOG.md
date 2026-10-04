@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(scheduling): availability counts the same live lessons as booking; course slot edits don't block on their own lessons (in-app #338 #347 #359 #363 #365 #327)
 <!-- release-notes: silent_ship=silent-2026-10-04-availability-parity -->
 - 代課挑選與跨校衝堂檢查改用與排課相同的「有效堂次」規則（不再把停課、請假調整、作廢、已改期的堂次算成已滿／他校有課），他校衝突顯示「他校有課」；修改課程時段不再被自己舊時段的堂次或不同日期的學生加總擋下
+## 2026-10-04 — feat(bug-report): reports carry the last buttons pressed and messages seen (F15)
+<!-- release-notes: silent_ship=silent-2026-10-04-report-breadcrumbs -->
+- 意見與建議回報自動附上最近按過的 15 個按鈕標籤與 5 則錯誤／警告訊息（不記 alert／confirm，避免臨時密碼等），長數字遮罩、不含輸入值；登出或切換分校即清除；後台分診卡顯示「最近按過／畫面訊息」（只存在 app 內，不進公開 log）。SOP 改為先查、不問。
 
 ## 2026-10-04 — perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)
 <!-- release-notes: silent_ship=silent-2026-10-04-class-sessions-latest-rows -->
