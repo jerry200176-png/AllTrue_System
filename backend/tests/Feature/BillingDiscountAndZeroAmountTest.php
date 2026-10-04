@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Models\{AuthToken, ClassSession, Invoice, ParentSession, Payment, PaymentReport, Student, StudentClass, StudentClassPricingAmendment, User, UserCampus};
 use App\Services\{BillingPayableResolver, DunningService, NotificationSyncService};
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\{DB, Schema};
 use Tests\TestCase;
 
 /** in-app #349 / #361: a transaction discount (allocated into Charge; Rate keeps the list price) drives billing. #346: NT$0 may only settle a free course. */
@@ -81,6 +81,16 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertDatabaseMissing('Notifications', ['SourceKey' => "tuition:1:{$freeTrial->ID}"]);
         $this->assertDatabaseMissing('Notifications', ['SourceKey' => "low_sessions:1:{$legacyPaidFree->ID}"]);
         $this->artisan('tuition:send-reminders', ['--dry-run' => true, '--overdue-days' => 7])->expectsOutput('Found 1 overdue unpaid course(s).')->assertSuccessful();
+        $queries = [];
+        foreach ([2, 4] as $more) { // 2 then 6 extra free courses: the free filter must not query per course
+            array_map(fn () => $this->freeTrial([], $this->newStudent()), range(1, $more));
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            app(DunningService::class)->evaluateAll(1, false);
+            NotificationSyncService::sync([1]);
+            $queries[] = count(DB::getQueryLog());
+        }
+        $this->assertSame($queries[0], $queries[1], 'reminder producers: query count independent of course count');
     }
 
     public function test_parent_payment_message_never_demands_money_for_a_free_course(): void
@@ -169,10 +179,13 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertNull($this->tuitionQueue()->firstWhere('id', $course->ID), 'free before the amendment');
         $this->amend($course, 1200);
         $this->assertSame(4800, (int) $this->tuitionQueue()->firstWhere('id', $course->ID)['charge'], 'amended rate 1200 x 4 sessions, not the frozen discounted 0');
-        $this->assertSame(4800, $this->courseIndex()[$course->ID]['effective_total']);
+        $row = $this->courseIndex()[$course->ID];
+        $this->assertSame([4800, 4800, 4800, 'unpaid'], [$row['effective_total'], $row['charge'], $row['Charge'], $row['payment_status']], 'billing tab reads Charge');
         $body = $this->paymentMessage();
         $this->assertSame(4800, $body['total_amount'], 'amended 1200 x 4, not frozen Rate 1500 x 4');
         $this->assertStringContainsString('4,800', $body['message']);
+        $this->invoice($course, 4800, 'paid')->update(['PaidAmount' => 4800]);
+        $this->assertSame('paid', $this->courseIndex()[$course->ID]['payment_status'], 'fully paid invoice settles legacy Paid=0 (not vs Rate x sessions 6000)');
     }
 
     public function test_free_courses_are_free_in_the_parent_portal_and_course_index_even_with_a_legacy_paid_flag(): void

@@ -236,7 +236,7 @@ class NotificationSyncService
 
         $rows = [];
         // in-app #346: a free course (discounted to NT$0 / no fee) has nothing to pay.
-        foreach ($query->get()->reject(fn (StudentClass $c) => $c->isFreeOfCharge()) as $class) {
+        foreach (StudentClass::rejectFree($query->get()) as $class) {
             $student = $class->student;
             if (!$student) {
                 continue;
@@ -304,7 +304,7 @@ class NotificationSyncService
         }
 
         $rows = [];
-        foreach ($query->get()->reject(fn (StudentClass $c) => $c->isFreeOfCharge()) as $class) {
+        foreach (StudentClass::rejectFree($query->get()) as $class) {
             $student = $class->student;
             if (!$student) {
                 continue;

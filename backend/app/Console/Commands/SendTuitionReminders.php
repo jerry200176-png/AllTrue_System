@@ -31,7 +31,7 @@ class SendTuitionReminders extends Command
             // Prefer created_at when present; legacy rows / test schemas use MDate.
             $overdueColumn = Schema::hasColumn('StudentClass', 'created_at') ? 'created_at' : 'MDate';
             /** @var \Illuminate\Database\Eloquent\Collection<int, StudentClass> $unpaidCourses */
-            $unpaidCourses = StudentClass::query()
+            $unpaidCourses = StudentClass::rejectFree(StudentClass::query()
                 ->with(['student', 'coursePackage'])
                 ->where('Stop', 0)
                 ->where(function ($q) {
@@ -39,8 +39,7 @@ class SendTuitionReminders extends Command
                 })
                 ->where(fn ($q) => $q->effectivelyUnpaid())
                 ->whereDate($overdueColumn, '<=', $cutoff)
-                ->get()
-                ->reject(fn (StudentClass $c) => $c->isFreeOfCharge()); // in-app #346: free course, nothing to pay
+                ->get()); // in-app #346: free course, nothing to pay
 
         if ($unpaidCourses->isEmpty()) {
             $this->info('No overdue unpaid courses found.');

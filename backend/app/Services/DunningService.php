@@ -73,10 +73,8 @@ class DunningService
         }
 
         $events = [];
-        foreach ($query->cursor() as $course) {
-            if ($course->isFreeOfCharge()) {
-                continue; // no payment obligation: no reminder of any rule
-            }
+        // Free courses (in-app #346) have no reminder of any rule; filtered per 500-row batch, no N+1.
+        foreach ($query->lazyById(500)->chunk(500)->flatMap(StudentClass::rejectFree(...)) as $course) {
             if (!$course->isEffectivelyPaid()) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
@@ -127,10 +125,7 @@ class DunningService
         $today = now()->startOfDay();
         $events = [];
 
-        foreach ($query->cursor() as $course) {
-            if ($course->isFreeOfCharge()) {
-                continue; // 100% discount: nothing to remind (in-app #346)
-            }
+        foreach ($query->lazyById(500)->chunk(500)->flatMap(StudentClass::rejectFree(...)) as $course) {
             $settlementDay = (int) $course->settlement_day;
             $maxDay = $today->copy()->endOfMonth()->day;
             $effectiveDay = min($settlementDay, $maxDay);

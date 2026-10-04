@@ -473,12 +473,15 @@ class StudentClassController extends Controller
             $class->setAttribute('sessions_purchased', (int) ($class->SessionCount ?? 0));
             $billedTotal = (int) ($invoiceAggMap[(int) $class->ID]['total_amount'] ?? 0);
             // Count-mode contract total from the single pricing authority (null: date-mode, tutoring, package member).
-            $class->setAttribute('effective_total', ($class->ScheduleMode ?? 'count') === 'count' && !$isTutoringCourse && !$class->isPartOfPackage()
-                ? $class->effectiveContractTotal(null, $billedTotal) : null);
+            $effectiveTotal = ($class->ScheduleMode ?? 'count') === 'count' && !$isTutoringCourse && !$class->isPartOfPackage()
+                ? $class->effectiveContractTotal(null, $billedTotal) : null;
+            $class->setAttribute('effective_total', $effectiveTotal);
             $storedCharge = (int) ($class->Charge ?? 0);
-            $effectiveCharge = $storedCharge;
+            // Projected charge + settlement use the canonical total (amended/billed), not the frozen Charge.
+            $effectiveCharge = $effectiveTotal > 0 ? $effectiveTotal : $storedCharge;
             // in-app #346: discounted to NT$0 (or no fee, not billed) = no payment obligation, like tutoring.
             $isFreeCourse = !$isTutoringCourse && $class->isFreeOfCharge($billedTotal);
+            $class->Charge = $effectiveTotal > 0 ? $effectiveTotal : $class->Charge; // billing tab reads Charge first
             if (
                 $effectiveCharge <= 0
                 && $class->getAttribute('payment_type') === 'session'

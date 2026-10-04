@@ -130,6 +130,17 @@ class StudentClass extends Model
         return ($billedTotal ?? $this->billedTotal()) <= 0;
     }
 
+    /** Drops free courses in 2 queries per batch (amendments + one grouped invoice sum), not 2 per course. */
+    public static function rejectFree(iterable $courses): \Illuminate\Database\Eloquent\Collection
+    {
+        $courses = (new \Illuminate\Database\Eloquent\Collection(collect($courses)->all()))->loadMissing('pricingAmendments');
+        $billed = Invoice::query()->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->whereIn('StudentClassID', $courses->modelKeys())->groupBy('StudentClassID')
+            ->selectRaw('StudentClassID, SUM(CASE WHEN TotalAmount > 0 THEN TotalAmount ELSE 0 END) AS billed')->pluck('billed', 'StudentClassID');
+
+        return $courses->reject(fn (self $c) => $c->isFreeOfCharge((int) ($billed[$c->getKey()] ?? 0)));
+    }
+
     /** Count-mode contract total after a transaction discount; null when no discount applies. */
     private function discountedContractTotal(): ?int
     {
