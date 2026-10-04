@@ -170,6 +170,7 @@ class AlertController extends Controller
         $invoiceAggMap = self::invoiceAggregateByStudentClassIds($allClassIds);
         $allResults = $countResults->merge($dateResults)->merge($pendingSettlementResults)->keyBy('ID');
         $allResults->loadMissing('pricingAmendments'); // effectiveContractTotal / isFreeOfCharge without N+1
+        StudentClass::billedTotals($allResults); // current-mode bills, cached on each course
         $payableMap = $this->payableResolver->byStudentClassIds($allClassIds, $allResults);
         $openMonthlyInvoiceMap = $this->openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
@@ -338,13 +339,14 @@ class AlertController extends Controller
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
+                // A free course with a pending (legacy) report stays listed so staff can still reject it.
                 $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID)
-                    && !$c->isFreeOfCharge((int) ($invoiceAggMap[(int) $c->ID]['total_amount'] ?? 0)))
+                    && (!$c->isFreeOfCharge() || isset($pendingReportMap[(int) $c->ID])))
                     ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null, $subjectNameMap))->filter()
             )
             ->merge(
                 // Free courses owe nothing here either; MonthlyBillingService would otherwise price them at list Rate.
-                $pendingSettlementResults->reject(fn ($c) => $c->isFreeOfCharge((int) ($invoiceAggMap[(int) $c->ID]['total_amount'] ?? 0)))
+                $pendingSettlementResults->reject(fn ($c) => $c->isFreeOfCharge() && !isset($pendingReportMap[(int) $c->ID]))
                     ->map(fn ($c) => $this->mapPendingSettlementAlert($c, $subjectNameMap))
             )
             ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap, $today, $openMonthlyInvoiceMap, $payableMap) {
@@ -362,7 +364,7 @@ class AlertController extends Controller
                         ? (int) $invoiceProjection['total_amount']
                         : (int) $this->monthlyBilling->summarize($sc, $today)['charge'])
                     // Count-mode: the single pricing authority (invoice > current amendment > discount > list price).
-                    : $sc->effectiveContractTotal(null, (int) ($invoiceAggMap[$classId]['total_amount'] ?? 0));
+                    : $sc->effectiveContractTotal();
                 $invoiceAgg = $invoiceAggMap[$classId] ?? null;
                 $payable = $payableMap[$classId] ?? $this->payableResolver->unbilled();
                 $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;

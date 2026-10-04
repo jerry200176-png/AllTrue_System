@@ -1367,7 +1367,7 @@ class ParentPortalController extends Controller
 
         $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
         $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
-        $freeCount = $perCourse->filter(fn ($course) => (bool) ($course['is_tutoring'] ?? false))->count();
+        $freeCount = $perCourse->filter(fn ($course) => ($course['payment_status'] ?? null) === 'free')->count(); // tutoring + free courses
         $payableCourses = max(0, $totalCourses - $freeCount);
         $paidCount = max(0, $payableCourses - $unpaidCount);
         $paymentStatus = $unpaidCount === 0
@@ -1648,6 +1648,7 @@ class ParentPortalController extends Controller
         if ($classes->isEmpty()) {
             return response()->json(['message' => '此學生目前無待繳費課程']);
         }
+        StudentClass::billedTotals($classes); // one grouped invoice query, not one per course
 
         $lineItems = [];
         $totalAmount = 0;

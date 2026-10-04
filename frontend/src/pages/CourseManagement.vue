@@ -297,13 +297,13 @@
                       <div v-if="['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'contract_amended' ? '合約已提前結束' : '已結案' }}</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : ((effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '尚未完成繳費，請至帳務中心對帳' : (effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
+                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'converted_trial' ? '已轉正式，試聽紀錄保留' : ((effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && !['paid', 'free'].includes(c.payment_status))) ? '尚未完成繳費，請至帳務中心對帳' : (effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : (effectiveClosedReason(c) === 'contract_amended' ? '堂數已調整結束' : '堂數已用完'))) }}</span>
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && c.payment_status !== 'paid')) ? '待對帳結案' : '已結案' }}</span>
+                        <span v-else-if="['settled', 'settled_pending', 'contract_amended', 'completed', 'converted_trial'].includes(effectiveClosedReason(c))" class="tag tag-settled">{{ (effectiveClosedReason(c) === 'settled_pending' || (effectiveClosedReason(c) === 'contract_amended' && !['paid', 'free'].includes(c.payment_status))) ? '待對帳結案' : '已結案' }}</span>
                         <button
                           v-if="c.usage_balance_status === 'review_required'"
                           type="button"
@@ -631,7 +631,7 @@
                     <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                     <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
                     <span v-if="effectiveClosedReason(hc) === 'converted_trial'" class="tag tag-history tag-history--settled">已轉正式</span>
-                    <span v-else-if="effectiveClosedReason(hc) === 'settled_pending' || (effectiveClosedReason(hc) === 'contract_amended' && hc.payment_status !== 'paid')" class="tag tag-history tag-history--pending">已結算 · 待對帳</span>
+                    <span v-else-if="effectiveClosedReason(hc) === 'settled_pending' || (effectiveClosedReason(hc) === 'contract_amended' && !['paid', 'free'].includes(hc.payment_status))" class="tag tag-history tag-history--pending">已結算 · 待對帳</span>
                     <span v-else-if="effectiveClosedReason(hc) === 'settled' || effectiveClosedReason(hc) === 'contract_amended'" class="tag tag-history tag-history--settled">已結算</span>
                     <span v-else class="tag tag-history tag-history--completed">已完課</span>
                     <button
@@ -4331,7 +4331,7 @@ watch(() => showLeaveModal.value, (open) => {
 });
 function effectiveClosedReason(c) {
   if (c.closed_reason) return c.closed_reason;
-  if (c.status === 'inactive' && isSessionMode(c) && c.payment_status === 'paid' && Number(c.remaining_sessions ?? 0) <= 0) {
+  if (c.status === 'inactive' && isSessionMode(c) && ['paid', 'free'].includes(c.payment_status) && Number(c.remaining_sessions ?? 0) <= 0) {
     return 'completed';
   }
   // 月結制課程停用即視為完課（DB 無 closed_reason 的歷史髒資料也走此分支）

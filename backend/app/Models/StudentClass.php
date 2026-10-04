@@ -139,15 +139,22 @@ class StudentClass extends Model
         return $courses->reject(fn (self $c) => $c->isFreeOfCharge($billed[$c->getKey()] ?? 0));
     }
 
-    /** Non-void positive invoice totals per course (one query), cached on each model for later pricing calls. */
+    /** Non-void positive current-mode invoice totals per course (one query), cached on each model for later pricing calls. */
     public static function billedTotals(iterable $courses): array
     {
         $courses = collect($courses);
         $sums = Invoice::query()->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-            ->whereIn('StudentClassID', $courses->map(fn (self $c) => $c->getKey())->all())->groupBy('StudentClassID')
-            ->selectRaw('StudentClassID, SUM(CASE WHEN TotalAmount > 0 THEN TotalAmount ELSE 0 END) AS billed')->pluck('billed', 'StudentClassID');
+            ->whereIn('StudentClassID', $courses->map(fn (self $c) => $c->getKey())->all())->groupBy('StudentClassID', 'ScheduleModeAtIssue')
+            ->selectRaw('StudentClassID, ScheduleModeAtIssue, SUM(CASE WHEN TotalAmount > 0 THEN TotalAmount ELSE 0 END) AS billed')->get()->groupBy('StudentClassID');
 
-        return $courses->mapWithKeys(fn (self $c) => [$c->getKey() => $c->billedTotalCache = (int) ($sums[$c->getKey()] ?? 0)])->all();
+        return $courses->mapWithKeys(fn (self $c) => [$c->getKey() => $c->billedTotalCache = (int) collect($sums[$c->getKey()] ?? [])
+            ->filter(fn ($row) => $c->billsInCurrentMode($row->getAttribute('ScheduleModeAtIssue')))->sum('billed')])->all();
+    }
+
+    /** A prior-mode invoice (kept by BillingModeConversionArchiveService after a count/date switch) does not bill the current contract. */
+    public function billsInCurrentMode(?string $modeAtIssue): bool
+    {
+        return in_array($modeAtIssue, [null, '', (string) ($this->getAttribute('ScheduleMode') ?? 'count')], true);
     }
 
     /** Count-mode contract total after a transaction discount; null when no discount applies. */
@@ -170,9 +177,10 @@ class StudentClass extends Model
         }
         $invoices = $this->relationLoaded('invoices')
             ? $this->getRelation('invoices')->filter(fn ($i) => $i->getAttribute('Status') !== 'void')
-            : $this->invoices()->notVoided()->get(['TotalAmount']);
+            : $this->invoices()->notVoided()->get(['TotalAmount', 'ScheduleModeAtIssue']);
 
-        return (int) $invoices->sum(fn ($i) => max(0, (int) $i->getAttribute('TotalAmount')));
+        return (int) $invoices->filter(fn ($i) => $this->billsInCurrentMode($i->getAttribute('ScheduleModeAtIssue')))
+            ->sum(fn ($i) => max(0, (int) $i->getAttribute('TotalAmount')));
     }
 
     /** Precedence steps 2-4. Null = a price exists but there is nothing to multiply it by (unknown, never free). */

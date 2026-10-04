@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\{AuthToken, ClassSession, Invoice, ParentSession, Student, StudentClass, StudentClassPricingAmendment, User, UserCampus};
+use App\Models\{AuthToken, ClassSession, Invoice, ParentSession, PaymentReport, Student, StudentClass, StudentClassPricingAmendment, User, UserCampus};
 use App\Services\{BillingPayableResolver, DunningService, NotificationSyncService};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\{DB, Schema};
@@ -87,8 +87,12 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->freeTrial();
         $this->assertSame('此學生目前無待繳費課程', $this->paymentMessage()['message'], 'no NT$1,500 demand for a 100%-discounted trial');
         $this->paidCourse();
-        $this->assertSame(8800, $this->paymentMessage()['total_amount']);
-        $this->assertCount(1, $this->paymentMessage()['items']);
+        $this->paidCourse();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->assertSame(17600, $this->paymentMessage()['total_amount']);
+        $this->assertCount(1, collect(DB::getQueryLog())->filter(fn ($q) => preg_match('/from [`"]?Invoice[`"]?/i', $q['query'])), 'one grouped invoice query, not one per course');
+        $this->assertCount(2, $this->paymentMessage()['items']);
     }
 
     /** Only the amendment in force decides free (a future / superseded one does not); a void invoice does not bill, a live one does. */
@@ -101,18 +105,19 @@ class BillingDiscountAndZeroAmountTest extends TestCase
             'superseded by a later zero' => [[['2026-06-01', 1200], ['2026-08-01', 0]], null, true],
             'void invoice does not bill' => [[], 'void', true],
             'a non-void NT$3000 invoice bills' => [[], 'unpaid', false],
+            'a prior-mode invoice does not bill' => [[], 'unpaid', true, 'date'], // kept by BillingModeConversionArchiveService
         ];
     }
 
     /** @dataProvider freePredicateCases */
-    public function test_free_predicate_is_shared_with_the_resolver_and_honours_amendments_and_invoices(array $amendments, ?string $invoice, bool $expectFree): void
+    public function test_free_predicate_is_shared_with_the_resolver_and_honours_amendments_and_invoices(array $amendments, ?string $invoice, bool $expectFree, ?string $modeAtIssue = null): void
     {
         $course = $this->course(['Rate' => 0, 'Charge' => 0, 'SessionCount' => 4]);
         foreach ($amendments as [$from, $rate]) {
             $this->amend($course, $rate, $from);
         }
         if ($invoice !== null) {
-            $this->invoice($course, 3000, $invoice);
+            $this->invoice($course, 3000, $invoice, $modeAtIssue);
         }
         $this->assertSame($expectFree, $course->isFreeOfCharge());
         $this->assertSame($expectFree, app(BillingPayableResolver::class)->courseStatusesByStudentClassIds([$course->ID])[$course->ID]['status'] === 'free');
@@ -123,20 +128,25 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $free = $this->course(self::FREE_DATE_MODE, 1500);
         $amendedFree = $this->course(self::FREE_DATE_MODE, 1500);
         $billed = $this->course(self::FREE_DATE_MODE);
+        $reported = $this->course(self::FREE_DATE_MODE, 1500); // free, but a legacy pending report must stay rejectable
+        PaymentReport::create(['StudentID' => $reported->StudentID, 'StudentClassID' => $reported->ID, 'reported_by_name' => 'x', 'payment_date' => '2026-10-04',
+            'payment_method' => 'cash', 'reported_amount' => 500, 'status' => 'pending', 'report_token_hash' => str_repeat('a', 64), 'token_expires_at' => now()->addDay()]);
         // attended lessons make MonthlyBillingService price a positive charge
-        array_map(fn ($c) => ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'completed']), [$free, $amendedFree, $billed]);
+        array_map(fn ($c) => ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'completed']), [$free, $amendedFree, $billed, $reported]);
         $events = collect(app(DunningService::class)->evaluateAll(1, false))
             ->filter(fn ($e) => str_starts_with((string) $e['rule_key'], 'monthly_'))->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
         $this->assertContains((int) $billed->ID, $events, 'control: a billed date-mode course is reminded');
         $this->assertNotContains((int) $free->ID, $events);
         $this->assertContains((int) $billed->ID, $this->queuedIds(), 'control: a billed date-mode course is queued');
         $this->assertNotContains((int) $free->ID, $this->queuedIds());
+        $this->assertContains((int) $reported->ID, $this->queuedIds(), 'free with a pending report: listed');
         // closed after the lesson: 結案未繳 / 提前結束未繳
-        StudentClass::whereIn('ID', [$free->ID, $billed->ID])->update(['Stop' => 1, 'closed_reason' => 'settled_pending']);
+        StudentClass::whereIn('ID', [$free->ID, $billed->ID, $reported->ID])->update(['Stop' => 1, 'closed_reason' => 'settled_pending']);
         StudentClass::whereKey($amendedFree->ID)->update(['Stop' => 1, 'closed_reason' => 'contract_amended']);
         $this->assertContains((int) $billed->ID, $this->queuedIds(), 'control: a billed closed date-mode course awaits settlement');
         $this->assertNotContains((int) $free->ID, $this->queuedIds());
         $this->assertNotContains((int) $amendedFree->ID, $this->queuedIds());
+        $this->assertContains((int) $reported->ID, $this->queuedIds(), 'awaiting settlement, free with a pending report: listed');
     }
 
     public function test_amended_discounted_course_is_priced_at_the_amended_rate_on_every_surface(): void
@@ -160,7 +170,9 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $freeMonthly = $this->course(self::FREE_DATE_MODE + ['RemainingSessions' => 0, 'monthly_sessions' => 4], 1500);
         foreach ([0, 1] as $legacyPaid) {
             $free = $this->course(self::FREE_COUNT_MODE + ['Paid' => $legacyPaid], 1500);
-            $classes = $this->parentClasses();
+            $dashboard = $this->parentDashboard();
+            $classes = collect($dashboard['classes'])->keyBy('id');
+            $this->assertSame(2 + $legacyPaid, $dashboard['progress_summary']['payment']['free_courses'], 'summary counts free courses, not just tutoring');
             $this->assertSame('free', $classes[$free->ID]['payment_status']);
             $this->assertSame('免費（不適用）', $classes[$free->ID]['payment_status_label']);
             $this->assertSame('unpaid', $classes[$billed->ID]['payment_status']);
@@ -175,7 +187,8 @@ class BillingDiscountAndZeroAmountTest extends TestCase
     public static function precedenceMatrix(): array
     {
         return [
-            'invoice wins over 100% discount' => [['Rate' => 1500, 'Charge' => 0], 6000, null, 3000, 3000], // positive non-void invoice (Codex P1)
+            'invoice wins over 100% discount' => [['Rate' => 1500, 'Charge' => 0], 6000, null, 3000, 3000, 'count'], // positive non-void current-mode invoice (Codex P1)
+            'prior-mode invoice is ignored' => [['Rate' => 1500, 'Charge' => 6000], 0, null, 3000, 6000, 'date'], // archived by a count/date conversion
             'zero amendment over positive discount is free' => [['Rate' => 1500, 'Charge' => 4000], 2000, 0, null, null], // amendment in force, 0 included (Codex P1)
             'positive amendment over no snapshot is priced' => [['Rate' => 0, 'Charge' => 0], 0, 1200, null, 4800], // legacy Charge 0 / Rate 0 (Codex P1)
             'discount only' => [['Rate' => 1500, 'Charge' => 5400], 600, null, null, 5400], // the allocated Charge, not Rate x sessions (6000)
@@ -184,14 +197,14 @@ class BillingDiscountAndZeroAmountTest extends TestCase
     }
 
     /** @dataProvider precedenceMatrix */
-    public function test_one_pricing_authority_gives_the_same_number_on_every_surface(array $fields, int $discount, ?int $amendRate, ?int $invoice, ?int $expected): void
+    public function test_one_pricing_authority_gives_the_same_number_on_every_surface(array $fields, int $discount, ?int $amendRate, ?int $invoice, ?int $expected, ?string $invoiceMode = null): void
     {
         $course = $this->course($fields + ['SessionCount' => 4, 'RemainingSessions' => 4], $discount);
         if ($amendRate !== null) {
             $this->amend($course, $amendRate);
         }
         if ($invoice !== null) {
-            $this->invoice($course, $invoice, 'unpaid');
+            $this->invoice($course, $invoice, 'unpaid', $invoiceMode);
         }
         $this->assertSame($expected ?? 0, $course->fresh()->effectiveContractTotal());
         $this->assertSame($expected === null, $course->fresh()->isFreeOfCharge());
@@ -199,6 +212,7 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertSame($expected, $queue === null ? null : (int) $queue['charge'], 'tuition queue');
         $index = $this->courseIndex()[$course->ID];
         $this->assertSame($expected ?? 0, $index['effective_total'], 'course index effective_total');
+        $this->assertSame(array_fill(0, 3, $expected ?? 0), [(int) $index['Charge'], (int) $index['charge'], (int) $index['effective_charge']], 'a 0 total projects 0, not the stored Charge');
         $this->assertSame($expected === null, $index['payment_status'] === 'free', 'course index free status');
         $this->assertSame($expected, $this->paymentMessage()['total_amount'] ?? null, 'parent payment message');
     }
@@ -234,9 +248,9 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => $from, 'rate' => $rate, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
     }
 
-    private function invoice(StudentClass $course, int $total, string $status): Invoice
+    private function invoice(StudentClass $course, int $total, string $status, ?string $modeAtIssue = null): Invoice
     {
-        return Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => now(), 'DueDate' => now(), 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status]);
+        return Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => now(), 'DueDate' => now(), 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status, 'ScheduleModeAtIssue' => $modeAtIssue]);
     }
 
 
@@ -261,11 +275,11 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         return $this->getJson("/api/v1/parent/payment-message/{$this->student->id}")->assertOk()->json();
     }
 
-    private function parentClasses()
+    private function parentDashboard(): array
     {
         $raw = bin2hex(random_bytes(16));
         ParentSession::create(['StudentID' => $this->student->id, 'TokenHash' => hash('sha256', $raw), 'ExpiresAt' => now()->addHours(2)]);
-        return collect($this->getJson('/api/v1/parent/dashboard', ['Authorization' => "Bearer {$raw}"])->assertOk()->json('classes'))->keyBy('id');
+        return $this->getJson('/api/v1/parent/dashboard', ['Authorization' => "Bearer {$raw}"])->assertOk()->json();
     }
 
     private function newStudent(): Student

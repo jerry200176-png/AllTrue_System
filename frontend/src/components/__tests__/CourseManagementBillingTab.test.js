@@ -75,6 +75,10 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain("const isNoPaymentCourse = (course) => isTutoringCourse(course) || course?.payment_status === 'free';");
     const studentsList = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
     expect(studentsList).toMatch(/if \(isNoPaymentCourse\(course\)\) return '無須繳費；此課程免收費/);
+    // an exhausted free course is completed (not paused / pending reconciliation)
+    expect(source).toContain("isSessionMode(c) && ['paid', 'free'].includes(c.payment_status)");
+    expect(source.match(/'contract_amended' && !\['paid', 'free'\]\.includes\(h?c\.payment_status\)/g)).toHaveLength(3);
+    expect(studentsList).toContain("if (paymentStatus === 'paid' || paymentStatus === 'free') return true;");
     expect(source).toContain('const shouldShowPaymentAction = (course) => !isNoPaymentCourse(course);');
     expect(source).toContain('v-if="shouldShowPaymentAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');

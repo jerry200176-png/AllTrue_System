@@ -1468,7 +1468,7 @@ const isSessionPaymentLowRemaining = (course) => {
 };
 const isCourseSettled = (course) => {
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
-  if (paymentStatus === 'paid') return true;
+  if (paymentStatus === 'paid' || paymentStatus === 'free') return true; // free (in-app #346): nothing owed
   const paid = parseCourseNumber(course?.Paid ?? course?.paid);
   const charge = parseCourseNumber(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
   if (paid != null && charge != null) return paid >= charge && charge > 0;

@@ -51,7 +51,7 @@ class BillingPayableResolver
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
             ->whereIn('StudentClassID', $ids->all())
             ->orderBy('id')
-            ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
+            ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period', 'ScheduleModeAtIssue'])
             ->groupBy('StudentClassID');
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
@@ -85,8 +85,9 @@ class BillingPayableResolver
             'periods' => $periods, 'source' => $source, 'current_invoice_id' => $invoiceId,
         ];
         $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
-        $billedTotal = (int) $invoices->sum(fn ($invoice) => max(0, (int) $invoice->getAttribute('TotalAmount')));
-        $hasBillableInvoice = $billedTotal > 0;
+        $billedTotal = (int) $invoices->filter(fn ($invoice) => $course->billsInCurrentMode($invoice->getAttribute('ScheduleModeAtIssue')))
+            ->sum(fn ($invoice) => max(0, (int) $invoice->getAttribute('TotalAmount')));
+        $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0); // any mode: payment state
         $tutoring = strtolower(trim((string) ($course->getAttribute('ClassType') ?? ''))) === 'tutoring';
         // B15 is the period engine for monthly courses: a period it cannot attribute is review_required,
         // even without invoices (a legacy flag must not settle unattributed months).
@@ -194,7 +195,7 @@ class BillingPayableResolver
                 $query->select(['id', 'InvoiceID', 'Amount', 'Method']);
             }])
             ->whereIn('StudentClassID', $ids->all())
-            ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
+            ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period', 'ScheduleModeAtIssue'])
             ->groupBy('StudentClassID');
 
         $resolved = [];
