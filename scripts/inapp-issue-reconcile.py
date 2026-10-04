@@ -39,13 +39,18 @@ def reconcile(open_bugs, resolved_bugs, max_id, issues):
     def inapp_status(i):
         return status.get(i, "closed" if i <= max_id else "unknown")
 
-    out = {"inapp_done_issue_open": [], "issue_closed_inapp_open": [], "sentry_duplicates": [], "unlabeled": []}
+    out = {"inapp_done_issue_open": [], "issue_closed_inapp_open": [], "sentry_duplicates": [], "unlabeled": [],
+           "inapp_without_issue": [], "unknown_inapp_ref": []}
     spans = defaultdict(list)
+    mapped = set()
     for issue in issues:
         ids = inapp_ids(issue)
+        mapped.update(ids)
         labels = {l["name"] for l in issue.get("labels", [])}
         is_open = issue.get("state", "OPEN").upper() == "OPEN"
         sts = {i: inapp_status(i) for i in ids}
+        if is_open and any(s == "unknown" for s in sts.values()):
+            out["unknown_inapp_ref"].append({"issue": issue["number"], "inapp": sts})
         if ids and is_open and not labels & {LOGGED_LABEL, FROZEN_LABEL, "type:epic"} and all(s in ("resolved", "closed") for s in sts.values()):
             out["inapp_done_issue_open"].append({"issue": issue["number"], "inapp": sts})
         if ids and not is_open and any(s in ("new", "triaged", "in_progress") for s in sts.values()):
@@ -57,6 +62,8 @@ def reconcile(open_bugs, resolved_bugs, max_id, issues):
         # gh reports the Sentry GitHub App as "app/sentry"; GraphQL/REST may show "sentry-io[bot]".
         if is_open and "sentry" in author.lower() and m:
             spans[m.group(1).strip()].append(issue["number"])
+    # Active / awaiting-verification reports that no issue tracks (intake contract: every report has one).
+    out["inapp_without_issue"] = sorted(b["id"] for b in open_bugs + resolved_bugs if b["id"] not in mapped)
     for span, numbers in spans.items():
         if len(numbers) > 1:
             keep, *dupes = sorted(numbers)

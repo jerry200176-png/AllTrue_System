@@ -34,6 +34,14 @@ def test_reconcile_classes():
     assert [r["issue"] for r in out["issue_closed_inapp_open"]] == [5]
     assert out["unlabeled"] == [6]
     assert out["sentry_duplicates"] == [{"keep": 7, "duplicates": [8], "span": "db - select * from `X`"}]
+    assert out["inapp_without_issue"] == []  # 10 and 11 are both tracked
+
+
+def test_untracked_reports_and_unknown_refs():
+    out = reconcile_mod.reconcile([{"id": 5, "status": "triaged"}], [{"id": 6, "status": "resolved"}], 6,
+                                  [issue(1, "[in-app #6] tracked", labels=["x"]), issue(2, "[in-app #99] typo", labels=["x"])])
+    assert out["inapp_without_issue"] == [5]
+    assert [r["issue"] for r in out["unknown_inapp_ref"]] == [2]
 
 
 def test_body_source_ref_counts():
@@ -58,4 +66,5 @@ if __name__ == "__main__":
     test_reconcile_classes()
     test_body_source_ref_counts()
     test_free_text_mentions_and_multi_title_refs()
+    test_untracked_reports_and_unknown_refs()
     print("test_inapp_issue_reconcile.py: ok")

@@ -167,7 +167,12 @@ jobs:
           for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
               ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", t)}
           print(" ".join(str(i) for i in sorted(ids - {int(os.environ["BUG_ID"])})))')"
-          if [[ -n "$others" ]]; then echo "skip: issue also maps in-app $others"; exit 0; fi
+          if [[ -n "$others" ]]; then
+            # Shared backlog: leave it open but drop the exemption so the queue-dump reconcile shows it to a human.
+            echo "skip: issue also maps in-app $others"
+            gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
+            exit 0
+          fi
           gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
           gh issue close "$GITHUB_ISSUE_URL" --reason completed
           gh issue comment "$GITHUB_ISSUE_URL" --body "已上線（production ${PRODUCTION_REVISION:0:9}），已在 in-app 通知原回報者。Closed automatically on ship (F14)."
