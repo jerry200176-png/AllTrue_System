@@ -24,6 +24,8 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
         self.assertIn("github.event.workflow_run.pull_requests[0].number", workflow)
         self.assertIn("if .merged_at then \"merged\" else .state end", workflow)
+        self.assertIn("pull-requests: read", workflow)
+        self.assertNotIn("pull-requests: write", workflow)
         self.assertIn('[[ "$PR_STATE" == "merged" ]]', workflow)
         self.assertIn('[[ "$PR_STATE" == "closed" ]]', workflow)
         self.assertIn("contents: write", workflow)
