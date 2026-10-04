@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\DB;
  */
 class StaleScheduleExceptionFilter
 {
-    private const INACTIVE_STATUSES = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+    private const INACTIVE_STATUSES = ['cancelled', 'leave', 'leave_adjusted', 'excused', 'voided'];
 
     /**
      * 剔除 stale scheduled 例外 row。
