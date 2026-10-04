@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-04-director-campus-readiness
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(auth): wait for authorized campuses before director pages load (#3506)"
+    reason: 登入時分校權限載入的安全修正，尚待受保護合併與正式部署驗證；不提前公告已修復。
+
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"

@@ -511,25 +511,29 @@
         <p class="pin-gate-placeholder-title">此頁需要 PIN 才能查看</p>
         <p class="pin-gate-placeholder-body">薪資、當月學收與老師管理會先解鎖。請在中央視窗輸入 PIN，或按「暫不啟用，直接進入」。帳務中心可直接進入，不必先解 PIN。</p>
       </div>
-      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
+      <div v-if="!isPasswordChangeLocked && isDirector && !directorBranchReady && directorBranchScopedPages.has(active)" class="card" role="status">
+        <p>{{ directorBranchStatus === 'failed' ? '無法載入授權分校，請重試或聯繫管理員。' : '正在確認您的分校權限…' }}</p>
+        <button v-if="directorBranchStatus === 'failed'" type="button" @click="retryDirectorBranches">重試載入分校</button>
+      </div>
+      <DirectorDashboard v-if="!isPasswordChangeLocked && directorBranchReady && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
-        v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
+        v-if="!isPasswordChangeLocked && directorBranchReady && active === 'notifications'"
         :branch-id="currentBranch"
         @navigate="onNavigateFromNotifications"
         @unread-change="onUnreadChange"
       />
-      <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
-      <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" :allow-financial-discount="isDirector" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" @navigate="onNavigateFromCourseManagement" />
-      <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
-      <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
-      <TeacherEligibilityPage v-if="!isPasswordChangeLocked && isDirector && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
-      <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :user-role="role" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-course-id="courseMgmtFocusCourseId" :initial-student-name="courseMgmtFocusStudentName" :initial-course-intent="courseMgmtFocusIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
-      <AdmissionInquiriesPage v-if="!isPasswordChangeLocked && isDirector && active === 'admission-inquiries'" :branch-id="currentBranch" :token="session?.access_token ?? ''" />
-      <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
-      <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
-      <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
+      <SmartCalendar v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'calendar'" :branch-id="currentBranch" :branch-name="currentBranchName" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="calendarInitialStudentId" :initial-course-id="calendarInitialCourseId" :initial-date="calendarInitialDate" :reset-week-token="calendarResetToken" :initial-intent="calendarInitialIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-intent="calendarInitialIntent = ''" @clear-initial-context="clearCalendarNavigationContext" @navigate="onNavigateFromNotifications" />
+      <StudentsList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'students'" :branch-id="currentBranch" :allow-financial-discount="isDirector" :initial-student-id="studentFocusIdForNav" :initial-course-id="studentFocusCourseIdForNav" :initial-student-intent="studentFocusIntentForNav" @clear-initial-student="clearStudentNavigationContext" @navigate="onNavigateFromNotifications" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-collect'" :branch-id="currentBranch" :initial-tab="tuitionInitialTab" :initial-student-id="tuitionInitialStudentId" :initial-course-id="tuitionInitialCourseId" @clear-initial-tab="tuitionInitialTab = ''" @clear-initial-context="clearTuitionNavigationContext" @navigate="onNavigateFromCourseManagement" />
+      <TuitionReportPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
+      <ParttimePayrollPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
+      <TeacherEligibilityPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'teacher-eligibility' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
+      <TeachersList v-if="!isPasswordChangeLocked && directorBranchReady && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
+      <CourseManagement v-if="!isPasswordChangeLocked && directorBranchReady && active === 'course-mgmt'" :branch-id="currentBranch" :user-role="role" :initial-teacher-id="initialTeacherIdForNav" :initial-student-id="courseMgmtFocusStudentId" :initial-course-id="courseMgmtFocusCourseId" :initial-student-name="courseMgmtFocusStudentName" :initial-course-intent="courseMgmtFocusIntent" @clear-initial-teacher="initialTeacherIdForNav = null" @clear-initial-student="clearCourseMgmtNavigationContext" @navigate="onNavigateFromCourseManagement" />
+      <AdmissionInquiriesPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'admission-inquiries'" :branch-id="currentBranch" :token="session?.access_token ?? ''" />
+      <ClassroomManagement v-if="!isPasswordChangeLocked && directorBranchReady && active === 'classroom'" :branch-id="currentBranch" />
+      <SubjectSettingsPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
+      <SubjectUnitsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
 
       <TeacherHomePage
         v-if="!isPasswordChangeLocked && isTeacher && active === 'teacher-home'"
@@ -544,16 +548,16 @@
         @navigate-learning="onNavigateLearningFromTeacherHome"
       />
       <AttendancePage
-        v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'"
+        v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'attendance'"
         :branch-id="currentBranch"
         :user-role="role"
         :user-id="session.user.id"
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
       />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" />
-      <AssessmentPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
-      <QuestionBankPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="onFeedbackQueueChanged" />
+      <AssessmentPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'assessments'" :branch-id="currentBranch" :user-role="role" />
+      <QuestionBankPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'question-banks'" :branch-id="currentBranch" :user-role="role" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
@@ -563,18 +567,18 @@
         @password-change-complete="onPasswordChangeComplete"
       />
       <ParentPortal v-if="!isPasswordChangeLocked && active === 'parent'" />
-      <LineIntegration v-if="!isPasswordChangeLocked && isDirector && active === 'line-integration'" :branch-id="currentBranch" />
-      <BindingManagementPage v-if="!isPasswordChangeLocked && isDirector && active === 'binding-management'" :branch-id="currentBranch" :user-role="role" :initial-student-name="bindingMgmtFocusStudentName" @clear-initial-student="bindingMgmtFocusStudentName = ''" />
-      <BindingConflictReviewPage v-if="!isPasswordChangeLocked && isDirector && active === 'binding-conflicts'" :branch-id="currentBranch" :user-role="role" />
-      <BindingHealthDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'binding-health'" :branch-id="currentBranch" :user-role="role" />
+      <LineIntegration v-if="!isPasswordChangeLocked && directorBranchReady && active === 'line-integration'" :branch-id="currentBranch" />
+      <BindingManagementPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'binding-management'" :branch-id="currentBranch" :user-role="role" :initial-student-name="bindingMgmtFocusStudentName" @clear-initial-student="bindingMgmtFocusStudentName = ''" />
+      <BindingConflictReviewPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'binding-conflicts'" :branch-id="currentBranch" :user-role="role" />
+      <BindingHealthDashboard v-if="!isPasswordChangeLocked && directorBranchReady && active === 'binding-health'" :branch-id="currentBranch" :user-role="role" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
       <BranchHealthBoard v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-health-board'" :token="session?.access_token ?? ''" />
       <NightlyReconcilePanel v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'nightly-reconcile'" :token="session?.access_token ?? ''" />
-      <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
-      <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" :focus-bug-id="focusBugId" />
-      <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
-      <DuplicateSessionReviewPage v-if="!isPasswordChangeLocked && isDirector && active === 'duplicate-review'" :branch-id="currentBranch" :user-role="role" />
+      <ChatPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
+      <BugReportsPage v-if="!isPasswordChangeLocked && (!isDirector || directorBranchReady) && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" :focus-bug-id="focusBugId" />
+      <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
+      <DuplicateSessionReviewPage v-if="!isPasswordChangeLocked && directorBranchReady && active === 'duplicate-review'" :branch-id="currentBranch" :user-role="role" />
       <ReleaseNotesPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'release-notes'" :user-role="role" />
 
       <!-- 身分無法辨識時顯示說明，避免登入後一片空白 -->
@@ -817,6 +821,7 @@
 import { computed, defineAsyncComponent, nextTick, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import AtSkeleton from './components/design-system/AtSkeleton.vue';
 import { supabase } from './supabase';
+import { useDirectorBranchAuthorization } from './lib/directorBranchAuthorization';
 import {
   branches,
   loadBranches,
@@ -1003,12 +1008,23 @@ const session = ref(null);
 const userProfile = ref(null);
 const staffCapabilities = ref([]);
 const loading = ref(true);
+const directorBranchAuthorization = useDirectorBranchAuthorization();
+const directorBranchStatus = directorBranchAuthorization.status;
+const directorBranchReady = computed(() => directorBranchAuthorization.canMount(session.value?.access_token, currentBranch.value));
+const directorBranchScopedPages = new Set([
+  'director', 'notifications', 'calendar', 'students', 'tuition-collect', 'tuition-report',
+  'parttime-payroll', 'teacher-eligibility', 'teachers', 'course-mgmt', 'admission-inquiries',
+  'classroom', 'subject-settings', 'subject-units', 'attendance', 'learning', 'assessments',
+  'question-banks', 'line-integration', 'binding-management', 'binding-conflicts',
+  'binding-health', 'chat', 'bugs', 'schedule-discrepancy', 'duplicate-review',
+]);
 let authRevision = 0;
 const beginAuthRevision = () => ++authRevision;
 const isCurrentAuth = (revision) => isCurrentAuthRevision(revision, authRevision);
 
 async function clearLocalIdentity(revision, { clearAuthStorage = false } = {}) {
   if (!isCurrentAuth(revision)) return;
+  directorBranchAuthorization.reset();
   const hadInMemorySession = session.value != null;
   session.value = null;
   userProfile.value = null;
@@ -2488,15 +2504,7 @@ async function ensureDirectorBranches() {
     if (!s?.user) return;
     const r = s.user.role ?? userProfile.value?.role;
     if (r !== 'director' && r !== 'admin' && r !== 'super_admin') return;
-
-    let list = [];
-    if (s?.access_token) list = await loadBranchesForDirector(s.access_token);
-    // Fallback for super_admin: use public branches if /campuses fails or returns empty
-    if (list.length === 0 && (r === 'super_admin' || r === 'admin')) {
-        await loadBranches();
-        list = branches.value;
-    }
-    if (list.length > 0) {
+    await directorBranchAuthorization.load(s.access_token, loadBranchesForDirector, (list) => {
         branches.value = list;
         const savedBranch = localStorage.getItem('app_branch');
         const resolved = resolveSavedBranchChoice(savedBranch, list);
@@ -2508,7 +2516,11 @@ async function ensureDirectorBranches() {
         } else {
             currentBranch.value = list[0].id;
         }
-    }
+    });
+}
+
+async function retryDirectorBranches() {
+  await ensureDirectorBranches();
 }
 
 // Auth Listener
@@ -2541,6 +2553,7 @@ onMounted(async () => {
     if (shouldClearLocalIdentity({ session: data?.session })) {
         await clearLocalIdentity(bootstrapRevision, { clearAuthStorage: true });
     } else if (!error && data?.session) {
+        directorBranchAuthorization.reset();
         session.value = data.session;
         userProfile.value = null;
         await fetchProfile(getSessionUserId(data.session), bootstrapRevision);
@@ -2554,6 +2567,7 @@ onMounted(async () => {
         if (shouldClearLocalIdentity({ event, session: nextSession })) {
             await clearLocalIdentity(revision, { clearAuthStorage: event !== 'SIGNED_OUT' });
         } else if (nextSession) {
+            if (session.value?.access_token !== nextSession.access_token) directorBranchAuthorization.reset();
             session.value = nextSession;
             userProfile.value = null;
             await fetchProfile(getSessionUserId(nextSession), revision);
@@ -2671,6 +2685,7 @@ const handleLoginSuccess = async ({ user, profile }) => {
       await clearLocalIdentity(revision, { clearAuthStorage: true });
       return;
     }
+    if (session.value?.access_token !== data.session.access_token) directorBranchAuthorization.reset();
     session.value = data.session;
     userProfile.value = profile ?? null;
 

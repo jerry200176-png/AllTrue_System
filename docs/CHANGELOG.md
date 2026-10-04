@@ -1,3 +1,7 @@
+## 2026-10-04 — fix(auth): wait for authorized campuses before director pages load (#3506)
+<!-- release-notes: silent_ship=silent-2026-10-04-director-campus-readiness -->
+- 主任登入後，分校資料頁會先確認帳號授權的分校才載入；授權清單暫時無法取得時顯示重試入口。後端分校權限未更動，尚待正式部署驗證。
+
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
