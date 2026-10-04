@@ -71,3 +71,15 @@ export function selectFormDaySession(daySessions, { classSessionId = 0, startTim
   const byTime = t ? daySessions.filter((s) => normalizeTime(s.startTime) === t) : [];
   return pickBestLearningRecordSession(byTime.length ? byTime : daySessions);
 }
+
+/**
+ * Pick the learning record for a calendar session. With a ClassSession id only an
+ * exact match or a same-time legacy record without ClassSessionID may bind; a
+ * record of another session in the slot, or any same-date guess, never does.
+ */
+export function pickSessionRecord({ csId = 0, byCs = null, byTime = null, byDate = null }) {
+  if (byCs) return byCs;
+  if (Number(csId) <= 0) return byTime || byDate;
+  const unbound = (r) => (r && !(Number(r.ClassSessionID || 0) > 0) ? r : null);
+  return unbound(byTime);
+}

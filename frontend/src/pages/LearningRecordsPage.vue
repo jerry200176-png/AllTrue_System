@@ -1555,7 +1555,7 @@ import {
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import { compareLearningRecords } from '../lib/learningRecordSort';
-import { deduplicateLearningRecordSessions, selectFormDaySession } from '../lib/learningRecordSessionPolicy';
+import { deduplicateLearningRecordSessions, selectFormDaySession, pickSessionRecord } from '../lib/learningRecordSessionPolicy';
 import {
   resolveLearningRecordViewDefaults,
   resolveLearningRecordViewMode,
@@ -3117,9 +3117,9 @@ const buildEvents = (targetDates) => {
       const csId = Number(rawSession?.id || 0);
       const byCs = csId > 0 ? recordLookup.value.get(`cs:${csId}`) : null;
       const byTime = startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null;
-      // 已有 ClassSession id 時不退回「同日任一筆」，否則同日另一堂的紀錄會蓋過本堂。
-      const byDate = csId > 0 ? null : recordLookup.value.get(`${classId}|${dateStr}`);
-      const record = byCs || byTime || byDate;
+      const byDate = recordLookup.value.get(`${classId}|${dateStr}`);
+      // 已有 ClassSession id 時，只接受本堂或未綁堂的舊紀錄，不拿同時段／同日另一堂的紀錄。
+      const record = pickSessionRecord({ csId, byCs, byTime, byDate });
       const rowStatus = String(rawSession?.learningRecordStatus || '');
       const sessionStatus = String(rawSession?.status || '').toLowerCase();
       // 請假／取消堂次：一律不需填評量；與 SmartCalendar.evalBadge 的 LEAVE_STATUSES 行為對齊。

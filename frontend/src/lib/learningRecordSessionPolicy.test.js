@@ -3,6 +3,7 @@ import {
   deduplicateLearningRecordSessions,
   pickBestLearningRecordSession,
   selectFormDaySession,
+  pickSessionRecord,
 } from './learningRecordSessionPolicy.js';
 
 const normalizeTime = (value) => String(value || '').trim().slice(0, 5);
@@ -66,5 +67,16 @@ describe('selectFormDaySession', () => {
   it('without id prefers matching time, then the attended row', () => {
     expect(selectFormDaySession(day, { startTime: '19:30', normalizeTime }).id).toBe(2);
     expect(selectFormDaySession(day, { normalizeTime }).id).toBe(2);
+  });
+});
+
+describe('pickSessionRecord', () => {
+  it('never binds another session\'s record in the same slot', () => {
+    const other = { ID: 7, ClassSessionID: 202 };
+    expect(pickSessionRecord({ csId: 201, byCs: null, byTime: other, byDate: other })).toBeNull();
+    expect(pickSessionRecord({ csId: 201, byCs: { ID: 8, ClassSessionID: 201 }, byTime: other })).toEqual({ ID: 8, ClassSessionID: 201 });
+    const legacy = { ID: 9, ClassSessionID: null };
+    expect(pickSessionRecord({ csId: 201, byTime: legacy })).toBe(legacy);
+    expect(pickSessionRecord({ csId: 0, byTime: other })).toBe(other);
   });
 });
