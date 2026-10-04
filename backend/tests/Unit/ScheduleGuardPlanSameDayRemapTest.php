@@ -84,4 +84,27 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         $this->assertSame([2], array_keys($plan['moves']));
         $this->assertSame('18:00', $plan['moves'][2]['start']);
     }
+
+    public function test_self_overlaps_report_a_moved_row_landing_on_a_row_that_stays(): void
+    {
+        // Codex P1: locked 15:30, unlocked 17:00 and 19:00; slots 15:00 and 17:00 → 17:00 moves to 15:00 (19:00 stays).
+        $rows = [self::row(1, '15:30:00', '16:30:00'), self::row(2, '17:00:00', '18:00:00'), self::row(3, '19:00:00', '20:00:00')];
+        $slots = [self::slot('15:00', '16:00'), self::slot('17:00', '18:00')];
+        $moves = ScheduleGuardService::planSameDayRemap($rows, $slots, [1 => true])['moves'];
+        self::assertSame([['15:30-16:30', '15:00-16:00']], ScheduleGuardService::planSelfOverlaps($rows, $moves, $slots));
+
+        // Clean remap: unlocked rows shift onto non-overlapping slots.
+        $rows = [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00')];
+        $slots = [self::slot('15:30', '16:30'), self::slot('17:30', '18:30')];
+        $moves = ScheduleGuardService::planSameDayRemap($rows, $slots, [])['moves'];
+        self::assertSame([], ScheduleGuardService::planSelfOverlaps($rows, $moves, $slots));
+
+        // A move onto a row that stays is skipped by the sync (unique start), so rows 15:00/17:00 with slot 17:00 are clean.
+        $rows = [self::row(1, '15:00', '16:00'), self::row(2, '17:00', '18:00')];
+        $moves = ScheduleGuardService::planSameDayRemap($rows, [self::slot('17:00', '18:00')], [])['moves'];
+        self::assertSame([], ScheduleGuardService::planSelfOverlaps($rows, $moves, [self::slot('17:00', '18:00')]));
+
+        // A slot no row reaches is still filled by the reflow, so it counts against a non-scheduled row left in place.
+        self::assertSame([['17:00-18:00', '17:30-18:30']], ScheduleGuardService::planSelfOverlaps([self::row(9, '17:00', '18:00')], [], [self::slot('17:30', '18:30')]));
+    }
 }

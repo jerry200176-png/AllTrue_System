@@ -442,6 +442,39 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame(['17:30'], $starts);
     }
 
+    /**
+     * Codex P1: a shared class dedupes its own student in capacity counting, so a remap that lands an unlocked row
+     * on top of a locked row of the same course must still be rejected (409) and leave sessions untouched.
+     */
+    public function test_shared_class_remap_onto_own_locked_row_is_rejected(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '共享自重疊', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159, ['ClassType' => 'one_on_two']);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '15:30:00', '16:30:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '19:00:00', '20:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:30:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $resp = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
+                'days_of_week' => [1], 'start_time' => '15:00', 'payment_type' => 'session',
+                'day_time_slots' => [
+                    ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60],
+                    ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
+                ],
+            ]);
+        $resp->assertStatus(409);
+        $this->assertSame('teacher_schedule_conflict', $resp->json('code'));
+        $this->assertStringContainsString('會與自己已鎖定或保留的堂次時間重疊', (string) $resp->json('message'));
+        $this->assertCount(1, array_filter($resp->json('conflicts'), fn ($c) => ($c['schedule_date'] ?? '') === '2026-04-27'));
+
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
+        $this->assertSame(['15:30', '17:00', '19:00'], $starts);
+    }
+
     private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
     {
         $slots = $slots ?? array_map(fn ($d) => ['day' => $d, 'start_time' => '17:00', 'duration_minutes' => 60], $days);
