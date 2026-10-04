@@ -460,6 +460,8 @@ assert.match(phaseCSource,
   const shipJob = followSource.split('\n  close-shipped-issue:')[1];
   assert.ok(shipJob && /needs: comment/.test(shipJob) && /issues: write/.test(shipJob) && /--remove-label in-app:logged/.test(shipJob),
     'a shipped logged suggestion closes its backlog issue after the notice succeeds');
+  assert.ok(/type:epic/.test(shipJob) && /lifecycle:frozen/.test(shipJob) && /also maps in-app/.test(shipJob),
+    'the logged ship path uses the same never-close guards as Phase-C');
   assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
