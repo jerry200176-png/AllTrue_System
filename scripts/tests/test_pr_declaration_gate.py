@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
 
 from scripts.governance.autonomy_gate import (
+    _LOCAL_ONLY_E2E_SPECS,
     classify_activation_scope,
     classify_scope,
     machine_declaration,
@@ -28,20 +30,43 @@ class PrDeclarationGateTest(unittest.TestCase):
             "frontend/playwright.config.js",
             "frontend/e2e/classroom-management-production-smoke.spec.js",
             "frontend/e2e/smoke.spec.js",
+            "frontend/e2e/parent-portal-production.spec.js",
             "frontend/e2e/fixtures/dismissOverlays.js",
-            "frontend/e2e/fixtures/branchApiProbe.js",
             "frontend/e2e/fixtures/directorDashboardTelemetry.js",
             "frontend/e2e/fixtures/tutoringReceivableControls.js",
-            "frontend/e2e/parent-portal-production.spec.js",
         ):
             with self.subTest(path=path):
                 self.assertEqual(classify_scope([path], "")["tier_name"], "T3")
         for path in (
             "frontend/e2e/fixtures/ui-foundation/pilot-mount.js",
-            "frontend/e2e/classroom-clarity.spec.js",
             "frontend/src/components/__tests__/Widget.test.js",
         ):
             with self.subTest(path=path):
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
+
+    def test_every_default_ui_smoke_spec_is_a_protected_control(self):
+        paths = (
+            "after-class-confirmed-save", "attendance-runtime", "billing-correction-guidance",
+            "branch-health-clarity", "calendar-course-consistency", "calendar-print-production",
+            "classroom-clarity", "classroom-management-production-smoke", "classroom-management-recovery",
+            "dashboard-workbench", "duplicate-review-human-labels", "feedback-launcher-production",
+            "navigation-history", "navigation-more-search", "parent-portal-production",
+            "role-onboarding", "school-directory-production", "smoke", "tutoring-continuation",
+            "tutoring-free-production",
+        )
+        for stem in paths:
+            path = f"frontend/e2e/{stem}.spec.js"
+            with self.subTest(path=path):
+                declaration = machine_declaration([path], "+ weaken production smoke evidence")
+                self.assertEqual((declaration["risk_class"], declaration["autonomy_tier"]), ("R3", "T3"))
+
+    def test_local_only_playwright_specs_remain_test_only(self):
+        config = (Path(__file__).resolve().parents[2] / "frontend/playwright.config.js").read_text(encoding="utf-8")
+        for path in _LOCAL_ONLY_E2E_SPECS:
+            with self.subTest(path=path):
+                self.assertTrue((Path(__file__).resolve().parents[2] / path).is_file())
+                stem = Path(path).name.removesuffix(".spec.js")
+                self.assertIn(stem, config, f"{stem} must remain ignored by the default production smoke config")
                 self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
 
     def test_missing_declaration_fails_before_merge(self):
