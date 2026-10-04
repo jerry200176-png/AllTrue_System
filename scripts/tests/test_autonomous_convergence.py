@@ -6,6 +6,7 @@ import unittest
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "autonomous-convergence.yml"
 UI_SMOKE_WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "ui-smoke.yml"
+CI_WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "ci.yml"
 
 
 def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
@@ -15,6 +16,17 @@ def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
 
 
 class AutonomousConvergenceTest(unittest.TestCase):
+    def test_main_push_path_filter_keeps_read_only_fetch_credentials(self):
+        workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+        changes_job = workflow.split("\n  changes:\n", 1)[1].split("\n  golden_scenarios:\n", 1)[0]
+        checkout_step = changes_job.split("      - name: Detect changed paths", 1)[0]
+        permissions = workflow.split("\npermissions:\n", 1)[1].split("\n\njobs:\n", 1)[0]
+
+        self.assertIn("uses: dorny/paths-filter@", changes_job)
+        self.assertIn("persist-credentials: true", checkout_step)
+        self.assertIn("contents: read", permissions)
+        self.assertNotIn("contents: write", permissions)
+
     def test_merged_pr_event_reconciles_bot_merge_without_running_pr_code(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn("pull_request_target:", workflow)
