@@ -5,6 +5,28 @@
  */
 export const changelogDraftNotes = [
   {
+    "version": "2026.10.04",
+    "date": "2026-10-04",
+    "title": "2026.10.04 草稿（未發布）",
+    "summary": "row latest sign-in/learning-record lookups; date-bounded substitutes",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "draft": true,
+    "sections": [
+      {
+        "title": "其他改善",
+        "items": [
+          "row latest sign-in/learning-record lookups; date-bounded substitutes"
+        ]
+      }
+    ],
+    "items": [
+      "row latest sign-in/learning-record lookups; date-bounded substitutes"
+    ]
+  },
+  {
     "version": "2026.10.03",
     "date": "2026-10-03",
     "title": "2026.10.03 草稿（未發布）",
@@ -646,55 +668,6 @@ export const changelogDraftNotes = [
       "重複課程審核的狀態與重試更清楚",
       "綁定清單在手機更容易查看",
       "分校管理在手機更容易操作"
-    ]
-  },
-  {
-    "version": "2026.09.13",
-    "date": "2026-09-13",
-    "title": "2026.09.13 草稿（未發布）",
-    "summary": "未設定堂數不再誤顯示為 0 堂；單堂視窗不再直接刪除整門課",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "draft": true,
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "未設定堂數不再誤顯示為 0 堂",
-          "單堂視窗不再直接刪除整門課",
-          "已完課歷史可直接續報加購",
-          "多校老師登入後補填提醒會同步完整校區"
-        ]
-      },
-      {
-        "title": "體驗調整",
-        "items": [
-          "學收佇列在手機上更容易查看"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "正職薪資要件的提示更清楚",
-          "分校健康看板在手機更容易查看",
-          "教室管理在手機更容易操作",
-          "科目設定在手機上更容易操作",
-          "主任總覽的常用操作更容易辨識",
-          "招生問班操作在手機更容易辨識"
-        ]
-      }
-    ],
-    "items": [
-      "未設定堂數不再誤顯示為 0 堂",
-      "單堂視窗不再直接刪除整門課",
-      "已完課歷史可直接續報加購",
-      "多校老師登入後補填提醒會同步完整校區",
-      "學收佇列在手機上更容易查看",
-      "正職薪資要件的提示更清楚",
-      "分校健康看板在手機更容易查看",
-      "教室管理在手機更容易操作"
     ]
   }
 ];

@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
+## 2026-10-04 — perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)
+<!-- release-notes: silent_ship=silent-2026-10-04-class-sessions-latest-rows -->
+- `/class-sessions` 不再對 `StudentSingIn`／`LearningRecord` 整表算「每堂最新一筆」，改用既有索引逐列查；代課查詢只看請求日期區間。正式站 EXPLAIN（run 37166542492）顯示每次請求整表掃描 1.4–1.6 萬列；回傳內容不變。
+
 ## 2026-10-03 — feat(bug-report): suggestions close as logged and reopen on reply; form shows your open reports on the page
 <!-- release-notes: staff_update=staff-2026-10-03-suggestion-loop -->
 - 建議／改善／不做／重複的回報可用 `closeAsLogged` 結案（GitHub issue 為產品清單），回報人留言自動重開；上線後可用 follow-up 通知已結案建議。回報視窗會列出自己在同頁仍處理中的回報，可直接補充。
