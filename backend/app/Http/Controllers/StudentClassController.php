@@ -775,7 +775,10 @@ class StudentClassController extends Controller
                     $classSessionsBodyByClass[(int) $row->StudentClassID][] = $row;
                 }
                 // Body rows are window-bounded; the contract walk needs cancellations on any date.
-                $cancelledByClass = self::cancelledDatesByClass(array_map('intval', $courseIds));
+                // Only courses on the authorized branch (request IDs are untrusted).
+                $cancelledByClass = self::cancelledDatesByClass($bodyClasses
+                    ->filter(fn ($c) => (int) ($c->student->CampusID ?? 0) === (int) $branchId)
+                    ->map(fn ($c) => (int) $c->ID)->unique()->values()->all());
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -870,10 +873,10 @@ class StudentClassController extends Controller
                     }
 
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
-                        // Cancelled dates are skipped by the walk (like leave) so N contract dates remain after capping.
-                        $leaveSet = ($leaveByClass[$cid] ?? []) + ($cancelledByClass[(int) $cid] ?? []);
+                        // Cancelled dates are skipped by the walk so N contract dates remain after capping.
+                        $leaveSet = $leaveByClass[$cid] ?? [];
                         $scheduledSet = $scheduledByClass[$cid] ?? [];
-                        $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+                        $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, $cancelledByClass[(int) $cid] ?? []);
                         $mergedSet = [];
                         foreach ($contractList as $date) {
                             $mergedSet[$date] = true;
@@ -1123,9 +1126,9 @@ class StudentClassController extends Controller
                         }
                     }
                     $n = (int) $class->SessionCount;
-                    $leaveSet = ($leaveByClass[$id] ?? []) + self::cancelledDateSet($sessionsByClass[$id] ?? []);
+                    $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
-                    $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+                    $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, self::cancelledDateSet($sessionsByClass[$id] ?? []));
 
                     // Regression guard (#440): when a count-mode course already has historical
                     // ClassSession rows but future scheduled rows are missing, we must not return
@@ -1368,7 +1371,7 @@ class StudentClassController extends Controller
     /**
      * 堂數制：從第一堂日開始，依排課星期與請假/調課/加課，算出恰好 N 堂的有效日期（請假會讓結束日往後推）。
      */
-    public static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet): array
+    public static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet, array $cancelledSet = []): array
     {
         $list = [];
         $d = Carbon::parse($startDate . ' 12:00:00');
@@ -1377,12 +1380,15 @@ class StudentClassController extends Controller
             $ymd = $d->toDateString();
             $dow = $d->dayOfWeekIso;
             $isRegular = in_array($dow, $daysOfWeek, true);
-            $isLeave = isset($leaveSet[$ymd]);
+            $isCancelled = isset($cancelledSet[$ymd]);
+            $isLeave = isset($leaveSet[$ymd]) || $isCancelled;
             $isScheduledExtra = isset($scheduledSet[$ymd]);
 
             if ($isRegular && !$isLeave) {
                 $list[] = $ymd;
-            } elseif ($isScheduledExtra && !$isRegular && !$isLeave) {
+            } elseif ($isScheduledExtra && !$isRegular && !$isCancelled) {
+                // A same-day leave marker beside a schedule-only make-up keeps the make-up (R13/R114);
+                // only a cancelled ClassSession on that date removes it.
                 $list[] = $ymd;
             }
             $d->addDay();

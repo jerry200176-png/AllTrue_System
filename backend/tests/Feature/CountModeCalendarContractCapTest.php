@@ -220,6 +220,57 @@ class CountModeCalendarContractCapTest extends TestCase
         }
     }
 
+    public function test_same_day_leave_keeps_schedule_only_makeup_but_cancellation_removes_it(): void
+    {
+        // Thursdays from 09-03, 3 sessions. Off-pattern Sat 09-12 has a leave marker AND a schedule-only make-up.
+        $leave = ['2026-09-12' => true];
+        $scheduled = ['2026-09-12' => true];
+        $this->assertSame(
+            ['2026-09-03', '2026-09-10', '2026-09-12'],
+            \App\Http\Controllers\StudentClassController::computeEffectiveSessionDates('2026-09-03', 3, [4], $leave, $scheduled)
+        );
+        $this->assertSame(
+            ['2026-09-03', '2026-09-10', '2026-09-17'],
+            \App\Http\Controllers\StudentClassController::computeEffectiveSessionDates('2026-09-03', 3, [4], $leave, $scheduled, ['2026-09-12' => true])
+        );
+    }
+
+    public function test_session_dates_ignore_cancellations_of_courses_outside_the_branch(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-01 09:00:00', 'Asia/Taipei'));
+        try {
+            $token = $this->makeDirectorToken();
+            $student = Student::create([
+                'name' => 'Other Campus', 'CampusID' => 2, 'ClassID' => 1,
+                'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+            ]);
+            $course = StudentClass::create([
+                'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+                'by1' => 1, 'Period' => 4, 'StartDate' => '2026-09-03', 'EndDate' => '2026-12-31',
+                'TotalHours' => 6, 'Charge' => 0, 'Paid' => 1, 'Rate' => 500, 'MDate' => now(),
+                'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 3, 'SessionDuration' => 120,
+                'RemainingSessions' => 3, 'UsedSessions' => 0, 'ClassType' => 'one_on_one',
+                'week' => 4, 'time' => '19:00:00',
+            ]);
+            ClassSession::create([
+                'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10',
+                'StartTime' => '19:00:00', 'EndTime' => '21:00:00', 'Status' => 'cancelled',
+            ]);
+            $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->postJson('/api/v1/student-classes/session-dates', [
+                    'branch_id' => 1, 'range_start' => '2026-09-20', 'range_end' => '2026-10-15',
+                    'courses' => [[
+                        'id' => $course->ID, 'first_class_date' => '2026-09-03',
+                        'sessions_purchased' => 3, 'days_of_week' => [4],
+                    ]],
+                ])->assertOk()->json((string) $course->ID) ?? [];
+            $this->assertNotContains('2026-09-24', array_column($res['projected'] ?? [], 'session_date'),
+                'campus-2 cancellations must not shift dates for a campus-1 request');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     private function makeDirectorToken(): string
     {
         $director = User::create([

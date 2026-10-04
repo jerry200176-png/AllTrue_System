@@ -192,8 +192,9 @@ class ClassSessionIndexProjectionService
                         Carbon::parse($class->StartDate)->toDateString(),
                         (int) $class->SessionCount,
                         $daysOfWeek,
-                        ($leaveByClass[$classId] ?? []) + ($cancelledByClass[(int) $classId] ?? []),
-                        $scheduledByClass[$classId] ?? []
+                        $leaveByClass[$classId] ?? [],
+                        $scheduledByClass[$classId] ?? [],
+                        $cancelledByClass[(int) $classId] ?? []
                     );
                     $effectiveDates = array_values(array_filter(
                         $contractDates,
