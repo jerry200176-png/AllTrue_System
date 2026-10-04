@@ -239,5 +239,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh issue list --state all --limit 3000 --json number,title,body,comments,state,labels,author > issues.json
+          gh issue list --state all --limit 20000 --json number,title,body,comments,state,labels,author > issues.json
+          # Never reconcile a truncated inventory silently.
+          python3 -c 'import json,sys; n=len(json.load(open("issues.json"))); sys.exit(f"issue inventory truncated at {n}; raise --limit" if n >= 20000 else 0)'
           python3 scripts/inapp-issue-reconcile.py --dump out --issues issues.json | tee -a "$GITHUB_STEP_SUMMARY"
