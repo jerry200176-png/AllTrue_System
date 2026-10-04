@@ -8227,10 +8227,22 @@ class StudentClassController extends Controller
             usort($dateSessions, fn ($a, $b) => strcmp((string) $a->StartTime, (string) $b->StartTime));
             // Pair slots with unlocked rows only: a locked row stays put and must not shift the pairing
             // (otherwise 09:00 locked + 15:00/17:00 → 15:30/17:30 moved 15:00→17:30 and left 17:00 overlapping).
+            $lockedOnDate = array_filter($dateSessions, fn ($s) => isset($lockedBySessionId[(int) $s->id]));
             $dateSessions = array_values(array_filter(
                 $dateSessions,
                 fn ($s) => !isset($lockedBySessionId[(int) $s->id])
             ));
+            // A locked row already exactly on a slot consumes it; pair the rest with the remaining slots.
+            $daySlots = array_values(array_filter($daySlots, function ($slot) use ($lockedOnDate) {
+                $start = $this->normalizeSessionTime($slot['time'], '16:00:00');
+                $end = Carbon::createFromFormat('H:i:s', $start)->addMinutes(max(30, $slot['dur']))->format('H:i:s');
+                foreach ($lockedOnDate as $l) {
+                    if ((string) $l->StartTime === $start && (string) $l->EndTime === $end) {
+                        return false;
+                    }
+                }
+                return true;
+            }));
 
             foreach ($dateSessions as $idx => $session) {
                 $sessionId = (int) $session->id;

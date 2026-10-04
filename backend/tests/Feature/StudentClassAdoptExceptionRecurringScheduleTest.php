@@ -321,9 +321,9 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
         $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
 
-        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60]])
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60]])
             ->assertStatus(409);
-        // An exact match to one existing row is that row being kept, not a conflict.
+        // 15:00 moves to 16:30 and the excess 17:00 row stays: overlap. An exact match to an existing row is fine.
         $this->updateFixedSlots($token, $course->fresh(), [1], [['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60]])
             ->assertOk();
     }
@@ -345,6 +345,27 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
             ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
             ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
         ])->assertStatus(409);
+    }
+
+    /** A locked row already on a new slot keeps it; unlocked rows pair with the remaining slots. */
+    public function test_aligned_locked_row_consumes_its_slot(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定對齊', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '16:00:00', '17:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '18:00:00', '19:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [
+            ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60],
+            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
+        ])->assertOk();
+
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
+        $this->assertSame(['15:00', '16:30', '18:00'], $starts);
     }
 
     /** Locked rows do not count toward the remap budget: 2 remappable rows still fit 2 new slots. */

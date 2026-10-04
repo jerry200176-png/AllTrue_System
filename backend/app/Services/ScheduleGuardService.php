@@ -56,6 +56,8 @@ class ScheduleGuardService
             $excludeStudentId
         );
         $conflicts = [];
+        // Lock state of the edited course's sessions, loaded once for all slots.
+        $lockedOwn = $excludeStudentClassId ? self::lockedClassSessionIds($excludeStudentClassId) : [];
 
         foreach ($slots as $slot) {
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
@@ -67,7 +69,8 @@ class ScheduleGuardService
                 $startDate,
                 $endDate,
                 $excludeStudentId,
-                count(array_filter($slots, fn ($s) => (int) ($s['day_of_week'] ?? 0) === (int) ($slot['day_of_week'] ?? 0)))
+                array_values(array_filter($slots, fn ($s) => (int) ($s['day_of_week'] ?? 0) === (int) ($slot['day_of_week'] ?? 0))),
+                $lockedOwn
             );
             // Occupancy is per concrete date, not pooled across dates (in-app #347).
             $byDate = [];
@@ -375,7 +378,8 @@ class ScheduleGuardService
         ?string $startDate = null,
         ?string $endDate = null,
         ?int $excludeStudentId = null,
-        int $slotsOnDay = 1
+        array $daySlots = [],
+        array $locked = []
     ): array {
         $dow = (int) ($slot['day_of_week'] ?? 0);
         $slotStart = (string) ($slot['start_time'] ?? '');
@@ -430,17 +434,37 @@ class ScheduleGuardService
 
         $overlaps = [];
         $seenKeys = [];
-        // Own regular rows per date: the edit remaps at most one row per new slot that day;
+        // Own regular rows per date: the edit remaps at most one row per free new slot that day;
         // excess rows stay at their old time and must still conflict.
-        // Locked rows (sign-in / approved record) are never remapped: they stay put and are neither counted nor excluded.
+        // Locked rows (sign-in / approved record) are never remapped: they stay put and are never excluded.
+        // A locked row already sitting exactly on a new slot consumes that slot (the sync leaves it there).
         $ownRegularPerDate = [];
-        $locked = $excludeStudentClassId ? self::lockedClassSessionIds($excludeStudentClassId) : [];
+        $slotsFreePerDate = [];
+        $daySlotKeys = [];
+        foreach ($daySlots ?: [$slot] as $s) {
+            $daySlotKeys[(string) ($s['start_time'] ?? '') . '|' . (string) ($s['end_time'] ?? '')] = true;
+        }
         if ($excludeStudentClassId) {
             foreach ($classSessions as $row) {
-                if ((int) $row->StudentClassID === $excludeStudentClassId && !$row->IsContractException && !isset($locked[(int) $row->class_session_id])) {
-                    $d = substr((string) $row->SessionDate, 0, 10);
-                    $ownRegularPerDate[$d] = ($ownRegularPerDate[$d] ?? 0) + 1;
+                if ((int) $row->StudentClassID !== $excludeStudentClassId || $row->IsContractException) {
+                    continue;
                 }
+                $d = substr((string) $row->SessionDate, 0, 10);
+                $slotsFreePerDate[$d] ??= count($daySlotKeys);
+                if (!isset($locked[(int) $row->class_session_id])) {
+                    $ownRegularPerDate[$d][] = $row;
+                } elseif (isset($daySlotKeys[$this->normalizeTime($row->StartTime) . '|' . $this->normalizeTime($row->EndTime)])) {
+                    $slotsFreePerDate[$d]--;
+                }
+            }
+        }
+        // Mirror syncFutureScheduledSessionTimes(): unlocked rows sorted by start pair with the free slots in order;
+        // only those are remapped, the rest stay at their old time.
+        $remappedIds = [];
+        foreach ($ownRegularPerDate as $d => $rows) {
+            usort($rows, fn ($a, $b) => strcmp((string) $a->StartTime, (string) $b->StartTime));
+            foreach (array_slice($rows, 0, max(0, $slotsFreePerDate[$d] ?? 0)) as $r) {
+                $remappedIds[(int) $r->class_session_id] = true;
             }
         }
 
@@ -484,7 +508,7 @@ class ScheduleGuardService
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
                 // The edited course's own regular sessions get remapped to the new slot,
                 // so they never block it (in-app #347). Exception rows still conflict below.
-                if (!$row->IsContractException && !isset($locked[(int) $row->class_session_id]) && ($ownRegularPerDate[$sessionDate] ?? 0) <= $slotsOnDay) {
+                if (isset($remappedIds[(int) $row->class_session_id])) {
                     continue;
                 }
                 // If the session matches the slot being added, it is the course's own
