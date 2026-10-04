@@ -1605,12 +1605,6 @@ jobs:
           python3 .github/scripts/deploy_receipt.py \
             "$RUNNER_TEMP/alltrue-runtime-manifest.json" \
             "$RUNNER_TEMP/alltrue-production-deployment-receipt.json"
-          {
-            echo "## exact-deployment-receipt"
-            echo "Artifact: \`production-deploy-receipt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\`"
-            echo "Resolved target: \`${TARGET_SHA}\`"
-            echo "Application artifact digest and configuration version: unknown (on-host build)."
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload exact target deployment receipt
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -1628,6 +1622,11 @@ jobs:
             echo ""
             echo "## state=production-verified"
             echo "The executor returned success only after deployment identity, health, post-merge smoke, and exact-target receipt upload passed."
+            echo ""
+            echo "## exact-deployment-receipt"
+            echo "Artifact: \`production-deploy-receipt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\`"
+            echo "Resolved target: \`${{ needs.resolve-target.outputs.target_sha }}\`"
+            echo "Application artifact digest and configuration version: unknown (on-host build)."
           } >> "$GITHUB_STEP_SUMMARY"
 
   parent-portal-smoke:
