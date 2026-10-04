@@ -10,6 +10,9 @@
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
+## 2026-10-04 — fix(scheduling): availability counts the same live lessons as booking (in-app #338 #359 #363 #365 #327)
+<!-- release-notes: silent_ship=silent-2026-10-04-availability-parity -->
+- 代課挑選與跨校衝堂檢查改用與排課相同的「有效堂次」規則（不再把停課、請假調整、作廢、已改期的堂次算成已滿／他校有課），他校衝突顯示「他校有課」
 ## 2026-10-04 — fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)
 <!-- release-notes: silent_ship=silent-2026-10-04-paused-projection -->
 - 暫停中的課程不再顯示「預排」日期（已建立的正式堂次照舊），點到暫停課程的預排日期改顯示「課程暫停中，恢復後才會排課」；已取消的堂次所在日期不再同時出現預排；課程管理「堂次」分頁預設改為清單（第N堂＋狀態），月曆可手動切換

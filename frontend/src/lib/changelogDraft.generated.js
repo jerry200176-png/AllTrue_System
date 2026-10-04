@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.04",
     "date": "2026-10-04",
     "title": "2026.10.04 草稿（未發布）",
-    "summary": "carry the last buttons pressed and messages seen (F15)；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+    "summary": "carry the last buttons pressed and messages seen (F15)；counts the same live lessons as booking",
     "audience": [
       "teacher",
       "director"
@@ -24,6 +24,7 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
+          "counts the same live lessons as booking",
           "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
           "record form opens the lesson you clicked; multi-teacher courses keep their own slots",
           "explains empty slips, shows rejected reports, 後5碼 and 備註"
@@ -38,6 +39,7 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "carry the last buttons pressed and messages seen (F15)",
+      "counts the same live lessons as booking",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "record form opens the lesson you clicked; multi-teacher courses keep their own slots",
       "explains empty slips, shows rejected reports, 後5碼 and 備註",
