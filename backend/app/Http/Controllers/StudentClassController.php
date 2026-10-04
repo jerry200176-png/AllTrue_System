@@ -868,7 +868,8 @@ class StudentClassController extends Controller
                     }
 
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
-                        $leaveSet = $leaveByClass[$cid] ?? [];
+                        // Cancelled dates are skipped by the walk (like leave) so N contract dates remain after capping.
+                        $leaveSet = ($leaveByClass[$cid] ?? []) + self::cancelledDateSet($classSessionsBodyByClass[(int) $cid] ?? []);
                         $scheduledSet = $scheduledByClass[$cid] ?? [];
                         $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
                         $mergedSet = [];
@@ -1120,7 +1121,7 @@ class StudentClassController extends Controller
                         }
                     }
                     $n = (int) $class->SessionCount;
-                    $leaveSet = $leaveByClass[$id] ?? [];
+                    $leaveSet = ($leaveByClass[$id] ?? []) + self::cancelledDateSet($sessionsByClass[$id] ?? []);
                     $scheduledSet = $scheduledByClass[$id] ?? [];
                     $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
 
@@ -1215,6 +1216,19 @@ class StudentClassController extends Controller
         return response()->json($result);
     }
 
+    /** @return array<string, bool> */
+    private static function cancelledDateSet(iterable $sessionRows): array
+    {
+        $set = [];
+        foreach ($sessionRows as $row) {
+            if (strtolower((string) ($row->Status ?? '')) === 'cancelled' && $row->SessionDate) {
+                $set[Carbon::parse($row->SessionDate)->toDateString()] = true;
+            }
+        }
+
+        return $set;
+    }
+
     /**
      * @param  list<string>  $effectiveDateList
      * @param  iterable<object>  $sessionRows
@@ -1235,12 +1249,7 @@ class StudentClassController extends Controller
             $effectiveDateList = [];
         }
         // A cancelled ClassSession occupies its date even if its start time differs from the template.
-        $cancelledDates = [];
-        foreach ($sessionRows as $row) {
-            if (strtolower((string) ($row->Status ?? '')) === 'cancelled' && $row->SessionDate) {
-                $cancelledDates[Carbon::parse($row->SessionDate)->toDateString()] = true;
-            }
-        }
+        $cancelledDates = self::cancelledDateSet($sessionRows);
         $effectiveDateList = array_values(array_filter($effectiveDateList, fn ($d) => !isset($cancelledDates[$d])));
         $projected = $reader->buildProjectedFromEffectiveDates($classId, $effectiveDateList, $materialized, $class);
 

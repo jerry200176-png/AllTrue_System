@@ -149,6 +149,28 @@ describe('openSessionEdit projected capability (F4)', () => {
     expect(flow.chipActionDialog.value?.message).not.toContain('堂數制');
   });
 
+  it.each([
+    ['Stop=1', { Stop: 1 }],
+    ['Supabase fallback status=inactive', { status: 'inactive' }],
+  ])('paused course (%s) dialog is informational only and never quick-adds', async (_n, extra) => {
+    const openQuickAddSessionModal = vi.fn();
+    const course = { id: 42, payment_type: 'session', ScheduleMode: 'count', duration_hours: 2, ...extra };
+    const flow = buildFlow({
+      openQuickAddSessionModal,
+      getSessionDisplayRow: vi.fn(() => null),
+      reloadCourseSessions: vi.fn(async () => true),
+      getSessionRowsForDate: () => [],
+    });
+    await flow.openSessionEdit(course, '2026-08-10', 0, { isProjected: true, startTime: '18:00', endTime: '20:00' });
+    const dlg = flow.chipActionDialog.value;
+    expect(dlg.message).toContain('課程暫停中');
+    expect(dlg.primaryLabel).toBe('知道了');
+    expect(dlg.secondaryLabel).toBe('');
+    await flow.confirmChipActionDialog();
+    expect(openQuickAddSessionModal).not.toHaveBeenCalled();
+    expect(flow.chipActionDialog.value).toBeNull();
+  });
+
   it('monthly date-mode projected chip still materializes', async () => {
     const flow = buildFlow({
       getSessionDisplayRow: vi.fn(() => null),

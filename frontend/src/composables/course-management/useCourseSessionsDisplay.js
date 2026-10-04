@@ -378,10 +378,12 @@ export function useCourseSessionsDisplay({
     return null;
   };
 
-  const getSessionNumber = (course, dateYmd, sessionId) => {
-    const units = sessionUnits(course);
+  // One pass over sessionUnits -> 第N堂 lookup (first match wins, like the old per-call scan).
+  const getSessionNumberMap = (course) => {
+    const byId = new Map();
+    const byDate = new Map();
     let num = 0;
-    for (const u of units) {
+    for (const u of sessionUnits(course)) {
       const row = u.id ? getSessionRowById(course, u.id) || u : u;
       const state = getSessionState(course, u.date, u.id || undefined);
       const isLeave = state && LEAVE_STATUSES.has(state.className);
@@ -393,11 +395,17 @@ export function useCourseSessionsDisplay({
         || !rowOccupiesPurchasedQuota(row)
         || isLeave
         || isOverQuotaSession(course, row);
-      const isMatch = sessionId ? (u.id && u.id === Number(sessionId)) : (u.date === dateYmd);
-      if (isMatch) return skipNumber ? null : num + 1;
+      const value = skipNumber ? null : num + 1;
+      if (u.id && !byId.has(u.id)) byId.set(u.id, value);
+      if (!byDate.has(u.date)) byDate.set(u.date, value);
       if (!skipNumber) num++;
     }
-    return null;
+    return { byId, byDate };
+  };
+
+  const getSessionNumber = (course, dateYmd, sessionId) => {
+    const { byId, byDate } = getSessionNumberMap(course);
+    return (sessionId ? byId.get(Number(sessionId)) : byDate.get(dateYmd)) ?? null;
   };
 
   const countNonLeaveSessions = (course) => {
@@ -587,6 +595,7 @@ export function useCourseSessionsDisplay({
     movedOrCancelledUnits,
     sessionRowKey,
     getSessionNumber,
+    getSessionNumberMap,
     countNonLeaveSessions,
     effectiveSessionCount,
     leaveSessionCount,

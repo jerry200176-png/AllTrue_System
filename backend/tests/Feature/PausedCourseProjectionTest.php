@@ -66,6 +66,10 @@ class PausedCourseProjectionTest extends TestCase
         $dates = array_column($payload['projected'], 'session_date');
         $this->assertNotEmpty($dates, 'other dates still project');
         $this->assertNotContains('2026-06-13', $dates);
+        $this->assertSame(8, count($dates) + count(array_filter(
+            $payload['materialized'],
+            fn ($m) => ($m['status'] ?? $m['Status'] ?? '') !== 'cancelled'
+        )), 'cancelled date must not shrink the 8-session contract');
     }
 
     private function sessionDates(string $token, int $courseId): array

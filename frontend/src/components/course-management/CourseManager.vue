@@ -46,6 +46,7 @@ export default {
     getSessionStateClass: { type: Function, required: true },
     getSessionStateLabel: { type: Function, required: true },
     getSessionNumber: { type: Function, required: true },
+    getSessionNumberMap: { type: Function, default: null },
     sessionRowKey: { type: Function, required: true },
     isUserNote: { type: Function, required: true },
     formatMakeupDate: { type: Function, required: true },
@@ -93,13 +94,21 @@ export default {
       const units = [...(props.sessionUnits || [])];
       return units.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     });
+    // Built once per course sessions; list rows were each rescanning sessionUnits (O(n^2)).
+    const sessionNumberMap = computed(() => (props.getSessionNumberMap ? props.getSessionNumberMap(props.course) : null));
+    function sessionNo(u) {
+      const date = (u.date || '').slice(0, 10);
+      const m = sessionNumberMap.value;
+      if (!m) return props.getSessionNumber(props.course, date, u.id);
+      return (u.id ? m.byId.get(Number(u.id)) : m.byDate.get(date)) ?? null;
+    }
     function onSelectDay({ date }) {
       const u = (props.sessionUnits || []).find((x) => String(x.date || '').slice(0, 10) === date);
       if (u) emit('open-session', { unit: u, date, id: u.id });
     }
     return {
       tabs: TABS, activeTab, act, primaryScheduleCta, billingType, statusTone,
-      sessionsView, dangerOpen, listUnits, onSelectDay, monthlySummary, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
+      sessionsView, dangerOpen, listUnits, sessionNo, onSelectDay, monthlySummary, selectedPeriod, effectivePaymentLabel, periodPaymentLabel,
     };
   },
 };
@@ -279,7 +288,7 @@ export default {
                 :class="[u.isProjected ? 'is-projected' : 'is-materialized', getSessionStateClass(course, (u.date || '').slice(0,10), u.id)]"
                 @click="$emit('open-session', { unit: u, date: (u.date || '').slice(0,10), id: u.id })"
               >
-                <span class="cmw__session-seq">{{ getSessionNumber(course, (u.date || '').slice(0,10), u.id) ? `第${getSessionNumber(course, (u.date || '').slice(0,10), u.id)}堂` : '—' }}</span>
+                <span class="cmw__session-seq">{{ sessionNo(u) ? `第${sessionNo(u)}堂` : '—' }}</span>
                 <span class="cmw__session-date">{{ formatSessionChipDate(u) }}</span>
                 <span class="cmw__session-state">{{ u.isProjected ? '預排' : (getSessionStateLabel(course, (u.date || '').slice(0,10), u.id) || '已建立') }}</span>
                 <span v-if="showSessionNotes && isUserNote(u.note)" class="cmw__session-note">{{ u.note }}</span>
