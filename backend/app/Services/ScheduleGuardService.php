@@ -6,6 +6,7 @@ use App\Models\LearningRecord;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Support\ClassTypeCapacity;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -55,6 +56,9 @@ class ScheduleGuardService
             $excludeStudentId
         );
         $conflicts = [];
+        $selfOverlaps = [];
+        // Lock state of the edited course's sessions, loaded once for all slots.
+        $lockedOwn = $excludeStudentClassId ? self::lockedClassSessionIds($excludeStudentClassId) : [];
 
         foreach ($slots as $slot) {
             $recurringOverlaps = $this->collectRecurringOverlaps($teacherCourses, $slot);
@@ -65,19 +69,45 @@ class ScheduleGuardService
                 $excludeStudentClassId,
                 $startDate,
                 $endDate,
-                $excludeStudentId
+                $excludeStudentId,
+                array_values(array_filter($slots, fn ($s) => (int) ($s['day_of_week'] ?? 0) === (int) ($slot['day_of_week'] ?? 0))),
+                $lockedOwn,
+                $selfOverlaps
             );
-            $overlaps = array_merge($recurringOverlaps, $concreteOverlaps);
-
-            $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
+            // Occupancy is per concrete date, not pooled across dates (in-app #347).
+            $byDate = [];
+            foreach ($concreteOverlaps as $o) {
+                $byDate[(string) ($o['schedule_date'] ?? '')][] = $o;
+            }
+            $teacherConflict = null;
+            $roomConflict = null;
+            foreach ($byDate ?: [[]] as $dateOverlaps) {
+                $overlaps = array_merge($recurringOverlaps, $dateOverlaps);
+                $tc = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
+                if ($tc && (!$teacherConflict || ($tc['current_students'] ?? 0) > ($teacherConflict['current_students'] ?? 0))) {
+                    $teacherConflict = $tc;
+                }
+                $rc = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
+                if ($rc && (!$roomConflict || ($rc['current_students'] ?? 0) > ($roomConflict['current_students'] ?? 0))) {
+                    $roomConflict = $rc;
+                }
+            }
             if ($teacherConflict) {
                 $conflicts[] = $teacherConflict;
             }
-
-            $roomConflict = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
             if ($roomConflict) {
                 $conflicts[] = $roomConflict;
             }
+        }
+        // Keyed by date, so slots sharing a weekday report each date once.
+        foreach ($selfOverlaps as $d => [$a, $b]) {
+            $conflicts[] = [
+                'type' => 'self_overlap',
+                'schedule_date' => $d,
+                'start_time' => substr($b, 0, 5),
+                'end_time' => substr($b, 6, 5),
+                'message' => sprintf('此課程在 %s 會與自己已鎖定或保留的堂次時間重疊（%s 與 %s），請調整時段或先處理該堂次', $d, $a, $b),
+            ];
         }
 
         return $conflicts;
@@ -473,7 +503,10 @@ class ScheduleGuardService
         ?int $excludeStudentClassId = null,
         ?string $startDate = null,
         ?string $endDate = null,
-        ?int $excludeStudentId = null
+        ?int $excludeStudentId = null,
+        array $daySlots = [],
+        array $locked = [],
+        array &$selfOverlaps = []
     ): array {
         $dow = (int) ($slot['day_of_week'] ?? 0);
         $slotStart = (string) ($slot['start_time'] ?? '');
@@ -518,16 +551,64 @@ class ScheduleGuardService
         $classSessionsQuery = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->where('sc.TeacherID', $teacherId)->where('sc.Stop', 0)->where('st.CampusID', $branchId)
+            ->where('sc.TeacherID', $teacherId)->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))->where('st.CampusID', $branchId)
             ->whereDate('cs.SessionDate', '>=', $horizonStart)
-            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses());
         if ($endDate) {
             $classSessionsQuery->whereDate('cs.SessionDate', '<=', $endDate);
         }
-        $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
+        $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.IsContractException', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
 
         $overlaps = [];
         $seenKeys = [];
+        // Own rows the edit moves to a new slot (same plan as syncFutureScheduledSessionTimes()) never block it;
+        // rows the plan leaves in place keep conflicting. Their paired schedules rows move with them.
+        $remappedIds = [];
+        $movedScheduleKeys = [];
+        if ($excludeStudentClassId) {
+            $ownByDate = [];
+            $ownLiveByDate = [];
+            // The edited course's own rows, independent of the teacher filter: an edit that also changes the
+            // teacher still moves the course's existing sessions.
+            $ownQuery = DB::table('ClassSession as cs')
+                ->where('cs.StudentClassID', $excludeStudentClassId)
+                ->whereDate('cs.SessionDate', '>=', $horizonStart)
+                ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses());
+            if ($endDate) {
+                $ownQuery->whereDate('cs.SessionDate', '<=', $endDate);
+            }
+            foreach ($ownQuery->get(['cs.id as class_session_id', 'cs.IsContractException', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status']) as $row) {
+                $d = substr((string) $row->SessionDate, 0, 10);
+                $r = [
+                    'id' => (int) $row->class_session_id,
+                    'start' => (string) $this->normalizeTime($row->StartTime),
+                    'end' => (string) $this->normalizeTime($row->EndTime),
+                    'exception' => (bool) $row->IsContractException,
+                ];
+                if ((int) Carbon::parse($d)->dayOfWeekIso === $dow && $r['start'] !== '' && $r['end'] !== '') {
+                    $ownLiveByDate[$d][] = $r;
+                }
+                // The sync only touches 'scheduled' rows.
+                if (strtolower((string) $row->Status) === 'scheduled') {
+                    $ownByDate[$d][] = $r;
+                }
+            }
+            $planSlots = array_map(fn ($s) => ['start' => (string) $s['start_time'], 'end' => (string) $s['end_time']], $daySlots ?: [$slot]);
+            // Every date with an own live row, including dates whose only rows are non-'scheduled' (e.g. pending leave).
+            foreach (array_keys($ownByDate + $ownLiveByDate) as $d) {
+                $rows = $ownByDate[$d] ?? [];
+                $moves = self::planSameDayRemap($rows, $planSlots, $locked)['moves'];
+                foreach ($rows as $r) {
+                    if (isset($moves[$r['id']])) {
+                        $remappedIds[$r['id']] = true;
+                        $movedScheduleKeys[$d . '|' . $r['start']] = true;
+                    }
+                }
+                if (isset($ownLiveByDate[$d]) && ($pairs = self::planSelfOverlaps($ownLiveByDate[$d], $moves, $planSlots))) {
+                    $selfOverlaps[$d] = $pairs[0];
+                }
+            }
+        }
 
         foreach ($classSessions as $row) {
             $sessionDate = substr((string) ($row->SessionDate ?? ''), 0, 10);
@@ -567,6 +648,10 @@ class ScheduleGuardService
 
             // Bounded self-exclusion:
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
+                // Own rows the sync moves to a new slot never block it (in-app #347); rows it leaves in place conflict below.
+                if (isset($remappedIds[(int) $row->class_session_id])) {
+                    continue;
+                }
                 // If the session matches the slot being added, it is the course's own
                 // exception session being regularized into this recurring slot. Safe to exclude.
                 if ($start === $slotStart && $end === $slotEnd) {
@@ -626,6 +711,9 @@ class ScheduleGuardService
 
             // Bounded self-exclusion for schedules:
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
+                if (isset($movedScheduleKeys[$scheduleDate . '|' . $start])) {
+                    continue;
+                }
                 if ($start === $slotStart && $end === $slotEnd) {
                     continue;
                 }
@@ -701,8 +789,6 @@ class ScheduleGuardService
     {
         $existingCount = $this->countDistinctStudents($overlaps);
         $newCapacity = $this->capacityForClassType($newClassType);
-        $overlapDetails = $this->buildOverlapDetails($overlaps);
-        $overlapSummary = $this->buildOverlapSummary($overlapDetails);
 
         // Trial classes are a director-arranged add-on to existing sessions
         // (試聽學生旁聽正式課堂). They bypass both the new-type capacity check
@@ -725,8 +811,7 @@ class ScheduleGuardService
                         '老師此時段已有 %d 位試聽學生，試聽 上限為 1 位學生。',
                         $existingTrialCount
                     ),
-                    'overlap_summary' => $overlapSummary,
-                    'overlap_details' => $overlapDetails,
+                    ...$this->overlapPayload($overlaps),
                 ]);
             }
             return null;
@@ -748,8 +833,7 @@ class ScheduleGuardService
                 'current_students' => $existingCount,
                 'allowed_students' => 1,
                 'message' => '老師此時段本分校已有一對一課程，無法再加課。',
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload($overlaps),
             ]);
         }
 
@@ -766,8 +850,7 @@ class ScheduleGuardService
                     $existingCount,
                     self::TEACHER_SLOT_ABSOLUTE_MAX
                 ),
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload($overlaps),
             ]);
         }
 
@@ -785,8 +868,7 @@ class ScheduleGuardService
                     $this->classTypeLabel($newClassType),
                     $newCapacity
                 ),
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload($overlaps),
             ]);
         }
 
@@ -814,8 +896,6 @@ class ScheduleGuardService
             return (int) ($entry['room_id'] ?? 0) === $roomId;
         });
         $currentStudents = $this->countDistinctStudents(array_values($sameRoomOverlaps));
-        $overlapDetails = $this->buildOverlapDetails(array_values($sameRoomOverlaps));
-        $overlapSummary = $this->buildOverlapSummary($overlapDetails);
 
         if ($currentStudents >= $studentCapacity) {
             return $this->finalizeCapacityConflict([
@@ -833,8 +913,7 @@ class ScheduleGuardService
                     $totalCapacity,
                     $studentCapacity
                 ),
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload(array_values($sameRoomOverlaps)),
             ]);
         }
 
@@ -848,6 +927,20 @@ class ScheduleGuardService
      * @param  array<string, mixed>  $conflict
      * @return array<string, mixed>
      */
+    /**
+     * Student/subject details for a conflict, hydrated only once a conflict exists
+     * (course edits evaluate many future dates; most have no conflict).
+     *
+     * @param  array<int, array<string, mixed>>  $overlaps
+     * @return array{overlap_summary: mixed, overlap_details: mixed}
+     */
+    private function overlapPayload(array $overlaps): array
+    {
+        $details = $this->buildOverlapDetails($overlaps);
+
+        return ['overlap_summary' => $this->buildOverlapSummary($details), 'overlap_details' => $details];
+    }
+
     private function finalizeCapacityConflict(array $conflict): array
     {
         $summary = trim((string) ($conflict['overlap_summary'] ?? ''));
@@ -1130,7 +1223,7 @@ class ScheduleGuardService
             ->whereDate('cs.SessionDate', $date)
             // Leave-type sessions free up the slot, matching the frontend capacity
             // badge (LEAVE_STATUSES) and LearningRecordController's skip set. (#557)
-            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->select([
                 'cs.StudentClassID',
                 'cs.StartTime',
