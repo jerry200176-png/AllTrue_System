@@ -80,7 +80,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.event.client_payload.target_sha || github.sha }}
 
       - name: Verify deploy state-machine contract
-        run: python3 scripts/tests/test_deploy_activation_state.py
+        run: |
+          python3 scripts/tests/test_deploy_activation_state.py
+          python3 .github/scripts/test_deploy_receipt.py
 
   resolve-target:
     name: Resolve exact activation target
@@ -1123,6 +1125,7 @@ jobs:
         with:
           sparse-checkout: |
             .github/actions/production-ssh-trust
+            .github/scripts/deploy_receipt.py
           sparse-checkout-cone-mode: false
       - name: Configure pinned production SSH trust
         uses: ./.github/actions/production-ssh-trust
@@ -1590,6 +1593,33 @@ jobs:
           abort_deploy "health check 或 smoke test 失敗"
           ENDSSH
 
+      - name: Build exact target deployment receipt
+        env:
+          TARGET_SHA: ${{ needs.resolve-target.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 10 --retry 2 --retry-all-errors --retry-delay 2 \
+            --proto '=https' --tlsv1.2 \
+            https://daan.lifenet.com.tw/deployment.json \
+            -o "$RUNNER_TEMP/alltrue-runtime-manifest.json"
+          python3 .github/scripts/deploy_receipt.py \
+            "$RUNNER_TEMP/alltrue-runtime-manifest.json" \
+            "$RUNNER_TEMP/alltrue-production-deployment-receipt.json"
+          {
+            echo "## exact-deployment-receipt"
+            echo "Artifact: \`production-deploy-receipt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\`"
+            echo "Resolved target: \`${TARGET_SHA}\`"
+            echo "Application artifact digest and configuration version: unknown (on-host build)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload exact target deployment receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-deploy-receipt-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/alltrue-production-deployment-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+
       - name: Record deployed and production-verified state
         run: |
           {
@@ -1597,7 +1627,7 @@ jobs:
             echo "Exact target SHA was activated by the sole production executor."
             echo ""
             echo "## state=production-verified"
-            echo "The executor returned success only after deployment identity, health, and post-merge smoke verification passed."
+            echo "The executor returned success only after deployment identity, health, post-merge smoke, and exact-target receipt upload passed."
           } >> "$GITHUB_STEP_SUMMARY"
 
   parent-portal-smoke:

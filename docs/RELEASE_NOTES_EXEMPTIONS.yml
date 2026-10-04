@@ -2,6 +2,10 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-04-exact-deploy-receipt
+    changelog_date: "2026-10-04"
+    changelog_title: "ops(deploy): record exact target and run attempt after verified production activation"
+    reason: 僅新增既有正式部署工作流的機器可讀收據，無教職員畫面或操作變更；T3 合併與正式啟用閘門不變。
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"

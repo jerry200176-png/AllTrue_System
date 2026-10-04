@@ -1,3 +1,7 @@
+## 2026-10-04 — ops(deploy): record exact target and run attempt after verified production activation
+<!-- release-notes: silent_ship=silent-2026-10-04-exact-deploy-receipt -->
+- 既有部署流程在正式站 health、smoke 與版本相符後，保存含實際目標 SHA、Actions run/attempt 和 runtime identity 的收據；收據失敗不會被記成已驗證部署。教職員操作與產品畫面不變。
+
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次
