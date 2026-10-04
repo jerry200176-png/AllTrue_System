@@ -83,23 +83,35 @@ sudo -iu "$RUNNER_USER" XDG_RUNTIME_DIR="/run/user/$RUNNER_UID" systemctl --user
 #   hooks live in a root-owned dir, .env is written as ghrunner, then the runner dir is handed over.
 RUNNER_SHA256=70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613
 HOOK_DIR=/usr/local/lib/daan-runner
+install -d -o root -g root -m 755 "$HOOK_DIR"
+# Keep the verified tarball root-owned: 03 re-extracts it after registration to undo any tampering.
+TGZ="$HOOK_DIR/runner-${RUNNER_VERSION}.tgz"
+if [ ! -f "$TGZ" ]; then
+  curl -fsSL -o "$TGZ.part" "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
+  mv "$TGZ.part" "$TGZ"
+fi
+echo "$RUNNER_SHA256  $TGZ" | sha256sum -c - || { rm -f "$TGZ"; echo "runner checksum mismatch"; exit 1; }
+chmod 644 "$TGZ"
 if [ ! -x "$RUNNER_DIR/config.sh" ]; then
   rm -rf "$RUNNER_DIR"; install -d -o root -g root -m 755 "$RUNNER_DIR"
-  TGZ=$(mktemp)
-  curl -fsSL -o "$TGZ" "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
-  echo "$RUNNER_SHA256  $TGZ" | sha256sum -c - || { rm -f "$TGZ"; echo "runner checksum mismatch"; exit 1; }
   tar xzf "$TGZ" -C "$RUNNER_DIR" --no-same-owner
-  rm -f "$TGZ"
   "$RUNNER_DIR/bin/installdependencies.sh"
 fi
-install -d -o root -g root -m 755 "$HOOK_DIR"
+# Never follow anything ghrunner could have planted (re-runs): runner dir and its entries must not be symlinks.
+[ -L "$RUNNER_DIR" ] && { echo "refusing: $RUNNER_DIR is a symlink"; exit 1; }
+chown root:root "$RUNNER_DIR"; chmod 755 "$RUNNER_DIR"
+for d in _work _diag; do [ -L "$RUNNER_DIR/$d" ] && rm -f "$RUNNER_DIR/$d"; done
+rm -f "$RUNNER_DIR/.env"
 install -o root -g root -m 755 "$(dirname "$0")/job-started.sh" "$HOOK_DIR/job-started.sh"
 install -o root -g root -m 755 "$(dirname "$0")/job-completed.sh" "$HOOK_DIR/job-completed.sh"
 # Runner code stays ROOT-owned (a job cannot alter bin/, runsvc.sh, config.sh for later jobs).
 # ghrunner may write only its state: _work, _diag and the files config.sh creates at registration.
-install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 700 "$RUNNER_DIR/_work" "$RUNNER_DIR/_diag"
+for d in _work _diag; do
+  [ -d "$RUNNER_DIR/$d" ] || mkdir -m 700 "$RUNNER_DIR/$d"
+  chown -h "$RUNNER_USER:$RUNNER_USER" "$RUNNER_DIR/$d"
+done
 printf 'DOCKER_HOST=unix:///run/user/%s/docker.sock\nACTIONS_RUNNER_HOOK_JOB_STARTED=%s/job-started.sh\nACTIONS_RUNNER_HOOK_JOB_COMPLETED=%s/job-completed.sh\n' \
-  "$RUNNER_UID" "$HOOK_DIR" "$HOOK_DIR" > "$RUNNER_DIR/.env"
+  "$RUNNER_UID" "$HOOK_DIR" "$HOOK_DIR" > "$RUNNER_DIR/.env"   # root-owned dir; .env removed above, so no symlink to follow
 chown root:root "$RUNNER_DIR/.env"; chmod 644 "$RUNNER_DIR/.env"
 
 echo "Step 1 done. Next: sudo bash 02-verify-isolation.sh  (runner is NOT registered or running)"

@@ -23,7 +23,8 @@ CI's own test DB runs in a container published on `127.0.0.1:33306` (positive co
 
 | Path | Status |
 |---|---|
-| Runner code (`bin/`, `runsvc.sh`, `config.sh`), `.env`, hooks | **Blocked**: root-owned; `--disableupdate`; step 2 proves ghrunner cannot write them |
+| Runner code (`bin/`, `runsvc.sh`, `config.sh`), `.env`, hooks | **Blocked**: root-owned; `--disableupdate`; step 2 proves ghrunner cannot write them. Registration (step 3) kills all ghrunner processes first, then re-locks the dir, deletes anything not in the verified tarball or the known registration files, re-extracts the verified tarball, and re-runs step 2 |
+| Planted symlinks on re-runs | **Blocked**: step 1/3 refuse symlinked runner dir/state files and use `chown -h` |
 | Firewall guard removed/flushed | **Fail-closed**: the unit's `ExecStartPre` (root) requires the table; every job's start hook refuses if `127.0.0.1:3306`/`::1:3306` is reachable |
 | ghrunner's home (`~/.bashrc`, `~/.config/systemd/user`, `~/.docker`, rootless Docker images) | **Residual risk**: a job could plant files that later jobs (same user) pick up. The full fix is ephemeral runners (fresh user/home per job, JIT-registered), which needs a fine-grained PAT stored root-only on the host. This is a Founder decision; see the PR. |
 
