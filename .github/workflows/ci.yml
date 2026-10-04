@@ -106,7 +106,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          # paths-filter fetches the previous SHA for push events. Keep the
+          # existing contents:read token available for that read-only fetch.
+          persist-credentials: true
 
       - name: Detect changed paths
         id: filter
