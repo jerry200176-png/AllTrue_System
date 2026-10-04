@@ -342,10 +342,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
         StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
 
-        $this->updateFixedSlots($token, $course, [1], [
-            ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
-            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
-        ])->assertStatus(409);
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60], ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60]])->assertStatus(409);
     }
 
     /** A pending-leave session is never moved by the sync, so it must still conflict with an overlapping new slot. */
@@ -371,14 +368,9 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->createSessionRecord($course->ID, '2026-04-27', '18:00:00', '19:00:00');
         StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
 
-        $this->updateFixedSlots($token, $course, [1], [
-            ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60],
-            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
-        ])->assertOk();
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60], ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60]])->assertOk();
 
-        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
-            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
-        $this->assertSame(['15:00', '16:30', '18:00'], $starts);
+        $this->assertSame(['15:00', '16:30', '18:00'], $this->startsOn($course, '2026-04-27'));
     }
 
     /** Locked rows do not count toward the remap budget: 2 remappable rows still fit 2 new slots. */
@@ -392,15 +384,10 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
         StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 09:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
 
-        $this->updateFixedSlots($token, $course, [1], [
-            ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
-            ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60],
-        ])->assertOk();
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60], ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]])->assertOk();
 
         // Slots pair with unlocked rows only: 15:00→15:30, 17:00→17:30, locked 09:00 stays (no overlap).
-        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
-            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
-        $this->assertSame(['09:00', '15:30', '17:30'], $starts);
+        $this->assertSame(['09:00', '15:30', '17:30'], $this->startsOn($course, '2026-04-27'));
     }
 
     /**
@@ -417,10 +404,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->createSessionRecord($course->ID, '2026-04-27', '18:00:00', '19:00:00');
         StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
 
-        $this->updateFixedSlots($token, $course, [1], [
-            ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60],
-            ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60],
-        ])->assertStatus(409);
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60], ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]])->assertStatus(409);
     }
 
     /** A moved own session's paired schedules row moves with it and must not self-conflict on a partial shift. */
@@ -434,12 +418,8 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
             'student_course_id' => $course->ID, 'day_of_week' => 1, 'schedule_date' => '2026-04-27',
             'start_time' => '17:00:00', 'end_time' => '18:00:00', 'status' => 'scheduled', 'type' => 'normal', 'deduction' => 1]);
 
-        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]])
-            ->assertOk();
-
-        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
-            ->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
-        $this->assertSame(['17:30'], $starts);
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]])->assertOk();
+        $this->assertSame(['17:30'], $this->startsOn($course, '2026-04-27'));
     }
 
     /**
@@ -460,19 +440,21 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
             ->putJson("/api/v1/student-classes/{$course->ID}", [
                 'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
                 'days_of_week' => [1], 'start_time' => '15:00', 'payment_type' => 'session',
-                'day_time_slots' => [
-                    ['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60],
-                    ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60],
-                ],
+                'day_time_slots' => [['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60], ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60]],
             ]);
         $resp->assertStatus(409);
         $this->assertSame('teacher_schedule_conflict', $resp->json('code'));
         $this->assertStringContainsString('會與自己已鎖定或保留的堂次時間重疊', (string) $resp->json('message'));
         $this->assertCount(1, array_filter($resp->json('conflicts'), fn ($c) => ($c['schedule_date'] ?? '') === '2026-04-27'));
 
-        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+        $this->assertSame(['15:30', '17:00', '19:00'], $this->startsOn($course, '2026-04-27'));
+    }
+
+    /** @return list<string> H:i starts of the course's sessions on $date */
+    private function startsOn(StudentClass $course, string $date): array
+    {
+        return ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', $date)
             ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
-        $this->assertSame(['15:30', '17:00', '19:00'], $starts);
     }
 
     private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
