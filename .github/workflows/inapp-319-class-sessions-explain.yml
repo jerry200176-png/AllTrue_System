@@ -83,16 +83,22 @@ jobs:
           $today = \Carbon\Carbon::today();
           $teacher = (int)getenv("TEACHER_ID");
           if ($teacher < 1) {
-              $teacher = (int)$db::table("ClassSession as cs")->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
-                  ->whereBetween("cs.SessionDate", [$today->copy()->startOfWeek()->toDateString(), $today->copy()->endOfWeek()->toDateString()])
-                  ->groupBy("sc.TeacherID")->orderByRaw("COUNT(*) DESC")->value("sc.TeacherID");
+              // Busiest effective teacher this week, using the endpoint own predicate (substitute wins over base teacher).
+              $weekReq = \Illuminate\Http\Request::create("/api/v1/class-sessions", "GET", ["start" => $today->copy()->startOfWeek()->toDateString(), "end" => $today->copy()->endOfWeek()->toDateString()]);
+              $weekReq->attributes->set("auth_role", "super_admin");
+              $teacher = (int)(new \App\Services\ClassSessionIndexReadService())->buildQuery($weekReq)->reorder()
+                  ->select($db::raw("COALESCE(sub_sched.teacher_id, sc.TeacherID) AS effective_teacher"))
+                  ->groupBy("effective_teacher")->orderByRaw("COUNT(*) DESC")->value("effective_teacher");
           }
-          $teacherCampuses = $db::table("UserCampus")->where("UserID", $teacher)->where("Approved", 1)->pluck("CampusID")->map(fn ($c) => (int)$c)->all();
+          $teacherCampuses = $db::table("UserCampus")->where("UserID", $teacher)->where("Approved", 1)->orderBy("CampusID")->pluck("CampusID")->map(fn ($c) => (int)$c)->all();
           $shapes = [
               "teacher_today" => ["role" => "teacher", "params" => ["start" => $today->toDateString(), "end" => $today->toDateString(), "per_page" => 500]],
-              "teacher_overdue_7d" => ["role" => "teacher", "params" => ["branch_id" => $teacherCampuses[0] ?? (int)getenv("BRANCH_ID"), "start" => $today->copy()->subDays(7)->toDateString(), "end" => $today->copy()->subDay()->toDateString(), "per_page" => 200]],
-              "campus_week" => ["role" => "super_admin", "params" => ["branch_id" => (int)getenv("BRANCH_ID"), "start" => $today->copy()->startOfWeek()->toDateString(), "end" => $today->copy()->endOfWeek()->toDateString(), "per_page" => 1000]],
           ];
+          // Teacher Home sends one overdue request per campus.
+          foreach ($teacherCampuses ?: [(int)getenv("BRANCH_ID")] as $campus) {
+              $shapes["teacher_overdue_7d_campus_".$campus] = ["role" => "teacher", "params" => ["branch_id" => $campus, "start" => $today->copy()->subDays(7)->toDateString(), "end" => $today->copy()->subDay()->toDateString(), "per_page" => 200]];
+          }
+          $shapes["campus_week"] = ["role" => "super_admin", "params" => ["branch_id" => (int)getenv("BRANCH_ID"), "start" => $today->copy()->startOfWeek()->toDateString(), "end" => $today->copy()->endOfWeek()->toDateString(), "per_page" => 1000]];
           $out = [];
           foreach ($shapes as $name => $shape) {
               $runs = [];
