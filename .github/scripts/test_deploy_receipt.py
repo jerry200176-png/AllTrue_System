@@ -1,11 +1,12 @@
 """Failure cases for the exact target deployment receipt."""
 
 from pathlib import Path
+import importlib.util
 import re
 import unittest
 from datetime import datetime, timezone
 
-from deploy_receipt import make_receipt
+from deploy_receipt import SOURCE, make_receipt
 
 
 TARGET = "a" * 40
@@ -46,7 +47,7 @@ def manifest():
         "backend_sha": TARGET,
         "frontend_sha": "d" * 40,
         "frontend_build_sha": "d" * 40,
-        "source": "github-actions:deploy.yml",
+        "source": SOURCE,
         "deployed_at": "2026-10-03T22:11:33Z",
     }
 
@@ -65,6 +66,15 @@ def metadata():
 
 
 class ReceiptTest(unittest.TestCase):
+    def test_canonical_manifest_writer_source_is_accepted(self):
+        writer = Path(__file__).parents[2] / "scripts" / "write-deployment-manifest.py"
+        spec = importlib.util.spec_from_file_location("canonical_manifest_writer", writer)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        runtime = module.build_manifest(TARGET, {"build_sha": "d" * 40}, "2026-10-03T22:11:33Z")
+        self.assertEqual(runtime["source"], SOURCE)
+        self.assertEqual(make_receipt(runtime, metadata(), NOW)["source_sha"], TARGET)
+
     def test_workflow_only_records_after_deploy_and_receipt_upload(self):
         source = WORKFLOW_FILE.read_text(encoding="utf-8")
         assert_workflow_receipt_contract(source)

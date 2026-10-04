@@ -8,6 +8,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from deployment_manifest_contract import SOURCE
+
 
 def build_manifest(target_sha: str, version: dict, deployed_at: str | None = None) -> dict:
     frontend_sha = version.get("build_sha") or version.get("hash") or None
@@ -18,7 +20,7 @@ def build_manifest(target_sha: str, version: dict, deployed_at: str | None = Non
         "frontend_build_sha": frontend_sha,
         "frontend_built_at": version.get("built_at") or version.get("t") or None,
         "deployed_at": deployed_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "source": "github-actions:deploy.yml",
+        "source": SOURCE,
     }
 
 

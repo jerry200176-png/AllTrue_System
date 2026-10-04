@@ -7,6 +7,9 @@ from pathlib import Path
 import re
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from deployment_manifest_contract import SOURCE  # noqa: E402
+
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 SHORT_SHA = re.compile(r"[0-9a-f]{4,39}\Z")
@@ -69,7 +72,7 @@ def make_receipt(manifest, metadata, now=None):
     identity_status = frontend_identity(frontend_sha)
     if frontend_sha != frontend_build_sha:
         raise ValueError("runtime frontend identities differ")
-    if manifest.get("source") != "github-actions:deploy.yml":
+    if manifest.get("source") != SOURCE:
         raise ValueError("unexpected runtime manifest source")
     deployed_at = manifest.get("deployed_at")
     deployed = parsed_time(deployed_at, "runtime deployed_at")

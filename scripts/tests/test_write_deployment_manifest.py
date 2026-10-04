@@ -3,9 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 import importlib.util
+import sys
 
 
 SCRIPT = Path(__file__).parents[1] / "write-deployment-manifest.py"
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location("write_deployment_manifest", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
