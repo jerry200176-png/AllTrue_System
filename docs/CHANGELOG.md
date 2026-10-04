@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)
 <!-- release-notes: silent_ship=silent-2026-10-04-paused-projection -->
 - 暫停中的課程不再顯示「預排」日期（已建立的正式堂次照舊），點到暫停課程的預排日期改顯示「課程暫停中，恢復後才會排課」；已取消的堂次所在日期不再同時出現預排；課程管理「堂次」分頁預設改為清單（第N堂＋狀態），月曆可手動切換
+## 2026-10-04 — fix: learning-record form opens the lesson you clicked; multi-teacher courses keep their own slots (in-app #334 #333)
+<!-- release-notes: silent_ship=silent-2026-10-04-lr-form-multiteacher -->
+- 評量表依點選的堂次帶入上課時間，不再被同日其他堂次覆蓋；同科目多位老師開課時，每位老師只保留自己的時段，不再產生重疊堂次
 ## 2026-10-04 — fix(billing-ui): ledger explains empty slips, shows rejected reports, 後5碼 and 備註 (in-app #354 #355 #356)
 <!-- release-notes: silent_ship=silent-2026-10-04-ledger-last5-notes -->
 - 繳費明細在尚無帳單與收據時改顯示「繳費單是依課程估算，尚未建立帳單」說明；收據紀錄新增已退回的登記，並在繳費明細與帳務中心收據紀錄顯示轉帳後5碼與備註（僅顯示，不改任何金額、狀態或權限）。
