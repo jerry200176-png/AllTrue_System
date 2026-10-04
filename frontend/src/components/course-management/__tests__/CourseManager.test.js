@@ -142,6 +142,8 @@ describe('CourseManager polish', () => {
   it('quick-add lives only in sessions toolbar; calendar suppresses duplicate', async () => {
     const w = mountCm({ tab: 'sessions' })
     expect(w.find('[data-testid="course-manager-quick-add"]').exists()).toBe(true)
+    await w.find('[data-testid="course-manager-view-calendar"]').trigger('click')
+    await nextTick()
     expect(w.find('[data-testid="csc-mock"]').attributes('data-show-quick-add')).toBe('false')
     const settingsSlot = pageSource.slice(pageSource.indexOf('<template #settings>'), pageSource.indexOf('</template>', pageSource.indexOf('<template #settings>')) + 11)
     expect(settingsSlot).toContain('@click="leaveCourseManagerSettings"')
@@ -164,8 +166,17 @@ describe('CourseManager polish', () => {
     w.unmount()
   })
 
+  it('sessions tab opens on the list (第N堂 + status), calendar is opt-in', async () => {
+    const w = mountCm({ tab: 'sessions' })
+    expect(w.find('[data-testid="course-manager-session-list"]').exists()).toBe(true)
+    expect(w.find('.csc').exists()).toBe(false)
+    w.unmount()
+  })
+
   it('calendar/list switch shares the same session units', async () => {
     const w = mountCm({ tab: 'sessions' })
+    await w.find('[data-testid="course-manager-view-calendar"]').trigger('click')
+    await nextTick()
     expect(w.find('.csc').exists()).toBe(true)
     await w.find('[data-testid="course-manager-view-list"]').trigger('click')
     await nextTick()
