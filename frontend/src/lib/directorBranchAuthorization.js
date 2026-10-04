@@ -16,7 +16,7 @@ export function useDirectorBranchAuthorization() {
     pending = null;
   }
 
-  function load(token, fetchCampuses, applyCampuses) {
+  function load(token, fetchCampuses, applyCampuses, { timeoutMs = 25_000 } = {}) {
     if (status.value === 'loading' && identity.value === token && pending) return pending;
     if (status.value === 'ready' && identity.value === token) return Promise.resolve(true);
     reset();
@@ -28,8 +28,14 @@ export function useDirectorBranchAuthorization() {
     identity.value = token;
     status.value = 'loading';
     pending = (async () => {
+      let timer;
       try {
-        const campuses = await fetchCampuses(token);
+        const campuses = await Promise.race([
+          Promise.resolve().then(() => fetchCampuses(token)),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('campus authorization timed out')), timeoutMs);
+          }),
+        ]);
         if (ownRequest !== requestId) return false;
         const ids = Array.isArray(campuses) ? campuses.map((campus) => Number(campus?.id)) : [];
         if (!ids.length || ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
@@ -44,6 +50,8 @@ export function useDirectorBranchAuthorization() {
       } catch {
         if (ownRequest === requestId) status.value = 'failed';
         return false;
+      } finally {
+        clearTimeout(timer);
       }
     })();
     return pending;

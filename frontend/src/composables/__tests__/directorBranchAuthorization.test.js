@@ -100,3 +100,11 @@ it('preserves a super admin with an authenticated all-campus response but reject
   expect(gate.canMount('super-admin-token', 17)).toBe(true);
   expect(gate.canMount('super-admin-token', 9)).toBe(true);
 });
+
+it('fails closed after a bounded wait when the authenticated campus request never finishes', async () => {
+  const gate = useDirectorBranchAuthorization();
+  const result = await gate.load('director-token', () => new Promise(() => {}), () => {}, { timeoutMs: 1 });
+  expect(result).toBe(false);
+  expect(gate.status.value).toBe('failed');
+  expect(gate.canMount('director-token', 17)).toBe(false);
+});

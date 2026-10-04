@@ -5,7 +5,8 @@
 After director login, a branch-scoped page mounts only after authenticated
 `/api/v1/campuses` succeeds and the selected branch belongs to that response.
 An empty or failed response keeps those pages unmounted and shows a bounded
-retry state. No backend authorization, production data, credentials, or deploy
+retry state; a campus request that never completes fails after 25 seconds.
+No backend authorization, production data, credentials, or deploy
 workflow changes are in scope.
 
 ## Evidence and boundary
@@ -35,7 +36,7 @@ workflow changes are in scope.
    loads. Preserve navigation state and show retry on failure.
 2. Add deterministic regression coverage for delayed `/campuses` with an
    unauthorized public default, successful authorized branch resolution, and
-   empty/failing campus responses. Assert no tuition or rooms request before
+   empty/failing/timed-out campus responses. Assert no tuition or rooms request before
    authorization resolves.
 3. Run focused unit/integration checks, lint/build if available, diff review,
    and exact-head PR CI. Coordinate with #3511 owner only if shared smoke
