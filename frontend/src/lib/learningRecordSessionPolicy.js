@@ -71,11 +71,11 @@ export function selectFormDaySession(daySessions, { classSessionId = 0, startTim
   const id = Number(classSessionId || 0);
   if (id > 0) return daySessions.find((s) => Number(s.id) === id) || null;
   const t = startTime ? normalizeTime(startTime) : '';
-  const byTime = t ? daySessions.filter((s) => normalizeTime(s.startTime) === t) : [];
-  const pool = byTime.length ? byTime : daySessions;
-  // Only attended lessons accept an assessment; never lock the form to an absent one when another qualifies.
-  const eligible = pool.filter((s) => LOG_ELIGIBLE_SESSION_STATUSES.has(String(s?.status || '').toLowerCase()));
-  return pickBestLearningRecordSession(eligible.length ? eligible : pool);
+  // Only attended lessons accept an assessment: eligibility beats the time match.
+  const eligible = daySessions.filter((s) => LOG_ELIGIBLE_SESSION_STATUSES.has(String(s?.status || '').toLowerCase()));
+  const pool = eligible.length ? eligible : daySessions;
+  const byTime = t ? pool.filter((s) => normalizeTime(s.startTime) === t) : [];
+  return pickBestLearningRecordSession(byTime.length ? byTime : pool);
 }
 
 /**
