@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-09-03",
+  "updated_at": "2026-10-04",
   "capabilities": [
     {
       "id": "read_git_worktrees",
@@ -19,12 +19,12 @@
       "name": "gh PR/issue (repo,workflow)",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-09-03",
-      "review_after": "2026-10-03",
+      "last_verified_at": "2026-10-03",
+      "review_after": "2026-11-02",
       "verification_method": "gh issue create + gh pr create/ready/checks",
       "environment": "github",
-      "verifier": "cursor-agent",
-      "evidence": "PR #2368; workflow run #33705884685"
+      "verifier": "claude-agent",
+      "evidence": "PR #3486/#3488 created via gh 2026-10-03; issues closed/labeled via gh 2026-10-04"
     },
     {
       "id": "push_feature_branch",
@@ -43,24 +43,24 @@
       "name": "Merge PR via gh",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-09-03",
-      "review_after": "2026-10-03",
+      "last_verified_at": "2026-10-03",
+      "review_after": "2026-11-02",
       "verification_method": "gh pr merge after required CI green",
       "environment": "github",
-      "verifier": "cursor-agent",
-      "evidence": "PR #2366 merge; governed merge API"
+      "verifier": "claude-agent",
+      "evidence": "PR #3486 squash-merged via gh after required CI green → e483c1dc4 (2026-10-03)"
     },
     {
       "id": "alltrue_deploy_pi",
       "name": "AllTrue Deploy to Pi",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-09-03",
-      "review_after": "2026-10-03",
+      "last_verified_at": "2026-10-03",
+      "review_after": "2026-11-02",
       "verification_method": "Actions Deploy to Pi success + production health/version.json",
       "environment": "prod-pi",
-      "verifier": "cursor-agent",
-      "evidence": "run 33648466478; version 8dda90fe; health 2026-09-02"
+      "verifier": "claude-agent",
+      "evidence": "run 37138976778 success; deployment.json backend_sha e483c1dc4; health 200 (2026-10-03)"
     },
     {
       "id": "prod_read_version_json",
