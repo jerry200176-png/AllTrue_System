@@ -89,7 +89,8 @@ class StudentClass extends Model
      *  1. billed: the non-void invoice total when > 0 (an issued bill is the truth);
      *  2. the pricing amendment in force on $on (StudentClassPricingService::forDate), a rate of 0 included;
      *  3. a transaction-discount snapshot: the allocated Charge (Rate stays the list price);
-     *  4. list price: Rate x sessions (or hours), else Charge (#230: Rate beats a stale Charge).
+     *  4. list price: Rate x sessions, else Charge (#230: Rate beats a stale Charge); hourly: the exact stored Charge.
+     * Step 1 applies when the bill covers the enrolled Charge; a shorter bill (a partial payment) only acts as a floor.
      * Tutoring is always 0. Batch callers pass $billedTotal (non-void invoice TotalAmount sum) and
      * eager-load `pricingAmendments` to avoid N+1.
      */
@@ -100,7 +101,13 @@ class StudentClass extends Model
         }
         $billed = $billedTotal ?? $this->billedTotal();
 
-        return $billed > 0 ? $billed : ($this->unbilledContractTotal($on) ?? 0);
+        // A bill covering the enrolled Charge is the price (e.g. a legacy discount billed below Rate x sessions);
+        // a shorter one is a partial payment's receipt invoice (PaymentReportController::confirm) and never lowers it.
+        if ($billed > 0 && $billed >= max(0, (int) ($this->getAttribute('Charge') ?? 0))) {
+            return $billed;
+        }
+
+        return max($billed, $this->unbilledContractTotal($on) ?? 0);
     }
 
     /**
@@ -195,11 +202,14 @@ class StudentClass extends Model
             return $discounted;
         }
         $rate = (float) ($this->getAttribute('Rate') ?? 0);
+        $charge = max(0, (int) ($this->getAttribute('Charge') ?? 0));
+        if ($pricing['rate_unit'] === 'hour' && $charge > 0) {
+            return $charge; // EnrollmentService prices hourly contracts from exact minutes; TotalHours is rounded
+        }
         $listed = $this->priceSessions($rate, (string) $pricing['rate_unit']);
         if ($listed !== null && $listed > 0) {
             return $listed;
         }
-        $charge = max(0, (int) ($this->getAttribute('Charge') ?? 0));
 
         return $charge > 0 || $rate <= 0 ? $charge : null;
     }

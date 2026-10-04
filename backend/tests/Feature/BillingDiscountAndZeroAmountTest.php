@@ -197,6 +197,8 @@ class BillingDiscountAndZeroAmountTest extends TestCase
             'positive amendment over no snapshot is priced' => [['Rate' => 0, 'Charge' => 0], 0, 1200, null, 4800], // legacy Charge 0 / Rate 0 (Codex P1)
             'discount only' => [['Rate' => 1500, 'Charge' => 5400], 600, null, null, 5400], // the allocated Charge, not Rate x sessions (6000)
             'plain' => [['Rate' => 1500, 'Charge' => 6000], 0, null, null, 6000], // list price
+            'hourly uses the exact stored Charge, not rounded TotalHours' => [['Rate' => 500, 'Charge' => 1750, 'rate_unit' => 'hour', 'TotalHours' => 4], 0, null, null, 1750],
+            'short bill is a partial payment, not the price' => [['Rate' => 1500, 'Charge' => 5400], 600, null, 1000, 5400], // confirm() invoice = reported amount
         ];
     }
 

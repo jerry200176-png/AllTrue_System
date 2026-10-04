@@ -656,6 +656,9 @@ class AlertController extends Controller
         if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
+        if ($sc->isFreeOfCharge()) {
+            return response()->json(['message' => '此課程免收費，不需產生繳費單'], 422);
+        }
 
         $student = $sc->student;
         if (!$student) {
