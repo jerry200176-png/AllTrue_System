@@ -439,3 +439,30 @@ console.log('bug-writeback-workflow.test.mjs: ok');
 assert.match(phaseCSource,
   /329 => \[[\s\S]*?"rev" => "ad2f90260d4914611ce24f4778aafd8f4742b101",[\s\S]*?"deploy" => "36218370051",/,
   'in-app329 closeout requires its exact confirmed containing revision and successful deployment');
+
+// F14: the linked GitHub issue closes when Phase-C ships, in a separate least-privilege job.
+{
+  const top = phaseCSource.split('\njobs:')[0];
+  assert.match(top, /permissions:\s+contents: read/, 'Phase-C top-level token stays read-only');
+  const closeJob = phaseCSource.split('\n  close-issue:')[1];
+  assert.ok(closeJob, 'Phase-C must have a close-issue job');
+  assert.match(closeJob, /needs: resolve/, 'close-issue runs only after resolve succeeds');
+  assert.match(closeJob, /permissions:\s+issues: write/, 'close-issue has only issues: write');
+  assert.match(closeJob, /type:epic/, 'epics are never auto-closed');
+  assert.match(closeJob, /lifecycle:frozen/, 'reviewed frozen issues are never auto-closed');
+  assert.match(phaseCSource, /issue_pending_siblings/, 'a shared issue waits for every linked report');
+  assert.match(closeJob, /also maps unchecked in-app/, 'issues mapping unchecked reports are never closed');
+  assert.ok(closeJob.indexOf('gh issue close') < closeJob.indexOf('gh issue comment'), 'close before comment so retries never duplicate the notice');
+  const labelJob = phaseASource.split('\n  label-logged:')[1];
+  assert.ok(labelJob && /needs: triage/.test(labelJob) && /issues: write/.test(labelJob) && /in-app:logged/.test(labelJob),
+    'close_as_logged labels the backlog issue in-app:logged after triage succeeds');
+  const followSource = fs.readFileSync('.github/workflows/bug-followup-comment.yml', 'utf8');
+  const shipJob = followSource.split('\n  close-shipped-issue:')[1];
+  assert.ok(shipJob && /needs: comment/.test(shipJob) && /issues: write/.test(shipJob) && /--remove-label in-app:logged/.test(shipJob),
+    'a shipped logged suggestion closes its backlog issue after the notice succeeds');
+  assert.ok(/type:epic/.test(shipJob) && /lifecycle:frozen/.test(shipJob) && /also maps in-app/.test(shipJob),
+    'the logged ship path uses the same never-close guards as Phase-C');
+  assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
+  assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
+  assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
+}

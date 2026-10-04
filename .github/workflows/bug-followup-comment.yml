@@ -81,6 +81,7 @@ jobs:
           [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
           [[ "$EXPECTED_STATUS" =~ ^(triaged|in_progress|resolved|closed)$ ]] || { echo "invalid expected_status"; exit 1; }
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/[0-9]+$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" == "https://github.com/${GITHUB_REPOSITORY}/issues/"* ]] || { echo "github_issue_url must be in this repository"; exit 1; }
           [[ "$PUBLIC_REPLY" == *"$GITHUB_ISSUE_URL"* ]] || { echo "public reply must contain github_issue_url"; exit 1; }
           if [[ "$EXPECTED_STATUS" == closed ]]; then
             [[ "$PRODUCTION_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "closed follow-up needs the full 40-char production_revision"; exit 1; }
@@ -136,3 +137,42 @@ jobs:
           }
           '
           REMOTE
+
+  # F14: a logged suggestion that shipped closes its backlog issue (Phase-C never runs for it).
+  close-shipped-issue:
+    needs: comment
+    if: inputs.expected_status == 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Close the shipped backlog issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
+          PRODUCTION_REVISION: ${{ inputs.production_revision }}
+          BUG_ID: ${{ inputs.bug_id }}
+        run: |
+          set -euo pipefail
+          [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "invalid bug_id"; exit 1; }
+          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/${GITHUB_REPOSITORY}/issues/[0-9]+$ ]] || { echo "github_issue_url must be an issue in this repository"; exit 1; }
+          state="$(gh issue view "$GITHUB_ISSUE_URL" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')"
+          # Same guards as Phase-C: never close epics, reviewed frozen work, or an issue that also maps other reports.
+          case " $state " in *" CLOSED "*|*" type:epic "*|*" lifecycle:frozen "*) echo "skip: $state"; exit 0 ;; esac
+          others="$(gh issue view "$GITHUB_ISSUE_URL" --json title,body,comments | BUG_ID="$BUG_ID" python3 -c '
+          import json, os, re, sys
+          d = json.load(sys.stdin)
+          ids = {int(x) for m in re.finditer(r"in-app\s*#\d+(?:\s*/\s*#\d+)*", d["title"], re.I) for x in re.findall(r"#(\d+)", m.group(0))}
+          for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
+              ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", t)}
+          print(" ".join(str(i) for i in sorted(ids - {int(os.environ["BUG_ID"])})))')"
+          if [[ -n "$others" ]]; then
+            # Shared backlog: leave it open but drop the exemption so the queue-dump reconcile shows it to a human.
+            echo "skip: issue also maps in-app $others"
+            gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
+            exit 0
+          fi
+          gh issue edit "$GITHUB_ISSUE_URL" --remove-label in-app:logged || true
+          gh issue close "$GITHUB_ISSUE_URL" --reason completed
+          gh issue comment "$GITHUB_ISSUE_URL" --body "已上線（production ${PRODUCTION_REVISION:0:9}），已在 in-app 通知原回報者。Closed automatically on ship (F14)."

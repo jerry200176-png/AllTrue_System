@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""F14: report where in-app reports and GitHub issues disagree.
+
+Read-only. Inputs are the bug-queue-dump artifact directory and
+`gh issue list --state all --json number,title,body,comments,state,labels,author`.
+In-app ids missing from open/resolved (and <= max_id) are closed.
+
+Usage:
+  python3 scripts/inapp-issue-reconcile.py --dump <bug-queue-dump dir> --issues issues.json
+"""
+import argparse
+import json
+import re
+from collections import defaultdict
+from pathlib import Path
+
+# Title "in-app #N" or body SourceRef only; free-text body mentions ("related to in-app #173") are not ownership.
+TITLE_REF = re.compile(r"in-app\s*#(\d+)(?:\s*/\s*#(\d+))*", re.I)
+SOURCE_REF = re.compile(r"alltrue:bug_report:(\d+)")
+SENTRY_SPAN = re.compile(r"\*\*Offending Spans\*\*\s*\|\s*([^|\n]+)")
+# Logged suggestions (F12): the issue is the backlog, so it stays open after the in-app report closes.
+LOGGED_LABEL = "in-app:logged"
+# Reviewed long-term work (k8s lifecycle/frozen): kept open on purpose.
+FROZEN_LABEL = "lifecycle:frozen"
+
+
+def inapp_ids(issue):
+    title = issue.get("title", "")
+    ids = {int(x) for x in re.findall(r"#(\d+)", " ".join(m.group(0) for m in TITLE_REF.finditer(title)))}
+    # SourceRef may live in the body or in a comment (shared issues get one comment per report).
+    texts = [issue.get("body") or ""] + [c.get("body") or "" for c in issue.get("comments") or []]
+    ids |= {int(x) for t in texts for x in SOURCE_REF.findall(t)}
+    return sorted(ids)
+
+
+def reconcile(open_bugs, resolved_bugs, max_id, issues):
+    status = {b["id"]: b["status"] for b in open_bugs + resolved_bugs}
+
+    def inapp_status(i):
+        return status.get(i, "closed" if i <= max_id else "unknown")
+
+    out = {"inapp_done_issue_open": [], "issue_closed_inapp_open": [], "sentry_duplicates": [], "unlabeled": [],
+           "inapp_without_issue": [], "unknown_inapp_ref": []}
+    spans = defaultdict(list)
+    mapped = set()
+    for issue in issues:
+        ids = inapp_ids(issue)
+        mapped.update(ids)
+        labels = {l["name"] for l in issue.get("labels", [])}
+        is_open = issue.get("state", "OPEN").upper() == "OPEN"
+        sts = {i: inapp_status(i) for i in ids}
+        if is_open and any(s == "unknown" for s in sts.values()):
+            out["unknown_inapp_ref"].append({"issue": issue["number"], "inapp": sts})
+        if ids and is_open and not labels & {LOGGED_LABEL, FROZEN_LABEL, "type:epic"} and all(s in ("resolved", "closed") for s in sts.values()):
+            out["inapp_done_issue_open"].append({"issue": issue["number"], "inapp": sts})
+        if ids and not is_open and any(s in ("new", "triaged", "in_progress") for s in sts.values()):
+            out["issue_closed_inapp_open"].append({"issue": issue["number"], "inapp": sts})
+        if is_open and not labels:
+            out["unlabeled"].append(issue["number"])
+        author = (issue.get("author") or {}).get("login", "")
+        m = SENTRY_SPAN.search(issue.get("body") or "")
+        # gh reports the Sentry GitHub App as "app/sentry"; GraphQL/REST may show "sentry-io[bot]".
+        if is_open and "sentry" in author.lower() and m:
+            spans[m.group(1).strip()].append(issue["number"])
+    # Active / awaiting-verification reports that no issue tracks (intake contract: every report has one).
+    out["inapp_without_issue"] = sorted(b["id"] for b in open_bugs + resolved_bugs if b["id"] not in mapped)
+    for span, numbers in spans.items():
+        if len(numbers) > 1:
+            keep, *dupes = sorted(numbers)
+            out["sentry_duplicates"].append({"keep": keep, "duplicates": dupes, "span": span[:80]})
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dump", required=True, type=Path)
+    ap.add_argument("--issues", required=True, type=Path)
+    a = ap.parse_args()
+    meta = json.loads((a.dump / "meta.json").read_text())
+    result = reconcile(
+        json.loads((a.dump / "open-bugs.json").read_text()),
+        json.loads((a.dump / "resolved-bugs.json").read_text()),
+        int(meta["max_id"]),
+        json.loads(a.issues.read_text()),
+    )
+    for key, rows in result.items():
+        print(f"## {key}: {len(rows)}")
+        for row in rows:
+            print(f"- {json.dumps(row, ensure_ascii=False)}")
+
+
+if __name__ == "__main__":
+    main()

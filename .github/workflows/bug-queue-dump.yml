@@ -211,3 +211,35 @@ jobs:
           name: bug-queue-dump
           path: out/
           retention-days: 14
+
+  # F14: show where in-app reports and GitHub issues disagree (read-only).
+  reconcile:
+    name: In-app ↔ GitHub issue reconcile
+    needs: dump
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Checkout reconcile script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/inapp-issue-reconcile.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: bug-queue-dump
+          path: out
+      - name: Reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh issue list --state all --limit 20000 --json number,title,body,comments,state,labels,author > issues.json
+          # Never reconcile a truncated inventory silently.
+          python3 -c 'import json,sys; n=len(json.load(open("issues.json"))); sys.exit(f"issue inventory truncated at {n}; raise --limit" if n >= 20000 else 0)'
+          python3 scripts/inapp-issue-reconcile.py --dump out --issues issues.json | tee -a "$GITHUB_STEP_SUMMARY"

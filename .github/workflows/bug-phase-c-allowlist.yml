@@ -26,6 +26,10 @@ jobs:
   resolve:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      bug_id: ${{ steps.target.outputs.bug_id }}
+      issues: ${{ steps.shipped.outputs.issues }}
+      prod_head: ${{ steps.shipped.outputs.prod_head }}
     steps:
       - name: Checkout pinned SSH trust helper and request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -761,6 +765,7 @@ jobs:
             throw new \RuntimeException("target is not allowlisted");
           }
           $target = $items[$targetBugId];
+          $allItems = $items; // F14: siblings that share one GitHub issue
           $requiredRevision = (string)($target["rev"] ?? "");
           if (!preg_match("/^[0-9a-f]{40}$/", $requiredRevision) || !preg_match("/^[0-9a-f]{40}$/", $prodHead)) {
             throw new \RuntimeException("invalid revision evidence");
@@ -842,10 +847,45 @@ jobs:
               "last" => $last,
             ];
           }
+          // F14: every allowlisted target carries its issue, so a retry after a failed close-issue job still closes it.
+          // A shared issue closes only when every allowlisted report linking it is resolved or closed.
+          $issueOf = static function ($cfg) {
+            return preg_match("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $m) ? (int)$m[1] : null;
+          };
+          foreach ($results as $i => $row) {
+            $issue = $issueOf($items[$row["id"]] ?? []);
+            if ($issue !== null) {
+              $siblings = array_keys(array_filter($allItems, static fn ($cfg) => $issueOf($cfg) === $issue));
+              $open = \Illuminate\Support\Facades\DB::table("bug_reports")->whereIn("id", $siblings)
+                ->whereNotIn("status", ["resolved", "closed"])->pluck("id")->all();
+              if ($open !== []) {
+                $results[$i]["issue_pending_siblings"] = $open;
+                $issue = null;
+              } else {
+                $results[$i]["issue_checked_ids"] = array_values(array_map("intval", $siblings));
+              }
+            }
+            $results[$i]["issue"] = $issue;
+          }
           echo "---RESULTS---", PHP_EOL;
           echo json_encode(["prod_head" => $prodHead, "actor" => $actor, "results" => $results], JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
           REMOTE
+
+      # F14: the GitHub issue closes when the fix is live (Phase-C), not when a PR merges.
+      - name: Collect shipped issues
+        id: shipped
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          lines = open("out/phase-c.log", encoding="utf-8").read().splitlines()
+          data = json.loads(lines[lines.index("---RESULTS---") + 1])
+          ok = [r for r in data["results"] if r.get("action") in ("resolved", "skip_already") and isinstance(r.get("issue"), int)]
+          # issue:checked,ids — the close job refuses if the issue maps any report outside this list.
+          print("issues=" + " ".join(f"{r['issue']}:{','.join(map(str, r.get('issue_checked_ids') or [r['id']]))}" for r in ok))
+          print("prod_head=" + str(data.get("prod_head", ""))[:40])
+          PY
 
       - name: Upload phase-c log
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -853,3 +893,40 @@ jobs:
           name: bug-phase-c-allowlist
           path: out/
           retention-days: 14
+
+  close-issue:
+    needs: resolve
+    if: needs.resolve.outputs.issues != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Close shipped GitHub issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUES: ${{ needs.resolve.outputs.issues }}
+          PROD_HEAD: ${{ needs.resolve.outputs.prod_head }}
+          BUG_ID: ${{ needs.resolve.outputs.bug_id }}
+        run: |
+          set -euo pipefail
+          for pair in $ISSUES; do
+            n="${pair%%:*}"; checked="${pair#*:}"
+            [[ "$n" =~ ^[0-9]+$ && "$checked" =~ ^[0-9,]+$ ]] || continue
+            state="$(gh issue view "$n" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')"
+            # Epics stay open until their last phase ships (PR template rule); frozen issues were reviewed to stay open.
+            case " $state " in *" CLOSED "*|*" type:epic "*|*" lifecycle:frozen "*) echo "skip #$n: $state"; continue ;; esac
+            # Fail closed if the issue maps any in-app report (title "in-app #N" or SourceRef in body/comments) that was not checked.
+            unchecked="$(gh issue view "$n" --json title,body,comments | CHECKED="$checked" python3 -c '
+          import json, os, re, sys
+          d = json.load(sys.stdin)
+          ids = {int(x) for m in re.finditer(r"in-app\s*#\d+(?:\s*/\s*#\d+)*", d["title"], re.I) for x in re.findall(r"#(\d+)", m.group(0))}
+          for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
+              ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", t)}
+          print(" ".join(str(i) for i in sorted(ids - {int(x) for x in os.environ["CHECKED"].split(",")})))')"
+            if [[ -n "$unchecked" ]]; then echo "skip #$n: also maps unchecked in-app $unchecked"; continue; fi
+            # Close first, then comment: a rerun sees CLOSED and never re-posts the notice.
+            gh issue close "$n" --reason completed
+            gh issue comment "$n" --body "已上線（production ${PROD_HEAD:0:9}），in-app #${BUG_ID} 已由 Phase-C 回寫。Closed automatically on ship (F14)."
+          done
