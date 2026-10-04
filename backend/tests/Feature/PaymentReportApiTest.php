@@ -2220,7 +2220,7 @@ class PaymentReportApiTest extends TestCase
         $payment = Payment::create([
             'InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash', 'Note' => '確認時覆寫',
         ]);
-        $this->createConfirmedReport($student, $sc, [
+        $report = $this->createConfirmedReport($student, $sc, [
             'payment_date' => '2026-04-10', 'payment_method' => 'cash', 'reported_amount' => 5000,
             'note' => '舊備註', 'payment_id' => $payment->id,
         ]);
@@ -2228,6 +2228,15 @@ class PaymentReportApiTest extends TestCase
         $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
         $res->assertOk()->assertJsonPath('data.0.note', '確認時覆寫');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/payment-reports/{$report->id}/receipt")
+            ->assertOk()->assertJsonPath('note', '確認時覆寫');
+
+        $report->update(['status' => 'voided']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30&status=voided')
+            ->assertOk()->assertJsonPath('data.0.note', '確認時覆寫');
     }
 
     public function test_accounting_ledger_note_uses_payment_note_and_flags_tutoring(): void

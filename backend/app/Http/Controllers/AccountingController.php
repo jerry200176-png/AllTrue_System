@@ -695,8 +695,7 @@ class AccountingController extends Controller
             'payment_date' => $report->payment_date ? $report->payment_date->toDateString() : null,
             'payment_method' => (string) ($report->payment_method ?? ''),
             'account_last5' => (string) ($report->account_last5 ?? ''),
-            // Confirmed receipts: the payment's note is authoritative (confirmation may replace it).
-            'note' => (string) (((string) $report->getAttribute('status') === 'confirmed' ? $report->getRelationValue('payment')?->getAttribute('Note') : null) ?? $report->note ?? ''),
+            'note' => $report->displayNote(),
             'amount' => (int) round((float) $report->reported_amount),
             'status' => (string) $report->status,
             'confirmed_at' => $report->confirmed_at?->toIso8601String(),
@@ -799,8 +798,8 @@ class AccountingController extends Controller
             'is_prepaid' => $paymentDate !== null && $firstSessionDate !== null && $paymentDate < $firstSessionDate,
             'payment_method' => $method,
             'account_last5' => (string) ($report->account_last5 ?? ''),
-            // 已確認收據以收款紀錄的備註為準（確認時可能覆寫），否則用回報備註。
-            'note' => (string) (($isConfirmed ? $report->getRelationValue('payment')?->getAttribute('Note') : null) ?? $report->note ?? ''),
+            // 備註以收款紀錄為準（確認時可能覆寫；作廢後仍沿用），否則用回報備註。
+            'note' => $report->displayNote(),
             'cash_amount' => $isConfirmed && $method === 'cash' ? $amount : 0,
             'transfer_amount' => $isConfirmed && $method === 'transfer' ? $amount : 0,
             'total_amount' => $isConfirmed ? $amount : 0,

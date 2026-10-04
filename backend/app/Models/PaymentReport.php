@@ -64,6 +64,14 @@ class PaymentReport extends Model
         return $this->belongsTo(Payment::class, 'payment_id', 'id');
     }
 
+    /** Receipt note: the linked payment's note wins (confirmation may replace it), else the report's own note. */
+    public function displayNote(): string
+    {
+        $paymentNote = $this->getAttribute('payment_id') ? $this->getRelationValue('payment')?->getAttribute('Note') : null;
+
+        return (string) ($paymentNote ?? $this->note ?? '');
+    }
+
     public function voidedByUser()
     {
         return $this->belongsTo(User::class, 'voided_by', 'id');
