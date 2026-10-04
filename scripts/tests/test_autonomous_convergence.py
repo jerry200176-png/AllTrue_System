@@ -24,6 +24,18 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertIn("github.event.workflow_run.conclusion == 'success'", workflow)
         self.assertIn("github.event.workflow_run.pull_requests[0].number", workflow)
         self.assertIn("if .merged_at then \"merged\" else .state end", workflow)
+        self.assertIn("pull-requests: read", workflow)
+        self.assertNotIn("pull-requests: write", workflow)
+        permissions_block = workflow.split("\npermissions:\n", 1)[1].split("\n\nconcurrency:\n", 1)[0]
+        declared_permissions = [
+            line.strip()
+            for line in permissions_block.splitlines()
+            if line.startswith("  ")
+        ]
+        self.assertEqual(
+            ["actions: write", "contents: write", "pull-requests: read"],
+            declared_permissions,
+        )
         self.assertIn('[[ "$PR_STATE" == "merged" ]]', workflow)
         self.assertIn('[[ "$PR_STATE" == "closed" ]]', workflow)
         self.assertIn("contents: write", workflow)
