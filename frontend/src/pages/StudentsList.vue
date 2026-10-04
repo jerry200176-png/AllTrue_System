@@ -183,7 +183,7 @@
                 >
                   {{ getStudentCourseSubjectDisplayLabel(course).split('(')[0].trim() }}
                   <strong>{{ courseBadgeSessionLabel(course) }}</strong>
-                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ effectiveClosedReason(course) === 'settled_pending' ? '已結算 · 待對帳' : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
+                  <span v-if="isHistoryCourseByReason(course)">歷史 · {{ (effectiveClosedReason(course) === 'settled_pending' && course.payment_status !== 'free') ? '已結算 · 待對帳' : (effectiveClosedReason(course) === 'settled' ? '已結算' : '已完課') }}</span>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -505,7 +505,7 @@
                         <span class="tag sl-history-card__subject">{{ getStudentCourseSubjectDisplayLabel(hc) }}</span>
                         <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
                         <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
-                        <span v-if="effectiveClosedReason(hc) === 'settled_pending'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
+                        <span v-if="effectiveClosedReason(hc) === 'settled_pending' && hc.payment_status !== 'free'" class="tag sl-tag-history sl-tag-history--pending">已結算 · 待對帳</span>
                         <span v-else-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
                         <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
                       </div>

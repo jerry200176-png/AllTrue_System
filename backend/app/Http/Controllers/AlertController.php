@@ -420,7 +420,8 @@ class AlertController extends Controller
                     'course_end_date'           => $sc?->EndDate ? substr((string) $sc->EndDate, 0, 10) : null,
                 ];
             })
-            ->filter(fn ($row) => ($row['charge'] ?? 0) > 0)
+            // A pending report stays listed even at charge 0, so staff can reject a legacy report on a now-free course.
+            ->filter(fn ($row) => ($row['charge'] ?? 0) > 0 || ($row['payment_status'] ?? '') === 'pending_report')
             ->values();
 
         $rows = $this->suppressRenewedLowSessionAlerts($rows);

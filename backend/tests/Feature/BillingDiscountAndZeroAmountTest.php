@@ -129,8 +129,11 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $amendedFree = $this->course(self::FREE_DATE_MODE, 1500);
         $billed = $this->course(self::FREE_DATE_MODE);
         $reported = $this->course(self::FREE_DATE_MODE, 1500); // free, but a legacy pending report must stay rejectable
-        PaymentReport::create(['StudentID' => $reported->StudentID, 'StudentClassID' => $reported->ID, 'reported_by_name' => 'x', 'payment_date' => '2026-10-04',
-            'payment_method' => 'cash', 'reported_amount' => 500, 'status' => 'pending', 'report_token_hash' => str_repeat('a', 64), 'token_expires_at' => now()->addDay()]);
+        $countReported = $this->freeTrial(); // count mode: charge 0, but the pending report row must stay
+        foreach ([$reported, $countReported] as $i => $c) {
+            PaymentReport::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'reported_by_name' => 'x', 'payment_date' => '2026-10-04',
+                'payment_method' => 'cash', 'reported_amount' => 500, 'status' => 'pending', 'report_token_hash' => str_repeat((string) $i, 64), 'token_expires_at' => now()->addDay()]);
+        }
         // attended lessons make MonthlyBillingService price a positive charge
         array_map(fn ($c) => ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => now()->toDateString(), 'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'completed']), [$free, $amendedFree, $billed, $reported]);
         $events = collect(app(DunningService::class)->evaluateAll(1, false))
@@ -140,6 +143,7 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertContains((int) $billed->ID, $this->queuedIds(), 'control: a billed date-mode course is queued');
         $this->assertNotContains((int) $free->ID, $this->queuedIds());
         $this->assertContains((int) $reported->ID, $this->queuedIds(), 'free with a pending report: listed');
+        $this->assertContains((int) $countReported->ID, $this->queuedIds(), 'count-mode free with a pending report: listed');
         // closed after the lesson: 結案未繳 / 提前結束未繳
         StudentClass::whereIn('ID', [$free->ID, $billed->ID, $reported->ID])->update(['Stop' => 1, 'closed_reason' => 'settled_pending']);
         StudentClass::whereKey($amendedFree->ID)->update(['Stop' => 1, 'closed_reason' => 'contract_amended']);

@@ -77,7 +77,8 @@ describe('CourseManagement student billing tab', () => {
     expect(studentsList).toMatch(/if \(isNoPaymentCourse\(course\)\) return '無須繳費；此課程免收費/);
     // an exhausted free course is completed (not paused / pending reconciliation)
     expect(source).toContain("isSessionMode(c) && ['paid', 'free'].includes(c.payment_status)");
-    expect(source.match(/'contract_amended' && !\['paid', 'free'\]\.includes\(h?c\.payment_status\)/g)).toHaveLength(3);
+    // settled_pending / contract_amended show 待對帳 only when not paid or free
+    expect(source.match(/\['settled_pending', 'contract_amended'\]\.includes\(effectiveClosedReason\(h?c\)\) && !\['paid', 'free'\]\.includes\(h?c\.payment_status\)/g)).toHaveLength(3);
     expect(studentsList).toContain("if (paymentStatus === 'paid' || paymentStatus === 'free') return true;");
     expect(source).toContain('const shouldShowPaymentAction = (course) => !isNoPaymentCourse(course);');
     expect(source).toContain('v-if="shouldShowPaymentAction(row.course)"');

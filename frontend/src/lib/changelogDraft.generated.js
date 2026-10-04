@@ -26,7 +26,7 @@ export const changelogDraftNotes = [
         "items": [
           "edits check exactly the lessons that move; no false block on own lessons, no self-overlap",
           "slot edits move the right lessons (locked lessons stay; shared same-day remap plan)",
-          "discounts drive billing; free courses need no payment, NT$0 records rejected",
+          "discounts drive billing; courses discounted to NT$0 are free",
           "counts the same live lessons as booking",
           "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
           "record form opens the lesson you clicked; multi-teacher courses keep their own slots"
@@ -43,7 +43,7 @@ export const changelogDraftNotes = [
       "carry the last buttons pressed and messages seen (F15)",
       "edits check exactly the lessons that move; no false block on own lessons, no self-overlap",
       "slot edits move the right lessons (locked lessons stay; shared same-day remap plan)",
-      "discounts drive billing; free courses need no payment, NT$0 records rejected",
+      "discounts drive billing; courses discounted to NT$0 are free",
       "counts the same live lessons as booking",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "record form opens the lesson you clicked; multi-teacher courses keep their own slots",
