@@ -976,10 +976,11 @@ jobs:
             $weekEnd = $today->copy()->endOfWeek()->toDateString();
             // Busiest effective teacher this week with a date-bounded query (a scheduled substitute wins over the base
             // teacher), not the heavy query under investigation.
-            // ponytail: substitutes matched by course+date only (not start time); enough to pick a representative teacher.
+            // ponytail: matches course+date+start time but not the latest-row rule; enough to pick a representative teacher.
             $teacher = (int) $db::table('ClassSession as cs')->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
               ->leftJoin('schedules as ss', function ($j) {{
                 $j->on('ss.student_course_id', '=', 'sc.ID')->on('ss.schedule_date', '=', 'cs.SessionDate')
+                  ->on($db::raw('SUBSTRING(ss.start_time, 1, 5)'), '=', 'cs.StartTimeHM')
                   ->where('ss.status', 'scheduled')->whereNotNull('ss.original_schedule_id')->whereColumn('ss.teacher_id', '<>', 'sc.TeacherID');
               }})
               ->whereBetween('cs.SessionDate', [$weekStart, $weekEnd])
