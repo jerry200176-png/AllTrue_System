@@ -2987,6 +2987,13 @@ const recordLookup = computed(() => {
       if (!prevT || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prevT.Status)) {
         map.set(timeKey, record);
       }
+      if (!(csId > 0)) {
+        const unboundKey = `unbound:${timeKey}`;
+        const prevU = map.get(unboundKey);
+        if (!prevU || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prevU.Status)) {
+          map.set(unboundKey, record);
+        }
+      }
     }
     const prev = map.get(dateKey);
     if (!prev || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prev.Status)) {
@@ -3119,7 +3126,8 @@ const buildEvents = (targetDates) => {
       const byTime = startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null;
       const byDate = recordLookup.value.get(`${classId}|${dateStr}`);
       // 已有 ClassSession id 時，只接受本堂或未綁堂的舊紀錄，不拿同時段／同日另一堂的紀錄。
-      const record = pickSessionRecord({ csId, byCs, byTime, byDate });
+      const byUnboundTime = startTime ? recordLookup.value.get(`unbound:${classId}|${dateStr}|${startTime}`) : null;
+      const record = pickSessionRecord({ csId, byCs, byTime, byDate, byUnboundTime });
       const rowStatus = String(rawSession?.learningRecordStatus || '');
       const sessionStatus = String(rawSession?.status || '').toLowerCase();
       // 請假／取消堂次：一律不需填評量；與 SmartCalendar.evalBadge 的 LEAVE_STATUSES 行為對齊。

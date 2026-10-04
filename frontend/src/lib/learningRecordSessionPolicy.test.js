@@ -76,7 +76,16 @@ describe('pickSessionRecord', () => {
     expect(pickSessionRecord({ csId: 201, byCs: null, byTime: other, byDate: other })).toBeNull();
     expect(pickSessionRecord({ csId: 201, byCs: { ID: 8, ClassSessionID: 201 }, byTime: other })).toEqual({ ID: 8, ClassSessionID: 201 });
     const legacy = { ID: 9, ClassSessionID: null };
-    expect(pickSessionRecord({ csId: 201, byTime: legacy })).toBe(legacy);
+    // Slot holds a legacy unbound record and another session's bound record; the bound one won byTime.
+    expect(pickSessionRecord({ csId: 201, byTime: other, byUnboundTime: legacy })).toBe(legacy);
     expect(pickSessionRecord({ csId: 0, byTime: other })).toBe(other);
+  });
+});
+
+describe('selectFormDaySession attendance', () => {
+  it('prefers an attended lesson over an absent one when no time matches', () => {
+    const t = (v) => String(v || '').slice(0, 5);
+    const day = [{ id: 1, status: 'attended', startTime: '10:00' }, { id: 2, status: 'absent', startTime: '14:00' }];
+    expect(selectFormDaySession(day, { startTime: '18:00', normalizeTime: t }).id).toBe(1);
   });
 });

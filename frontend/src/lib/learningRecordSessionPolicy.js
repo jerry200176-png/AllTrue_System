@@ -69,7 +69,10 @@ export function selectFormDaySession(daySessions, { classSessionId = 0, startTim
   if (id > 0) return daySessions.find((s) => Number(s.id) === id) || null;
   const t = startTime ? normalizeTime(startTime) : '';
   const byTime = t ? daySessions.filter((s) => normalizeTime(s.startTime) === t) : [];
-  return pickBestLearningRecordSession(byTime.length ? byTime : daySessions);
+  const pool = byTime.length ? byTime : daySessions;
+  // Only attended lessons accept an assessment; never lock the form to an absent one when another qualifies.
+  const eligible = pool.filter((s) => ['attended', 'completed', 'late'].includes(String(s?.status || '').toLowerCase()));
+  return pickBestLearningRecordSession(eligible.length ? eligible : pool);
 }
 
 /**
@@ -77,9 +80,8 @@ export function selectFormDaySession(daySessions, { classSessionId = 0, startTim
  * exact match or a same-time legacy record without ClassSessionID may bind; a
  * record of another session in the slot, or any same-date guess, never does.
  */
-export function pickSessionRecord({ csId = 0, byCs = null, byTime = null, byDate = null }) {
+export function pickSessionRecord({ csId = 0, byCs = null, byTime = null, byDate = null, byUnboundTime = null }) {
   if (byCs) return byCs;
   if (Number(csId) <= 0) return byTime || byDate;
-  const unbound = (r) => (r && !(Number(r.ClassSessionID || 0) > 0) ? r : null);
-  return unbound(byTime);
+  return byUnboundTime;
 }
