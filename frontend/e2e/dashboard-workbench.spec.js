@@ -57,18 +57,33 @@ async function login(page) {
     (response) => new URL(response.url()).pathname === '/api/v1/campuses' && response.status() === 200,
     { timeout: 25_000 },
   );
+  const tuitionPromise = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/v1/alerts/tuition' && response.status() === 200,
+    { timeout: 25_000 },
+  );
   await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
   const campuses = await (await campusesPromise).json();
   expect(Array.isArray(campuses) && campuses.length > 0, 'director must have authorized campuses').toBe(true);
-  const authorizedNames = new Set(campuses.map((campus) => campus.name));
-  // The main can render with a public default branch before authenticated
-  // campuses replace it. Wait for the displayed branch to be authorized.
+  const authorizedIds = new Set(campuses.map((campus) => Number(campus.id)));
+  const authorizedIdsSorted = [...authorizedIds].sort((a, b) => a - b);
+  // The select is bound to App.vue's branches/currentBranch state. Its option
+  // IDs must match the authenticated list, even when public names overlap.
+  await expect.poll(async () => (
+    await page.locator('#mobile-branch-select option:not([value=""])').evaluateAll(
+      (options) => options.map((option) => Number(option.value)).sort((a, b) => a - b),
+    )
+  ), { timeout: 25_000 }).toEqual(authorizedIdsSorted);
+  expect(authorizedIds.has(Number(await page.locator('#mobile-branch-select').inputValue())),
+    'selected dashboard campus ID must be authorized').toBe(true);
+  // A public default branch can render the heading before auth bootstrap.
+  // Require a successful dashboard request for an authorized campus ID.
+  const tuitionResponse = await tuitionPromise;
+  const tuitionBranchId = new URL(tuitionResponse.url()).searchParams.get('branch_id');
+  expect(tuitionBranchId, 'tuition response must identify its campus').not.toBeNull();
+  const tuitionBranch = Number(tuitionBranchId);
+  expect(authorizedIds.has(tuitionBranch), 'tuition request must target an authorized campus ID').toBe(true);
   await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
-  await expect.poll(
-    async () => authorizedNames.has((await page.locator('.director-workbench-v2 .at-page-header__desc').textContent())?.split(' · ')[0]),
-    { message: 'director dashboard must show an authorized campus', timeout: 25_000 },
-  ).toBe(true);
   await seedOnboardingCompleted(page);
   await dismissOverlays(page);
 }

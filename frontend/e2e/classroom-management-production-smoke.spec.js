@@ -9,11 +9,17 @@ const DIRECTOR = {
 };
 
 async function loginAsDirector(page) {
-  await page.goto('/');
+  // Let App.vue apply its own deep link after auth/profile bootstrap instead
+  // of navigating a second time while the authorized campus is still loading.
+  await page.goto('/?app_page=classroom');
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
   const campusesPromise = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/api/v1/campuses' && response.status() === 200,
+    { timeout: 25_000 },
+  );
+  const roomsPromise = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/v1/rooms' && response.status() === 200,
     { timeout: 25_000 },
   );
   await page.locator('button.login-btn').click({ force: true });
@@ -23,14 +29,20 @@ async function loginAsDirector(page) {
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
   const campuses = await (await campusesPromise).json();
   expect(Array.isArray(campuses) && campuses.length > 0, 'director must have authorized campuses').toBe(true);
-  const authorizedNames = new Set(campuses.map((campus) => campus.name));
-  // Deep-link navigation before authenticated branch resolution can be
-  // overwritten by auth/profile bootstrap or use a public default branch.
-  await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
-  await expect.poll(
-    async () => authorizedNames.has((await page.locator('.director-workbench-v2 .at-page-header__desc').textContent())?.split(' · ')[0]),
-    { message: 'director dashboard must show an authorized campus', timeout: 25_000 },
-  ).toBe(true);
+  const authorizedIds = new Set(campuses.map((campus) => Number(campus.id)));
+  const authorizedIdsSorted = [...authorizedIds].sort((a, b) => a - b);
+  await expect.poll(async () => (
+    await page.locator('#mobile-branch-select option:not([value=""])').evaluateAll(
+      (options) => options.map((option) => Number(option.value)).sort((a, b) => a - b),
+    )
+  ), { timeout: 25_000 }).toEqual(authorizedIdsSorted);
+  expect(authorizedIds.has(Number(await page.locator('#mobile-branch-select').inputValue())),
+    'selected classroom campus ID must be authorized').toBe(true);
+  const roomsResponse = await roomsPromise;
+  const roomsBranchId = new URL(roomsResponse.url()).searchParams.get('branch_id');
+  expect(roomsBranchId, 'classroom response must identify its campus').not.toBeNull();
+  const roomsBranch = Number(roomsBranchId);
+  expect(authorizedIds.has(roomsBranch), 'classroom request must target an authorized campus ID').toBe(true);
 }
 
 test.describe('UI smoke — production classroom management', () => {
@@ -52,7 +64,6 @@ test.describe('UI smoke — production classroom management', () => {
     });
 
     await loginAsDirector(page);
-    await page.goto('/?app_page=classroom');
     await dismissOverlays(page);
 
     await expect(page.getByRole('heading', { name: '教室管理', exact: true })).toBeVisible();
