@@ -13,6 +13,7 @@
 ## 2026-10-04 — fix(billing): transaction discounts drive billing; free courses need no payment, NT$0 records rejected (in-app #349 #361 #346)
 <!-- release-notes: silent_ship=silent-2026-10-04-billing-discount-zero -->
 - 交易折扣（舊生介紹等）寫在課程金額 `Charge`，但帳務中心、免收費判斷、課程查找總額仍用「單價×堂數」：改為有折扣時以折扣後金額為準；折扣到 0 元的試聽（或未設定收費、且無有效帳單）視為免收費＝無付款義務（比照輔導課）：主任登記繳費一律拒絕（`no_payment_obligation`），課程管理／學生列表顯示「無須繳費」並隱藏繳費按鈕，催繳（dunning）、通知中心未繳費提醒、家長 LINE 催繳（`tuition:send-reminders`）都不再對它發送。任何課程登記 0 元繳費一律拒絕（避免 0 元收據把課程標成已結算後從對帳佇列消失）。月結課程有折扣時，前端課程總額同樣以折扣後金額為準。
+- 堂數制金額改由單一來源 `StudentClass::effectiveContractTotal()` 決定（有效帳單 > 今日生效調價（含 0 元）> 折扣後金額 > 單價×堂數），學費提醒、課程查找總額、家長繳費通知一致；結案未繳／提前結束未繳的免收費月結課不再以原價列入學費提醒。
 ## 2026-10-04 — fix(scheduling): availability counts the same live lessons as booking (in-app #338 #359 #363 #365 #327)
 <!-- release-notes: silent_ship=silent-2026-10-04-availability-parity -->
 - 代課挑選與跨校衝堂檢查改用與排課相同的「有效堂次」規則（不再把停課、請假調整、作廢、已改期的堂次算成已滿／他校有課），他校衝突顯示「他校有課」

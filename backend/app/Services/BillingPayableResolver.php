@@ -45,7 +45,7 @@ class BillingPayableResolver
             }
         }
         // One query for package paid state (isEffectivelyPaid would otherwise query per package member).
-        (new \Illuminate\Database\Eloquent\Collection($courseMap))->loadMissing('coursePackage');
+        (new \Illuminate\Database\Eloquent\Collection($courseMap))->loadMissing(['coursePackage', 'pricingAmendments']);
         $invoicesByClass = Invoice::query()
             ->where(fn ($query) => $query->whereNull('Status')->orWhere('Status', '!=', 'void'))
             ->with(['payments' => fn ($query) => $query->select(['id', 'InvoiceID', 'Amount', 'Method']), 'items'])
@@ -53,13 +53,6 @@ class BillingPayableResolver
             ->orderBy('id')
             ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
-        // One query for the amendment in force today per course (same selection as StudentClassPricingService::forDate);
-        // it makes a course billable only when its price is above NT$0.
-        $amendedClassIds = \App\Models\StudentClassPricingAmendment::query()
-            ->whereIn('student_class_id', $ids->all())->whereNull('voided_at')->whereDate('effective_from', '<=', today()->toDateString())
-            ->orderByDesc('effective_from')->orderByDesc('id')->get(['student_class_id', 'rate'])
-            ->unique('student_class_id')->filter(fn ($row) => (int) $row->rate > 0)
-            ->mapWithKeys(fn ($row) => [(int) $row->student_class_id => true]);
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
         $out = [];
@@ -71,7 +64,6 @@ class BillingPayableResolver
                 $courseMap[$classId],
                 $invoicesByClass->get($classId, collect()),
                 $monthlyByClass[$classId] ?? [],
-                $amendedClassIds->has($classId),
             );
         }
 
@@ -85,7 +77,7 @@ class BillingPayableResolver
     }
 
     /** @param Collection<int, Invoice> $invoices */
-    private function courseStatus(StudentClass $course, Collection $invoices, array $monthly, bool $hasAmendment = false): array
+    private function courseStatus(StudentClass $course, Collection $invoices, array $monthly): array
     {
         $result = fn (string $status, int $total, int $applied, int $overpaid, array $periods, string $source, ?int $invoiceId) => [
             'status' => $status, 'payable_total' => $total, 'applied' => $applied,
@@ -93,7 +85,8 @@ class BillingPayableResolver
             'periods' => $periods, 'source' => $source, 'current_invoice_id' => $invoiceId,
         ];
         $charge = max(0, (int) ($course->getAttribute('Charge') ?? 0));
-        $hasBillableInvoice = $invoices->contains(fn ($invoice) => (int) $invoice->getAttribute('TotalAmount') > 0);
+        $billedTotal = (int) $invoices->sum(fn ($invoice) => max(0, (int) $invoice->getAttribute('TotalAmount')));
+        $hasBillableInvoice = $billedTotal > 0;
         $tutoring = strtolower(trim((string) ($course->getAttribute('ClassType') ?? ''))) === 'tutoring';
         // B15 is the period engine for monthly courses: a period it cannot attribute is review_required,
         // even without invoices (a legacy flag must not settle unattributed months).
@@ -101,9 +94,8 @@ class BillingPayableResolver
         // B15's own verdict (ambiguous items/coverage gaps, out-of-contract sessions, amount discrepancy) is preserved.
         $monthlyReview = (bool) ($monthly['review_required'] ?? false);
         $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
-        // Same authority as StudentClass::isFreeOfCharge (in-app #361), fed with the batch-loaded facts.
-        $zeroFee = !$monthlyReview && $course->isFreeGivenBillingFacts($hasBillableInvoice, $hasAmendment);
-        if ($tutoring || $zeroFee) {
+        // The single pricing authority (in-app #361), fed with the batch-loaded invoices and amendments.
+        if ($tutoring || (!$monthlyReview && $course->isFreeOfCharge($billedTotal))) {
             return $result('free', 0, 0, 0, [], 'none', null);
         }
         if ($invoices->isEmpty() && ($unattributed !== [] || $monthlyReview)) {

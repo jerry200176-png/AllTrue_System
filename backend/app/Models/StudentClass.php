@@ -83,11 +83,55 @@ class StudentClass extends Model
     }
 
     /**
-     * Count-mode contract total after a transaction discount (in-app #349 #361).
-     * The discount is allocated into Charge at creation (EnrollmentService); Rate stays the list price,
-     * so Rate × sessions would ignore the discount. Null when no discount applies.
+     * THE pricing authority for a count-mode contract total (in-app #346 #349 #361). Every surface that
+     * shows or collects a count-course amount (tuition queue, course index, parent payment message,
+     * free/zero decisions) reads this. Precedence:
+     *  1. billed: the non-void invoice total when > 0 (an issued bill is the truth);
+     *  2. the pricing amendment in force on $on (StudentClassPricingService::forDate), a rate of 0 included;
+     *  3. a transaction-discount snapshot: the allocated Charge (Rate stays the list price);
+     *  4. list price: Rate x sessions (or hours), else Charge (#230: Rate beats a stale Charge).
+     * Tutoring is always 0. Batch callers pass $billedTotal (non-void invoice TotalAmount sum) and
+     * eager-load `pricingAmendments` to avoid N+1.
      */
-    public function discountedContractTotal(): ?int
+    public function effectiveContractTotal(?\Carbon\Carbon $on = null, ?int $billedTotal = null): int
+    {
+        if ($this->isTutoringClass()) {
+            return 0;
+        }
+        $billed = $billedTotal ?? $this->billedTotal();
+
+        return $billed > 0 ? $billed : ($this->unbilledContractTotal($on) ?? 0);
+    }
+
+    /**
+     * No payment obligation. Tutoring: always. Package member: never (its price lives on the package).
+     * Count-mode: the contract total above is 0 (a list Rate with no sessions to price is unknown, not free).
+     * Date-mode keeps its own rule: only an explicit 100% discount, not overridden by a positive current
+     * amendment or a positive bill; a fee that is merely unset stays monthly_fee_unset.
+     */
+    public function isFreeOfCharge(?int $billedTotal = null): bool
+    {
+        if ($this->isTutoringClass()) {
+            return true;
+        }
+        if ($this->isPartOfPackage()) {
+            return false;
+        }
+        if (((string) ($this->getAttribute('ScheduleMode') ?? 'count')) === 'date') {
+            $pricing = app(\App\Services\StudentClassPricingService::class)->forDate($this, today());
+            if ($this->discountedContractTotal() !== 0
+                || ($pricing['source'] === 'pricing_amendment' && $pricing['rate'] > 0)) {
+                return false;
+            }
+        } elseif ($this->unbilledContractTotal(null) !== 0) {
+            return false; // cheap: a bill can only make a course non-free, so query it last
+        }
+
+        return ($billedTotal ?? $this->billedTotal()) <= 0;
+    }
+
+    /** Count-mode contract total after a transaction discount; null when no discount applies. */
+    private function discountedContractTotal(): ?int
     {
         $snapshot = $this->getAttribute('pricing_snapshot');
         if (!is_array($snapshot) || (int) ($snapshot['discount_amount'] ?? 0) <= 0) {
@@ -97,97 +141,57 @@ class StudentClass extends Model
         return max(0, (int) ($this->getAttribute('Charge') ?? 0));
     }
 
-    /**
-     * Current payable total of a discounted count-mode course (null = not discounted). Single pricing authority:
-     * an active positive price amendment (rate x sessions/hours) beats the frozen discount snapshot Charge.
-     */
-    public function effectiveDiscountedTotal(): ?int
+    private function billedTotal(): int
     {
+        $invoices = $this->relationLoaded('invoices')
+            ? $this->getRelation('invoices')->filter(fn ($i) => $i->getAttribute('Status') !== 'void')
+            : $this->invoices()->notVoided()->get(['TotalAmount']);
+
+        return (int) $invoices->sum(fn ($i) => max(0, (int) $i->getAttribute('TotalAmount')));
+    }
+
+    /** Precedence steps 2-4. Null = a price exists but there is nothing to multiply it by (unknown, never free). */
+    private function unbilledContractTotal(?\Carbon\Carbon $on): ?int
+    {
+        $pricing = app(\App\Services\StudentClassPricingService::class)->forDate($this, $on ?? today());
+        if ($pricing['source'] === 'pricing_amendment') {
+            return $pricing['rate'] <= 0 ? 0 : $this->priceSessions((float) $pricing['rate'], $pricing['rate_unit']);
+        }
         $discounted = $this->discountedContractTotal();
-        if ($discounted === null) {
+        if ($discounted !== null) {
+            return $discounted;
+        }
+        $rate = (float) ($this->getAttribute('Rate') ?? 0);
+        $listed = $this->priceSessions($rate, (string) $pricing['rate_unit']);
+        if ($listed !== null && $listed > 0) {
+            return $listed;
+        }
+        $charge = max(0, (int) ($this->getAttribute('Charge') ?? 0));
+
+        return $charge > 0 || $rate <= 0 ? $charge : null;
+    }
+
+    private function priceSessions(float $rate, string $rateUnit): ?int
+    {
+        $sessions = max(0, (int) ($this->getAttribute('SessionCount') ?? 0));
+        if ($rate <= 0 || $sessions <= 0) {
             return null;
         }
-        $pricing = app(\App\Services\StudentClassPricingService::class)->forDate($this, today());
-        if ($pricing['source'] !== 'pricing_amendment' || $pricing['rate'] <= 0) {
-            return $discounted;
-        }
-        $rate = (float) $pricing['rate'];
-        $sessions = max(0, (int) ($this->SessionCount ?? 0));
-        if ($sessions <= 0) {
-            return $discounted;
-        }
-        if ($pricing['rate_unit'] === 'hour') {
-            $hours = (int) ($this->TotalHours ?? 0);
+        if ($rateUnit === 'hour') {
+            $hours = (int) ($this->getAttribute('TotalHours') ?? 0);
             if ($hours <= 0) {
-                $hours = (int) round(($sessions * max(30, (int) ($this->SessionDuration ?? 120))) / 60);
+                $hours = (int) round(($sessions * max(30, (int) ($this->getAttribute('SessionDuration') ?? 120))) / 60);
             }
+
             return max(0, (int) round($rate * $hours));
         }
 
         return max(0, (int) round($rate * $sessions));
     }
 
-    /**
-     * Genuinely free course = no payment obligation: tutoring, no fee at all, or discounted to NT$0.
-     * Never free: a course with a non-void invoice above NT$0 (already billed), a positive price amendment,
-     * or a package member (members carry Charge 0; the price lives on the package).
-     */
-    public function isFreeOfCharge(): bool
-    {
-        if ($this->isTutoringClass() || $this->isPartOfPackage()) {
-            return $this->isTutoringClass();
-        }
-        // Cheap checks first; only hit the DB when the stored fields say "no fee".
-        if (!$this->hasNoFeeFields()) {
-            return false;
-        }
-
-        return $this->isFreeGivenBillingFacts(
-            $this->invoices()->notVoided()->where('TotalAmount', '>', 0)->exists(),
-            $this->hasCurrentPositiveAmendment(),
-        );
-    }
-
-    /** Only the amendment in force today counts (same selection as StudentClassPricingService::forDate). */
-    private function hasCurrentPositiveAmendment(): bool
-    {
-        $price = app(\App\Services\StudentClassPricingService::class)->forDate($this, today());
-
-        return $price['source'] === 'pricing_amendment' && $price['rate'] > 0;
-    }
-
-    /**
-     * Single authority for "free" once the invoice/amendment facts are known (BillingPayableResolver batch-loads them).
-     * Implicit zero fee (Charge 0 and Rate 0) never applies to monthly/date-mode courses: those stay "fee unset"
-     * (monthly_fee_unset). An explicit 100% discount and tutoring are free in any mode.
-     */
-    public function isFreeGivenBillingFacts(bool $hasPositiveInvoice, bool $hasPositiveAmendment): bool
-    {
-        if ($this->isTutoringClass()) {
-            return true;
-        }
-
-        return !$this->isPartOfPackage()
-            && $this->hasNoFeeFields()
-            && !$hasPositiveInvoice
-            && !$hasPositiveAmendment;
-    }
-
     private function isTutoringClass(): bool
     {
         return strtolower(trim((string) ($this->getAttribute('ClassType') ?? ''))) === 'tutoring';
-    }
-
-    private function hasNoFeeFields(): bool
-    {
-        if ($this->discountedContractTotal() === 0) {
-            return true;
-        }
-        $isCount = ((string) ($this->getAttribute('ScheduleMode') ?? 'count')) === 'count';
-
-        return $isCount
-            && (int) ($this->getAttribute('Charge') ?? 0) <= 0
-            && (float) ($this->getAttribute('Rate') ?? 0) <= 0;
     }
 
     public function student()

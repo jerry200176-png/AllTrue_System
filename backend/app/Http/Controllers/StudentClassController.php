@@ -315,7 +315,8 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
+        // pricingAmendments: effectiveContractTotal / isFreeOfCharge without N+1
+        $classes->getCollection()->loadMissing('pricingAmendments')->transform(function ($class) use ($monthlyPayments, $courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $usageDiagnosticsByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $invoiceAggMap, $pendingReportByClassId, $latestPaymentSummaryByClassId, $packageMap, $packagePlanningMap, $role) {
             $class->setAttribute('subject_name', $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null);
@@ -470,11 +471,14 @@ class StudentClassController extends Controller
             $class->setAttribute('end_time', $class->getAttribute('start_time') ? date('H:i', strtotime($class->getAttribute('start_time')) + $durationSecs) : null);
             $class->setAttribute('payment_type', ($class->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly');
             $class->setAttribute('sessions_purchased', (int) ($class->SessionCount ?? 0));
-            $class->setAttribute('effective_total', $class->effectiveDiscountedTotal());
+            $billedTotal = (int) ($invoiceAggMap[(int) $class->ID]['total_amount'] ?? 0);
+            // Count-mode contract total from the single pricing authority (null: date-mode, tutoring, package member).
+            $class->setAttribute('effective_total', ($class->ScheduleMode ?? 'count') === 'count' && !$isTutoringCourse && !$class->isPartOfPackage()
+                ? $class->effectiveContractTotal(null, $billedTotal) : null);
             $storedCharge = (int) ($class->Charge ?? 0);
             $effectiveCharge = $storedCharge;
             // in-app #346: discounted to NT$0 (or no fee, not billed) = no payment obligation, like tutoring.
-            $isFreeCourse = !$isTutoringCourse && $storedCharge <= 0 && $class->isFreeOfCharge();
+            $isFreeCourse = !$isTutoringCourse && $class->isFreeOfCharge($billedTotal);
             if (
                 $effectiveCharge <= 0
                 && $class->getAttribute('payment_type') === 'session'

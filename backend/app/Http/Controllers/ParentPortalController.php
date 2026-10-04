@@ -1636,7 +1636,7 @@ class ParentPortalController extends Controller
         }
 
         $classes = StudentClass::where('StudentID', $student->id)
-            ->with('coursePackage')
+            ->with(['coursePackage', 'pricingAmendments'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             ->where(fn ($q) => $q->effectivelyUnpaid())
@@ -1664,14 +1664,12 @@ class ParentPortalController extends Controller
                 continue;
             }
 
-            $unitPrice = $this->resolveUnitPrice($c, $sessionCount);
-            $subtotal = $this->resolveSubtotal($c, $unitPrice, $sessionCount);
-            // Discounted course: price from the same effective authority as the tuition queue (amendment > frozen discount Charge).
-            $effective = $c->effectiveDiscountedTotal();
-            if ($effective !== null && $effective > 0) {
-                $subtotal = $effective;
-                $unitPrice = $effective / $sessionCount;
+            // Same pricing authority as the tuition queue and the course index.
+            $subtotal = $c->effectiveContractTotal();
+            if ($subtotal <= 0) {
+                continue; // unknown price: never send a NT$0 line
             }
+            $unitPrice = $subtotal / $sessionCount;
             $totalAmount += $subtotal;
 
             $lineItems[] = [
@@ -2208,25 +2206,6 @@ class ParentPortalController extends Controller
         $pay = (float) ($class->Pay ?? 0);
         if ($pay > 0 && $sessionCount > 0) {
             return $pay / $sessionCount;
-        }
-
-        return 0;
-    }
-
-    private function resolveSubtotal(StudentClass $class, float $unitPrice, int $sessionCount): int
-    {
-        $charge = (float) ($class->Charge ?? 0);
-        if ($charge > 0) {
-            return (int) round($charge);
-        }
-
-        if ($unitPrice > 0 && $sessionCount > 0) {
-            return (int) round($unitPrice * $sessionCount);
-        }
-
-        $pay = (float) ($class->Pay ?? 0);
-        if ($pay > 0) {
-            return (int) round($pay);
         }
 
         return 0;

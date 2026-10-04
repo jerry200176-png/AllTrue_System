@@ -31,9 +31,9 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $discounted = $this->course($student->id, ['Rate' => 1800, 'SessionCount' => 4, 'Charge' => 5400], 1800);
         $freeTrial = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 1, 'Charge' => 0, 'ClassType' => 'trial'], 1500);
 
-        $this->assertNull($plain->discountedContractTotal());
-        $this->assertSame(5400, $discounted->discountedContractTotal());
-        $this->assertSame(0, $freeTrial->discountedContractTotal());
+        $this->assertSame(7200, $plain->effectiveContractTotal());
+        $this->assertSame(5400, $discounted->effectiveContractTotal());
+        $this->assertSame(0, $freeTrial->effectiveContractTotal());
         $this->assertFalse($plain->isFreeOfCharge());
         $this->assertFalse($discounted->isFreeOfCharge());
         $this->assertTrue($freeTrial->isFreeOfCharge(), 'a trial discounted to NT$0 is free even though Rate > 0');
@@ -367,6 +367,82 @@ class BillingDiscountAndZeroAmountTest extends TestCase
             ->getJson("/api/v1/student-classes?student_id={$student->id}&per_page=100")->assertOk()->json('data'))
             ->keyBy(fn ($r) => (int) ($r['ID'] ?? $r['id']));
         $this->assertSame(4800, $rows[$course->ID]['effective_total']);
+    }
+
+    /**
+     * The single pricing authority's precedence (StudentClass::effectiveContractTotal); null = free.
+     * @return array<string, array{array<string, mixed>, int, ?int, ?int}> course fields, discount, amendment rate, invoice total => expected
+     */
+    public static function precedenceMatrix(): array
+    {
+        return [
+            // 1. a positive non-void invoice wins, even over a 100% discount (Codex P1)
+            'invoice wins over 100% discount' => [['Rate' => 1500, 'Charge' => 0], 6000, null, 3000, 3000],
+            // 2. the amendment in force wins, a rate of 0 included, over a positive frozen discount (Codex P1)
+            'zero amendment over positive discount is free' => [['Rate' => 1500, 'Charge' => 4000], 2000, 0, null, null],
+            // 2. a positive amendment prices a legacy Charge 0 / Rate 0 course with no snapshot (Codex P1)
+            'positive amendment over no snapshot is priced' => [['Rate' => 0, 'Charge' => 0], 0, 1200, null, 4800],
+            // 3. discount snapshot: the allocated Charge, not Rate x sessions (6000)
+            'discount only' => [['Rate' => 1500, 'Charge' => 5400], 600, null, null, 5400],
+            // 4. list price
+            'plain' => [['Rate' => 1500, 'Charge' => 6000], 0, null, null, 6000],
+        ];
+    }
+
+    /**
+     * @dataProvider precedenceMatrix
+     */
+    public function test_one_pricing_authority_gives_the_same_number_on_every_surface(array $fields, int $discount, ?int $amendRate, ?int $invoice, ?int $expected): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, $fields + ['SessionCount' => 4, 'RemainingSessions' => 4], $discount);
+        if ($amendRate !== null) {
+            \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => '2026-08-15',
+                'rate' => $amendRate, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+        }
+        if ($invoice !== null) {
+            Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => now(),
+                'DueDate' => now(), 'TotalAmount' => $invoice, 'PaidAmount' => 0, 'Status' => 'unpaid']);
+        }
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->assertSame($expected ?? 0, $course->fresh()->effectiveContractTotal());
+        $this->assertSame($expected === null, $course->fresh()->isFreeOfCharge());
+
+        $queue = collect($this->withHeaders($h)->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $course->ID);
+        $this->assertSame($expected, $queue === null ? null : (int) $queue['charge'], 'tuition queue');
+
+        $index = collect($this->withHeaders($h)->getJson("/api/v1/student-classes?student_id={$student->id}&per_page=100")->assertOk()->json('data'))
+            ->first(fn ($r) => (int) ($r['ID'] ?? $r['id']) === (int) $course->ID);
+        $this->assertSame($expected ?? 0, $index['effective_total'], 'course index effective_total');
+        $this->assertSame($expected === null, $index['payment_status'] === 'free', 'course index free status');
+
+        $message = $this->withHeaders($h)->getJson("/api/v1/parent/payment-message/{$student->id}")->assertOk()->json();
+        $this->assertSame($expected, $message['total_amount'] ?? null, 'parent payment message');
+    }
+
+    public function test_free_date_mode_course_awaiting_settlement_is_not_queued_at_list_rate(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $closed = ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 0, 'SessionCount' => 0, 'settlement_day' => 1];
+        $free = $this->course($student->id, $closed, 1500);
+        $amendedFree = $this->course($student->id, $closed, 1500);
+        $billed = $this->course($student->id, $closed);
+        foreach ([$free, $amendedFree, $billed] as $c) { // attended lessons make MonthlyBillingService price a positive charge
+            \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => now()->toDateString(),
+                'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'completed']);
+        }
+        // closed after the lesson: 結案未繳 / 提前結束未繳
+        StudentClass::whereIn('ID', [$free->ID, $billed->ID])->update(['Stop' => 1, 'closed_reason' => 'settled_pending']);
+        StudentClass::whereKey($amendedFree->ID)->update(['Stop' => 1, 'closed_reason' => 'contract_amended']);
+
+        $ids = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->pluck('id')->map(fn ($id) => (int) $id);
+        $this->assertContains((int) $billed->ID, $ids->all(), 'control: a billed closed date-mode course awaits settlement');
+        $this->assertNotContains((int) $free->ID, $ids->all());
+        $this->assertNotContains((int) $amendedFree->ID, $ids->all());
     }
 
     private function course(int $studentId, array $overrides, int $discount = 0): StudentClass
