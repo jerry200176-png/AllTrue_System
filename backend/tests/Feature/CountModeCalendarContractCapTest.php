@@ -284,6 +284,15 @@ class CountModeCalendarContractCapTest extends TestCase
         }
     }
 
+    public function test_cancelled_date_set_matches_placeholders_by_slot(): void
+    {
+        $row = fn (string $start, string $status) => (object) ['SessionDate' => '2026-09-10', 'StartTime' => $start, 'Status' => $status];
+        $set = fn (array $rows) => \App\Http\Controllers\StudentClassController::cancelledDateSet($rows);
+        // Same slot live + cancelled = placeholder; different slots = a real cancellation on that date.
+        $this->assertSame([], $set([$row('19:00:00', 'scheduled'), $row('19:00:00', 'cancelled')]));
+        $this->assertSame(['2026-09-10' => true], $set([$row('10:00:00', 'scheduled'), $row('19:00:00', 'cancelled')]));
+    }
+
     private function makeDirectorToken(): string
     {
         $director = User::create([

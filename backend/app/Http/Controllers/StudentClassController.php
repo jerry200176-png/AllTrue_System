@@ -662,6 +662,13 @@ class StudentClassController extends Controller
                     $courseIds[] = $cid;
                 }
             }
+            // Request IDs are untrusted: keep only courses on the authorized branch (room-first campus rule).
+            if (!empty($courseIds)) {
+                $courseIds = StudentClass::query()
+                    ->whereIn('ID', $courseIds)
+                    ->where(fn ($q) => self::applyBranchCampusScope($q, $branchId))
+                    ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+            }
             if (!empty($courseIds)) {
                 $bodyClasses = StudentClass::whereIn('ID', $courseIds)
                     ->with('student')
@@ -775,11 +782,7 @@ class StudentClassController extends Controller
                     $classSessionsBodyByClass[(int) $row->StudentClassID][] = $row;
                 }
                 // Body rows are window-bounded; the contract walk needs cancellations on any date.
-                // Only courses on the authorized branch (request IDs are untrusted; room-first campus rule).
-                $cancelledByClass = self::cancelledDatesByClass(StudentClass::query()
-                    ->whereIn('ID', $courseIds)
-                    ->where(fn ($q) => self::applyBranchCampusScope($q, $branchId))
-                    ->pluck('ID')->map(fn ($id) => (int) $id)->all());
+                $cancelledByClass = self::cancelledDatesByClass($courseIds);
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -1224,28 +1227,32 @@ class StudentClassController extends Controller
     }
 
     /**
-     * Dates whose sessions are all cancelled. A cancelled row beside a live row on the same date is a
+     * Dates with a cancelled session. A cancelled row beside a live row in the same slot (date + start) is a
      * duplicate/placeholder (e.g. reschedule collision), not a cancelled lesson.
      *
      * @return array<string, bool>
      */
     public static function cancelledDateSet(iterable $sessionRows): array
     {
-        $cancelled = [];
-        $live = [];
+        $cancelledSlots = [];
+        $liveSlots = [];
         foreach ($sessionRows as $row) {
             if (!$row->SessionDate) {
                 continue;
             }
-            $d = Carbon::parse($row->SessionDate)->toDateString();
+            $slot = Carbon::parse($row->SessionDate)->toDateString() . '|' . substr((string) ($row->StartTime ?? ''), 0, 5);
             if (strtolower((string) ($row->Status ?? '')) === 'cancelled') {
-                $cancelled[$d] = true;
+                $cancelledSlots[$slot] = true;
             } else {
-                $live[$d] = true;
+                $liveSlots[$slot] = true;
             }
         }
+        $set = [];
+        foreach (array_keys(array_diff_key($cancelledSlots, $liveSlots)) as $slot) {
+            $set[strstr($slot, '|', true)] = true;
+        }
 
-        return array_diff_key($cancelled, $live);
+        return $set;
     }
 
     /**
@@ -1265,7 +1272,7 @@ class StudentClassController extends Controller
                 ->whereColumn('c2.StudentClassID', 'ClassSession.StudentClassID')
                 ->whereColumn('c2.SessionDate', 'ClassSession.SessionDate')
                 ->whereRaw('LOWER(c2.Status) = ?', ['cancelled']))
-            ->get(['StudentClassID', 'SessionDate', 'Status']);
+            ->get(['StudentClassID', 'SessionDate', 'StartTime', 'Status']);
 
         $out = [];
         foreach ($rows->groupBy('StudentClassID') as $classId => $classRows) {
