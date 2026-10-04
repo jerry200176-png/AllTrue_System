@@ -122,7 +122,7 @@ class ClassSessionIndexProjectionService
         $cancelledRowsByClass = ClassSession::query()
             ->whereIn('StudentClassID', $classIds)
             ->whereRaw('LOWER(Status) = ?', ['cancelled'])
-            ->get(['StudentClassID', 'SessionDate', 'Status'])
+            ->get(['StudentClassID', 'SessionDate', 'Status', 'Note'])
             ->groupBy('StudentClassID');
 
         $reader = app(SessionProjectionReadService::class);

@@ -748,7 +748,7 @@ class StudentClassController extends Controller
                 $classSessionsBody = ClassSession::whereIn('StudentClassID', $courseIds)
                     ->where('SessionDate', '>=', $rangeStart)
                     ->where('SessionDate', '<=', $rangeEnd)
-                    ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
+                    ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'Note')
                     ->get();
                 $capacityDiagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics(
                     array_map('intval', $courseIds)
@@ -1012,7 +1012,7 @@ class StudentClassController extends Controller
                 ->get();
 
             $sessions = ClassSession::whereIn('StudentClassID', $classIds)
-                ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
+                ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'Note')
                 ->get();
 
             $sessionsByClass = [];
@@ -1221,6 +1221,11 @@ class StudentClassController extends Controller
     {
         $set = [];
         foreach ($sessionRows as $row) {
+            // Reschedule bookkeeping duplicates (RescheduleSessionService) are not real cancellations:
+            // the moved lesson is still live on that date.
+            if (str_contains((string) ($row->Note ?? ''), 'cancelled-duplicate-reschedule-placeholder')) {
+                continue;
+            }
             if (strtolower((string) ($row->Status ?? '')) === 'cancelled' && $row->SessionDate) {
                 $set[Carbon::parse($row->SessionDate)->toDateString()] = true;
             }

@@ -161,6 +161,55 @@ class CountModeCalendarContractCapTest extends TestCase
         }
     }
 
+    public function test_reschedule_placeholder_is_not_a_cancellation(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-01 09:00:00', 'Asia/Taipei'));
+        try {
+            $token = $this->makeDirectorToken();
+            $student = Student::create([
+                'name' => 'Placeholder Regression', 'CampusID' => 1, 'ClassID' => 1,
+                'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+            ]);
+            $course = StudentClass::create([
+                'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+                'by1' => 1, 'Period' => 4, 'StartDate' => '2026-09-03', 'EndDate' => '2026-12-31',
+                'TotalHours' => 6, 'Charge' => 0, 'Paid' => 1, 'Rate' => 500, 'MDate' => now(),
+                'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 3, 'SessionDuration' => 120,
+                'RemainingSessions' => 3, 'UsedSessions' => 0, 'ClassType' => 'one_on_one',
+                'week' => 4, 'time' => '19:00:00',
+            ]);
+            // Moved lesson is live on 09-10; the auto-materialized duplicate there became a bookkeeping placeholder.
+            ClassSession::create([
+                'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10',
+                'StartTime' => '19:00:00', 'EndTime' => '21:00:00', 'Status' => 'scheduled',
+            ]);
+            ClassSession::create([
+                'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10',
+                'StartTime' => '19:00:00', 'EndTime' => '21:00:00', 'Status' => 'cancelled',
+                'Note' => 'auto; cancelled-duplicate-reschedule-placeholder',
+            ]);
+
+            $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+            $lookup = $this->withHeaders($headers)->postJson('/api/v1/student-classes/session-dates', [
+                'branch_id' => 1, 'range_start' => '2026-09-01', 'range_end' => '2026-10-15',
+                'courses' => [[
+                    'id' => $course->ID, 'first_class_date' => '2026-09-03',
+                    'sessions_purchased' => 3, 'days_of_week' => [4],
+                ]],
+            ])->assertOk()->json((string) $course->ID) ?? [];
+            $lookupDates = array_column($lookup['projected'] ?? [], 'session_date');
+            $calendar = $this->withHeaders($headers)->getJson(
+                '/api/v1/class-sessions/projection?branch_id=1&start=2026-09-01&end=2026-10-15&student_class_id=' . $course->ID
+            )->assertOk();
+            $calendarDates = array_column($calendar->json('projected.by_class.' . $course->ID) ?? [], 'session_date');
+
+            $this->assertNotContains('2026-09-24', $lookupDates, 'a placeholder must not push the contract one week further');
+            $this->assertNotContains('2026-09-24', $calendarDates);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     private function makeDirectorToken(): string
     {
         $director = User::create([
