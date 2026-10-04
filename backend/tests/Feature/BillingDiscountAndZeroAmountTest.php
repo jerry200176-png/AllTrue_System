@@ -3,13 +3,17 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\DunningService;
+use App\Services\NotificationSyncService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -51,20 +55,76 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertFalse($byCourse->has($freeTrial->ID), 'a trial discounted to NT$0 does not ask for payment');
     }
 
-    public function test_zero_amount_record_only_for_free_courses(): void
+    public function test_free_course_has_no_payment_obligation_and_zero_amount_is_never_recorded(): void
     {
         $token = $this->director();
         $student = $this->student();
         $paid = $this->course($student->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800]);
         $freeTrial = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 1, 'Charge' => 0, 'ClassType' => 'trial'], 1500);
-        $record = fn (StudentClass $sc) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+        $record = fn (StudentClass $sc, int $amount) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/payment-reports/director-record', [
-                'student_class_id' => $sc->ID, 'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'amount' => 0,
+                'student_class_id' => $sc->ID, 'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'amount' => $amount,
             ]);
 
-        $record($paid)->assertStatus(422)->assertJsonPath('code', 'zero_amount_for_paid_course');
-        $this->assertSame(0, PaymentReport::where('StudentClassID', $paid->ID)->count(), 'nothing recorded for a paid course');
-        $record($freeTrial)->assertOk();
+        $record($paid, 0)->assertStatus(422)->assertJsonPath('code', 'zero_amount_for_paid_course');
+        $record($freeTrial, 0)->assertStatus(422)->assertJsonPath('code', 'no_payment_obligation')
+            ->assertJsonPath('message', '此課程免收費（折扣後 0 元或未設定收費），不需要登記繳費。');
+        $record($freeTrial, 500)->assertStatus(422)->assertJsonPath('code', 'no_payment_obligation');
+        $this->assertSame(0, PaymentReport::whereIn('StudentClassID', [$paid->ID, $freeTrial->ID])->count(), 'nothing recorded');
+    }
+
+    public function test_a_billed_course_is_never_free(): void
+    {
+        $student = $this->student();
+        $course = $this->course($student->id, ['Rate' => 0, 'SessionCount' => 4, 'Charge' => 0]);
+        $this->assertTrue($course->isFreeOfCharge());
+
+        $invoice = Invoice::create(['StudentID' => $student->id, 'StudentClassID' => $course->ID, 'IssueDate' => now(),
+            'DueDate' => now(), 'TotalAmount' => 3000, 'PaidAmount' => 0, 'Status' => 'void']);
+        $this->assertTrue($course->isFreeOfCharge(), 'a void invoice does not bill the course');
+
+        $invoice->update(['Status' => 'unpaid']);
+        $this->assertFalse($course->isFreeOfCharge(), 'a non-void NT$3000 invoice means the course is billed');
+    }
+
+    public function test_reminder_producers_skip_free_courses(): void
+    {
+        $freeTrial = $this->course($this->student()->id, ['Rate' => 1500, 'SessionCount' => 1, 'Charge' => 0, 'ClassType' => 'trial'], 1500);
+        $unpaid = $this->course($this->student()->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800]);
+        StudentClass::whereIn('ID', [$freeTrial->ID, $unpaid->ID])->update(['MDate' => now()->subDays(15)]);
+        if (Schema::hasColumn('StudentClass', 'created_at')) {
+            StudentClass::whereIn('ID', [$freeTrial->ID, $unpaid->ID])->update(['created_at' => now()->subDays(15)]);
+        }
+
+        $dunned = collect(app(DunningService::class)->evaluateAll(1, false))
+            ->where('rule_key', 'unpaid_reminder')->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $unpaid->ID, $dunned);
+        $this->assertNotContains((int) $freeTrial->ID, $dunned, 'dunning: no unpaid event for a free trial');
+
+        NotificationSyncService::sync([1]);
+        $this->assertDatabaseHas('Notifications', ['SourceKey' => "tuition:1:{$unpaid->ID}"]);
+        $this->assertDatabaseMissing('Notifications', ['SourceKey' => "tuition:1:{$freeTrial->ID}"]);
+
+        $this->artisan('tuition:send-reminders', ['--dry-run' => true, '--overdue-days' => 7])
+            ->expectsOutput('Found 1 overdue unpaid course(s).')
+            ->assertSuccessful();
+    }
+
+    public function test_course_index_projects_free_trial_as_free(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $freeTrial = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 1, 'Charge' => 0, 'ClassType' => 'trial'], 1500);
+        $unpaid = $this->course($student->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800]);
+
+        $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/student-classes?student_id={$student->id}&per_page=100")->assertOk()->json('data'))
+            ->keyBy(fn ($r) => (int) ($r['ID'] ?? $r['id']));
+
+        $this->assertSame('free', $rows[$freeTrial->ID]['payment_status']);
+        $this->assertSame(0, (int) $rows[$freeTrial->ID]['charge'], 'not replaced by Rate × sessions (1500)');
+        $this->assertFalse((bool) $rows[$freeTrial->ID]['charge_is_fallback']);
+        $this->assertSame('unpaid', $rows[$unpaid->ID]['payment_status']);
     }
 
     private function course(int $studentId, array $overrides, int $discount = 0): StudentClass

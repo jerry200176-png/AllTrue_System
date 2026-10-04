@@ -39,7 +39,8 @@ class SendTuitionReminders extends Command
                 })
                 ->where(fn ($q) => $q->effectivelyUnpaid())
                 ->whereDate($overdueColumn, '<=', $cutoff)
-                ->get();
+                ->get()
+                ->reject(fn (StudentClass $c) => $c->isFreeOfCharge()); // in-app #346: free course, nothing to pay
 
         if ($unpaidCourses->isEmpty()) {
             $this->info('No overdue unpaid courses found.');

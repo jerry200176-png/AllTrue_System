@@ -472,10 +472,13 @@ class StudentClassController extends Controller
             $class->setAttribute('sessions_purchased', (int) ($class->SessionCount ?? 0));
             $storedCharge = (int) ($class->Charge ?? 0);
             $effectiveCharge = $storedCharge;
+            // in-app #346: discounted to NT$0 (or no fee, not billed) = no payment obligation, like tutoring.
+            $isFreeCourse = !$isTutoringCourse && $storedCharge <= 0 && $class->isFreeOfCharge();
             if (
                 $effectiveCharge <= 0
                 && $class->getAttribute('payment_type') === 'session'
                 && !$isTutoringCourse
+                && !$isFreeCourse
                 && !$class->isPartOfPackage()
                 && (float) ($class->Rate ?? 0) > 0
                 && $class->getAttribute('sessions_purchased') > 0
@@ -562,7 +565,7 @@ class StudentClassController extends Controller
                 $effectivePaid,
                 $invoicePaidAmount,
                 $effectiveCharge
-            ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : 'unpaid'));
+            ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : ($isFreeCourse ? 'free' : 'unpaid')));
 
             $tutoringBillingAnomalyReasons = [];
             if ($isTutoringCourse) {
@@ -605,7 +608,7 @@ class StudentClassController extends Controller
                 $monthlyPayment = $monthlyPayments[(int) $class->ID];
                 $class->setAttribute('monthly_payment', $monthlyPayment);
                 // A report is an administrative claim, not a payment for all periods.
-                if (!($pendingReportId !== null && count($monthlyPayment['periods']) === 1
+                if (!$isFreeCourse && !($pendingReportId !== null && count($monthlyPayment['periods']) === 1
                     && $monthlyPayment['periods'][0]['source'] === 'single_period_legacy'
                     && $monthlyPayment['payment_status'] === 'unpaid')) {
                     $class->setAttribute('payment_status', $monthlyPayment['payment_status']);

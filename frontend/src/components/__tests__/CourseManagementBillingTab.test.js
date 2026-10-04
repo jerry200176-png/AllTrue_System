@@ -70,9 +70,10 @@ describe('CourseManagement student billing tab', () => {
 
   it('uses course type as the tutoring payment gate and fails closed on anomalies', () => {
     expect(source).toContain("const isTutoringCourse = (course) => course?.class_type === 'tutoring';");
-    expect(source).toContain("if (isTutoringCourse(course)) return '無須繳費';");
+    expect(source).toContain("if (isNoPaymentCourse(course)) return '無須繳費';");
     expect(source).toContain("if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';");
-    expect(source).toContain('const shouldShowPaymentAction = (course) => !isTutoringCourse(course);');
+    expect(source).toContain("const isNoPaymentCourse = (course) => isTutoringCourse(course) || course?.payment_status === 'free';");
+    expect(source).toContain('const shouldShowPaymentAction = (course) => !isNoPaymentCourse(course);');
     expect(source).toContain('v-if="shouldShowPaymentAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');
     expect(source).toContain('輔導課不應產生付款義務');

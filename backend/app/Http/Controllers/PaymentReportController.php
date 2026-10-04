@@ -537,8 +537,7 @@ class PaymentReportController extends Controller
 
         // #1096 (in-app #190): a date-mode (月結) course billed at NT$0 is nonsensical —
         // the reported "金額顯示0應該顯示3000" came from an unset monthly fee. Block a NT$0
-        // record for date-mode and point staff to set the fee first. Count-mode is untouched,
-        // so legitimately-free (0-fee) tutoring courses still settle at 0.
+        // record for date-mode and point staff to set the fee first.
         if ($sc->getAttribute('ScheduleMode') === 'date' && (float) ($data['amount'] ?? 0) <= 0) {
             return response()->json([
                 'message' => '月結課程的繳費金額不可為 0；若月費顯示為 0，請先於課程管理設定正確月費金額後再登記。',
@@ -546,9 +545,13 @@ class PaymentReportController extends Controller
             ], 422);
         }
 
-        // in-app #346: a NT$0 record on a course that is not free settles it as "paid" with a 0元 receipt.
-        // Only genuinely free courses (tutoring, no fee, or discounted to NT$0) may be recorded at 0.
-        if ((float) ($data['amount'] ?? 0) <= 0 && !$sc->isFreeOfCharge()) {
+        if ($sc instanceof StudentClass && ($noObligation = $this->freeCoursePaymentBlocked($sc))) {
+            return $noObligation;
+        }
+
+        // in-app #346: a NT$0 record settles a course as "paid" with a 0元 receipt and then drops out of
+        // reconciliation. Free courses are refused above (no payment obligation), so NT$0 is never valid here.
+        if ((float) ($data['amount'] ?? 0) <= 0) {
             return response()->json([
                 'message' => '這門課需要收費，繳費金額不可為 0；若此課程應免收費，請先在課程設定折扣為 0 元或確認收費設定。',
                 'code' => 'zero_amount_for_paid_course',
@@ -1161,6 +1164,19 @@ class PaymentReportController extends Controller
             // current contract. Display-only flag; no ledger figure is touched.
             'billing_mode_changed' => (bool) $invoice?->billingModeChangedSinceIssue(),
         ]);
+    }
+
+    /** in-app #346: a free course (discounted to NT$0 / no fee, not billed) has no payment obligation, like tutoring. */
+    private function freeCoursePaymentBlocked(StudentClass $course): ?\Illuminate\Http\JsonResponse
+    {
+        if (!$course->isFreeOfCharge()) {
+            return null;
+        }
+
+        return response()->json([
+            'message' => '此課程免收費（折扣後 0 元或未設定收費），不需要登記繳費。',
+            'code' => 'no_payment_obligation',
+        ], 422);
     }
 
     private function tutoringPaymentBlocked($course)

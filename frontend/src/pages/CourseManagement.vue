@@ -4679,7 +4679,7 @@ const courseLensMetrics = computed(() => {
 
 const paymentStatusButtonClass = (course) => {
   if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
-  if (isTutoringCourse(course)) return 'tag-no-payment';
+  if (isNoPaymentCourse(course)) return 'tag-no-payment';
   if (course?.monthly_payment?.review_required || course?.payment_status === 'review_required') return 'tag-pending-report';
   if (course?.payment_status === 'paid') return 'tag-paid';
   if (course?.payment_status === 'pending_report') return 'tag-pending-report';
@@ -4691,7 +4691,7 @@ const currentInvoiceForBillingRow = (row) => {
 };
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
-  if (isTutoringCourse(course)) return '無須繳費';
+  if (isNoPaymentCourse(course)) return '無須繳費';
   if (monthlyPaymentLabel(course)) return monthlyPaymentLabel(course);
   if (course?.payment_status === 'review_required') return '付款期間待確認';
   if (course?.payment_status === 'paid') return '已繳費';
@@ -4700,17 +4700,20 @@ const paymentStatusButtonLabel = (course) => {
   return '未繳費';
 };
 const paymentNextActionLabel = (course) => {
-  if (isTutoringCourse(course)) return '';
+  if (isNoPaymentCourse(course)) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
   if (course?.payment_status === 'pending_report') return '查看待對帳';
   return '前往帳務中心';
 };
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
 const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
-const shouldShowPaymentAction = (course) => !isTutoringCourse(course);
+// in-app #346: a course discounted to NT$0 has no payment obligation, same as tutoring.
+const isNoPaymentCourse = (course) => isTutoringCourse(course) || course?.payment_status === 'free';
+const shouldShowPaymentAction = (course) => !isNoPaymentCourse(course);
 const paymentStatusHelpTitle = (course) => {
   if (isTutoringBillingAnomaly(course)) return '輔導課不應產生付款義務；帳務資料需由主任檢查。';
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
+  if (isNoPaymentCourse(course)) return '無須繳費；此課程免收費（折扣後 0 元或未設定收費）。';
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
 const reportStatusLabel = (status) => ({

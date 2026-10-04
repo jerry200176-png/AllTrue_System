@@ -97,17 +97,25 @@ class StudentClass extends Model
         return max(0, (int) ($this->getAttribute('Charge') ?? 0));
     }
 
-    /** Genuinely free course: tutoring, no fee at all, or discounted to NT$0. */
+    /**
+     * Genuinely free course = no payment obligation: tutoring, no fee at all, or discounted to NT$0.
+     * Never free: a course with a non-void invoice above NT$0 (already billed), a positive price amendment,
+     * or a package member (members carry Charge 0; the price lives on the package).
+     */
     public function isFreeOfCharge(): bool
     {
         if (strtolower(trim((string) ($this->getAttribute('ClassType') ?? ''))) === 'tutoring') {
             return true;
         }
-        if ($this->discountedContractTotal() === 0) {
-            return true;
+        if ($this->isPartOfPackage()) {
+            return false;
         }
+        $noFee = $this->discountedContractTotal() === 0
+            || ((int) ($this->getAttribute('Charge') ?? 0) <= 0 && (float) ($this->getAttribute('Rate') ?? 0) <= 0);
 
-        return (int) ($this->getAttribute('Charge') ?? 0) <= 0 && (float) ($this->getAttribute('Rate') ?? 0) <= 0;
+        return $noFee
+            && !$this->invoices()->notVoided()->where('TotalAmount', '>', 0)->exists()
+            && !$this->pricingAmendments()->whereNull('voided_at')->where('rate', '>', 0)->exists();
     }
 
     public function student()

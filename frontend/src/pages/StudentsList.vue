@@ -1316,21 +1316,21 @@ const forceSubmitting = ref(false);
 // Quick add session moved to course-mgmt (authoritative scheduling ops)
 const paymentStatusButtonClass = (course) => {
   if (isTutoringBillingAnomaly(course)) return 'tag-billing-anomaly';
-  if (isTutoringCourse(course)) return 'tag-no-payment';
+  if (isNoPaymentCourse(course)) return 'tag-no-payment';
   if (course?.payment_status === 'paid') return 'ghost';
   if (course?.payment_status === 'pending_report') return 'ghost';
   return 'primary';
 };
 const paymentStatusButtonLabel = (course) => {
   if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';
-  if (isTutoringCourse(course)) return '無須繳費';
+  if (isNoPaymentCourse(course)) return '無須繳費';
   if (course?.payment_status === 'paid') return '已繳費';
   if (course?.payment_status === 'pending_report') return '待對帳';
   if (course?.payment_status === 'partial') return '部分繳';
   return '未繳費';
 };
 const paymentNextActionLabel = (course) => {
-  if (isTutoringCourse(course)) return '';
+  if (isNoPaymentCourse(course)) return '';
   if (['unpaid', 'partial'].includes(course?.payment_status)) return '登記繳費回報';
   if (course?.payment_status === 'pending_report') return '查看待對帳';
   return '前往帳務中心';
@@ -1338,7 +1338,9 @@ const paymentNextActionLabel = (course) => {
 const isTutoringCourse = (course) => course?.class_type === 'tutoring';
 const isTrialCourse = (course) => course?.class_type === 'trial';
 const isTutoringBillingAnomaly = (course) => isTutoringCourse(course) && course?.tutoring_billing_anomaly === true;
-const shouldShowPaymentAction = (course) => !isTutoringCourse(course);
+// in-app #346: a course discounted to NT$0 has no payment obligation, same as tutoring.
+const isNoPaymentCourse = (course) => isTutoringCourse(course) || course?.payment_status === 'free';
+const shouldShowPaymentAction = (course) => !isNoPaymentCourse(course);
 const paymentStatusHelpTitle = (course) => {
   if (isTutoringBillingAnomaly(course)) return '輔導課不應產生付款義務；帳務資料需由主任檢查。';
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
