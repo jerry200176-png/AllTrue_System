@@ -1217,7 +1217,7 @@ class StudentClassController extends Controller
     }
 
     /** @return array<string, bool> */
-    private static function cancelledDateSet(iterable $sessionRows): array
+    public static function cancelledDateSet(iterable $sessionRows): array
     {
         $set = [];
         foreach ($sessionRows as $row) {

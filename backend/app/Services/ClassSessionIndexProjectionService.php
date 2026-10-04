@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Http\Controllers\StudentClassController;
+use App\Models\ClassSession;
 use App\Models\Schedule;
 use App\Models\StudentClass;
 use Carbon\Carbon;
@@ -116,6 +117,14 @@ class ClassSessionIndexProjectionService
             }
         }
 
+        // Contract-wide cancelled ClassSession dates (any date, one batched query) are skipped by the
+        // count-mode walk, matching /student-classes/session-dates.
+        $cancelledRowsByClass = ClassSession::query()
+            ->whereIn('StudentClassID', $classIds)
+            ->whereRaw('LOWER(Status) = ?', ['cancelled'])
+            ->get(['StudentClassID', 'SessionDate', 'Status'])
+            ->groupBy('StudentClassID');
+
         $reader = app(SessionProjectionReadService::class);
         $studentClassController = app(StudentClassController::class);
         /** @var array<string, list<array<string, mixed>>> $projectedByClass */
@@ -187,7 +196,7 @@ class ClassSessionIndexProjectionService
                         Carbon::parse($class->StartDate)->toDateString(),
                         (int) $class->SessionCount,
                         $daysOfWeek,
-                        $leaveByClass[$classId] ?? [],
+                        ($leaveByClass[$classId] ?? []) + StudentClassController::cancelledDateSet($cancelledRowsByClass->get($classId, [])),
                         $scheduledByClass[$classId] ?? []
                     );
                     $effectiveDates = array_values(array_filter(

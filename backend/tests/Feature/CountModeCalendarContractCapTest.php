@@ -114,6 +114,53 @@ class CountModeCalendarContractCapTest extends TestCase
         }
     }
 
+    public function test_cancelled_session_replacement_date_agrees_between_session_dates_and_calendar_projection(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-01 09:00:00', 'Asia/Taipei'));
+        try {
+            $token = $this->makeDirectorToken();
+            $student = Student::create([
+                'name' => 'Cancel Replace Regression', 'CampusID' => 1, 'ClassID' => 1,
+                'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+            ]);
+            $course = StudentClass::create([
+                'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+                'by1' => 1, 'Period' => 4, 'StartDate' => '2026-09-03', 'EndDate' => '2026-12-31',
+                'TotalHours' => 6, 'Charge' => 0, 'Paid' => 1, 'Rate' => 500, 'MDate' => now(),
+                'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 3, 'SessionDuration' => 120,
+                'RemainingSessions' => 3, 'UsedSessions' => 0, 'ClassType' => 'one_on_one',
+                'week' => 4, 'time' => '19:00:00',
+            ]);
+            ClassSession::create([
+                'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10',
+                'StartTime' => '19:00:00', 'EndTime' => '21:00:00', 'Status' => 'cancelled',
+            ]);
+
+            $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+            $lookup = $this->withHeaders($headers)->postJson('/api/v1/student-classes/session-dates', [
+                'branch_id' => 1, 'range_start' => '2026-09-01', 'range_end' => '2026-10-15',
+                'courses' => [[
+                    'id' => $course->ID, 'first_class_date' => '2026-09-03',
+                    'sessions_purchased' => 3, 'days_of_week' => [4],
+                ]],
+            ])->assertOk()->json((string) $course->ID) ?? [];
+            $lookupDates = array_column($lookup['projected'] ?? [], 'session_date');
+            sort($lookupDates);
+
+            $calendar = $this->withHeaders($headers)->getJson(
+                '/api/v1/class-sessions/projection?branch_id=1&start=2026-09-01&end=2026-10-15&student_class_id=' . $course->ID
+            )->assertOk();
+            $calendarDates = array_column($calendar->json('projected.by_class.' . $course->ID) ?? [], 'session_date');
+            sort($calendarDates);
+
+            $this->assertContains('2026-09-24', $lookupDates);
+            $this->assertNotContains('2026-09-10', $lookupDates);
+            $this->assertSame($lookupDates, $calendarDates);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     private function makeDirectorToken(): string
     {
         $director = User::create([

@@ -12,6 +12,34 @@ import { sessionViewModelFromClassSessionsRow, createSessionViewModel } from '..
  * executed this function body.
  */
 describe('useCourseSessionsDisplay', () => {
+  it('numbers 第N堂 identically on a count course with leave, exception and over-quota sessions', () => {
+    const course = { id: 77, ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 3, SessionCount: 3 };
+    const mk = (id, date, status, extra = {}) => sessionViewModelFromClassSessionsRow({
+      id, student_class_id: 77, session_date: date, start_time: '10:00', end_time: '12:00', status, ...extra,
+    });
+    const rows = [
+      mk(1, '2026-08-01', 'attended'),
+      mk(2, '2026-08-08', 'leave'),
+      mk(3, '2026-08-15', 'attended'),
+      mk(4, '2026-08-22', 'scheduled'),
+      mk(5, '2026-08-29', 'scheduled'),
+      mk(6, '2026-09-05', 'scheduled'),
+    ];
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse: ref({ 77: rows }),
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+
+    const { byId } = display.getSessionNumberMap(course);
+    // quota 3: #1,#3,#4 fill it; #5,#6 are over-quota (no number); #2 is leave (no number).
+    expect([1, 2, 3, 4, 5, 6].map((id) => byId.get(id))).toEqual([1, null, 2, 3, null, null]);
+    expect(display.getSessionState(course, '2026-08-29', 5)?.label).toBe('超排');
+    expect(display.getSessionNumber(course, '2026-08-22', 4)).toBe(3);
+  });
+
   it('constructs without throwing and exposes the expected API', () => {
     let display;
     expect(() => {
