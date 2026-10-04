@@ -150,3 +150,13 @@ const legacyDayField = coursesWithSlotConflicts([
   { id: 2, teacher_id: 5, day_of_week: 2, start_time: '10:30', end_time: '12:00' },
 ]);
 assert.deepEqual([...legacyDayField].sort(), [1, 2]);
+
+const otherCampusRoom = pickerSlotConflict({
+  overlappingSlots: [{ start_time: '15:00', end_time: '17:00', campus_id: 9, class_type: 'one_on_three', remaining_capacity: 2 }],
+  coveredClassType: 'one_on_three',
+  sessionCampusId: 3,
+  branchNameMap: { 9: '新店' },
+});
+assert.equal(otherCampusRoom.conflict, true, 'under-capacity other-campus lesson still blocks');
+assert.equal(otherCampusRoom.otherCampusConflict, true);
+assert.equal(otherCampusRoom.capacityWarn, false);
