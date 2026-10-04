@@ -348,7 +348,7 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
     }
 
     /** Locked rows do not count toward the remap budget: 2 remappable rows still fit 2 new slots. */
-    public function test_locked_row_on_other_day_or_far_time_does_not_inflate_remap_count(): void
+    public function test_locked_row_far_from_slots_does_not_inflate_remap_count(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = Student::create(['name' => '鎖定計數', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
