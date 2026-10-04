@@ -25,6 +25,7 @@ export const changelogDraftNotes = [
         "title": "修正內容",
         "items": [
           "counts the same live lessons as booking; course slot edits don't block on their own lessons",
+          "record form opens the lesson you clicked; multi-teacher courses keep their own slots",
           "explains empty slips, shows rejected reports, 後5碼 and 備註"
         ]
       },
@@ -38,6 +39,7 @@ export const changelogDraftNotes = [
     "items": [
       "carry the last buttons pressed and messages seen (F15)",
       "counts the same live lessons as booking; course slot edits don't block on their own lessons",
+      "record form opens the lesson you clicked; multi-teacher courses keep their own slots",
       "explains empty slips, shows rejected reports, 後5碼 and 備註",
       "row latest sign-in/learning-record lookups; date-bounded substitutes"
     ]

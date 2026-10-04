@@ -57,3 +57,41 @@ export function deduplicateLearningRecordSessions(sessions = [], normalizeTime) 
   }
   return Object.values(groups).map((group) => pickBestLearningRecordSession(group));
 }
+
+/**
+ * Director form: choose which of a day's live sessions the form binds to.
+ * Exact ClassSession id wins; with an id but no match, return null (never
+ * fall back to another row on the same date). Without an id: prefer the row
+ * matching the typed start time, then the best (attended-first) row.
+ */
+// Mirrors backend AttendanceStatus::requiresLogSessionStatuses().
+const LOG_ELIGIBLE_SESSION_STATUSES = new Set(['attended', 'completed', 'late', 'trial', 'tutoring_attend']);
+
+export function selectFormDaySession(daySessions, { classSessionId = 0, startTime = '', normalizeTime }) {
+  const id = Number(classSessionId || 0);
+  if (id > 0) return daySessions.find((s) => Number(s.id) === id) || null;
+  const t = startTime ? normalizeTime(startTime) : '';
+  // Only attended lessons accept an assessment: eligibility beats the time match.
+  const eligible = daySessions.filter((s) => LOG_ELIGIBLE_SESSION_STATUSES.has(String(s?.status || '').toLowerCase()));
+  const pool = eligible.length ? eligible : daySessions;
+  const byTime = t ? pool.filter((s) => normalizeTime(s.startTime) === t) : [];
+  return pickBestLearningRecordSession(byTime.length ? byTime : pool);
+}
+
+/**
+ * Pick the learning record for a calendar session. With a ClassSession id only an
+ * exact match or a same-time legacy record without ClassSessionID may bind; a
+ * record of another session in the slot, or any same-date guess, never does.
+ */
+export function pickSessionRecord({ csId = 0, byCs = null, byTime = null, byDate = null, byUnboundTime = null }) {
+  if (byCs) return byCs;
+  if (Number(csId) <= 0) return byTime || byDate;
+  return byUnboundTime;
+}
+
+/** Record id a calendar card opens: the API's own id, else the session-safe lookup (never a same-date guess). */
+export function sessionRecordId({ apiLrId = null, csId = 0, byCs = null, byTime = null, byUnboundTime = null }) {
+  if (apiLrId != null && Number(apiLrId) > 0) return Number(apiLrId);
+  const r = pickSessionRecord({ csId, byCs, byTime, byUnboundTime });
+  return r?.id ? Number(r.id) : null;
+}

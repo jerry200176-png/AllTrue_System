@@ -124,6 +124,62 @@ class MultiTeacherEnrollmentTest extends TestCase
         $this->assertSame($expectedIds, $teacherIds, '兩個 StudentClass 的 TeacherID 應分別對應兩位老師');
     }
 
+    // ── in-app #333：同科目多老師，每份合約只含自己老師的時段 ──────────
+
+    public function test_same_subject_teachers_keep_only_their_own_slots(): void
+    {
+        $token    = $this->makeDirectorToken('dir-multi-own@test.com');
+        $teacher1 = $this->makeTeacher('teacher-own-1@test.com');
+        $teacher2 = $this->makeTeacher('teacher-own-2@test.com');
+        $student  = $this->makeStudent('各自時段學生');
+
+        $dates = [$this->nextWeekday(3), $this->nextWeekday(7)];
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', [
+                'branch_id'           => 1,
+                'student_id'          => $student->id,
+                'teacher_id'          => $teacher1->id,
+                'subject'             => 'English',
+                'class_type'          => 'one_on_one',
+                'total_classes'       => 2,
+                'confirmed_dates'     => [],
+                'future_dates'        => $dates,
+                'days_of_week'        => [3, 7],
+                'start_time'          => '16:00',
+                'duration_minutes'    => 120,
+                'price_per_session'   => 800,
+                'payment_type'        => 'session',
+                'allow_multi_teacher' => true,
+                'day_time_slots'      => [
+                    ['day' => 3, 'start_time' => '16:00', 'duration_minutes' => 120, 'teacher_id' => $teacher1->id],
+                    ['day' => 7, 'start_time' => '19:30', 'duration_minutes' => 120, 'teacher_id' => $teacher2->id],
+                ],
+            ])->assertCreated();
+
+        $slotsOf = function (User $t): array {
+            $sc = StudentClass::where('TeacherID', $t->id)->firstOrFail();
+            $out = [];
+            foreach ([['week', 'time'], ['week1', 'time1'], ['week2', 'time2'], ['week3', 'time3']] as [$w, $tm]) {
+                if (!empty($sc->$w)) {
+                    $out[] = $sc->$w . '@' . substr((string) $sc->$tm, 0, 5);
+                }
+            }
+            return array_values(array_unique($out)); // week/time 為 week1/time1 的鏡像
+        };
+
+        $this->assertCount(1, $slotsOf($teacher1), '老師1只應有自己的一個時段: ' . json_encode($slotsOf($teacher1)));
+        $this->assertCount(1, $slotsOf($teacher2), '老師2只應有自己的一個時段: ' . json_encode($slotsOf($teacher2)));
+        $this->assertNotSame($slotsOf($teacher1), $slotsOf($teacher2));
+
+        // 同學生同日同時段不得出現在兩份合約
+        $ids = StudentClass::where('StudentID', $student->id)->pluck('ID');
+        $rows = \App\Models\ClassSession::whereIn('StudentClassID', $ids)->get()
+            ->map(fn ($r) => substr((string) $r->SessionDate, 0, 10) . ' ' . substr((string) $r->StartTime, 0, 5));
+        $this->assertGreaterThan(0, $rows->count());
+        $this->assertSame($rows->count(), $rows->unique()->count(), '不得產生重疊堂次: ' . $rows->implode(', '));
+    }
+
     // ── FR-003：allow_multi_teacher=true 抑制 dual_teacher_warning ──────
 
     public function test_allow_multi_teacher_suppresses_dual_teacher_warning(): void

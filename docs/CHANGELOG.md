@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(scheduling): availability counts the same live lessons as booking; course slot edits don't block on their own lessons (in-app #338 #347 #359 #363 #365 #327)
 <!-- release-notes: silent_ship=silent-2026-10-04-availability-parity -->
 - 代課挑選與跨校衝堂檢查改用與排課相同的「有效堂次」規則（不再把停課、請假調整、作廢、已改期的堂次算成已滿／他校有課），他校衝突顯示「他校有課」；修改課程時段不再被自己舊時段的堂次或不同日期的學生加總擋下
+## 2026-10-04 — fix: learning-record form opens the lesson you clicked; multi-teacher courses keep their own slots (in-app #334 #333)
+<!-- release-notes: silent_ship=silent-2026-10-04-lr-form-multiteacher -->
+- 評量表依點選的堂次帶入上課時間，不再被同日其他堂次覆蓋；同科目多位老師開課時，每位老師只保留自己的時段，不再產生重疊堂次
 ## 2026-10-04 — fix(billing-ui): ledger explains empty slips, shows rejected reports, 後5碼 and 備註 (in-app #354 #355 #356)
 <!-- release-notes: silent_ship=silent-2026-10-04-ledger-last5-notes -->
 - 繳費明細在尚無帳單與收據時改顯示「繳費單是依課程估算，尚未建立帳單」說明；收據紀錄新增已退回的登記，並在繳費明細與帳務中心收據紀錄顯示轉帳後5碼與備註（僅顯示，不改任何金額、狀態或權限）。
