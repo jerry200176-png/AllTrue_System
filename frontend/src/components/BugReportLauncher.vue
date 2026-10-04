@@ -171,7 +171,7 @@ import {
   namePastedImage,
   validateBugAttachments,
 } from '../lib/bugReportAttachments';
-import { fitClientInfo, getBuildSha, getRecentApiFailures } from '../lib/recentApiFailures';
+import { fitClientInfo, getBuildSha, getRecentApiFailures, getRecentClicks, getRecentMessages } from '../lib/recentApiFailures';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -552,6 +552,8 @@ async function doSubmit() {
       relatedReference: (relatedReference.value.trim() || '').slice(0, 300) || null,
       feedbackType: feedbackType.value,
       recentApiFailures: getRecentApiFailures(),
+      recentClicks: getRecentClicks(),
+      recentMessages: getRecentMessages(),
       buildSha: await getBuildSha(),
       // numeric ids only, no names
       route: { page: props.currentPageKey || null, branchId: Number(effectiveBranchId.value) || null },

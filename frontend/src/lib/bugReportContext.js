@@ -34,6 +34,15 @@ export function parseBugReportClientInfo(raw) {
       : '')).filter(Boolean);
     if (lines.length) context.recentApiFailures = lines;
   }
+  // F15: breadcrumbs — what the reporter pressed and what the screen told them.
+  if (Array.isArray(parsed.recentClicks)) {
+    const labels = parsed.recentClicks.slice(-15).map((c) => boundedText(c?.label, 30)).filter(Boolean);
+    if (labels.length) context.recentClicks = labels;
+  }
+  if (Array.isArray(parsed.recentMessages)) {
+    const lines = parsed.recentMessages.slice(-5).map((m) => [boundedText(m?.kind, 10), boundedText(m?.text, 120)].filter(Boolean).join('：')).filter(Boolean);
+    if (lines.length) context.recentMessages = lines;
+  }
   return Object.values(context).some(Boolean) ? context : null;
 }
 
