@@ -1555,7 +1555,7 @@ import {
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import { compareLearningRecords } from '../lib/learningRecordSort';
-import { deduplicateLearningRecordSessions, selectFormDaySession, pickSessionRecord } from '../lib/learningRecordSessionPolicy';
+import { deduplicateLearningRecordSessions, selectFormDaySession, pickSessionRecord, sessionRecordId } from '../lib/learningRecordSessionPolicy';
 import {
   resolveLearningRecordViewDefaults,
   resolveLearningRecordViewMode,
@@ -3150,11 +3150,7 @@ const buildEvents = (targetDates) => {
       if (isTeacher.value && isCancelledSession) continue;
       const formStatus = sessionState.formStatus;
       const apiLrId = rawSession?.learningRecordId != null ? Number(rawSession.learningRecordId) : null;
-      const safeLookupRecord = byCs || byTime;
-      let recordId = (apiLrId != null && apiLrId > 0) ? apiLrId : null;
-      if (!recordId && safeLookupRecord?.id) {
-        recordId = Number(safeLookupRecord.id);
-      }
+      const recordId = sessionRecordId({ apiLrId, csId, byCs, byTime, byUnboundTime });
 
       // 請假／取消／缺席：永遠鎖定不可填；其他沿用既有規則（代課 or 尚未開始）。
       const fillLocked = sessionState.fillLocked;

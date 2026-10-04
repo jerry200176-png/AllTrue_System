@@ -85,3 +85,10 @@ export function pickSessionRecord({ csId = 0, byCs = null, byTime = null, byDate
   if (Number(csId) <= 0) return byTime || byDate;
   return byUnboundTime;
 }
+
+/** Record id a calendar card opens: the API's own id, else the session-safe lookup (never a same-date guess). */
+export function sessionRecordId({ apiLrId = null, csId = 0, byCs = null, byTime = null, byUnboundTime = null }) {
+  if (apiLrId != null && Number(apiLrId) > 0) return Number(apiLrId);
+  const r = pickSessionRecord({ csId, byCs, byTime, byUnboundTime });
+  return r?.id ? Number(r.id) : null;
+}

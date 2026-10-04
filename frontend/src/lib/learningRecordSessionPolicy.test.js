@@ -4,6 +4,7 @@ import {
   pickBestLearningRecordSession,
   selectFormDaySession,
   pickSessionRecord,
+  sessionRecordId,
 } from './learningRecordSessionPolicy.js';
 
 const normalizeTime = (value) => String(value || '').trim().slice(0, 5);
@@ -87,5 +88,15 @@ describe('selectFormDaySession attendance', () => {
     const t = (v) => String(v || '').slice(0, 5);
     const day = [{ id: 1, status: 'attended', startTime: '10:00' }, { id: 2, status: 'absent', startTime: '14:00' }];
     expect(selectFormDaySession(day, { startTime: '18:00', normalizeTime: t }).id).toBe(1);
+  });
+});
+
+describe('sessionRecordId', () => {
+  it('never opens another session\'s record from the same slot', () => {
+    const other = { id: 7, ClassSessionID: 202 };
+    expect(sessionRecordId({ csId: 201, byTime: other })).toBeNull();
+    expect(sessionRecordId({ csId: 201, byTime: other, byUnboundTime: { id: 9, ClassSessionID: null } })).toBe(9);
+    expect(sessionRecordId({ apiLrId: 5, csId: 201, byTime: other })).toBe(5);
+    expect(sessionRecordId({ csId: 0, byTime: other })).toBe(7);
   });
 });
