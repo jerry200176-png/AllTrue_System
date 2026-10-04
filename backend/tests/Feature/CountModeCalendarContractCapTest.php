@@ -156,6 +156,16 @@ class CountModeCalendarContractCapTest extends TestCase
             $this->assertContains('2026-09-24', $lookupDates);
             $this->assertNotContains('2026-09-10', $lookupDates);
             $this->assertSame($lookupDates, $calendarDates);
+
+            // A window starting after the cancellation still sees the contract-wide shift.
+            $later = $this->withHeaders($headers)->postJson('/api/v1/student-classes/session-dates', [
+                'branch_id' => 1, 'range_start' => '2026-09-20', 'range_end' => '2026-10-15',
+                'courses' => [[
+                    'id' => $course->ID, 'first_class_date' => '2026-09-03',
+                    'sessions_purchased' => 3, 'days_of_week' => [4],
+                ]],
+            ])->assertOk()->json((string) $course->ID) ?? [];
+            $this->assertSame(['2026-09-24'], array_column($later['projected'] ?? [], 'session_date'));
         } finally {
             Carbon::setTestNow();
         }
@@ -186,7 +196,7 @@ class CountModeCalendarContractCapTest extends TestCase
             ClassSession::create([
                 'StudentClassID' => $course->ID, 'SessionDate' => '2026-09-10',
                 'StartTime' => '19:00:00', 'EndTime' => '21:00:00', 'Status' => 'cancelled',
-                'Note' => 'auto; cancelled-duplicate-reschedule-placeholder',
+                'Note' => 'placeholder', // generic same-slot collision shape
             ]);
 
             $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];

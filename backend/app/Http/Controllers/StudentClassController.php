@@ -748,7 +748,7 @@ class StudentClassController extends Controller
                 $classSessionsBody = ClassSession::whereIn('StudentClassID', $courseIds)
                     ->where('SessionDate', '>=', $rangeStart)
                     ->where('SessionDate', '<=', $rangeEnd)
-                    ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'Note')
+                    ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
                     ->get();
                 $capacityDiagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics(
                     array_map('intval', $courseIds)
@@ -774,6 +774,8 @@ class StudentClassController extends Controller
                 foreach ($classSessionsBody as $row) {
                     $classSessionsBodyByClass[(int) $row->StudentClassID][] = $row;
                 }
+                // Body rows are window-bounded; the contract walk needs cancellations on any date.
+                $cancelledByClass = self::cancelledDatesByClass(array_map('intval', $courseIds));
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -869,7 +871,7 @@ class StudentClassController extends Controller
 
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
                         // Cancelled dates are skipped by the walk (like leave) so N contract dates remain after capping.
-                        $leaveSet = ($leaveByClass[$cid] ?? []) + self::cancelledDateSet($classSessionsBodyByClass[(int) $cid] ?? []);
+                        $leaveSet = ($leaveByClass[$cid] ?? []) + ($cancelledByClass[(int) $cid] ?? []);
                         $scheduledSet = $scheduledByClass[$cid] ?? [];
                         $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
                         $mergedSet = [];
@@ -1012,7 +1014,7 @@ class StudentClassController extends Controller
                 ->get();
 
             $sessions = ClassSession::whereIn('StudentClassID', $classIds)
-                ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'Note')
+                ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
                 ->get();
 
             $sessionsByClass = [];
@@ -1216,22 +1218,56 @@ class StudentClassController extends Controller
         return response()->json($result);
     }
 
-    /** @return array<string, bool> */
+    /**
+     * Dates whose sessions are all cancelled. A cancelled row beside a live row on the same date is a
+     * duplicate/placeholder (e.g. reschedule collision), not a cancelled lesson.
+     *
+     * @return array<string, bool>
+     */
     public static function cancelledDateSet(iterable $sessionRows): array
     {
-        $set = [];
+        $cancelled = [];
+        $live = [];
         foreach ($sessionRows as $row) {
-            // Reschedule bookkeeping duplicates (RescheduleSessionService) are not real cancellations:
-            // the moved lesson is still live on that date.
-            if (str_contains((string) ($row->Note ?? ''), 'cancelled-duplicate-reschedule-placeholder')) {
+            if (!$row->SessionDate) {
                 continue;
             }
-            if (strtolower((string) ($row->Status ?? '')) === 'cancelled' && $row->SessionDate) {
-                $set[Carbon::parse($row->SessionDate)->toDateString()] = true;
+            $d = Carbon::parse($row->SessionDate)->toDateString();
+            if (strtolower((string) ($row->Status ?? '')) === 'cancelled') {
+                $cancelled[$d] = true;
+            } else {
+                $live[$d] = true;
             }
         }
 
-        return $set;
+        return array_diff_key($cancelled, $live);
+    }
+
+    /**
+     * Contract-wide cancelled dates per class (any date, one query), for count-mode recurrence walks.
+     *
+     * @param  list<int>  $classIds
+     * @return array<int, array<string, bool>>
+     */
+    public static function cancelledDatesByClass(array $classIds): array
+    {
+        if ($classIds === []) {
+            return [];
+        }
+        $rows = ClassSession::query()
+            ->whereIn('StudentClassID', $classIds)
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('ClassSession as c2')
+                ->whereColumn('c2.StudentClassID', 'ClassSession.StudentClassID')
+                ->whereColumn('c2.SessionDate', 'ClassSession.SessionDate')
+                ->whereRaw('LOWER(c2.Status) = ?', ['cancelled']))
+            ->get(['StudentClassID', 'SessionDate', 'Status']);
+
+        $out = [];
+        foreach ($rows->groupBy('StudentClassID') as $classId => $classRows) {
+            $out[(int) $classId] = self::cancelledDateSet($classRows);
+        }
+
+        return $out;
     }
 
     /**
