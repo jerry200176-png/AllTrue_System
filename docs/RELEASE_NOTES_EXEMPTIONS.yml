@@ -687,6 +687,10 @@ exemptions:
     changelog_date: "2026-10-04"
     changelog_title: "perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)"
     reason: 只改查詢方式，回傳內容不變；依指南教職員卡片須 merge、deploy 並以正式站同一 EXPLAIN case 驗證變快後才發布，驗證後另 PR 發布。
+  - id: silent-2026-10-04-availability-parity
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(scheduling): availability counts the same live lessons as booking; course slot edits don't block on their own lessons (in-app #338 #347 #359 #363 #365 #327)"
+    reason: 教職員卡片待正式站驗證後另 PR 發布
   - id: silent-2026-10-03-form-control-labels
     changelog_date: "2026-10-03"
     changelog_title: "fix(a11y): accessible names for attendance and profile form controls"

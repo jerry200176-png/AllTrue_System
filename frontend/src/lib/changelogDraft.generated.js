@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.10.04",
     "date": "2026-10-04",
     "title": "2026.10.04 草稿（未發布）",
-    "summary": "row latest sign-in/learning-record lookups; date-bounded substitutes",
+    "summary": "counts the same live lessons as booking; course slot edits don't block on their own lessons；row latest sign-in/learning-record lookups; date-bounded substitutes",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "counts the same live lessons as booking; course slot edits don't block on their own lessons"
+        ]
+      },
       {
         "title": "其他改善",
         "items": [
@@ -23,6 +29,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "counts the same live lessons as booking; course slot edits don't block on their own lessons",
       "row latest sign-in/learning-record lookups; date-bounded substitutes"
     ]
   },

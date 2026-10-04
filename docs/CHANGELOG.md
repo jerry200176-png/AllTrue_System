@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
+## 2026-10-04 — fix(scheduling): availability counts the same live lessons as booking; course slot edits don't block on their own lessons (in-app #338 #347 #359 #363 #365 #327)
+<!-- release-notes: silent_ship=silent-2026-10-04-availability-parity -->
+- 代課挑選與跨校衝堂檢查改用與排課相同的「有效堂次」規則（不再把停課、請假調整、作廢、已改期的堂次算成已滿／他校有課），他校衝突顯示「他校有課」；修改課程時段不再被自己舊時段的堂次或不同日期的學生加總擋下
+
 ## 2026-10-04 — perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)
 <!-- release-notes: silent_ship=silent-2026-10-04-class-sessions-latest-rows -->
 - `/class-sessions` 不再對 `StudentSingIn`／`LearningRecord` 整表算「每堂最新一筆」，改用既有索引逐列查；代課查詢只看請求日期區間。正式站 EXPLAIN（run 37166542492）顯示每次請求整表掃描 1.4–1.6 萬列；回傳內容不變。

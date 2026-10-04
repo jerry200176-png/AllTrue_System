@@ -97,6 +97,8 @@ const otherCampus = pickerSlotConflict({
 });
 assert.equal(otherCampus.conflict, true);
 assert.match(otherCampus.conflictTooltip, /其他分校（新店）/);
+assert.equal(otherCampus.otherCampusConflict, true);
+assert.equal(coverTwo.otherCampusConflict, false);
 
 const dupStudent = uniqueStudentCount([
   { id: 1, student_id: 214, class_type: 'one_on_three' },

@@ -204,7 +204,7 @@ export function pickerSlotConflict({
   branchNameMap = {},
 } = {}) {
   if (!overlappingSlots.length) {
-    return { conflict: false, capacityWarn: false, conflictTooltip: '', conflictCampusId: 0 };
+    return { conflict: false, capacityWarn: false, conflictTooltip: '', conflictCampusId: 0, otherCampusConflict: false };
   }
 
   const unique = uniqueOccupantsFromBusySlots(overlappingSlots);
@@ -241,5 +241,5 @@ export function pickerSlotConflict({
     }
   }
 
-  return { conflict, capacityWarn, conflictTooltip, conflictCampusId };
+  return { conflict, capacityWarn, conflictTooltip, conflictCampusId, otherCampusConflict: conflict && Boolean(other) };
 }
