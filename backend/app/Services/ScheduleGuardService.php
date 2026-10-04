@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\LearningRecord;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Support\ClassTypeCapacity;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -318,6 +320,140 @@ class ScheduleGuardService
         }
 
         return $overlaps;
+    }
+
+    /**
+     * Sessions of a course that a schedule edit must leave in place: an approved LearningRecord or any
+     * StudentSignIn points at them. Shared with StudentClassController::syncFutureScheduledSessionTimes().
+     *
+     * @return array<int, true> class_session_id => true
+     */
+    public static function lockedClassSessionIds(int $studentClassId): array
+    {
+        $locked = [];
+        $ids = LearningRecord::query()->where('StudentClassID', $studentClassId)->where('Status', 'approved')->whereNotNull('ClassSessionID')->pluck('ClassSessionID')
+            ->merge(StudentSignIn::query()->where('StudentClassID', $studentClassId)->whereNotNull('ClassSessionID')->pluck('ClassSessionID'));
+        foreach ($ids as $id) {
+            if ((int) $id > 0) {
+                $locked[(int) $id] = true;
+            }
+        }
+
+        return $locked;
+    }
+
+    /**
+     * The same-day pairing of StudentClassController::syncFutureScheduledSessionTimes(), as a pure function so the
+     * sync and the course-edit guard cannot drift. Times are compared on their H:i prefix (H:i and H:i:s both work).
+     * - An exception row exactly on a slot is adopted (becomes regular); other exception rows are left alone.
+     * - A locked regular row stays; any slot starting at its start time is consumed (unique course/date/start key).
+     * - Unlocked regular rows sorted by start pair in order with the remaining slots (sorted by start); a duplicate
+     *   target start is skipped; rows beyond the slot count keep their time.
+     *
+     * @param  array<int, array{id:int, start:string, end:string, exception:bool}>  $rowsOnDate  'scheduled' rows of one course on one date
+     * @param  array<int, array<string, mixed>>  $daySlots  contract slots of that weekday, each with 'start' and 'end'
+     * @param  array<int, true>  $lockedIds
+     * @return array{adopted: array<int, true>, moves: array<int, array<string, mixed>>} moves: id => target slot (as passed); every other row stays
+     */
+    public static function planSameDayRemap(array $rowsOnDate, array $daySlots, array $lockedIds): array
+    {
+        $hm = fn ($t) => substr((string) $t, 0, 5);
+        $at = fn ($r, $s) => $hm($r['start']) === $hm($s['start']) && $hm($r['end']) === $hm($s['end']);
+        usort($daySlots, fn ($a, $b) => strcmp($hm($a['start']), $hm($b['start'])));
+
+        $adopted = [];
+        $locked = [];
+        $free = [];
+        foreach ($rowsOnDate as $r) {
+            if ($r['exception']) {
+                if (!array_filter($daySlots, fn ($s) => $at($r, $s))) {
+                    continue;
+                }
+                $adopted[(int) $r['id']] = true;
+            }
+            if (isset($lockedIds[(int) $r['id']])) {
+                $locked[] = $r;
+            } else {
+                $free[] = $r;
+            }
+        }
+        usort($free, fn ($a, $b) => strcmp($hm($a['start']), $hm($b['start'])));
+        // A locked row holds its (course, date, start) key (uq_class_session_slot): any slot starting there is consumed.
+        $slots = array_values(array_filter($daySlots, fn ($s) => !array_filter($locked, fn ($l) => $hm($l['start']) === $hm($s['start']))));
+
+        $moves = [];
+        $claimed = [];
+        foreach (array_slice($free, 0, count($slots)) as $idx => $r) {
+            $slot = $slots[$idx];
+            if (isset($claimed[$hm($slot['start'])])) {
+                continue;
+            }
+            $claimed[$hm($slot['start'])] = true;
+            if (!$at($r, $slot)) {
+                $moves[(int) $r['id']] = $slot;
+            }
+        }
+
+        return ['adopted' => $adopted, 'moves' => $moves];
+    }
+
+    /**
+     * Final same-day layout of one course after planSameDayRemap(): moved rows at their target slot, every other
+     * live own row (locked, excess, exception, non-scheduled) where it is, plus each slot no row already starts at
+     * (the reflow fills it). Capacity counting dedupes the course's own student, so a course overlapping itself
+     * must be caught here. Times compare on their H:i prefix.
+     *
+     * @param  array<int, array{id:int, start:string, end:string}>  $rowsOnDate  live rows of one course on one date
+     * @param  array<int, array<string, mixed>>  $moves  planSameDayRemap()['moves']
+     * @param  array<int, array<string, mixed>>  $daySlots  each with 'start' and 'end'
+     * @return array<int, array{0: string, 1: string}> overlapping pairs as 'H:i-H:i'
+     */
+    public static function planSelfOverlaps(array $rowsOnDate, array $moves, array $daySlots): array
+    {
+        $hm = fn ($t) => substr((string) $t, 0, 5);
+        // The sync skips a move whose target start a staying row still holds (uq_class_session_slot); that row then
+        // stays too. ponytail: models the batch outcome, not the one-by-one fallback order.
+        do {
+            $held = [];
+            foreach ($rowsOnDate as $r) {
+                if (!isset($moves[(int) $r['id']])) {
+                    $held[$hm($r['start'])] = true;
+                }
+            }
+            $before = count($moves);
+            $moves = array_filter($moves, fn ($s) => !isset($held[$hm($s['start'])]));
+        } while (count($moves) < $before);
+
+        $final = [];
+        foreach ($rowsOnDate as $r) {
+            $at = $moves[(int) $r['id']] ?? $r;
+            $final[] = [$hm($at['start']), $hm($at['end'])];
+        }
+        $pairs = [];
+        foreach ($daySlots as $s) {
+            $sameStart = array_filter($final, fn ($f) => $f[0] === $hm($s['start']));
+            if (!$sameStart) {
+                $final[] = [$hm($s['start']), $hm($s['end'])];
+                continue;
+            }
+            // A staying row holds this start with another duration: when the edit remaps this day, that slot can't be
+            // realized (unique start key). Days without moves keep their existing layout untouched.
+            foreach ($moves === [] ? [] : $sameStart as $f) {
+                if ($f[1] !== $hm($s['end'])) {
+                    $pairs[] = [$f[0] . '-' . $f[1], $hm($s['start']) . '-' . $hm($s['end'])];
+                }
+            }
+        }
+
+        foreach ($final as $i => $a) {
+            foreach (array_slice($final, $i + 1) as $b) {
+                if ($a[0] < $b[1] && $b[0] < $a[1]) {
+                    $pairs[] = [$a[0] . '-' . $a[1], $b[0] . '-' . $b[1]];
+                }
+            }
+        }
+
+        return $pairs;
     }
 
     /**
