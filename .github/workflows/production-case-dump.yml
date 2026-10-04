@@ -978,7 +978,7 @@ jobs:
             // teacher), not the heavy query under investigation.
             // ponytail: matches course+date+start time but not the latest-row rule; enough to pick a representative teacher.
             $teacher = (int) $db::table('ClassSession as cs')->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-              ->leftJoin('schedules as ss', function ($j) {{
+              ->leftJoin('schedules as ss', function ($j) use ($db) {{
                 $j->on('ss.student_course_id', '=', 'sc.ID')->on('ss.schedule_date', '=', 'cs.SessionDate')
                   ->on($db::raw('SUBSTRING(ss.start_time, 1, 5)'), '=', 'cs.StartTimeHM')
                   ->where('ss.status', 'scheduled')->whereNotNull('ss.original_schedule_id')->whereColumn('ss.teacher_id', '<>', 'sc.TeacherID');
