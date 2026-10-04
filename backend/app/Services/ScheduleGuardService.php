@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\StudentClass;
 use App\Support\ClassTypeCapacity;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -65,14 +66,27 @@ class ScheduleGuardService
                 $endDate,
                 $excludeStudentId
             );
-            $overlaps = array_merge($recurringOverlaps, $concreteOverlaps);
-
-            $teacherConflict = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
+            // Occupancy is per concrete date, not pooled across dates (in-app #347).
+            $byDate = [];
+            foreach ($concreteOverlaps as $o) {
+                $byDate[(string) ($o['schedule_date'] ?? '')][] = $o;
+            }
+            $teacherConflict = null;
+            $roomConflict = null;
+            foreach ($byDate ?: [[]] as $dateOverlaps) {
+                $overlaps = array_merge($recurringOverlaps, $dateOverlaps);
+                $tc = $this->buildTeacherCapacityConflict($classType, $slot, $overlaps);
+                if ($tc && (!$teacherConflict || ($tc['current_students'] ?? 0) > ($teacherConflict['current_students'] ?? 0))) {
+                    $teacherConflict = $tc;
+                }
+                $rc = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
+                if ($rc && (!$roomConflict || ($rc['current_students'] ?? 0) > ($roomConflict['current_students'] ?? 0))) {
+                    $roomConflict = $rc;
+                }
+            }
             if ($teacherConflict) {
                 $conflicts[] = $teacherConflict;
             }
-
-            $roomConflict = $this->buildRoomCapacityConflict($roomId, $slot, $overlaps);
             if ($roomConflict) {
                 $conflicts[] = $roomConflict;
             }
@@ -384,11 +398,11 @@ class ScheduleGuardService
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
             ->where('sc.TeacherID', $teacherId)->where('sc.Stop', 0)->where('st.CampusID', $branchId)
             ->whereDate('cs.SessionDate', '>=', $horizonStart)
-            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused']);
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses());
         if ($endDate) {
             $classSessionsQuery->whereDate('cs.SessionDate', '<=', $endDate);
         }
-        $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
+        $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.IsContractException', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
 
         $overlaps = [];
         $seenKeys = [];
@@ -431,6 +445,11 @@ class ScheduleGuardService
 
             // Bounded self-exclusion:
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
+                // The edited course's own regular sessions get remapped to the new slot,
+                // so they never block it (in-app #347). Exception rows still conflict below.
+                if (!$row->IsContractException) {
+                    continue;
+                }
                 // If the session matches the slot being added, it is the course's own
                 // exception session being regularized into this recurring slot. Safe to exclude.
                 if ($start === $slotStart && $end === $slotEnd) {
@@ -994,7 +1013,7 @@ class ScheduleGuardService
             ->whereDate('cs.SessionDate', $date)
             // Leave-type sessions free up the slot, matching the frontend capacity
             // badge (LEAVE_STATUSES) and LearningRecordController's skip set. (#557)
-            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->select([
                 'cs.StudentClassID',
                 'cs.StartTime',

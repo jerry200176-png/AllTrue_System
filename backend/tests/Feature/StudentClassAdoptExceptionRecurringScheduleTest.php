@@ -270,6 +270,45 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame('teacher_schedule_conflict', $conflictResponse->json('code'));
     }
 
+    /**
+     * In-app #347：把課程時段 17:00-18:00 改到 17:30（部分重疊）時，自己的舊堂次不可擋住自己。
+     */
+    public function test_partial_overlap_move_ignores_own_regular_sessions_but_not_other_students(): void
+    {
+        [$token, $course, $teacherId] = $this->seedMondayCourseWithWednesdayException();
+        $slots = [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]];
+
+        $this->updateFixedSlots($token, $course, [1], $slots)->assertOk();
+
+        $other = Student::create(['name' => '真衝突', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $otherCourse = $this->createCourseRecord($other->id, $teacherId, ['week' => 5]);
+        $this->createSessionRecord($otherCourse->ID, '2026-04-27', '17:30:00', '18:30:00');
+        $this->updateFixedSlots($token, $course->fresh(), [1], $slots)->assertStatus(409);
+    }
+
+    /**
+     * In-app #347：不同日期的學生不可跨日加總成「已滿」。
+     */
+    public function test_students_on_different_dates_are_not_pooled_into_full(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $teacherId = 159;
+        $mine = Student::create(['name' => '編輯者', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($mine->id, $teacherId, ['ClassType' => 'one_on_two', 'week' => 3]);
+        foreach (['2026-04-18', '2026-04-25'] as $d) { // two Saturdays, one student each
+            $s = Student::create(['name' => 'S' . $d, 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+            $c = $this->createCourseRecord($s->id, $teacherId, ['ClassType' => 'one_on_two', 'week' => 5]);
+            $this->createSessionRecord($c->ID, $d, '17:00:00', '18:00:00');
+        }
+        $resp = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
+                'days_of_week' => [6], 'start_time' => '17:00', 'payment_type' => 'session',
+                'day_time_slots' => [['day' => 6, 'start_time' => '17:00', 'duration_minutes' => 60]],
+            ]);
+        $resp->assertOk();
+    }
+
     private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
     {
         $slots = $slots ?? array_map(fn ($d) => ['day' => $d, 'start_time' => '17:00', 'duration_minutes' => 60], $days);
