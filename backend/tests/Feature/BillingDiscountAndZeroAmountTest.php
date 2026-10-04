@@ -189,6 +189,73 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertSame(1, PaymentReport::where('StudentClassID', $paid->ID)->count());
     }
 
+    public function test_date_mode_free_course_is_skipped_by_dunning_and_tuition_queue(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $free = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 0, 'SessionCount' => 0, 'settlement_day' => 1], 1500);
+        $billed = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 0, 'SessionCount' => 0, 'settlement_day' => 1]);
+
+        foreach ([$free, $billed] as $c) { // attended lessons make MonthlyBillingService price a positive charge
+            \App\Models\ClassSession::create(['StudentClassID' => $c->ID, 'SessionDate' => now()->toDateString(),
+                'StartTime' => '18:00', 'EndTime' => '20:00', 'Status' => 'completed']);
+        }
+
+        $events = collect(app(DunningService::class)->evaluateAll(1, false))
+            ->filter(fn ($e) => str_starts_with((string) $e['rule_key'], 'monthly_'))->pluck('student_class_id')->map(fn ($id) => (int) $id);
+        $this->assertContains((int) $billed->ID, $events->all(), 'control: a billed date-mode course is reminded');
+        $this->assertNotContains((int) $free->ID, $events->all());
+
+        $ids = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->pluck('id')->map(fn ($id) => (int) $id);
+        $this->assertContains((int) $billed->ID, $ids->all(), 'control: a billed date-mode course is queued');
+        $this->assertNotContains((int) $free->ID, $ids->all());
+    }
+
+    public function test_confirm_refuses_a_pending_report_below_one_dollar(): void
+    {
+        $token = $this->director();
+        $course = $this->course($this->student()->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800]);
+        $report = PaymentReport::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'reported_by_name' => 'x',
+            'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'reported_amount' => 0.5, 'status' => 'pending', 'report_token_hash' => str_repeat('a', 64), 'token_expires_at' => now()->addDay()]);
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$report->id}/confirm")
+            ->assertStatus(422)->assertJsonPath('code', 'invalid_report_amount');
+        $batch = $this->withHeaders($h)->postJson('/api/v1/payment-reports/confirm-batch', ['ids' => [$report->id]]);
+        $this->assertSame('invalid_report_amount', $batch->json('results.0.code'));
+        $this->assertSame(0, \App\Models\Payment::count());
+        $this->assertSame(0, (int) $course->fresh()->Paid);
+        $this->assertSame('pending', $report->fresh()->status);
+    }
+
+    public function test_discounted_course_restored_by_amendment_shows_the_amended_charge_in_the_queue(): void
+    {
+        $token = $this->director();
+        $course = $this->course($this->student()->id, ['Rate' => 1500, 'SessionCount' => 4, 'Charge' => 0], 1500);
+        $row = fn () => collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1')->assertOk()->json())->firstWhere('id', $course->ID);
+
+        $this->assertNull($row(), 'free before the amendment');
+        \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => '2026-08-15',
+            'rate' => 1200, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+        $this->assertSame(4800, (int) $row()['charge'], 'amended rate 1200 x 4 sessions, not the frozen discounted 0');
+    }
+
+    public function test_parent_portal_projects_a_free_course_as_free_not_unpaid(): void
+    {
+        $student = $this->student();
+        $free = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 4, 'Charge' => 0, 'RemainingSessions' => 4], 1500);
+        $billed = $this->course($student->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800, 'RemainingSessions' => 8]);
+        $raw = \Illuminate\Support\Str::random(32);
+        \App\Models\ParentSession::create(['StudentID' => $student->id, 'TokenHash' => hash('sha256', $raw), 'ExpiresAt' => now()->addHours(2)]);
+
+        $classes = collect($this->getJson('/api/v1/parent/dashboard', ['Authorization' => "Bearer {$raw}"])->assertOk()->json('classes'))->keyBy('id');
+        $this->assertSame('free', $classes[$free->ID]['payment_status']);
+        $this->assertSame('免費（不適用）', $classes[$free->ID]['payment_status_label']);
+        $this->assertSame('unpaid', $classes[$billed->ID]['payment_status']);
+    }
+
     private function course(int $studentId, array $overrides, int $discount = 0): StudentClass
     {
         $course = StudentClass::create(array_merge([

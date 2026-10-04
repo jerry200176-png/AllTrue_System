@@ -791,6 +791,7 @@ class ParentPortalController extends Controller
                 $isPkg   = $pkg !== null && !$isMonthly;
 
                 $campus = $studentCampusMap->get((int) $c->StudentID, []);
+                $isFree = $isTutoring || (!$paid && $c->isFreeOfCharge()); // in-app #346: free = no payment obligation
                 return [
                     'id'                   => $c->ID,
                     'student_id'           => (int) $c->StudentID,
@@ -804,8 +805,8 @@ class ParentPortalController extends Controller
                     'is_stopped'           => $stopped,
                     'paid'                 => $paid,
                     'is_tutoring'          => $isTutoring,
-                    'payment_status'       => $isTutoring ? 'free' : ($paid ? 'paid' : 'unpaid'),
-                    'payment_status_label' => $isTutoring ? '免費（不適用）' : ($paid ? '已繳費' : '未繳費'),
+                    'payment_status'       => $isFree ? 'free' : ($paid ? 'paid' : 'unpaid'),
+                    'payment_status_label' => $isFree ? '免費（不適用）' : ($paid ? '已繳費' : '未繳費'),
                     'lifecycle_status'     => $stopped ? 'closed' : 'active',
                     'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
                     // 共用方案池（堂數制）：null 代表非共用方案，前端維持原本 per-course 顯示。

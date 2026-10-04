@@ -334,6 +334,14 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '此回報已處理過'], 422);
             }
 
+            // Pending reports created before the whole-dollar rule may carry sub-dollar amounts; never book them.
+            if ((int) $report->reported_amount < 1) { // same truncation the booking below applies
+                return response()->json([
+                    'message' => '此回報金額不足 1 元，無法入帳，請退回（駁回）此回報。',
+                    'code' => 'invalid_report_amount',
+                ], 422);
+            }
+
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));

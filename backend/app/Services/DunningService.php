@@ -125,6 +125,9 @@ class DunningService
         $events = [];
 
         foreach ($query->cursor() as $course) {
+            if ($course->isFreeOfCharge()) {
+                continue; // 100% discount: nothing to remind (in-app #346)
+            }
             $settlementDay = (int) $course->settlement_day;
             $maxDay = $today->copy()->endOfMonth()->day;
             $effectiveDay = min($settlementDay, $maxDay);

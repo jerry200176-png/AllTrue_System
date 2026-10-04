@@ -11,6 +11,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Services\InvoiceAmountReconciliationService;
 use App\Services\MonthlyBillingService;
+use App\Services\StudentClassPricingService;
 use App\Services\BillingPayableResolver;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -337,7 +338,7 @@ class AlertController extends Controller
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
-                $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
+                $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID) && !$c->isFreeOfCharge())
                     ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null, $subjectNameMap))->filter()
             )
             ->merge(
@@ -488,16 +489,22 @@ class AlertController extends Controller
     private function countModeCharge(StudentClass $course): int
     {
         $discounted = $course->discountedContractTotal();
-        if ($discounted !== null) {
-            return $discounted;
-        }
         $rate = (float) ($course->Rate ?? 0);
+        $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
+        if ($discounted !== null) {
+            // A course restored by an active positive price amendment is billed at the amended rate, not the frozen discount.
+            $pricing = app(StudentClassPricingService::class)->forDate($course, Carbon::today());
+            if ($pricing['source'] !== 'pricing_amendment' || $pricing['rate'] <= 0) {
+                return $discounted;
+            }
+            $rate = (float) $pricing['rate'];
+            $rateUnit = $pricing['rate_unit'];
+        }
         $sessions = max(0, (int) ($course->SessionCount ?? 0));
         if ($rate <= 0 || $sessions <= 0) {
             return max(0, (int) ($course->Charge ?? 0));
         }
 
-        $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
         if ($rateUnit === 'hour') {
             $hours = (int) ($course->TotalHours ?? 0);
             if ($hours <= 0) {
