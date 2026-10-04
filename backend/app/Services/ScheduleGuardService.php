@@ -361,6 +361,60 @@ class ScheduleGuardService
     }
 
     /**
+     * The same-day pairing of StudentClassController::syncFutureScheduledSessionTimes(), as a pure function so the
+     * sync and the course-edit guard cannot drift. Times are compared on their H:i prefix (H:i and H:i:s both work).
+     * - An exception row exactly on a slot is adopted (becomes regular); other exception rows are left alone.
+     * - A locked regular row stays; any slot it sits exactly on is consumed.
+     * - Unlocked regular rows sorted by start pair in order with the remaining slots (sorted by start); a duplicate
+     *   target start is skipped; rows beyond the slot count keep their time.
+     *
+     * @param  array<int, array{id:int, start:string, end:string, exception:bool}>  $rowsOnDate  'scheduled' rows of one course on one date
+     * @param  array<int, array<string, mixed>>  $daySlots  contract slots of that weekday, each with 'start' and 'end'
+     * @param  array<int, true>  $lockedIds
+     * @return array{adopted: array<int, true>, moves: array<int, array<string, mixed>>} moves: id => target slot (as passed); every other row stays
+     */
+    public static function planSameDayRemap(array $rowsOnDate, array $daySlots, array $lockedIds): array
+    {
+        $hm = fn ($t) => substr((string) $t, 0, 5);
+        $at = fn ($r, $s) => $hm($r['start']) === $hm($s['start']) && $hm($r['end']) === $hm($s['end']);
+        usort($daySlots, fn ($a, $b) => strcmp($hm($a['start']), $hm($b['start'])));
+
+        $adopted = [];
+        $locked = [];
+        $free = [];
+        foreach ($rowsOnDate as $r) {
+            if ($r['exception']) {
+                if (!array_filter($daySlots, fn ($s) => $at($r, $s))) {
+                    continue;
+                }
+                $adopted[(int) $r['id']] = true;
+            }
+            if (isset($lockedIds[(int) $r['id']])) {
+                $locked[] = $r;
+            } else {
+                $free[] = $r;
+            }
+        }
+        usort($free, fn ($a, $b) => strcmp($hm($a['start']), $hm($b['start'])));
+        $slots = array_values(array_filter($daySlots, fn ($s) => !array_filter($locked, fn ($l) => $at($l, $s))));
+
+        $moves = [];
+        $claimed = [];
+        foreach (array_slice($free, 0, count($slots)) as $idx => $r) {
+            $slot = $slots[$idx];
+            if (isset($claimed[$hm($slot['start'])])) {
+                continue;
+            }
+            $claimed[$hm($slot['start'])] = true;
+            if (!$at($r, $slot)) {
+                $moves[(int) $r['id']] = $slot;
+            }
+        }
+
+        return ['adopted' => $adopted, 'moves' => $moves];
+    }
+
+    /**
      * Collect concrete future session/schedule overlaps for a recurring slot.
      * Enforces bounded self-exclusion: a session belonging to $excludeStudentClassId
      * is excluded ONLY if its start_time and end_time match the recurring slot.
@@ -434,38 +488,32 @@ class ScheduleGuardService
 
         $overlaps = [];
         $seenKeys = [];
-        // Own regular rows per date: the edit remaps at most one row per free new slot that day;
-        // excess rows stay at their old time and must still conflict.
-        // Locked rows (sign-in / approved record) are never remapped: they stay put and are never excluded.
-        // A locked row already sitting exactly on a new slot consumes that slot (the sync leaves it there).
-        $ownRegularPerDate = [];
-        $slotsFreePerDate = [];
-        $daySlotKeys = [];
-        foreach ($daySlots ?: [$slot] as $s) {
-            $daySlotKeys[(string) ($s['start_time'] ?? '') . '|' . (string) ($s['end_time'] ?? '')] = true;
-        }
+        // Own rows the edit moves to a new slot (same plan as syncFutureScheduledSessionTimes()) never block it;
+        // rows the plan leaves in place keep conflicting. Their paired schedules rows move with them.
+        $remappedIds = [];
+        $movedScheduleKeys = [];
         if ($excludeStudentClassId) {
+            $ownByDate = [];
             foreach ($classSessions as $row) {
-                if ((int) $row->StudentClassID !== $excludeStudentClassId || $row->IsContractException) {
-                    continue;
-                }
-                $d = substr((string) $row->SessionDate, 0, 10);
-                $slotsFreePerDate[$d] ??= count($daySlotKeys);
-                // syncFutureScheduledSessionTimes() only moves unlocked 'scheduled' rows (not leave_requested etc.).
-                if (!isset($locked[(int) $row->class_session_id]) && strtolower((string) $row->Status) === 'scheduled') {
-                    $ownRegularPerDate[$d][] = $row;
-                } elseif (isset($daySlotKeys[$this->normalizeTime($row->StartTime) . '|' . $this->normalizeTime($row->EndTime)])) {
-                    $slotsFreePerDate[$d]--;
+                // The sync only touches 'scheduled' rows.
+                if ((int) $row->StudentClassID === $excludeStudentClassId && strtolower((string) $row->Status) === 'scheduled') {
+                    $ownByDate[substr((string) $row->SessionDate, 0, 10)][] = [
+                        'id' => (int) $row->class_session_id,
+                        'start' => (string) $this->normalizeTime($row->StartTime),
+                        'end' => (string) $this->normalizeTime($row->EndTime),
+                        'exception' => (bool) $row->IsContractException,
+                    ];
                 }
             }
-        }
-        // Mirror syncFutureScheduledSessionTimes(): unlocked rows sorted by start pair with the free slots in order;
-        // only those are remapped, the rest stay at their old time.
-        $remappedIds = [];
-        foreach ($ownRegularPerDate as $d => $rows) {
-            usort($rows, fn ($a, $b) => strcmp((string) $a->StartTime, (string) $b->StartTime));
-            foreach (array_slice($rows, 0, max(0, $slotsFreePerDate[$d] ?? 0)) as $r) {
-                $remappedIds[(int) $r->class_session_id] = true;
+            $planSlots = array_map(fn ($s) => ['start' => (string) $s['start_time'], 'end' => (string) $s['end_time']], $daySlots ?: [$slot]);
+            foreach ($ownByDate as $d => $rows) {
+                $moves = self::planSameDayRemap($rows, $planSlots, $locked)['moves'];
+                foreach ($rows as $r) {
+                    if (isset($moves[$r['id']])) {
+                        $remappedIds[$r['id']] = true;
+                        $movedScheduleKeys[$d . '|' . $r['start']] = true;
+                    }
+                }
             }
         }
 
@@ -507,8 +555,7 @@ class ScheduleGuardService
 
             // Bounded self-exclusion:
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
-                // The edited course's own regular sessions get remapped to the new slot,
-                // so they never block it (in-app #347). Exception rows still conflict below.
+                // Own rows the sync moves to a new slot never block it (in-app #347); rows it leaves in place conflict below.
                 if (isset($remappedIds[(int) $row->class_session_id])) {
                     continue;
                 }
@@ -571,6 +618,9 @@ class ScheduleGuardService
 
             // Bounded self-exclusion for schedules:
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
+                if (isset($movedScheduleKeys[$scheduleDate . '|' . $start])) {
+                    continue;
+                }
                 if ($start === $slotStart && $end === $slotEnd) {
                     continue;
                 }
