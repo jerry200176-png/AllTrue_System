@@ -321,6 +321,105 @@ class AvailabilityCapacityTest extends TestCase
         $this->assertEquals(1, $byType['one_on_three']['remaining_capacity']);
     }
 
+    /**
+     * In-app #338/#359/#363/#365/#327：availability 與 detectCrossCampusConflict
+     * 必須與排課 guard 一樣忽略非活課（停課、請假調整、作廢、同課程已改期）。
+     */
+    public function test_availability_and_cross_campus_ignore_non_live_rows_like_guard(): void
+    {
+        $teacher = $this->createTeacher('teacher-parity@example.com');
+        $date = '2026-05-20';
+        $mk = function (string $start, string $status = 'scheduled', int $stop = 0) use ($teacher, $date) {
+            $sc = $this->createStudentClass($this->createStudent('parity' . $start . $status . $stop)->id, $teacher->id, 'one_on_one');
+            if ($stop) {
+                $sc->update(['Stop' => 1]);
+            }
+            ClassSession::create([
+                'StudentClassID' => $sc->ID, 'SessionDate' => $date,
+                'StartTime' => $start . ':00', 'EndTime' => sprintf('%02d:00:00', (int) $start + 1), 'Status' => $status,
+            ]);
+
+            return $sc;
+        };
+        $mk('09', 'scheduled', 1);   // paused course
+        $mk('10', 'leave_adjusted');
+        $mk('11', 'excused');
+        $mk('12', 'voided');
+        $rescheduled = $mk('13');    // same-course schedules row rescheduled frees it
+        \Illuminate\Support\Facades\DB::table('schedules')->insert([
+            'student_id' => $rescheduled->StudentID, 'teacher_id' => $teacher->id, 'subject' => '數學',
+            'day_of_week' => 3, 'start_time' => '13:00', 'end_time' => '14:00', 'duration_hours' => 1,
+            'class_type' => 'one_on_one', 'status' => 'rescheduled', 'type' => 'regular', 'deduction' => 1,
+            'branch_id' => 1, 'student_course_id' => $rescheduled->ID, 'schedule_date' => $date,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $mk('15');                   // control: live lesson still busy
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$this->dirToken}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/teachers/{$teacher->id}/availability?date={$date}");
+        $res->assertOk();
+        $this->assertSame(['15:00'], array_column($res->json('busy_slots'), 'start_time'));
+
+        $svc = app(\App\Services\SubstituteService::class);
+        $this->assertSame([], $svc->detectCrossCampusConflict($teacher->id, $date, '09:00', '14:00'));
+        $this->assertCount(1, $svc->detectCrossCampusConflict($teacher->id, $date, '15:00', '16:00'));
+    }
+
+    public function test_moved_back_lesson_stays_busy_and_stopped_planned_row_is_free(): void
+    {
+        $teacher = $this->createTeacher('teacher-moveback@example.com');
+        $date = '2026-05-20';
+        $sched = fn (int $courseId, int $studentId, string $start, string $status) => \Illuminate\Support\Facades\DB::table('schedules')->insertGetId([
+            'student_id' => $studentId, 'teacher_id' => $teacher->id, 'subject' => '數學', 'day_of_week' => 3,
+            'start_time' => $start, 'end_time' => sprintf('%02d:00', (int) $start + 1), 'duration_hours' => 1,
+            'class_type' => 'one_on_one', 'status' => $status, 'type' => 'regular', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $courseId, 'schedule_date' => $date, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Moved away from 10:00 (old rescheduled marker), later moved back to 10:00 (newer scheduled row): busy.
+        $back = $this->createStudentClass($this->createStudent('moveback')->id, $teacher->id, 'one_on_one');
+        ClassSession::create(['StudentClassID' => $back->ID, 'SessionDate' => $date, 'StartTime' => '10:00:00', 'EndTime' => '11:00:00', 'Status' => 'scheduled']);
+        $sched($back->ID, $back->StudentID, '10:00', 'rescheduled');
+        $sched($back->ID, $back->StudentID, '10:00', 'scheduled');
+
+        // A planned (schedules) row of a stopped course: free.
+        $stopped = $this->createStudentClass($this->createStudent('stoppedplan')->id, $teacher->id, 'one_on_one');
+        $stopped->update(['Stop' => 1]);
+        $sched($stopped->ID, $stopped->StudentID, '14:00', 'scheduled');
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$this->dirToken}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/teachers/{$teacher->id}/availability?date={$date}")->assertOk();
+        $starts = array_column($res->json('busy_slots'), 'start_time');
+        $this->assertContains('10:00', $starts, 'moved-back lesson must stay busy');
+        $this->assertNotContains('14:00', $starts, 'stopped course planned row must not occupy');
+
+        $svc = app(\App\Services\SubstituteService::class);
+        $this->assertCount(1, $svc->detectCrossCampusConflict($teacher->id, $date, '10:00', '11:00'));
+        $this->assertSame([], $svc->detectCrossCampusConflict($teacher->id, $date, '14:00', '15:00'));
+    }
+
+    public function test_availability_live_row_rules_add_at_most_one_query(): void
+    {
+        $teacher = $this->createTeacher('teacher-qcount@example.com');
+        $date = '2026-05-20';
+        $course = $this->createStudentClass($this->createStudent('qcount')->id, $teacher->id, 'one_on_one');
+        \Illuminate\Support\Facades\DB::table('schedules')->insert([
+            'student_id' => $course->StudentID, 'teacher_id' => $teacher->id, 'subject' => '數學', 'day_of_week' => 3,
+            'start_time' => '14:00', 'end_time' => '15:00', 'duration_hours' => 1, 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'regular', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $course->ID, 'schedule_date' => $date, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        \Illuminate\Support\Facades\DB::flushQueryLog();
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $this->withHeaders(['Authorization' => "Bearer {$this->dirToken}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/teachers/{$teacher->id}/availability?date={$date}")->assertOk();
+        $sql = array_map(fn ($q) => strtolower(str_replace(['"', '`'], '', $q['query'])), \Illuminate\Support\Facades\DB::getQueryLog());
+
+        $this->assertCount(1, array_filter($sql, fn ($q) => str_contains($q, 'sc_stop')), 'helper issues exactly one query');
+        $this->assertSame([], array_values(array_filter($sql, fn ($q) => str_contains($q, 'from studentclass where') && str_contains($q, 'stop'))), 'no separate Stop lookup');
+    }
+
     private function createTeacher(string $loginName): User
     {
         $teacher = User::create([

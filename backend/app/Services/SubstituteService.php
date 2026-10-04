@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\UserCampus;
 use App\Support\ClassTypeCapacity;
+use App\Support\SessionStatus;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -69,7 +70,8 @@ class SubstituteService
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
             ->whereDate('cs.SessionDate', $ymd)
-            ->whereNotIn('cs.Status', ['cancelled', 'leave'])
+            ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->whereNotExists(function ($sub) use ($teacherId) {
                 // 若該堂已有「其他老師」的代課安排，合約老師視為空閒
                 $sub->select(DB::raw(1))
@@ -87,11 +89,14 @@ class SubstituteService
         $sessionRows = $sessionQuery
             ->select(
                 'cs.id as class_session_id',
+                'sc.ID as course_id',
                 'cs.StartTime as start_time',
                 'cs.EndTime as end_time',
                 'st.CampusID as campus_id'
             )
             ->get();
+
+        [$sessionRows, $scheduleRows] = $this->applyGuardLiveRowRules($teacherId, $ymd, $excludeScheduleIds, $sessionRows, $scheduleRows);
 
         $busy = [];
         foreach ($scheduleRows as $row) {
@@ -153,7 +158,8 @@ class SubstituteService
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
             ->whereDate('cs.SessionDate', $ymd)
-            ->whereNotIn('cs.Status', ['cancelled', 'leave'])
+            ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+            ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->whereNotExists(function ($sub) use ($teacherId) {
                 $sub->select(DB::raw(1))
                     ->from('schedules as sub_sched')
@@ -207,6 +213,8 @@ class SubstituteService
         // #1296：ClassSession 已全數取消的 scheduled 例外 row 不再佔用時段
         $scheduleRows = app(StaleScheduleExceptionFilter::class)
             ->rejectStale($scheduleQuery->get(), $ymd);
+
+        [$sessionRows, $scheduleRows] = $this->applyGuardLiveRowRules($teacherId, $ymd, $excludeScheduleIds, $sessionRows, $scheduleRows);
 
         // 彙整原始 slots（每個 slot = 1 位學生的 1 堂課）
         $rawSlots = [];
@@ -299,6 +307,56 @@ class SubstituteService
         }
 
         return $result;
+    }
+
+    /**
+     * 與 ScheduleGuardService::buildTeacherDateOccupancyEntries 相同的「活課」規則（F8：三個入口算法一致）：
+     * 同課程當日有 leave/rescheduled 的 schedules row → 該課程 ClassSession 視為空出；
+     * 課程當日已有 ClassSession → 忽略其 schedules(scheduled) 覆寫 row。
+     *
+     * @param  int[]  $excludeScheduleIds
+     * @param  iterable<object>  $sessionRows  需含 course_id
+     * @param  iterable<object>  $scheduleRows  需含 student_course_id
+     * @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection}
+     */
+    private function applyGuardLiveRowRules(int $teacherId, string $ymd, array $excludeScheduleIds, iterable $sessionRows, iterable $scheduleRows): array
+    {
+        // ponytail: guard frees by course+date only; we also match start time so a same-day
+        // rescheduled-TO session stays busy (StaleScheduleExceptionBusyTest second-reschedule, R114).
+        // Only the LATEST schedules row per course+time decides: a lesson moved away and later moved back
+        // has an old rescheduled marker but a newer scheduled row, and must stay busy.
+        // One query: schedules LEFT JOIN StudentClass also yields the Stop flag (no separate lookup).
+        $rowsQuery = DB::table('schedules')
+            ->leftJoin('StudentClass as sc_stop', 'sc_stop.ID', '=', 'schedules.student_course_id')
+            ->where('schedules.teacher_id', $teacherId)
+            ->whereDate('schedules.schedule_date', $ymd)
+            ->where('schedules.student_course_id', '>', 0);
+        if (!empty($excludeScheduleIds)) {
+            $rowsQuery->whereNotIn('schedules.id', $excludeScheduleIds);
+        }
+        $latest = [];
+        $stopped = [];
+        foreach ($rowsQuery->orderBy('schedules.id')->get(['schedules.id', 'schedules.student_course_id', 'schedules.start_time', 'schedules.status', 'sc_stop.Stop']) as $f) {
+            $latest[(int) $f->student_course_id . '|' . $this->hhmm($f->start_time)] = (string) $f->status;
+            if ((int) $f->Stop === 1) {
+                $stopped[(int) $f->student_course_id] = true;
+            }
+        }
+        $freed = array_filter($latest, fn ($status) => in_array($status, ['leave', 'rescheduled'], true));
+
+        // Planned (schedules) rows of stopped courses never occupy a slot, same as their sessions.
+
+        $sessions = collect($sessionRows)
+            ->reject(fn ($r) => isset($freed[(int) $r->course_id . '|' . $this->hhmm($r->start_time)]))
+            ->values();
+        $sessionCourses = array_flip($sessions->pluck('course_id')->map(fn ($v) => (int) $v)->all());
+        $schedules = collect($scheduleRows)->reject(function ($r) use ($freed, $sessionCourses, $stopped) {
+            $cid = (int) ($r->student_course_id ?? 0);
+
+            return $cid > 0 && (isset($stopped[$cid]) || isset($freed[$cid . '|' . $this->hhmm($r->start_time)]) || isset($sessionCourses[$cid]));
+        })->values();
+
+        return [$sessions, $schedules];
     }
 
     /**
