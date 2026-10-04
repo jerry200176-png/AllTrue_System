@@ -80,7 +80,7 @@ class PausedCourseProjectionTest extends TestCase
         DB::table('schedules')->insert([
             'student_id' => 0, 'teacher_id' => 0, 'subject' => 'Math', 'day_of_week' => 3,
             'start_time' => '10:00:00', 'end_time' => '12:00:00', 'class_type' => 'one_on_one',
-            'status' => 'scheduled', 'type' => 'extra', 'deduction' => 1, 'branch_id' => 1,
+            'status' => 'scheduled', 'type' => 'extra', 'deduction' => 1, 'branch_id' => $this->campusId,
             'schedule_date' => '2026-06-10', 'student_course_id' => $courseId, 'original_schedule_id' => 0,
         ]);
 
