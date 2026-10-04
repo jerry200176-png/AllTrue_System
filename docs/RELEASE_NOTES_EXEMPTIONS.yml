@@ -691,6 +691,10 @@ exemptions:
     changelog_date: "2026-10-04"
     changelog_title: "fix(billing): transaction discounts drive billing; NT$0 records only for free courses (in-app #349 #361 #346)"
     reason: 教職員卡片待正式站驗證後另 PR 發布。
+  - id: silent-2026-10-04-availability-parity
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(scheduling): availability counts the same live lessons as booking (in-app #338 #359 #363 #365 #327)"
+    reason: 代課挑選的可見變化（他校有課、有空判斷）待正式站驗證後另 PR 發布教職員卡片
   - id: silent-2026-10-04-paused-projection
     changelog_date: "2026-10-04"
     changelog_title: "fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)"
