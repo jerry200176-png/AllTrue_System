@@ -869,7 +869,7 @@
       :payment-notice-available="isPaymentNoticeAvailable(courseManagerCourse)"
       :can-package-preview="isSessionMode(courseManagerCourse) && !courseManagerCourse.PackageID"
       :format-session-chip-date="formatSessionChipDate" :get-session-state-class="getSessionStateClass"
-      :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber"
+      :get-session-state-label="getSessionStateLabel" :get-session-number="getSessionNumber" :get-session-number-map="getSessionNumberMap"
       :session-row-key="sessionRowKey" :is-user-note="isUserNote" :format-makeup-date="formatMakeupDate"
       @close="closeCourseManager" @update:tab="onCourseManagerTab" @action="onCourseManagerAction"
       @open-session="onCourseManagerOpenSession"
@@ -1331,7 +1331,7 @@
         <p class="modal-desc">{{ chipActionDialog.message }}</p>
         <p v-if="chipActionDialog.meta" class="modal-hint">{{ chipActionDialog.meta }}</p>
         <div class="actions">
-          <button type="button" class="ghost" @click="closeChipActionDialog">{{ chipActionDialog.secondaryLabel || '關閉' }}</button>
+          <button v-if="chipActionDialog.secondaryLabel !== ''" type="button" class="ghost" @click="closeChipActionDialog">{{ chipActionDialog.secondaryLabel || '關閉' }}</button>
           <button type="button" class="primary" :disabled="chipActionDialog.busy" @click="confirmChipActionDialog">
             {{ chipActionDialog.busy ? '載入中…' : (chipActionDialog.primaryLabel || '確定') }}
           </button>
@@ -1828,7 +1828,7 @@ const visibleGroups = computed(() =>
 );
 
 const {
-  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, upcomingSessionPreview, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
+  expandedDates, toggleDates, sessions, sessionUnits, primarySessionUnits, upcomingSessionPreview, allSessionUnits, cancelledSessionCount, movedOrCancelledUnits, sessionRowKey, getSessionNumber, getSessionNumberMap, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount,
   getSessionPlanningStatus, canMaterializeProjectedSession,
   getCourseSessionRows, getSessionRowsForDate, getSessionRowById, getSessionDisplayRow,
   getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
