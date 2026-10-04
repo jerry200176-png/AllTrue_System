@@ -114,7 +114,7 @@ mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env |
 - **恢復時間**：
   - 自動回滾：同一 `deploy.yml` run 內「Rollback 成功」的時間戳（通常 < 5 分鐘）
   - 手動回滾：revert PR 的 merge → deploy 成功時間戳
-- **彙總**：`dora-metrics.yml`（每週）已輸出 DORA 四指標；回滾事件記一行到 `docs/CHANGELOG.md`（`ops:` 類）便於月度 review（§Y）。
+- **彙總**：`dora-metrics.yml`（每週）只對已證實的正式部署計算發布頻率；事故修復率與恢復時間缺逐筆對照時顯示 UNKNOWN。回滾事件記一行到 `docs/CHANGELOG.md`（`ops:` 類）便於月度 review（§Y）。
 
 目標：自動回滾路徑 MTTR **< 5 分鐘**；手動 revert 路徑 **< 30 分鐘**（含 CI）。
 

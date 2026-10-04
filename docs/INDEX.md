@@ -409,7 +409,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `missing-tests-warn.yml` | 每次 PR | 改 controller/service 未附測試時警告（advisory）|
 | `htaccess-guard.yml` | 每次 PR | `public/.htaccess` 變更守門（事故 D 防再犯）|
 | `backup-restore-test.yml` | 每月 1 日 | 備份還原完整性驗證 |
-| `dora-metrics.yml` | 每週一 | DORA 指標計算（部署頻率/lead time/CFR；review SOP 見 §Y）|
+| `dora-metrics.yml` | 每週一 | 正式部署證據週報；可證明的發布頻率或 UNKNOWN，其餘 DORA 維度標 UNKNOWN（review SOP 見 §Y）|
 | `mempalace-monthly.yml` | 每月 | **Reminder only** — comment on issue #519；ingest 須 WSL2 手動 `mempalace-maintain.sh` |
 | `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
 | `teacher-signin-diagnose.yml` / `teacher-signin-recovery.yml` | 手動 / 排程 | 老師刷卡資料診斷與回補 |

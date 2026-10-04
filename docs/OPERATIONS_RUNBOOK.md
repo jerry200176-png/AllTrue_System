@@ -922,7 +922,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | 備份 manifest | `gdrive-backup-sync.sh` 每次同步產生檔名 / 大小 / sha256 manifest 並同步到 Google Drive |
 | Migration dry-run | CI `migrate --pretend` 在 merge 前捕捉 SQL 錯誤 |
 | JSON 結構化 logging | `logging.json` channel（warning+），為 ELK/Loki 預留 |
-| DORA metrics | `dora-metrics.yml` 每週一自動計算部署頻率/lead time/CFR |
+| DORA metrics | `dora-metrics.yml` 每週一以正式部署 job 與 runtime 證據計算部署頻率；其餘指標證據不足時標 UNKNOWN |
 
 ### ⚠️ 刻意不做（P3，這個規模 overkill）
 
@@ -1318,27 +1318,26 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 
 ### Y1. 來源
 
-`/.github/workflows/dora-metrics.yml` 每週一 09:00 UTC 自動計算近 30 天四指標，輸出到該次 **workflow run 的 Step Summary** 頁。可手動觸發：`gh workflow run dora-metrics.yml`。
+`/.github/workflows/dora-metrics.yml` 每週一 09:00 UTC 產生近 30 天報表，輸出到該次 **workflow run 的 Step Summary** 頁。可手動觸發：`gh workflow run dora-metrics.yml`。資料缺失、分頁不完整或正式 runtime 不符時，部署頻率顯示 UNKNOWN 且工作流失敗，不能記為 0。
 
-| 指標 | 計算方式 | Elite 門檻 |
+| 指標 | 現行可信證據 | 狀態 |
 |---|---|---|
-| Deployment Frequency | 合進 main 的 PR 數 / 週 | ≥ 1/day |
-| Lead Time for Changes | PR open → merge 平均時數 | < 24h |
-| Change Failure Rate | 標題含 fix/hotfix/revert 的 PR 占比 | < 5% |
-| MTTR | 手動追蹤（記 `AI_REGRESSION_LESSONS.md`）| — |
+| Deployment Frequency | `deploy.yml` 的 `Deploy to Production` job 與 `Deploy`、`Record deployed and production-verified state` 均成功，按 run attempt 計次，對照 `deployment.json` 最新 SHA | 可證明時數值，否則 UNKNOWN |
+| Lead Time for Changes | 尚未建立 commit → 正式部署的逐筆對照 | UNKNOWN |
+| Change Failure Rate | 尚未建立變更 → 正式事故／回滾的逐筆對照 | UNKNOWN |
+| Time to Restore Service | 尚未建立事故起止與恢復的逐筆對照 | UNKNOWN |
+| Deployment Rework Rate | 尚未建立非計畫性修正部署的逐筆對照 | UNKNOWN |
 
 ### Y2. 月度 Review SOP（每月第一個工作日）
 
 ```bash
 gh run list --workflow=dora-metrics.yml --limit 1     # 找最近一次 run
-gh run view <run_id>                                  # 讀 Step Summary 四指標
+gh run view <run_id>                                  # 讀 Step Summary 與 UNKNOWN 原因
 ```
 
 判讀與行動：
-- **CFR 連續 2 個月 > 15%（Low）**→ 檢視近期 fix/hotfix 是否集中某模組，排 [REVIEW]/技術債清償。
-- **Lead Time > 1 週（Medium↓）**→ PR 是否過大（presubmit ≤700 行）、是否卡 review，考慮拆小。
-- **Deployment Frequency 驟降**→ 確認是否 CI/部署卡關或進入凍結期。
-- 將每月數字記一行到 `docs/CHANGELOG.md`（或 SRE 週報），形成趨勢線。
+- **Deployment Frequency 驟降**→ 確認是否 CI/部署卡關或進入凍結期；UNKNOWN 先排證據缺口，不視為零發布。
+- 只有可證明的數值才形成趨勢；其餘保留 UNKNOWN，不用 PR 產量或標題代替。
 
 ### Y3. 注意
 

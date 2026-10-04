@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-04-dora-deploy-truth
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(ops): weekly DORA report counts proven production deployments"
+    reason: 僅修正內部交付週報的證據判定與未知狀態，不改教職員操作或正式資料。
+
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
