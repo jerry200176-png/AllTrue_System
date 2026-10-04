@@ -178,6 +178,11 @@ export const canApplyRenewalPreview = ({
 export const getCourseTotalFee = (course) => {
   if (!course) return 0;
   const paymentType = String(course?.payment_type || '').toLowerCase();
+  // in-app #349: a transaction discount is allocated into Charge; Rate stays the list price.
+  const discount = Number(course?.pricing_snapshot?.discount_amount ?? 0);
+  if (paymentType === 'session' && discount > 0) {
+    return Math.max(0, Number(course?.Charge ?? course?.charge ?? 0) || 0);
+  }
   const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
 
   const rateUnit = getRateUnit(course);

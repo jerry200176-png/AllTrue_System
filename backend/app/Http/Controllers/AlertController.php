@@ -487,6 +487,10 @@ class AlertController extends Controller
      */
     private function countModeCharge(StudentClass $course): int
     {
+        $discounted = $course->discountedContractTotal();
+        if ($discounted !== null) {
+            return $discounted;
+        }
         $rate = (float) ($course->Rate ?? 0);
         $sessions = max(0, (int) ($course->SessionCount ?? 0));
         if ($rate <= 0 || $sessions <= 0) {

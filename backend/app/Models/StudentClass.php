@@ -82,6 +82,34 @@ class StudentClass extends Model
         }
     }
 
+    /**
+     * Count-mode contract total after a transaction discount (in-app #349 #361).
+     * The discount is allocated into Charge at creation (EnrollmentService); Rate stays the list price,
+     * so Rate × sessions would ignore the discount. Null when no discount applies.
+     */
+    public function discountedContractTotal(): ?int
+    {
+        $snapshot = $this->getAttribute('pricing_snapshot');
+        if (!is_array($snapshot) || (int) ($snapshot['discount_amount'] ?? 0) <= 0) {
+            return null;
+        }
+
+        return max(0, (int) ($this->getAttribute('Charge') ?? 0));
+    }
+
+    /** Genuinely free course: tutoring, no fee at all, or discounted to NT$0. */
+    public function isFreeOfCharge(): bool
+    {
+        if (strtolower(trim((string) ($this->getAttribute('ClassType') ?? ''))) === 'tutoring') {
+            return true;
+        }
+        if ($this->discountedContractTotal() === 0) {
+            return true;
+        }
+
+        return (int) ($this->getAttribute('Charge') ?? 0) <= 0 && (float) ($this->getAttribute('Rate') ?? 0) <= 0;
+    }
+
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');

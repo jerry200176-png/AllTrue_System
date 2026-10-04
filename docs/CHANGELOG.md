@@ -10,6 +10,10 @@
 <!-- release-notes: staff_update=staff-2026-10-03-adjust-error-message -->
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
+## 2026-10-04 — fix(billing): transaction discounts drive billing; NT$0 records only for free courses (in-app #349 #361 #346)
+<!-- release-notes: silent_ship=silent-2026-10-04-billing-discount-zero -->
+- 交易折扣（舊生介紹等）寫在課程金額 `Charge`，但帳務中心、免收費判斷、課程查找總額仍用「單價×堂數」：改為有折扣時以折扣後金額為準；折扣到 0 元的試聽視為免收費、不再要求繳費。非免費課程登記 0 元繳費改為拒絕（避免 0 元收據把課程標成已結算）。
+
 ## 2026-10-04 — perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)
 <!-- release-notes: silent_ship=silent-2026-10-04-class-sessions-latest-rows -->
 - `/class-sessions` 不再對 `StudentSingIn`／`LearningRecord` 整表算「每堂最新一筆」，改用既有索引逐列查；代課查詢只看請求日期區間。正式站 EXPLAIN（run 37166542492）顯示每次請求整表掃描 1.4–1.6 萬列；回傳內容不變。

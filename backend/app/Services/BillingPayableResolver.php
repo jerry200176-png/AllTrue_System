@@ -93,7 +93,10 @@ class BillingPayableResolver
         // B15's own verdict (ambiguous items/coverage gaps, out-of-contract sessions, amount discrepancy) is preserved.
         $monthlyReview = (bool) ($monthly['review_required'] ?? false);
         $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
-        $zeroFee = !$isPackageMember && !$monthlyReview && $charge <= 0 && (float) ($course->getAttribute('Rate') ?? 0) <= 0 && !$hasBillableInvoice;
+        // A course discounted to NT$0 (Rate keeps the list price) is free too (in-app #361).
+        $zeroFee = !$isPackageMember && !$monthlyReview && $charge <= 0
+            && ((float) ($course->getAttribute('Rate') ?? 0) <= 0 || $course->discountedContractTotal() === 0)
+            && !$hasBillableInvoice;
         if ($tutoring || $zeroFee) {
             return $result('free', 0, 0, 0, [], 'none', null);
         }

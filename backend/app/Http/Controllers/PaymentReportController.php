@@ -546,6 +546,15 @@ class PaymentReportController extends Controller
             ], 422);
         }
 
+        // in-app #346: a NT$0 record on a course that is not free settles it as "paid" with a 0元 receipt.
+        // Only genuinely free courses (tutoring, no fee, or discounted to NT$0) may be recorded at 0.
+        if ((float) ($data['amount'] ?? 0) <= 0 && !$sc->isFreeOfCharge()) {
+            return response()->json([
+                'message' => '這門課需要收費，繳費金額不可為 0；若此課程應免收費，請先在課程設定折扣為 0 元或確認收費設定。',
+                'code' => 'zero_amount_for_paid_course',
+            ], 422);
+        }
+
         $userId = $request->attributes->get('auth_user_id');
 
         return DB::transaction(function () use ($data, $sc, $userId) {
