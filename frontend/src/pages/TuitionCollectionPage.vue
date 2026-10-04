@@ -667,6 +667,11 @@
                 <td>
                   <div class="acct-primary">{{ row.payment_date || '—' }}</div>
                   <div class="acct-sub">{{ humanizeDocumentRef(row.receipt_no) }}</div>
+                  <div v-if="row.account_last5 || row.note" class="acct-sub acct-sub--note" :title="row.note || undefined">
+                    <template v-if="row.account_last5">後5碼 {{ row.account_last5 }}</template>
+                    <template v-if="row.account_last5 && row.note"> · </template>
+                    <template v-if="row.note">備註：{{ row.note }}</template>
+                  </div>
                 </td>
                 <td class="tc-cell-name">{{ row.student_name }}</td>
                 <td>
@@ -2515,6 +2520,15 @@ loadAlerts();
   margin-top: 2px;
   max-width: 220px;
   line-height: 1.35;
+}
+.acct-sub--note {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .acct-primary { font-weight: 600; }
 .acct-col-check { width: 32px; text-align: center; }

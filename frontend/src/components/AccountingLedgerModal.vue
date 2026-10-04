@@ -69,8 +69,10 @@
 
           <section class="ledger-section">
             <h4>帳單</h4>
-            <div v-if="!payload.invoices?.length" class="ledger-empty">此學生尚無帳單。</div>
-            <div v-else class="ledger-table-wrap">
+            <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
+            <div v-else-if="ledgerBothEmpty" class="ledger-empty">繳費單是依課程估算，尚未建立帳單；登記並確認入帳後才會出現在這裡。</div>
+            <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
+            <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
               <table class="ledger-table">
                 <thead>
                   <tr>
@@ -169,7 +171,7 @@
             </div>
           </section>
 
-          <section class="ledger-section">
+          <section v-if="payload.receipts?.length || !ledgerBothEmpty" class="ledger-section">
             <h4>收據紀錄</h4>
             <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收據紀錄。</div>
             <div v-else class="ledger-receipts ledger-receipts--compact">
@@ -178,8 +180,13 @@
                 <span>{{ r.payment_date || '未記錄日期' }}</span>
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
-                <small class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
+                <small v-if="r.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
+                <small v-if="r.account_last5 || r.note" class="ledger-receipt-extra" :title="r.note || undefined">
+                  <template v-if="r.account_last5">後5碼 {{ r.account_last5 }}</template>
+                  <template v-if="r.account_last5 && r.note"> · </template>
+                  <template v-if="r.note">備註：{{ r.note }}</template>
+                </small>
               </div>
             </div>
           </section>
@@ -281,6 +288,13 @@ async function loadLedger() {
 }
 
 watch(() => [props.show, props.studentClassId, props.reportId, props.branchId], loadLedger, { immediate: true });
+
+// Empty-state is judged for the opened course when the API reports one, else student-wide.
+const ledgerBothEmpty = computed(() => {
+  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const inScope = (rows) => (rows || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
+  return !inScope(payload.value?.invoices).length && !inScope(payload.value?.receipts).length;
+});
 
 const ledgerExceptions = computed(() => {
   const rows = [];
@@ -386,7 +400,7 @@ const signedCurrency = (value) => `${Number(value || 0) > 0 ? '+' : Number(value
 const formatPeriod = (period) => !period ? '—' : (String(period).split('-').length === 2 ? String(period).replace('-', '/') : period);
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '更正收款' }, method);
 const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' }, status);
-const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待對帳', voided: '已撤銷' }, status);
+const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待對帳', voided: '已撤銷', rejected: '已退回' }, status);
 const applicationStatusLabel = (status) => labelMap({ applied: '已記入', partially_applied: '部分記入', overpayment_pending_review: '多收待處理', voided: '已更正' }, status);
 const invoiceStatusClass = (status) => labelMap({
   paid: 'chip--success',
@@ -398,6 +412,7 @@ const reportStatusClass = (status) => labelMap({
   confirmed: 'chip--success',
   pending: 'chip--warning',
   voided: 'chip--muted',
+  rejected: 'chip--muted',
 }, status);
 const applicationStatusClass = (status) => labelMap({
   applied: 'chip--success',
@@ -475,6 +490,7 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-receipts{display:grid;gap:8px}
 .ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-canvas-soft);border-radius:10px}
+.ledger-receipt-extra{flex-basis:100%;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ledger-receipts--compact .ledger-receipt{padding:8px 10px}
 .ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}
 .ledger-table small{display:block;margin-top:2px}
