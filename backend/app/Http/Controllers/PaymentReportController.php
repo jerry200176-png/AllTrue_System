@@ -334,24 +334,12 @@ class PaymentReportController extends Controller
                 return response()->json(['message' => '此回報已處理過'], 422);
             }
 
-            // Pending reports created before the whole-dollar rule may carry sub-dollar amounts; never book them.
-            $reported = (float) $report->reported_amount;
-            if ($reported < 1 || $reported !== floor($reported)) { // booking truncates; never book a fractional amount
-                return response()->json([
-                    'message' => '此回報金額不是 1 元以上的整數元，無法入帳，請退回（駁回）此回報。',
-                    'code' => 'invalid_report_amount',
-                ], 422);
-            }
-
             $note = $confirmationNote !== ''
                 ? $confirmationNote
                 : trim((string) ($report->note ?? ''));
             $sc = StudentClass::find($report->StudentClassID);
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
-            }
-            if ($sc && ($noObligation = $this->freeCoursePaymentBlocked($sc))) {
-                return $noObligation;
             }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
@@ -534,7 +522,7 @@ class PaymentReportController extends Controller
             'invoice_id'       => 'nullable|integer',
             'payment_date'     => 'required|date|before_or_equal:today',
             'payment_method'   => 'required|in:transfer,cash',
-            'amount'           => 'required|integer|min:0|max:999999',
+            'amount'           => 'required|numeric|min:0|max:999999',
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
         ]);
@@ -547,26 +535,14 @@ class PaymentReportController extends Controller
             return $blockedTutoringPayment;
         }
 
-        if ($sc instanceof StudentClass && ($noObligation = $this->freeCoursePaymentBlocked($sc))) {
-            return $noObligation;
-        }
-
         // #1096 (in-app #190): a date-mode (月結) course billed at NT$0 is nonsensical —
         // the reported "金額顯示0應該顯示3000" came from an unset monthly fee. Block a NT$0
-        // record for date-mode and point staff to set the fee first.
+        // record for date-mode and point staff to set the fee first. Count-mode is untouched,
+        // so legitimately-free (0-fee) tutoring courses still settle at 0.
         if ($sc->getAttribute('ScheduleMode') === 'date' && (float) ($data['amount'] ?? 0) <= 0) {
             return response()->json([
                 'message' => '月結課程的繳費金額不可為 0；若月費顯示為 0，請先於課程管理設定正確月費金額後再登記。',
                 'code' => 'monthly_fee_unset',
-            ], 422);
-        }
-
-        // in-app #346: a NT$0 record settles a course as "paid" with a 0元 receipt and then drops out of
-        // reconciliation. Free courses are refused above (no payment obligation), so NT$0 is never valid here.
-        if ((float) ($data['amount'] ?? 0) <= 0) {
-            return response()->json([
-                'message' => '這門課需要收費，繳費金額不可為 0；若此課程應免收費，請先在課程設定折扣為 0 元或確認收費設定。',
-                'code' => 'zero_amount_for_paid_course',
             ], 422);
         }
 
@@ -707,7 +683,7 @@ class PaymentReportController extends Controller
             'note'           => 'nullable|string|max:500',
             'entries'        => 'required|array|min:1|max:40',
             'entries.*.student_class_id' => 'required|integer',
-            'entries.*.amount'           => 'required|integer|min:0|max:999999',
+            'entries.*.amount'           => 'required|numeric|min:0|max:999999',
             'entries.*.account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'entries.*.invoice_id'       => 'nullable|integer',
         ]);
@@ -1176,19 +1152,6 @@ class PaymentReportController extends Controller
             // current contract. Display-only flag; no ledger figure is touched.
             'billing_mode_changed' => (bool) $invoice?->billingModeChangedSinceIssue(),
         ]);
-    }
-
-    /** in-app #346: a free course (discounted to NT$0 / no fee, not billed) has no payment obligation, like tutoring. */
-    private function freeCoursePaymentBlocked(StudentClass $course): ?\Illuminate\Http\JsonResponse
-    {
-        if (!$course->isFreeOfCharge()) {
-            return null;
-        }
-
-        return response()->json([
-            'message' => '此課程免收費（折扣後 0 元或未設定收費），不需要登記繳費。',
-            'code' => 'no_payment_obligation',
-        ], 422);
     }
 
     private function tutoringPaymentBlocked($course)

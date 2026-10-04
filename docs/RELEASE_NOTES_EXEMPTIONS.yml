@@ -689,7 +689,7 @@ exemptions:
     reason: 只改查詢方式，回傳內容不變；依指南教職員卡片須 merge、deploy 並以正式站同一 EXPLAIN case 驗證變快後才發布，驗證後另 PR 發布。
   - id: silent-2026-10-04-billing-discount-zero
     changelog_date: "2026-10-04"
-    changelog_title: "fix(billing): transaction discounts drive billing; NT$0 records only for free courses (in-app #349 #361 #346)"
+    changelog_title: "fix(billing): transaction discounts drive billing; courses discounted to NT$0 are free (in-app #349 #361 #346)"
     reason: 教職員卡片待正式站驗證後另 PR 發布。
   - id: silent-2026-10-04-availability-parity
     changelog_date: "2026-10-04"

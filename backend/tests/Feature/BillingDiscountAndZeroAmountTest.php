@@ -2,13 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\{AuthToken, ClassSession, Invoice, ParentSession, Payment, PaymentReport, Student, StudentClass, StudentClassPricingAmendment, User, UserCampus};
+use App\Models\{AuthToken, ClassSession, Invoice, ParentSession, Student, StudentClass, StudentClassPricingAmendment, User, UserCampus};
 use App\Services\{BillingPayableResolver, DunningService, NotificationSyncService};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\{DB, Schema};
 use Tests\TestCase;
 
-/** in-app #349 / #361: a transaction discount (allocated into Charge; Rate keeps the list price) drives billing. #346: NT$0 may only settle a free course. */
+/** in-app #349 / #361: a transaction discount (allocated into Charge; Rate keeps the list price) drives billing. #346: a course discounted to NT$0 is free. */
 class BillingDiscountAndZeroAmountTest extends TestCase
 {
     use RefreshDatabase;
@@ -27,7 +27,7 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json']); // every request is a campus director
     }
 
-    public function test_discount_drives_contract_total_queue_index_and_free_detection_and_director_record_codes(): void
+    public function test_discount_drives_contract_total_queue_index_and_free_detection(): void
     {
         $plain = $this->course(['Rate' => 1800, 'SessionCount' => 4, 'Charge' => 7200]);
         $discounted = $this->course(['Rate' => 1800, 'SessionCount' => 4, 'Charge' => 5400], 1800);
@@ -52,17 +52,6 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertFalse($unset->isFreeOfCharge());
         $this->assertTrue($monthlyDiscounted->isFreeOfCharge());
         $this->assertTrue($tutoring->isFreeOfCharge());
-        $this->directorRecord($paid, 0)->assertStatus(422)->assertJsonPath('code', 'zero_amount_for_paid_course');
-        $this->directorRecord($freeTrial, 0)->assertStatus(422)->assertJsonPath('code', 'no_payment_obligation')
-            ->assertJsonPath('message', '此課程免收費（折扣後 0 元或未設定收費），不需要登記繳費。');
-        $this->directorRecord($freeTrial, 500)->assertStatus(422)->assertJsonPath('code', 'no_payment_obligation');
-        $this->directorRecord($unset, 0)->assertStatus(422)->assertJsonPath('code', 'monthly_fee_unset');
-        $this->directorRecord($monthlyDiscounted, 0)->assertStatus(422)->assertJsonPath('code', 'no_payment_obligation');
-        $this->directorRecord($paid, 0.5)->assertStatus(422)->assertJsonValidationErrors('amount');
-        $this->directorRecord($paid, '0.50')->assertStatus(422)->assertJsonValidationErrors('amount');
-        $this->assertSame(0, PaymentReport::count(), 'nothing recorded');
-        $this->directorRecord($paid, 1)->assertSuccessful();
-        $this->assertSame(1, PaymentReport::where('StudentClassID', $paid->ID)->count());
     }
 
     public function test_reminder_producers_skip_free_courses(): void
@@ -148,25 +137,6 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertContains((int) $billed->ID, $this->queuedIds(), 'control: a billed closed date-mode course awaits settlement');
         $this->assertNotContains((int) $free->ID, $this->queuedIds());
         $this->assertNotContains((int) $amendedFree->ID, $this->queuedIds());
-    }
-
-    public static function refusedReports(): array
-    {
-        return ['below one dollar' => [false, 0.5, 'invalid_report_amount'], 'free course' => [true, 500, 'no_payment_obligation'], 'fractional amount' => [false, 1.5, 'invalid_report_amount']];
-    }
-
-    /** @dataProvider refusedReports */
-    public function test_confirm_refuses_a_pending_report_for_a_free_course_or_a_non_whole_amount(bool $free, float|int $amount, string $code): void
-    {
-        $course = $free ? $this->course(self::FREE_COUNT_MODE, 1500) : $this->paidCourse();
-        $report = PaymentReport::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'reported_by_name' => 'x',
-            'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'reported_amount' => $amount, 'status' => 'pending',
-            'report_token_hash' => str_repeat('a', 64), 'token_expires_at' => now()->addDay()]);
-        $this->putJson("/api/v1/payment-reports/{$report->id}/confirm")->assertStatus(422)->assertJsonPath('code', $code);
-        $this->assertSame($code, $this->postJson('/api/v1/payment-reports/confirm-batch', ['ids' => [$report->id]])->json('results.0.code'));
-        $this->assertSame(0, Payment::count());
-        $this->assertSame(0, (int) $course->fresh()->Paid);
-        $this->assertSame('pending', $report->fresh()->status);
     }
 
     public function test_amended_discounted_course_is_priced_at_the_amended_rate_on_every_surface(): void
@@ -269,10 +239,6 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         return Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => now(), 'DueDate' => now(), 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status]);
     }
 
-    private function directorRecord(StudentClass $course, float|int|string $amount)
-    {
-        return $this->postJson('/api/v1/payment-reports/director-record', ['student_class_id' => $course->ID, 'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'amount' => $amount]);
-    }
 
     private function tuitionQueue()
     {

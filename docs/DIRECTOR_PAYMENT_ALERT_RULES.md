@@ -15,7 +15,7 @@ last_reviewed: 2026-08-16
 
 **堂數制課程金額唯一來源（in-app #346/#349/#361）：** `StudentClass::effectiveContractTotal()`，學費提醒、課程查找 `effective_total`、家長繳費通知、免收費判斷全部讀它。優先序：① 有效（未作廢）帳單總額 > 0 → 以帳單為準；② 否則「今日生效」的調價（`StudentClassPricingAmendment`：`effective_from <= 今天`、未作廢、取最新一筆），**含 0 元**，單價 × 堂數（或時數）；③ 否則交易折扣快照 → 折扣後 `Charge`；④ 否則 `Rate` × 堂數（#230：單價優先於舊 `Charge`），無單價才用 `Charge`。輔導課恆為 0。
 
-**免收費課程例外：** 輔導課，或堂數制且上述金額為 0（例：100% 折扣、無費用、今日生效 0 元調價），或月結制明確 100% 折扣（且無今日生效正價調價、無 > 0 帳單），在堂數制與月結制**都不列入**學費提醒／催繳／家長繳費通知（含結案未繳 `settled_pending`／提前結束未繳 `contract_amended` 佇列），也不可登記或入帳繳費（`no_payment_obligation`）。月結制「未設定月費」不算免費（維持 `monthly_fee_unset`）。判斷唯一來源：`StudentClass::isFreeOfCharge()`（`BillingPayableResolver` 以批次載入的帳單／調價呼叫同一函式）。
+**免收費課程例外：** 輔導課，或堂數制且上述金額為 0（例：100% 折扣、無費用、今日生效 0 元調價），或月結制明確 100% 折扣（且無今日生效正價調價、無 > 0 帳單），在堂數制與月結制**都不列入**學費提醒／催繳／家長繳費通知（含結案未繳 `settled_pending`／提前結束未繳 `contract_amended` 佇列）。月結制「未設定月費」不算免費（維持 `monthly_fee_unset`）。判斷唯一來源：`StudentClass::isFreeOfCharge()`（`BillingPayableResolver` 以批次載入的帳單／調價呼叫同一函式）。
 
 | 模式 | 列入提醒的條件（皆須 `Stop = 0`，且堂數制／月結制各自還有欄位前提） |
 |------|-------------------------------------------------------------------|
@@ -99,7 +99,7 @@ last_reviewed: 2026-08-16
 - 結案 UI：已繳 + 0 堂 → 結案後不再列。
 - 月結：未繳、繳費日前第 4 天出現、第 5 天不出現；未繳且過繳費日仍出現。
 - 分校：`branch_id` 與 `CampusID` 過濾正確。
-- 免收費課程（兩種模式皆不列入、不可登記繳費）：`BillingDiscountAndZeroAmountTest`（`test_tuition_alerts_use_the_discounted_total_and_drop_free_trials`、`test_date_mode_free_course_is_skipped_by_dunning_and_tuition_queue`、`test_only_the_currently_effective_amendment_decides_free`、`test_confirm_refuses_free_course_and_fractional_amounts`、`test_discounted_date_mode_course_gets_no_obligation_but_unset_fee_stays_fee_unset`、`test_parent_portal_free_course_has_no_monthly_fee_estimate`、`test_one_pricing_authority_gives_the_same_number_on_every_surface`、`test_free_date_mode_course_awaiting_settlement_is_not_queued_at_list_rate`）。
+- 免收費課程（兩種模式皆不列入）：`BillingDiscountAndZeroAmountTest`（`test_tuition_alerts_use_the_discounted_total_and_drop_free_trials`、`test_date_mode_free_course_is_skipped_by_dunning_and_tuition_queue`、`test_only_the_currently_effective_amendment_decides_free`、`test_discounted_date_mode_course_gets_no_obligation_but_unset_fee_stays_fee_unset`、`test_parent_portal_free_course_has_no_monthly_fee_estimate`、`test_one_pricing_authority_gives_the_same_number_on_every_surface`、`test_free_date_mode_course_awaiting_settlement_is_not_queued_at_list_rate`）。
 
 ## 曾發生過的錯誤（避免再犯）
 
