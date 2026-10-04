@@ -1359,7 +1359,7 @@ class EnrollmentService
 
     /**
      * @param  array<int, array<string, mixed>>  $slots
-     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject: string}>>
+     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject: string, teacher_id?: int|null}>>
      */
     private function normalizeDayTimeSlotGroups(array $slots, string $defaultSubject): array
     {
@@ -1540,7 +1540,7 @@ class EnrollmentService
     }
 
     /**
-     * @param  array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>  $dayTimeSlotGroups
+     * @param  array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string, teacher_id?: int|null}>>  $dayTimeSlotGroups
      */
     private function inferSubjectFromSlotGroups(
         array $dayTimeSlotGroups,
@@ -1566,8 +1566,8 @@ class EnrollmentService
     }
 
     /**
-     * @param  array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>  $dayTimeSlotGroups
-     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>
+     * @param  array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string, teacher_id?: int|null}>>  $dayTimeSlotGroups
+     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string, teacher_id?: int|null}>>
      */
     private function filterSlotGroupsBySubject(array $dayTimeSlotGroups, string $subjectKey, int $teacherId, int $globalTeacherId): array
     {
@@ -1591,7 +1591,7 @@ class EnrollmentService
 
     /**
      * @param  list<array{date: string, start_time: string, duration_minutes: int, kind: string, subject?: string}>  $rows
-     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject: string}>>
+     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject: string, teacher_id?: int|null}>>
      */
     private function slotGroupsFromSessionRows(array $rows): array
     {
