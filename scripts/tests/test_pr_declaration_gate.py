@@ -9,6 +9,41 @@ from scripts.governance.autonomy_gate import (
 
 
 class PrDeclarationGateTest(unittest.TestCase):
+    def test_production_smoke_assertion_cannot_take_t0_auto_merge(self):
+        path = "frontend/e2e/dashboard-workbench.spec.js"
+        patch = (
+            f"diff --git a/{path} b/{path}\n"
+            "@@ -1 +1 @@\n"
+            "-    expect(tuitionAlertsResponse.status()).toBe(200);\n"
+            "+    test.skip(true, 'temporarily bypass tuition smoke');\n"
+        )
+        generated = machine_declaration([path], patch)
+        self.assertEqual((generated["risk_class"], generated["autonomy_tier"]), ("R3", "T3"))
+        rejected = validate_declaration("Risk-Class: R0\nAutonomy-Tier: T0", [path], patch)
+        self.assertFalse(rejected["valid"])
+        self.assertIn("below", rejected["error"])
+
+    def test_only_production_smoke_controls_raise_test_only_scope(self):
+        for path in (
+            "frontend/playwright.config.js",
+            "frontend/e2e/classroom-management-production-smoke.spec.js",
+            "frontend/e2e/smoke.spec.js",
+            "frontend/e2e/fixtures/dismissOverlays.js",
+            "frontend/e2e/fixtures/branchApiProbe.js",
+            "frontend/e2e/fixtures/directorDashboardTelemetry.js",
+            "frontend/e2e/fixtures/tutoringReceivableControls.js",
+            "frontend/e2e/parent-portal-production.spec.js",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T3")
+        for path in (
+            "frontend/e2e/fixtures/ui-foundation/pilot-mount.js",
+            "frontend/e2e/classroom-clarity.spec.js",
+            "frontend/src/components/__tests__/Widget.test.js",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(classify_scope([path], "")["tier_name"], "T0")
+
     def test_missing_declaration_fails_before_merge(self):
         result = validate_declaration(
             "",

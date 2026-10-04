@@ -101,6 +101,22 @@ _CONTROL_PLANE_EXACT = {
     "codex.md",
 }
 
+# These definitions are exercised against production by ui-smoke.yml via
+# frontend/playwright.config.js. Changing their skip/assertion behavior changes
+# release evidence even though none of these files is deployed to the app.
+# Keep local-only e2e fixtures and ordinary unit tests on their normal path.
+_PRODUCTION_SMOKE_CONTROL_EXACT = {
+    "frontend/playwright.config.js",
+    "frontend/e2e/smoke.spec.js",
+    "frontend/e2e/dashboard-workbench.spec.js",
+    "frontend/e2e/classroom-management-production-smoke.spec.js",
+    "frontend/e2e/duplicate-review-human-labels.spec.js",
+    "frontend/e2e/fixtures/dismissOverlays.js",
+    "frontend/e2e/fixtures/branchApiProbe.js",
+    "frontend/e2e/fixtures/directorDashboardTelemetry.js",
+    "frontend/e2e/fixtures/tutoringReceivableControls.js",
+}
+
 _T3_MARKERS = (
     "billing",
     "payment",
@@ -490,7 +506,13 @@ def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
     reasons: list[str] = []
 
     for path in normalized:
-        if any(path.startswith(prefix) for prefix in _T3_PREFIXES):
+        if path in _PRODUCTION_SMOKE_CONTROL_EXACT or (
+            path.startswith("frontend/e2e/")
+            and path.endswith(("-production.spec.js", "-production-smoke.spec.js"))
+        ):
+            minimum = max(minimum, 3)
+            reasons.append(f"production smoke control path: {path}")
+        elif any(path.startswith(prefix) for prefix in _T3_PREFIXES):
             minimum = max(minimum, 3)
             reasons.append(f"protected path: {path}")
         elif not non_runtime_only and path.startswith("frontend/src/"):

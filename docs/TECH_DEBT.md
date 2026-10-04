@@ -602,13 +602,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open（建議做法 (2) 已完成——`ui-smoke.yml` 新增「Warn if smoke secrets are missing」步驟，缺 secret 時印出 `::warning::` annotation，讓「這條防線目前是空的」在每次 CI run 都可見；(1) 補真正的測試帳密、(3) 部署後 synthetic check 仍待處理，見下方） |
+| 狀態 | Open。#3510 將缺少任何必要 smoke 輸入改為 workflow 失敗；目前有真實測試帳密可執行 director/teacher 案例（#3511 run `37183275128`），但 director dashboard 對正式站仍因初始化 tuition 403 失敗（#3506）。部署後 synthetic check 仍待處理。UI Smoke 尚非 GitHub required check。 |
 | 優先級 | P1 |
 | 發現日期 | 2026-07-29 |
 | 發現來源 | 課程管理頁 P0 整頁空白事故（主任回報，見 CHANGELOG 2026-07-29 fix(course-management)）事後根因鏈追查 |
 | 影響模組 | `.github/workflows/ui-smoke.yml`、`frontend/e2e/smoke.spec.js`（`UI smoke — director` describe block） |
 | 描述 | `smoke.spec.js` 早就寫了 `director: 課程管理頁與待補課面板載入` 測試（登入主任帳號 → 切到課程管理 → 斷言 0 個 `pageerror`），理論上今早引入 bug 的 PR #1409 應該過不了這條測試。但實測：`ui-smoke.yml` 讀取的 `secrets.SMOKE_DIRECTOR_USER`/`SMOKE_DIRECTOR_PASS` 是空字串，`smoke.spec.js:70` 的 `test.skip(!BASE \|\| !DIRECTOR.account, …)` 因此把整個 `UI smoke — director` describe block 靜默跳過——不是失敗、是「skipped」，PR 頁面顯示綠勾，看起來像測試通過。已在本次修復 PR #1502 的 CI run 裡重新確認：`SMOKE_DIRECTOR_USER: `／`SMOKE_DIRECTOR_PASS: `（空白）、`2 skipped`。這是本次事故完整根因鏈的最後一環：composable 沒被真正測試（R86）+ 沒有 TypeScript/ESLint no-undef 靜態檢查 + 唯一能攔住的 E2E 防線因缺 secret 而從未執行。 |
-| 建議做法 | (1) 由 repo owner 在 GitHub repo Settings → Secrets 補上一組**測試用**主任帳密（不要用真人 production 帳號；建議建立一個獨立、無敏感資料存取範圍的「主任角色 QA 帳號」）。(2) 更嚴格的修法：把「因缺 secret 而 skip」與「因程式碼問題而 skip」分開——目前 `test.skip()` 讓兩者外觀一致（都是灰色 skipped），建議 CI 另外加一個 assertion（例如 workflow 層印出 `::warning::SMOKE_DIRECTOR_* not set — director smoke path is not exercised`），讓「這條防線目前是空的」這件事在每次 CI run 都可見，而不是要翻 log 才看得到。(3) 中期可比照大型組織做法：對「頁面完全無法渲染」這類 P0 症狀，不應只靠 PR-time smoke test，應該在 `deploy.yml` 部署後跑一次最小 synthetic check（curl 或無頭瀏覽器打開 3–5 個高流量頁、確認無 JS exception）才把這次 deploy 視為成功，不成功則自動标记/通知，而非等使用者回報。 |
+| 建議做法 | (1) 維護受限測試帳號與注入設定，不使用真人帳號。(2) #3510 在執行 smoke 前檢查必要輸入，缺失即失敗；待受保護合併後生效。(3) 解決 #3506 產品 403 時序並以真實 smoke 驗證，再評估 required rule；部署後 synthetic check 另案規劃。 |
 | 清償成本估計 | 低（申請/建立測試帳號 + 補 GitHub secret，約 30 分鐘；CI 層的「可見 skip」改進約 1 小時） |
 | 不做的代價 | 這類「整頁完全空白」的 P0 前端 crash 會持續只能靠使用者主動回報才發現（本次事故從部署到主任回報間隔 4 小時以上），而 CI 頁面會持續顯示綠勾造成團隊誤以為有 E2E 防線，形成比「完全沒有測試」更危險的假安全感 |
 

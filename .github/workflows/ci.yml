@@ -60,6 +60,8 @@ jobs:
           node --test scripts/tests/register-synthetic-director.test.mjs
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
+          python3 -m unittest scripts.tests.test_pr_declaration_gate
+          python3 -m unittest scripts.tests.test_ui_smoke_gate
           python3 scripts/tests/test_required_php_checks.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
