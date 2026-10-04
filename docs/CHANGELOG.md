@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(scheduling): availability counts the same live lessons as booking; course slot edits don't block on their own lessons (in-app #338 #347 #359 #363 #365 #327)
 <!-- release-notes: silent_ship=silent-2026-10-04-availability-parity -->
 - 代課挑選與跨校衝堂檢查改用與排課相同的「有效堂次」規則（不再把停課、請假調整、作廢、已改期的堂次算成已滿／他校有課），他校衝突顯示「他校有課」；修改課程時段不再被自己舊時段的堂次或不同日期的學生加總擋下
+## 2026-10-04 — fix(billing-ui): ledger explains empty slips, shows rejected reports, 後5碼 and 備註 (in-app #354 #355 #356)
+<!-- release-notes: silent_ship=silent-2026-10-04-ledger-last5-notes -->
+- 繳費明細在尚無帳單與收據時改顯示「繳費單是依課程估算，尚未建立帳單」說明；收據紀錄新增已退回的登記，並在繳費明細與帳務中心收據紀錄顯示轉帳後5碼與備註（僅顯示，不改任何金額、狀態或權限）。
 ## 2026-10-04 — feat(bug-report): reports carry the last buttons pressed and messages seen (F15)
 <!-- release-notes: silent_ship=silent-2026-10-04-report-breadcrumbs -->
 - 意見與建議回報自動附上最近按過的 15 個按鈕標籤與 5 則錯誤／警告訊息（不記 alert／confirm，避免臨時密碼等），長數字遮罩、不含輸入值；登出或切換分校即清除；後台分診卡顯示「最近按過／畫面訊息」（只存在 app 內，不進公開 log）。SOP 改為先查、不問。
