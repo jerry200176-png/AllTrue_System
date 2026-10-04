@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -168,11 +169,15 @@ class DoraEvidenceTest(unittest.TestCase):
             self.assertEqual(1, len(re.findall(rf"(?m)^      - name: {re.escape(step)}$", block.group(1))))
 
     def test_reporter_path_is_control_plane_only(self):
-        from scripts.governance.autonomy_gate import is_application_runtime_path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+        try:
+            from scripts.governance.autonomy_gate import is_application_runtime_path
 
-        self.assertFalse(is_application_runtime_path(".github/scripts/dora_metrics.py"))
-        self.assertFalse(is_application_runtime_path(".github/scripts/test_dora_metrics.py"))
-        self.assertTrue(is_application_runtime_path("scripts/dora_metrics.py"))
+            self.assertFalse(is_application_runtime_path(".github/scripts/dora_metrics.py"))
+            self.assertFalse(is_application_runtime_path(".github/scripts/test_dora_metrics.py"))
+            self.assertTrue(is_application_runtime_path("scripts/dora_metrics.py"))
+        finally:
+            sys.path.pop(0)
 
     def test_runtime_mismatch_and_api_failure_report_unknown(self):
         with patch.object(dora, "workflow_runs", return_value=[run(37138976778, "completed", "success")]):

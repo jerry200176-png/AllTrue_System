@@ -19,7 +19,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify DORA receipt contract
-        run: python3 -m unittest discover -s .github/scripts -p 'test_dora_metrics.py'
+        run: python3 .github/scripts/test_dora_metrics.py
 
       - name: Report evidenced DORA metrics
         env:
