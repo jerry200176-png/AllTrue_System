@@ -1769,6 +1769,9 @@ jobs:
               "reporter_user_id"=>(int)$bug->reporter_user_id,
               "title"=>$title,
               "description"=>$desc,
+              // F15: what the reporter pressed / saw / which request failed (redacted like the description).
+              "client_info"=>$redact($bug->client_info ?? ""),
+              "url_path"=>$redact($bug->url ?? ""),
               "created_at"=>$bug->created_at,
               "updated_at"=>$bug->updated_at,
             ],

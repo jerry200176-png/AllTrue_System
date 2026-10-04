@@ -131,6 +131,7 @@ last_reviewed: 2026-08-23
 | A3 | `gh issue create`：title 含現象；body 必含 **in-app #**、**附件 id**、分校、B1 發現、預期 vs 實際 |
 | A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL；建議帶 `disposition` + `github_issue_url` 寫入 `product_loop` |
 | A5 | 回報 CEO：in-app # ↔ GitHub # 對照表（亦可直接讀 `product_loop`） |
+| A5b | **先查、不問（F15）**：回報者通常不會回覆。分診先用 detail dump 的 `client_info`（最近按過的按鈕、畫面訊息、失敗請求、版本）、正式站唯讀 probe、程式碼與同校同時段的其他回報自己重現。公開回覆寫「我們查到的原因＋會怎麼修／已修」，**不要**列問題請回報者回答；只有查完仍無法判斷、且答案會改變修法時，才問**一個**是非題。 |
 | A6 | **建議類（feature／ux／不做／重複）不留 `triaged`**（F12）：開／找到 GitHub issue → `bug-phase-a-triage.yml` 帶 `close_as_logged=true` + `disposition`（`suggestion`／`ux_friction`／`not_planned`／`duplicate`）。回覆範本：「已收進產品清單 <issue URL>。上線時會在這裡通知你；想補充直接回覆就會重開。」上線後用 `bug-followup-comment.yml`（`expected_status=closed` + `production_revision` + `deploy_run_id`）回「已上線＋怎麼用」；只對 `closed_as_logged` 且同一 issue 的單有效，會寫入 production evidence |
 
 **分診留言範本（公開）**：已收到 #___、已看附件 #___（若有）、已建 GitHub #___ 追蹤；勿叫補截圖若附件已存在。

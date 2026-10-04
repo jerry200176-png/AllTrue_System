@@ -38,6 +38,60 @@ export function installFetchRecorder() {
   };
 }
 
+// F15 (Sentry/Bugsnag-style breadcrumbs): the last buttons the user pressed and the last messages they saw,
+// so a report answers "which button / what did the screen say" without asking the reporter.
+// Labels only (no input values); runs of 4+ digits are masked; clicks inside the report dialog are skipped.
+const MAX_CLICKS = 15;
+const MAX_MESSAGES = 5;
+const clicks = [];
+const messages = [];
+let uiInstalled = false;
+
+const cleanText = (text, max) => String(text || '').replace(/\s+/g, ' ').trim().replace(/\d{4,}/g, '#').slice(0, max);
+
+export function recordUserMessage(kind, text) {
+  const t = cleanText(text, 120);
+  if (!t) return;
+  messages.push({ kind, text: t, at: new Date().toISOString() });
+  if (messages.length > MAX_MESSAGES) messages.shift();
+}
+
+export function installUiRecorder() {
+  if (uiInstalled || typeof document === 'undefined') return;
+  uiInstalled = true;
+  document.addEventListener('click', (event) => {
+    try {
+      const el = event.target?.closest?.('button, a, [role="button"], [role="tab"], [role="menuitem"], [role="option"], summary');
+      if (!el || el.closest('.bug-launcher, .bug-report-dialog')) return;
+      const label = cleanText(el.getAttribute('aria-label') || el.innerText || el.textContent || el.getAttribute('title'), 30);
+      if (!label) return;
+      clicks.push({ label, at: new Date().toISOString() });
+      if (clicks.length > MAX_CLICKS) clicks.shift();
+    } catch { /* recording must never break a click */ }
+  }, true);
+  for (const name of ['alert', 'confirm']) {
+    const orig = window[name];
+    if (typeof orig !== 'function') continue;
+    window[name] = (msg, ...rest) => {
+      recordUserMessage(name, msg);
+      return orig.call(window, msg, ...rest);
+    };
+  }
+}
+
+export function getRecentClicks() {
+  return clicks.map((c) => ({ ...c }));
+}
+
+export function getRecentMessages() {
+  return messages.map((m) => ({ ...m }));
+}
+
+export function resetUiRecorderForTest() {
+  clicks.length = 0;
+  messages.length = 0;
+}
+
 export function getRecentApiFailures() {
   return failures.map((f) => ({ ...f }));
 }
@@ -58,13 +112,20 @@ export function getBuildSha() {
 
 export const CLIENT_INFO_MAX = 3800;
 
-/** JSON.stringify(info) that always parses and fits: shed failures oldest-first, then relatedReference. */
+/** JSON.stringify(info) that always parses and fits: shed clicks, messages, failures oldest-first, then relatedReference. */
 export function fitClientInfo(info, max = CLIENT_INFO_MAX) {
-  const o = { ...info, recentApiFailures: [...(info.recentApiFailures || [])] };
+  const o = {
+    ...info,
+    recentApiFailures: [...(info.recentApiFailures || [])],
+    recentClicks: [...(info.recentClicks || [])],
+    recentMessages: [...(info.recentMessages || [])],
+  };
   let s = JSON.stringify(o);
-  while (s.length > max && o.recentApiFailures.length) {
-    o.recentApiFailures.shift();
-    s = JSON.stringify(o);
+  for (const key of ['recentClicks', 'recentMessages', 'recentApiFailures']) {
+    while (s.length > max && o[key].length) {
+      o[key].shift();
+      s = JSON.stringify(o);
+    }
   }
   if (s.length > max) {
     o.relatedReference = null;
