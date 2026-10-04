@@ -69,7 +69,8 @@
 
           <section class="ledger-section">
             <h4>帳單</h4>
-            <div v-if="ledgerBothEmpty" class="ledger-empty">繳費單是依課程估算，尚未建立帳單；登記並確認入帳後才會出現在這裡。</div>
+            <div v-if="ledgerBothEmpty && payload.scope?.no_payment_obligation" class="ledger-empty">輔導課不需繳費，所以這裡不會有帳單或收據。</div>
+            <div v-else-if="ledgerBothEmpty" class="ledger-empty">繳費單是依課程估算，尚未建立帳單；登記並確認入帳後才會出現在這裡。</div>
             <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
             <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
               <table class="ledger-table">
@@ -181,7 +182,7 @@
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
                 <small v-if="r.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
-                <small v-if="r.account_last5 || r.note" class="ledger-receipt-extra">
+                <small v-if="r.account_last5 || r.note" class="ledger-receipt-extra" :title="r.note || undefined">
                   <template v-if="r.account_last5">後5碼 {{ r.account_last5 }}</template>
                   <template v-if="r.account_last5 && r.note"> · </template>
                   <template v-if="r.note">備註：{{ r.note }}</template>
@@ -489,7 +490,7 @@ const anomalyLabel = (code) => labelMap({
 
 .ledger-receipts{display:grid;gap:8px}
 .ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--ds-canvas-soft);border-radius:10px}
-.ledger-receipt-extra{flex-basis:100%}
+.ledger-receipt-extra{flex-basis:100%;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ledger-receipts--compact .ledger-receipt{padding:8px 10px}
 .ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,var(--ds-ink-mute))}
 .ledger-table small{display:block;margin-top:2px}

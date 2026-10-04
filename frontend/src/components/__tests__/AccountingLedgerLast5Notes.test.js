@@ -27,6 +27,12 @@ describe('AccountingLedgerModal empty state, 後5碼 and 備註', () => {
     expect(w.text()).not.toContain('此學生尚無帳單');
   });
 
+  it('tells tutoring courses there is no payment, never to register one', async () => {
+    const w = await mountWith({ summary: {}, scope: { student_class_id: 1, no_payment_obligation: true }, invoices: [], receipts: [], anomalies: [] });
+    expect(w.text()).toContain('輔導課不需繳費');
+    expect(w.text()).not.toContain('登記並確認入帳');
+  });
+
   it('judges emptiness for the scoped course, not the whole student', async () => {
     const other = { id: 9, student_class_id: 2, total_amount: 100, status: 'unpaid', payments: [] };
     const w = await mountWith({ summary: {}, scope: { student_class_id: 1 }, invoices: [other], receipts: [], anomalies: [] });

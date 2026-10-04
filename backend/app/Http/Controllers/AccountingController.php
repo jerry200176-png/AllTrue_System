@@ -222,7 +222,7 @@ class AccountingController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $reports = PaymentReport::with(['confirmedByUser'])
+        $reports = PaymentReport::with(['confirmedByUser', 'payment'])
             ->where('StudentID', $student->id)
             ->whereIn('status', ['pending', 'confirmed', 'voided', 'rejected'])
             ->orderByDesc('payment_date')
@@ -454,6 +454,8 @@ class AccountingController extends Controller
                 'student_class_id' => (int) $anchorClass->ID,
                 'report_id' => $anchorReport ? (int) $anchorReport->id : null,
                 'class_count' => count($classIds),
+                // Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked).
+                'no_payment_obligation' => strtolower(trim((string) $anchorClass->getAttribute('ClassType'))) === 'tutoring',
             ],
             'summary' => [
                 'invoice_total' => $invoiceTotal,
@@ -680,10 +682,12 @@ class AccountingController extends Controller
 
     private function ledgerReportRow(PaymentReport $report): array
     {
+        $receiptNo = $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null);
+
         return [
             'report_id' => (int) $report->id,
             // 退回的回報從未成為收據，不給收據編號。
-            'receipt_no' => $report->status === 'rejected' ? '' : $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null),
+            'receipt_no' => (string) $report->getAttribute('status') === 'rejected' ? '' : $receiptNo,
             'student_class_id' => (int) $report->StudentClassID,
             'course_ref' => $this->courseRef((int) $report->StudentClassID),
             'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
@@ -691,7 +695,8 @@ class AccountingController extends Controller
             'payment_date' => $report->payment_date ? $report->payment_date->toDateString() : null,
             'payment_method' => (string) ($report->payment_method ?? ''),
             'account_last5' => (string) ($report->account_last5 ?? ''),
-            'note' => (string) ($report->note ?? ''),
+            // Confirmed receipts: the payment's note is authoritative (confirmation may replace it).
+            'note' => (string) (((string) $report->getAttribute('status') === 'confirmed' ? $report->getRelationValue('payment')?->getAttribute('Note') : null) ?? $report->note ?? ''),
             'amount' => (int) round((float) $report->reported_amount),
             'status' => (string) $report->status,
             'confirmed_at' => $report->confirmed_at?->toIso8601String(),
@@ -795,7 +800,7 @@ class AccountingController extends Controller
             'payment_method' => $method,
             'account_last5' => (string) ($report->account_last5 ?? ''),
             // 已確認收據以收款紀錄的備註為準（確認時可能覆寫），否則用回報備註。
-            'note' => (string) (($isConfirmed ? $report->payment?->Note : null) ?? $report->note ?? ''),
+            'note' => (string) (($isConfirmed ? $report->getRelationValue('payment')?->getAttribute('Note') : null) ?? $report->note ?? ''),
             'cash_amount' => $isConfirmed && $method === 'cash' ? $amount : 0,
             'transfer_amount' => $isConfirmed && $method === 'transfer' ? $amount : 0,
             'total_amount' => $isConfirmed ? $amount : 0,
