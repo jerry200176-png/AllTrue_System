@@ -61,6 +61,7 @@ jobs:
           node scripts/governance/check-production-workflow-inventory.mjs
           python3 scripts/tests/test_governance_simplification.py
           python3 scripts/tests/test_required_php_checks.py
+          python3 .github/scripts/test_dora_metrics.py
           bash scripts/tests/production-acceptance-stage-contract.test.sh
           bash scripts/tests/acceptance-login-contract.test.sh
           bash scripts/tests/synthetic-director-workflow-contract.test.sh
