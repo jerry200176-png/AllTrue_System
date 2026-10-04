@@ -204,7 +204,7 @@ export function pickerSlotConflict({
   branchNameMap = {},
 } = {}) {
   if (!overlappingSlots.length) {
-    return { conflict: false, capacityWarn: false, conflictTooltip: '', conflictCampusId: 0 };
+    return { conflict: false, capacityWarn: false, conflictTooltip: '', conflictCampusId: 0, otherCampusConflict: false };
   }
 
   const unique = uniqueOccupantsFromBusySlots(overlappingSlots);
@@ -222,13 +222,14 @@ export function pickerSlotConflict({
     )));
   }
 
-  const conflict = remaining <= 0 || unique >= TEACHER_SLOT_ABSOLUTE_MAX;
-  const capacityWarn = !conflict && unique > 0;
   const sessionCampus = Number(sessionCampusId || 0);
   const other = overlappingSlots.find((slot) => {
     const campusId = Number(slot.campus_id || 0);
     return campusId > 0 && sessionCampus > 0 && campusId !== sessionCampus;
   });
+  // Backend substitute rejects any other-campus overlap regardless of capacity.
+  const conflict = Boolean(other) || remaining <= 0 || unique >= TEACHER_SLOT_ABSOLUTE_MAX;
+  const capacityWarn = !conflict && unique > 0;
   const local = overlappingSlots.find((slot) => Number(slot.campus_id || 0) > 0) || overlappingSlots[0];
   const conflictCampusId = Number((conflict && (other || local)?.campus_id) || 0);
   let conflictTooltip = '';
@@ -241,5 +242,5 @@ export function pickerSlotConflict({
     }
   }
 
-  return { conflict, capacityWarn, conflictTooltip, conflictCampusId };
+  return { conflict, capacityWarn, conflictTooltip, conflictCampusId, otherCampusConflict: conflict && Boolean(other) };
 }
