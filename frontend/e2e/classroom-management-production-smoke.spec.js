@@ -34,7 +34,7 @@ test.describe('UI smoke — production classroom management', () => {
     page.on('pageerror', (error) => errors.push(String(error)));
     page.on('response', (response) => {
       const path = new URL(response.url()).pathname;
-      if (['/api/auth/login', '/api/v1/me', '/api/v1/campuses'].includes(path)) {
+      if (['/api/v1/auth/login', '/api/v1/me', '/api/v1/campuses'].includes(path)) {
         // Keep failed-login evidence without printing credentials or bodies.
         console.log(`[classroom-smoke] ${path} HTTP ${response.status()}`);
       }

@@ -75,7 +75,7 @@ for (const viewport of VIEWPORTS) {
     });
     page.on('response', (response) => {
       const path = new URL(response.url()).pathname;
-      if (['/api/auth/login', '/api/v1/me', '/api/v1/campuses', '/api/v1/alerts/tuition'].includes(path)) {
+      if (['/api/v1/auth/login', '/api/v1/me', '/api/v1/campuses', '/api/v1/alerts/tuition'].includes(path)) {
         // Only endpoint names and status codes: no accounts, tokens or payloads.
         console.log(`[director-workbench] ${path} HTTP ${response.status()}`);
       }
