@@ -1,3 +1,7 @@
+## 2026-10-04 — fix(class-sessions): reject invalid date filters before projection (#3493)
+<!-- release-notes: silent_ship=silent-2026-10-04-class-sessions-date-validation -->
+- `/api/v1/class-sessions` 的 `start`／`end` 若不是有效的 YYYY-MM-DD 日期，現在回傳 422 驗證錯誤；有效日期的閉區間查詢不變。
+
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->
 - 學生管理的試聽課改走「轉為正式課程」（與課程管理一致）；後端加購端點拒絕試聽來源，避免再建立試聽批次

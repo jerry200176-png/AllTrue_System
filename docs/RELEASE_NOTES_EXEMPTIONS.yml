@@ -2,6 +2,11 @@
 # Every silent ship must have a stable id and a plain-language reason.
 
 exemptions:
+  - id: silent-2026-10-04-class-sessions-date-validation
+    changelog_date: "2026-10-04"
+    changelog_title: "fix(class-sessions): reject invalid date filters before projection (#3493)"
+    reason: 僅修正 API 無效日期由伺服器錯誤改為驗證錯誤，介面、有效查詢與操作流程未變，不另公告。
+
   - id: silent-2026-10-01-calendar-tutoring-acceptance
     changelog_date: "2026-10-01"
     changelog_title: "fix(qa): production calendar and tutoring acceptance follow actual contracts"
