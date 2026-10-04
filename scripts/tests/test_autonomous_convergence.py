@@ -5,6 +5,7 @@ import unittest
 
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "autonomous-convergence.yml"
+UI_SMOKE_WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "ui-smoke.yml"
 
 
 def should_dispatch(*, active_ci, recent_dispatch, deploy_present):
@@ -43,6 +44,17 @@ class AutonomousConvergenceTest(unittest.TestCase):
         self.assertNotIn("github.event_name == 'schedule'", workflow)
         self.assertIn("group: autonomous-main-convergence", workflow)
         self.assertIn("cancel-in-progress: true", workflow)
+
+    def test_ui_smoke_cancels_only_older_runs_for_the_same_pr(self):
+        workflow = UI_SMOKE_WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn(
+            "group: ui-smoke-${{ github.event.pull_request.number || github.run_id }}",
+            workflow,
+        )
+        self.assertIn(
+            "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+            workflow,
+        )
 
     def test_dispatches_when_merge_left_no_exact_main_evidence(self):
         self.assertTrue(should_dispatch(active_ci=False, recent_dispatch=False, deploy_present=False))
