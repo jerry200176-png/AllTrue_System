@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { createBranchApiProbe } from './fixtures/branchApiProbe.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const DIRECTOR = { account: process.env.SMOKE_DIRECTOR_USER, password: process.env.SMOKE_DIRECTOR_PASS };
@@ -49,16 +50,14 @@ async function seedOnboardingCompleted(page) {
 }
 
 async function login(page) {
+  const tuitionProbe = createBranchApiProbe('/api/v1/alerts/tuition');
+  page.on('response', tuitionProbe.observe);
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('alltrue.director_dashboard_view_mode.v1'));
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
   const campusesPromise = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/api/v1/campuses' && response.status() === 200,
-    { timeout: 25_000 },
-  );
-  const tuitionPromise = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/api/v1/alerts/tuition' && response.status() === 200,
     { timeout: 25_000 },
   );
   await page.locator('button.login-btn').click();
@@ -74,18 +73,16 @@ async function login(page) {
       (options) => options.map((option) => Number(option.value)).sort((a, b) => a - b),
     )
   ), { timeout: 25_000 }).toEqual(authorizedIdsSorted);
-  expect(authorizedIds.has(Number(await page.locator('#mobile-branch-select').inputValue())),
+  const selectedBranch = Number(await page.locator('#mobile-branch-select').inputValue());
+  expect(authorizedIds.has(selectedBranch),
     'selected dashboard campus ID must be authorized').toBe(true);
   // A public default branch can render the heading before auth bootstrap.
-  // Require a successful dashboard request for an authorized campus ID.
-  const tuitionResponse = await tuitionPromise;
-  const tuitionBranchId = new URL(tuitionResponse.url()).searchParams.get('branch_id');
-  expect(tuitionBranchId, 'tuition response must identify its campus').not.toBeNull();
-  const tuitionBranch = Number(tuitionBranchId);
-  expect(authorizedIds.has(tuitionBranch), 'tuition request must target an authorized campus ID').toBe(true);
+  // Start a fresh read deadline only after the selected campus is known.
+  await expect.poll(() => tuitionProbe.hasSuccessFor(selectedBranch), { timeout: 25_000 }).toBe(true);
   await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
   await seedOnboardingCompleted(page);
   await dismissOverlays(page);
+  return tuitionProbe;
 }
 
 for (const viewport of VIEWPORTS) {
@@ -109,7 +106,7 @@ for (const viewport of VIEWPORTS) {
     });
     page.on('pageerror', (error) => errors.push(String(error)));
 
-    await login(page);
+    const tuitionProbe = await login(page);
     await expect(page.getByText('主任總覽', { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('今日摘要', { exact: true })).toBeVisible();
 
@@ -137,6 +134,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByRole('heading', { name: '繳費與續課', exact: true })).toBeVisible();
     await expect.poll(() => tuitionAlertsResponse?.status()).toBe(200);
 
+    expect(tuitionProbe.unauthorizedStatuses(), 'tuition API must not return 401/403, even before a later 200').toEqual([]);
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 }

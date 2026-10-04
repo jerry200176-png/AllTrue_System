@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { dismissOverlays } from './fixtures/dismissOverlays.js';
+import { createBranchApiProbe } from './fixtures/branchApiProbe.js';
 
 const BASE = process.env.SMOKE_BASE_URL;
 const DIRECTOR = {
@@ -9,6 +10,8 @@ const DIRECTOR = {
 };
 
 async function loginAsDirector(page) {
+  const roomsProbe = createBranchApiProbe('/api/v1/rooms');
+  page.on('response', roomsProbe.observe);
   // Let App.vue apply its own deep link after auth/profile bootstrap instead
   // of navigating a second time while the authorized campus is still loading.
   await page.goto('/?app_page=classroom');
@@ -16,10 +19,6 @@ async function loginAsDirector(page) {
   await page.locator('#login-password').fill(DIRECTOR.password);
   const campusesPromise = page.waitForResponse(
     (response) => new URL(response.url()).pathname === '/api/v1/campuses' && response.status() === 200,
-    { timeout: 25_000 },
-  );
-  const roomsPromise = page.waitForResponse(
-    (response) => new URL(response.url()).pathname === '/api/v1/rooms' && response.status() === 200,
     { timeout: 25_000 },
   );
   await page.locator('button.login-btn').click({ force: true });
@@ -36,13 +35,11 @@ async function loginAsDirector(page) {
       (options) => options.map((option) => Number(option.value)).sort((a, b) => a - b),
     )
   ), { timeout: 25_000 }).toEqual(authorizedIdsSorted);
-  expect(authorizedIds.has(Number(await page.locator('#mobile-branch-select').inputValue())),
+  const selectedBranch = Number(await page.locator('#mobile-branch-select').inputValue());
+  expect(authorizedIds.has(selectedBranch),
     'selected classroom campus ID must be authorized').toBe(true);
-  const roomsResponse = await roomsPromise;
-  const roomsBranchId = new URL(roomsResponse.url()).searchParams.get('branch_id');
-  expect(roomsBranchId, 'classroom response must identify its campus').not.toBeNull();
-  const roomsBranch = Number(roomsBranchId);
-  expect(authorizedIds.has(roomsBranch), 'classroom request must target an authorized campus ID').toBe(true);
+  await expect.poll(() => roomsProbe.hasSuccessFor(selectedBranch), { timeout: 25_000 }).toBe(true);
+  return roomsProbe;
 }
 
 test.describe('UI smoke — production classroom management', () => {
@@ -57,13 +54,13 @@ test.describe('UI smoke — production classroom management', () => {
     page.on('pageerror', (error) => errors.push(String(error)));
     page.on('response', (response) => {
       const path = new URL(response.url()).pathname;
-      if (['/api/v1/auth/login', '/api/v1/me', '/api/v1/campuses'].includes(path)) {
+      if (['/api/v1/auth/login', '/api/v1/me', '/api/v1/campuses', '/api/v1/rooms'].includes(path)) {
         // Keep failed-login evidence without printing credentials or bodies.
         console.log(`[classroom-smoke] ${path} HTTP ${response.status()}`);
       }
     });
 
-    await loginAsDirector(page);
+    const roomsProbe = await loginAsDirector(page);
     await dismissOverlays(page);
 
     await expect(page.getByRole('heading', { name: '教室管理', exact: true })).toBeVisible();
@@ -85,6 +82,7 @@ test.describe('UI smoke — production classroom management', () => {
       await expect(page.locator('.empty-text').getByRole('button', { name: '新增教室', exact: true })).toBeVisible();
     }
 
+    expect(roomsProbe.unauthorizedStatuses(), 'rooms API must not return 401/403, even before a later 200').toEqual([]);
     expect(errors, `頁面 JS 錯誤：\n${errors.join('\n')}`).toEqual([]);
   });
 });
