@@ -502,7 +502,7 @@ def has_rollback_evidence(body: str) -> bool:
 
 
 def classify_scope(paths: Iterable[str], patch: str = "") -> dict[str, object]:
-    """Derive the minimum safe tier from paths and diff text."""
+    """Derive the minimum safe tier from paths and diff text, including production UI smoke controls."""
 
     normalized = [str(path).replace("\\", "/") for path in paths if path]
     if is_readonly_probe_only(normalized, patch):
