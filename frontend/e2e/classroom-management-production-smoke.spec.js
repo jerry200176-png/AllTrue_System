@@ -12,14 +12,25 @@ async function loginAsDirector(page) {
   await page.goto('/');
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
+  const campusesPromise = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/v1/campuses' && response.status() === 200,
+    { timeout: 25_000 },
+  );
   await page.locator('button.login-btn').click({ force: true });
   if (await page.locator('#login-account').count()) {
     await page.locator('button.login-btn').click({ force: true });
   }
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
-  // Deep-link navigation before the director landing state settles can be
-  // overwritten by the auth/profile bootstrap and leave this test elsewhere.
+  const campuses = await (await campusesPromise).json();
+  expect(Array.isArray(campuses) && campuses.length > 0, 'director must have authorized campuses').toBe(true);
+  const authorizedNames = new Set(campuses.map((campus) => campus.name));
+  // Deep-link navigation before authenticated branch resolution can be
+  // overwritten by auth/profile bootstrap or use a public default branch.
   await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
+  await expect.poll(
+    async () => authorizedNames.has((await page.locator('.director-workbench-v2 .at-page-header__desc').textContent())?.split(' · ')[0]),
+    { message: 'director dashboard must show an authorized campus', timeout: 25_000 },
+  ).toBe(true);
 }
 
 test.describe('UI smoke — production classroom management', () => {

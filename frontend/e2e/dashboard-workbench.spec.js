@@ -53,11 +53,22 @@ async function login(page) {
   await page.evaluate(() => localStorage.removeItem('alltrue.director_dashboard_view_mode.v1'));
   await page.locator('#login-account').fill(DIRECTOR.account);
   await page.locator('#login-password').fill(DIRECTOR.password);
+  const campusesPromise = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/v1/campuses' && response.status() === 200,
+    { timeout: 25_000 },
+  );
   await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
-  // The login form can disappear before the authenticated branch and dashboard
-  // have finished loading. Wait for the actual director landing state.
+  const campuses = await (await campusesPromise).json();
+  expect(Array.isArray(campuses) && campuses.length > 0, 'director must have authorized campuses').toBe(true);
+  const authorizedNames = new Set(campuses.map((campus) => campus.name));
+  // The main can render with a public default branch before authenticated
+  // campuses replace it. Wait for the displayed branch to be authorized.
   await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
+  await expect.poll(
+    async () => authorizedNames.has((await page.locator('.director-workbench-v2 .at-page-header__desc').textContent())?.split(' · ')[0]),
+    { message: 'director dashboard must show an authorized campus', timeout: 25_000 },
+  ).toBe(true);
   await seedOnboardingCompleted(page);
   await dismissOverlays(page);
 }
