@@ -30,9 +30,9 @@ def run(run_id, status, conclusion, sha=SHA, attempt=1, event="workflow_run",
 
 
 def job(conclusion, completed="2026-10-03T22:12:28Z", steps=None, attempt=1,
-        run_id=37138976778, sha=SHA):
+        run_id=37138976778, sha=SHA, started="2026-10-03T22:00:00Z"):
     return {"name": "Deploy to Production", "status": "completed", "conclusion": conclusion,
-            "completed_at": completed, "steps": steps if steps is not None else [],
+            "started_at": started, "completed_at": completed, "steps": steps if steps is not None else [],
             "run_id": run_id, "run_attempt": attempt, "head_sha": sha}
 
 
@@ -65,20 +65,26 @@ class FakeGH:
         return self.archives[artifact_id]
 
 
-def manual_fixture(run_id=36955378940, attempt=1, target=MANUAL_TARGET):
+def manual_fixture(run_id=36955378940, attempt=1, target=MANUAL_TARGET,
+                   event="workflow_dispatch", event_head=EVENT_HEAD):
     candidate = run(run_id, "completed", "success", sha=EVENT_HEAD,
-                    attempt=attempt, event="workflow_dispatch")
+                    attempt=attempt, event=event)
+    candidate["head_sha"] = event_head
     steps = GOOD["steps"] + [{"name": "Upload exact target deployment receipt",
+                              "status": "completed", "conclusion": "success"},
+                             {"name": "Mark exact deployment attempt",
                               "status": "completed", "conclusion": "success"}]
-    deployed_job = job("success", run_id=run_id, attempt=attempt, sha=EVENT_HEAD, steps=steps)
+    deployed_job = job("success", run_id=run_id, attempt=attempt, sha=event_head, steps=steps)
     receipt = {
         "schema": 1, "repository": "owner/repo", "source_sha": target,
-        "workflow_revision_sha": "b" * 40, "event_head_sha": EVENT_HEAD,
-        "event": "workflow_dispatch", "run_id": run_id, "run_attempt": attempt,
+        "workflow_revision_sha": "b" * 40, "event_head_sha": event_head,
+        "event": event, "run_id": run_id, "run_attempt": attempt,
+        "attempt_started_at": "2026-10-03T22:00:05Z",
         "deployed_at": "2026-10-03T22:11:33Z",
         "observed_at": "2026-10-03T22:12:00Z",
         "runtime": {"backend_sha": target, "frontend_sha": "f" * 40,
-                    "frontend_build_sha": "f" * 40, "source": "github-actions:deploy.yml"},
+                    "frontend_build_sha": "f" * 40, "frontend_identity_status": "full-sha",
+                    "source": "github-actions:deploy.yml"},
         "verification_state": "production-verified",
         "verification_evidence": "deploy.yml Deploy step health and post-merge smoke succeeded before receipt creation",
         "application_artifact_digest": "unknown", "configuration_version": "unknown",
@@ -89,7 +95,7 @@ def manual_fixture(run_id=36955378940, attempt=1, target=MANUAL_TARGET):
         "size_in_bytes": len(archive), "digest": "sha256:" + hashlib.sha256(archive).hexdigest(),
         "expired": False, "created_at": "2026-10-03T22:12:20Z",
         "expires_at": "2026-12-03T22:12:20Z",
-        "workflow_run": {"id": run_id, "head_sha": EVENT_HEAD},
+        "workflow_run": {"id": run_id, "head_sha": event_head},
     }
     responses = {
         (f"actions/runs/{run_id}/attempts/{attempt}/jobs", 1): {"total_count": 1, "jobs": [deployed_job]},
@@ -203,11 +209,15 @@ class DoraEvidenceTest(unittest.TestCase):
         rejected(lambda _run, _receipt, artifact, _gh: artifact.__setitem__("size_in_bytes", 0))
         rejected(lambda _run, _receipt, artifact, _gh: artifact.__setitem__("size_in_bytes", dora.MAX_ARTIFACT_BYTES + 1))
         rejected(lambda _run, _receipt, artifact, _gh: artifact.__setitem__("digest", "sha256:" + "0" * 64))
+        rejected(lambda _run, _receipt, artifact, _gh: artifact.__setitem__("digest", None))
+        rejected(lambda _run, _receipt, artifact, _gh: artifact.__setitem__("digest", "md5:" + "0" * 64))
         rejected(lambda _run, _receipt, artifact, _gh: artifact.__setitem__("workflow_run", {"id": 1, "head_sha": EVENT_HEAD}))
         rejected(lambda _run, receipt, artifact, gh: gh.archives.__setitem__(artifact["id"], receipt_zip({**receipt, "source_sha": "a" * 40})))
         rejected(lambda _run, _receipt, artifact, gh: gh.archives.__setitem__(artifact["id"], b"not a zip"))
         rejected(lambda _run, _receipt, artifact, _gh: artifact.__setitem__("expires_at", "2026-10-03T22:12:20Z"))
         rejected(lambda candidate, _receipt, _artifact, _gh: candidate.__setitem__("workflow_sha", "0" * 40))
+        rejected(lambda _run, _receipt, _artifact, gh: gh.responses[
+            ("actions/runs/36955378940/attempts/1/jobs", 1)]["jobs"][0]["steps"].pop())
 
     def test_manual_receipt_json_fields_fail_closed_after_valid_archive_digest(self):
         changes = [
@@ -222,6 +232,8 @@ class DoraEvidenceTest(unittest.TestCase):
             lambda r: r["runtime"].__setitem__("backend_sha", "0" * 40),
             lambda r: r.__setitem__("deployed_at", "2026-10-04T22:11:33Z"),
             lambda r: r.__setitem__("observed_at", "2026-10-03T22:50:00Z"),
+            lambda r: r.__setitem__("attempt_started_at", "2026-10-03T23:00:00Z"),
+            lambda r: r["runtime"].__setitem__("frontend_identity_status", "unknown"),
             lambda r: r.__setitem__("verification_evidence", ""),
             lambda r: r.__setitem__("verification_state", "deployed"),
         ]
@@ -263,6 +275,37 @@ class DoraEvidenceTest(unittest.TestCase):
         client.calls = dora.MAX_API_CALLS
         with self.assertRaisesRegex(dora.UnknownEvidence, "cap exceeded"):
             client.download_artifact(artifact["id"])
+
+    def test_frontend_identity_accepts_canonical_writer_legacy_shapes(self):
+        for value, status in (("abc1234", "short-sha"), ("unknown", "unknown"), (None, "unknown")):
+            with self.subTest(value=value):
+                candidate, receipt, artifact, gh = manual_fixture()
+                receipt["runtime"]["frontend_sha"] = value
+                receipt["runtime"]["frontend_build_sha"] = value
+                receipt["runtime"]["frontend_identity_status"] = status
+                archive = receipt_zip(receipt)
+                artifact["size_in_bytes"] = len(archive)
+                artifact["digest"] = "sha256:" + hashlib.sha256(archive).hexdigest()
+                gh.archives[artifact["id"]] = archive
+                self.assertEqual(MANUAL_TARGET, dora.verified_receipts(
+                    gh, [candidate], NOW - timedelta(days=30), NOW)[0]["sha"])
+
+    def test_new_automatic_run_requires_receipt_but_legacy_run_uses_head(self):
+        candidate, receipt, artifact, gh = manual_fixture(event="workflow_run", event_head=MANUAL_TARGET)
+        self.assertEqual(MANUAL_TARGET, dora.verified_receipts(
+            gh, [candidate], NOW - timedelta(days=30), NOW)[0]["sha"])
+        gh.responses[("actions/runs/36955378940/artifacts", 1)] = {"total_count": 0, "artifacts": []}
+        with self.assertRaisesRegex(dora.UnknownEvidence, "missing or duplicate"):
+            dora.verified_receipts(gh, [candidate], NOW - timedelta(days=30), NOW)
+        legacy = job("success", run_id=36955378940, sha=MANUAL_TARGET, steps=GOOD["steps"])
+        gh.responses[("actions/runs/36955378940/attempts/1/jobs", 1)] = {"total_count": 1, "jobs": [legacy]}
+        self.assertEqual(MANUAL_TARGET, dora.verified_receipts(
+            gh, [candidate], NOW - timedelta(days=30), NOW)[0]["sha"])
+
+    def test_new_automatic_receipt_target_must_match_run_head(self):
+        candidate, receipt, artifact, gh = manual_fixture(event="workflow_run", event_head=EVENT_HEAD)
+        with self.assertRaisesRegex(dora.UnknownEvidence, "automatic receipt target differs"):
+            dora.verified_receipts(gh, [candidate], NOW - timedelta(days=30), NOW)
 
     def test_failed_workflow_after_verified_deploy_still_counts(self):
         failed_later = run(37138976778, "completed", "failure")

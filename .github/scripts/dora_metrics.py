@@ -119,7 +119,9 @@ def exact_target_receipt(gh, attempt_run, job, now):
     if len(archive) != size:
         raise UnknownEvidence("deployment receipt artifact archive size differs")
     digest = artifact.get("digest")
-    if digest is not None and digest != f"sha256:{hashlib.sha256(archive).hexdigest()}":
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise UnknownEvidence("deployment receipt artifact digest is missing or malformed")
+    if digest != f"sha256:{hashlib.sha256(archive).hexdigest()}":
         raise UnknownEvidence("deployment receipt artifact digest differs")
     try:
         with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
@@ -157,13 +159,27 @@ def exact_target_receipt(gh, attempt_run, job, now):
         raise UnknownEvidence("deployment receipt provenance differs")
     if attempt_run.get("workflow_sha") is not None and revision != attempt_run["workflow_sha"]:
         raise UnknownEvidence("deployment receipt workflow revision differs")
-    for field in ("frontend_sha", "frontend_build_sha"):
-        if not isinstance(runtime.get(field), str) or not SHA.fullmatch(runtime[field]):
-            raise UnknownEvidence("deployment receipt runtime identity incomplete")
+    frontend = runtime.get("frontend_sha")
+    if frontend != runtime.get("frontend_build_sha"):
+        raise UnknownEvidence("deployment receipt frontend identities differ")
+    if frontend is None or frontend == "unknown":
+        expected_frontend_status = "unknown"
+    elif isinstance(frontend, str) and SHA.fullmatch(frontend):
+        expected_frontend_status = "full-sha"
+    elif isinstance(frontend, str) and re.fullmatch(r"[0-9a-f]{4,39}", frontend):
+        expected_frontend_status = "short-sha"
+    else:
+        raise UnknownEvidence("deployment receipt frontend identity is invalid")
+    if runtime.get("frontend_identity_status") != expected_frontend_status:
+        raise UnknownEvidence("deployment receipt frontend identity status differs")
     deployed = timestamp(receipt.get("deployed_at"))
     observed = timestamp(receipt.get("observed_at"))
-    if (not timestamp(attempt_run.get("created_at")) <= observed <= artifact_created <= timestamp(job.get("completed_at")) <= now
-            or not max(timestamp(attempt_run.get("created_at")), observed - timedelta(minutes=35)) <= deployed <= observed + timedelta(minutes=5)
+    started = timestamp(receipt.get("attempt_started_at"))
+    job_started = timestamp(job.get("started_at"))
+    if (not timestamp(attempt_run.get("created_at")) <= job_started <= started <= observed <= artifact_created <= timestamp(job.get("completed_at")) <= now
+            or observed - started > timedelta(minutes=35)
+            or not max(timestamp(attempt_run.get("created_at")), started - timedelta(minutes=5),
+                       observed - timedelta(minutes=35)) <= deployed <= observed + timedelta(minutes=5)
             or deployed > now):
         raise UnknownEvidence("deployment receipt time is outside completed job")
     return source, deployed
@@ -270,11 +286,18 @@ def _collect_receipts(gh, runs, period_start, now, receipts):
             event = attempt_run.get("event")
             sha = str(attempt_run.get("head_sha") or "").lower()
             deployed_at = None
-            if event in ("workflow_dispatch", "repository_dispatch"):
-                upload_steps = [step for step in steps if step.get("name") == "Upload exact target deployment receipt"]
+            if event not in ("workflow_run", "workflow_dispatch", "repository_dispatch"):
+                raise UnknownEvidence("unsupported production deployment event")
+            upload_steps = [step for step in steps if step.get("name") == "Upload exact target deployment receipt"]
+            if event in ("workflow_dispatch", "repository_dispatch") or upload_steps:
+                marker_steps = [step for step in steps if step.get("name") == "Mark exact deployment attempt"]
+                if len(marker_steps) != 1 or marker_steps[0].get("conclusion") != "success" or marker_steps[0].get("status") != "completed":
+                    raise UnknownEvidence("exact deployment attempt marker not proven")
                 if len(upload_steps) != 1 or upload_steps[0].get("conclusion") != "success" or upload_steps[0].get("status") != "completed":
                     raise UnknownEvidence("exact deployment receipt upload step not proven")
                 sha, deployed_at = exact_target_receipt(gh, attempt_run, job, now)
+                if event == "workflow_run" and sha != str(attempt_run.get("head_sha") or "").lower():
+                    raise UnknownEvidence("automatic receipt target differs from run head")
                 if deployed_at < period_start:
                     raise UnknownEvidence("exact deployment receipt predates reporting window")
             elif event != "workflow_run" or not SHA.fullmatch(sha):
