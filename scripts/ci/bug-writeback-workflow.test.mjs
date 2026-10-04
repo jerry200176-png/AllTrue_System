@@ -456,6 +456,11 @@ assert.match(phaseCSource,
   const labelJob = phaseASource.split('\n  label-logged:')[1];
   assert.ok(labelJob && /needs: triage/.test(labelJob) && /issues: write/.test(labelJob) && /in-app:logged/.test(labelJob),
     'close_as_logged labels the backlog issue in-app:logged after triage succeeds');
+  const followSource = fs.readFileSync('.github/workflows/bug-followup-comment.yml', 'utf8');
+  const shipJob = followSource.split('\n  close-shipped-issue:')[1];
+  assert.ok(shipJob && /needs: comment/.test(shipJob) && /issues: write/.test(shipJob) && /--remove-label in-app:logged/.test(shipJob),
+    'a shipped logged suggestion closes its backlog issue after the notice succeeds');
+  assert.match(phaseASource, /must be in this repository/, 'issue URLs from other repositories are rejected before any write');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
 }

@@ -35,6 +35,7 @@ Release-Impact: user-visible
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->
 - **Refs**：`Refs #123`（本 PR 只完成其中一部分、後續還有 Phase 2 / follow-up）
 - **Closes**：`Closes #123`（本 PR 完成該 issue 全部驗收範圍時才可填；**一整張 issue 含多 Phase 時，請等最後一個 PR 再寫 Closes**）
+- **In-app 回報的 issue 一律用 `Refs`**：合併 ≠ 上線；上線後 Phase-C 會自動關 issue（F14）。
 
 > 不確定就一律 **Refs**，merge 後在 issue 手動勾進度。
 

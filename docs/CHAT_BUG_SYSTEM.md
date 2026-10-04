@@ -141,7 +141,7 @@ last_reviewed: 2026-08-23
 |------|------|
 | B1 | 確認 observed failure、direct cause、recurrence family 與可行的 prevention；分開判斷技術難度與操作授權。只有產品決策或 protected operation 才等 Founder GO。 |
 | B2 | 清楚低風險且符合 auto-fix 13 條者走精簡 implementation note；複雜但已授權者使用有來源、可追溯 revision 的 bounded Plan；`PLAN_REQUIRED` 只做 Decision Packet，GO 前不施工。之後才進 task worktree → regression RED → 改 code → focused tests／review／CI → PR。 |
-| B3 | PR body：`Closes #<github>`（或 Epic 用 `Refs`，見 PR 模板） |
+| B3 | PR body：`Refs #<github>`（in-app issue 一律 `Refs`；上線後由 Phase-C 自動關，F14） |
 | B4 | merge → `deploy.yml` → 核對 deployed SHA、`GET /api/v1/health`／`deployment.json`（前端有改再查 `version.json`）→ 驗證原回報角色、分校與使用者路徑。 |
 
 #### Phase C — 上線後回寫 in-app（與 B4 綁定）
@@ -179,7 +179,7 @@ last_reviewed: 2026-08-23
 
 | 軌道 | 分診後 | 修完上線後 |
 |------|--------|------------|
-| GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Closes #nnn`；必要時補 comment |
+| GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Refs #nnn`；上線後 Phase-C 自動關 issue（F14） |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 等驗收 → `closed` |
 
 **GitHub issue 自動關閉（F14）**：`bug-phase-c-allowlist.yml` 回寫成功後，會用回覆裡的 issue 連結自動關 issue（`type:epic` 除外）。`bug-queue-dump.yml` 每次都附「in-app ↔ issue 不一致」報表（`scripts/inapp-issue-reconcile.py`），分診前先看。
