@@ -266,6 +266,19 @@ class CountModeCalendarContractCapTest extends TestCase
                 ])->assertOk()->json((string) $course->ID) ?? [];
             $this->assertNotContains('2026-09-24', array_column($res['projected'] ?? [], 'session_date'),
                 'campus-2 cancellations must not shift dates for a campus-1 request');
+
+            // Room-first: the same campus-2 student in a campus-1 room belongs to branch 1, so its cancellation counts.
+            $roomId = \Illuminate\Support\Facades\DB::table('rooms')->insertGetId(['campus_id' => 1, 'name' => 'R1', 'capacity' => 4, 'created_at' => now(), 'updated_at' => now()]);
+            $course->update(['room_id' => $roomId]);
+            $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+                ->postJson('/api/v1/student-classes/session-dates', [
+                    'branch_id' => 1, 'range_start' => '2026-09-20', 'range_end' => '2026-10-15',
+                    'courses' => [[
+                        'id' => $course->ID, 'first_class_date' => '2026-09-03',
+                        'sessions_purchased' => 3, 'days_of_week' => [4],
+                    ]],
+                ])->assertOk()->json((string) $course->ID) ?? [];
+            $this->assertContains('2026-09-24', array_column($res['projected'] ?? [], 'session_date'));
         } finally {
             Carbon::setTestNow();
         }

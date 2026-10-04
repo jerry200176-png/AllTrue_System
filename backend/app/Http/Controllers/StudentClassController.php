@@ -775,10 +775,11 @@ class StudentClassController extends Controller
                     $classSessionsBodyByClass[(int) $row->StudentClassID][] = $row;
                 }
                 // Body rows are window-bounded; the contract walk needs cancellations on any date.
-                // Only courses on the authorized branch (request IDs are untrusted).
-                $cancelledByClass = self::cancelledDatesByClass($bodyClasses
-                    ->filter(fn ($c) => (int) ($c->student->CampusID ?? 0) === (int) $branchId)
-                    ->map(fn ($c) => (int) $c->ID)->unique()->values()->all());
+                // Only courses on the authorized branch (request IDs are untrusted; room-first campus rule).
+                $cancelledByClass = self::cancelledDatesByClass(StudentClass::query()
+                    ->whereIn('ID', $courseIds)
+                    ->where(fn ($q) => self::applyBranchCampusScope($q, $branchId))
+                    ->pluck('ID')->map(fn ($id) => (int) $id)->all());
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -942,16 +943,7 @@ class StudentClassController extends Controller
 
         try {
             $query = StudentClass::query()
-                ->where(function ($q) use ($branchId) {
-                    $q->whereHas('room', function ($sub) use ($branchId) {
-                        $sub->where('campus_id', $branchId);
-                    })->orWhere(function ($q2) use ($branchId) {
-                        $q2->whereNull('room_id')
-                           ->whereHas('student', function ($sub) use ($branchId) {
-                               $sub->where('CampusID', $branchId);
-                           });
-                    });
-                });
+                ->where(fn ($q) => self::applyBranchCampusScope($q, $branchId));
             if ($role === 'teacher') {
                 $teacherId = (int) $request->attributes->get('auth_teacher_id');
                 if ($teacherId <= 0) {
@@ -1219,6 +1211,16 @@ class StudentClassController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * A course belongs to its room's campus; without a room, to its student's campus.
+     */
+    private static function applyBranchCampusScope(\Illuminate\Database\Eloquent\Builder $q, int $branchId): void
+    {
+        $q->whereHas('room', fn ($sub) => $sub->where('campus_id', $branchId))
+            ->orWhere(fn ($q2) => $q2->whereNull('room_id')
+                ->whereHas('student', fn ($sub) => $sub->where('CampusID', $branchId)));
     }
 
     /**
