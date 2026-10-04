@@ -152,11 +152,7 @@ class BillingDiscountAndZeroAmountTest extends TestCase
 
     public static function refusedReports(): array
     {
-        return [
-            'below one dollar' => [false, 0.5, 'invalid_report_amount'],
-            'free course' => [true, 500, 'no_payment_obligation'],
-            'fractional amount' => [false, 1.5, 'invalid_report_amount'],
-        ];
+        return ['below one dollar' => [false, 0.5, 'invalid_report_amount'], 'free course' => [true, 500, 'no_payment_obligation'], 'fractional amount' => [false, 1.5, 'invalid_report_amount']];
     }
 
     /** @dataProvider refusedReports */
@@ -265,14 +261,12 @@ class BillingDiscountAndZeroAmountTest extends TestCase
 
     private function amend(StudentClass $course, int $rate, string $from = '2026-08-15'): void
     {
-        StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => $from,
-            'rate' => $rate, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+        StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => $from, 'rate' => $rate, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
     }
 
     private function invoice(StudentClass $course, int $total, string $status): Invoice
     {
-        return Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => now(),
-            'DueDate' => now(), 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status]);
+        return Invoice::create(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID, 'IssueDate' => now(), 'DueDate' => now(), 'TotalAmount' => $total, 'PaidAmount' => 0, 'Status' => $status]);
     }
 
     private function directorRecord(StudentClass $course, float|int|string $amount)
@@ -310,8 +304,7 @@ class BillingDiscountAndZeroAmountTest extends TestCase
 
     private function newStudent(): Student
     {
-        return Student::create(['name' => '折扣學生' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
-            'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
+        return Student::create(['name' => '折扣學生' . uniqid(), 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'Phone' => '0912345678', 'MDT' => now(), 'Notify_Token' => '']);
     }
 }
 

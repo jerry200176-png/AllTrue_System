@@ -245,7 +245,7 @@ class NotificationSyncService
             $campusId = (int) ($student->CampusID ?? 0);
             $remaining = (int) ($class->RemainingSessions ?? 0);
             $isUnpaid = (int) ($class->Paid ?? 0) === 0;
-            $charge = (int) ($class->Charge ?? $class->Pay ?? 0);
+            $charge = (string) ($class->ScheduleMode ?? 'count') === 'count' ? $class->effectiveContractTotal() : (int) ($class->Charge ?? $class->Pay ?? 0);
             $subject = self::displaySubjectForClass($class);
 
             $title = "{$student->name} {$subject} 未繳費";

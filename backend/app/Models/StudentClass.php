@@ -134,11 +134,20 @@ class StudentClass extends Model
     public static function rejectFree(iterable $courses): \Illuminate\Database\Eloquent\Collection
     {
         $courses = (new \Illuminate\Database\Eloquent\Collection(collect($courses)->all()))->loadMissing('pricingAmendments');
-        $billed = Invoice::query()->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
-            ->whereIn('StudentClassID', $courses->modelKeys())->groupBy('StudentClassID')
+        $billed = self::billedTotals($courses);
+
+        return $courses->reject(fn (self $c) => $c->isFreeOfCharge($billed[$c->getKey()] ?? 0));
+    }
+
+    /** Non-void positive invoice totals per course (one query), cached on each model for later pricing calls. */
+    public static function billedTotals(iterable $courses): array
+    {
+        $courses = collect($courses);
+        $sums = Invoice::query()->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
+            ->whereIn('StudentClassID', $courses->map(fn (self $c) => $c->getKey())->all())->groupBy('StudentClassID')
             ->selectRaw('StudentClassID, SUM(CASE WHEN TotalAmount > 0 THEN TotalAmount ELSE 0 END) AS billed')->pluck('billed', 'StudentClassID');
 
-        return $courses->reject(fn (self $c) => $c->isFreeOfCharge((int) ($billed[$c->getKey()] ?? 0)));
+        return $courses->mapWithKeys(fn (self $c) => [$c->getKey() => $c->billedTotalCache = (int) ($sums[$c->getKey()] ?? 0)])->all();
     }
 
     /** Count-mode contract total after a transaction discount; null when no discount applies. */
@@ -152,8 +161,13 @@ class StudentClass extends Model
         return max(0, (int) ($this->getAttribute('Charge') ?? 0));
     }
 
+    public ?int $billedTotalCache = null; // set by billedTotals()
+
     private function billedTotal(): int
     {
+        if ($this->billedTotalCache !== null) {
+            return $this->billedTotalCache;
+        }
         $invoices = $this->relationLoaded('invoices')
             ? $this->getRelation('invoices')->filter(fn ($i) => $i->getAttribute('Status') !== 'void')
             : $this->invoices()->notVoided()->get(['TotalAmount']);

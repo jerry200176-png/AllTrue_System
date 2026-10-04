@@ -516,9 +516,10 @@ class ParentPortalController extends Controller
             'campus_name' => optional($campusMap->get((int) $m->campus_id))->getAttribute('name'),
         ]);
 
-        $classes = StudentClass::query()->whereIn('StudentID', $studentIds)
+        $classes = StudentClass::with('pricingAmendments')->whereIn('StudentID', $studentIds)
             ->orderBy('ID', 'desc')
             ->get();
+        StudentClass::billedTotals($classes); // isFreeOfCharge() below then needs no per-course query
 
         $classIds = $classes->pluck('ID')->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
