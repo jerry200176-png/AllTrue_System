@@ -103,11 +103,10 @@ class StudentClass extends Model
 
         // A bill covering the enrolled Charge is the price (e.g. a legacy discount billed below Rate x sessions);
         // a shorter one is a partial payment's receipt invoice (PaymentReportController::confirm) and never lowers it.
-        if ($billed > 0 && $billed >= max(0, (int) ($this->getAttribute('Charge') ?? 0))) {
-            return $billed;
-        }
+        $contract = $this->unbilledContractTotal($on) ?? 0;
+        $enrolled = max(0, (int) ($this->getAttribute('Charge') ?? 0));
 
-        return max($billed, $this->unbilledContractTotal($on) ?? 0);
+        return $billed > 0 && $billed >= ($enrolled > 0 ? $enrolled : $contract) ? $billed : max($billed, $contract);
     }
 
     /**
@@ -221,11 +220,10 @@ class StudentClass extends Model
             return null;
         }
         if ($rateUnit === 'hour') {
-            // Exact hours from the enrolment price (Charge = Rate x exact minutes/60); TotalHours is rounded.
+            // Exact hours from the pre-discount enrolment price (= Rate x exact minutes/60); TotalHours is rounded.
             $listRate = (float) ($this->getAttribute('Rate') ?? 0);
-            $charge = (float) ($this->getAttribute('Charge') ?? 0);
-            $exact = $listRate > 0 && $charge > 0 && $this->discountedContractTotal() === null; // a discounted Charge isn't Rate x hours
-            $hours = $exact ? $charge / $listRate : (float) ($this->getAttribute('TotalHours') ?? 0);
+            $priced = (float) ($this->discountedContractTotal() === null ? $this->getAttribute('Charge') : ($this->getAttribute('pricing_snapshot')['original_amount'] ?? 0));
+            $hours = $listRate > 0 && $priced > 0 ? $priced / $listRate : (float) ($this->getAttribute('TotalHours') ?? 0);
             if ($hours <= 0) {
                 $hours = (int) round(($sessions * max(30, (int) ($this->getAttribute('SessionDuration') ?? 120))) / 60);
             }
