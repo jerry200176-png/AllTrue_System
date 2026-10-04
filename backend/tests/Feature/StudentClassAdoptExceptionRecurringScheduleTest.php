@@ -471,6 +471,23 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame(['15:30', '17:00', '19:00'], $this->startsOn($course, '2026-04-27'));
     }
 
+    /** Sync pairs new slots with unlocked rows only: a locked 09:00 row must not shift the pairing (15:00→20:00, 17:00→21:00). */
+    public function test_sync_pairs_slots_with_unlocked_rows_only(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定配對', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '09:00:00', '10:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 09:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '20:00', 'duration_minutes' => 60], ['day' => 1, 'start_time' => '21:00', 'duration_minutes' => 60]])->assertOk();
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
+        $this->assertSame(['09:00', '20:00', '21:00'], $starts);
+    }
+
     /** @return list<string> H:i starts of the course's sessions on $date */
     private function startsOn(StudentClass $course, string $date): array
     {

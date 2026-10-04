@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.04",
     "date": "2026-10-04",
     "title": "2026.10.04 草稿（未發布）",
-    "summary": "carry the last buttons pressed and messages seen (F15)；edits don't block on the course's own lessons; one shared same-day remap plan for guard and sync",
+    "summary": "carry the last buttons pressed and messages seen (F15)；edits check exactly the lessons that move; no false block on own lessons, no self-overlap",
     "audience": [
       "teacher",
       "director"
@@ -24,7 +24,8 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "edits don't block on the course's own lessons; one shared same-day remap plan for guard and sync",
+          "edits check exactly the lessons that move; no false block on own lessons, no self-overlap",
+          "slot edits move the right lessons (locked lessons stay; shared same-day remap plan)",
           "counts the same live lessons as booking",
           "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
           "record form opens the lesson you clicked; multi-teacher courses keep their own slots",
@@ -40,7 +41,8 @@ export const changelogDraftNotes = [
     ],
     "items": [
       "carry the last buttons pressed and messages seen (F15)",
-      "edits don't block on the course's own lessons; one shared same-day remap plan for guard and sync",
+      "edits check exactly the lessons that move; no false block on own lessons, no self-overlap",
+      "slot edits move the right lessons (locked lessons stay; shared same-day remap plan)",
       "counts the same live lessons as booking",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "record form opens the lesson you clicked; multi-teacher courses keep their own slots",
