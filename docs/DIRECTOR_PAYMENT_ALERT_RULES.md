@@ -13,7 +13,7 @@ last_reviewed: 2026-08-16
 
 **輔導課例外（產品確認 #325）：** `ClassType=tutoring` 一律不是學費／續課提醒、催繳、低堂數或對外繳費通知候選；不論 `Paid`、剩餘堂數、排課模式、金額或歷史異常。既有異常仍在原課務／帳務畫面唯讀呈現，不以提醒方式催收；歷史資料不回溯改寫。
 
-**堂數制課程金額唯一來源（in-app #346/#349/#361）：** `StudentClass::effectiveContractTotal()`，學費提醒、課程查找 `effective_total`、家長繳費通知、免收費判斷全部讀它。優先序：① 有效（未作廢）帳單總額 > 0 → 以帳單為準；② 否則「今日生效」的調價（`StudentClassPricingAmendment`：`effective_from <= 今天`、未作廢、取最新一筆），**含 0 元**，單價 × 堂數（或時數）；③ 否則交易折扣快照 → 折扣後 `Charge`；④ 否則 `Rate` × 堂數（#230：單價優先於舊 `Charge`），無單價才用 `Charge`。輔導課恆為 0。
+**堂數制課程金額唯一來源（in-app #346/#349/#361）：** `StudentClass::effectiveContractTotal()`，學費提醒、課程查找 `effective_total`、家長繳費通知、免收費判斷全部讀它。合約金額優先序：①「今日生效」的調價（`StudentClassPricingAmendment`：`effective_from <= 今天`、未作廢、取最新一筆），**含 0 元**，單價 × 堂數（或時數）；② 否則交易折扣快照 → 折扣後 `Charge`；③ 否則 `Rate` × 堂數與 `Charge` 取小者（#230：高於單價×堂數的舊 `Charge` 視為過期；低於者視為舊式折扣），無單價才用 `Charge`；按時計價用建課時的精確 `Charge`。**帳單只在合約金額為 0 時補位**（例：100% 折扣後仍開了帳單）——部分付款產生的收據帳單、歷史帳單都**不得**改變合約金額。輔導課恆為 0。
 
 **免收費課程例外：** 輔導課，或堂數制且上述金額為 0（例：100% 折扣、無費用、今日生效 0 元調價），或月結制明確 100% 折扣（且無今日生效正價調價、無 > 0 帳單），在堂數制與月結制**都不列入**學費提醒／催繳／家長繳費通知（含結案未繳 `settled_pending`／提前結束未繳 `contract_amended` 佇列）。月結制「未設定月費」不算免費（維持 `monthly_fee_unset`）。判斷唯一來源：`StudentClass::isFreeOfCharge()`（`BillingPayableResolver` 以批次載入的帳單／調價呼叫同一函式）。
 

@@ -85,12 +85,11 @@ class StudentClass extends Model
     /**
      * THE pricing authority for a count-mode contract total (in-app #346 #349 #361). Every surface that
      * shows or collects a count-course amount (tuition queue, course index, parent payment message,
-     * free/zero decisions) reads this. Precedence:
-     *  1. billed: the non-void invoice total when > 0 (an issued bill is the truth);
-     *  2. the pricing amendment in force on $on (StudentClassPricingService::forDate), a rate of 0 included;
-     *  3. a transaction-discount snapshot: the allocated Charge (Rate stays the list price);
-     *  4. list price: Rate x sessions, else Charge (#230: Rate beats a stale Charge); hourly: the exact stored Charge.
-     * Step 1 applies when the bill covers the enrolled Charge; a shorter bill (a partial payment) only acts as a floor.
+     * free/zero decisions) reads this. Contract precedence:
+     *  1. the pricing amendment in force on $on (StudentClassPricingService::forDate), a rate of 0 included;
+     *  2. a transaction-discount snapshot: the allocated Charge (Rate stays the list price);
+     *  3. list price: min(Rate x sessions, Charge) (#230: a higher Charge is stale, a lower one a legacy discount); hourly: the exact stored Charge.
+     * Only when the contract is 0 does the non-void invoice total stand in (billed after a 100% discount).
      * Tutoring is always 0. Batch callers pass $billedTotal (non-void invoice TotalAmount sum) and
      * eager-load `pricingAmendments` to avoid N+1.
      */
@@ -104,9 +103,10 @@ class StudentClass extends Model
         // A bill covering the enrolled Charge is the price (e.g. a legacy discount billed below Rate x sessions);
         // a shorter one is a partial payment's receipt invoice (PaymentReportController::confirm) and never lowers it.
         $contract = $this->unbilledContractTotal($on) ?? 0;
-        $enrolled = max(0, (int) ($this->getAttribute('Charge') ?? 0));
 
-        return $billed > 0 && $billed >= ($enrolled > 0 ? $enrolled : $contract) ? $billed : max($billed, $contract);
+        // The contract decides; a bill only fills in when the contract says 0 (e.g. billed after a 100% discount).
+        // Partial-payment receipt invoices and historical invoices therefore never change the price.
+        return $contract > 0 ? $contract : $billed;
     }
 
     /**
@@ -207,7 +207,8 @@ class StudentClass extends Model
         }
         $listed = $this->priceSessions($rate, (string) $pricing['rate_unit']);
         if ($listed !== null && $listed > 0) {
-            return $listed;
+            // #230: a Charge above Rate x sessions is stale; one below it is a legacy (pre-snapshot) discount.
+            return $charge > 0 ? min($listed, $charge) : $listed;
         }
 
         return $charge > 0 || $rate <= 0 ? $charge : null;
@@ -222,7 +223,8 @@ class StudentClass extends Model
         if ($rateUnit === 'hour') {
             // Exact hours from the pre-discount enrolment price (= Rate x exact minutes/60); TotalHours is rounded.
             $listRate = (float) ($this->getAttribute('Rate') ?? 0);
-            $priced = (float) ($this->discountedContractTotal() === null ? $this->getAttribute('Charge') : ($this->getAttribute('pricing_snapshot')['original_amount'] ?? 0));
+            // ponytail: discounted hourly courses fall back to rounded TotalHours (the snapshot total is per transaction); #3521.
+            $priced = (float) ($this->discountedContractTotal() === null ? $this->getAttribute('Charge') : 0);
             $hours = $listRate > 0 && $priced > 0 ? $priced / $listRate : (float) ($this->getAttribute('TotalHours') ?? 0);
             if ($hours <= 0) {
                 $hours = (int) round(($sessions * max(30, (int) ($this->getAttribute('SessionDuration') ?? 120))) / 60);

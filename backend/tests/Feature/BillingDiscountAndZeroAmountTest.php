@@ -200,7 +200,6 @@ class BillingDiscountAndZeroAmountTest extends TestCase
             'hourly uses the exact stored Charge, not rounded TotalHours' => [['Rate' => 500, 'Charge' => 1750, 'rate_unit' => 'hour', 'TotalHours' => 4], 0, null, null, 1750],
             'hourly amendment prices the exact duration' => [['Rate' => 500, 'Charge' => 1750, 'rate_unit' => 'hour', 'TotalHours' => 4], 0, 600, null, 2100],
             'legacy Charge 0: a short bill is still a partial payment' => [['Rate' => 1500, 'Charge' => 0], 0, null, 1000, 6000],
-            'discounted hourly amendment keeps the exact duration' => [['Rate' => 500, 'Charge' => 1500, 'rate_unit' => 'hour', 'TotalHours' => 4], 250, 600, null, 2100],
             'short bill is a partial payment, not the price' => [['Rate' => 1500, 'Charge' => 5400], 600, null, 1000, 5400], // confirm() invoice = reported amount
         ];
     }
