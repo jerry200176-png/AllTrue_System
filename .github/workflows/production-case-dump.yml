@@ -21,6 +21,7 @@ on:
           - contract_yu_shengrui
           - monthly_slip_student
           - swipe_line_path
+          - class_sessions_explain_319
       student_name:
         description: 'Student name for bounded case probe (PII is not written to the artifact)'
         required: false
@@ -96,7 +97,7 @@ jobs:
           import os
           import json
           case = os.environ['CASE_KEY']
-          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student'}:
+          if case not in {'schedule_241', 'billing_huang', 'fixed_slot_huang', 'billing_linlai', 'parent_lou', 'parent_binding', 'transfer_capacity_chen', 'course_2817_incident', 'contract_yang_binghe', 'contract_yu_shengrui', 'swipe_line_path', 'monthly_slip_student', 'class_sessions_explain_319'}:
               raise SystemExit('unsupported case')
           target_student_name = os.environ.get('TARGET_STUDENT_NAME') or ('陳嘉軒' if case == 'transfer_capacity_chen' else ('黃品皓' if case in {'billing_huang', 'fixed_slot_huang'} else ('王泓曄' if case == 'parent_binding' else ('楊秉禾' if case == 'contract_yang_binghe' else ('余晟睿' if case == 'contract_yu_shengrui' else '林奕安')))))
           target_student_class_id = os.environ.get('TARGET_STUDENT_CLASS_ID') or ''
@@ -964,6 +965,77 @@ jobs:
             ];
             $out['swipe_photo_delivery_audit_14d'] = $photoAudit->map(fn ($r) => ['campus_id'=>(int)$r->campus_id,
               'outcome'=>(string)$r->outcome, 'n'=>(int)$r->n, 'last_at'=>$r->last_at])->values()->all();
+          }} elseif ($case === 'class_sessions_explain_319') {{
+            // in-app #319 (#3069): EXPLAIN + timed paginate() of the /class-sessions index query for the real
+            // Teacher Home request shapes. Read-only; plans, timings and row estimates only (no row data).
+            $prodHead = trim((string) shell_exec('git rev-parse HEAD'));
+            exec('git merge-base --is-ancestor 15480e9de336f620647dd1b0d409c2f670f8dd7a '.escapeshellarg($prodHead), $unused, $ancestorExit);
+            if ($ancestorExit !== 0) {{ throw new \\RuntimeException('#3449 not deployed; prod '.$prodHead); }}
+            $today = \\Carbon\\Carbon::today();
+            $weekStart = $today->copy()->startOfWeek()->toDateString();
+            $weekEnd = $today->copy()->endOfWeek()->toDateString();
+            // Busiest effective teacher this week with a date-bounded query (a scheduled substitute wins over the base
+            // teacher), not the heavy query under investigation.
+            // ponytail: matches course+date+start time but not the latest-row rule; enough to pick a representative teacher.
+            $teacher = (int) $db::table('ClassSession as cs')->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+              ->leftJoin('schedules as ss', function ($j) use ($db) {{
+                $j->on('ss.student_course_id', '=', 'sc.ID')->on('ss.schedule_date', '=', 'cs.SessionDate')
+                  ->on($db::raw('SUBSTRING(ss.start_time, 1, 5)'), '=', 'cs.StartTimeHM')
+                  ->where('ss.status', 'scheduled')->whereNotNull('ss.original_schedule_id')->whereColumn('ss.teacher_id', '<>', 'sc.TeacherID');
+              }})
+              ->whereBetween('cs.SessionDate', [$weekStart, $weekEnd])
+              ->groupBy($db::raw('COALESCE(ss.teacher_id, sc.TeacherID)'))->orderByRaw('COUNT(*) DESC')
+              ->value($db::raw('COALESCE(ss.teacher_id, sc.TeacherID)'));
+            // Campus scope exactly as AttachAuthUser resolves it for a teacher.
+            $user = \\App\\Models\\User::find($teacher);
+            if (!$user) {{ throw new \\RuntimeException('no teacher with sessions this week'); }}
+            $authorizer = app(\\App\\Services\\StaffCapabilityAuthorizer::class);
+            $campuses = ($user->type !== 'S' && $authorizer->enabled())
+              ? $authorizer->resolve($user, 'teacher')['campus_ids']
+              : \\App\\Models\\UserCampus::where('UserID', $teacher)
+                  ->where(function ($q) {{ $q->where('Approved', true)->orWhereNull('Approved'); }})
+                  ->pluck('CampusID')->map(fn ($c) => (int) $c)->sort()->values()->all();
+            if ($campuses === []) {{ throw new \\RuntimeException('teacher has no campus scope'); }}
+            $shapes = ['teacher_today' => ['teacher', ['start' => $today->toDateString(), 'end' => $today->toDateString(), 'per_page' => 500]]];
+            foreach ($campuses as $campus) {{
+              // Teacher Home sends one overdue request per campus.
+              $shapes['teacher_overdue_7d_campus_'.$campus] = ['teacher', ['branch_id' => $campus, 'start' => $today->copy()->subDays(7)->toDateString(), 'end' => $today->copy()->subDay()->toDateString(), 'per_page' => 200]];
+            }}
+            $shapes['campus_week'] = ['super_admin', ['branch_id' => $campuses[0], 'start' => $weekStart, 'end' => $weekEnd, 'per_page' => 1000]];
+            $results = [];
+            foreach ($shapes as $name => [$role, $params]) {{
+              $runs = [];
+              $logged = [];
+              for ($i = 0; $i < 3; $i++) {{
+                $req = \\Illuminate\\Http\\Request::create('/api/v1/class-sessions', 'GET', $params);
+                $req->attributes->set('auth_role', $role);
+                if ($role === 'teacher') {{
+                  $req->attributes->set('auth_teacher_id', $teacher);
+                  $req->attributes->set('auth_campus_ids', $campuses);
+                }}
+                $db::flushQueryLog();
+                $db::enableQueryLog();
+                $t = microtime(true);
+                $page = (new \\App\\Services\\ClassSessionIndexReadService())->buildQuery($req)
+                  ->orderBy('cs.SessionDate')->orderBy('cs.StartTime')->orderBy('cs.id')->paginate($params['per_page']);
+                $total = round((microtime(true) - $t) * 1000, 1);
+                $logged = $db::getQueryLog();
+                $db::disableQueryLog();
+                $runs[] = ['total_ms' => $total, 'query_ms' => array_map(fn ($q) => $q['time'], $logged), 'rows' => count($page->items()), 'count' => $page->total()];
+              }}
+              $plans = [];
+              foreach ($logged as $k => $q) {{
+                $plans['query_'.$k] = array_map(fn ($r) => array_intersect_key((array) $r, array_flip(['id', 'select_type', 'table', 'type', 'possible_keys', 'key', 'rows', 'filtered', 'Extra'])),
+                  $db::select('EXPLAIN '.$q['query'], $q['bindings']));
+              }}
+              $results[$name] = ['params' => $params, 'runs' => $runs, 'plans' => $plans];
+            }}
+            $out['prod_head'] = $prodHead;
+            $out['db_version'] = $db::selectOne('SELECT VERSION() AS v')->v;
+            $out['teacher_campus_count'] = count($campuses);
+            $out['table_rows_estimate'] = $db::table('information_schema.TABLES')->where('TABLE_SCHEMA', $db::getDatabaseName())
+              ->whereIn('TABLE_NAME', ['ClassSession', 'schedules', 'LearningRecord', 'StudentSingIn', 'StudentClass'])->pluck('TABLE_ROWS', 'TABLE_NAME');
+            $out['shapes'] = $results;
           }} else {{
             $parentCampus = $db::table('Campus')->where('name', 'like', '%興隆%')->first(['id', 'name']);
             $parentCampusId = $parentCampus ? (int)$parentCampus->id : null;
