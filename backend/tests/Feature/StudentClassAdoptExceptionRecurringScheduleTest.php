@@ -488,6 +488,22 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame(['09:00', '20:00', '21:00'], $starts);
     }
 
+    /** A date whose only own row is a pending leave is still self-checked (shared class dedupes the student). */
+    public function test_shared_class_pending_leave_only_date_is_self_checked(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '共享請假', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159, ['ClassType' => 'one_on_two']);
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00', 'leave_requested');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1,
+                'days_of_week' => [1], 'start_time' => '17:30', 'payment_type' => 'session',
+                'day_time_slots' => [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]],
+            ])->assertStatus(409);
+    }
+
     /** @return list<string> H:i starts of the course's sessions on $date */
     private function startsOn(StudentClass $course, string $date): array
     {

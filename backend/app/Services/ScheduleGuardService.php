@@ -594,7 +594,9 @@ class ScheduleGuardService
                 }
             }
             $planSlots = array_map(fn ($s) => ['start' => (string) $s['start_time'], 'end' => (string) $s['end_time']], $daySlots ?: [$slot]);
-            foreach ($ownByDate as $d => $rows) {
+            // Every date with an own live row, including dates whose only rows are non-'scheduled' (e.g. pending leave).
+            foreach (array_keys($ownByDate + $ownLiveByDate) as $d) {
+                $rows = $ownByDate[$d] ?? [];
                 $moves = self::planSameDayRemap($rows, $planSlots, $locked)['moves'];
                 foreach ($rows as $r) {
                     if (isset($moves[$r['id']])) {
