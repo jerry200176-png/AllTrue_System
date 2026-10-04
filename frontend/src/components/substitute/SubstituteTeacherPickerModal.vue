@@ -105,8 +105,8 @@
                     class="stp-tag stp-cap-tag stp-cap-tag--full"
                     :title="t.conflictTooltip || '此時段老師已達上限，無法安排'"
                   >
-                    <span class="stp-cap-tag__long">已滿 ✗</span>
-                    <span class="stp-cap-tag__short">滿</span>
+                    <span class="stp-cap-tag__long">{{ t.otherCampusConflict ? '他校有課 ✗' : '已滿 ✗' }}</span>
+                    <span class="stp-cap-tag__short">{{ t.otherCampusConflict ? '他校' : '滿' }}</span>
                   </span>
                   <span
                     v-else-if="t.capacityWarn"
@@ -450,6 +450,7 @@ const enriched = computed(() => {
         conflict,
         capacityWarn,
         conflictTooltip,
+        otherCampusConflict,
       } = pickerSlotConflict({
         overlappingSlots: overlapping,
         coveredClassType: ctx.class_type || '',
@@ -471,6 +472,7 @@ const enriched = computed(() => {
         branchLabel,
         crossCampusWarn,
         conflict,
+        otherCampusConflict,
         conflictTooltip,
         capacityWarn,
         hasAvailabilityData,
