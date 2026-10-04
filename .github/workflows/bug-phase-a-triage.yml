@@ -163,4 +163,5 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/([0-9]+)$ ]] || { echo "invalid github_issue_url"; exit 1; }
-          gh issue edit "${BASH_REMATCH[1]}" --add-label in-app:logged
+          gh label create in-app:logged --force --color C2E0C6 --description "F12: in-app suggestion closed as logged; this issue is the backlog"
+          gh issue edit "$GITHUB_ISSUE_URL" --add-label in-app:logged
