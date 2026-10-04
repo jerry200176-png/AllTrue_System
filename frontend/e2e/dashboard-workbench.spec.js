@@ -55,15 +55,16 @@ async function login(page) {
   await page.locator('#login-password').fill(DIRECTOR.password);
   await page.locator('button.login-btn').click();
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
-  await page.waitForTimeout(500);
+  // The login form can disappear before the authenticated branch and dashboard
+  // have finished loading. Wait for the actual director landing state.
+  await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
   await seedOnboardingCompleted(page);
-  await dismissOverlays(page);
-  await page.waitForTimeout(400);
   await dismissOverlays(page);
 }
 
 for (const viewport of VIEWPORTS) {
   test(`director workbench ${viewport.name}px`, async ({ page }) => {
+    test.setTimeout(60_000);
     test.skip(!BASE || !DIRECTOR.account, '未設定 director smoke secrets — 略過');
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const errors = [];
@@ -73,6 +74,11 @@ for (const viewport of VIEWPORTS) {
       if (/\/v1\/adoption\/(task-tracker|activity-log|weekly-metrics)/.test(request.url())) secondaryRequests.push(request.url());
     });
     page.on('response', (response) => {
+      const path = new URL(response.url()).pathname;
+      if (['/api/auth/login', '/api/v1/me', '/api/v1/campuses', '/api/v1/alerts/tuition'].includes(path)) {
+        // Only endpoint names and status codes: no accounts, tokens or payloads.
+        console.log(`[director-workbench] ${path} HTTP ${response.status()}`);
+      }
       if (/\/v1\/alerts\/tuition(?:\?|$)/.test(response.url())) tuitionAlertsResponse = response;
     });
     page.on('pageerror', (error) => errors.push(String(error)));

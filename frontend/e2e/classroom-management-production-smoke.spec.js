@@ -17,6 +17,9 @@ async function loginAsDirector(page) {
     await page.locator('button.login-btn').click({ force: true });
   }
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
+  // Deep-link navigation before the director landing state settles can be
+  // overwritten by the auth/profile bootstrap and leave this test elsewhere.
+  await expect(page.getByRole('main', { name: '主任總覽' })).toBeVisible({ timeout: 25_000 });
 }
 
 test.describe('UI smoke — production classroom management', () => {
@@ -26,8 +29,16 @@ test.describe('UI smoke — production classroom management', () => {
   );
 
   test('director can load classroom management without a JavaScript error', async ({ page }) => {
+    test.setTimeout(60_000);
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
+    page.on('response', (response) => {
+      const path = new URL(response.url()).pathname;
+      if (['/api/auth/login', '/api/v1/me', '/api/v1/campuses'].includes(path)) {
+        // Keep failed-login evidence without printing credentials or bodies.
+        console.log(`[classroom-smoke] ${path} HTTP ${response.status()}`);
+      }
+    });
 
     await loginAsDirector(page);
     await page.goto('/?app_page=classroom');
