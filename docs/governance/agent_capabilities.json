@@ -19,12 +19,12 @@
       "name": "gh PR/issue (repo,workflow)",
       "status": "Proven",
       "risk": "high",
-      "last_verified_at": "2026-10-03",
-      "review_after": "2026-11-02",
+      "last_verified_at": "2026-10-04",
+      "review_after": "2026-11-03",
       "verification_method": "gh issue create + gh pr create/ready/checks",
       "environment": "github",
       "verifier": "claude-agent",
-      "evidence": "PR #3486/#3488 created via gh 2026-10-03; issues closed/labeled via gh 2026-10-04"
+      "evidence": "Configured method run 2026-10-04: gh issue create #3491; gh pr create #3490; gh pr ready --undo/ready #3490; gh pr checks #3490 (9 pass, 12 skipping)"
     },
     {
       "id": "push_feature_branch",
