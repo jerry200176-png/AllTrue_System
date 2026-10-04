@@ -104,18 +104,52 @@ class StudentClass extends Model
      */
     public function isFreeOfCharge(): bool
     {
-        if (strtolower(trim((string) ($this->getAttribute('ClassType') ?? ''))) === 'tutoring') {
-            return true;
+        if ($this->isTutoringClass() || $this->isPartOfPackage()) {
+            return $this->isTutoringClass();
         }
-        if ($this->isPartOfPackage()) {
+        // Cheap checks first; only hit the DB when the stored fields say "no fee".
+        if (!$this->hasNoFeeFields()) {
             return false;
         }
-        $noFee = $this->discountedContractTotal() === 0
-            || ((int) ($this->getAttribute('Charge') ?? 0) <= 0 && (float) ($this->getAttribute('Rate') ?? 0) <= 0);
 
-        return $noFee
-            && !$this->invoices()->notVoided()->where('TotalAmount', '>', 0)->exists()
-            && !$this->pricingAmendments()->whereNull('voided_at')->where('rate', '>', 0)->exists();
+        return $this->isFreeGivenBillingFacts(
+            $this->invoices()->notVoided()->where('TotalAmount', '>', 0)->exists(),
+            $this->pricingAmendments()->whereNull('voided_at')->where('rate', '>', 0)->exists(),
+        );
+    }
+
+    /**
+     * Single authority for "free" once the invoice/amendment facts are known (BillingPayableResolver batch-loads them).
+     * Implicit zero fee (Charge 0 and Rate 0) never applies to monthly/date-mode courses: those stay "fee unset"
+     * (monthly_fee_unset). An explicit 100% discount and tutoring are free in any mode.
+     */
+    public function isFreeGivenBillingFacts(bool $hasPositiveInvoice, bool $hasPositiveAmendment): bool
+    {
+        if ($this->isTutoringClass()) {
+            return true;
+        }
+
+        return !$this->isPartOfPackage()
+            && $this->hasNoFeeFields()
+            && !$hasPositiveInvoice
+            && !$hasPositiveAmendment;
+    }
+
+    private function isTutoringClass(): bool
+    {
+        return strtolower(trim((string) ($this->getAttribute('ClassType') ?? ''))) === 'tutoring';
+    }
+
+    private function hasNoFeeFields(): bool
+    {
+        if ($this->discountedContractTotal() === 0) {
+            return true;
+        }
+        $isCount = ((string) ($this->getAttribute('ScheduleMode') ?? 'count')) === 'count';
+
+        return $isCount
+            && (int) ($this->getAttribute('Charge') ?? 0) <= 0
+            && (float) ($this->getAttribute('Rate') ?? 0) <= 0;
     }
 
     public function student()

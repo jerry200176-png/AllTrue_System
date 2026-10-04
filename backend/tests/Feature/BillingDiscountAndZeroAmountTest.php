@@ -127,6 +127,68 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertSame('unpaid', $rows[$unpaid->ID]['payment_status']);
     }
 
+    public function test_parent_payment_message_never_demands_money_for_a_free_course(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $freeTrial = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 1, 'Charge' => 0, 'ClassType' => 'trial'], 1500);
+        $get = fn () => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/parent/payment-message/{$student->id}")->assertOk()->json();
+
+        $this->assertSame('此學生目前無待繳費課程', $get()['message'], 'no NT$1,500 demand for a 100%-discounted trial');
+        $unpaid = $this->course($student->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800]);
+        $body = $get();
+        $this->assertSame(8800, $body['total_amount']);
+        $this->assertCount(1, $body['items']);
+    }
+
+    public function test_monthly_course_without_fee_is_fee_unset_not_free_but_discount_and_tutoring_are(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $monthly = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 0, 'Charge' => 0, 'SessionCount' => 0]);
+        $monthlyDiscounted = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 0], 1500);
+        $tutoring = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 0, 'Charge' => 0, 'ClassType' => 'tutoring']);
+
+        $this->assertFalse($monthly->isFreeOfCharge());
+        $this->assertTrue($monthlyDiscounted->isFreeOfCharge());
+        $this->assertTrue($tutoring->isFreeOfCharge());
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/payment-reports/director-record', [
+                'student_class_id' => $monthly->ID, 'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'amount' => 0,
+            ])->assertStatus(422)->assertJsonPath('code', 'monthly_fee_unset');
+    }
+
+    public function test_resolver_shares_the_free_predicate_including_amendments(): void
+    {
+        $student = $this->student();
+        $plain = $this->course($student->id, ['Rate' => 0, 'Charge' => 0, 'SessionCount' => 4]);
+        $amended = $this->course($student->id, ['Rate' => 0, 'Charge' => 0, 'SessionCount' => 4]);
+        \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $amended->ID, 'effective_from' => '2026-08-15',
+            'rate' => 1200, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+
+        $this->assertFalse($amended->isFreeOfCharge());
+        $out = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$plain->ID, $amended->ID]);
+        $this->assertSame('free', $out[$plain->ID]['status']);
+        $this->assertNotSame('free', $out[$amended->ID]['status']);
+    }
+
+    public function test_director_record_amount_must_be_a_whole_dollar_amount(): void
+    {
+        $token = $this->director();
+        $paid = $this->course($this->student()->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800]);
+        $record = fn ($amount) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/payment-reports/director-record', [
+                'student_class_id' => $paid->ID, 'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'amount' => $amount,
+            ]);
+
+        $record(0.5)->assertStatus(422)->assertJsonValidationErrors('amount');
+        $record('0.50')->assertStatus(422)->assertJsonValidationErrors('amount');
+        $this->assertSame(0, PaymentReport::where('StudentClassID', $paid->ID)->count());
+        $record(1)->assertSuccessful();
+        $this->assertSame(1, PaymentReport::where('StudentClassID', $paid->ID)->count());
+    }
+
     private function course(int $studentId, array $overrides, int $discount = 0): StudentClass
     {
         $course = StudentClass::create(array_merge([

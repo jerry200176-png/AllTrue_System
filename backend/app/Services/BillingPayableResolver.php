@@ -53,6 +53,10 @@ class BillingPayableResolver
             ->orderBy('id')
             ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
+        // One query for active positive price amendments (part of the free predicate).
+        $amendedClassIds = \App\Models\StudentClassPricingAmendment::query()
+            ->whereIn('student_class_id', $ids->all())->whereNull('voided_at')->where('rate', '>', 0)
+            ->pluck('student_class_id')->map(fn ($id) => (int) $id)->flip();
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
         $out = [];
@@ -64,6 +68,7 @@ class BillingPayableResolver
                 $courseMap[$classId],
                 $invoicesByClass->get($classId, collect()),
                 $monthlyByClass[$classId] ?? [],
+                $amendedClassIds->has($classId),
             );
         }
 
@@ -77,7 +82,7 @@ class BillingPayableResolver
     }
 
     /** @param Collection<int, Invoice> $invoices */
-    private function courseStatus(StudentClass $course, Collection $invoices, array $monthly): array
+    private function courseStatus(StudentClass $course, Collection $invoices, array $monthly, bool $hasAmendment = false): array
     {
         $result = fn (string $status, int $total, int $applied, int $overpaid, array $periods, string $source, ?int $invoiceId) => [
             'status' => $status, 'payable_total' => $total, 'applied' => $applied,
@@ -93,10 +98,8 @@ class BillingPayableResolver
         // B15's own verdict (ambiguous items/coverage gaps, out-of-contract sessions, amount discrepancy) is preserved.
         $monthlyReview = (bool) ($monthly['review_required'] ?? false);
         $isPackageMember = (int) ($course->getAttribute('PackageID') ?? 0) > 0;
-        // A course discounted to NT$0 (Rate keeps the list price) is free too (in-app #361).
-        $zeroFee = !$isPackageMember && !$monthlyReview && $charge <= 0
-            && ((float) ($course->getAttribute('Rate') ?? 0) <= 0 || $course->discountedContractTotal() === 0)
-            && !$hasBillableInvoice;
+        // Same authority as StudentClass::isFreeOfCharge (in-app #361), fed with the batch-loaded facts.
+        $zeroFee = !$monthlyReview && $course->isFreeGivenBillingFacts($hasBillableInvoice, $hasAmendment);
         if ($tutoring || $zeroFee) {
             return $result('free', 0, 0, 0, [], 'none', null);
         }

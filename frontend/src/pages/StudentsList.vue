@@ -1344,6 +1344,7 @@ const shouldShowPaymentAction = (course) => !isNoPaymentCourse(course);
 const paymentStatusHelpTitle = (course) => {
   if (isTutoringBillingAnomaly(course)) return '輔導課不應產生付款義務；帳務資料需由主任檢查。';
   if (isTutoringCourse(course)) return '無須繳費；輔導課不產生付款義務。';
+  if (isNoPaymentCourse(course)) return '無須繳費；此課程免收費（折扣後 0 元或未設定收費）。';
   return `${paymentStatusButtonLabel(course)}；付款狀態不可直接操作，請使用「${paymentNextActionLabel(course)}」`;
 };
 

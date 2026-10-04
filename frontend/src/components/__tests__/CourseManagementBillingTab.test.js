@@ -73,6 +73,8 @@ describe('CourseManagement student billing tab', () => {
     expect(source).toContain("if (isNoPaymentCourse(course)) return '無須繳費';");
     expect(source).toContain("if (isTutoringBillingAnomaly(course)) return '帳務資料需修正';");
     expect(source).toContain("const isNoPaymentCourse = (course) => isTutoringCourse(course) || course?.payment_status === 'free';");
+    const studentsList = readFileSync(resolve(__dirname, '../../pages/StudentsList.vue'), 'utf8');
+    expect(studentsList).toMatch(/if \(isNoPaymentCourse\(course\)\) return '無須繳費；此課程免收費/);
     expect(source).toContain('const shouldShowPaymentAction = (course) => !isNoPaymentCourse(course);');
     expect(source).toContain('v-if="shouldShowPaymentAction(row.course)"');
     expect(source).toContain('v-if="isTutoringBillingAnomaly(row.course)"');

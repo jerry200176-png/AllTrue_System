@@ -889,6 +889,11 @@ class ParentPortalController extends Controller
                 $paid = $this->isClassPaid($c, $paidAtMap);
                 $stopped = (bool) $c->Stop;
 
+                // in-app #346: free course has no parent payment action.
+                if (!$paid && !$stopped && $c->isFreeOfCharge()) {
+                    return false;
+                }
+
                 // Parent portal reminders are payment actions, not director renewal alerts.
                 if ($paid) {
                     return false;
@@ -1645,7 +1650,8 @@ class ParentPortalController extends Controller
         $lineItems = [];
         $totalAmount = 0;
         foreach ($classes as $c) {
-            if ($c->isEffectivelyPaid()) {
+            // in-app #346: free course (e.g. 100% discounted trial) has no payment obligation; never fall back to Rate x sessions.
+            if ($c->isEffectivelyPaid() || $c->isFreeOfCharge()) {
                 continue;
             }
             $subject = $this->resolveSubjectName($c);
