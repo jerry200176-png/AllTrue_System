@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  installUiRecorder, getRecentClicks, getRecentMessages, recordUserMessage, resetUiRecorderForTest, fitClientInfo,
+  installUiRecorder, getRecentClicks, getRecentMessages, recordUserMessage, resetUiRecorderForTest, clearUiBreadcrumbs, fitClientInfo,
 } from '../../lib/recentApiFailures';
 import { useToast } from '../useToast';
 import { parseBugReportClientInfo } from '../../lib/bugReportContext';
@@ -30,15 +30,25 @@ describe('F15 UI breadcrumbs', () => {
     expect(getRecentClicks()).toEqual([]);
   });
 
-  it('records toast and alert messages the user saw (last 5)', () => {
+  it('records only error/warning toasts (last 5), never alerts or info/success', () => {
     useToast().error('登記繳費回報失敗', { title: '無法儲存' });
-    window.alert('月結課程不能登記繳費回報');
+    useToast().success('臨時密碼：Ab3xY9kLm2Qz');
+    window.alert('臨時密碼：Ab3xY9kLm2Qz');
+    useToast().warning('月結課程不能登記繳費回報');
     expect(getRecentMessages().map((m) => [m.kind, m.text])).toEqual([
       ['error', '無法儲存 登記繳費回報失敗'],
-      ['alert', '月結課程不能登記繳費回報'],
+      ['warning', '月結課程不能登記繳費回報'],
     ]);
-    for (let i = 0; i < 9; i++) recordUserMessage('info', `m${i}`);
+    for (let i = 0; i < 9; i++) recordUserMessage('error', `m${i}`);
     expect(getRecentMessages()).toHaveLength(5);
+  });
+
+  it('clearUiBreadcrumbs forgets everything (logout / campus switch)', () => {
+    click('<button data-t>王小明 詳情</button>');
+    recordUserMessage('error', 'x');
+    clearUiBreadcrumbs();
+    expect(getRecentClicks()).toEqual([]);
+    expect(getRecentMessages()).toEqual([]);
   });
 
   it('fits into client_info and shows on the admin page', () => {

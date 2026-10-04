@@ -895,6 +895,7 @@ import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
 import { clearAllDraftsByTeacher } from './lib/learningRecordDrafts';
+import { clearUiBreadcrumbs } from './lib/recentApiFailures';
 import { latestReleaseVersionForRole, isReleaseTokenSeen, addSeenReleaseToken } from './lib/releaseNotes';
 import {
   shouldShowPinModal,
@@ -2727,6 +2728,9 @@ const onPasswordChangeComplete = async () => {
     else if (isDirector.value) active.value = 'director';
   }
 };
+
+// F15 privacy: breadcrumbs never cross a user or campus boundary.
+watch(() => [session.value?.user?.id ?? null, currentBranch.value], () => clearUiBreadcrumbs());
 
 const logout = async () => {
     const uid = session.value?.user?.id;

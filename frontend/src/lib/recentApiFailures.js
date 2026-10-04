@@ -39,7 +39,7 @@ export function installFetchRecorder() {
 }
 
 // F15 (Sentry/Bugsnag-style breadcrumbs): the last buttons the user pressed and the last messages they saw,
-// so a report answers "which button / what did the screen say" without asking the reporter.
+// so a report answers "which button / what went wrong" without asking the reporter.
 // Labels only (no input values); runs of 4+ digits are masked; clicks inside the report dialog are skipped.
 const MAX_CLICKS = 15;
 const MAX_MESSAGES = 5;
@@ -50,6 +50,8 @@ let uiInstalled = false;
 const cleanText = (text, max) => String(text || '').replace(/\s+/g, ' ').trim().replace(/\d{4,}/g, '#').slice(0, max);
 
 export function recordUserMessage(kind, text) {
+  // Only problems the user hit: error/warning toasts. Info/success toasts can echo sensitive values.
+  if (kind !== 'error' && kind !== 'warning') return;
   const t = cleanText(text, 120);
   if (!t) return;
   messages.push({ kind, text: t, at: new Date().toISOString() });
@@ -69,14 +71,7 @@ export function installUiRecorder() {
       if (clicks.length > MAX_CLICKS) clicks.shift();
     } catch { /* recording must never break a click */ }
   }, true);
-  for (const name of ['alert', 'confirm']) {
-    const orig = window[name];
-    if (typeof orig !== 'function') continue;
-    window[name] = (msg, ...rest) => {
-      recordUserMessage(name, msg);
-      return orig.call(window, msg, ...rest);
-    };
-  }
+  // alert()/confirm() are deliberately NOT recorded: some show secrets (e.g. a reset temporary password).
 }
 
 export function getRecentClicks() {
@@ -87,10 +82,13 @@ export function getRecentMessages() {
   return messages.map((m) => ({ ...m }));
 }
 
-export function resetUiRecorderForTest() {
+/** Forget breadcrumbs at identity/campus boundaries so the next user's report never carries them. */
+export function clearUiBreadcrumbs() {
   clicks.length = 0;
   messages.length = 0;
 }
+
+export const resetUiRecorderForTest = clearUiBreadcrumbs;
 
 export function getRecentApiFailures() {
   return failures.map((f) => ({ ...f }));
