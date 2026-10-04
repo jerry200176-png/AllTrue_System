@@ -66,19 +66,40 @@ class PausedCourseProjectionTest extends TestCase
         $dates = array_column($payload['projected'], 'session_date');
         $this->assertNotEmpty($dates, 'other dates still project');
         $this->assertNotContains('2026-06-13', $dates);
+        // The replacement 8th date (2026-08-01) falls past range_end and must not be returned.
+        $this->assertNotContains('2026-08-01', $dates);
+        $this->assertCount(7, $dates);
+    }
+
+    public function test_cancelled_off_pattern_extra_with_lingering_scheduled_row_keeps_contract_total(): void
+    {
+        [, $token, $courseId] = $this->seed1('count', 0);
+        // Off-pattern (Wednesday) make-up: cancelled ClassSession, schedules row still 'scheduled'.
+        ClassSession::create(['StudentClassID' => $courseId, 'SessionDate' => '2026-06-10',
+            'StartTime' => '10:00', 'EndTime' => '12:00', 'Status' => 'cancelled', 'Note' => '']);
+        DB::table('schedules')->insert([
+            'student_id' => 0, 'teacher_id' => 0, 'subject' => 'Math', 'day_of_week' => 3,
+            'start_time' => '10:00:00', 'end_time' => '12:00:00', 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'extra', 'deduction' => 1, 'branch_id' => 1,
+            'schedule_date' => '2026-06-10', 'student_course_id' => $courseId, 'original_schedule_id' => 0,
+        ]);
+
+        $payload = $this->sessionDates($token, $courseId, '2026-12-31');
+        $dates = array_column($payload['projected'], 'session_date');
+        $this->assertNotContains('2026-06-10', $dates);
         $this->assertSame(8, count($dates) + count(array_filter(
             $payload['materialized'],
             fn ($m) => ($m['status'] ?? $m['Status'] ?? '') !== 'cancelled'
-        )), 'cancelled date must not shrink the 8-session contract');
+        )));
     }
 
-    private function sessionDates(string $token, int $courseId): array
+    private function sessionDates(string $token, int $courseId, string $rangeEnd = '2026-07-31'): array
     {
         $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/student-classes/session-dates', [
                 'branch_id' => $this->campusId,
                 'range_start' => '2026-06-01',
-                'range_end' => '2026-07-31',
+                'range_end' => $rangeEnd,
                 'courses' => [['id' => $courseId, 'first_class_date' => '2026-06-06',
                     'sessions_purchased' => 8, 'days_of_week' => [6]]],
             ]);

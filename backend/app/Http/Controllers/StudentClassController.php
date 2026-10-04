@@ -1250,7 +1250,7 @@ class StudentClassController extends Controller
         }
         // A cancelled ClassSession occupies its date even if its start time differs from the template.
         $cancelledDates = self::cancelledDateSet($sessionRows);
-        $effectiveDateList = array_values(array_filter($effectiveDateList, fn ($d) => !isset($cancelledDates[$d])));
+        $effectiveDateList = array_values(array_filter($effectiveDateList, fn ($d) => !isset($cancelledDates[$d]) && $d >= $rangeStart && $d <= $rangeEnd));
         $projected = $reader->buildProjectedFromEffectiveDates($classId, $effectiveDateList, $materialized, $class);
 
         return $reader->wrapCourseSplit($materialized, $projected);
@@ -1341,7 +1341,7 @@ class StudentClassController extends Controller
 
             if ($isRegular && !$isLeave) {
                 $list[] = $ymd;
-            } elseif ($isScheduledExtra && !$isRegular) {
+            } elseif ($isScheduledExtra && !$isRegular && !$isLeave) {
                 $list[] = $ymd;
             }
             $d->addDay();
