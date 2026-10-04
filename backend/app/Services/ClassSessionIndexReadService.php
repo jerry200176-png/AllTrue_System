@@ -43,6 +43,16 @@ class ClassSessionIndexReadService
         $attendanceAsOfDate = $attendanceAsOf->toDateString();
         $attendanceAsOfTime = $attendanceAsOf->format('H:i:s');
 
+        // Substitutes only matter on the requested dates; bounding the GROUP BY keeps it off the whole schedules table.
+        // Dates are validated by Carbon and bound as quoted literals (DB::raw subquery cannot take bindings here).
+        $subScheduleDateBound = '';
+        foreach (['start' => '>=', 'end' => '<='] as $param => $op) {
+            $value = $request->input($param);
+            if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
+                $subScheduleDateBound .= ' AND sub2.schedule_date ' . $op . ' ' . DB::getPdo()->quote(Carbon::parse($value)->toDateString());
+            }
+        }
+
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
@@ -65,6 +75,7 @@ class ClassSessionIndexReadService
                     WHERE sub2.status = "scheduled"
                       AND sub2.original_schedule_id IS NOT NULL
                       AND sub2.teacher_id <> sc2.TeacherID
+                      ' . $subScheduleDateBound . '
                     GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
                 ) sub_latest ON ss.id = sub_latest.max_id
             ) as sub_sched'), function ($join) {
@@ -73,8 +84,17 @@ class ClassSessionIndexReadService
                     ->on('sub_sched.start_time_hm', '=', 'cs.StartTimeHM');
             })
             ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
-            ->leftJoin(DB::raw('(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id) AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
-            ->leftJoin(DB::raw('(SELECT si_inner.* FROM `StudentSingIn` si_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `StudentSingIn` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) si_latest ON si_inner.id = si_latest.max_id) AS si'), 'si.ClassSessionID', '=', 'cs.id')
+            // in-app #319: per-row index lookups instead of whole-table "latest per session" derived tables
+            // (production EXPLAIN run 37166542492 scanned all LearningRecord/StudentSingIn rows on every request).
+            // LearningRecord.ClassSessionID is UNIQUE, so "latest non-voided" is the one row when not voided.
+            ->leftJoin('LearningRecord as lr', function ($join) {
+                $join->on('lr.ClassSessionID', '=', 'cs.id')->whereNull('lr.VoidedAt');
+            })
+            // StudentSingIn has many rows per session: pick the latest non-voided via idx_ssi_classsession_id.
+            ->leftJoin('StudentSingIn as si', function ($join) {
+                $join->on('si.ClassSessionID', '=', 'cs.id')
+                    ->whereRaw('si.id = (SELECT MAX(si2.id) FROM `StudentSingIn` si2 WHERE si2.ClassSessionID = cs.id AND si2.VoidedAt IS NULL)');
+            })
             ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
             ->leftJoin('User as lru', 'lru.id', '=', 'lr.TeacherID')
             ->leftJoin('User as siu', 'siu.id', '=', 'si.TeacherID')

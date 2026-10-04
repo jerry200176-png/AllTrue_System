@@ -39,6 +39,19 @@ updates:
         text: 設定與資源 → 家長 LINE 通知 → 「刷卡通知家長」可開關。關掉後刷卡照常記錄出勤，只是不傳 LINE 給家長。
     source_refs:
       - "alltrue:swipe-line-switch-20261003"
+  - id: staff-2026-10-04-teacher-home-faster
+    published_at: "2026-10-04"
+    audiences:
+      - director
+      - teacher
+    importance: digest
+    title: 老師首頁與行事曆載入更快
+    summary: 讀取課堂時不再每次掃過全部點名與評量紀錄，老師首頁和行事曆會更快出現。
+    items:
+      - category: improved
+        text: 老師首頁、待點名與行事曆讀取課堂更快；顯示內容不變。
+    source_refs:
+      - "alltrue:bug_report:319"
   - id: staff-2026-10-03-suggestion-loop
     published_at: "2026-10-03"
     audiences:

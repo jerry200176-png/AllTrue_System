@@ -4,6 +4,38 @@
  */
 export const staffUpdates = [
   {
+    "id": "staff-2026-10-04-teacher-home-faster",
+    "publishedAt": "2026-10-04",
+    "effectiveAt": null,
+    "audiences": [
+      "director",
+      "teacher"
+    ],
+    "audience": [
+      "director",
+      "teacher"
+    ],
+    "importance": "digest",
+    "title": "老師首頁與行事曆載入更快",
+    "summary": "讀取課堂時不再每次掃過全部點名與評量紀錄，老師首頁和行事曆會更快出現。",
+    "items": [
+      "老師首頁、待點名與行事曆讀取課堂更快；顯示內容不變。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "老師首頁、待點名與行事曆讀取課堂更快；顯示內容不變。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "alltrue:bug_report:319"
+    ],
+    "date": "2026-10-04",
+    "version": "2026.10.04"
+  },
+  {
     "id": "staff-2026-10-03-trial-convert-from-students",
     "publishedAt": "2026-10-03",
     "effectiveAt": null,
