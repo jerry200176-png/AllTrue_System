@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.10.04",
     "date": "2026-10-04",
     "title": "2026.10.04 草稿（未發布）",
-    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；row latest sign-in/learning-record lookups; date-bounded substitutes",
+    "summary": "carry the last buttons pressed and messages seen (F15)；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "carry the last buttons pressed and messages seen (F15)"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -29,6 +35,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "carry the last buttons pressed and messages seen (F15)",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "row latest sign-in/learning-record lookups; date-bounded substitutes"
     ]

@@ -691,6 +691,10 @@ exemptions:
     changelog_date: "2026-10-04"
     changelog_title: "fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)"
     reason: 修正主任回報（#340/#342/#343）的顯示錯誤，屬單一分校的個案修正，不需另發全員版本更新卡。
+  - id: silent-2026-10-04-report-breadcrumbs
+    changelog_date: "2026-10-04"
+    changelog_title: "feat(bug-report): reports carry the last buttons pressed and messages seen (F15)"
+    reason: 回報表單外觀與流程不變，只多附診斷資訊給分診；不需教職員操作，不發卡片。
   - id: silent-2026-10-03-form-control-labels
     changelog_date: "2026-10-03"
     changelog_title: "fix(a11y): accessible names for attendance and profile form controls"

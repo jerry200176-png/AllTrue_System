@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)
 <!-- release-notes: silent_ship=silent-2026-10-04-paused-projection -->
 - 暫停中的課程不再顯示「預排」日期（已建立的正式堂次照舊），點到暫停課程的預排日期改顯示「課程暫停中，恢復後才會排課」；已取消的堂次所在日期不再同時出現預排；課程管理「堂次」分頁預設改為清單（第N堂＋狀態），月曆可手動切換
+## 2026-10-04 — feat(bug-report): reports carry the last buttons pressed and messages seen (F15)
+<!-- release-notes: silent_ship=silent-2026-10-04-report-breadcrumbs -->
+- 意見與建議回報自動附上最近按過的 15 個按鈕標籤與 5 則錯誤／警告訊息（不記 alert／confirm，避免臨時密碼等），長數字遮罩、不含輸入值；登出或切換分校即清除；後台分診卡顯示「最近按過／畫面訊息」（只存在 app 內，不進公開 log）。SOP 改為先查、不問。
 
 ## 2026-10-04 — perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)
 <!-- release-notes: silent_ship=silent-2026-10-04-class-sessions-latest-rows -->
