@@ -179,6 +179,11 @@ export const getCourseTotalFee = (course) => {
   if (!course) return 0;
   const paymentType = String(course?.payment_type || '').toLowerCase();
   // in-app #349: a transaction discount is allocated into Charge (session or monthly); Rate stays the list price.
+  // Backend effective_total (active amendment > discount Charge) wins; it is null for non-discounted courses.
+  const effectiveTotal = course?.effective_total;
+  if (effectiveTotal != null && Number.isFinite(Number(effectiveTotal))) {
+    return Math.max(0, Math.round(Number(effectiveTotal)));
+  }
   const discount = Number(course?.pricing_snapshot?.discount_amount ?? 0);
   if (discount > 0) {
     return Math.max(0, Number(course?.Charge ?? course?.charge ?? 0) || 0);

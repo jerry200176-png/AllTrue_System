@@ -470,6 +470,7 @@ class StudentClassController extends Controller
             $class->setAttribute('end_time', $class->getAttribute('start_time') ? date('H:i', strtotime($class->getAttribute('start_time')) + $durationSecs) : null);
             $class->setAttribute('payment_type', ($class->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly');
             $class->setAttribute('sessions_purchased', (int) ($class->SessionCount ?? 0));
+            $class->setAttribute('effective_total', $class->effectiveDiscountedTotal());
             $storedCharge = (int) ($class->Charge ?? 0);
             $effectiveCharge = $storedCharge;
             // in-app #346: discounted to NT$0 (or no fee, not billed) = no payment obligation, like tutoring.
@@ -566,6 +567,9 @@ class StudentClassController extends Controller
                 $invoicePaidAmount,
                 $effectiveCharge
             ) ? 'paid' : ($pendingReportId !== null ? 'pending_report' : ($isFreeCourse ? 'free' : 'unpaid')));
+            if ($isFreeCourse && $pendingReportId === null) {
+                $class->setAttribute('payment_status', 'free'); // free overrides legacy Paid=1; ledger rows untouched
+            }
 
             $tutoringBillingAnomalyReasons = [];
             if ($isTutoringCourse) {

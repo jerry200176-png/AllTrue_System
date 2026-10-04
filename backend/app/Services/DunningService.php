@@ -74,7 +74,10 @@ class DunningService
 
         $events = [];
         foreach ($query->cursor() as $course) {
-            if (!$course->isEffectivelyPaid() && !$course->isFreeOfCharge()) {
+            if ($course->isFreeOfCharge()) {
+                continue; // no payment obligation: no reminder of any rule
+            }
+            if (!$course->isEffectivelyPaid()) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
                     (int) $course->ID,

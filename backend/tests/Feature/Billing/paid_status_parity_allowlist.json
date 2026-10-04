@@ -74,8 +74,6 @@
   {"site": "api.alerts.tuition.outstanding", "fixture": "stored_zero_pay_full", "current": "unpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
   {"site": "api.student_classes.payment_status", "fixture": "stored_zero_pay_full", "current": "unpaid", "target": "paid", "note": "stored PaidAmount=0 but net Payment rows cover the total (F7 stored-vs-rows split)"},
   {"site": "api.accounting.ledger", "fixture": "void_invoice_only_flag1", "current": "unpaid", "target": "paid", "note": "only a void invoice: target falls back to the legacy flag; site reads the void invoice"},
-  {"site": "api.student_classes.payment_status", "fixture": "zero_fee_flag1", "current": "paid", "target": "free", "note": "zero-fee course resolves to free; site reads the stray flag or has no free state"},
-  {"site": "api.parent.dashboard.payment_status", "fixture": "zero_fee_flag1", "current": "paid", "target": "free", "note": "zero-fee course resolves to free; site reads the stray flag or has no free state"},
   {"site": "api.accounting.ledger", "fixture": "zero_fee_zero_invoice", "current": "paid", "target": "free", "note": "zero-fee course resolves to free; site reads the zero-total invoice or has no free state"},
   {"site": "api.accounting.settled_courses", "fixture": "partial_flag1", "current": "paid", "target": "notpaid", "note": "partial receipt left Paid=1, so the course is listed as settled"},
   {"site": "api.accounting.settled_courses", "fixture": "void_partial_flag1", "current": "paid", "target": "notpaid", "note": "Paid=1 survives a partial void, so the course is listed as settled"},

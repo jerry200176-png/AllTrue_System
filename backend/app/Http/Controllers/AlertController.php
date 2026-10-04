@@ -488,18 +488,12 @@ class AlertController extends Controller
      */
     private function countModeCharge(StudentClass $course): int
     {
-        $discounted = $course->discountedContractTotal();
+        $discounted = $course->effectiveDiscountedTotal();
+        if ($discounted !== null) {
+            return $discounted;
+        }
         $rate = (float) ($course->Rate ?? 0);
         $rateUnit = strtolower(trim((string) ($course->rate_unit ?? 'session')));
-        if ($discounted !== null) {
-            // A course restored by an active positive price amendment is billed at the amended rate, not the frozen discount.
-            $pricing = app(StudentClassPricingService::class)->forDate($course, Carbon::today());
-            if ($pricing['source'] !== 'pricing_amendment' || $pricing['rate'] <= 0) {
-                return $discounted;
-            }
-            $rate = (float) $pricing['rate'];
-            $rateUnit = $pricing['rate_unit'];
-        }
         $sessions = max(0, (int) ($course->SessionCount ?? 0));
         if ($rate <= 0 || $sessions <= 0) {
             return max(0, (int) ($course->Charge ?? 0));

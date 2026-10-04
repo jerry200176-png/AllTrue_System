@@ -82,5 +82,7 @@ assert.equal(getCourseTotalFee({ ...discountedCourse, pricing_snapshot: null }),
 const discountedMonthly = { payment_type: 'monthly', Rate: 750, rate_unit: 'session', SessionCount: 4, Charge: 2000, pricing_snapshot: { discount_amount: 1000 }, day_time_slots: [{ day: 1, start_time: '18:00', duration_hours: 2 }] };
 assert.equal(getCourseTotalFee(discountedMonthly), 2000, 'monthly history: discounted Charge, not the Rate-derived monthly fee');
 assert.notEqual(getCourseTotalFee({ ...discountedMonthly, pricing_snapshot: null }), 2000, 'no discount → monthly fee from Rate');
+assert.equal(getCourseTotalFee({ ...discountedCourse, effective_total: 4800 }), 4800, 'effective_total (amendment) beats frozen discounted Charge');
+assert.equal(getCourseTotalFee({ ...discountedCourse, effective_total: null }), 5400, 'null effective_total → discounted Charge');
 
 console.error('coursePricing.test: OK');

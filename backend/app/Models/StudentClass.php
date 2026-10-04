@@ -98,6 +98,36 @@ class StudentClass extends Model
     }
 
     /**
+     * Current payable total of a discounted count-mode course (null = not discounted). Single pricing authority:
+     * an active positive price amendment (rate x sessions/hours) beats the frozen discount snapshot Charge.
+     */
+    public function effectiveDiscountedTotal(): ?int
+    {
+        $discounted = $this->discountedContractTotal();
+        if ($discounted === null) {
+            return null;
+        }
+        $pricing = app(\App\Services\StudentClassPricingService::class)->forDate($this, today());
+        if ($pricing['source'] !== 'pricing_amendment' || $pricing['rate'] <= 0) {
+            return $discounted;
+        }
+        $rate = (float) $pricing['rate'];
+        $sessions = max(0, (int) ($this->SessionCount ?? 0));
+        if ($sessions <= 0) {
+            return $discounted;
+        }
+        if ($pricing['rate_unit'] === 'hour') {
+            $hours = (int) ($this->TotalHours ?? 0);
+            if ($hours <= 0) {
+                $hours = (int) round(($sessions * max(30, (int) ($this->SessionDuration ?? 120))) / 60);
+            }
+            return max(0, (int) round($rate * $hours));
+        }
+
+        return max(0, (int) round($rate * $sessions));
+    }
+
+    /**
      * Genuinely free course = no payment obligation: tutoring, no fee at all, or discounted to NT$0.
      * Never free: a course with a non-void invoice above NT$0 (already billed), a positive price amendment,
      * or a package member (members carry Charge 0; the price lives on the package).

@@ -304,7 +304,7 @@ class NotificationSyncService
         }
 
         $rows = [];
-        foreach ($query->get() as $class) {
+        foreach ($query->get()->reject(fn (StudentClass $c) => $c->isFreeOfCharge()) as $class) {
             $student = $class->student;
             if (!$student) {
                 continue;

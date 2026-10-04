@@ -96,14 +96,17 @@ class BillingDiscountAndZeroAmountTest extends TestCase
             StudentClass::whereIn('ID', [$freeTrial->ID, $unpaid->ID])->update(['created_at' => now()->subDays(15)]);
         }
 
-        $dunned = collect(app(DunningService::class)->evaluateAll(1, false))
-            ->where('rule_key', 'unpaid_reminder')->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
+        $legacyPaidFree = $this->course($this->student()->id, ['Rate' => 1500, 'SessionCount' => 1, 'Charge' => 0, 'ClassType' => 'trial', 'Paid' => 1, 'RemainingSessions' => 1], 1500);
+        $events = collect(app(DunningService::class)->evaluateAll(1, false));
+        $dunned = $events->where('rule_key', 'unpaid_reminder')->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
         $this->assertContains((int) $unpaid->ID, $dunned);
-        $this->assertNotContains((int) $freeTrial->ID, $dunned, 'dunning: no unpaid event for a free trial');
+        $this->assertSame(1, (int) $freeTrial->RemainingSessions);
+        $this->assertSame([], $events->whereIn('student_class_id', [$freeTrial->ID, $legacyPaidFree->ID])->all(), 'dunning: no event of ANY rule for a free course, even low_sessions');
 
         NotificationSyncService::sync([1]);
         $this->assertDatabaseHas('Notifications', ['SourceKey' => "tuition:1:{$unpaid->ID}"]);
         $this->assertDatabaseMissing('Notifications', ['SourceKey' => "tuition:1:{$freeTrial->ID}"]);
+        $this->assertDatabaseMissing('Notifications', ['SourceKey' => "low_sessions:1:{$legacyPaidFree->ID}"]);
 
         $this->artisan('tuition:send-reminders', ['--dry-run' => true, '--overdue-days' => 7])
             ->expectsOutput('Found 1 overdue unpaid course(s).')
@@ -320,6 +323,50 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $classes = collect($this->getJson('/api/v1/parent/dashboard', ['Authorization' => "Bearer {$raw}"])->assertOk()->json('classes'))->keyBy('id');
         $this->assertSame('free', $classes[$free->ID]['payment_status']);
         $this->assertContains($classes[$free->ID]['monthly_fee_estimate'], [0, null]);
+    }
+
+    public function test_parent_payment_message_prices_an_amended_discounted_course_like_the_queue(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 4, 'Charge' => 0], 1500);
+        \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => '2026-08-15',
+            'rate' => 1200, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+        $body = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/parent/payment-message/{$student->id}")->assertOk()->json();
+
+        $this->assertSame(4800, $body['total_amount'], 'amended 1200 x 4, not frozen Rate 1500 x 4');
+        $this->assertStringContainsString('4,800', $body['message']);
+    }
+
+    public function test_free_overrides_legacy_paid_flag_in_course_index_and_parent_portal(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $free = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 4, 'Charge' => 0, 'RemainingSessions' => 4, 'Paid' => 1], 1500);
+        $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/student-classes?student_id={$student->id}&per_page=100")->assertOk()->json('data'))
+            ->keyBy(fn ($r) => (int) ($r['ID'] ?? $r['id']));
+        $this->assertSame('free', $rows[$free->ID]['payment_status']);
+
+        $raw = \Illuminate\Support\Str::random(32);
+        \App\Models\ParentSession::create(['StudentID' => $student->id, 'TokenHash' => hash('sha256', $raw), 'ExpiresAt' => now()->addHours(2)]);
+        $classes = collect($this->getJson('/api/v1/parent/dashboard', ['Authorization' => "Bearer {$raw}"])->assertOk()->json('classes'))->keyBy('id');
+        $this->assertSame('free', $classes[$free->ID]['payment_status']);
+        $this->assertSame(1, (int) $free->fresh()->Paid, 'ledger untouched');
+    }
+
+    public function test_course_index_exposes_effective_total_for_amended_discounted_course(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $course = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 4, 'Charge' => 0], 1500);
+        \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => '2026-08-15',
+            'rate' => 1200, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+        $rows = collect($this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/student-classes?student_id={$student->id}&per_page=100")->assertOk()->json('data'))
+            ->keyBy(fn ($r) => (int) ($r['ID'] ?? $r['id']));
+        $this->assertSame(4800, $rows[$course->ID]['effective_total']);
     }
 
     private function course(int $studentId, array $overrides, int $discount = 0): StudentClass

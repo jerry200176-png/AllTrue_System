@@ -791,7 +791,7 @@ class ParentPortalController extends Controller
                 $isPkg   = $pkg !== null && !$isMonthly;
 
                 $campus = $studentCampusMap->get((int) $c->StudentID, []);
-                $isFree = $isTutoring || (!$paid && $c->isFreeOfCharge()); // in-app #346: free = no payment obligation
+                $isFree = $isTutoring || $c->isFreeOfCharge(); // in-app #346: free = no payment obligation
                 return [
                     'id'                   => $c->ID,
                     'student_id'           => (int) $c->StudentID,
@@ -891,7 +891,7 @@ class ParentPortalController extends Controller
                 $stopped = (bool) $c->Stop;
 
                 // in-app #346: free course has no parent payment action.
-                if (!$paid && !$stopped && $c->isFreeOfCharge()) {
+                if (!$stopped && $c->isFreeOfCharge()) {
                     return false;
                 }
 
@@ -1666,6 +1666,12 @@ class ParentPortalController extends Controller
 
             $unitPrice = $this->resolveUnitPrice($c, $sessionCount);
             $subtotal = $this->resolveSubtotal($c, $unitPrice, $sessionCount);
+            // Discounted course: price from the same effective authority as the tuition queue (amendment > frozen discount Charge).
+            $effective = $c->effectiveDiscountedTotal();
+            if ($effective !== null && $effective > 0) {
+                $subtotal = $effective;
+                $unitPrice = $effective / $sessionCount;
+            }
             $totalAmount += $subtotal;
 
             $lineItems[] = [
