@@ -594,10 +594,14 @@ class AccountingController extends Controller
         $campusIds = $role === 'super_admin'
             ? []
             : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        // No campus assigned = no access (never "unrestricted"); only super_admin is cross-campus.
+        if ($role !== 'super_admin' && $campusIds === []) {
+            return response()->json(['message' => '沒有權限執行此操作'], 403);
+        }
 
         if ($request->filled('branch_id')) {
             $branchId = (int) $request->input('branch_id');
-            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            if ($role !== 'super_admin' && !in_array($branchId, $campusIds, true)) {
                 return response()->json(['message' => '沒有權限執行此操作'], 403);
             }
             $query->whereHas('student', fn ($q) => $q->where('CampusID', $branchId));
@@ -617,10 +621,14 @@ class AccountingController extends Controller
         $campusIds = $role === 'super_admin'
             ? []
             : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        // No campus assigned = no access (never "unrestricted"); only super_admin is cross-campus.
+        if ($role !== 'super_admin' && $campusIds === []) {
+            return response()->json(['message' => '沒有權限執行此操作'], 403);
+        }
 
         if ($request->filled('branch_id')) {
             $branchId = (int) $request->input('branch_id');
-            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            if ($role !== 'super_admin' && !in_array($branchId, $campusIds, true)) {
                 return response()->json(['message' => '沒有權限執行此操作'], 403);
             }
             $query->whereHas('student', fn ($q) => $q->where('CampusID', $branchId));
@@ -645,7 +653,7 @@ class AccountingController extends Controller
             return response()->json(['message' => '沒有權限執行此操作'], 403);
         }
 
-        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($campusId, $campusIds, true)) {
+        if ($role !== 'super_admin' && !in_array($campusId, $campusIds, true)) {
             return response()->json(['message' => '沒有權限執行此操作'], 403);
         }
 

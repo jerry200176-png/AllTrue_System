@@ -68,6 +68,10 @@ class PaymentReport extends Model
     public function displayNote(): string
     {
         $paymentNote = $this->getAttribute('payment_id') ? $this->getRelationValue('payment')?->getAttribute('Note') : null;
+        // confirm() stores an internal audit fallback when nobody wrote a note; never show it as a note.
+        if (is_string($paymentNote) && str_starts_with($paymentNote, '繳費回報核帳確認 (report #')) {
+            $paymentNote = null;
+        }
 
         return (string) ($paymentNote ?? $this->note ?? '');
     }

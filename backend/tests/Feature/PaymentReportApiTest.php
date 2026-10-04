@@ -2239,6 +2239,32 @@ class PaymentReportApiTest extends TestCase
             ->assertOk()->assertJsonPath('data.0.note', '確認時覆寫');
     }
 
+    public function test_accounting_hides_audit_note_and_denies_directors_without_campus(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-05-15', 'TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'transfer', 'Note' => '繳費回報核帳確認 (report #1)',
+        ]);
+        $report = $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10', 'payment_method' => 'transfer', 'reported_amount' => 5000,
+            'note' => null, 'account_last5' => '12345', 'payment_id' => $payment->id,
+        ]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/payment-reports/{$report->id}/receipt")->assertOk()->assertJsonPath('note', '');
+
+        $noCampus = $this->createDirectorToken([]);
+        foreach (["/api/v1/accounting/ledger?student_class_id={$sc->ID}", '/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30', '/api/v1/accounting/payments?start=2026-04-01&end=2026-04-30'] as $url) {
+            $this->withHeaders(['Authorization' => "Bearer {$noCampus}", 'Accept' => 'application/json'])->getJson($url)->assertForbidden();
+        }
+    }
+
     public function test_accounting_ledger_note_uses_payment_note_and_flags_tutoring(): void
     {
         $token = $this->createDirectorToken([1]);
