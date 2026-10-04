@@ -584,8 +584,6 @@ class ScheduleGuardService
     {
         $existingCount = $this->countDistinctStudents($overlaps);
         $newCapacity = $this->capacityForClassType($newClassType);
-        $overlapDetails = $this->buildOverlapDetails($overlaps);
-        $overlapSummary = $this->buildOverlapSummary($overlapDetails);
 
         // Trial classes are a director-arranged add-on to existing sessions
         // (試聽學生旁聽正式課堂). They bypass both the new-type capacity check
@@ -608,8 +606,7 @@ class ScheduleGuardService
                         '老師此時段已有 %d 位試聽學生，試聽 上限為 1 位學生。',
                         $existingTrialCount
                     ),
-                    'overlap_summary' => $overlapSummary,
-                    'overlap_details' => $overlapDetails,
+                    ...$this->overlapPayload($overlaps),
                 ]);
             }
             return null;
@@ -631,8 +628,7 @@ class ScheduleGuardService
                 'current_students' => $existingCount,
                 'allowed_students' => 1,
                 'message' => '老師此時段本分校已有一對一課程，無法再加課。',
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload($overlaps),
             ]);
         }
 
@@ -649,8 +645,7 @@ class ScheduleGuardService
                     $existingCount,
                     self::TEACHER_SLOT_ABSOLUTE_MAX
                 ),
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload($overlaps),
             ]);
         }
 
@@ -668,8 +663,7 @@ class ScheduleGuardService
                     $this->classTypeLabel($newClassType),
                     $newCapacity
                 ),
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload($overlaps),
             ]);
         }
 
@@ -697,8 +691,6 @@ class ScheduleGuardService
             return (int) ($entry['room_id'] ?? 0) === $roomId;
         });
         $currentStudents = $this->countDistinctStudents(array_values($sameRoomOverlaps));
-        $overlapDetails = $this->buildOverlapDetails(array_values($sameRoomOverlaps));
-        $overlapSummary = $this->buildOverlapSummary($overlapDetails);
 
         if ($currentStudents >= $studentCapacity) {
             return $this->finalizeCapacityConflict([
@@ -716,8 +708,7 @@ class ScheduleGuardService
                     $totalCapacity,
                     $studentCapacity
                 ),
-                'overlap_summary' => $overlapSummary,
-                'overlap_details' => $overlapDetails,
+                ...$this->overlapPayload(array_values($sameRoomOverlaps)),
             ]);
         }
 
@@ -731,6 +722,20 @@ class ScheduleGuardService
      * @param  array<string, mixed>  $conflict
      * @return array<string, mixed>
      */
+    /**
+     * Student/subject details for a conflict, hydrated only once a conflict exists
+     * (course edits evaluate many future dates; most have no conflict).
+     *
+     * @param  array<int, array<string, mixed>>  $overlaps
+     * @return array{overlap_summary: mixed, overlap_details: mixed}
+     */
+    private function overlapPayload(array $overlaps): array
+    {
+        $details = $this->buildOverlapDetails($overlaps);
+
+        return ['overlap_summary' => $this->buildOverlapSummary($details), 'overlap_details' => $details];
+    }
+
     private function finalizeCapacityConflict(array $conflict): array
     {
         $summary = trim((string) ($conflict['overlap_summary'] ?? ''));
