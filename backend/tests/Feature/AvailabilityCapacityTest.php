@@ -365,6 +365,39 @@ class AvailabilityCapacityTest extends TestCase
         $this->assertCount(1, $svc->detectCrossCampusConflict($teacher->id, $date, '15:00', '16:00'));
     }
 
+    public function test_moved_back_lesson_stays_busy_and_stopped_planned_row_is_free(): void
+    {
+        $teacher = $this->createTeacher('teacher-moveback@example.com');
+        $date = '2026-05-20';
+        $sched = fn (int $courseId, int $studentId, string $start, string $status) => \Illuminate\Support\Facades\DB::table('schedules')->insertGetId([
+            'student_id' => $studentId, 'teacher_id' => $teacher->id, 'subject' => '數學', 'day_of_week' => 3,
+            'start_time' => $start, 'end_time' => sprintf('%02d:00', (int) $start + 1), 'duration_hours' => 1,
+            'class_type' => 'one_on_one', 'status' => $status, 'type' => 'regular', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $courseId, 'schedule_date' => $date, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Moved away from 10:00 (old rescheduled marker), later moved back to 10:00 (newer scheduled row): busy.
+        $back = $this->createStudentClass($this->createStudent('moveback')->id, $teacher->id, 'one_on_one');
+        ClassSession::create(['StudentClassID' => $back->ID, 'SessionDate' => $date, 'StartTime' => '10:00:00', 'EndTime' => '11:00:00', 'Status' => 'scheduled']);
+        $sched($back->ID, $back->StudentID, '10:00', 'rescheduled');
+        $sched($back->ID, $back->StudentID, '10:00', 'scheduled');
+
+        // A planned (schedules) row of a stopped course: free.
+        $stopped = $this->createStudentClass($this->createStudent('stoppedplan')->id, $teacher->id, 'one_on_one');
+        $stopped->update(['Stop' => 1]);
+        $sched($stopped->ID, $stopped->StudentID, '14:00', 'scheduled');
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$this->dirToken}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/teachers/{$teacher->id}/availability?date={$date}")->assertOk();
+        $starts = array_column($res->json('busy_slots'), 'start_time');
+        $this->assertContains('10:00', $starts, 'moved-back lesson must stay busy');
+        $this->assertNotContains('14:00', $starts, 'stopped course planned row must not occupy');
+
+        $svc = app(\App\Services\SubstituteService::class);
+        $this->assertCount(1, $svc->detectCrossCampusConflict($teacher->id, $date, '10:00', '11:00'));
+        $this->assertSame([], $svc->detectCrossCampusConflict($teacher->id, $date, '14:00', '15:00'));
+    }
+
     private function createTeacher(string $loginName): User
     {
         $teacher = User::create([

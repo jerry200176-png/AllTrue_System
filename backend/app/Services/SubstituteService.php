@@ -323,27 +323,33 @@ class SubstituteService
     {
         // ponytail: guard frees by course+date only; we also match start time so a same-day
         // rescheduled-TO session stays busy (StaleScheduleExceptionBusyTest second-reschedule, R114).
-        $freedQuery = DB::table('schedules')
+        // Only the LATEST schedules row per course+time decides: a lesson moved away and later moved back
+        // has an old rescheduled marker but a newer scheduled row, and must stay busy.
+        $rowsQuery = DB::table('schedules')
             ->where('teacher_id', $teacherId)
             ->whereDate('schedule_date', $ymd)
-            ->whereIn('status', ['leave', 'rescheduled'])
             ->where('student_course_id', '>', 0);
         if (!empty($excludeScheduleIds)) {
-            $freedQuery->whereNotIn('id', $excludeScheduleIds);
+            $rowsQuery->whereNotIn('id', $excludeScheduleIds);
         }
-        $freed = [];
-        foreach ($freedQuery->get(['student_course_id', 'start_time']) as $f) {
-            $freed[(int) $f->student_course_id . '|' . $this->hhmm($f->start_time)] = true;
+        $latest = [];
+        foreach ($rowsQuery->orderBy('id')->get(['id', 'student_course_id', 'start_time', 'status']) as $f) {
+            $latest[(int) $f->student_course_id . '|' . $this->hhmm($f->start_time)] = (string) $f->status;
         }
+        $freed = array_filter($latest, fn ($status) => in_array($status, ['leave', 'rescheduled'], true));
+
+        // Planned (schedules) rows of stopped courses never occupy a slot, same as their sessions.
+        $courseIds = collect($scheduleRows)->pluck('student_course_id')->map(fn ($v) => (int) $v)->filter()->unique()->values()->all();
+        $stopped = $courseIds === [] ? [] : array_flip(DB::table('StudentClass')->whereIn('ID', $courseIds)->where('Stop', 1)->pluck('ID')->map(fn ($v) => (int) $v)->all());
 
         $sessions = collect($sessionRows)
             ->reject(fn ($r) => isset($freed[(int) $r->course_id . '|' . $this->hhmm($r->start_time)]))
             ->values();
         $sessionCourses = array_flip($sessions->pluck('course_id')->map(fn ($v) => (int) $v)->all());
-        $schedules = collect($scheduleRows)->reject(function ($r) use ($freed, $sessionCourses) {
+        $schedules = collect($scheduleRows)->reject(function ($r) use ($freed, $sessionCourses, $stopped) {
             $cid = (int) ($r->student_course_id ?? 0);
 
-            return $cid > 0 && (isset($freed[$cid . '|' . $this->hhmm($r->start_time)]) || isset($sessionCourses[$cid]));
+            return $cid > 0 && (isset($stopped[$cid]) || isset($freed[$cid . '|' . $this->hhmm($r->start_time)]) || isset($sessionCourses[$cid]));
         })->values();
 
         return [$sessions, $schedules];
