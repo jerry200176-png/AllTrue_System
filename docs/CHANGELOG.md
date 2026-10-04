@@ -11,7 +11,7 @@
 - 所有 `/api/` 錯誤（驗證、找不到、伺服器錯誤）一律回 JSON，不再因前端少帶 Accept 而被轉址成「網路錯誤」；補卡原因前端先檢查至少 2 個字
 
 ## 2026-10-04 — perf(class-sessions): per-row latest sign-in/learning-record lookups; date-bounded substitutes (in-app #319)
-<!-- release-notes: staff_update=staff-2026-10-04-teacher-home-faster -->
+<!-- release-notes: silent_ship=silent-2026-10-04-class-sessions-latest-rows -->
 - `/class-sessions` 不再對 `StudentSingIn`／`LearningRecord` 整表算「每堂最新一筆」，改用既有索引逐列查；代課查詢只看請求日期區間。正式站 EXPLAIN（run 37166542492）顯示每次請求整表掃描 1.4–1.6 萬列；回傳內容不變。
 
 ## 2026-10-03 — feat(bug-report): suggestions close as logged and reopen on reply; form shows your open reports on the page

@@ -44,12 +44,14 @@ class ClassSessionIndexReadService
         $attendanceAsOfTime = $attendanceAsOf->format('H:i:s');
 
         // Substitutes only matter on the requested dates; bounding the GROUP BY keeps it off the whole schedules table.
-        // Dates are validated by Carbon and bound as quoted literals (DB::raw subquery cannot take bindings here).
+        // Only a real calendar Y-m-d is used (digits and dashes only, so the literal is injection-safe); anything else
+        // leaves the subquery unbounded as before, so odd input never errors here.
         $subScheduleDateBound = '';
         foreach (['start' => '>=', 'end' => '<='] as $param => $op) {
             $value = $request->input($param);
-            if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1) {
-                $subScheduleDateBound .= ' AND sub2.schedule_date ' . $op . ' ' . DB::getPdo()->quote(Carbon::parse($value)->toDateString());
+            if (is_string($value) && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m) === 1
+                && checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+                $subScheduleDateBound .= " AND sub2.schedule_date {$op} '{$value}'";
             }
         }
 

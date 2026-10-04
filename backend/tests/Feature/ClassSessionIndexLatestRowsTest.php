@@ -69,6 +69,13 @@ class ClassSessionIndexLatestRowsTest extends TestCase
         $this->assertNotNull($keep->id);
         $this->assertStringNotContainsString('GROUP BY ClassSessionID', $sql, 'no whole-table latest-per-session derived tables');
         $this->assertStringContainsString("sub2.schedule_date >= '2026-05-01'", $sql, 'substitute lookup is date-bounded');
+
+        // An invalid calendar date is never used as a bound (the query builds and stays unbounded on that side).
+        $req = \Illuminate\Http\Request::create('/api/v1/class-sessions', 'GET', ['start' => '2026-99-99', 'end' => "2026-05-20' OR 1=1 --"]);
+        $req->attributes->set('auth_role', 'super_admin');
+        $boundSql = (new \App\Services\ClassSessionIndexReadService())->buildQuery($req)->toSql();
+        $this->assertStringNotContainsString('sub2.schedule_date >=', $boundSql);
+        $this->assertStringNotContainsString('sub2.schedule_date <=', $boundSql, 'non-date input is never interpolated');
     }
 
     private function user(string $name, string $login, string $type = 'T'): User
