@@ -25,7 +25,8 @@ def positive_int(value, name):
     return int(value)
 
 
-def make_receipt(manifest, metadata):
+def make_receipt(manifest, metadata, now=None):
+    now = now or datetime.now(timezone.utc)
     if not isinstance(manifest, dict):
         raise ValueError("runtime manifest must be an object")
     repository = metadata.get("GITHUB_REPOSITORY")
@@ -51,8 +52,8 @@ def make_receipt(manifest, metadata):
         parsed_time = datetime.fromisoformat(deployed_at.replace("Z", "+00:00"))
     except ValueError as exc:
         raise ValueError("runtime deployed_at is invalid") from exc
-    if parsed_time.tzinfo is None or parsed_time > datetime.now(timezone.utc) + timedelta(minutes=5):
-        raise ValueError("runtime deployed_at is naive or too far in the future")
+    if parsed_time.tzinfo is None or not now - timedelta(minutes=35) <= parsed_time <= now + timedelta(minutes=5):
+        raise ValueError("runtime deployed_at is stale or too far in the future")
     return {
         "schema": 1,
         "repository": repository,
@@ -63,7 +64,7 @@ def make_receipt(manifest, metadata):
         "run_id": positive_int(metadata.get("GITHUB_RUN_ID"), "GITHUB_RUN_ID"),
         "run_attempt": positive_int(metadata.get("GITHUB_RUN_ATTEMPT"), "GITHUB_RUN_ATTEMPT"),
         "deployed_at": deployed_at,
-        "observed_at": datetime.now(timezone.utc).isoformat(),
+        "observed_at": now.isoformat(),
         "runtime": {
             "backend_sha": backend_sha,
             "frontend_sha": frontend_sha,
