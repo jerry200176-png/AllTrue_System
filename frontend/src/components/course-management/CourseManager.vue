@@ -52,7 +52,7 @@ export default {
   },
   emits: ['close', 'update:tab', 'action', 'open-session', 'create-day', 'toggle-cancelled', 'toggle-notes'],
   setup(props, { emit }) {
-    const sessionsView = ref(props.calendarEnabled ? 'calendar' : 'list');
+    const sessionsView = ref('list');
     const dangerOpen = ref(false);
     const selectedPeriod = ref('');
     const monthlySummary = computed(() => props.course?.monthly_payment);
@@ -61,7 +61,7 @@ export default {
       ? `${selectedPeriod.value} ${periodPaymentLabel(selectedPayment.value.payment_status)}`
       : (monthlyPaymentLabel(props.course) || props.paymentLabel));
     watch(() => props.course?.id, () => {
-      sessionsView.value = props.calendarEnabled ? 'calendar' : 'list';
+      sessionsView.value = 'list';
       dangerOpen.value = false;
       selectedPeriod.value = '';
     });

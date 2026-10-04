@@ -137,6 +137,18 @@ describe('openSessionEdit projected capability (F4)', () => {
     }));
   });
 
+  it('paused course projected chip explains the pause instead of blaming count mode', async () => {
+    const course = { id: 42, payment_type: 'session', ScheduleMode: 'count', Stop: 1, duration_hours: 2 };
+    const flow = buildFlow({
+      getSessionDisplayRow: vi.fn(() => null),
+      reloadCourseSessions: vi.fn(async () => true),
+      getSessionRowsForDate: () => [],
+    });
+    await flow.openSessionEdit(course, '2026-08-10', 0, { isProjected: true, startTime: '18:00', endTime: '20:00' });
+    expect(flow.chipActionDialog.value?.message).toBe('課程暫停中，恢復後才會排課；這個日期不會上課。');
+    expect(flow.chipActionDialog.value?.message).not.toContain('堂數制');
+  });
+
   it('monthly date-mode projected chip still materializes', async () => {
     const flow = buildFlow({
       getSessionDisplayRow: vi.fn(() => null),

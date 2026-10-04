@@ -132,6 +132,9 @@ class ClassSessionIndexProjectionService
             if (!$class) {
                 continue;
             }
+            if ((int) ($class->Stop ?? 0) === 1) {
+                continue; // paused: no projected 預排 (real rows are returned elsewhere)
+            }
             if (self::isCountContractCapped($capacityDiagnostics[$classId] ?? null)) {
                 continue;
             }

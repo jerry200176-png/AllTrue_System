@@ -669,6 +669,7 @@ class StudentClassController extends Controller
                         'ID',
                         'StudentID',
                         'PackageID',
+                        'Stop',
                         'week',
                         'time',
                         'week1',
@@ -1229,6 +1230,18 @@ class StudentClassController extends Controller
         string $rangeEnd
     ): array {
         $materialized = $reader->collectMaterializedFromRows($sessionRows, $classId, $rangeStart, $rangeEnd);
+        // Paused course: 未恢復前不排新課 -> no virtual 預排 dates (real rows above stay).
+        if ((int) ($class->Stop ?? 0) === 1) {
+            $effectiveDateList = [];
+        }
+        // A cancelled ClassSession occupies its date even if its start time differs from the template.
+        $cancelledDates = [];
+        foreach ($sessionRows as $row) {
+            if (strtolower((string) ($row->Status ?? '')) === 'cancelled' && $row->SessionDate) {
+                $cancelledDates[Carbon::parse($row->SessionDate)->toDateString()] = true;
+            }
+        }
+        $effectiveDateList = array_values(array_filter($effectiveDateList, fn ($d) => !isset($cancelledDates[$d])));
         $projected = $reader->buildProjectedFromEffectiveDates($classId, $effectiveDateList, $materialized, $class);
 
         return $reader->wrapCourseSplit($materialized, $projected);
