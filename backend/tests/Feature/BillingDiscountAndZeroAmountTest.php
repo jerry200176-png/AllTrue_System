@@ -256,6 +256,72 @@ class BillingDiscountAndZeroAmountTest extends TestCase
         $this->assertSame('unpaid', $classes[$billed->ID]['payment_status']);
     }
 
+    public function test_confirm_refuses_free_course_and_fractional_amounts(): void
+    {
+        $token = $this->director();
+        $h = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+        $report = fn (StudentClass $c, $amount) => PaymentReport::create(['StudentID' => $c->StudentID, 'StudentClassID' => $c->ID, 'reported_by_name' => 'x',
+            'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'reported_amount' => $amount, 'status' => 'pending', 'report_token_hash' => str_repeat('b', 64), 'token_expires_at' => now()->addDay()]);
+        $student = $this->student();
+        $free = $this->course($student->id, ['Rate' => 1500, 'SessionCount' => 4, 'Charge' => 0], 1500);
+        $paid = $this->course($student->id, ['Rate' => 1100, 'SessionCount' => 8, 'Charge' => 8800]);
+
+        $r = $report($free, 500);
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$r->id}/confirm")->assertStatus(422)->assertJsonPath('code', 'no_payment_obligation');
+        $b = $this->withHeaders($h)->postJson('/api/v1/payment-reports/confirm-batch', ['ids' => [$r->id]]);
+        $this->assertSame('no_payment_obligation', $b->json('results.0.code'));
+        $this->assertSame(0, \App\Models\Payment::count());
+        $this->assertSame(0, (int) $free->fresh()->Paid);
+
+        $f = $report($paid, 1.5);
+        $this->withHeaders($h)->putJson("/api/v1/payment-reports/{$f->id}/confirm")->assertStatus(422)->assertJsonPath('code', 'invalid_report_amount');
+        $this->assertSame(0, \App\Models\Payment::count());
+    }
+
+    public function test_only_the_currently_effective_amendment_decides_free(): void
+    {
+        $student = $this->student();
+        $amend = fn (StudentClass $c, string $from, int $rate) => \App\Models\StudentClassPricingAmendment::create(['student_class_id' => $c->ID,
+            'effective_from' => $from, 'rate' => $rate, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+        $future = $this->course($student->id, ['Rate' => 0, 'Charge' => 0, 'SessionCount' => 4]);
+        $amend($future, now()->addMonth()->toDateString(), 1200);
+        $superseded = $this->course($student->id, ['Rate' => 0, 'Charge' => 0, 'SessionCount' => 4]);
+        $amend($superseded, '2026-06-01', 1200);
+        $amend($superseded, '2026-08-01', 0);
+
+        $this->assertTrue($future->isFreeOfCharge());
+        $this->assertTrue($superseded->isFreeOfCharge());
+        $out = app(\App\Services\BillingPayableResolver::class)->courseStatusesByStudentClassIds([$future->ID, $superseded->ID]);
+        $this->assertSame('free', $out[$future->ID]['status']);
+        $this->assertSame('free', $out[$superseded->ID]['status']);
+    }
+
+    public function test_discounted_date_mode_course_gets_no_obligation_but_unset_fee_stays_fee_unset(): void
+    {
+        $token = $this->director();
+        $student = $this->student();
+        $discounted = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 0], 1500);
+        $unset = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 0, 'Charge' => 0, 'SessionCount' => 0]);
+        $code = fn (StudentClass $c) => $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/payment-reports/director-record', ['student_class_id' => $c->ID, 'payment_date' => '2026-10-04', 'payment_method' => 'cash', 'amount' => 0])
+            ->assertStatus(422)->json('code');
+
+        $this->assertSame('no_payment_obligation', $code($discounted));
+        $this->assertSame('monthly_fee_unset', $code($unset));
+    }
+
+    public function test_parent_portal_free_course_has_no_monthly_fee_estimate(): void
+    {
+        $student = $this->student();
+        $free = $this->course($student->id, ['ScheduleMode' => 'date', 'Rate' => 1500, 'Charge' => 0, 'SessionCount' => 0, 'RemainingSessions' => 0, 'monthly_sessions' => 4], 1500);
+        $raw = \Illuminate\Support\Str::random(32);
+        \App\Models\ParentSession::create(['StudentID' => $student->id, 'TokenHash' => hash('sha256', $raw), 'ExpiresAt' => now()->addHours(2)]);
+
+        $classes = collect($this->getJson('/api/v1/parent/dashboard', ['Authorization' => "Bearer {$raw}"])->assertOk()->json('classes'))->keyBy('id');
+        $this->assertSame('free', $classes[$free->ID]['payment_status']);
+        $this->assertContains($classes[$free->ID]['monthly_fee_estimate'], [0, null]);
+    }
+
     private function course(int $studentId, array $overrides, int $discount = 0): StudentClass
     {
         $course = StudentClass::create(array_merge([

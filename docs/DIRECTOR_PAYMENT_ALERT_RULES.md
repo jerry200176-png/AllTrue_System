@@ -13,6 +13,8 @@ last_reviewed: 2026-08-16
 
 **輔導課例外（產品確認 #325）：** `ClassType=tutoring` 一律不是學費／續課提醒、催繳、低堂數或對外繳費通知候選；不論 `Paid`、剩餘堂數、排課模式、金額或歷史異常。既有異常仍在原課務／帳務畫面唯讀呈現，不以提醒方式催收；歷史資料不回溯改寫。
 
+**免收費課程例外（in-app #346/#349/#361）：** 輔導課、折扣後 0 元（100% 折扣）、以及堂數制且無費用（`Charge`/`Rate` 皆 0）且無有效帳單（>0）、無「今日生效」的正價調價（`StudentClassPricingAmendment`：`effective_from <= 今天`、未作廢、取最新一筆，且單價 > 0；未來生效或已被較新 0 元調價取代者不算）者，在堂數制與月結制**都不列入**學費提醒／催繳／家長繳費通知，也不可登記或入帳繳費（`no_payment_obligation`）。月結制「未設定月費」不算免費（維持 `monthly_fee_unset`）。判斷唯一來源：`StudentClass::isFreeOfCharge()`／`BillingPayableResolver`。
+
 | 模式 | 列入提醒的條件（皆須 `Stop = 0`，且堂數制／月結制各自還有欄位前提） |
 |------|-------------------------------------------------------------------|
 | **堂數制** `ScheduleMode = count` | **未繳費**（`Paid != 1`）**或** **剩餘堂數不足**（`RemainingSessions <= 2`，**含 0 堂**；已繳費也會列，屬續課／加購提醒）。 |
@@ -95,6 +97,7 @@ last_reviewed: 2026-08-16
 - 結案 UI：已繳 + 0 堂 → 結案後不再列。
 - 月結：未繳、繳費日前第 4 天出現、第 5 天不出現；未繳且過繳費日仍出現。
 - 分校：`branch_id` 與 `CampusID` 過濾正確。
+- 免收費課程（兩種模式皆不列入、不可登記繳費）：`BillingDiscountAndZeroAmountTest`（`test_tuition_alerts_use_the_discounted_total_and_drop_free_trials`、`test_date_mode_free_course_is_skipped_by_dunning_and_tuition_queue`、`test_only_the_currently_effective_amendment_decides_free`、`test_confirm_refuses_free_course_and_fractional_amounts`、`test_discounted_date_mode_course_gets_no_obligation_but_unset_fee_stays_fee_unset`、`test_parent_portal_free_course_has_no_monthly_fee_estimate`）。
 
 ## 曾發生過的錯誤（避免再犯）
 

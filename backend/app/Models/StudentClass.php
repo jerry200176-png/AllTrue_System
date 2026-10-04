@@ -114,8 +114,16 @@ class StudentClass extends Model
 
         return $this->isFreeGivenBillingFacts(
             $this->invoices()->notVoided()->where('TotalAmount', '>', 0)->exists(),
-            $this->pricingAmendments()->whereNull('voided_at')->where('rate', '>', 0)->exists(),
+            $this->hasCurrentPositiveAmendment(),
         );
+    }
+
+    /** Only the amendment in force today counts (same selection as StudentClassPricingService::forDate). */
+    private function hasCurrentPositiveAmendment(): bool
+    {
+        $price = app(\App\Services\StudentClassPricingService::class)->forDate($this, today());
+
+        return $price['source'] === 'pricing_amendment' && $price['rate'] > 0;
     }
 
     /**

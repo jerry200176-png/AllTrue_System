@@ -53,10 +53,13 @@ class BillingPayableResolver
             ->orderBy('id')
             ->get(['id', 'StudentClassID', 'IssueDate', 'TotalAmount', 'Status', 'billing_period'])
             ->groupBy('StudentClassID');
-        // One query for active positive price amendments (part of the free predicate).
+        // One query for the amendment in force today per course (same selection as StudentClassPricingService::forDate);
+        // it makes a course billable only when its price is above NT$0.
         $amendedClassIds = \App\Models\StudentClassPricingAmendment::query()
-            ->whereIn('student_class_id', $ids->all())->whereNull('voided_at')->where('rate', '>', 0)
-            ->pluck('student_class_id')->map(fn ($id) => (int) $id)->flip();
+            ->whereIn('student_class_id', $ids->all())->whereNull('voided_at')->whereDate('effective_from', '<=', today()->toDateString())
+            ->orderByDesc('effective_from')->orderByDesc('id')->get(['student_class_id', 'rate'])
+            ->unique('student_class_id')->filter(fn ($row) => (int) $row->rate > 0)
+            ->mapWithKeys(fn ($row) => [(int) $row->student_class_id => true]);
         $monthlyByClass = $this->monthlyPeriods->batch(collect($courseMap)->only($ids->all())->values());
 
         $out = [];

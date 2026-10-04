@@ -335,9 +335,10 @@ class PaymentReportController extends Controller
             }
 
             // Pending reports created before the whole-dollar rule may carry sub-dollar amounts; never book them.
-            if ((int) $report->reported_amount < 1) { // same truncation the booking below applies
+            $reported = (float) $report->reported_amount;
+            if ($reported < 1 || $reported !== floor($reported)) { // booking truncates; never book a fractional amount
                 return response()->json([
-                    'message' => '此回報金額不足 1 元，無法入帳，請退回（駁回）此回報。',
+                    'message' => '此回報金額不是 1 元以上的整數元，無法入帳，請退回（駁回）此回報。',
                     'code' => 'invalid_report_amount',
                 ], 422);
             }
@@ -348,6 +349,9 @@ class PaymentReportController extends Controller
             $sc = StudentClass::find($report->StudentClassID);
             if ($sc && ($blockedTutoringPayment = $this->tutoringPaymentBlocked($sc))) {
                 return $blockedTutoringPayment;
+            }
+            if ($sc && ($noObligation = $this->freeCoursePaymentBlocked($sc))) {
+                return $noObligation;
             }
             $package = $sc ? $this->lockPackageForCourse($sc) : null;
 
@@ -543,6 +547,10 @@ class PaymentReportController extends Controller
             return $blockedTutoringPayment;
         }
 
+        if ($sc instanceof StudentClass && ($noObligation = $this->freeCoursePaymentBlocked($sc))) {
+            return $noObligation;
+        }
+
         // #1096 (in-app #190): a date-mode (月結) course billed at NT$0 is nonsensical —
         // the reported "金額顯示0應該顯示3000" came from an unset monthly fee. Block a NT$0
         // record for date-mode and point staff to set the fee first.
@@ -551,10 +559,6 @@ class PaymentReportController extends Controller
                 'message' => '月結課程的繳費金額不可為 0；若月費顯示為 0，請先於課程管理設定正確月費金額後再登記。',
                 'code' => 'monthly_fee_unset',
             ], 422);
-        }
-
-        if ($sc instanceof StudentClass && ($noObligation = $this->freeCoursePaymentBlocked($sc))) {
-            return $noObligation;
         }
 
         // in-app #346: a NT$0 record settles a course as "paid" with a 0元 receipt and then drops out of

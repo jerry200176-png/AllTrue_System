@@ -821,7 +821,7 @@ class ParentPortalController extends Controller
                     'settlement_day'       => $isMonthly ? ((int) ($c->settlement_day ?? 0) ?: null) : null,
                     'monthly_target'       => $isMonthly ? ($monthlyTarget ?: null) : null,
                     'attended_this_month'  => $isMonthly ? $attended : null,
-                    'monthly_fee_estimate' => $isMonthly ? $monthlyFee : null,
+                    'monthly_fee_estimate' => $isMonthly && !$isFree ? $monthlyFee : null,
                 ];
             })
             ->values();
