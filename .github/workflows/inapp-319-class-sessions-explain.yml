@@ -1,16 +1,22 @@
 name: In-app 319 class-sessions EXPLAIN probe (read-only)
 
-# Read-only: EXPLAIN plus a timed SELECT of the /class-sessions index query
-# (ClassSessionIndexReadService::buildQuery) for one campus-week. No writes,
-# no row data in the output (plan rows and timings only). Decides between
-# additive indexes and date-bounded subqueries for in-app #319 (#3069).
+# Read-only: EXPLAIN plus timed runs of the /class-sessions index query
+# (ClassSessionIndexReadService::buildQuery + paginate, i.e. the count query and
+# the page query) for the real Teacher Home request shapes and one campus-week.
+# No writes, no row data in the output (plans, timings, table-size estimates).
+# Decides between additive indexes and date-bounded subqueries for in-app #319 (#3069).
 on:
   workflow_dispatch:
     inputs:
       branch_id:
-        description: Campus ID to probe (a busy campus)
+        description: Campus ID for the campus-week shape (a busy campus)
         required: true
         default: "9"
+        type: string
+      teacher_id:
+        description: Teacher User ID for the Teacher Home shapes (blank = busiest teacher this week)
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -22,6 +28,8 @@ concurrency:
 
 jobs:
   probe:
+    # Production SSH + inline Tinker: only the reviewed workflow on main may run.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -50,47 +58,79 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           BRANCH_ID: ${{ inputs.branch_id }}
+          TEACHER_ID: ${{ inputs.teacher_id }}
+          # #3449 (same-day repair batching) must be live, or we would measure the old code.
+          REQUIRED_REV: 15480e9de336f620647dd1b0d409c2f670f8dd7a
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "main only"; exit 1; }
           [[ "$BRANCH_ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid branch_id"; exit 1; }
+          [[ -z "$TEACHER_ID" || "$TEACHER_ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid teacher_id"; exit 1; }
           ssh -i ~/.ssh/deploy_key \
             -o IdentitiesOnly=yes \
             -o BatchMode=yes \
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" "BRANCH_ID='$BRANCH_ID' bash -s" <<'REMOTE' | tee explain.log
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "BRANCH_ID='$BRANCH_ID' TEACHER_ID='$TEACHER_ID' REQUIRED_REV='$REQUIRED_REV' bash -s" <<'REMOTE' | tee explain.log
           set -euo pipefail
           cd /home/admin/backend
-          export BRANCH_ID
+          PROD_HEAD=$(git rev-parse HEAD)
+          git merge-base --is-ancestor "$REQUIRED_REV" "$PROD_HEAD" || { echo "required revision not deployed (prod $PROD_HEAD)"; exit 1; }
+          export BRANCH_ID TEACHER_ID PROD_HEAD
           php artisan tinker --execute='
-          $branch = (int)getenv("BRANCH_ID");
-          $start = \Carbon\Carbon::now()->startOfWeek()->toDateString();
-          $end = \Carbon\Carbon::now()->endOfWeek()->toDateString();
-          $req = \Illuminate\Http\Request::create("/api/v1/class-sessions", "GET", ["branch_id" => $branch, "start" => $start, "end" => $end]);
-          $req->attributes->set("auth_role", "super_admin");
-          $q = (new \App\Services\ClassSessionIndexReadService())->buildQuery($req)
-              ->orderBy("cs.SessionDate")->orderBy("cs.StartTime")->orderBy("cs.id")->limit(500);
-          $sql = $q->toSql();
-          $bindings = $q->getBindings();
-          $plan = array_map(fn ($r) => array_intersect_key((array)$r, array_flip(["id","select_type","table","type","possible_keys","key","rows","filtered","Extra"])),
-              \Illuminate\Support\Facades\DB::select("EXPLAIN ".$sql, $bindings));
-          $timings = [];
-          $count = 0;
-          for ($i = 0; $i < 3; $i++) {
-              $t = microtime(true);
-              $count = count(\Illuminate\Support\Facades\DB::select($sql, $bindings));
-              $timings[] = round((microtime(true) - $t) * 1000, 1);
+          $db = \Illuminate\Support\Facades\DB::class;
+          $today = \Carbon\Carbon::today();
+          $teacher = (int)getenv("TEACHER_ID");
+          if ($teacher < 1) {
+              $teacher = (int)$db::table("ClassSession as cs")->join("StudentClass as sc", "sc.ID", "=", "cs.StudentClassID")
+                  ->whereBetween("cs.SessionDate", [$today->copy()->startOfWeek()->toDateString(), $today->copy()->endOfWeek()->toDateString()])
+                  ->groupBy("sc.TeacherID")->orderByRaw("COUNT(*) DESC")->value("sc.TeacherID");
           }
-          $sizes = [];
-          foreach (["ClassSession","schedules","LearningRecord","StudentSingIn","StudentClass"] as $table) {
-              $sizes[$table] = \Illuminate\Support\Facades\DB::table($table)->count();
+          $teacherCampuses = $db::table("UserCampus")->where("UserID", $teacher)->where("Approved", 1)->pluck("CampusID")->map(fn ($c) => (int)$c)->all();
+          $shapes = [
+              "teacher_today" => ["role" => "teacher", "params" => ["start" => $today->toDateString(), "end" => $today->toDateString(), "per_page" => 500]],
+              "teacher_overdue_7d" => ["role" => "teacher", "params" => ["branch_id" => $teacherCampuses[0] ?? (int)getenv("BRANCH_ID"), "start" => $today->copy()->subDays(7)->toDateString(), "end" => $today->copy()->subDay()->toDateString(), "per_page" => 200]],
+              "campus_week" => ["role" => "super_admin", "params" => ["branch_id" => (int)getenv("BRANCH_ID"), "start" => $today->copy()->startOfWeek()->toDateString(), "end" => $today->copy()->endOfWeek()->toDateString(), "per_page" => 1000]],
+          ];
+          $out = [];
+          foreach ($shapes as $name => $shape) {
+              $runs = [];
+              $logged = [];
+              for ($i = 0; $i < 3; $i++) {
+                  $req = \Illuminate\Http\Request::create("/api/v1/class-sessions", "GET", $shape["params"]);
+                  $req->attributes->set("auth_role", $shape["role"]);
+                  if ($shape["role"] === "teacher") {
+                      $req->attributes->set("auth_teacher_id", $teacher);
+                      $req->attributes->set("auth_campus_ids", $teacherCampuses);
+                  }
+                  $db::flushQueryLog();
+                  $db::enableQueryLog();
+                  $t = microtime(true);
+                  $page = (new \App\Services\ClassSessionIndexReadService())->buildQuery($req)
+                      ->orderBy("cs.SessionDate")->orderBy("cs.StartTime")->orderBy("cs.id")
+                      ->paginate($shape["params"]["per_page"]);
+                  $total = round((microtime(true) - $t) * 1000, 1);
+                  $logged = $db::getQueryLog();
+                  $db::disableQueryLog();
+                  $runs[] = ["total_ms" => $total, "query_ms" => array_map(fn ($q) => $q["time"], $logged), "rows" => count($page->items()), "count" => $page->total()];
+              }
+              $plans = [];
+              foreach ($logged as $k => $q) {
+                  $plans["query_".$k] = array_map(fn ($r) => array_intersect_key((array)$r, array_flip(["id","select_type","table","type","possible_keys","key","rows","filtered","Extra"])),
+                      $db::select("EXPLAIN ".$q["query"], $q["bindings"]));
+              }
+              $out[$name] = ["params" => $shape["params"], "runs" => $runs, "plans" => $plans];
           }
+          $sizes = $db::table("information_schema.TABLES")->where("TABLE_SCHEMA", $db::getDatabaseName())
+              ->whereIn("TABLE_NAME", ["ClassSession","schedules","LearningRecord","StudentSingIn","StudentClass"])
+              ->pluck("TABLE_ROWS", "TABLE_NAME");
           echo "---EXPLAIN---", PHP_EOL;
           echo json_encode([
-              "db_version" => \Illuminate\Support\Facades\DB::selectOne("SELECT VERSION() AS v")->v,
-              "branch_id" => $branch, "range" => [$start, $end],
-              "rows_returned" => $count, "timings_ms" => $timings, "table_rows" => $sizes, "plan" => $plan,
+              "prod_head" => getenv("PROD_HEAD"),
+              "db_version" => $db::selectOne("SELECT VERSION() AS v")->v,
+              "teacher_id" => $teacher, "teacher_campus_count" => count($teacherCampuses),
+              "table_rows_estimate" => $sizes, "shapes" => $out,
           ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), PHP_EOL;
           '
           REMOTE
