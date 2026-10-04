@@ -75,4 +75,9 @@ const sessionCourse = {
 assert.equal(getRateUnitDisplayLabel(sessionCourse), '每堂');
 assert.equal(getCourseTotalFee(sessionCourse), 6000, '每堂 750 × 8 堂 = 6,000');
 
+// in-app #349: a transaction discount is allocated into Charge; Rate stays the list price.
+const discountedCourse = { payment_type: 'session', Rate: 1800, SessionCount: 4, Charge: 5400, pricing_snapshot: { discount_amount: 1800 } };
+assert.equal(getCourseTotalFee(discountedCourse), 5400, 'discounted total, not 1800 × 4 = 7200');
+assert.equal(getCourseTotalFee({ ...discountedCourse, pricing_snapshot: null }), 7200, 'no discount → Rate × sessions');
+
 console.error('coursePricing.test: OK');
