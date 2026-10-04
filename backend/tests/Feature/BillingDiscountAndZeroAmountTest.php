@@ -198,6 +198,7 @@ class BillingDiscountAndZeroAmountTest extends TestCase
             'discount only' => [['Rate' => 1500, 'Charge' => 5400], 600, null, null, 5400], // the allocated Charge, not Rate x sessions (6000)
             'plain' => [['Rate' => 1500, 'Charge' => 6000], 0, null, null, 6000], // list price
             'hourly uses the exact stored Charge, not rounded TotalHours' => [['Rate' => 500, 'Charge' => 1750, 'rate_unit' => 'hour', 'TotalHours' => 4], 0, null, null, 1750],
+            'hourly amendment prices the exact duration' => [['Rate' => 500, 'Charge' => 1750, 'rate_unit' => 'hour', 'TotalHours' => 4], 0, 600, null, 2100],
             'short bill is a partial payment, not the price' => [['Rate' => 1500, 'Charge' => 5400], 600, null, 1000, 5400], // confirm() invoice = reported amount
         ];
     }
@@ -251,7 +252,7 @@ class BillingDiscountAndZeroAmountTest extends TestCase
 
     private function amend(StudentClass $course, int $rate, string $from = '2026-08-15'): void
     {
-        StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => $from, 'rate' => $rate, 'rate_unit' => 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
+        StudentClassPricingAmendment::create(['student_class_id' => $course->ID, 'effective_from' => $from, 'rate' => $rate, 'rate_unit' => $course->rate_unit ?: 'session', 'source_reference' => 'fx', 'reason' => 'test', 'created_at' => now()]);
     }
 
     private function invoice(StudentClass $course, int $total, string $status, ?string $modeAtIssue = null): Invoice

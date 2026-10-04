@@ -221,7 +221,11 @@ class StudentClass extends Model
             return null;
         }
         if ($rateUnit === 'hour') {
-            $hours = (int) ($this->getAttribute('TotalHours') ?? 0);
+            // Exact hours from the enrolment price (Charge = Rate x exact minutes/60); TotalHours is rounded.
+            $listRate = (float) ($this->getAttribute('Rate') ?? 0);
+            $charge = (float) ($this->getAttribute('Charge') ?? 0);
+            $exact = $listRate > 0 && $charge > 0 && $this->discountedContractTotal() === null; // a discounted Charge isn't Rate x hours
+            $hours = $exact ? $charge / $listRate : (float) ($this->getAttribute('TotalHours') ?? 0);
             if ($hours <= 0) {
                 $hours = (int) round(($sessions * max(30, (int) ($this->getAttribute('SessionDuration') ?? 120))) / 60);
             }

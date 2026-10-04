@@ -656,9 +656,6 @@ class AlertController extends Controller
         if ((int) ($sc->getAttribute('Paid') ?? 0) === 1 || ($sc instanceof StudentClass && $sc->isEffectivelyPaid())) {
             return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
-        if ($sc instanceof StudentClass && $sc->isFreeOfCharge()) {
-            return response()->json(['message' => '此課程免收費，不需產生繳費單'], 422);
-        }
 
         $student = $sc->student;
         if (!$student) {
@@ -669,6 +666,9 @@ class AlertController extends Controller
         $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
         if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
             abort(403);
+        }
+        if ($sc instanceof StudentClass && $sc->isFreeOfCharge()) {
+            return response()->json(['message' => '此課程免收費，不需產生繳費單'], 422);
         }
 
         $campus = Campus::find((int) $student->CampusID);
