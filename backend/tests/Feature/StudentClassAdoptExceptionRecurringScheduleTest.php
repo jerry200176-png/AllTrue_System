@@ -309,6 +309,25 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $resp->assertOk();
     }
 
+    /**
+     * Two own regular rows on one date but only one new slot that day: the excess row is not remapped,
+     * so a new slot partially overlapping it must still conflict.
+     */
+    public function test_excess_own_regular_row_still_conflicts_when_slots_shrink(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '縮減時段', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60]])
+            ->assertStatus(409);
+        // An exact match to one existing row is that row being kept, not a conflict.
+        $this->updateFixedSlots($token, $course->fresh(), [1], [['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60]])
+            ->assertOk();
+    }
+
     private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
     {
         $slots = $slots ?? array_map(fn ($d) => ['day' => $d, 'start_time' => '17:00', 'duration_minutes' => 60], $days);

@@ -70,7 +70,7 @@ class SubstituteService
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
             ->whereDate('cs.SessionDate', $ymd)
-            ->where('sc.Stop', 0)
+            ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
             ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->whereNotExists(function ($sub) use ($teacherId) {
                 // 若該堂已有「其他老師」的代課安排，合約老師視為空閒
@@ -158,7 +158,7 @@ class SubstituteService
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
             ->whereDate('cs.SessionDate', $ymd)
-            ->where('sc.Stop', 0)
+            ->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
             ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses())
             ->whereNotExists(function ($sub) use ($teacherId) {
                 $sub->select(DB::raw(1))

@@ -64,7 +64,8 @@ class ScheduleGuardService
                 $excludeStudentClassId,
                 $startDate,
                 $endDate,
-                $excludeStudentId
+                $excludeStudentId,
+                count(array_filter($slots, fn ($s) => (int) ($s['day_of_week'] ?? 0) === (int) ($slot['day_of_week'] ?? 0)))
             );
             // Occupancy is per concrete date, not pooled across dates (in-app #347).
             $byDate = [];
@@ -351,7 +352,8 @@ class ScheduleGuardService
         ?int $excludeStudentClassId = null,
         ?string $startDate = null,
         ?string $endDate = null,
-        ?int $excludeStudentId = null
+        ?int $excludeStudentId = null,
+        int $slotsOnDay = 1
     ): array {
         $dow = (int) ($slot['day_of_week'] ?? 0);
         $slotStart = (string) ($slot['start_time'] ?? '');
@@ -396,7 +398,7 @@ class ScheduleGuardService
         $classSessionsQuery = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
-            ->where('sc.TeacherID', $teacherId)->where('sc.Stop', 0)->where('st.CampusID', $branchId)
+            ->where('sc.TeacherID', $teacherId)->where(fn ($q) => $q->where('sc.Stop', 0)->orWhereNull('sc.Stop'))->where('st.CampusID', $branchId)
             ->whereDate('cs.SessionDate', '>=', $horizonStart)
             ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses());
         if ($endDate) {
@@ -406,6 +408,17 @@ class ScheduleGuardService
 
         $overlaps = [];
         $seenKeys = [];
+        // Own regular rows per date: the edit remaps at most one row per new slot that day;
+        // excess rows stay at their old time and must still conflict.
+        $ownRegularPerDate = [];
+        if ($excludeStudentClassId) {
+            foreach ($classSessions as $row) {
+                if ((int) $row->StudentClassID === $excludeStudentClassId && !$row->IsContractException) {
+                    $d = substr((string) $row->SessionDate, 0, 10);
+                    $ownRegularPerDate[$d] = ($ownRegularPerDate[$d] ?? 0) + 1;
+                }
+            }
+        }
 
         foreach ($classSessions as $row) {
             $sessionDate = substr((string) ($row->SessionDate ?? ''), 0, 10);
@@ -447,7 +460,7 @@ class ScheduleGuardService
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
                 // The edited course's own regular sessions get remapped to the new slot,
                 // so they never block it (in-app #347). Exception rows still conflict below.
-                if (!$row->IsContractException) {
+                if (!$row->IsContractException && ($ownRegularPerDate[$sessionDate] ?? 0) <= $slotsOnDay) {
                     continue;
                 }
                 // If the session matches the slot being added, it is the course's own
