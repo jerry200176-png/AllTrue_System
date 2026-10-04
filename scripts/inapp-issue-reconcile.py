@@ -54,7 +54,8 @@ def reconcile(open_bugs, resolved_bugs, max_id, issues):
             out["unlabeled"].append(issue["number"])
         author = (issue.get("author") or {}).get("login", "")
         m = SENTRY_SPAN.search(issue.get("body") or "")
-        if is_open and author.endswith("sentry") and m:
+        # gh reports the Sentry GitHub App as "app/sentry"; GraphQL/REST may show "sentry-io[bot]".
+        if is_open and "sentry" in author.lower() and m:
             spans[m.group(1).strip()].append(issue["number"])
     for span, numbers in spans.items():
         if len(numbers) > 1:

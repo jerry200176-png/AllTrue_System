@@ -449,6 +449,8 @@ assert.match(phaseCSource,
   assert.match(closeJob, /needs: resolve/, 'close-issue runs only after resolve succeeds');
   assert.match(closeJob, /permissions:\s+issues: write/, 'close-issue has only issues: write');
   assert.match(closeJob, /type:epic/, 'epics are never auto-closed');
+  assert.match(closeJob, /lifecycle:frozen/, 'reviewed frozen issues are never auto-closed');
+  assert.match(phaseCSource, /issue_pending_siblings/, 'a shared issue waits for every linked report');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
 }

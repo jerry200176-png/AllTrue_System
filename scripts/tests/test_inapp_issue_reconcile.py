@@ -27,7 +27,7 @@ def test_reconcile_classes():
         issue(5, "[in-app #10] closed early", state="CLOSED", labels=["bug"]),  # issue closed, in-app open -> flag
         issue(6, "no labels"),                                               # unlabeled
         issue(7, "N+1 Query", body=span, author="app/sentry", labels=["x"]),
-        issue(8, "N+1 Query", body=span, author="app/sentry", labels=["x"]),
+        issue(8, "N+1 Query", body=span, author="sentry-io[bot]", labels=["x"]),
     ]
     out = reconcile_mod.reconcile(open_bugs, resolved, 12, issues)
     assert [r["issue"] for r in out["inapp_done_issue_open"]] == [1, 2]

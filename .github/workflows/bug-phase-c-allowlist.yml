@@ -765,6 +765,7 @@ jobs:
             throw new \RuntimeException("target is not allowlisted");
           }
           $target = $items[$targetBugId];
+          $allItems = $items; // F14: siblings that share one GitHub issue
           $requiredRevision = (string)($target["rev"] ?? "");
           if (!preg_match("/^[0-9a-f]{40}$/", $requiredRevision) || !preg_match("/^[0-9a-f]{40}$/", $prodHead)) {
             throw new \RuntimeException("invalid revision evidence");
@@ -847,9 +848,22 @@ jobs:
             ];
           }
           // F14: every allowlisted target carries its issue, so a retry after a failed close-issue job still closes it.
+          // A shared issue closes only when every allowlisted report linking it is resolved or closed.
+          $issueOf = static function ($cfg) {
+            return preg_match("#/AllTrue_System/issues/([0-9]+)#", (string)($cfg["reply"] ?? ""), $m) ? (int)$m[1] : null;
+          };
           foreach ($results as $i => $row) {
-            $reply = (string)($items[$row["id"]]["reply"] ?? "");
-            $results[$i]["issue"] = preg_match("#/AllTrue_System/issues/([0-9]+)#", $reply, $issueMatch) ? (int)$issueMatch[1] : null;
+            $issue = $issueOf($items[$row["id"]] ?? []);
+            if ($issue !== null) {
+              $siblings = array_keys(array_filter($allItems, static fn ($cfg) => $issueOf($cfg) === $issue));
+              $open = \Illuminate\Support\Facades\DB::table("bug_reports")->whereIn("id", $siblings)
+                ->whereNotIn("status", ["resolved", "closed"])->pluck("id")->all();
+              if ($open !== []) {
+                $results[$i]["issue_pending_siblings"] = $open;
+                $issue = null;
+              }
+            }
+            $results[$i]["issue"] = $issue;
           }
           echo "---RESULTS---", PHP_EOL;
           echo json_encode(["prod_head" => $prodHead, "actor" => $actor, "results" => $results], JSON_UNESCAPED_UNICODE), PHP_EOL;
@@ -897,7 +911,7 @@ jobs:
           for n in $ISSUES; do
             [[ "$n" =~ ^[0-9]+$ ]] || continue
             state="$(gh issue view "$n" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')"
-            # Epics stay open until their last phase ships (PR template rule).
-            case " $state " in *" CLOSED "*|*" type:epic "*) echo "skip #$n: $state"; continue ;; esac
+            # Epics stay open until their last phase ships (PR template rule); frozen issues were reviewed to stay open.
+            case " $state " in *" CLOSED "*|*" type:epic "*|*" lifecycle:frozen "*) echo "skip #$n: $state"; continue ;; esac
             gh issue close "$n" --reason completed --comment "已上線（production ${PROD_HEAD:0:9}），in-app #${BUG_ID} 已由 Phase-C 回寫。Closed automatically on ship (F14)."
           done
