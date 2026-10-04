@@ -328,6 +328,42 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * A session locked by a sign-in is not remapped by the edit, so it is never excused as "will move":
+     * it stays at 15:00-16:00 and overlaps the new 15:30 slot.
+     */
+    public function test_locked_own_row_still_conflicts_even_when_slot_count_covers_rows(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定列', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [
+            ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
+            ['day' => 1, 'start_time' => '16:30', 'duration_minutes' => 60],
+        ])->assertStatus(409);
+    }
+
+    /** Locked rows do not count toward the remap budget: 2 remappable rows still fit 2 new slots. */
+    public function test_locked_row_on_other_day_or_far_time_does_not_inflate_remap_count(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '鎖定計數', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '09:00:00', '10:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '15:00:00', '16:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 09:00:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+
+        $this->updateFixedSlots($token, $course, [1], [
+            ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
+            ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60],
+        ])->assertOk();
+    }
+
     private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
     {
         $slots = $slots ?? array_map(fn ($d) => ['day' => $d, 'start_time' => '17:00', 'duration_minutes' => 60], $days);

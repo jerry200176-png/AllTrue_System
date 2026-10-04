@@ -398,6 +398,28 @@ class AvailabilityCapacityTest extends TestCase
         $this->assertSame([], $svc->detectCrossCampusConflict($teacher->id, $date, '14:00', '15:00'));
     }
 
+    public function test_availability_live_row_rules_add_at_most_one_query(): void
+    {
+        $teacher = $this->createTeacher('teacher-qcount@example.com');
+        $date = '2026-05-20';
+        $course = $this->createStudentClass($this->createStudent('qcount')->id, $teacher->id, 'one_on_one');
+        \Illuminate\Support\Facades\DB::table('schedules')->insert([
+            'student_id' => $course->StudentID, 'teacher_id' => $teacher->id, 'subject' => '數學', 'day_of_week' => 3,
+            'start_time' => '14:00', 'end_time' => '15:00', 'duration_hours' => 1, 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'regular', 'deduction' => 1, 'branch_id' => 1,
+            'student_course_id' => $course->ID, 'schedule_date' => $date, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        \Illuminate\Support\Facades\DB::flushQueryLog();
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $this->withHeaders(['Authorization' => "Bearer {$this->dirToken}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/teachers/{$teacher->id}/availability?date={$date}")->assertOk();
+        $sql = array_map(fn ($q) => strtolower(str_replace(['"', '`'], '', $q['query'])), \Illuminate\Support\Facades\DB::getQueryLog());
+
+        $this->assertCount(1, array_filter($sql, fn ($q) => str_contains($q, 'sc_stop')), 'helper issues exactly one query');
+        $this->assertSame([], array_values(array_filter($sql, fn ($q) => str_contains($q, 'from studentclass where') && str_contains($q, 'stop'))), 'no separate Stop lookup');
+    }
+
     private function createTeacher(string $loginName): User
     {
         $teacher = User::create([

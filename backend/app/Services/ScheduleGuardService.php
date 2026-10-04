@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\LearningRecord;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Support\ClassTypeCapacity;
 use App\Support\SessionStatus;
 use Carbon\Carbon;
@@ -336,6 +338,26 @@ class ScheduleGuardService
     }
 
     /**
+     * Sessions of a course that a schedule edit must leave in place: an approved LearningRecord or any
+     * StudentSignIn points at them. Shared with StudentClassController::syncFutureScheduledSessionTimes().
+     *
+     * @return array<int, true> class_session_id => true
+     */
+    public static function lockedClassSessionIds(int $studentClassId): array
+    {
+        $locked = [];
+        $ids = LearningRecord::query()->where('StudentClassID', $studentClassId)->where('Status', 'approved')->whereNotNull('ClassSessionID')->pluck('ClassSessionID')
+            ->merge(StudentSignIn::query()->where('StudentClassID', $studentClassId)->whereNotNull('ClassSessionID')->pluck('ClassSessionID'));
+        foreach ($ids as $id) {
+            if ((int) $id > 0) {
+                $locked[(int) $id] = true;
+            }
+        }
+
+        return $locked;
+    }
+
+    /**
      * Collect concrete future session/schedule overlaps for a recurring slot.
      * Enforces bounded self-exclusion: a session belonging to $excludeStudentClassId
      * is excluded ONLY if its start_time and end_time match the recurring slot.
@@ -410,10 +432,12 @@ class ScheduleGuardService
         $seenKeys = [];
         // Own regular rows per date: the edit remaps at most one row per new slot that day;
         // excess rows stay at their old time and must still conflict.
+        // Locked rows (sign-in / approved record) are never remapped: they stay put and are neither counted nor excluded.
         $ownRegularPerDate = [];
+        $locked = $excludeStudentClassId ? self::lockedClassSessionIds($excludeStudentClassId) : [];
         if ($excludeStudentClassId) {
             foreach ($classSessions as $row) {
-                if ((int) $row->StudentClassID === $excludeStudentClassId && !$row->IsContractException) {
+                if ((int) $row->StudentClassID === $excludeStudentClassId && !$row->IsContractException && !isset($locked[(int) $row->class_session_id])) {
                     $d = substr((string) $row->SessionDate, 0, 10);
                     $ownRegularPerDate[$d] = ($ownRegularPerDate[$d] ?? 0) + 1;
                 }
@@ -460,7 +484,7 @@ class ScheduleGuardService
             if ($excludeStudentClassId && $courseId === $excludeStudentClassId) {
                 // The edited course's own regular sessions get remapped to the new slot,
                 // so they never block it (in-app #347). Exception rows still conflict below.
-                if (!$row->IsContractException && ($ownRegularPerDate[$sessionDate] ?? 0) <= $slotsOnDay) {
+                if (!$row->IsContractException && !isset($locked[(int) $row->class_session_id]) && ($ownRegularPerDate[$sessionDate] ?? 0) <= $slotsOnDay) {
                     continue;
                 }
                 // If the session matches the slot being added, it is the course's own

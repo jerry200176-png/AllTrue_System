@@ -8088,23 +8088,7 @@ class StudentClassController extends Controller
             $durationMinutes,
             $slotsByWeekday
         ) {
-        $lockedBySessionId = LearningRecord::where('StudentClassID', $studentClassId)
-            ->where('Status', 'approved')
-            ->whereNotNull('ClassSessionID')
-            ->pluck('ClassSessionID')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->flip()
-            ->all();
-        $signInLocked = StudentSignIn::where('StudentClassID', $studentClassId)
-            ->whereNotNull('ClassSessionID')
-            ->pluck('ClassSessionID')
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->all();
-        foreach ($signInLocked as $sid) {
-            $lockedBySessionId[(int) $sid] = true;
-        }
+        $lockedBySessionId = \App\Services\ScheduleGuardService::lockedClassSessionIds($studentClassId);
 
         $today = Carbon::today()->toDateString();
         $sessions = ClassSession::where('StudentClassID', $studentClassId)

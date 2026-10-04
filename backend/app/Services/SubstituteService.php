@@ -325,22 +325,26 @@ class SubstituteService
         // rescheduled-TO session stays busy (StaleScheduleExceptionBusyTest second-reschedule, R114).
         // Only the LATEST schedules row per course+time decides: a lesson moved away and later moved back
         // has an old rescheduled marker but a newer scheduled row, and must stay busy.
+        // One query: schedules LEFT JOIN StudentClass also yields the Stop flag (no separate lookup).
         $rowsQuery = DB::table('schedules')
-            ->where('teacher_id', $teacherId)
-            ->whereDate('schedule_date', $ymd)
-            ->where('student_course_id', '>', 0);
+            ->leftJoin('StudentClass as sc_stop', 'sc_stop.ID', '=', 'schedules.student_course_id')
+            ->where('schedules.teacher_id', $teacherId)
+            ->whereDate('schedules.schedule_date', $ymd)
+            ->where('schedules.student_course_id', '>', 0);
         if (!empty($excludeScheduleIds)) {
-            $rowsQuery->whereNotIn('id', $excludeScheduleIds);
+            $rowsQuery->whereNotIn('schedules.id', $excludeScheduleIds);
         }
         $latest = [];
-        foreach ($rowsQuery->orderBy('id')->get(['id', 'student_course_id', 'start_time', 'status']) as $f) {
+        $stopped = [];
+        foreach ($rowsQuery->orderBy('schedules.id')->get(['schedules.id', 'schedules.student_course_id', 'schedules.start_time', 'schedules.status', 'sc_stop.Stop']) as $f) {
             $latest[(int) $f->student_course_id . '|' . $this->hhmm($f->start_time)] = (string) $f->status;
+            if ((int) $f->Stop === 1) {
+                $stopped[(int) $f->student_course_id] = true;
+            }
         }
         $freed = array_filter($latest, fn ($status) => in_array($status, ['leave', 'rescheduled'], true));
 
         // Planned (schedules) rows of stopped courses never occupy a slot, same as their sessions.
-        $courseIds = collect($scheduleRows)->pluck('student_course_id')->map(fn ($v) => (int) $v)->filter()->unique()->values()->all();
-        $stopped = $courseIds === [] ? [] : array_flip(DB::table('StudentClass')->whereIn('ID', $courseIds)->where('Stop', 1)->pluck('ID')->map(fn ($v) => (int) $v)->all());
 
         $sessions = collect($sessionRows)
             ->reject(fn ($r) => isset($freed[(int) $r->course_id . '|' . $this->hhmm($r->start_time)]))
