@@ -362,6 +362,29 @@ export function useCourseSessionsDisplay({
 
   const isCompletedDate = (course, dateYmd) => getCourseCompletedDates(course).includes(String(dateYmd || ''));
 
+  // One lookup context per course rows array (rebuilt when the rows array or quota inputs change),
+  // so per-row state calls in long lists stay O(1) instead of rescanning and re-sorting.
+  const stateContextCache = new WeakMap();
+  const stateContext = (course) => {
+    const raw = getCourseSessions(course);
+    const sig = [course?.PackageID, isSessionMode(course), getPurchasedSessions(course), raw.length,
+      completedSessionDatesByCourse.value[String(course?.id ?? '')]];
+    const hit = stateContextCache.get(raw);
+    if (hit && hit.sig.every((v, i) => v === sig[i])) return hit.ctx;
+    const units = sessionUnits(course);
+    const rowById = new Map();
+    const rowsByDate = new Map();
+    for (const r of getCourseSessionRows(course)) {
+      const rid = Number(r?.id);
+      if (rid && !rowById.has(rid)) rowById.set(rid, r);
+      if (!rowsByDate.has(r.date)) rowsByDate.set(r.date, []);
+      rowsByDate.get(r.date).push(r);
+    }
+    const ctx = { units, rowById, rowsByDate, completedDates: new Set(getCourseCompletedDates(course)), isOver: makeOverQuotaChecker(course, units) };
+    stateContextCache.set(raw, { sig, ctx });
+    return ctx;
+  };
+
   // ctx (optional): prebuilt { rowById, rowsByDate, completedDates, isOver } so bulk callers avoid per-call scans.
   const getSessionState = (course, dateYmd, sessionId, ctx) => {
     const rowsFor = (d) => (ctx ? ctx.rowsByDate.get(String(d || '').slice(0, 10)) || [] : getSessionRowsForDate(course, d));
@@ -399,18 +422,8 @@ export function useCourseSessionsDisplay({
     const byId = new Map();
     const byDate = new Map();
     let num = 0;
-    const units = sessionUnits(course);
-    const rows = getCourseSessionRows(course);
-    const rowById = new Map();
-    const rowsByDate = new Map();
-    for (const r of rows) {
-      const rid = Number(r?.id);
-      if (rid && !rowById.has(rid)) rowById.set(rid, r);
-      if (!rowsByDate.has(r.date)) rowsByDate.set(r.date, []);
-      rowsByDate.get(r.date).push(r);
-    }
-    const isOver = makeOverQuotaChecker(course, units);
-    const ctx = { rowById, rowsByDate, completedDates: new Set(getCourseCompletedDates(course)), isOver };
+    const ctx = stateContext(course);
+    const { units, rowById, isOver } = ctx;
     for (const u of units) {
       const row = u.id ? rowById.get(Number(u.id)) || u : u;
       const state = getSessionState(course, u.date, u.id || undefined, ctx);
@@ -485,8 +498,8 @@ export function useCourseSessionsDisplay({
     return count;
   };
 
-  const getSessionStateLabel = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId)?.label || '';
-  const getSessionStateClass = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId)?.className || '';
+  const getSessionStateLabel = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId, stateContext(course))?.label || '';
+  const getSessionStateClass = (course, dateYmd, sessionId) => getSessionState(course, dateYmd, sessionId, stateContext(course))?.className || '';
 
   const getSessionTooltip = (course, dateYmd, sessionId) => {
     const row = getSessionDisplayRow(course, dateYmd, sessionId);

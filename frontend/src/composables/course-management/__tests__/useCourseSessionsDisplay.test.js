@@ -40,6 +40,26 @@ describe('useCourseSessionsDisplay', () => {
     expect(display.getSessionNumber(course, '2026-08-22', 4)).toBe(3);
   });
 
+  it('row state labels reuse one lookup per course and refresh when sessions are replaced', () => {
+    const course = { id: 78, ScheduleMode: 'count', payment_type: 'session', sessions_purchased: 1, SessionCount: 1 };
+    const mk = (id, date, status) => sessionViewModelFromClassSessionsRow({
+      id, student_class_id: 78, session_date: date, start_time: '10:00', end_time: '12:00', status,
+    });
+    const sessionsByCourse = ref({ 78: [mk(1, '2026-08-01', 'scheduled'), mk(2, '2026-08-08', 'scheduled')] });
+    const display = useCourseSessionsDisplay({
+      sessionsByCourse,
+      completedSessionDatesByCourse: ref({}),
+      fetchClassSessionsFn: vi.fn(),
+      supabase: { auth: { getSession: vi.fn() } },
+      branchId: ref(1),
+    });
+    expect(display.getSessionStateLabel(course, '2026-08-08', 2)).toBe('超排');
+    expect(display.getSessionStateClass(course, '2026-08-08', 2)).toBe('over-quota');
+    // Leave on the first lesson frees the quota; a replaced rows array must not serve the stale lookup.
+    sessionsByCourse.value = { 78: [mk(1, '2026-08-01', 'leave'), mk(2, '2026-08-08', 'scheduled')] };
+    expect(display.getSessionStateLabel(course, '2026-08-08', 2)).not.toBe('超排');
+  });
+
   it('constructs without throwing and exposes the expected API', () => {
     let display;
     expect(() => {
