@@ -132,11 +132,9 @@ def _collect_receipts(gh, runs, period_start, now, receipts):
                 raise UnknownEvidence("attempt identity differs")
             if attempt_run.get("status") != "completed":
                 continue
-            if attempt_run.get("conclusion") not in ("success", "failure", "cancelled", "skipped"):
-                raise UnknownEvidence("completed attempt has unknown conclusion")
             jobs = pages(gh, f"actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs", {})
             matches = [job for job in jobs if job.get("name") == DEPLOY_JOB]
-            if not matches and attempt_run["conclusion"] != "success":
+            if not matches:
                 continue  # complete job list proves no exact deploy job executed
             if len(matches) != 1:
                 raise UnknownEvidence("missing or ambiguous production deploy job")
@@ -148,9 +146,12 @@ def _collect_receipts(gh, runs, period_start, now, receipts):
                 raise UnknownEvidence("deploy steps unavailable")
             deploy_steps = [step for step in steps if step.get("name") == "Deploy"]
             if job.get("conclusion") != "success":
-                if not deploy_steps or (len(deploy_steps) == 1 and deploy_steps[0].get("conclusion") == "skipped"):
+                if len(deploy_steps) == 1 and deploy_steps[0].get("conclusion") == "skipped":
                     continue  # failed before the production side-effect step
-                raise UnknownEvidence("deploy started but its outcome is not verified")
+                if not deploy_steps and any(step.get("name") == "Final exact-main gate before production executor"
+                                            and step.get("conclusion") in ("failure", "cancelled") for step in steps):
+                    continue  # an ordered pre-deploy gate failed before Deploy
+                raise UnknownEvidence("deploy step outcome is not proven")
             if job.get("status") != "completed":
                 raise UnknownEvidence("production deploy job is not completed")
             if (job.get("run_id") != run_id or job.get("run_attempt") != attempt
@@ -207,6 +208,8 @@ def runtime_identity():
 
 def calculate(gh, now, runtime):
     start = now - timedelta(days=PERIOD_DAYS)
+    if runtime[1] > now:
+        raise UnknownEvidence("runtime deployment timestamp is after report cutoff")
     scan_start = start - timedelta(days=MAX_RUN_AGE_DAYS)
     receipts = verified_receipts(gh, workflow_runs(gh, scan_start, now), start, now)
     if receipts and max(receipts, key=lambda item: item["completed"])["sha"] != runtime[0]:

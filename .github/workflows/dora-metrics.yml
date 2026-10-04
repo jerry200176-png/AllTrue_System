@@ -18,8 +18,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Verify DORA receipt contract
+        run: python3 -m unittest discover -s .github/scripts -p 'test_dora_metrics.py'
+
       - name: Report evidenced DORA metrics
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-        run: python3 scripts/dora_metrics.py
+        run: python3 .github/scripts/dora_metrics.py

@@ -2,13 +2,15 @@
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from scripts import dora_metrics as dora
+import dora_metrics as dora
 
 NOW = datetime(2026, 10, 4, 4, 0, tzinfo=timezone.utc)
 SHA = "e483c1dc43975cfa173b12e75376fa51dc107a30"
@@ -137,8 +139,40 @@ class DoraEvidenceTest(unittest.TestCase):
             [failed], NOW - timedelta(days=30), NOW))
         with self.assertRaises(dora.UnknownEvidence):
             dora.verified_receipts(FakeGH({path: {"total_count": 1, "jobs": [
+                job("failure", run_id=37092564565, steps=[])]}}),
+                [failed], NOW - timedelta(days=30), NOW)
+        with self.assertRaises(dora.UnknownEvidence):
+            dora.verified_receipts(FakeGH({path: {"total_count": 1, "jobs": [
                 job("failure", run_id=37092564565, steps=[{"name": "Deploy", "conclusion": "failure"}])]}}),
                 [failed], NOW - timedelta(days=30), NOW)
+
+    def test_unusual_completed_conclusions_depend_on_full_job_evidence(self):
+        path = ("actions/runs/37092564565/attempts/1/jobs", 1)
+        for conclusion in ("timed_out", "startup_failure", "stale", "neutral", "action_required"):
+            with self.subTest(conclusion=conclusion):
+                candidate = run(37092564565, "completed", conclusion)
+                self.assertEqual([], dora.verified_receipts(FakeGH({path: {"total_count": 1, "jobs": [
+                    job("skipped", run_id=37092564565)]}}),
+                    [candidate], NOW - timedelta(days=30), NOW))
+                with self.assertRaises(dora.UnknownEvidence):
+                    dora.verified_receipts(FakeGH({path: {"total_count": 1, "jobs": [
+                        job("failure", run_id=37092564565, steps=[{"name": "Deploy", "conclusion": "failure"}])]}}),
+                        [candidate], NOW - timedelta(days=30), NOW)
+
+    def test_receipt_names_match_committed_deploy_workflow(self):
+        workflow = (Path(__file__).resolve().parents[1] / "workflows" / "deploy.yml").read_text()
+        block = re.search(r"(?ms)^  deploy:\n(.*?)(?=^  [\w-]+:\n|\Z)", workflow)
+        self.assertIsNotNone(block)
+        self.assertRegex(block.group(1), rf"(?m)^    name: {re.escape(dora.DEPLOY_JOB)}$")
+        for step in dora.REQUIRED_STEPS:
+            self.assertEqual(1, len(re.findall(rf"(?m)^      - name: {re.escape(step)}$", block.group(1))))
+
+    def test_reporter_path_is_control_plane_only(self):
+        from scripts.governance.autonomy_gate import is_application_runtime_path
+
+        self.assertFalse(is_application_runtime_path(".github/scripts/dora_metrics.py"))
+        self.assertFalse(is_application_runtime_path(".github/scripts/test_dora_metrics.py"))
+        self.assertTrue(is_application_runtime_path("scripts/dora_metrics.py"))
 
     def test_runtime_mismatch_and_api_failure_report_unknown(self):
         with patch.object(dora, "workflow_runs", return_value=[run(37138976778, "completed", "success")]):
@@ -148,6 +182,7 @@ class DoraEvidenceTest(unittest.TestCase):
             self.assertIn("Deployment Frequency: UNKNOWN", dora.report("owner/repo", NOW, FakeGH({}), lambda: (SHA, NOW)))
         with patch.object(dora, "workflow_runs", return_value=[]):
             self.assertIn("Deployment Frequency: UNKNOWN", dora.report("owner/repo", NOW, FakeGH({}), lambda: (SHA, NOW)))
+            self.assertIn("after report cutoff", dora.report("owner/repo", NOW, FakeGH({}), lambda: (SHA, NOW + timedelta(seconds=1))))
             self.assertIn("Deployment Frequency: 0.0/week", dora.report("owner/repo", NOW, FakeGH({}), lambda: (SHA, NOW - timedelta(days=40))))
         self.assertIn("Deployment Rework Rate: UNKNOWN", dora.report("owner/repo", NOW, FakeGH({}), lambda: (SHA, NOW)))
         self.assertIn("Failed Deployment Recovery Time: UNKNOWN", dora.report("owner/repo", NOW, FakeGH({}), lambda: (SHA, NOW)))
