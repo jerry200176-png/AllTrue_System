@@ -64,6 +64,9 @@ export function deduplicateLearningRecordSessions(sessions = [], normalizeTime) 
  * fall back to another row on the same date). Without an id: prefer the row
  * matching the typed start time, then the best (attended-first) row.
  */
+// Mirrors backend AttendanceStatus::requiresLogSessionStatuses().
+const LOG_ELIGIBLE_SESSION_STATUSES = new Set(['attended', 'completed', 'late', 'trial', 'tutoring_attend']);
+
 export function selectFormDaySession(daySessions, { classSessionId = 0, startTime = '', normalizeTime }) {
   const id = Number(classSessionId || 0);
   if (id > 0) return daySessions.find((s) => Number(s.id) === id) || null;
@@ -71,7 +74,7 @@ export function selectFormDaySession(daySessions, { classSessionId = 0, startTim
   const byTime = t ? daySessions.filter((s) => normalizeTime(s.startTime) === t) : [];
   const pool = byTime.length ? byTime : daySessions;
   // Only attended lessons accept an assessment; never lock the form to an absent one when another qualifies.
-  const eligible = pool.filter((s) => ['attended', 'completed', 'late'].includes(String(s?.status || '').toLowerCase()));
+  const eligible = pool.filter((s) => LOG_ELIGIBLE_SESSION_STATUSES.has(String(s?.status || '').toLowerCase()));
   return pickBestLearningRecordSession(eligible.length ? eligible : pool);
 }
 

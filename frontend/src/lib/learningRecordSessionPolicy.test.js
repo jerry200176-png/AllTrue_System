@@ -88,6 +88,10 @@ describe('selectFormDaySession attendance', () => {
     const t = (v) => String(v || '').slice(0, 5);
     const day = [{ id: 1, status: 'attended', startTime: '10:00' }, { id: 2, status: 'absent', startTime: '14:00' }];
     expect(selectFormDaySession(day, { startTime: '18:00', normalizeTime: t }).id).toBe(1);
+    for (const status of ['trial', 'tutoring_attend']) {
+      const mixed = [{ id: 1, status, startTime: '10:00' }, { id: 2, status: 'absent', startTime: '14:00' }];
+      expect(selectFormDaySession(mixed, { startTime: '18:00', normalizeTime: t }).id).toBe(1);
+    }
   });
 });
 
