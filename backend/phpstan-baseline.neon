@@ -5254,17 +5254,7 @@ parameters:
 			count: 1
 			path: app/Services/NotificationSyncService.php
 
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$ID\.$#'
-			identifier: property.notFound
-			count: 6
-			path: app/Services/NotificationSyncService.php
 
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$Paid\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/NotificationSyncService.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$RFID\.$#'
@@ -5296,11 +5286,6 @@ parameters:
 			count: 3
 			path: app/Services/NotificationSyncService.php
 
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Builder\:\:\$student\.$#'
-			identifier: property.notFound
-			count: 2
-			path: app/Services/NotificationSyncService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:active\(\)\.$#'
@@ -5326,11 +5311,6 @@ parameters:
 			count: 1
 			path: app/Services/NotificationSyncService.php
 
-		-
-			message: '#^Parameter \#1 \$class of static method App\\Services\\NotificationSyncService\:\:displaySubjectForClass\(\) expects App\\Models\\StudentClass, Illuminate\\Database\\Eloquent\\Builder given\.$#'
-			identifier: argument.type
-			count: 2
-			path: app/Services/NotificationSyncService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:select\(\)\.$#'
