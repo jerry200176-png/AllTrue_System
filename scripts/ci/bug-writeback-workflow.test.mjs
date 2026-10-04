@@ -451,6 +451,11 @@ assert.match(phaseCSource,
   assert.match(closeJob, /type:epic/, 'epics are never auto-closed');
   assert.match(closeJob, /lifecycle:frozen/, 'reviewed frozen issues are never auto-closed');
   assert.match(phaseCSource, /issue_pending_siblings/, 'a shared issue waits for every linked report');
+  assert.match(closeJob, /also maps unchecked in-app/, 'issues mapping unchecked reports are never closed');
+  assert.ok(closeJob.indexOf('gh issue close') < closeJob.indexOf('gh issue comment'), 'close before comment so retries never duplicate the notice');
+  const labelJob = phaseASource.split('\n  label-logged:')[1];
+  assert.ok(labelJob && /needs: triage/.test(labelJob) && /issues: write/.test(labelJob) && /in-app:logged/.test(labelJob),
+    'close_as_logged labels the backlog issue in-app:logged after triage succeeds');
   assert.match(phaseCSource, /"action" => \$ok \? "resolved" : "failed"/);
   assert.match(phaseCSource, /r\.get\("action"\) in \("resolved", "skip_already"\)/, 'resolved and already-resolved (retry) targets close issues; failed ones never');
 }

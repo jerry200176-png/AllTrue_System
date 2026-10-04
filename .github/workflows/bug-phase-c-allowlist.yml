@@ -861,6 +861,8 @@ jobs:
               if ($open !== []) {
                 $results[$i]["issue_pending_siblings"] = $open;
                 $issue = null;
+              } else {
+                $results[$i]["issue_checked_ids"] = array_values(array_map("intval", $siblings));
               }
             }
             $results[$i]["issue"] = $issue;
@@ -879,8 +881,9 @@ jobs:
           import json
           lines = open("out/phase-c.log", encoding="utf-8").read().splitlines()
           data = json.loads(lines[lines.index("---RESULTS---") + 1])
-          issues = sorted({r["issue"] for r in data["results"] if r.get("action") in ("resolved", "skip_already") and isinstance(r.get("issue"), int)})
-          print("issues=" + " ".join(str(i) for i in issues))
+          ok = [r for r in data["results"] if r.get("action") in ("resolved", "skip_already") and isinstance(r.get("issue"), int)]
+          # issue:checked,ids — the close job refuses if the issue maps any report outside this list.
+          print("issues=" + " ".join(f"{r['issue']}:{','.join(map(str, r.get('issue_checked_ids') or [r['id']]))}" for r in ok))
           print("prod_head=" + str(data.get("prod_head", ""))[:40])
           PY
 
@@ -908,10 +911,22 @@ jobs:
           BUG_ID: ${{ needs.resolve.outputs.bug_id }}
         run: |
           set -euo pipefail
-          for n in $ISSUES; do
-            [[ "$n" =~ ^[0-9]+$ ]] || continue
+          for pair in $ISSUES; do
+            n="${pair%%:*}"; checked="${pair#*:}"
+            [[ "$n" =~ ^[0-9]+$ && "$checked" =~ ^[0-9,]+$ ]] || continue
             state="$(gh issue view "$n" --json state,labels --jq '[.state] + [.labels[].name] | join(" ")')"
             # Epics stay open until their last phase ships (PR template rule); frozen issues were reviewed to stay open.
             case " $state " in *" CLOSED "*|*" type:epic "*|*" lifecycle:frozen "*) echo "skip #$n: $state"; continue ;; esac
-            gh issue close "$n" --reason completed --comment "已上線（production ${PROD_HEAD:0:9}），in-app #${BUG_ID} 已由 Phase-C 回寫。Closed automatically on ship (F14)."
+            # Fail closed if the issue maps any in-app report (title "in-app #N" or SourceRef in body/comments) that was not checked.
+            unchecked="$(gh issue view "$n" --json title,body,comments | CHECKED="$checked" python3 -c '
+          import json, os, re, sys
+          d = json.load(sys.stdin)
+          ids = {int(x) for m in re.finditer(r"in-app\s*#\d+(?:\s*/\s*#\d+)*", d["title"], re.I) for x in re.findall(r"#(\d+)", m.group(0))}
+          for t in [d.get("body") or ""] + [c.get("body") or "" for c in d.get("comments") or []]:
+              ids |= {int(x) for x in re.findall(r"alltrue:bug_report:(\d+)", t)}
+          print(" ".join(str(i) for i in sorted(ids - {int(x) for x in os.environ["CHECKED"].split(",")})))')"
+            if [[ -n "$unchecked" ]]; then echo "skip #$n: also maps unchecked in-app $unchecked"; continue; fi
+            # Close first, then comment: a rerun sees CLOSED and never re-posts the notice.
+            gh issue close "$n" --reason completed
+            gh issue comment "$n" --body "已上線（production ${PROD_HEAD:0:9}），in-app #${BUG_ID} 已由 Phase-C 回寫。Closed automatically on ship (F14)."
           done

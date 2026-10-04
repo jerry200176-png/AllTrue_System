@@ -145,3 +145,22 @@ jobs:
           }
           '
           REMOTE
+
+  # F12/F14: a logged suggestion's issue is the backlog; label it so reconcile keeps it open.
+  label-logged:
+    needs: triage
+    if: inputs.close_as_logged
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Label the backlog issue in-app:logged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GITHUB_ISSUE_URL: ${{ inputs.github_issue_url }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ISSUE_URL" =~ ^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/issues/([0-9]+)$ ]] || { echo "invalid github_issue_url"; exit 1; }
+          gh issue edit "${BASH_REMATCH[1]}" --add-label in-app:logged
