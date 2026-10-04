@@ -8225,12 +8225,15 @@ class StudentClassController extends Controller
             }
 
             usort($dateSessions, fn ($a, $b) => strcmp((string) $a->StartTime, (string) $b->StartTime));
+            // Pair slots with unlocked rows only: a locked row stays put and must not shift the pairing
+            // (otherwise 09:00 locked + 15:00/17:00 → 15:30/17:30 moved 15:00→17:30 and left 17:00 overlapping).
+            $dateSessions = array_values(array_filter(
+                $dateSessions,
+                fn ($s) => !isset($lockedBySessionId[(int) $s->id])
+            ));
 
             foreach ($dateSessions as $idx => $session) {
                 $sessionId = (int) $session->id;
-                if (isset($lockedBySessionId[$sessionId])) {
-                    continue;
-                }
                 // One unlocked row per contract slot on this date; extras keep
                 // their current time rather than collapsing onto the last slot.
                 if ($idx >= count($daySlots)) {

@@ -362,6 +362,11 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
             ['day' => 1, 'start_time' => '15:30', 'duration_minutes' => 60],
             ['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60],
         ])->assertOk();
+
+        // Slots pair with unlocked rows only: 15:00→15:30, 17:00→17:30, locked 09:00 stays (no overlap).
+        $starts = ClassSession::where('StudentClassID', $course->ID)->whereDate('SessionDate', '2026-04-27')
+            ->orderBy('StartTime')->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->all();
+        $this->assertSame(['09:00', '15:30', '17:30'], $starts);
     }
 
     private function updateFixedSlots(string $token, StudentClass $course, array $days, ?array $slots = null)
