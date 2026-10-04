@@ -24,7 +24,8 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "discounts drive billing; free courses need no payment, NT$0 records rejected"
+          "discounts drive billing; free courses need no payment, NT$0 records rejected",
+          "explains empty slips, shows rejected reports, 後5碼 and 備註"
         ]
       },
       {
@@ -37,6 +38,7 @@ export const changelogDraftNotes = [
     "items": [
       "carry the last buttons pressed and messages seen (F15)",
       "discounts drive billing; free courses need no payment, NT$0 records rejected",
+      "explains empty slips, shows rejected reports, 後5碼 and 備註",
       "row latest sign-in/learning-record lookups; date-bounded substitutes"
     ]
   },

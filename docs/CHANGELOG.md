@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(billing): transaction discounts drive billing; free courses need no payment, NT$0 records rejected (in-app #349 #361 #346)
 <!-- release-notes: silent_ship=silent-2026-10-04-billing-discount-zero -->
 - 交易折扣（舊生介紹等）寫在課程金額 `Charge`，但帳務中心、免收費判斷、課程查找總額仍用「單價×堂數」：改為有折扣時以折扣後金額為準；折扣到 0 元的試聽（或未設定收費、且無有效帳單）視為免收費＝無付款義務（比照輔導課）：主任登記繳費一律拒絕（`no_payment_obligation`），課程管理／學生列表顯示「無須繳費」並隱藏繳費按鈕，催繳（dunning）、通知中心未繳費提醒、家長 LINE 催繳（`tuition:send-reminders`）都不再對它發送。任何課程登記 0 元繳費一律拒絕（避免 0 元收據把課程標成已結算後從對帳佇列消失）。月結課程有折扣時，前端課程總額同樣以折扣後金額為準。
+## 2026-10-04 — fix(billing-ui): ledger explains empty slips, shows rejected reports, 後5碼 and 備註 (in-app #354 #355 #356)
+<!-- release-notes: silent_ship=silent-2026-10-04-ledger-last5-notes -->
+- 繳費明細在尚無帳單與收據時改顯示「繳費單是依課程估算，尚未建立帳單」說明；收據紀錄新增已退回的登記，並在繳費明細與帳務中心收據紀錄顯示轉帳後5碼與備註（僅顯示，不改任何金額、狀態或權限）。
 ## 2026-10-04 — feat(bug-report): reports carry the last buttons pressed and messages seen (F15)
 <!-- release-notes: silent_ship=silent-2026-10-04-report-breadcrumbs -->
 - 意見與建議回報自動附上最近按過的 15 個按鈕標籤與 5 則錯誤／警告訊息（不記 alert／confirm，避免臨時密碼等），長數字遮罩、不含輸入值；登出或切換分校即清除；後台分診卡顯示「最近按過／畫面訊息」（只存在 app 內，不進公開 log）。SOP 改為先查、不問。
