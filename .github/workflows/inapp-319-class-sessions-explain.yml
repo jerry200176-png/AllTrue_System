@@ -1,0 +1,99 @@
+name: In-app 319 class-sessions EXPLAIN probe (read-only)
+
+# Read-only: EXPLAIN plus a timed SELECT of the /class-sessions index query
+# (ClassSessionIndexReadService::buildQuery) for one campus-week. No writes,
+# no row data in the output (plan rows and timings only). Decides between
+# additive indexes and date-bounded subqueries for in-app #319 (#3069).
+on:
+  workflow_dispatch:
+    inputs:
+      branch_id:
+        description: Campus ID to probe (a busy campus)
+        required: true
+        default: "9"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inapp-319-explain
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pinned SSH trust helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            .github/actions/production-ssh-trust
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Configure pinned production SSH trust
+        uses: ./.github/actions/production-ssh-trust
+        with:
+          host: ${{ secrets.PI_SSH_HOST || secrets.PI_HOST }}
+          host-key: ${{ secrets.PI_HOST_KEY }}
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+      - name: EXPLAIN and time the index query
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BRANCH_ID: ${{ inputs.branch_id }}
+        run: |
+          set -euo pipefail
+          [[ "$BRANCH_ID" =~ ^[1-9][0-9]*$ ]] || { echo "invalid branch_id"; exit 1; }
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" "BRANCH_ID='$BRANCH_ID' bash -s" <<'REMOTE' | tee explain.log
+          set -euo pipefail
+          cd /home/admin/backend
+          export BRANCH_ID
+          php artisan tinker --execute='
+          $branch = (int)getenv("BRANCH_ID");
+          $start = \Carbon\Carbon::now()->startOfWeek()->toDateString();
+          $end = \Carbon\Carbon::now()->endOfWeek()->toDateString();
+          $req = \Illuminate\Http\Request::create("/api/v1/class-sessions", "GET", ["branch_id" => $branch, "start" => $start, "end" => $end]);
+          $req->attributes->set("auth_role", "super_admin");
+          $q = (new \App\Services\ClassSessionIndexReadService())->buildQuery($req)
+              ->orderBy("cs.SessionDate")->orderBy("cs.StartTime")->orderBy("cs.id")->limit(500);
+          $sql = $q->toSql();
+          $bindings = $q->getBindings();
+          $plan = array_map(fn ($r) => array_intersect_key((array)$r, array_flip(["id","select_type","table","type","possible_keys","key","rows","filtered","Extra"])),
+              \Illuminate\Support\Facades\DB::select("EXPLAIN ".$sql, $bindings));
+          $timings = [];
+          $count = 0;
+          for ($i = 0; $i < 3; $i++) {
+              $t = microtime(true);
+              $count = count(\Illuminate\Support\Facades\DB::select($sql, $bindings));
+              $timings[] = round((microtime(true) - $t) * 1000, 1);
+          }
+          $sizes = [];
+          foreach (["ClassSession","schedules","LearningRecord","StudentSingIn","StudentClass"] as $table) {
+              $sizes[$table] = \Illuminate\Support\Facades\DB::table($table)->count();
+          }
+          echo "---EXPLAIN---", PHP_EOL;
+          echo json_encode([
+              "db_version" => \Illuminate\Support\Facades\DB::selectOne("SELECT VERSION() AS v")->v,
+              "branch_id" => $branch, "range" => [$start, $end],
+              "rows_returned" => $count, "timings_ms" => $timings, "table_rows" => $sizes, "plan" => $plan,
+          ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), PHP_EOL;
+          '
+          REMOTE
+      - name: Summary
+        run: |
+          { echo '### in-app 319 EXPLAIN'; echo '```json'; sed -n '/---EXPLAIN---/,$p' explain.log | tail -n +2; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
