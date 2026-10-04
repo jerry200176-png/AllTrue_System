@@ -222,9 +222,9 @@ class AccountingController extends Controller
             ->orderByDesc('id')
             ->get();
 
-        $reports = PaymentReport::with(['confirmedByUser'])
+        $reports = PaymentReport::with(['confirmedByUser', 'payment'])
             ->where('StudentID', $student->id)
-            ->whereIn('status', ['pending', 'confirmed', 'voided'])
+            ->whereIn('status', ['pending', 'confirmed', 'voided', 'rejected'])
             ->orderByDesc('payment_date')
             ->orderByDesc('id')
             ->get();
@@ -454,6 +454,8 @@ class AccountingController extends Controller
                 'student_class_id' => (int) $anchorClass->ID,
                 'report_id' => $anchorReport ? (int) $anchorReport->id : null,
                 'class_count' => count($classIds),
+                // Tutoring has no payment obligation (PaymentReportController::tutoringPaymentBlocked).
+                'no_payment_obligation' => strtolower(trim((string) $anchorClass->getAttribute('ClassType'))) === 'tutoring',
             ],
             'summary' => [
                 'invoice_total' => $invoiceTotal,
@@ -488,7 +490,7 @@ class AccountingController extends Controller
         [$start, $end] = $this->resolveDateRange($request);
         $status = (string) $request->input('status', 'confirmed');
 
-        $query = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser'])
+        $query = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser', 'payment'])
             ->whereDate('payment_date', '>=', $start)
             ->whereDate('payment_date', '<=', $end);
 
@@ -536,7 +538,8 @@ class AccountingController extends Controller
 
         if ($export) {
             return response()->json([
-                'data' => $transformed,
+                // 匯出檔不含後5碼（既有隱私規則）；畫面列表才顯示。
+                'data' => $transformed->map(fn (array $row) => \Illuminate\Support\Arr::except($row, ['account_last5']))->values(),
                 'summary' => $summary,
                 'generated_at' => Carbon::now()->toIso8601String(),
                 'filters_label' => [
@@ -591,10 +594,14 @@ class AccountingController extends Controller
         $campusIds = $role === 'super_admin'
             ? []
             : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        // No campus assigned = no access (never "unrestricted"); only super_admin is cross-campus.
+        if ($role !== 'super_admin' && $campusIds === []) {
+            return response()->json(['message' => '沒有權限執行此操作'], 403);
+        }
 
         if ($request->filled('branch_id')) {
             $branchId = (int) $request->input('branch_id');
-            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            if ($role !== 'super_admin' && !in_array($branchId, $campusIds, true)) {
                 return response()->json(['message' => '沒有權限執行此操作'], 403);
             }
             $query->whereHas('student', fn ($q) => $q->where('CampusID', $branchId));
@@ -614,10 +621,14 @@ class AccountingController extends Controller
         $campusIds = $role === 'super_admin'
             ? []
             : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        // No campus assigned = no access (never "unrestricted"); only super_admin is cross-campus.
+        if ($role !== 'super_admin' && $campusIds === []) {
+            return response()->json(['message' => '沒有權限執行此操作'], 403);
+        }
 
         if ($request->filled('branch_id')) {
             $branchId = (int) $request->input('branch_id');
-            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            if ($role !== 'super_admin' && !in_array($branchId, $campusIds, true)) {
                 return response()->json(['message' => '沒有權限執行此操作'], 403);
             }
             $query->whereHas('student', fn ($q) => $q->where('CampusID', $branchId));
@@ -642,7 +653,7 @@ class AccountingController extends Controller
             return response()->json(['message' => '沒有權限執行此操作'], 403);
         }
 
-        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($campusId, $campusIds, true)) {
+        if ($role !== 'super_admin' && !in_array($campusId, $campusIds, true)) {
             return response()->json(['message' => '沒有權限執行此操作'], 403);
         }
 
@@ -679,16 +690,20 @@ class AccountingController extends Controller
 
     private function ledgerReportRow(PaymentReport $report): array
     {
+        $receiptNo = $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null);
+
         return [
             'report_id' => (int) $report->id,
-            'receipt_no' => $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null),
+            // 退回的回報從未成為收據，不給收據編號。
+            'receipt_no' => (string) $report->getAttribute('status') === 'rejected' ? '' : $receiptNo,
             'student_class_id' => (int) $report->StudentClassID,
             'course_ref' => $this->courseRef((int) $report->StudentClassID),
             'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
             'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
             'payment_date' => $report->payment_date ? $report->payment_date->toDateString() : null,
             'payment_method' => (string) ($report->payment_method ?? ''),
-            'note' => (string) ($report->note ?? ''),
+            'account_last5' => (string) ($report->account_last5 ?? ''),
+            'note' => $report->displayNote(),
             'amount' => (int) round((float) $report->reported_amount),
             'status' => (string) $report->status,
             'confirmed_at' => $report->confirmed_at?->toIso8601String(),
@@ -790,7 +805,9 @@ class AccountingController extends Controller
             'contract_start_date' => AccountingCourseClarity::contractStartDate($sc),
             'is_prepaid' => $paymentDate !== null && $firstSessionDate !== null && $paymentDate < $firstSessionDate,
             'payment_method' => $method,
-            'note' => (string) ($report->note ?? ''),
+            'account_last5' => (string) ($report->account_last5 ?? ''),
+            // 備註以收款紀錄為準（確認時可能覆寫；作廢後仍沿用），否則用回報備註。
+            'note' => $report->displayNote(),
             'cash_amount' => $isConfirmed && $method === 'cash' ? $amount : 0,
             'transfer_amount' => $isConfirmed && $method === 'transfer' ? $amount : 0,
             'total_amount' => $isConfirmed ? $amount : 0,

@@ -24,7 +24,8 @@ export const changelogDraftNotes = [
       {
         "title": "修正內容",
         "items": [
-          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。"
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+          "explains empty slips, shows rejected reports, 後5碼 and 備註"
         ]
       },
       {
@@ -37,6 +38,7 @@ export const changelogDraftNotes = [
     "items": [
       "carry the last buttons pressed and messages seen (F15)",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+      "explains empty slips, shows rejected reports, 後5碼 and 備註",
       "row latest sign-in/learning-record lookups; date-bounded substitutes"
     ]
   },
