@@ -669,6 +669,13 @@ class StudentClassController extends Controller
                     $courseIds[] = $cid;
                 }
             }
+            // Request IDs are untrusted: keep only courses on the authorized branch (room-first campus rule).
+            if (!empty($courseIds)) {
+                $courseIds = StudentClass::query()
+                    ->whereIn('ID', $courseIds)
+                    ->where(fn ($q) => self::applyBranchCampusScope($q, $branchId))
+                    ->pluck('ID')->map(fn ($id) => (int) $id)->all();
+            }
             if (!empty($courseIds)) {
                 $bodyClasses = StudentClass::whereIn('ID', $courseIds)
                     ->with('student')
@@ -676,6 +683,7 @@ class StudentClassController extends Controller
                         'ID',
                         'StudentID',
                         'PackageID',
+                        'Stop',
                         'week',
                         'time',
                         'week1',
@@ -780,6 +788,8 @@ class StudentClassController extends Controller
                 foreach ($classSessionsBody as $row) {
                     $classSessionsBodyByClass[(int) $row->StudentClassID][] = $row;
                 }
+                // Body rows are window-bounded; the contract walk needs cancellations on any date.
+                $cancelledByClass = self::cancelledDatesByClass($courseIds);
                 $leaveByClass = [];
                 $scheduledByClass = [];
                 $sessionDatesByClass = [];
@@ -874,9 +884,10 @@ class StudentClassController extends Controller
                     }
 
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
+                        // Cancelled dates are skipped by the walk so N contract dates remain after capping.
                         $leaveSet = $leaveByClass[$cid] ?? [];
                         $scheduledSet = $scheduledByClass[$cid] ?? [];
-                        $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+                        $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, $cancelledByClass[(int) $cid] ?? []);
                         $mergedSet = [];
                         foreach ($contractList as $date) {
                             $mergedSet[$date] = true;
@@ -942,16 +953,7 @@ class StudentClassController extends Controller
 
         try {
             $query = StudentClass::query()
-                ->where(function ($q) use ($branchId) {
-                    $q->whereHas('room', function ($sub) use ($branchId) {
-                        $sub->where('campus_id', $branchId);
-                    })->orWhere(function ($q2) use ($branchId) {
-                        $q2->whereNull('room_id')
-                           ->whereHas('student', function ($sub) use ($branchId) {
-                               $sub->where('CampusID', $branchId);
-                           });
-                    });
-                });
+                ->where(fn ($q) => self::applyBranchCampusScope($q, $branchId));
             if ($role === 'teacher') {
                 $teacherId = (int) $request->attributes->get('auth_teacher_id');
                 if ($teacherId <= 0) {
@@ -1128,7 +1130,7 @@ class StudentClassController extends Controller
                     $n = (int) $class->SessionCount;
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
-                    $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+                    $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet, self::cancelledDateSet($sessionsByClass[$id] ?? []));
 
                     // Regression guard (#440): when a count-mode course already has historical
                     // ClassSession rows but future scheduled rows are missing, we must not return
@@ -1222,6 +1224,72 @@ class StudentClassController extends Controller
     }
 
     /**
+     * A course belongs to its room's campus; without a room, to its student's campus.
+     */
+    private static function applyBranchCampusScope(\Illuminate\Database\Eloquent\Builder $q, int $branchId): void
+    {
+        $q->whereHas('room', fn ($sub) => $sub->where('campus_id', $branchId))
+            ->orWhere(fn ($q2) => $q2->whereNull('room_id')
+                ->whereHas('student', fn ($sub) => $sub->where('CampusID', $branchId)));
+    }
+
+    /**
+     * Dates with a cancelled session. A cancelled row beside a live row in the same slot (date + start) is a
+     * duplicate/placeholder (e.g. reschedule collision), not a cancelled lesson.
+     *
+     * @return array<string, bool>
+     */
+    public static function cancelledDateSet(iterable $sessionRows): array
+    {
+        $cancelledSlots = [];
+        $liveSlots = [];
+        foreach ($sessionRows as $row) {
+            if (!$row->SessionDate) {
+                continue;
+            }
+            $slot = Carbon::parse($row->SessionDate)->toDateString() . '|' . substr((string) ($row->StartTime ?? ''), 0, 5);
+            if (strtolower((string) ($row->Status ?? '')) === 'cancelled') {
+                $cancelledSlots[$slot] = true;
+            } else {
+                $liveSlots[$slot] = true;
+            }
+        }
+        $set = [];
+        foreach (array_keys(array_diff_key($cancelledSlots, $liveSlots)) as $slot) {
+            $set[strstr($slot, '|', true)] = true;
+        }
+
+        return $set;
+    }
+
+    /**
+     * Contract-wide cancelled dates per class (any date, one query), for count-mode recurrence walks.
+     *
+     * @param  list<int>  $classIds
+     * @return array<int, array<string, bool>>
+     */
+    public static function cancelledDatesByClass(array $classIds): array
+    {
+        if ($classIds === []) {
+            return [];
+        }
+        $rows = ClassSession::query()
+            ->whereIn('StudentClassID', $classIds)
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('ClassSession as c2')
+                ->whereColumn('c2.StudentClassID', 'ClassSession.StudentClassID')
+                ->whereColumn('c2.SessionDate', 'ClassSession.SessionDate')
+                ->whereRaw('LOWER(c2.Status) = ?', ['cancelled']))
+            ->get(['StudentClassID', 'SessionDate', 'StartTime', 'Status']);
+
+        $out = [];
+        foreach ($rows->groupBy('StudentClassID') as $classId => $classRows) {
+            $out[(int) $classId] = self::cancelledDateSet($classRows);
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<string>  $effectiveDateList
      * @param  iterable<object>  $sessionRows
      * @return array{materialized: list<array<string, mixed>>, projected: list<array<string, mixed>>}
@@ -1236,6 +1304,13 @@ class StudentClassController extends Controller
         string $rangeEnd
     ): array {
         $materialized = $reader->collectMaterializedFromRows($sessionRows, $classId, $rangeStart, $rangeEnd);
+        // Paused course: 未恢復前不排新課 -> no virtual 預排 dates (real rows above stay).
+        if ((int) ($class->Stop ?? 0) === 1) {
+            $effectiveDateList = [];
+        }
+        // A cancelled ClassSession occupies its date even if its start time differs from the template.
+        $cancelledDates = self::cancelledDateSet($sessionRows);
+        $effectiveDateList = array_values(array_filter($effectiveDateList, fn ($d) => !isset($cancelledDates[$d]) && $d >= $rangeStart && $d <= $rangeEnd));
         $projected = $reader->buildProjectedFromEffectiveDates($classId, $effectiveDateList, $materialized, $class);
 
         return $reader->wrapCourseSplit($materialized, $projected);
@@ -1312,7 +1387,7 @@ class StudentClassController extends Controller
     /**
      * 堂數制：從第一堂日開始，依排課星期與請假/調課/加課，算出恰好 N 堂的有效日期（請假會讓結束日往後推）。
      */
-    public static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet): array
+    public static function computeEffectiveSessionDates(string $startDate, int $n, array $daysOfWeek, array $leaveSet, array $scheduledSet, array $cancelledSet = []): array
     {
         $list = [];
         $d = Carbon::parse($startDate . ' 12:00:00');
@@ -1321,12 +1396,15 @@ class StudentClassController extends Controller
             $ymd = $d->toDateString();
             $dow = $d->dayOfWeekIso;
             $isRegular = in_array($dow, $daysOfWeek, true);
-            $isLeave = isset($leaveSet[$ymd]);
+            $isCancelled = isset($cancelledSet[$ymd]);
+            $isLeave = isset($leaveSet[$ymd]) || $isCancelled;
             $isScheduledExtra = isset($scheduledSet[$ymd]);
 
             if ($isRegular && !$isLeave) {
                 $list[] = $ymd;
-            } elseif ($isScheduledExtra && !$isRegular) {
+            } elseif ($isScheduledExtra && !$isRegular && !$isCancelled) {
+                // A same-day leave marker beside a schedule-only make-up keeps the make-up (R13/R114);
+                // only a cancelled ClassSession on that date removes it.
                 $list[] = $ymd;
             }
             $d->addDay();

@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix(billing): transaction discounts drive billing; free courses need no payment, NT$0 records rejected (in-app #349 #361 #346)
 <!-- release-notes: silent_ship=silent-2026-10-04-billing-discount-zero -->
 - 交易折扣（舊生介紹等）寫在課程金額 `Charge`，但帳務中心、免收費判斷、課程查找總額仍用「單價×堂數」：改為有折扣時以折扣後金額為準；折扣到 0 元的試聽（或未設定收費、且無有效帳單）視為免收費＝無付款義務（比照輔導課）：主任登記繳費一律拒絕（`no_payment_obligation`），課程管理／學生列表顯示「無須繳費」並隱藏繳費按鈕，催繳（dunning）、通知中心未繳費提醒、家長 LINE 催繳（`tuition:send-reminders`）都不再對它發送。任何課程登記 0 元繳費一律拒絕（避免 0 元收據把課程標成已結算後從對帳佇列消失）。月結課程有折扣時，前端課程總額同樣以折扣後金額為準。
+## 2026-10-04 — fix(courses): paused courses stop showing 預排; clear paused message; cancelled dates no longer double as 預排; course sessions open as list (in-app #340 #342 #343)
+<!-- release-notes: silent_ship=silent-2026-10-04-paused-projection -->
+- 暫停中的課程不再顯示「預排」日期（已建立的正式堂次照舊），點到暫停課程的預排日期改顯示「課程暫停中，恢復後才會排課」；已取消的堂次所在日期不再同時出現預排；課程管理「堂次」分頁預設改為清單（第N堂＋狀態），月曆可手動切換
 ## 2026-10-04 — fix: learning-record form opens the lesson you clicked; multi-teacher courses keep their own slots (in-app #334 #333)
 <!-- release-notes: silent_ship=silent-2026-10-04-lr-form-multiteacher -->
 - 評量表依點選的堂次帶入上課時間，不再被同日其他堂次覆蓋；同科目多位老師開課時，每位老師只保留自己的時段，不再產生重疊堂次
