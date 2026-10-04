@@ -1332,7 +1332,7 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 
 ```bash
 gh run list --workflow=dora-metrics.yml --limit 1     # 找最近一次 run
-gh run view <run_id>                                  # 讀 Step Summary 與 UNKNOWN 原因
+gh run view <run_id> --web                            # 在 GitHub run 頁讀 Step Summary 與 UNKNOWN 原因
 ```
 
 判讀與行動：
@@ -1342,7 +1342,7 @@ gh run view <run_id>                                  # 讀 Step Summary 與 UNK
 ### Y3. 注意
 
 - 指標為「健康趨勢」非 KPI 考核；solo + AI 模式下重點在抓「異常變化」。
-- CFR 以「PR 標題關鍵字」近似，標題規範（Conventional Commits）越一致越準。
+- CFR 需要逐筆部署與正式事故／回滾的可信關聯；證據未建立前保持 UNKNOWN。
 
 ---
 

@@ -19,8 +19,14 @@ PERIOD_DAYS = 30
 MAX_RUN_AGE_DAYS = 35
 SLICE_DAYS = 7
 MAX_RUNS = 2000
-MAX_API_CALLS = 3000
+# GITHUB_TOKEN has 1,000 REST requests/hour/repository. Leave headroom for
+# other repository work; an over-budget week is UNKNOWN rather than partial.
+MAX_API_CALLS = 900
 PER_PAGE = 100
+# Main afce6ff6 (2026-10-04 04:13:58 UTC) predates the receipt producer PR.
+# Only workflow_run executions created strictly before this observed boundary
+# can use the legacy no-upload path; later missing uploads are UNKNOWN.
+LEGACY_RUN_CREATED_BEFORE = datetime(2026, 10, 4, 4, 13, 58, tzinfo=timezone.utc)
 MAX_ARTIFACT_BYTES = 128 * 1024
 MAX_RECEIPT_BYTES = 16 * 1024
 ARTIFACT_PREFIX = "production-deploy-receipt-"
@@ -176,7 +182,9 @@ def exact_target_receipt(gh, attempt_run, job, now):
     observed = timestamp(receipt.get("observed_at"))
     started = timestamp(receipt.get("attempt_started_at"))
     job_started = timestamp(job.get("started_at"))
-    if (not timestamp(attempt_run.get("created_at")) <= job_started <= started <= observed <= artifact_created <= timestamp(job.get("completed_at")) <= now
+    if (not timestamp(attempt_run.get("created_at")) <= job_started <= started <= observed
+            or observed > artifact_created + timedelta(seconds=1)
+            or not artifact_created <= timestamp(job.get("completed_at")) <= now
             or observed - started > timedelta(minutes=35)
             or not max(timestamp(attempt_run.get("created_at")), started - timedelta(minutes=5),
                        observed - timedelta(minutes=35)) <= deployed <= observed + timedelta(minutes=5)
@@ -302,6 +310,8 @@ def _collect_receipts(gh, runs, period_start, now, receipts):
                     raise UnknownEvidence("exact deployment receipt predates reporting window")
             elif event != "workflow_run" or not SHA.fullmatch(sha):
                 raise UnknownEvidence(f"run {run_id} attempt {attempt} target SHA is not provable from {event} metadata")
+            elif timestamp(attempt_run.get("created_at")) >= LEGACY_RUN_CREATED_BEFORE:
+                raise UnknownEvidence("post-cutoff automatic deploy lacks exact target receipt")
             receipt = (run_id, attempt)
             if receipt in seen:
                 raise UnknownEvidence("duplicate run attempt receipt")

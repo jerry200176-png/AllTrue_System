@@ -302,6 +302,46 @@ class DoraEvidenceTest(unittest.TestCase):
         self.assertEqual(MANUAL_TARGET, dora.verified_receipts(
             gh, [candidate], NOW - timedelta(days=30), NOW)[0]["sha"])
 
+    def test_legacy_cutoff_and_job_attempt_identity(self):
+        legacy = run(37138976778, "completed", "success")
+        no_attempt = dict(GOOD)
+        path = ("actions/runs/37138976778/attempts/1/jobs", 1)
+        gh = FakeGH({path: {"total_count": 1, "jobs": [no_attempt]}})
+        self.assertEqual(SHA, dora.verified_receipts(
+            gh, [legacy], NOW - timedelta(days=30), NOW)[0]["sha"])
+        no_attempt.pop("run_attempt")
+        with self.assertRaisesRegex(dora.UnknownEvidence, "attempt or source SHA differs"):
+            dora.verified_receipts(gh, [legacy], NOW - timedelta(days=30), NOW)
+        no_attempt["run_attempt"] = 2
+        with self.assertRaisesRegex(dora.UnknownEvidence, "attempt or source SHA differs"):
+            dora.verified_receipts(gh, [legacy], NOW - timedelta(days=30), NOW)
+
+        later = run(37138976778, "completed", "success", created="2026-10-04T04:14:00Z")
+        later["updated_at"] = "2026-10-04T04:21:00Z"
+        late_job = job("success", completed="2026-10-04T04:20:00Z", steps=GOOD["steps"],
+                       started="2026-10-04T04:15:00Z")
+        gh = FakeGH({path: {"total_count": 1, "jobs": [late_job]}})
+        later_now = datetime(2026, 10, 5, 4, 0, tzinfo=timezone.utc)
+        with self.assertRaisesRegex(dora.UnknownEvidence, "post-cutoff"):
+            dora.verified_receipts(gh, [later], later_now - timedelta(days=30), later_now)
+
+    def test_artifact_second_precision_accepts_same_second_observation(self):
+        candidate, receipt, artifact, gh = manual_fixture()
+        receipt["observed_at"] = "2026-10-03T22:12:20.500000Z"
+        archive = receipt_zip(receipt)
+        artifact["size_in_bytes"] = len(archive)
+        artifact["digest"] = "sha256:" + hashlib.sha256(archive).hexdigest()
+        gh.archives[artifact["id"]] = archive
+        self.assertEqual(MANUAL_TARGET, dora.verified_receipts(
+            gh, [candidate], NOW - timedelta(days=30), NOW)[0]["sha"])
+        receipt["observed_at"] = "2026-10-03T22:12:21.500000Z"
+        archive = receipt_zip(receipt)
+        artifact["size_in_bytes"] = len(archive)
+        artifact["digest"] = "sha256:" + hashlib.sha256(archive).hexdigest()
+        gh.archives[artifact["id"]] = archive
+        with self.assertRaises(dora.UnknownEvidence):
+            dora.verified_receipts(gh, [candidate], NOW - timedelta(days=30), NOW)
+
     def test_new_automatic_receipt_target_must_match_run_head(self):
         candidate, receipt, artifact, gh = manual_fixture(event="workflow_run", event_head=EVENT_HEAD)
         with self.assertRaisesRegex(dora.UnknownEvidence, "automatic receipt target differs"):
