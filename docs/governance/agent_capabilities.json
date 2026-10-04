@@ -60,7 +60,7 @@
       "verification_method": "Actions Deploy to Pi success + production health/version.json",
       "environment": "prod-pi",
       "verifier": "claude-agent",
-      "evidence": "run 37138976778 success; deployment.json backend_sha e483c1dc4; health 200 (2026-10-03)"
+      "evidence": "Deploy to Pi run 37138976778 success; production version.json hash=e483c1dc and deployment.json backend_sha e483c1dc4 (checked in that run); GET /health 200 (2026-10-03)"
     },
     {
       "id": "prod_read_version_json",
