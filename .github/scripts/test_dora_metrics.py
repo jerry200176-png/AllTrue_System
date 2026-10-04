@@ -194,6 +194,22 @@ class DoraEvidenceTest(unittest.TestCase):
             with self.assertRaisesRegex(dora.UnknownEvidence, "differs from production runtime"):
                 dora.calculate(gh, NOW, (MANUAL_TARGET, NOW - timedelta(minutes=1)))
 
+    def test_reporting_window_uses_successful_job_completion_not_manifest_write(self):
+        candidate, receipt, artifact, gh = manual_fixture()
+        deployed = datetime(2026, 10, 3, 22, 11, 33, tzinfo=timezone.utc)
+        # The manifest was written before the 30-day cutoff; health/smoke and
+        # the successful deploy job completed after it.
+        in_window_now = datetime(2026, 11, 2, 22, 12, 0, tzinfo=timezone.utc)
+        with patch.object(dora, "workflow_runs", return_value=[candidate]):
+            counted = dora.calculate(gh, in_window_now, (MANUAL_TARGET, deployed))
+        self.assertEqual([(36955378940, 1)], [(r["run_id"], r["attempt"]) for r in counted])
+
+        # Once the 30-day cutoff passes job.completed_at, that same deployment
+        # is outside the window even though all receipt evidence remains valid.
+        outside_now = datetime(2026, 11, 2, 22, 13, 0, tzinfo=timezone.utc)
+        with patch.object(dora, "workflow_runs", return_value=[candidate]):
+            self.assertEqual([], dora.calculate(gh, outside_now, (MANUAL_TARGET, deployed)))
+
     def test_manual_receipt_missing_duplicate_expired_or_mismatched_is_unknown(self):
         def rejected(change):
             candidate, receipt, artifact, gh = manual_fixture()

@@ -306,8 +306,6 @@ def _collect_receipts(gh, runs, period_start, now, receipts):
                 sha, deployed_at = exact_target_receipt(gh, attempt_run, job, now)
                 if event == "workflow_run" and sha != str(attempt_run.get("head_sha") or "").lower():
                     raise UnknownEvidence("automatic receipt target differs from run head")
-                if deployed_at < period_start:
-                    raise UnknownEvidence("exact deployment receipt predates reporting window")
             elif event != "workflow_run" or not SHA.fullmatch(sha):
                 raise UnknownEvidence(f"run {run_id} attempt {attempt} target SHA is not provable from {event} metadata")
             elif timestamp(attempt_run.get("created_at")) >= LEGACY_RUN_CREATED_BEFORE:
@@ -387,7 +385,7 @@ def report(repo, now=None, gh=None, runtime_reader=runtime_identity):
         "Failed Deployment Recovery Time: UNKNOWN (incident restoration evidence not established)",
         "Deployment Rework Rate: UNKNOWN (unplanned corrective deployments not linked to incidents)",
         provenance,
-        "Source: deploy.yml successful Deploy to Production job + Deploy and Record deployed and production-verified state steps; exact run/attempt artifact receipt for dispatch; production deployment.json.",
+        "Source: deploy.yml successful Deploy to Production job + Deploy and Record deployed and production-verified state steps; window uses deploy job completed_at; exact run/attempt artifact receipt for dispatch; production deployment.json.",
     ])
 
 
