@@ -60,7 +60,8 @@ nft -f /etc/nftables.d-daan-runner.nft
 cat > /etc/systemd/system/daan-runner-guard.service <<'EOF'
 [Unit]
 Description=Block CI runner user from local MySQL
-Before=network-pre.target
+After=nftables.service
+Wants=nftables.service
 [Service]
 Type=oneshot
 ExecStart=/usr/sbin/nft -f /etc/nftables.d-daan-runner.nft
@@ -94,8 +95,11 @@ fi
 install -d -o root -g root -m 755 "$HOOK_DIR"
 install -o root -g root -m 755 "$(dirname "$0")/job-started.sh" "$HOOK_DIR/job-started.sh"
 install -o root -g root -m 755 "$(dirname "$0")/job-completed.sh" "$HOOK_DIR/job-completed.sh"
-chown -R "$RUNNER_USER:$RUNNER_USER" "$RUNNER_DIR"
+# Runner code stays ROOT-owned (a job cannot alter bin/, runsvc.sh, config.sh for later jobs).
+# ghrunner may write only its state: _work, _diag and the files config.sh creates at registration.
+install -d -o "$RUNNER_USER" -g "$RUNNER_USER" -m 700 "$RUNNER_DIR/_work" "$RUNNER_DIR/_diag"
 printf 'DOCKER_HOST=unix:///run/user/%s/docker.sock\nACTIONS_RUNNER_HOOK_JOB_STARTED=%s/job-started.sh\nACTIONS_RUNNER_HOOK_JOB_COMPLETED=%s/job-completed.sh\n' \
-  "$RUNNER_UID" "$HOOK_DIR" "$HOOK_DIR" | sudo -u "$RUNNER_USER" tee "$RUNNER_DIR/.env" >/dev/null
+  "$RUNNER_UID" "$HOOK_DIR" "$HOOK_DIR" > "$RUNNER_DIR/.env"
+chown root:root "$RUNNER_DIR/.env"; chmod 644 "$RUNNER_DIR/.env"
 
 echo "Step 1 done. Next: sudo bash 02-verify-isolation.sh  (runner is NOT registered or running)"

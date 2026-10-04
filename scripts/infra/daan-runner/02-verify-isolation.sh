@@ -21,6 +21,10 @@ must_fail "ghrunner has no sudo" "${AS[@]}" sudo -n true
 must_fail "ghrunner cannot use the SYSTEM docker daemon" "${AS[@]}" docker -H unix:///var/run/docker.sock ps
 
 must_fail "ghrunner cannot modify cleanup hooks" "${AS[@]}" bash -c 'echo x >> /usr/local/lib/daan-runner/job-completed.sh'
+must_fail "ghrunner cannot modify runner binaries" "${AS[@]}" bash -c 'echo x >> /opt/actions-runner/runsvc.sh'
+must_fail "ghrunner cannot add files to runner bin/" "${AS[@]}" touch /opt/actions-runner/bin/planted
+must_fail "ghrunner cannot rewrite runner .env (hooks)" "${AS[@]}" bash -c 'echo x >> /opt/actions-runner/.env'
+nft list table inet daan_runner_guard >/dev/null 2>&1 && pass "firewall guard table loaded" || fail "firewall guard table NOT loaded"
 echo "== staging files and credentials (host)"
 must_fail "cannot list staging dir"          "${AS[@]}" ls "$STAGING_DIR"
 must_fail "cannot read staging .env"         "${AS[@]}" cat "$STAGING_ENV"

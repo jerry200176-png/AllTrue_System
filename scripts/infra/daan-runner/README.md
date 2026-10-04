@@ -19,6 +19,14 @@ proven, not assumed.
 
 CI's own test DB runs in a container published on `127.0.0.1:33306` (positive control in step 2), never 3306.
 
+### Cross-job persistence (what a malicious job could leave behind for the next job)
+
+| Path | Status |
+|---|---|
+| Runner code (`bin/`, `runsvc.sh`, `config.sh`), `.env`, hooks | **Blocked**: root-owned; `--disableupdate`; step 2 proves ghrunner cannot write them |
+| Firewall guard removed/flushed | **Fail-closed**: the unit's `ExecStartPre` (root) requires the table; every job's start hook refuses if `127.0.0.1:3306`/`::1:3306` is reachable |
+| ghrunner's home (`~/.bashrc`, `~/.config/systemd/user`, `~/.docker`, rootless Docker images) | **Residual risk**: a job could plant files that later jobs (same user) pick up. The full fix is ephemeral runners (fresh user/home per job, JIT-registered), which needs a fine-grained PAT stored root-only on the host. This is a Founder decision; see the PR. |
+
 ## Cleanup scope
 
 `job-started.sh` snapshots the containers, networks and volumes in **ghrunner's rootless daemon**. `job-completed.sh`
