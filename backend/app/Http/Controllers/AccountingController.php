@@ -224,7 +224,7 @@ class AccountingController extends Controller
 
         $reports = PaymentReport::with(['confirmedByUser'])
             ->where('StudentID', $student->id)
-            ->whereIn('status', ['pending', 'confirmed', 'voided'])
+            ->whereIn('status', ['pending', 'confirmed', 'voided', 'rejected'])
             ->orderByDesc('payment_date')
             ->orderByDesc('id')
             ->get();
@@ -536,7 +536,8 @@ class AccountingController extends Controller
 
         if ($export) {
             return response()->json([
-                'data' => $transformed,
+                // 匯出檔不含後5碼（既有隱私規則）；畫面列表才顯示。
+                'data' => $transformed->map(fn (array $row) => \Illuminate\Support\Arr::except($row, ['account_last5']))->values(),
                 'summary' => $summary,
                 'generated_at' => Carbon::now()->toIso8601String(),
                 'filters_label' => [
@@ -688,6 +689,7 @@ class AccountingController extends Controller
             'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
             'payment_date' => $report->payment_date ? $report->payment_date->toDateString() : null,
             'payment_method' => (string) ($report->payment_method ?? ''),
+            'account_last5' => (string) ($report->account_last5 ?? ''),
             'note' => (string) ($report->note ?? ''),
             'amount' => (int) round((float) $report->reported_amount),
             'status' => (string) $report->status,
@@ -790,6 +792,7 @@ class AccountingController extends Controller
             'contract_start_date' => AccountingCourseClarity::contractStartDate($sc),
             'is_prepaid' => $paymentDate !== null && $firstSessionDate !== null && $paymentDate < $firstSessionDate,
             'payment_method' => $method,
+            'account_last5' => (string) ($report->account_last5 ?? ''),
             'note' => (string) ($report->note ?? ''),
             'cash_amount' => $isConfirmed && $method === 'cash' ? $amount : 0,
             'transfer_amount' => $isConfirmed && $method === 'transfer' ? $amount : 0,
