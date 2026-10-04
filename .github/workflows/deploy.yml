@@ -189,6 +189,7 @@ jobs:
           import os
           import subprocess
 
+          from scripts.deployment_manifest_contract import SOURCE as DEPLOYMENT_MANIFEST_SOURCE
           from scripts.governance.autonomy_gate import (
               classify_production_runtime,
               is_application_runtime_path,
@@ -374,7 +375,7 @@ jobs:
           # A deployment manifest is identity evidence, never success proof.
           # Only when it already names this exact target may a bounded 60-second
           # recheck wait for the authoritative completed-success deployment run.
-          if deployed == head and manifest_source == "github-actions:deploy.yml" and provenance_sha is None:
+          if deployed == head and manifest_source == DEPLOYMENT_MANIFEST_SOURCE and provenance_sha is None:
               provenance_sha = wait_for_exact_successful_provenance(
                   lookup=successful_deploy_provenance,
                   expected_sha=deployed,

@@ -41,6 +41,7 @@ class WriteDeploymentManifestTest(unittest.TestCase):
             output.parent.mkdir()
             output.write_text(json.dumps(manifest), encoding="utf-8")
             decoded = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(decoded["schema"], MODULE.SCHEMA)
             self.assertEqual(set(decoded), {
                 "schema", "backend_sha", "frontend_sha", "frontend_build_sha",
                 "frontend_built_at", "deployed_at", "source",

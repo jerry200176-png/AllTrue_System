@@ -8,13 +8,13 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from deployment_manifest_contract import SOURCE
+from deployment_manifest_contract import SCHEMA, SOURCE
 
 
 def build_manifest(target_sha: str, version: dict, deployed_at: str | None = None) -> dict:
     frontend_sha = version.get("build_sha") or version.get("hash") or None
     return {
-        "schema": 1,
+        "schema": SCHEMA,
         "backend_sha": target_sha,
         "frontend_sha": frontend_sha,
         "frontend_build_sha": frontend_sha,

@@ -14,6 +14,8 @@ from collections import Counter
 from datetime import datetime
 from typing import Iterable, Mapping
 
+from scripts.deployment_manifest_contract import SOURCE as DEPLOYMENT_MANIFEST_SOURCE
+
 
 TIER_VALUES = {"T0": 0, "T1": 1, "T2": 2, "T3": 3}
 RISK_VALUES = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
@@ -1150,7 +1152,7 @@ def classify_production_runtime(
             "retry_allowed": False,
             "reason": "production or target SHA is invalid",
         }
-    if manifest_source != "github-actions:deploy.yml":
+    if manifest_source != DEPLOYMENT_MANIFEST_SOURCE:
         return {
             "state": "provenance-unknown",
             "retry_allowed": False,

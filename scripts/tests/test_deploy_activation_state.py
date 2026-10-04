@@ -39,6 +39,7 @@ from scripts.governance.autonomy_gate import (  # noqa: E402
     parse_declaration,
     reconcile_preexisting_pr_provenance,
 )
+from scripts.deployment_manifest_contract import SOURCE as DEPLOYMENT_MANIFEST_SOURCE  # noqa: E402
 
 
 class DeployActivationPolicyTest(unittest.TestCase):
@@ -841,7 +842,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             target_sha=target,
             comparison_status="ahead",
             provenance_sha=production,
-            manifest_source="github-actions:deploy.yml",
+            manifest_source=DEPLOYMENT_MANIFEST_SOURCE,
         )
         self.assertEqual(result["state"], "normal-version-lag")
         self.assertTrue(result["retry_allowed"])
@@ -854,7 +855,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             target_sha=target,
             comparison_status="diverged",
             provenance_sha=production,
-            manifest_source="github-actions:deploy.yml",
+            manifest_source=DEPLOYMENT_MANIFEST_SOURCE,
         )
         self.assertEqual(result["state"], "unexpected-production-sha")
         self.assertFalse(result["retry_allowed"])
@@ -867,7 +868,7 @@ diff --git a/frontend/src/pages/__tests__/Badge.test.js b/frontend/src/pages/__t
             target_sha=target,
             comparison_status="ahead",
             provenance_sha=None,
-            manifest_source="github-actions:deploy.yml",
+            manifest_source=DEPLOYMENT_MANIFEST_SOURCE,
         )
         invalid_manifest = classify_production_runtime(
             production_sha=production,
@@ -1022,6 +1023,9 @@ class DeployActivationWorkflowContractTest(unittest.TestCase):
 
     def test_classifier_is_authoritative_and_fail_closed_when_missing(self):
         self.assertIn("scripts/governance/autonomy_gate.py", self.workflow)
+        self.assertIn("from scripts.deployment_manifest_contract import SOURCE as DEPLOYMENT_MANIFEST_SOURCE", self.workflow)
+        self.assertIn("manifest_source == DEPLOYMENT_MANIFEST_SOURCE", self.workflow)
+        self.assertNotIn('manifest_source == "github-actions:deploy.yml"', self.workflow)
         self.assertIn("authoritative classifier unavailable; fail closed", self.workflow)
         self.assertIn("classify_activation_scope", self.workflow)
         self.assertIn("comparison.get(\"commits\")", self.workflow)

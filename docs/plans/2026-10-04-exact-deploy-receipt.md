@@ -10,6 +10,7 @@ Bind a successful `deploy.yml` application activation to its resolved target SHA
 - Receipt records repo, target SHA, workflow revision SHA, run ID/attempt/event, a pre-deploy attempt marker, deployed/observed timestamps, runtime manifest, and verification state. It accepts the manifest writer's legacy short or missing frontend identity while requiring an exact full backend SHA. Unknown application artifact digest and configuration identity remain explicitly unknown until a separate immutable-build/config control exists.
 - A manual or repository dispatch may have a workflow head SHA different from target; the receipt still names the resolved target. Waiting/skipped/failed deploys cannot emit a successful receipt. A failed receipt upload leaves the Actions job failed, never a false verified result.
 - Focused tests cover SHA mismatch, malformed manifest, dispatch head/target difference, rerun attempt, and missing metadata. No secret or private configuration value enters the receipt.
+- The runtime manifest must use the writer's supported schema and shared source identifier. The writer, receipt, activation classifier, and workflow preflight read one small checked-in contract; unsupported schema or source fails before a verified receipt is emitted. This removes duplicated source literals confirmed by review without adding a service or state store. Maintenance is one shared Python module and tests; acceptance includes a negative schema fixture and workflow/classifier import checks.
 
 ## Steps and stop points
 

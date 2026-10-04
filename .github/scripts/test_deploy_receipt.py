@@ -6,7 +6,7 @@ import re
 import unittest
 from datetime import datetime, timezone
 
-from deploy_receipt import SOURCE, make_receipt
+from deploy_receipt import SCHEMA, SOURCE, make_receipt
 
 
 TARGET = "a" * 40
@@ -44,6 +44,7 @@ def assert_workflow_receipt_contract(source):
 
 def manifest():
     return {
+        "schema": SCHEMA,
         "backend_sha": TARGET,
         "frontend_sha": "d" * 40,
         "frontend_build_sha": "d" * 40,
@@ -73,7 +74,19 @@ class ReceiptTest(unittest.TestCase):
         spec.loader.exec_module(module)
         runtime = module.build_manifest(TARGET, {"build_sha": "d" * 40}, "2026-10-03T22:11:33Z")
         self.assertEqual(runtime["source"], SOURCE)
+        self.assertEqual(runtime["schema"], SCHEMA)
         self.assertEqual(make_receipt(runtime, metadata(), NOW)["source_sha"], TARGET)
+
+    def test_unsupported_runtime_schema_refuses_success_receipt(self):
+        for schema in (None, 0, 2, "1", True):
+            with self.subTest(schema=schema):
+                runtime = manifest()
+                if schema is None:
+                    del runtime["schema"]
+                else:
+                    runtime["schema"] = schema
+                with self.assertRaisesRegex(ValueError, "unsupported runtime manifest schema"):
+                    make_receipt(runtime, metadata(), NOW)
 
     def test_workflow_only_records_after_deploy_and_receipt_upload(self):
         source = WORKFLOW_FILE.read_text(encoding="utf-8")
@@ -95,6 +108,7 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual(receipt["workflow_revision_sha"], WORKFLOW_SHA)
         self.assertEqual((receipt["run_id"], receipt["run_attempt"]), (36955378940, 2))
         self.assertEqual(receipt["runtime"]["backend_sha"], TARGET)
+        self.assertEqual(receipt["runtime"]["schema"], SCHEMA)
         self.assertEqual(receipt["attempt_started_at"], "2026-10-03T22:11:00Z")
         self.assertEqual(receipt["verification_state"], "production-verified")
         self.assertEqual(receipt["application_artifact_digest"], "unknown")

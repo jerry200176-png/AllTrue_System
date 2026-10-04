@@ -8,7 +8,7 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from deployment_manifest_contract import SOURCE  # noqa: E402
+from deployment_manifest_contract import SCHEMA, SOURCE  # noqa: E402
 
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -55,6 +55,8 @@ def make_receipt(manifest, metadata, now=None):
     now = now or datetime.now(timezone.utc)
     if not isinstance(manifest, dict):
         raise ValueError("runtime manifest must be an object")
+    if type(manifest.get("schema")) is not int or manifest["schema"] != SCHEMA:
+        raise ValueError("unsupported runtime manifest schema")
     repository = metadata.get("GITHUB_REPOSITORY")
     if not isinstance(repository, str) or not REPOSITORY.fullmatch(repository):
         raise ValueError("GITHUB_REPOSITORY must be owner/repo")
@@ -100,6 +102,7 @@ def make_receipt(manifest, metadata, now=None):
             "frontend_build_sha": frontend_build_sha,
             "frontend_identity_status": identity_status,
             "source": manifest["source"],
+            "schema": manifest["schema"],
         },
         "verification_state": "production-verified",
         "verification_evidence": "deploy.yml Deploy step health and post-merge smoke succeeded before receipt creation",
