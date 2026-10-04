@@ -97,7 +97,7 @@ last_reviewed: 2026-09-05
 
 > 詳細事故記錄（33 條）→ [AI_REGRESSION_LESSONS_ARCHIVE.md](archive/AI_REGRESSION_LESSONS_ARCHIVE.md)
 >
-> **🔁 高復發檢討**：改排課/扣堂/月結/行事曆/停用課程前，先讀本檔 **§復發家族（Recurring Defect Families）** 認領 F1～F14，對照不變式並補回歸測試 —— 否則點修會再復發。
+> **🔁 高復發檢討**：改排課/扣堂/月結/行事曆/停用課程前，先讀本檔 **§復發家族（Recurring Defect Families）** 認領 F1～F15，對照不變式並補回歸測試 —— 否則點修會再復發。
 
 ---
 
@@ -342,12 +342,13 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F12 建議沒有出口**（2026-10-03） | 新功能／改善建議走 bug 狀態機：沒有修好→部署可等，也沒有提問可計時 → 永遠 `triaged`（#290 自 9/13） | in-app #290、#299、#322、#357、#360、`docs/plans/INAPP_ROOTCAUSE_V3_20261003.md` | 分診完用 `BugReportService::closeAsLogged`（Phase-A `close_as_logged`）結案，GitHub issue 是產品清單；回報者留言自動重開；上線後 `bug-followup-comment`（`expected_status=closed` + 部署 SHA／run）通知並寫 production evidence |
 | **F13 同一件事重複回報**（2026-10-03） | 回報視窗看不到自己在同頁已送、還在處理的回報 → 同一件事送 4 次（#359/#363/#364/#365），回覆與分診都做 4 次 | in-app #359–#365、#340–#357 | 回報視窗列出自己同頁未結案回報（`GET /bugs/open-on-page`），可直接補充；不擋送出 |
 | **F14 issue 與 in-app 不會一起結束**（2026-10-04） | 上線（Phase-C）只回寫 in-app；PR 多寫 `Refs` 不寫 `Closes` → issue 永遠開著。10-04 盤點：54 張 issue 對應的 in-app 已 resolved／closed 但還開著，backlog 淹掉真的工作 | open 160 張中 54 張、`docs/plans/INAPP_ROOTCAUSE_V3_20261003.md` 後續 | Phase-C 成功後由獨立 `issues: write` job 關 issue（epic 除外）；`bug-queue-dump` 每次附 `scripts/inapp-issue-reconcile.py` 不一致報表 |
+| **F15 用提問代替調查**（2026-10-04） | 分診回覆列一串問題（按了哪個鈕、畫面寫什麼、哪一堂），回報者不會回 → 單子卡 14 天後被時鐘關掉，問題沒修。根因：回報沒帶「按過什麼、看到什麼」，而且 detail dump 根本沒匯出 `client_info` | in-app #340–#345、#354–#357 等 25 筆等回報者 | 回報自動附最近 15 個按鈕標籤與 5 則錯誤／警告 toast（Sentry breadcrumbs 做法；不記 alert／confirm，登出／切分校清除）；只在後台分診卡顯示（repo 公開，不把 `client_info` 放進 Actions log／artifact）；SOP A5b「先查、不問」 |
 | **F6 輸入邊界 collation／長度** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`）；另 **VARCHAR(512) 溢位** → SQLSTATE 22001 Data too long（貼繳費說明） | #657、**#1378**、**#1732** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾；超長備註須 422 `memo_too_long`，禁止 500 |
 
 **通用防再犯規則（跨家族）：**
 1. 任何「**狀態變更**」（停用、結束、結算、續期、調課）寫主檔時，必須在**同一交易內**決定其衍生 `ClassSession`/`schedules`/名額/金額如何對齊，並寫測試覆蓋「變更後衍生資料正確」。
 2. 任何「**列表/行事曆/收據**」呈現課程資料時，先確認資料來源是否涵蓋 **歷史/停用/未來/月結推算** 四種狀態，缺一即為潛在 F1/F2/F5 復發。
-3. 修任一家族成員，PR 必須引用本節家族代號（F1～F14）並附「**revert 後會 fail**」的回歸測試；否則視為點修，會再復發。
+3. 修任一家族成員，PR 必須引用本節家族代號（F1～F15）並附「**revert 後會 fail**」的回歸測試；否則視為點修，會再復發。
 4. DB 文字欄若為 `utf8mb3`：查詢 `like` **先濾**非 BMP（F6 搜尋）；**寫入**路徑則必須升級欄位 charset 至 utf8mb4（#1378），禁止永久靜默刪 emoji。
 5. **一件事只能有一個算法（2026-10-02 根因盤點）**：約 230 張 in-app issue 中，帳務（F7，~45）、佔位（F8，~35）、生命週期（F1，~30）、剩餘堂數（F4，~35）的共同根是「同一個業務值在多處各算一次」。新增或修改這類值時，先找既有權威（例：佔位→`ScheduleGuardService` 的共用判斷、行事曆→`calendarOccurrenceMerge.js`、應繳→`BillingPayableResolver`），**改權威、讓畫面去讀**，不得在 controller／頁面另寫一份；找不到權威就在 PR「防再犯」欄寫明並開 tech-debt。
 
@@ -1227,7 +1228,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
-> 改下列模組前，**先回本檔 §復發家族** 認領對應 F1～F14（狀態收尾/月結續期/排課生成/共用堂數/行事曆合併/輸入邊界/繳費雙真相/佔位多來源/事件沒人接/回報缺線索），再讀以下細項。
+> 改下列模組前，**先回本檔 §復發家族** 認領對應 F1～F15（狀態收尾/月結續期/排課生成/共用堂數/行事曆合併/輸入邊界/繳費雙真相/佔位多來源/事件沒人接/回報缺線索），再讀以下細項。
 
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|

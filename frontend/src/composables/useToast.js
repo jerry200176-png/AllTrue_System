@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import { recordUserMessage } from '../lib/recentApiFailures';
 
 /**
  * #708 統一 Toast — 單例 store（參考 GitHub Primer Toast）。
@@ -34,6 +35,7 @@ function push(variant, message, opts = {}) {
     _timer: null,
   };
   state.toasts.push(t);
+  recordUserMessage(variant, [t.title, t.description].filter(Boolean).join(' '));
   const ms = opts.duration ?? DURATION[variant] ?? 4000;
   if (ms > 0) {
     t._timer = setTimeout(() => dismiss(id), ms);

@@ -8,13 +8,19 @@ export const changelogDraftNotes = [
     "version": "2026.10.04",
     "date": "2026-10-04",
     "title": "2026.10.04 草稿（未發布）",
-    "summary": "explains empty slips, shows rejected reports, 後5碼 and 備註；row latest sign-in/learning-record lookups; date-bounded substitutes",
+    "summary": "carry the last buttons pressed and messages seen (F15)；explains empty slips, shows rejected reports, 後5碼 and 備註",
     "audience": [
       "teacher",
       "director"
     ],
     "draft": true,
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "carry the last buttons pressed and messages seen (F15)"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -29,6 +35,7 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
+      "carry the last buttons pressed and messages seen (F15)",
       "explains empty slips, shows rejected reports, 後5碼 and 備註",
       "row latest sign-in/learning-record lookups; date-bounded substitutes"
     ]
