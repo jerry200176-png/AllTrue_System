@@ -14,6 +14,8 @@ cd "$DIR"
 # restore the verified binaries, keeping only the known registration files.
 systemctl disable --now daan-ci-runner.service 2>/dev/null || true
 pkill -KILL -u ghrunner 2>/dev/null || true
+# Fail closed: whatever happens below, the runner dir ends up root-owned again.
+trap 'pkill -KILL -u ghrunner 2>/dev/null || true; chown -h root:root "$DIR"; chmod 755 "$DIR"' EXIT
 chown ghrunner "$DIR"
 sudo -u ghrunner ./config.sh --unattended --replace --disableupdate \
   --url https://github.com/jerry200176-png/AllTrue_System --token "$TOKEN" \
@@ -24,11 +26,18 @@ TGZ=$(ls /usr/local/lib/daan-runner/runner-*.tgz | head -1)
 KEEP='^(\.runner|\.credentials|\.credentials_rsaparams|\.env|_work|_diag)$'
 # Remove anything that is neither shipped in the verified tarball nor a known registration/state file.
 SHIPPED=$(tar tzf "$TGZ" | sed 's#^\./##; s#/.*##' | sort -u)
-for e in $(ls -A "$DIR"); do
+while IFS= read -r -d '' path; do
+  e=$(basename "$path")
+  # A top-level symlink (e.g. bin -> /etc) would make the root tar below write through it: always remove.
+  if [ -L "$path" ]; then echo "removing symlink $e"; rm -f "$path"; continue; fi
   echo "$e" | grep -Eq "$KEEP" && continue
-  echo "$SHIPPED" | grep -qx "$e" || { echo "removing unexpected $e"; rm -rf "${DIR:?}/$e"; }
-done
-tar xzf "$TGZ" -C "$DIR" --no-same-owner --overwrite     # restore binaries exactly as verified
+  echo "$SHIPPED" | grep -qxF "$e" || { echo "removing unexpected $e"; rm -rf --one-file-system "$path"; }
+done < <(find "$DIR" -mindepth 1 -maxdepth 1 -print0)
+# Shipped directories are replaced wholesale (never merged into something ghrunner may have touched).
+while IFS= read -r e; do
+  [ -n "$e" ] && [ -d "$DIR/$e" ] && rm -rf --one-file-system "${DIR:?}/$e"
+done <<< "$(echo "$SHIPPED" | grep -vE "$KEEP")"
+tar xzf "$TGZ" -C "$DIR" --no-same-owner      # restore binaries exactly as verified
 for f in .runner .credentials .credentials_rsaparams; do
   [ -L "$DIR/$f" ] && { echo "refusing: $f is a symlink"; exit 1; }
   [ -f "$DIR/$f" ] && chown -h root:ghrunner "$DIR/$f" && chmod 640 "$DIR/$f"
