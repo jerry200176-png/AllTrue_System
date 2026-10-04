@@ -97,4 +97,16 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         // A slot no row reaches is still filled by the reflow, so it counts against a non-scheduled row left in place.
         self::assertSame([['17:00-18:00', '17:30-18:30']], ScheduleGuardService::planSelfOverlaps([self::row(9, '17:00', '18:00')], [], [self::slot('17:30', '18:30')]));
     }
+
+    public function test_same_start_row_with_other_duration_blocks_its_slot_only_when_the_day_is_remapped(): void
+    {
+        // Locked exception 15:00-16:30 holds 15:00; slots 15:00-16:00 and 17:30-18:30; unlocked 16:00 and 18:00.
+        $rows = [self::row(1, '15:00', '16:30', true), self::row(2, '16:00', '17:00'), self::row(3, '18:00', '19:00')];
+        $slots = [self::slot('15:00', '16:00'), self::slot('17:30', '18:30')];
+        $moves = ScheduleGuardService::planSameDayRemap($rows, $slots, [1 => true])['moves'];
+        self::assertNotSame([], $moves);
+        self::assertContains(['15:00-16:30', '15:00-16:00'], ScheduleGuardService::planSelfOverlaps($rows, $moves, $slots));
+        // Same row on a day the edit doesn't touch: no report.
+        self::assertSame([], ScheduleGuardService::planSelfOverlaps([self::row(1, '15:00', '16:30', true)], [], [self::slot('15:00', '16:00')]));
+    }
 }

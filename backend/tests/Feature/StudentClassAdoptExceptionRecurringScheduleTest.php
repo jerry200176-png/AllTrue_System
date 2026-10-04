@@ -450,6 +450,27 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         $this->assertSame(['15:30', '17:00', '19:00'], $this->startsOn($course, '2026-04-27'));
     }
 
+    /** Changing the teacher in the same edit must still plan (and self-check) the course's existing sessions. */
+    public function test_teacher_change_with_slot_edit_still_checks_own_sessions(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '換老師', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159, ['ClassType' => 'one_on_two']);
+        $locked = $this->createSessionRecord($course->ID, '2026-04-27', '15:30:00', '16:30:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00');
+        $this->createSessionRecord($course->ID, '2026-04-27', '19:00:00', '20:00:00');
+        StudentSignIn::create(['StudentClassID' => $course->ID, 'StudentID' => $student->id, 'TeacherID' => 159, 'GradeID' => 1, 'SubjectID' => 1, 'CampusID' => 1, 'SignInDT' => '2026-04-27 15:30:00', 'MDT' => now(), 'ClassSessionID' => $locked->id, 'Status' => 'present', 'SessionDeducted' => 1]);
+        $newTeacher = \App\Models\User::create(['LoginName' => 't160_' . uniqid() . '@x.com', 'Name' => 'T2', 'PSW' => 'x', 'type' => 'T', 'phone' => 912000160]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'English', 'class_type' => 'one_on_two', 'duration_hours' => 1, 'teacher_id' => $newTeacher->id,
+                'days_of_week' => [1], 'start_time' => '15:00', 'payment_type' => 'session',
+                'day_time_slots' => [['day' => 1, 'start_time' => '15:00', 'duration_minutes' => 60], ['day' => 1, 'start_time' => '17:00', 'duration_minutes' => 60]],
+            ])->assertStatus(409);
+        $this->assertSame(['15:30', '17:00', '19:00'], $this->startsOn($course, '2026-04-27'));
+    }
+
     /** @return list<string> H:i starts of the course's sessions on $date */
     private function startsOn(StudentClass $course, string $date): array
     {

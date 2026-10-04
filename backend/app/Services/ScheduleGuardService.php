@@ -459,13 +459,22 @@ class ScheduleGuardService
             $at = $moves[(int) $r['id']] ?? $r;
             $final[] = [$hm($at['start']), $hm($at['end'])];
         }
+        $pairs = [];
         foreach ($daySlots as $s) {
-            if (!array_filter($final, fn ($f) => $f[0] === $hm($s['start']))) {
+            $sameStart = array_filter($final, fn ($f) => $f[0] === $hm($s['start']));
+            if (!$sameStart) {
                 $final[] = [$hm($s['start']), $hm($s['end'])];
+                continue;
+            }
+            // A staying row holds this start with another duration: when the edit remaps this day, that slot can't be
+            // realized (unique start key). Days without moves keep their existing layout untouched.
+            foreach ($moves === [] ? [] : $sameStart as $f) {
+                if ($f[1] !== $hm($s['end'])) {
+                    $pairs[] = [$f[0] . '-' . $f[1], $hm($s['start']) . '-' . $hm($s['end'])];
+                }
             }
         }
 
-        $pairs = [];
         foreach ($final as $i => $a) {
             foreach (array_slice($final, $i + 1) as $b) {
                 if ($a[0] < $b[1] && $b[0] < $a[1]) {
@@ -559,10 +568,16 @@ class ScheduleGuardService
         if ($excludeStudentClassId) {
             $ownByDate = [];
             $ownLiveByDate = [];
-            foreach ($classSessions as $row) {
-                if ((int) $row->StudentClassID !== $excludeStudentClassId) {
-                    continue;
-                }
+            // The edited course's own rows, independent of the teacher filter: an edit that also changes the
+            // teacher still moves the course's existing sessions.
+            $ownQuery = DB::table('ClassSession as cs')
+                ->where('cs.StudentClassID', $excludeStudentClassId)
+                ->whereDate('cs.SessionDate', '>=', $horizonStart)
+                ->whereNotIn('cs.Status', SessionStatus::futureReservationExclusionStatuses());
+            if ($endDate) {
+                $ownQuery->whereDate('cs.SessionDate', '<=', $endDate);
+            }
+            foreach ($ownQuery->get(['cs.id as class_session_id', 'cs.IsContractException', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status']) as $row) {
                 $d = substr((string) $row->SessionDate, 0, 10);
                 $r = [
                     'id' => (int) $row->class_session_id,
