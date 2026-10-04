@@ -2193,6 +2193,8 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame('家長補充備註', $rows[$pending->id]['note']);
         $this->assertSame('rejected', $rows[$rejected->id]['status']);
         $this->assertSame('67890', $rows[$rejected->id]['account_last5']);
+        $this->assertSame('', $rows[$rejected->id]['receipt_no']);
+        $this->assertStringStartsWith('RCPT-', $rows[$pending->id]['receipt_no']);
 
         $teacher = User::create([
             'LoginName' => 'teacher_' . uniqid() . '@test.com', 'Name' => 'T', 'PSW' => 'secret',
@@ -2203,6 +2205,29 @@ class PaymentReportApiTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$raw}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")
             ->assertForbidden();
+    }
+
+    public function test_accounting_payments_note_prefers_linked_payment_note_when_confirmed(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-05-15', 'TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash', 'Note' => '確認時覆寫',
+        ]);
+        $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10', 'payment_method' => 'cash', 'reported_amount' => 5000,
+            'note' => '舊備註', 'payment_id' => $payment->id,
+        ]);
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
+        $res->assertOk()->assertJsonPath('data.0.note', '確認時覆寫');
     }
 
     public function test_accounting_ledger_caps_applied_amount_and_marks_excess_payment(): void

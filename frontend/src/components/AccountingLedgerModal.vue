@@ -69,8 +69,9 @@
 
           <section class="ledger-section">
             <h4>帳單</h4>
-            <div v-if="!payload.invoices?.length" class="ledger-empty">{{ ledgerBothEmpty ? '繳費單是依課程估算，尚未建立帳單；登記並確認入帳後才會出現在這裡。' : '此學生尚無帳單。' }}</div>
-            <div v-else class="ledger-table-wrap">
+            <div v-if="ledgerBothEmpty" class="ledger-empty">繳費單是依課程估算，尚未建立帳單；登記並確認入帳後才會出現在這裡。</div>
+            <div v-if="!payload.invoices?.length && !ledgerBothEmpty" class="ledger-empty">此學生尚無帳單。</div>
+            <div v-else-if="payload.invoices?.length" class="ledger-table-wrap">
               <table class="ledger-table">
                 <thead>
                   <tr>
@@ -169,7 +170,7 @@
             </div>
           </section>
 
-          <section v-if="!ledgerBothEmpty" class="ledger-section">
+          <section v-if="payload.receipts?.length || !ledgerBothEmpty" class="ledger-section">
             <h4>收據紀錄</h4>
             <div v-if="!payload.receipts?.length" class="ledger-empty">此學生尚無收據紀錄。</div>
             <div v-else class="ledger-receipts ledger-receipts--compact">
@@ -178,7 +179,7 @@
                 <span>{{ r.payment_date || '未記錄日期' }}</span>
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span :class="['ledger-chip', reportStatusClass(r.status)]">{{ reportStatusLabel(r.status) }}</span>
-                <small class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
+                <small v-if="r.receipt_no" class="ledger-ref">{{ humanizeDocumentRef(r.receipt_no) }}</small>
                 <small>{{ formatLedgerReceiptBillLine(r) }}</small>
                 <small v-if="r.account_last5 || r.note" class="ledger-receipt-extra">
                   <template v-if="r.account_last5">後5碼 {{ r.account_last5 }}</template>
@@ -287,7 +288,12 @@ async function loadLedger() {
 
 watch(() => [props.show, props.studentClassId, props.reportId, props.branchId], loadLedger, { immediate: true });
 
-const ledgerBothEmpty = computed(() => !payload.value?.invoices?.length && !payload.value?.receipts?.length);
+// Empty-state is judged for the opened course when the API reports one, else student-wide.
+const ledgerBothEmpty = computed(() => {
+  const scopeId = Number(payload.value?.scope?.student_class_id || 0);
+  const inScope = (rows) => (rows || []).filter((r) => !scopeId || Number(r.student_class_id) === scopeId);
+  return !inScope(payload.value?.invoices).length && !inScope(payload.value?.receipts).length;
+});
 
 const ledgerExceptions = computed(() => {
   const rows = [];

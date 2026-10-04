@@ -488,7 +488,7 @@ class AccountingController extends Controller
         [$start, $end] = $this->resolveDateRange($request);
         $status = (string) $request->input('status', 'confirmed');
 
-        $query = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser'])
+        $query = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser', 'payment'])
             ->whereDate('payment_date', '>=', $start)
             ->whereDate('payment_date', '<=', $end);
 
@@ -682,7 +682,8 @@ class AccountingController extends Controller
     {
         return [
             'report_id' => (int) $report->id,
-            'receipt_no' => $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null),
+            // 退回的回報從未成為收據，不給收據編號。
+            'receipt_no' => $report->status === 'rejected' ? '' : $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null),
             'student_class_id' => (int) $report->StudentClassID,
             'course_ref' => $this->courseRef((int) $report->StudentClassID),
             'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
@@ -793,7 +794,8 @@ class AccountingController extends Controller
             'is_prepaid' => $paymentDate !== null && $firstSessionDate !== null && $paymentDate < $firstSessionDate,
             'payment_method' => $method,
             'account_last5' => (string) ($report->account_last5 ?? ''),
-            'note' => (string) ($report->note ?? ''),
+            // 已確認收據以收款紀錄的備註為準（確認時可能覆寫），否則用回報備註。
+            'note' => (string) (($isConfirmed ? $report->payment?->Note : null) ?? $report->note ?? ''),
             'cash_amount' => $isConfirmed && $method === 'cash' ? $amount : 0,
             'transfer_amount' => $isConfirmed && $method === 'transfer' ? $amount : 0,
             'total_amount' => $isConfirmed ? $amount : 0,
