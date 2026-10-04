@@ -416,6 +416,8 @@
             <div v-if="triageContext.relatedReference"><b>相關資料：</b>{{ triageContext.relatedReference }}</div>
             <div v-if="triageContext.buildSha"><b>版本：</b>{{ triageContext.buildSha.slice(0, 10) }}</div>
             <div v-if="triageContext.recentApiFailures"><b>最近失敗請求：</b>{{ triageContext.recentApiFailures.join('；') }}</div>
+            <div v-if="triageContext.recentClicks"><b>最近按過：</b>{{ triageContext.recentClicks.join(' → ') }}</div>
+            <div v-if="triageContext.recentMessages"><b>畫面訊息：</b>{{ triageContext.recentMessages.join('；') }}</div>
             <div v-if="triageContext.screenSize || triageContext.timeZone">
               <b>裝置：</b>{{ triageContext.screenSize || '未知尺寸' }}<span v-if="triageContext.timeZone"> · {{ triageContext.timeZone }}</span>
             </div>

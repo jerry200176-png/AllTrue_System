@@ -8,7 +8,7 @@ export const changelogDraftNotes = [
     "version": "2026.10.04",
     "date": "2026-10-04",
     "title": "2026.10.04 草稿（未發布）",
-    "summary": "discounts drive billing; NT$0 records only for free courses；row latest sign-in/learning-record lookups; date-bounded substitutes",
+    "summary": "carry the last buttons pressed and messages seen (F15)；discounts drive billing; free courses need no payment, NT$0 records rejected",
     "audience": [
       "teacher",
       "director"
@@ -16,9 +16,15 @@ export const changelogDraftNotes = [
     "draft": true,
     "sections": [
       {
+        "title": "新增內容",
+        "items": [
+          "carry the last buttons pressed and messages seen (F15)"
+        ]
+      },
+      {
         "title": "修正內容",
         "items": [
-          "discounts drive billing; NT$0 records only for free courses"
+          "discounts drive billing; free courses need no payment, NT$0 records rejected"
         ]
       },
       {
@@ -29,7 +35,8 @@ export const changelogDraftNotes = [
       }
     ],
     "items": [
-      "discounts drive billing; NT$0 records only for free courses",
+      "carry the last buttons pressed and messages seen (F15)",
+      "discounts drive billing; free courses need no payment, NT$0 records rejected",
       "row latest sign-in/learning-record lookups; date-bounded substitutes"
     ]
   },
