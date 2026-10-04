@@ -430,7 +430,7 @@ class ScheduleGuardService
         if ($endDate) {
             $classSessionsQuery->whereDate('cs.SessionDate', '<=', $endDate);
         }
-        $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.IsContractException', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
+        $classSessions = $classSessionsQuery->select(['cs.id as class_session_id', 'cs.StudentClassID', 'cs.IsContractException', 'cs.SessionDate', 'cs.StartTime', 'cs.EndTime', 'cs.Status', 'sc.StudentID', 'sc.ClassType', 'sc.room_id'])->get();
 
         $overlaps = [];
         $seenKeys = [];
@@ -451,7 +451,8 @@ class ScheduleGuardService
                 }
                 $d = substr((string) $row->SessionDate, 0, 10);
                 $slotsFreePerDate[$d] ??= count($daySlotKeys);
-                if (!isset($locked[(int) $row->class_session_id])) {
+                // syncFutureScheduledSessionTimes() only moves unlocked 'scheduled' rows (not leave_requested etc.).
+                if (!isset($locked[(int) $row->class_session_id]) && strtolower((string) $row->Status) === 'scheduled') {
                     $ownRegularPerDate[$d][] = $row;
                 } elseif (isset($daySlotKeys[$this->normalizeTime($row->StartTime) . '|' . $this->normalizeTime($row->EndTime)])) {
                     $slotsFreePerDate[$d]--;

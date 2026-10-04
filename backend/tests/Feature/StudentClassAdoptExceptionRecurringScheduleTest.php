@@ -347,6 +347,18 @@ class StudentClassAdoptExceptionRecurringScheduleTest extends TestCase
         ])->assertStatus(409);
     }
 
+    /** A pending-leave session is never moved by the sync, so it must still conflict with an overlapping new slot. */
+    public function test_pending_leave_row_is_not_treated_as_remapped(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create(['name' => '請假待審', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now()]);
+        $course = $this->createCourseRecord($student->id, 159);
+        $this->createSessionRecord($course->ID, '2026-04-27', '17:00:00', '18:00:00', 'leave_requested');
+
+        $this->updateFixedSlots($token, $course, [1], [['day' => 1, 'start_time' => '17:30', 'duration_minutes' => 60]])
+            ->assertStatus(409);
+    }
+
     /** A locked row already on a new slot keeps it; unlocked rows pair with the remaining slots. */
     public function test_aligned_locked_row_consumes_its_slot(): void
     {
