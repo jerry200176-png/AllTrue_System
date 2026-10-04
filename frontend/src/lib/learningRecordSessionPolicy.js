@@ -57,3 +57,17 @@ export function deduplicateLearningRecordSessions(sessions = [], normalizeTime) 
   }
   return Object.values(groups).map((group) => pickBestLearningRecordSession(group));
 }
+
+/**
+ * Director form: choose which of a day's live sessions the form binds to.
+ * Exact ClassSession id wins; with an id but no match, return null (never
+ * fall back to another row on the same date). Without an id: prefer the row
+ * matching the typed start time, then the best (attended-first) row.
+ */
+export function selectFormDaySession(daySessions, { classSessionId = 0, startTime = '', normalizeTime }) {
+  const id = Number(classSessionId || 0);
+  if (id > 0) return daySessions.find((s) => Number(s.id) === id) || null;
+  const t = startTime ? normalizeTime(startTime) : '';
+  const byTime = t ? daySessions.filter((s) => normalizeTime(s.startTime) === t) : [];
+  return pickBestLearningRecordSession(byTime.length ? byTime : daySessions);
+}

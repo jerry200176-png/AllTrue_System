@@ -791,7 +791,7 @@ class EnrollmentService
                 $subjectKey = $meta['subject'];
                 $effectiveTeacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
 
-                $filteredSlotGroups = $this->filterSlotGroupsBySubject($dayTimeSlotGroups, $subjectKey);
+                $filteredSlotGroups = $this->filterSlotGroupsBySubject($dayTimeSlotGroups, $subjectKey, $effectiveTeacherId, $globalTeacherId);
                 if (empty($filteredSlotGroups)) {
                     $filteredSlotGroups = $this->slotGroupsFromSessionRows($rowsForSubject);
                 }
@@ -1569,13 +1569,15 @@ class EnrollmentService
      * @param  array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>  $dayTimeSlotGroups
      * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>
      */
-    private function filterSlotGroupsBySubject(array $dayTimeSlotGroups, string $subjectKey): array
+    private function filterSlotGroupsBySubject(array $dayTimeSlotGroups, string $subjectKey, int $teacherId, int $globalTeacherId): array
     {
         $out = [];
         foreach ($dayTimeSlotGroups as $day => $list) {
             $filtered = [];
             foreach ($list as $s) {
-                if ((string) ($s['subject'] ?? '') === $subjectKey) {
+                // 同科目多老師：每份合約只拿自己老師的時段（slot 無 teacher_id = 全域老師）。
+                $slotTeacher = (int) ($s['teacher_id'] ?? 0) ?: $globalTeacherId;
+                if ((string) ($s['subject'] ?? '') === $subjectKey && $slotTeacher === $teacherId) {
                     $filtered[] = $s;
                 }
             }

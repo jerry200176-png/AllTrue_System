@@ -1555,7 +1555,7 @@ import {
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import { compareLearningRecords } from '../lib/learningRecordSort';
-import { deduplicateLearningRecordSessions } from '../lib/learningRecordSessionPolicy';
+import { deduplicateLearningRecordSessions, selectFormDaySession } from '../lib/learningRecordSessionPolicy';
 import {
   resolveLearningRecordViewDefaults,
   resolveLearningRecordViewMode,
@@ -3117,7 +3117,8 @@ const buildEvents = (targetDates) => {
       const csId = Number(rawSession?.id || 0);
       const byCs = csId > 0 ? recordLookup.value.get(`cs:${csId}`) : null;
       const byTime = startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null;
-      const byDate = recordLookup.value.get(`${classId}|${dateStr}`);
+      // 已有 ClassSession id 時不退回「同日任一筆」，否則同日另一堂的紀錄會蓋過本堂。
+      const byDate = csId > 0 ? null : recordLookup.value.get(`${classId}|${dateStr}`);
       const record = byCs || byTime || byDate;
       const rowStatus = String(rawSession?.learningRecordStatus || '');
       const sessionStatus = String(rawSession?.status || '').toLowerCase();
@@ -3306,15 +3307,17 @@ const syncFormTimesFromCourseSchedule = () => {
     const st = String(s.status || '').toLowerCase();
     return st !== 'cancelled' && st !== 'leave';
   });
-  let daySession = daySessions[0] || null;
-  if (daySessions.length > 1 && form.StartTime) {
-    const byTime = daySessions.find((s) => normalizeTime(s.startTime) === normalizeTime(form.StartTime));
-    if (byTime) daySession = byTime;
-  }
+  // 只信任落在當日候選堂次內的 id（手動換學生／日期後舊 id 會過期）。
+  const formCsId = Number(form.ClassSessionID || 0);
+  const daySession = selectFormDaySession(daySessions, {
+    classSessionId: daySessions.some((s) => Number(s.id) === formCsId) ? formCsId : 0,
+    startTime: form.StartTime,
+    normalizeTime,
+  });
 
   if (daySession && daySession.id) {
     form.ClassSessionID = Number(daySession.id);
-    form.StartTime = normalizeTime(daySession.startTime) || '18:00';
+    form.StartTime = normalizeTime(daySession.startTime) || form.StartTime;
     form.EndTime = normalizeTime(daySession.endTime) || addMinutesToTime(form.StartTime, 120);
     formTimesFromBinding.value = true;
     return;
