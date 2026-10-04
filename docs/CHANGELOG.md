@@ -1,6 +1,7 @@
 ## 2026-10-04 — fix(ops): weekly DORA report counts proven production deployments
 <!-- release-notes: silent_ship=silent-2026-10-04-dora-deploy-truth -->
 - 每週交付報表改以 `deploy.yml` 成功的正式部署 job、必要步驟與 runtime 版本核對發布頻率；資料不完整時顯示 UNKNOWN，不再把合併 PR 或修復標題當發布與失敗率。
+- 手動或 repository dispatch 的目標版本改讀同一 run/attempt 的部署收據，並驗證封存檔、部署步驟與正式 runtime；舊執行若沒有收據仍顯示 UNKNOWN。
 
 ## 2026-10-03 — fix(students): trial courses convert to a regular course instead of a new trial batch (in-app #374)
 <!-- release-notes: staff_update=staff-2026-10-03-trial-convert-from-students -->

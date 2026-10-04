@@ -1,10 +1,15 @@
 """Conservative weekly AllTrue DORA report from existing deploy.yml evidence."""
 
+import hashlib
+import io
 import json
 import os
 import re
+import resource
 import subprocess
 import sys
+import tempfile
+import zipfile
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -16,6 +21,10 @@ SLICE_DAYS = 7
 MAX_RUNS = 2000
 MAX_API_CALLS = 3000
 PER_PAGE = 100
+MAX_ARTIFACT_BYTES = 128 * 1024
+MAX_RECEIPT_BYTES = 16 * 1024
+ARTIFACT_PREFIX = "production-deploy-receipt-"
+RECEIPT_FILE = "alltrue-production-deployment-receipt.json"
 DEPLOY_JOB = "Deploy to Production"
 REQUIRED_STEPS = ("Deploy", "Record deployed and production-verified state")
 DEFAULT_PRODUCTION_URL = "https://daan.lifenet.com.tw"
@@ -64,6 +73,100 @@ class GitHub:
             return json.loads(result.stdout)
         except ValueError as error:
             raise UnknownEvidence("GitHub API returned invalid JSON") from error
+
+    def download_artifact(self, artifact_id):
+        self.calls += 1
+        if self.calls > MAX_API_CALLS:
+            raise UnknownEvidence("GitHub API request cap exceeded")
+        if not isinstance(artifact_id, int) or artifact_id < 1:
+            raise UnknownEvidence("invalid artifact identity")
+        try:
+            with tempfile.TemporaryFile() as output:
+                def bound_output_file():
+                    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_ARTIFACT_BYTES, MAX_ARTIFACT_BYTES))
+
+                result = subprocess.run(
+                    ["gh", "api", f"repos/{self.repo}/actions/artifacts/{artifact_id}/zip"],
+                    stdout=output, stderr=subprocess.DEVNULL, timeout=30, preexec_fn=bound_output_file)
+                if result.returncode or output.tell() > MAX_ARTIFACT_BYTES:
+                    raise UnknownEvidence("receipt artifact unavailable or oversized")
+                output.seek(0)
+                return output.read(MAX_ARTIFACT_BYTES + 1)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise UnknownEvidence("receipt artifact download failed") from error
+
+
+def exact_target_receipt(gh, attempt_run, job, now):
+    run_id, attempt = attempt_run["id"], attempt_run["run_attempt"]
+    name = f"{ARTIFACT_PREFIX}{run_id}-{attempt}"
+    artifacts = pages(gh, f"actions/runs/{run_id}/artifacts", "artifacts", {})
+    matches = [artifact for artifact in artifacts if artifact.get("name") == name]
+    if len(matches) != 1:
+        raise UnknownEvidence("missing or duplicate exact deployment receipt artifact")
+    artifact = matches[0]
+    if artifact.get("expired") is not False or timestamp(artifact.get("expires_at")) <= now:
+        raise UnknownEvidence("deployment receipt artifact is expired")
+    artifact_created = timestamp(artifact.get("created_at"))
+    if not timestamp(attempt_run.get("created_at")) <= artifact_created <= timestamp(job.get("completed_at")):
+        raise UnknownEvidence("deployment receipt artifact is outside completed job")
+    owner_run = artifact.get("workflow_run")
+    if not isinstance(owner_run, dict) or owner_run.get("id") != run_id or owner_run.get("head_sha") != attempt_run.get("head_sha"):
+        raise UnknownEvidence("deployment receipt artifact belongs to another run")
+    size = artifact.get("size_in_bytes")
+    if not isinstance(size, int) or not 0 < size <= MAX_ARTIFACT_BYTES:
+        raise UnknownEvidence("deployment receipt artifact size is missing or excessive")
+    archive = gh.download_artifact(artifact.get("id"))
+    if len(archive) != size:
+        raise UnknownEvidence("deployment receipt artifact archive size differs")
+    digest = artifact.get("digest")
+    if digest is not None and digest != f"sha256:{hashlib.sha256(archive).hexdigest()}":
+        raise UnknownEvidence("deployment receipt artifact digest differs")
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            files = bundle.infolist()
+            if len(files) != 1 or files[0].filename != RECEIPT_FILE or files[0].file_size > MAX_RECEIPT_BYTES:
+                raise UnknownEvidence("deployment receipt archive structure differs")
+            with bundle.open(files[0]) as member:
+                payload = member.read(MAX_RECEIPT_BYTES + 1)
+            if len(payload) > MAX_RECEIPT_BYTES:
+                raise UnknownEvidence("deployment receipt JSON is oversized")
+            receipt = json.loads(payload.decode("utf-8"))
+    except (ValueError, UnicodeError, zipfile.BadZipFile, RuntimeError) as error:
+        raise UnknownEvidence("deployment receipt archive is invalid") from error
+    if not isinstance(receipt, dict) or receipt.get("schema") != 1:
+        raise UnknownEvidence("deployment receipt schema differs")
+    event_head = str(attempt_run.get("head_sha") or "").lower()
+    source = receipt.get("source_sha")
+    revision = receipt.get("workflow_revision_sha")
+    runtime = receipt.get("runtime")
+    if (receipt.get("repository") != gh.repo or receipt.get("event") != attempt_run.get("event")
+            or receipt.get("run_id") != run_id or receipt.get("run_attempt") != attempt
+            or receipt.get("event_head_sha") != event_head
+            or not isinstance(source, str) or not SHA.fullmatch(source)
+            or not isinstance(revision, str) or not SHA.fullmatch(revision)
+            or not SHA.fullmatch(event_head)
+            or not isinstance(runtime, dict) or runtime.get("backend_sha") != source
+            or runtime.get("source") != "github-actions:deploy.yml"
+            or receipt.get("verification_state") != "production-verified"
+            or not isinstance(receipt.get("verification_evidence"), str)
+            or not receipt["verification_evidence"]
+            or not isinstance(receipt.get("application_artifact_digest"), str)
+            or not receipt["application_artifact_digest"]
+            or not isinstance(receipt.get("configuration_version"), str)
+            or not receipt["configuration_version"]):
+        raise UnknownEvidence("deployment receipt provenance differs")
+    if attempt_run.get("workflow_sha") is not None and revision != attempt_run["workflow_sha"]:
+        raise UnknownEvidence("deployment receipt workflow revision differs")
+    for field in ("frontend_sha", "frontend_build_sha"):
+        if not isinstance(runtime.get(field), str) or not SHA.fullmatch(runtime[field]):
+            raise UnknownEvidence("deployment receipt runtime identity incomplete")
+    deployed = timestamp(receipt.get("deployed_at"))
+    observed = timestamp(receipt.get("observed_at"))
+    if (not timestamp(attempt_run.get("created_at")) <= observed <= artifact_created <= timestamp(job.get("completed_at")) <= now
+            or not max(timestamp(attempt_run.get("created_at")), observed - timedelta(minutes=35)) <= deployed <= observed + timedelta(minutes=5)
+            or deployed > now):
+        raise UnknownEvidence("deployment receipt time is outside completed job")
+    return source, deployed
 
 
 def pages(gh, path, key, params):
@@ -166,13 +269,22 @@ def _collect_receipts(gh, runs, period_start, now, receipts):
                 continue
             event = attempt_run.get("event")
             sha = str(attempt_run.get("head_sha") or "").lower()
-            if event != "workflow_run" or not SHA.fullmatch(sha):
+            deployed_at = None
+            if event in ("workflow_dispatch", "repository_dispatch"):
+                upload_steps = [step for step in steps if step.get("name") == "Upload exact target deployment receipt"]
+                if len(upload_steps) != 1 or upload_steps[0].get("conclusion") != "success" or upload_steps[0].get("status") != "completed":
+                    raise UnknownEvidence("exact deployment receipt upload step not proven")
+                sha, deployed_at = exact_target_receipt(gh, attempt_run, job, now)
+                if deployed_at < period_start:
+                    raise UnknownEvidence("exact deployment receipt predates reporting window")
+            elif event != "workflow_run" or not SHA.fullmatch(sha):
                 raise UnknownEvidence(f"run {run_id} attempt {attempt} target SHA is not provable from {event} metadata")
             receipt = (run_id, attempt)
             if receipt in seen:
                 raise UnknownEvidence("duplicate run attempt receipt")
             seen.add(receipt)
-            receipts.append({"run_id": run_id, "attempt": attempt, "sha": sha, "completed": completed})
+            receipts.append({"run_id": run_id, "attempt": attempt, "sha": sha,
+                             "completed": completed, "deployed_at": deployed_at})
     return receipts
 
 
@@ -212,8 +324,10 @@ def calculate(gh, now, runtime):
         raise UnknownEvidence("runtime deployment timestamp is after report cutoff")
     scan_start = start - timedelta(days=MAX_RUN_AGE_DAYS)
     receipts = verified_receipts(gh, workflow_runs(gh, scan_start, now), start, now)
-    if receipts and max(receipts, key=lambda item: item["completed"])["sha"] != runtime[0]:
-        raise UnknownEvidence("latest proven deploy differs from production runtime", len(receipts))
+    if receipts:
+        latest = max(receipts, key=lambda item: item["completed"])
+        if latest["sha"] != runtime[0] or (latest["deployed_at"] is not None and latest["deployed_at"] != runtime[1]):
+            raise UnknownEvidence("latest proven deploy differs from production runtime", len(receipts))
     if not receipts and start <= runtime[1] <= now:
         raise UnknownEvidence("runtime deployed during window but no job receipt was proven")
     return receipts
@@ -240,7 +354,7 @@ def report(repo, now=None, gh=None, runtime_reader=runtime_identity):
         "Failed Deployment Recovery Time: UNKNOWN (incident restoration evidence not established)",
         "Deployment Rework Rate: UNKNOWN (unplanned corrective deployments not linked to incidents)",
         provenance,
-        "Source: deploy.yml successful Deploy to Production job + Deploy and Record deployed and production-verified state steps; run_id + attempt receipts; production deployment.json.",
+        "Source: deploy.yml successful Deploy to Production job + Deploy and Record deployed and production-verified state steps; exact run/attempt artifact receipt for dispatch; production deployment.json.",
     ])
 
 

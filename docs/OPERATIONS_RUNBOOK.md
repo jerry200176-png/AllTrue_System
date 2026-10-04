@@ -1322,10 +1322,10 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 
 | 指標 | 現行可信證據 | 狀態 |
 |---|---|---|
-| Deployment Frequency | `deploy.yml` 的 `Deploy to Production` job 與 `Deploy`、`Record deployed and production-verified state` 均成功，按 run attempt 計次，對照 `deployment.json` 最新 SHA | 可證明時數值，否則 UNKNOWN |
+| Deployment Frequency | `deploy.yml` 的 `Deploy to Production` job 與 `Deploy`、`Record deployed and production-verified state` 均成功，按 run attempt 計次；手動／repository dispatch 另需同一 run/attempt 的完整部署收據，對照 `deployment.json` 最新 SHA 與時間。歷史執行缺收據仍為 UNKNOWN | 可證明時數值，否則 UNKNOWN |
 | Lead Time for Changes | 尚未建立 commit → 正式部署的逐筆對照 | UNKNOWN |
 | Change Failure Rate | 尚未建立變更 → 正式事故／回滾的逐筆對照 | UNKNOWN |
-| Time to Restore Service | 尚未建立事故起止與恢復的逐筆對照 | UNKNOWN |
+| Failed Deployment Recovery Time | 尚未建立失敗部署起止與恢復的逐筆對照 | UNKNOWN |
 | Deployment Rework Rate | 尚未建立非計畫性修正部署的逐筆對照 | UNKNOWN |
 
 ### Y2. 月度 Review SOP（每月第一個工作日）
