@@ -97,6 +97,7 @@ class BackfillLegacyPaymentsTest extends TestCase
         $res->assertOk();
         $this->assertTrue($res->json('is_backfilled'), 'is_backfilled should be true for backfilled report');
         $this->assertNotNull($res->json('backfill_note'), 'backfill_note should be present');
+        $this->assertStringNotContainsString('系統補建', (string) $res->json('note'), 'backfill marker is metadata, not a receipt note');
     }
 
     // ── Test 4: Charge=0 課程不被補建 ────────────────────────────────

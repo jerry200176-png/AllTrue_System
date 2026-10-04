@@ -64,6 +64,20 @@ class PaymentReport extends Model
         return $this->belongsTo(Payment::class, 'payment_id', 'id');
     }
 
+    /** Receipt note: the linked payment's note wins (confirmation may replace it), else the report's own note. */
+    public function displayNote(): string
+    {
+        $paymentNote = $this->getAttribute('payment_id') ? $this->getRelationValue('payment')?->getAttribute('Note') : null;
+        // System markers (confirm() audit fallback, legacy backfill) are metadata, never a display note.
+        foreach (['繳費回報核帳確認 (report #', '[系統補建]', '[舊系統補建]'] as $marker) {
+            if (is_string($paymentNote) && str_starts_with($paymentNote, $marker)) {
+                $paymentNote = null;
+            }
+        }
+
+        return (string) ($paymentNote ?? $this->note ?? '');
+    }
+
     public function voidedByUser()
     {
         return $this->belongsTo(User::class, 'voided_by', 'id');

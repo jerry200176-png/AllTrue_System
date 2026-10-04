@@ -13,6 +13,9 @@
 ## 2026-10-04 — fix: learning-record form opens the lesson you clicked; multi-teacher courses keep their own slots (in-app #334 #333)
 <!-- release-notes: silent_ship=silent-2026-10-04-lr-form-multiteacher -->
 - 評量表依點選的堂次帶入上課時間，不再被同日其他堂次覆蓋；同科目多位老師開課時，每位老師只保留自己的時段，不再產生重疊堂次
+## 2026-10-04 — fix(billing-ui): ledger explains empty slips, shows rejected reports, 後5碼 and 備註 (in-app #354 #355 #356)
+<!-- release-notes: silent_ship=silent-2026-10-04-ledger-last5-notes -->
+- 繳費明細在尚無帳單與收據時改顯示「繳費單是依課程估算，尚未建立帳單」說明；收據紀錄新增已退回的登記，並在繳費明細與帳務中心收據紀錄顯示轉帳後5碼與備註（僅顯示，不改任何金額、狀態或權限）。
 ## 2026-10-04 — feat(bug-report): reports carry the last buttons pressed and messages seen (F15)
 <!-- release-notes: silent_ship=silent-2026-10-04-report-breadcrumbs -->
 - 意見與建議回報自動附上最近按過的 15 個按鈕標籤與 5 則錯誤／警告訊息（不記 alert／confirm，避免臨時密碼等），長數字遮罩、不含輸入值；登出或切換分校即清除；後台分診卡顯示「最近按過／畫面訊息」（只存在 app 內，不進公開 log）。SOP 改為先查、不問。
