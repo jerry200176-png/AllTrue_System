@@ -2164,6 +2164,135 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.payments.1.application_status', 'applied');
     }
 
+    public function test_accounting_ledger_exposes_last5_note_and_rejected_reports_director_only(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $mk = fn (string $status, string $last5, string $note) => PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-05',
+            'payment_method' => 'transfer',
+            'reported_amount' => 8800,
+            'account_last5' => $last5,
+            'note' => $note,
+            'status' => $status,
+            'report_token_hash' => hash('sha256', 'led-l5-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $pending = $mk('pending', '12345', '家長補充備註');
+        $rejected = $mk('rejected', '67890', '');
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}");
+        $res->assertOk();
+        $rows = collect($res->json('receipts'))->keyBy('report_id');
+        $this->assertSame('12345', $rows[$pending->id]['account_last5']);
+        $this->assertSame('家長補充備註', $rows[$pending->id]['note']);
+        $this->assertSame('rejected', $rows[$rejected->id]['status']);
+        $this->assertSame('67890', $rows[$rejected->id]['account_last5']);
+        $this->assertSame('', $rows[$rejected->id]['receipt_no']);
+        $this->assertStringStartsWith('RCPT-', $rows[$pending->id]['receipt_no']);
+
+        $teacher = User::create([
+            'LoginName' => 'teacher_' . uniqid() . '@test.com', 'Name' => 'T', 'PSW' => 'secret',
+            'type' => 'T', 'phone' => 912345679,
+        ]);
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $teacher->id, 'token' => $raw, 'expires_at' => Carbon::now()->addDay()]);
+        $this->withHeaders(['Authorization' => "Bearer {$raw}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")
+            ->assertForbidden();
+    }
+
+    public function test_accounting_payments_note_prefers_linked_payment_note_when_confirmed(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-05-15', 'TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash', 'Note' => '確認時覆寫',
+        ]);
+        $report = $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10', 'payment_method' => 'cash', 'reported_amount' => 5000,
+            'note' => '舊備註', 'payment_id' => $payment->id,
+        ]);
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
+        $res->assertOk()->assertJsonPath('data.0.note', '確認時覆寫');
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/payment-reports/{$report->id}/receipt")
+            ->assertOk()->assertJsonPath('note', '確認時覆寫');
+
+        $report->update(['status' => 'voided']);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30&status=voided')
+            ->assertOk()->assertJsonPath('data.0.note', '確認時覆寫');
+    }
+
+    public function test_accounting_hides_audit_note_and_denies_directors_without_campus(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-05-15', 'TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'transfer', 'Note' => '繳費回報核帳確認 (report #1)',
+        ]);
+        $report = $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10', 'payment_method' => 'transfer', 'reported_amount' => 5000,
+            'note' => null, 'account_last5' => '12345', 'payment_id' => $payment->id,
+        ]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/payment-reports/{$report->id}/receipt")->assertOk()->assertJsonPath('note', '');
+
+        $noCampus = $this->createDirectorToken([]);
+        foreach (["/api/v1/accounting/ledger?student_class_id={$sc->ID}", '/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30', '/api/v1/accounting/payments?start=2026-04-01&end=2026-04-30'] as $url) {
+            $this->withHeaders(['Authorization' => "Bearer {$noCampus}", 'Accept' => 'application/json'])->getJson($url)->assertForbidden();
+        }
+    }
+
+    public function test_accounting_ledger_note_uses_payment_note_and_flags_tutoring(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-05-15', 'TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash', 'Note' => '確認時覆寫',
+        ]);
+        $report = $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10', 'payment_method' => 'cash', 'reported_amount' => 5000,
+            'note' => '舊備註', 'payment_id' => $payment->id,
+        ]);
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}")->assertOk();
+        $this->assertSame('確認時覆寫', collect($res->json('receipts'))->firstWhere('report_id', $report->id)['note']);
+        $this->assertFalse($res->json('scope.no_payment_obligation'));
+
+        $tutoring = $this->createCountModeClass($student->id, ['ClassType' => 'tutoring', 'Charge' => 0]);
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$tutoring->ID}")
+            ->assertOk()->assertJsonPath('scope.no_payment_obligation', true);
+    }
+
     public function test_accounting_ledger_caps_applied_amount_and_marks_excess_payment(): void
     {
         $token = $this->createDirectorToken([1]);

@@ -953,7 +953,7 @@ class PaymentReportController extends Controller
      */
     public function receipt(Request $request, $id)
     {
-        $report = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice'])
+        $report = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser', 'invoice', 'payment'])
             ->findOrFail($id);
 
         $role = $request->attributes->get('auth_role');
@@ -1132,7 +1132,7 @@ class PaymentReportController extends Controller
             'session_dates'    => $sessionDates,
             'payment_date'     => $report->payment_date->format('Y/m/d'),
             'payment_method'   => $report->payment_method,
-            'note'             => (string) ($report->note ?? ''),
+            'note'             => $report instanceof PaymentReport ? $report->displayNote() : '',
             'amount'           => $amount,
             'confirmed_at'     => $report->confirmed_at?->format('Y/m/d'),
             'confirmed_by'     => $report->confirmedByUser?->Name ?? '系統',
