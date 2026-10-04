@@ -24,13 +24,13 @@ def assert_workflow_receipt_contract(source):
         raise ValueError("production activation and target gates missing")
     steps = re.split(r"(?m)^      - name: ", deploy)[1:]
     names = [step.split("\n", 1)[0] for step in steps]
-    required = ["Deploy", "Build exact target deployment receipt",
+    required = ["Mark exact deployment attempt", "Deploy", "Build exact target deployment receipt",
                 "Upload exact target deployment receipt", "Record deployed and production-verified state"]
     if any(names.count(name) != 1 for name in required):
         raise ValueError("required deploy/receipt steps must appear exactly once")
     if [names.index(name) for name in required] != sorted(names.index(name) for name in required):
         raise ValueError("receipt cannot precede a successful deploy or recording precede upload")
-    for name in required[1:]:
+    for name in (required[0], *required[2:]):
         block = steps[names.index(name)]
         if re.search(r"(?m)^        if:", block):
             raise ValueError("receipt/success steps must use the default prior-step success condition")
@@ -60,6 +60,7 @@ def metadata():
         "TARGET_SHA": TARGET,
         "GITHUB_RUN_ID": "36955378940",
         "GITHUB_RUN_ATTEMPT": "2",
+        "DEPLOY_ATTEMPT_STARTED_AT": "2026-10-03T22:11:00Z",
     }
 
 
@@ -70,6 +71,9 @@ class ReceiptTest(unittest.TestCase):
         record = source.replace("      - name: Record deployed and production-verified state", "      - name: Premature record")
         with self.assertRaises(ValueError):
             assert_workflow_receipt_contract(record)
+        unmarked = source.replace("      - name: Mark exact deployment attempt", "      - name: No attempt marker")
+        with self.assertRaises(ValueError):
+            assert_workflow_receipt_contract(unmarked)
         bypass = source.replace("      - name: Upload exact target deployment receipt\n", "      - name: Upload exact target deployment receipt\n        if: always()\n")
         with self.assertRaises(ValueError):
             assert_workflow_receipt_contract(bypass)
@@ -81,6 +85,7 @@ class ReceiptTest(unittest.TestCase):
         self.assertEqual(receipt["workflow_revision_sha"], WORKFLOW_SHA)
         self.assertEqual((receipt["run_id"], receipt["run_attempt"]), (36955378940, 2))
         self.assertEqual(receipt["runtime"]["backend_sha"], TARGET)
+        self.assertEqual(receipt["attempt_started_at"], "2026-10-03T22:11:00Z")
         self.assertEqual(receipt["verification_state"], "production-verified")
         self.assertEqual(receipt["application_artifact_digest"], "unknown")
 
@@ -96,10 +101,20 @@ class ReceiptTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "differs from resolved target"):
             make_receipt(runtime, metadata(), NOW)
 
+    def test_legacy_frontend_identity_is_recorded_as_short_or_unknown(self):
+        for value, status in (("e483c1dc", "short-sha"), (None, "unknown"), ("unknown", "unknown")):
+            with self.subTest(value=value):
+                runtime = manifest()
+                runtime["frontend_sha"] = value
+                runtime["frontend_build_sha"] = value
+                self.assertEqual(make_receipt(runtime, metadata(), NOW)["runtime"]["frontend_identity_status"], status)
+
     def test_missing_or_ambiguous_run_identity_refuses_receipt(self):
         for key, value in (("GITHUB_RUN_ID", ""), ("GITHUB_RUN_ATTEMPT", "0"),
                            ("GITHUB_RUN_ATTEMPT", "abc"), ("TARGET_SHA", "a" * 7),
-                           ("GITHUB_WORKFLOW_SHA", "")):
+                           ("GITHUB_WORKFLOW_SHA", ""),
+                           ("DEPLOY_ATTEMPT_STARTED_AT", "2026-10-03T21:00:00Z"),
+                           ("DEPLOY_ATTEMPT_STARTED_AT", "2026-10-03T22:13:00Z")):
             with self.subTest(key=key, value=value):
                 meta = metadata()
                 meta[key] = value
@@ -109,6 +124,7 @@ class ReceiptTest(unittest.TestCase):
     def test_malformed_runtime_and_time_refuse_receipt(self):
         for field, value in (("deployed_at", "bad"), ("deployed_at", "2099-01-01T00:00:00Z"),
                              ("deployed_at", "2026-10-03T21:00:00Z"),
+                             ("deployed_at", "2026-10-03T22:05:00Z"),
                              ("source", "other"), ("frontend_build_sha", "")):
             with self.subTest(field=field):
                 runtime = manifest()

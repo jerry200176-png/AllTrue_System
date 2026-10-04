@@ -7,7 +7,7 @@ Bind a successful `deploy.yml` application activation to its resolved target SHA
 ## Acceptance
 
 - Only after `Deploy` and post-deploy smoke succeed, the existing executor produces one machine-readable receipt for that run attempt. It verifies the public runtime manifest's backend SHA equals the resolver's exact target.
-- Receipt records repo, target SHA, workflow revision SHA, run ID/attempt/event, deployed timestamp, runtime manifest, and verification state. Unknown artifact digest and configuration identity remain explicitly unknown until a separate immutable-build/config control exists.
+- Receipt records repo, target SHA, workflow revision SHA, run ID/attempt/event, a pre-deploy attempt marker, deployed/observed timestamps, runtime manifest, and verification state. It accepts the manifest writer's legacy short or missing frontend identity while requiring an exact full backend SHA. Unknown application artifact digest and configuration identity remain explicitly unknown until a separate immutable-build/config control exists.
 - A manual or repository dispatch may have a workflow head SHA different from target; the receipt still names the resolved target. Waiting/skipped/failed deploys cannot emit a successful receipt. A failed receipt upload leaves the Actions job failed, never a false verified result.
 - Focused tests cover SHA mismatch, malformed manifest, dispatch head/target difference, rerun attempt, and missing metadata. No secret or private configuration value enters the receipt.
 

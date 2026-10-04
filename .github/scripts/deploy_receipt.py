@@ -9,6 +9,7 @@ import sys
 
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
+SHORT_SHA = re.compile(r"[0-9a-f]{4,39}\Z")
 REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 EVENTS = {"workflow_run", "workflow_dispatch", "repository_dispatch"}
 
@@ -23,6 +24,28 @@ def positive_int(value, name):
     if not isinstance(value, str) or not value.isdecimal() or int(value) < 1:
         raise ValueError(f"{name} must be a positive integer")
     return int(value)
+
+
+def parsed_time(value, name):
+    if not isinstance(value, str):
+        raise ValueError(f"{name} is missing")
+    try:
+        result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{name} is invalid") from exc
+    if result.tzinfo is None:
+        raise ValueError(f"{name} lacks timezone")
+    return result
+
+
+def frontend_identity(value):
+    if value is None or value == "unknown":
+        return "unknown"
+    if isinstance(value, str) and SHA.fullmatch(value):
+        return "full-sha"
+    if isinstance(value, str) and SHORT_SHA.fullmatch(value):
+        return "short-sha"
+    raise ValueError("runtime frontend identity is invalid")
 
 
 def make_receipt(manifest, metadata, now=None):
@@ -41,19 +64,21 @@ def make_receipt(manifest, metadata, now=None):
     backend_sha = full_sha(manifest.get("backend_sha"), "runtime backend_sha")
     if backend_sha != target:
         raise ValueError("runtime backend_sha differs from resolved target")
-    frontend_sha = full_sha(manifest.get("frontend_sha"), "runtime frontend_sha")
-    frontend_build_sha = full_sha(manifest.get("frontend_build_sha"), "runtime frontend_build_sha")
+    frontend_sha = manifest.get("frontend_sha")
+    frontend_build_sha = manifest.get("frontend_build_sha")
+    identity_status = frontend_identity(frontend_sha)
+    if frontend_sha != frontend_build_sha:
+        raise ValueError("runtime frontend identities differ")
     if manifest.get("source") != "github-actions:deploy.yml":
         raise ValueError("unexpected runtime manifest source")
     deployed_at = manifest.get("deployed_at")
-    if not isinstance(deployed_at, str):
-        raise ValueError("runtime deployed_at is missing")
-    try:
-        parsed_time = datetime.fromisoformat(deployed_at.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("runtime deployed_at is invalid") from exc
-    if parsed_time.tzinfo is None or not now - timedelta(minutes=35) <= parsed_time <= now + timedelta(minutes=5):
-        raise ValueError("runtime deployed_at is stale or too far in the future")
+    deployed = parsed_time(deployed_at, "runtime deployed_at")
+    attempt_started_at = metadata.get("DEPLOY_ATTEMPT_STARTED_AT")
+    started = parsed_time(attempt_started_at, "DEPLOY_ATTEMPT_STARTED_AT")
+    if not started <= now or now - started > timedelta(minutes=35):
+        raise ValueError("deployment attempt marker is outside this job")
+    if not max(started - timedelta(minutes=5), now - timedelta(minutes=35)) <= deployed <= now + timedelta(minutes=5):
+        raise ValueError("runtime deployed_at predates this attempt or is too far in the future")
     return {
         "schema": 1,
         "repository": repository,
@@ -63,12 +88,14 @@ def make_receipt(manifest, metadata, now=None):
         "event": event,
         "run_id": positive_int(metadata.get("GITHUB_RUN_ID"), "GITHUB_RUN_ID"),
         "run_attempt": positive_int(metadata.get("GITHUB_RUN_ATTEMPT"), "GITHUB_RUN_ATTEMPT"),
+        "attempt_started_at": attempt_started_at,
         "deployed_at": deployed_at,
         "observed_at": now.isoformat(),
         "runtime": {
             "backend_sha": backend_sha,
             "frontend_sha": frontend_sha,
             "frontend_build_sha": frontend_build_sha,
+            "frontend_identity_status": identity_status,
             "source": manifest["source"],
         },
         "verification_state": "production-verified",

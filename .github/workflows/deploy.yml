@@ -1168,6 +1168,9 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -l -f ~/.ssh/deploy_key
 
+      - name: Mark exact deployment attempt
+        run: echo "DEPLOY_ATTEMPT_STARTED_AT=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
+
       - name: Deploy
         run: |
           ssh -i ~/.ssh/deploy_key \
