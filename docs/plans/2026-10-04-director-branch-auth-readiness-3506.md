@@ -6,8 +6,10 @@ After director login, a branch-scoped page mounts only after authenticated
 `/api/v1/campuses` succeeds and the selected branch belongs to that response.
 An empty or failed response keeps those pages unmounted and shows a bounded
 retry state; a campus request that never completes fails after 25 seconds.
-No backend authorization, production data, credentials, or deploy
-workflow changes are in scope.
+Routine access-token refresh for the same user/role retains the current page
+while revalidating the authenticated campus list; a changed or failed scope
+fails closed. No backend authorization, production data, credentials, or
+deploy workflow changes are in scope.
 
 ## Evidence and boundary
 
@@ -37,7 +39,8 @@ workflow changes are in scope.
 2. Add deterministic regression coverage for delayed `/campuses` with an
    unauthorized public default, successful authorized branch resolution, and
    empty/failing/timed-out campus responses. Assert no tuition or rooms request before
-   authorization resolves.
+   authorization resolves. Cover role switching into director mode, badge
+   polling, and routine same-context token refresh without losing page state.
 3. Run focused unit/integration checks, lint/build if available, diff review,
    and exact-head PR CI. Coordinate with #3511 owner only if shared smoke
    contracts must change. Production UI Smoke runs against the deployed app,

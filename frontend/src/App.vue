@@ -1010,7 +1010,12 @@ const staffCapabilities = ref([]);
 const loading = ref(true);
 const directorBranchAuthorization = useDirectorBranchAuthorization();
 const directorBranchStatus = directorBranchAuthorization.status;
-const directorBranchReady = computed(() => directorBranchAuthorization.canMount(session.value?.access_token, currentBranch.value));
+const directorContextKey = computed(() => {
+  const userId = session.value?.user?.id;
+  const contextRole = session.value?.user?.role ?? userProfile.value?.role;
+  return userId && contextRole ? `${userId}:${contextRole}` : null;
+});
+const directorBranchReady = computed(() => directorBranchAuthorization.canMount(directorContextKey.value, currentBranch.value));
 const directorBranchScopedPages = new Set([
   'director', 'notifications', 'calendar', 'students', 'tuition-collect', 'tuition-report',
   'parttime-payroll', 'teacher-eligibility', 'teachers', 'course-mgmt', 'admission-inquiries',
@@ -2082,6 +2087,7 @@ async function switchStaffMode(nextMode, { page = null } = {}) {
   if (!canSwitchStaffMode(staffCapabilities.value)) return;
   const normalized = writeActingAs(nextMode);
   if (!normalized || normalized === role.value) return;
+  directorBranchAuthorization.reset();
   if (session.value?.user) {
     session.value.user.role = normalized;
     localStorage.setItem('alltrue_session', JSON.stringify(session.value));
@@ -2098,6 +2104,7 @@ async function switchStaffMode(nextMode, { page = null } = {}) {
     preserveInboxContext: Boolean(page) && hasInboxDeepLink(window.location.search),
   });
   await fetchProfile(getSessionUserId(session.value));
+  if (normalized === 'director') await ensureDirectorBranches();
 }
 
 const isPasswordChangeLocked = computed(() => {
@@ -2499,12 +2506,13 @@ function ensureTeacherBranch() {
 }
 
 // When director/super_admin: load branches from authenticated /api/v1/campuses and set currentBranch
-async function ensureDirectorBranches() {
+async function ensureDirectorBranches({ refresh = false } = {}) {
     const s = session.value;
     if (!s?.user) return;
     const r = s.user.role ?? userProfile.value?.role;
     if (r !== 'director' && r !== 'admin' && r !== 'super_admin') return;
-    await directorBranchAuthorization.load(s.access_token, loadBranchesForDirector, (list) => {
+    const contextKey = `${s.user.id}:${r}`;
+    await directorBranchAuthorization.load(contextKey, () => loadBranchesForDirector(s.access_token), (list) => {
         branches.value = list;
         const savedBranch = localStorage.getItem('app_branch');
         const resolved = resolveSavedBranchChoice(savedBranch, list);
@@ -2516,7 +2524,7 @@ async function ensureDirectorBranches() {
         } else {
             currentBranch.value = list[0].id;
         }
-    });
+    }, { refresh });
 }
 
 async function retryDirectorBranches() {
@@ -2567,11 +2575,16 @@ onMounted(async () => {
         if (shouldClearLocalIdentity({ event, session: nextSession })) {
             await clearLocalIdentity(revision, { clearAuthStorage: event !== 'SIGNED_OUT' });
         } else if (nextSession) {
-            if (session.value?.access_token !== nextSession.access_token) directorBranchAuthorization.reset();
+            const previousContext = directorContextKey.value;
+            const nextRole = nextSession.user?.role ?? userProfile.value?.role;
+            const nextContext = nextSession.user?.id && nextRole ? `${nextSession.user.id}:${nextRole}` : null;
+            const sameContext = Boolean(previousContext && previousContext === nextContext);
+            const tokenChanged = session.value?.access_token !== nextSession.access_token;
+            if (!sameContext) directorBranchAuthorization.reset();
             session.value = nextSession;
             userProfile.value = null;
             await fetchProfile(getSessionUserId(nextSession), revision);
-            await ensureDirectorBranches();
+            await ensureDirectorBranches({ refresh: sameContext && tokenChanged });
             triggerBrandIntroOncePerSessionToken();
         } else {
             userProfile.value = null;
@@ -2829,6 +2842,10 @@ watch([session, role], () => {
   maybeAutoStartOnboarding();
 });
 
+watch(directorBranchReady, (ready) => {
+  if (ready) refreshUnreadNotifications();
+});
+
 watch(isPasswordChangeLocked, (locked) => {
   if (locked) {
     guideTour.closeTour();
@@ -2895,7 +2912,7 @@ onBeforeUnmount(() => {
 });
 
 async function mergeBugUnreadBadge() {
-  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value) {
+  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value || (isDirector.value && !directorBranchReady.value)) {
     const next = { ...badgeByType.value };
     delete next.bugs;
     badgeByType.value = next;
@@ -2953,7 +2970,7 @@ function refreshUnreadNotifications() {
 }
 
 async function runBadgeRefresh() {
-  if (!session.value?.access_token || !currentBranch.value) {
+  if (!session.value?.access_token || !currentBranch.value || (isDirector.value && !directorBranchReady.value)) {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
     inboxNeedsAttentionCount.value = 0;
@@ -3051,7 +3068,7 @@ async function mergeTeacherLearningPendingBadge() {
 }
 
 async function mergeParentFeedbackBadge() {
-  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value) {
+  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value || (isDirector.value && !directorBranchReady.value)) {
     const next = { ...badgeByType.value };
     delete next.parent_feedback;
     badgeByType.value = next;
@@ -3088,7 +3105,7 @@ async function mergeParentFeedbackBadge() {
 }
 
 async function mergeScheduleDiscrepancyBadge() {
-  if (!session.value?.access_token || !isDirector.value || !currentBranch.value || isPasswordChangeLocked.value) {
+  if (!session.value?.access_token || !isDirector.value || !currentBranch.value || isPasswordChangeLocked.value || !directorBranchReady.value) {
     const next = { ...badgeByType.value };
     delete next.schedule_discrepancy;
     badgeByType.value = next;
@@ -3181,7 +3198,7 @@ async function mergeDirectorPendingBadge() {
 }
 
 async function mergeChatUnreadBadge() {
-  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value) {
+  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value || (isDirector.value && !directorBranchReady.value)) {
     const next = { ...badgeByType.value };
     delete next.chat;
     badgeByType.value = next;

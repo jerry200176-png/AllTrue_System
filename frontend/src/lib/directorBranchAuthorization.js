@@ -16,22 +16,31 @@ export function useDirectorBranchAuthorization() {
     pending = null;
   }
 
-  function load(token, fetchCampuses, applyCampuses, { timeoutMs = 25_000 } = {}) {
-    if (status.value === 'loading' && identity.value === token && pending) return pending;
-    if (status.value === 'ready' && identity.value === token) return Promise.resolve(true);
-    reset();
-    if (!token) {
+  function load(contextKey, fetchCampuses, applyCampuses, { timeoutMs = 25_000, refresh = false } = {}) {
+    if (status.value === 'loading' && identity.value === contextKey && pending) return pending;
+    if (status.value === 'ready' && identity.value === contextKey && !refresh) return Promise.resolve(true);
+    const preserveReady = refresh && status.value === 'ready' && identity.value === contextKey;
+    if (preserveReady) {
+      // A routine token refresh for the same user and role must not unmount
+      // branch pages and discard in-progress forms. Keep the last authorized
+      // IDs active until the refreshed authenticated campus response arrives.
+      requestId += 1;
+      pending = null;
+    } else {
+      reset();
+    }
+    if (!contextKey) {
       status.value = 'failed';
       return Promise.resolve(false);
     }
     const ownRequest = requestId;
-    identity.value = token;
-    status.value = 'loading';
+    identity.value = contextKey;
+    if (!preserveReady) status.value = 'loading';
     pending = (async () => {
       let timer;
       try {
         const campuses = await Promise.race([
-          Promise.resolve().then(() => fetchCampuses(token)),
+          Promise.resolve().then(fetchCampuses),
           new Promise((_, reject) => {
             timer = setTimeout(() => reject(new Error('campus authorization timed out')), timeoutMs);
           }),
@@ -57,11 +66,11 @@ export function useDirectorBranchAuthorization() {
     return pending;
   }
 
-  function canMount(token, branchId) {
+  function canMount(contextKey, branchId) {
     const id = Number(branchId);
     return status.value === 'ready'
-      && Boolean(token)
-      && identity.value === token
+      && Boolean(contextKey)
+      && identity.value === contextKey
       && Number.isSafeInteger(id)
       && id > 0
       && authorizedIds.value.has(id);
