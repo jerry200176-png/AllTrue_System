@@ -364,7 +364,7 @@ class ScheduleGuardService
      * The same-day pairing of StudentClassController::syncFutureScheduledSessionTimes(), as a pure function so the
      * sync and the course-edit guard cannot drift. Times are compared on their H:i prefix (H:i and H:i:s both work).
      * - An exception row exactly on a slot is adopted (becomes regular); other exception rows are left alone.
-     * - A locked regular row stays; any slot it sits exactly on is consumed.
+     * - A locked regular row stays; any slot starting at its start time is consumed (unique course/date/start key).
      * - Unlocked regular rows sorted by start pair in order with the remaining slots (sorted by start); a duplicate
      *   target start is skipped; rows beyond the slot count keep their time.
      *
@@ -396,7 +396,8 @@ class ScheduleGuardService
             }
         }
         usort($free, fn ($a, $b) => strcmp($hm($a['start']), $hm($b['start'])));
-        $slots = array_values(array_filter($daySlots, fn ($s) => !array_filter($locked, fn ($l) => $at($l, $s))));
+        // A locked row holds its (course, date, start) key (uq_class_session_slot): any slot starting there is consumed.
+        $slots = array_values(array_filter($daySlots, fn ($s) => !array_filter($locked, fn ($l) => $hm($l['start']) === $hm($s['start']))));
 
         $moves = [];
         $claimed = [];

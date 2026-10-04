@@ -67,4 +67,21 @@ class ScheduleGuardPlanSameDayRemapTest extends TestCase
         $rows = [self::row(1, '15:00', '16:00'), self::row(2, '16:00', '17:00')];
         self::assertSame([1 => '17:00'], self::moves($rows, [self::slot('17:00', '18:00'), self::slot('17:00', '18:00')]));
     }
+
+    public function test_locked_row_consumes_a_same_start_slot_even_with_a_different_duration(): void
+    {
+        // Locked 15:00-16:00; new slots 15:00-17:00 and 18:00-19:00; unlocked rows 16:00 and 17:00.
+        $plan = ScheduleGuardService::planSameDayRemap(
+            [
+                ['id' => 1, 'start' => '15:00:00', 'end' => '16:00:00', 'exception' => false],
+                ['id' => 2, 'start' => '16:00:00', 'end' => '17:00:00', 'exception' => false],
+                ['id' => 3, 'start' => '17:00:00', 'end' => '18:00:00', 'exception' => false],
+            ],
+            [['start' => '15:00', 'end' => '17:00'], ['start' => '18:00', 'end' => '19:00']],
+            [1 => true]
+        );
+        // Nothing may target 15:00 (held by the locked row); 16:00 takes the only free slot, 17:00 stays.
+        $this->assertSame([2], array_keys($plan['moves']));
+        $this->assertSame('18:00', $plan['moves'][2]['start']);
+    }
 }
