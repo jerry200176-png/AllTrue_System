@@ -715,12 +715,15 @@ jobs:
             // positive non-void invoice of the same contract covers? Coverage = an item owned by the contract (its
             // StudentClassID, or null on an invoice anchored to it) with BOTH PeriodStart and PeriodEnd containing the date,
             // or an invoice without such items whose billing_period equals the lesson month. Waived contracts are
-            // excluded. Invoice-less contracts are counted too, flagged by kind. IDs/counts only.
+            // excluded. Invoice-less contracts are counted too, flagged by kind. IDs/counts only. Known limit: a contract
+            // converted count->date keeps pre-conversion lessons inside its interval only if StartDate was not moved.
             $from = '2026-01-01'; $to = date('Y-m-d');
             $courses = $db::table('StudentClass as sc')->join('Student as st', 'st.id', '=', 'sc.StudentID')
               ->where('sc.ScheduleMode', 'date')->where(fn ($q) => $q->whereNull('sc.PackageID')->orWhere('sc.PackageID', 0))
               ->whereRaw("LOWER(TRIM(COALESCE(sc.ClassType, ''))) <> 'tutoring'")
               ->where(fn ($q) => $q->whereNull('sc.closed_reason')->orWhere('sc.closed_reason', '!=', 'waived'))
+              // Zero-fee contracts are `free` in BillingPayableResolver: no invoice is expected.
+              ->where(fn ($q) => $q->where('sc.Charge', '>', 0)->orWhere('sc.Rate', '>', 0))
               ->get(['sc.ID', 'sc.StudentID', 'st.CampusID', 'sc.Paid', 'sc.Stop', 'sc.closed_reason', 'sc.StartDate', 'sc.EndDate', 'sc.Charge'])->keyBy('ID');
             $ids = $courses->keys()->map(fn ($id) => (int)$id)->all();
             $sessions = $ids === [] ? collect() : $db::table('ClassSession')->whereIn('StudentClassID', $ids)
@@ -731,7 +734,7 @@ jobs:
               ->get(['id', 'StudentClassID', 'billing_period'])->groupBy('StudentClassID');
             $invoiceIds = $invoices->flatten()->pluck('id')->all();
             $items = $invoiceIds === [] ? collect() : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
-              ->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')->where('Amount', '>', 0)
+              ->whereNotNull('PeriodStart')->whereNotNull('PeriodEnd')
               ->get(['InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd'])->groupBy('InvoiceID');
             $rows = [];
             foreach ($sessions as $cid => $list) {{
@@ -744,8 +747,10 @@ jobs:
               foreach ($list as $s) {{
                 $d = substr((string)$s->SessionDate, 0, 10); $m = substr($d, 0, 7); $covered = false;
                 foreach ($inv as $i) {{
-                  $its = $items->get($i->id, collect())->filter(fn ($it) => $it->StudentClassID === null || (int)$it->StudentClassID === (int)$cid);
-                  if ($its->isNotEmpty()) {{
+                  $bounded = $items->get($i->id, collect());
+                  $its = $bounded->filter(fn ($it) => $it->StudentClassID === null || (int)$it->StudentClassID === (int)$cid);
+                  // Any bounded item means the invoice declares service ranges: never fall back to billing_period then.
+                  if ($bounded->isNotEmpty()) {{
                     foreach ($its as $it) {{ if (substr((string)$it->PeriodStart, 0, 10) <= $d && substr((string)$it->PeriodEnd, 0, 10) >= $d) {{ $covered = true; break 2; }} }}
                   }} elseif ((string)$i->billing_period === $m) {{ $covered = true; break; }}
                 }}
