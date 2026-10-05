@@ -1,3 +1,6 @@
+## 2026-10-05 — chore(arch): realign remap and same-day pairing into ContractSessionSchedule (slice 7/10)
+- 行為不變的搬移（ADR-003／#966）：`remapFutureScheduledSessionsToContract` 與同日配對 `planSameDayRemap`／`lockedClassSessionIds`（原在 ScheduleGuardService）移到 `ContractSessionSchedule`，守門與實際同步共用同一份
+
 ## 2026-10-05 — chore(arch): slot-map, weekday snap and history guards into ContractSessionSchedule (slice 6/10)
 - 行為不變的搬移（ADR-003／#966）：`buildSlotsByWeekdayMap`、`snapDateToContractWeekday`、`hasImmutableSessionHistory`／`hasAttendanceMarkedSessions`／`hasSessionStartDateMismatch`、`scheduleFieldsPresentInMapped` 移到 `ContractSessionSchedule`
 
