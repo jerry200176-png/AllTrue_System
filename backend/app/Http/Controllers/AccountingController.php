@@ -241,6 +241,9 @@ class AccountingController extends Controller
             if ($shared) {
                 return response()->json(['message' => '此合約在合併帳單中，請先到帳務處理該帳單'], 422);
             }
+            if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'confirmed')->exists()) {
+                return response()->json(['message' => '此合約已有確認過的繳費回報，請先到帳務更正後再處理'], 422);
+            }
             if (PaymentReport::query()->where('StudentClassID', $id)->where('status', 'pending')->exists()) {
                 return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
             }

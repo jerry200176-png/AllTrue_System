@@ -148,6 +148,18 @@ class AccountingWaiveCourseTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_confirmed_report_blocks_waiver(): void
+    {
+        $token = $this->createToken([1]);
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 900, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        DB::table('payment_reports')->insert(['StudentID' => $course->StudentID, 'StudentClassID' => $course->ID,
+            'reported_by_name' => 'p', 'payment_date' => '2026-09-01', 'payment_method' => 'cash', 'reported_amount' => 900,
+            'status' => 'confirmed', 'report_token_hash' => str_repeat('b', 64), 'token_expires_at' => now()->addDay(),
+            'created_at' => now(), 'updated_at' => now()]);
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了', 'expected_amount' => 900], ['Authorization' => "Bearer {$token}"])
+            ->assertStatus(422)->assertJsonPath('message', '此合約已有確認過的繳費回報，請先到帳務更正後再處理');
+    }
+
     private function createToken(array $campusIds, string $type = 'D'): string
     {
         $user = User::create([
