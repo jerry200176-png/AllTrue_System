@@ -4556,7 +4556,7 @@ const groupHasPausedCourse = (group) =>
 
 const isHistoryCourse = (c) => {
   const reason = effectiveClosedReason(c);
-  return reason === 'settled' || reason === 'completed';
+  return reason === 'settled' || reason === 'completed' || reason === 'waived';
 };
 const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
 const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));

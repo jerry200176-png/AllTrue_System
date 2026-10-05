@@ -234,4 +234,64 @@ class AccountingWaiveCourseTest extends TestCase
         $this->assertSame('void', Invoice::find($invoiceId)->Status);
         $this->assertSame('waived', $course->refresh()->closed_reason);
     }
+
+    public function test_waived_course_is_terminal_for_director_record_and_split(): void
+    {
+        $token = $this->createToken([1]);
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'waived']);
+        $h = ['Authorization' => "Bearer {$token}"];
+
+        $this->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $course->ID, 'payment_date' => '2026-09-02', 'payment_method' => 'cash', 'amount' => 8800,
+        ], $h)->assertStatus(422);
+        $this->assertSame(0, DB::table('payment_reports')->where('StudentClassID', $course->ID)->count());
+
+        $this->postJson("/api/v1/student-classes/{$course->ID}/split-contract/preview", ['session_ids' => [1], 'start_date' => '2026-09-10'], $h)
+            ->assertStatus(422)->assertJsonPath('code', 'split_contract_usage_settled');
+        $this->assertTrue($course->isUsageSettlementLocked());
+    }
+
+    public function test_ledger_void_invoice_keeps_total_but_owes_nothing(): void
+    {
+        $token = $this->createToken([1]);
+        $student = $this->createStudent();
+        $course = $this->createStudentClass($student->id, ['Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'waived']);
+        DB::table('Invoice')->insert([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-09-01', 'TotalAmount' => 8800, 'PaidAmount' => 0, 'Status' => 'void',
+        ]);
+
+        $this->getJson("/api/v1/accounting/ledger?student_class_id={$course->ID}", ['Authorization' => "Bearer {$token}"])
+            ->assertOk()
+            ->assertJsonPath('invoices.0.total_amount', 8800)
+            ->assertJsonPath('invoices.0.outstanding_amount', 0)
+            ->assertJsonPath('summary.outstanding_total', 0);
+    }
+
+    public function test_parent_dashboard_does_not_show_waived_course_as_unpaid(): void
+    {
+        $student = Student::create([
+            'name' => '家長不收測試', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '', 'Phone' => '0911555666',
+        ]);
+        $this->createStudentClass($student->id, ['Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'waived']);
+        $parentToken = (string) $this->postJson('/api/v1/parent/login', ['Name' => $student->name, 'Phone' => '0911555666'])->assertOk()->json('token');
+
+        $this->getJson('/api/v1/parent/dashboard', ['Authorization' => "Bearer {$parentToken}"])
+            ->assertOk()
+            ->assertJsonFragment(['payment_status' => 'waived', 'payment_status_label' => '已確認不收'])
+            ->assertJsonMissing(['payment_status' => 'unpaid']);
+    }
+
+    public function test_expected_amount_mismatch_returns_409_and_matching_amount_succeeds(): void
+    {
+        $token = $this->createToken([1]);
+        $course = $this->createStudentClass($this->createStudent()->id, ['Charge' => 8800, 'Stop' => 1, 'closed_reason' => 'settled_pending']);
+        $h = ['Authorization' => "Bearer {$token}"];
+
+        $this->getJson("/api/v1/accounting/settled-courses?course_id={$course->ID}", $h)
+            ->assertOk()->assertJsonPath('data.0.waivable_amount', 8800);
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了', 'expected_amount' => 100], $h)->assertStatus(409);
+        $this->assertSame('settled_pending', $course->refresh()->closed_reason);
+        $this->postJson("/api/v1/accounting/courses/{$course->ID}/waive", ['reason' => '不收了', 'expected_amount' => 8800], $h)->assertOk();
+    }
 }

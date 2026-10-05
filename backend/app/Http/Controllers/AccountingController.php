@@ -54,6 +54,10 @@ class AccountingController extends Controller
             return $guard;
         }
 
+        if ($request->filled('course_id')) {
+            $query->where('ID', (int) $request->input('course_id'));
+        }
+
         if ($request->filled('student')) {
             $student = trim((string) $request->input('student'));
             $query->whereHas('student', function ($q) use ($student) {
@@ -124,6 +128,7 @@ class AccountingController extends Controller
                 'paid_amount' => $invoices->isEmpty() ? ((int) ($course->Paid ?? 0) === 1 ? (int) ($course->Charge ?? 0) : 0) : $appliedTotal,
                 'invoice_total' => $invoiceTotal,
                 'outstanding_amount' => $outstandingTotal,
+                'waivable_amount' => $this->waivableAmount($course, $invoices),
                 'overpaid_amount' => $overpaidTotal,
                 'invoice_count' => $invoices->count(),
                 'receipt_count' => $reports->count(),
@@ -148,6 +153,17 @@ class AccountingController extends Controller
                 'overpaid_total' => (int) $rows->sum('overpaid_amount'),
             ],
         ]);
+    }
+
+    /** 確認不收會沖銷的金額：所有未繳帳單的應收合計；沒有帳單時用 Charge。 */
+    private function waivableAmount(StudentClass $course, $invoices): int
+    {
+        if ($invoices->isEmpty()) {
+            return (int) ($course->Charge ?? 0);
+        }
+
+        return (int) $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid')
+            ->sum(fn ($i) => (int) $this->invoiceAmounts->resolve($i, $i->getRelationValue('studentClass'))['total_amount']);
     }
 
     /** @return array{0:int,1:int,2:int,3:int} invoice total, applied, overpaid, outstanding */
@@ -217,9 +233,10 @@ class AccountingController extends Controller
                 return response()->json(['message' => '有待確認的繳費回報，請先確認或退回'], 422);
             }
             $toVoid = $invoices->filter(fn ($i) => (string) ($i->Status ?? '') !== 'paid');
-            $outstanding = $invoices->isEmpty()
-                ? (int) ($course->Charge ?? 0)
-                : (int) $toVoid->sum(fn ($i) => (int) $this->invoiceAmounts->resolve($i, $i->getRelationValue('studentClass'))['total_amount']);
+            $outstanding = $this->waivableAmount($course, $invoices);
+            if ($request->filled('expected_amount') && (int) $request->input('expected_amount') !== $outstanding) {
+                return response()->json(['message' => '金額已變動，請重新整理', 'waivable_amount' => $outstanding], 409);
+            }
             if ($outstanding <= 0) {
                 return response()->json(['message' => '此合約已沒有欠款，不需要確認不收'], 422);
             }
@@ -352,8 +369,9 @@ class AccountingController extends Controller
             $totalAmount = (int) $projection['total_amount'];
             $appliedAmount = min($totalAmount, $netApplied);
             $overpaidAmount = max(0, $netApplied - $totalAmount);
-            $outstanding = max(0, $totalAmount - $appliedAmount);
             $status = (string) ($invoice->Status ?? '');
+            // 作廢帳單保留總額供稽核，但不算欠款。
+            $outstanding = $status === 'void' ? 0 : max(0, $totalAmount - $appliedAmount);
             $paidAmount = (int) ($invoice->PaidAmount ?? 0);
             $invoiceAnomalies = [];
 
@@ -544,6 +562,7 @@ class AccountingController extends Controller
 
         $appliedTotal = (int) $invoiceRows->sum('calculated_applied_amount');
         $invoiceTotal = (int) $invoiceRows->sum('total_amount');
+        $openInvoiceTotal = (int) $invoiceRows->where('status', '!=', 'void')->sum('total_amount');
 
         return response()->json([
             'student' => [
@@ -563,7 +582,7 @@ class AccountingController extends Controller
                 'applied_total' => $appliedTotal,
                 'voided_total' => (int) $invoiceRows->sum('voided_amount'),
                 'overpaid_total' => (int) $invoiceRows->sum('overpaid_amount'),
-                'outstanding_total' => max(0, $invoiceTotal - $appliedTotal),
+                'outstanding_total' => max(0, $openInvoiceTotal - $appliedTotal),
                 'invoice_count' => $invoiceRows->count(),
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
                 'anomaly_count' => $uniqueAnomalies->count(),

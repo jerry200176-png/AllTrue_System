@@ -182,11 +182,13 @@ class BillingController extends Controller
             'Note' => 'nullable|string|max:255',
         ]);
 
-        if ((string) $invoice->getAttribute('Status') === 'void') {
-            return response()->json(['message' => '作廢帳單不可登記收款'], 422);
-        }
-
         return DB::transaction(function () use ($invoice, $data) {
+            // 先鎖帳單再判斷，避免與確認不收（void）競爭。
+            $fresh = Invoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
+            if (!$fresh || (string) $fresh->getAttribute('Status') === 'void') {
+                return response()->json(['message' => '作廢帳單不可登記收款'], 422);
+            }
+            $invoice = $fresh;
             $payment = Payment::create([
                 'InvoiceID' => $invoice->id,
                 'Amount' => $data['Amount'],

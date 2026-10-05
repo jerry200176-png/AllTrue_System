@@ -939,14 +939,14 @@
           <p class="tc-dialog-desc">這筆欠款將轉為歷史（確認不收），不再出現在待處理；帳單與收款紀錄保留，並記錄操作人與原因。</p>
           <div class="tc-dialog-info" v-if="waiveTarget">
             <span>{{ waiveTarget.student_name }} — {{ waiveTarget.subject }}</span>
-            <small>未收金額 {{ formatCurrency(waiveTarget.payable_outstanding ?? waiveTarget.outstanding ?? 0) }}</small>
+            <small>{{ waivableAmount === null ? '金額載入中…' : `不收金額 ${formatCurrency(waivableAmount)}` }}</small>
           </div>
           <label class="tc-dialog-label">不收原因（必填）</label>
           <textarea v-model="waiveReason" class="tc-dialog-textarea" placeholder="請輸入不收原因…" maxlength="200" rows="3"></textarea>
           <div class="tc-dialog-charcount">{{ waiveReason.length }} / 200</div>
           <div class="tc-dialog-btns">
             <button class="tc-btn tc-btn--ghost" @click="waiveDialogOpen = false" :disabled="waiveLoading">取消</button>
-            <button class="tc-btn tc-btn--danger" @click="confirmWaive" :disabled="waiveReason.trim().length < 2 || waiveLoading">
+            <button class="tc-btn tc-btn--danger" @click="confirmWaive" :disabled="waiveReason.trim().length < 2 || waiveLoading || waivableAmount === null">
               <span v-if="waiveLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認不收
             </button>
@@ -2146,22 +2146,34 @@ const waiveDialogOpen = ref(false);
 const waiveTarget = ref(null);
 const waiveReason = ref('');
 const waiveLoading = ref(false);
+const waivableAmount = ref(null); // 由後端 settled-courses 的 waivable_amount 提供（與確認不收同一算法）
 
-function openWaiveDialog(row) {
+async function openWaiveDialog(row) {
   waiveTarget.value = row;
   waiveReason.value = '';
+  waivableAmount.value = null;
   waiveDialogOpen.value = true;
+  try {
+    const resp = await fetch(`/api/v1/accounting/settled-courses?course_id=${encodeURIComponent(row.id)}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}` },
+    });
+    const match = resp.ok ? ((await resp.json()).data || [])[0] : null;
+    if (match) waivableAmount.value = Number(match.waivable_amount ?? 0);
+    else showToast('無法取得不收金額', 'error');
+  } catch (e) {
+    showToast('無法取得不收金額', 'error');
+  }
 }
 
 async function confirmWaive() {
   const reason = waiveReason.value.trim();
-  if (!waiveTarget.value || reason.length < 2) return;
+  if (!waiveTarget.value || reason.length < 2 || waivableAmount.value === null) return;
   waiveLoading.value = true;
   try {
     const resp = await fetch(`/api/v1/accounting/courses/${waiveTarget.value.id}/waive`, {
       method: 'POST',
       headers: { Accept: 'application/json', Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason, expected_amount: waivableAmount.value }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
