@@ -188,6 +188,64 @@ class ScheduleGuardService
         return $conflicts;
     }
 
+    /**
+     * Teacher/room conflicts for one new session of an existing course: the course
+     * supplies teacher, class type, room, and the self-exclusions (same course and
+     * same student never conflict with themselves).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function validateCourseOccurrence(\App\Models\StudentClass $course, int $branchId, string $date, string $startTime, string $endTime): array
+    {
+        return $this->validateScheduleOccurrence([
+            'teacher_id' => (int) $course->getAttribute('TeacherID'),
+            'class_type' => (string) ($course->getAttribute('ClassType') ?: 'one_on_one'),
+            'room_id' => $course->getAttribute('room_id') ? (int) $course->getAttribute('room_id') : null,
+            'branch_id' => $branchId,
+            'schedule_date' => $date,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'exclude_course_id' => (int) $course->getAttribute('ID') ?: null,
+            'exclude_student_id' => (int) ($course->getAttribute('StudentID') ?? 0) ?: null,
+        ]);
+    }
+
+    /**
+     * Validate many concrete occurrences with one shared payload; every conflict is
+     * tagged with the proposed date/time. Single conflict shape for write paths.
+     *
+     * @param  array<string, mixed>  $base   teacher_id, class_type, room_id, branch_id, exclude_*
+     * @param  iterable<array{date: string, start_time: string, end_time: string}>  $slots
+     * @param  bool  $dedupe  collapse repeats of the same type/date/time/room (edit paths)
+     * @return array<int, array<string, mixed>>
+     */
+    public function validateOccurrences(array $base, iterable $slots, bool $dedupe = false): array
+    {
+        $out = [];
+        $seen = [];
+        foreach ($slots as $slot) {
+            $conflicts = $this->validateScheduleOccurrence($base + [
+                'schedule_date' => $slot['date'],
+                'start_time' => $slot['start_time'],
+                'end_time' => $slot['end_time'],
+            ]);
+            $start = substr((string) $slot['start_time'], 0, 5);
+            $end = substr((string) $slot['end_time'], 0, 5);
+            foreach ($conflicts as $conflict) {
+                if ($dedupe) {
+                    $key = implode('|', [(string) ($conflict['type'] ?? ''), $slot['date'], $start, $end, (string) ($conflict['room_id'] ?? '')]);
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                }
+                $out[] = array_merge(['date' => $slot['date'], 'proposed_time' => $start . '-' . $end], $conflict);
+            }
+        }
+
+        return $out;
+    }
+
     private function capacityForClassType(?string $classType): int
     {
         return ClassTypeCapacity::for($classType);
