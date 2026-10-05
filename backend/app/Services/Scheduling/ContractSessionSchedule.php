@@ -159,4 +159,133 @@ class ContractSessionSchedule
         }
         return array_slice($list, 0, $n);
     }
+
+    public static function buildSessionsFromWeeklySchedule(
+        int $studentClassId,
+        string $startDate,
+        string $endDate,
+        array $slots,
+        int $durationMinutes,
+        bool $includeStartDate = false
+    ): array {
+        $sessions = [];
+        $start = Carbon::parse($startDate)->startOfDay();
+        $end = Carbon::parse($endDate)->endOfDay();
+
+        for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
+            $matchingSlots = array_values(array_filter($slots, function ($slot) use ($date) {
+                // Slots arrive in two conventions: ISO 1-7 (DB week columns, day_time_slots)
+                // and legacy JS 0-6 (ScheduleSlots param). Both agree on Mon-Sat (1-6);
+                // Sunday is 7 (ISO) or 0 (JS). Comparing raw dayOfWeek (0-6) silently
+                // dropped every ISO-Sunday slot (GitHub #1096: 0-amount monthly invoices).
+                return (int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday']);
+            }));
+
+            // Monthly courses have an explicit opening date that is the first lesson,
+            // even when recurrence starts on a different fixed weekday. Keep the
+            // default false so date-based imports/rebuilds retain their old contract.
+            if ($includeStartDate && $date->isSameDay($start) && empty($matchingSlots) && !empty($slots)) {
+                $matchingSlots = [$slots[0]];
+            }
+
+            foreach ($matchingSlots as $slot) {
+                    $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
+                    $slotDur = !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $durationMinutes;
+                    $endTime = $startTime->copy()->addMinutes($slotDur);
+
+                    $sessions[] = [
+                        'StudentClassID' => $studentClassId,
+                        'SessionDate' => $startTime->toDateString(),
+                        'StartTime' => $startTime->format('H:i:s'),
+                        'EndTime' => $endTime->format('H:i:s'),
+                        'Status' => 'scheduled',
+                        'Note' => '',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+            }
+        }
+
+        return $sessions;
+    }
+
+    /**
+     * 堂數制：排定共 sessionCount 堂。
+     * 第 1 堂固定為「首堂日」startDate（不論星期幾），使用該日匹配的所有時段；
+     * 第 2～N 堂從 startDate 的隔天起，依序取「星期符合 slots」的日期。
+     * 支援同日多時段（如週六 13:00 + 17:00 各算一堂）。
+     */
+    public static function buildSessionsForCount(
+        int $studentClassId,
+        string $startDate,
+        int $sessionCount,
+        array $slots,
+        int $durationMinutes
+    ): array {
+        $sessions = [];
+        if ($sessionCount < 1 || empty($slots)) {
+            return $sessions;
+        }
+
+        $slotsByWeekday = [];
+        foreach ($slots as $s) {
+            $wd = (int) ($s['weekday'] ?? 0);
+            if ($wd < 1 || $wd > 7) {
+                continue;
+            }
+            $slotsByWeekday[$wd][] = $s;
+        }
+        foreach ($slotsByWeekday as &$group) {
+            usort($group, fn ($a, $b) => strcmp((string) ($a['time'] ?? ''), (string) ($b['time'] ?? '')));
+        }
+        unset($group);
+
+        $slotWeekdays = array_keys($slotsByWeekday);
+        $firstSlot = $slots[0];
+        $firstTime = $firstSlot['time'] ?? '16:00';
+
+        $appendSessionsForDate = function (Carbon $dateObj) use (
+            $studentClassId, $durationMinutes, $slotsByWeekday,
+            $firstTime, $sessionCount, &$sessions
+        ) {
+            $isoDow = (int) $dateObj->dayOfWeekIso;
+            $daySlots = $slotsByWeekday[$isoDow] ?? [['time' => $firstTime]];
+            foreach ($daySlots as $slot) {
+                if (count($sessions) >= $sessionCount) {
+                    return;
+                }
+                $time = $slot['time'] ?? $firstTime;
+                $dur = (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30)
+                    ? (int) $slot['duration_minutes']
+                    : $durationMinutes;
+                $start = Carbon::parse($dateObj->toDateString() . ' ' . $time);
+                $end = $start->copy()->addMinutes($dur);
+                $sessions[] = [
+                    'StudentClassID' => $studentClassId,
+                    'SessionDate' => $start->toDateString(),
+                    'StartTime' => $start->format('H:i:s'),
+                    'EndTime' => $end->format('H:i:s'),
+                    'Status' => 'scheduled',
+                    'Note' => '',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+        };
+
+        $firstDate = Carbon::parse($startDate)->startOfDay();
+        $appendSessionsForDate($firstDate);
+
+        $date = Carbon::parse($startDate)->addDay()->startOfDay();
+        $maxDate = Carbon::parse($startDate)->addYears(2);
+        while (count($sessions) < $sessionCount && $date->lte($maxDate)) {
+            $isoDow = (int) $date->dayOfWeekIso;
+            if (isset($slotsByWeekday[$isoDow])) {
+                $appendSessionsForDate($date);
+            }
+            $date->addDay();
+        }
+
+        return $sessions;
+    }
 }
