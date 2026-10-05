@@ -36,6 +36,14 @@ describe('shared close-course action', () => {
     expect(calls.alerts[0]).toContain('結案待對帳');
   });
 
+  it('refuses to close when payment status is unknown (degraded load)', async () => {
+    const { calls, deps } = setup({ settled: null });
+    await closeCourseNoRenew(deps);
+    expect(calls.confirms).toEqual([]);
+    expect(calls.requests).toEqual([]);
+    expect(calls.alerts[0]).toContain('繳費狀態載入中');
+  });
+
   it('does not mutate or reload when the confirmation is canceled', async () => {
     const { calls, deps } = setup({ accepted: false });
     await closeCourseNoRenew(deps);

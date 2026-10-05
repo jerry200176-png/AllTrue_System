@@ -9,6 +9,10 @@
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
+## 2026-10-05 — refactor(frontend): F7 S2 paid status comes only from the server `payment_status`
+<!-- release-notes: silent_ship=silent-2026-10-05-f7-s2 -->
+- 課程已繳判斷（學生管理、課程管理結案警告）、繳費通知可用狀態與帳務中心導向，改共用 `lib/paymentStatus.js` 只讀後端 `payment_status`；移除前端 `Paid >= Charge` 推算（Paid 為 0/1 旗標，Charge>1 時恆為 false）與無 `payment_status` 時視為未繳的 alert 備援。收款視窗與繳費單金額不再以課程 `charge` 備援，只用 `payable_*`／`estimated_amount`。後端一律下發 `payment_status`，正常情況畫面不變。F4 死碼（OverdueBucketsPanel／BatchInvoiceModal，後端無對應路由）留待獨立 PR 刪除。
+
 ## 2026-10-05 — fix(calendar): substitute teacher no longer flips back to the contract teacher
 <!-- release-notes: staff_update=staff-2026-10-05-calendar-substitute-sticks -->
 - 行事曆合併同一時段的 schedules 列時，若後端 `ClassSessionIndexReadService` 已解析出代課老師（`substitute_teacher_id`），其他同時段的合約老師列（例如舊的調課目標列）不再覆蓋；課程查找與行事曆顯示一致
