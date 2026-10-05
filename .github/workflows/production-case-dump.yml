@@ -530,6 +530,20 @@ jobs:
                 ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'Charge', 'Paid'])
                 ->map(fn ($r) => array_merge((array)$r, ['same_student' => in_array((int)$r->StudentID, $studentIds, true)]))->values()->all();
               $out['invoice_foreign_classes_missing'] = array_values(array_diff($foreignClassIds, array_map(fn ($r) => (int)$r['ID'], $out['invoice_foreign_classes'])));
+              // For a deleted contract: what the orphan invoice billed and whether any rows still point at it (IDs/dates only).
+              $missing = $out['invoice_foreign_classes_missing'];
+              $out['orphan_evidence'] = $missing === [] ? [] : [
+                'invoices' => $invoices->filter(fn ($r) => in_array((int)$r->StudentClassID, $missing, true))->map(fn ($r) => (array)$r)->values()->all(),
+                'invoice_notes_mention' => $db::table('Invoice')->whereIn('StudentClassID', $missing)->get(['id', 'Note'])
+                  ->map(fn ($r) => ['id' => (int)$r->id, 'mentions_english' => str_contains((string)$r->Note, '英'), 'mentions_math' => str_contains((string)$r->Note, '數')])->values()->all(),
+                'sessions' => $db::table('ClassSession')->whereIn('StudentClassID', $missing)
+                  ->selectRaw("StudentClassID as class_id, Status as status, MIN(SessionDate) as first_date, MAX(SessionDate) as last_date, COUNT(*) as n")
+                  ->groupBy('StudentClassID', 'Status')->get()->map(fn ($r) => (array)$r)->values()->all(),
+                'learning_records' => $db::table('LearningRecord')->whereIn('StudentClassID', $missing)->count(),
+                'payments' => $db::table('Payment')->whereIn('InvoiceID', $invoices->filter(fn ($r) => in_array((int)$r->StudentClassID, $missing, true))->pluck('id')->all() ?: [0])->count(),
+                'payment_reports' => $db::table('payment_reports')->whereIn('StudentClassID', $missing)->get(['id', 'status', 'reported_amount', 'payment_date'])->map(fn ($r) => (array)$r)->values()->all(),
+                'schedules' => \Illuminate\Support\Facades\Schema::hasTable('schedules') ? $db::table('schedules')->whereIn('student_course_id', $missing)->count() : null,
+              ];
               $out['invoice_items'] = $invoiceIds === [] ? [] : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
                 ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount'])->map(fn ($r) => (array)$r)->values()->all();
               $out['payments'] = $invoiceIds === [] ? [] : $db::table('Payment')->whereIn('InvoiceID', $invoiceIds)
