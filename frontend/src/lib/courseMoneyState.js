@@ -9,9 +9,11 @@
 /** 低堂數門檻：剩餘 <= 2 視為即將用完 */
 export const LOW_SESSIONS_THRESHOLD = 2;
 
-/** finite number or null (null/undefined/NaN/Infinity -> null; '' -> 0 like Number('')) */
+/**
+ * Number(v) when finite, else null. Mirrors the old page parseCourseNumber: explicit `null`
+ * coerces to 0 (Number(null)); only undefined/NaN/Infinity/junk give null.
+ */
 export const finiteOrNull = (value) => {
-  if (value === null || value === undefined) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 };
@@ -36,9 +38,11 @@ export const isPackageMember = (course, { strictPackageId = false } = {}) => (
 /** own-course remaining (`remaining_sessions` ?? `RemainingSessions`), null when absent */
 export const ownRemainingSessions = (course) => finiteOrNull(course?.remaining_sessions ?? course?.RemainingSessions);
 
-/** pool remaining, null when absent */
-export const poolRemainingSessions = (course) => (
-  finiteOrNull(course?.package_remaining_sessions ?? course?.PackageRemainingSessions)
+/** pool remaining, null when absent. pascalAlias:false = CourseManagement display, which never honored PackageRemainingSessions */
+export const poolRemainingSessions = (course, { pascalAlias = true } = {}) => (
+  finiteOrNull(pascalAlias
+    ? (course?.package_remaining_sessions ?? course?.PackageRemainingSessions)
+    : course?.package_remaining_sessions)
 );
 
 /** pool total, null when absent. fallbackToPurchased: StudentsList/CourseManagement fall back to sessions_purchased and clamp to >= 0. */
