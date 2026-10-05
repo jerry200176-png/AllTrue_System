@@ -5593,7 +5593,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$TeacherID\.$#'
 			identifier: property.notFound
-			count: 3
+			count: 2
 			path: app/Services/ManualSessionBookingService.php
 
 		-
@@ -5604,18 +5604,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$EndDate\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/ManualSessionBookingService.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ClassType\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Services/ManualSessionBookingService.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$room_id\.$#'
 			identifier: property.notFound
 			count: 1
 			path: app/Services/ManualSessionBookingService.php

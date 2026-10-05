@@ -227,17 +227,7 @@ class ManualSessionBookingService
             return $this->blocked($base, 'cross_branch', '老師未被指派至課程分校，無法建立手動堂次');
         }
 
-        $scheduleConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
-            'teacher_id' => (int) $course->TeacherID,
-            'class_type' => (string) ($course->ClassType ?: 'one_on_one'),
-            'room_id' => $course->room_id ? (int) $course->room_id : null,
-            'branch_id' => $branch,
-            'schedule_date' => $date,
-            'start_time' => $startHm,
-            'end_time' => $end->format('H:i'),
-            'exclude_course_id' => (int) ($course->ID ?? 0) ?: null,
-            'exclude_student_id' => (int) ($course->StudentID ?? 0) ?: null,
-        ]);
+        $scheduleConflicts = $this->scheduleGuardService->validateCourseOccurrence($course, $branch, $date, $startHm, $end->format('H:i'));
         if (!empty($scheduleConflicts)) {
             $first = $scheduleConflicts[0];
             return array_merge($this->blocked($base, 'schedule_conflict', '老師或教室在這個時段已有安排，請改選其他時段'), [

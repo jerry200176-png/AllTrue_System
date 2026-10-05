@@ -4792,17 +4792,7 @@ class StudentClassController extends Controller
             return [];
         }
 
-        return $this->scheduleGuardService->validateScheduleOccurrence([
-            'teacher_id' => $teacherId,
-            'class_type' => (string) ($studentClass->getAttribute('ClassType') ?: 'one_on_one'),
-            'room_id' => $studentClass->getAttribute('room_id') ? (int) $studentClass->getAttribute('room_id') : null,
-            'branch_id' => $branchId,
-            'schedule_date' => $sessionDate,
-            'start_time' => substr($startTime, 0, 5),
-            'end_time' => substr($endTime, 0, 5),
-            'exclude_course_id' => (int) $studentClass->getAttribute('ID'),
-            'exclude_student_id' => (int) ($studentClass->getAttribute('StudentID') ?? 0) ?: null,
-        ]);
+        return $this->scheduleGuardService->validateCourseOccurrence($studentClass, $branchId, $sessionDate, substr($startTime, 0, 5), substr($endTime, 0, 5));
     }
 
     /**
