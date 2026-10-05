@@ -549,11 +549,11 @@ class ClassSessionController extends Controller
                 });
         }
 
-        $studentClassController = app(StudentClassController::class);
+        $contractSchedule = app(\App\Services\Scheduling\ContractSessionSchedule::class);
         foreach ($classes as $studentClass) {
             $preloaded = collect($existingSessionsByClass[(int) $studentClass->ID] ?? []);
             try {
-                $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount, $preloaded);
+                $contractSchedule->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount, $preloaded);
             } catch (SlotOccupiedException $e) {
                 // This is a best-effort read-side projection. A legacy or
                 // cross-course student overlap must not make the whole branch's
