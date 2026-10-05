@@ -71,7 +71,7 @@
 
     <footer class="slip-foot">
       <span>此通知單僅供繳費確認用，如已繳費請忽略。</span>
-      <span>{{ formatBrandTitle(slip.campus_name) }}・{{ todayLabel }}</span>
+      <span>{{ formatBrandTitle(slip.campus_name) }}・{{ slip.generated_on }}</span>
     </footer>
   </article>
 </template>
@@ -108,7 +108,6 @@ function formatBrandTitle(campusName) {
   const branch = String(campusName || '').trim();
   return branch ? `${BRAND_TITLE}｜${branch}` : BRAND_TITLE;
 }
-const todayLabel = new Date().toLocaleDateString('zh-TW');
 
 const STATUS_ZH = {
   attended: '已到課', completed: '已完課', late: '遲到', absent: '缺席',
@@ -128,6 +127,8 @@ const hasSubject = computed(() => {
 });
 
 function normalizeSlipData(raw) {
+  // Per slip, not per page load: a tab left open overnight must not print yesterday.
+  const generatedOn = new Date().toLocaleDateString('zh-TW');
   if (raw.invoice_id) {
     const items = (raw.items || []).map(i => ({
       description: i.description || '—',
@@ -156,6 +157,7 @@ function normalizeSlipData(raw) {
       items,
       note: raw.note,
       sessions: raw.sessions || [],
+      generated_on: generatedOn,
       filename: `繳費單_${raw.student_name}_${raw.invoice_id}.png`,
     };
   }
@@ -165,7 +167,9 @@ function normalizeSlipData(raw) {
   const items = [{
     description: `${raw.subject}（${modeLabel}${hasCanonicalPayable ? '' : '・估算'}）`,
     period: raw.schedule_mode === 'date' && raw.period_sessions != null
-      ? `本期 ${raw.period_sessions} 堂`
+      ? (raw.period_sessions === 0 && raw.sessions?.length
+          ? `本期預計 ${raw.sessions.length} 堂`
+          : `本期 ${raw.period_sessions} 堂`)
       : (raw.remaining_sessions != null ? `剩餘 ${raw.remaining_sessions} 堂` : '—'),
     amount: displayedAmount ? formatAmount(displayedAmount) : '—',
   }];
@@ -189,11 +193,12 @@ function normalizeSlipData(raw) {
       : null,
     meta: [
       { label: '學生', value: raw.student_name || '—' },
-      { label: '產生日期', value: todayLabel },
+      { label: '產生日期', value: generatedOn },
     ],
     items,
     note: raw.note,
     sessions: raw.sessions || [],
+    generated_on: generatedOn,
     filename: `繳費通知_${raw.student_name}_${raw.student_class_id}.png`,
   };
 }
