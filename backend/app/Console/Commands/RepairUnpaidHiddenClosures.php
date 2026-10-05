@@ -120,7 +120,7 @@ class RepairUnpaidHiddenClosures extends Command
             ->where('Stop', 1)->whereIn('closed_reason', ['settled', 'completed'])
             ->where(fn ($q) => $q->where('Paid', 0)->orWhereNull('Paid'))
             ->where('Charge', '>', 0)
-            ->where(fn ($q) => $q->whereNull('class_type')->orWhere('class_type', '!=', 'tutoring'))
+            ->where(fn ($q) => $q->whereNull('ClassType')->orWhere('ClassType', '!=', 'tutoring'))
             ->orderBy('ID')->get();
         $paid = DB::table('Invoice')->whereIn('StudentClassID', $courses->pluck('ID')->all() ?: [0])
             ->where(fn ($q) => $q->whereNull('Status')->orWhere('Status', '!=', 'void'))
