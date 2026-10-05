@@ -294,6 +294,16 @@ class StudentController extends Controller
         return response()->json($this->transformStudent($student));
     }
 
+    /** Students who have any Payment row or confirmed payment report; deleting them would destroy accounting history. */
+    private function studentIdsWithCollectedMoney(array $studentIds): array
+    {
+        $paid = DB::table('Payment')->join('Invoice', 'Invoice.id', '=', 'Payment.InvoiceID')
+            ->whereIn('Invoice.StudentID', $studentIds)->pluck('Invoice.StudentID');
+        $reported = DB::table('payment_reports')->whereIn('StudentID', $studentIds)->where('status', 'confirmed')->pluck('StudentID');
+
+        return $paid->merge($reported)->map(fn ($id) => (int) $id)->unique()->values()->all();
+    }
+
     private function purgeStudentRecords(int $studentId): array
     {
         $deleted = [
@@ -322,6 +332,9 @@ class StudentController extends Controller
             if ($tableExists['StudentClass'] && DB::table('StudentClass')->where('StudentID', $studentId)
                 ->where('closed_reason', 'waived')->lockForUpdate()->exists()) {
                 abort(422, '此學生有已確認不收的合約，不能刪除');
+            }
+            if ($this->studentIdsWithCollectedMoney([$studentId]) !== []) {
+                abort(422, '此學生已有收款或繳費回報，不能刪除');
             }
             $studentClassIds = [];
             if ($tableExists['StudentClass']) {
@@ -491,6 +504,9 @@ class StudentController extends Controller
                 ->map(fn ($id) => (int) $id)->unique()->values()->all();
             if ($waivedStudentIds !== []) {
                 return response()->json(['message' => '部分學生有已確認不收的合約，不能刪除', 'waived_student_ids' => $waivedStudentIds], 422);
+            }
+            if ($moneyStudentIds = $this->studentIdsWithCollectedMoney($foundIds)) {
+                return response()->json(['message' => '部分學生已有收款或繳費回報，不能刪除', 'paid_student_ids' => $moneyStudentIds], 422);
             }
             foreach ($foundIds as $studentId) {
                 $deleted = $this->purgeStudentRecords((int) $studentId);

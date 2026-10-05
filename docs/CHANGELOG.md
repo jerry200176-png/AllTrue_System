@@ -9,6 +9,10 @@
 <!-- release-notes: staff_update=staff-2026-10-05-monthly-slip-dates -->
 - 月結繳費單日期改走只供顯示的 `MonthlyBillingService::slipSessionDetailsForPeriod`：先列計費堂次（與金額一致），沒有時列該月排定堂次，再沒有時（預繳下一期，帳單月份是服務開始月）列帳單項目服務期間內的堂次；帳單 snapshot 與收據仍只用計費堂次，金額不變
 
+## 2026-10-06 — fix(billing): deleting a contract never orphans invoices (plan D)
+<!-- release-notes: staff_update=staff-2026-10-06-delete-contract-keeps-billing -->
+- `StudentClassController::destroy`：合約有 Payment、任何繳費回報或已收款帳單時回 422；否則同一交易內鎖定合約與帳單、作廢未作廢帳單（Note 加註操作者與日期）、合併帳單明細仍指向該合約時回 422，寫入嚴格稽核 `student_class.deleted`（缺列即回滾）後才刪除。學生刪除（單筆／批量）遇有 Payment 或已確認繳費回報也回 422，批量先全數預檢。避免再出現帳單 1053 指向已刪合約 2564 的孤兒。
+
 ## 2026-10-06 — fix(accounting): 待對帳 lists every stopped contract that still owes (F7 S3a)
 <!-- release-notes: staff_update=staff-2026-10-06-pending-reconciliation-all-owed -->
 - `AccountingController::settledCourses` 與學費提醒 `AlertController` 的結案待對帳改用 `BillingPayableResolver::courseStatusesByStudentClassIds()`（整批一次查）：Stop=1 且解析結果為 unpaid／partial／unbilled 且欠款 > 0 即列入，不再依 `closed_reason` 白名單，暫停中（無 reason）也會顯示，標「暫停中 · 待對帳」，欠款金額取自解析結果。解析結果為 `review_required` 的結案合約獨立顯示「付款期間待確認」（`payment_review_required`）。`waived` 仍為歷史、欠款 0；Paid=1／已付帳單的已結清清單不變；現行（Stop=0）合約的提醒規則不變

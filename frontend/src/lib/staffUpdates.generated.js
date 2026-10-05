@@ -41,6 +41,36 @@ export const staffUpdates = [
     "version": "2026.10.06"
   },
   {
+    "id": "staff-2026-10-06-delete-contract-keeps-billing",
+    "publishedAt": "2026-10-06",
+    "effectiveAt": null,
+    "audiences": [
+      "director"
+    ],
+    "audience": [
+      "director"
+    ],
+    "importance": "digest",
+    "title": "刪除合約不會留下孤兒帳單",
+    "summary": "刪除合約時未繳帳單會一併作廢；已有收款的合約與學生不能刪除。",
+    "items": [
+      "合約已有收款、待確認回報或在合併帳單中時，會提示先到帳務處理；刪除學生同樣會擋下已收過款的人。"
+    ],
+    "sections": [
+      {
+        "title": "操作更順手",
+        "items": [
+          "合約已有收款、待確認回報或在合併帳單中時，會提示先到帳務處理；刪除學生同樣會擋下已收過款的人。"
+        ]
+      }
+    ],
+    "sourceRefs": [
+      "changelog:2026-10-06:delete-contract-keeps-billing"
+    ],
+    "date": "2026-10-06",
+    "version": "2026.10.06"
+  },
+  {
     "id": "staff-2026-10-05-waive-unpaid-contract",
     "publishedAt": "2026-10-05",
     "effectiveAt": null,

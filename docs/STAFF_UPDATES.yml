@@ -39,6 +39,18 @@ updates:
         text: 還沒點名時列排定的課；預繳下一期的單列服務期間內的課。金額不變。
     source_refs:
       - "changelog:2026-10-05:monthly-slip-dates"
+  - id: staff-2026-10-06-delete-contract-keeps-billing
+    published_at: "2026-10-06"
+    audiences:
+      - director
+    importance: digest
+    title: 刪除合約不會留下孤兒帳單
+    summary: 刪除合約時未繳帳單會一併作廢；已有收款的合約與學生不能刪除。
+    items:
+      - category: improved
+        text: 合約已有收款、待確認回報或在合併帳單中時，會提示先到帳務處理；刪除學生同樣會擋下已收過款的人。
+    source_refs:
+      - "changelog:2026-10-06:delete-contract-keeps-billing"
   - id: staff-2026-10-06-pending-reconciliation-all-owed
     published_at: "2026-10-06"
     audiences:
