@@ -249,7 +249,7 @@ class MonthlyBillingSlipTest extends TestCase
             'monthly_sessions' => 4,
             'rate_unit' => 'session',
         ]);
-        foreach ([['2026-08-03', 'scheduled'], ['2026-08-10', 'scheduled'], ['2026-08-17', 'cancelled']] as [$date, $status]) {
+        foreach ([['2026-08-03', 'scheduled'], ['2026-08-10', 'scheduled'], ['2026-08-17', 'cancelled'], ['2026-08-24', 'leave']] as [$date, $status]) {
             ClassSession::create([
                 'StudentClassID' => $course->ID,
                 'SessionDate' => $date,
@@ -353,6 +353,12 @@ class MonthlyBillingSlipTest extends TestCase
             'PeriodStart' => '2026-08-30',
             'PeriodEnd' => '2026-09-28',
         ]);
+        // A second, non-course line (material fee) must not hide the course item's range.
+        InvoiceItem::create([
+            'InvoiceID' => $invoice->id,
+            'Description' => '教材費',
+            'Amount' => 300,
+        ]);
 
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
@@ -361,6 +367,13 @@ class MonthlyBillingSlipTest extends TestCase
             ->assertJsonPath('sessions.0.date', '2026-09-01')
             ->assertJsonPath('sessions.1.date', '2026-09-08')
             ->assertJsonPath('items.0.period_start', '2026-08-30');
+
+        // Course Management opens the same notice by course id (tuition slip).
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")
+            ->assertOk()
+            ->assertJsonCount(2, 'sessions')
+            ->assertJsonPath('sessions.0.date', '2026-09-01');
     }
 
     public function test_count_mode_slip_uses_contract_charge_when_stored_charge_is_stale(): void

@@ -456,8 +456,7 @@ class BillingController extends Controller
             ? $this->monthlyBilling->slipSessionDetailsForPeriod(
                 $monthlyCourse,
                 $projection['billing_period'],
-                $items->count() === 1 ? $items->first()['period_start'] : null,
-                $items->count() === 1 ? $items->first()['period_end'] : null,
+                ...$this->monthlyBilling->serviceRangeForCourse($invoice, (int) $monthlyCourse->getKey()),
             )
             : ClassSession::sessionsForPaymentSlip(
                 $studentClassIds,

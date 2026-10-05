@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ClassSession;
+use App\Models\Invoice;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
@@ -250,10 +251,31 @@ class MonthlyBillingService
         return $this->sessionDetails($course, $sessions);
     }
 
+    /**
+     * The invoice item that carries this course's service range: the one item
+     * linked to the course with both bounds, else the invoice's only item.
+     *
+     * @return array{0:?string,1:?string}
+     */
+    public function serviceRangeForCourse(Invoice $invoice, int $courseId): array
+    {
+        $bounded = $invoice->items->filter(fn ($item) => $item->PeriodStart && $item->PeriodEnd);
+        $linked = $bounded->filter(fn ($item) => (int) ($item->StudentClassID ?? 0) === $courseId);
+        $item = $linked->count() === 1
+            ? $linked->first()
+            : ($invoice->items->count() === 1 ? $bounded->first() : null);
+
+        return $item
+            ? [Carbon::parse($item->PeriodStart)->toDateString(), Carbon::parse($item->PeriodEnd)->toDateString()]
+            : [null, null];
+    }
+
     /** @return Collection<int, ClassSession> */
     private function plannedSessions(Builder $query): Collection
     {
-        return $query->whereNotIn('Status', ['cancelled', 'voided', 'rescheduled'])
+        // Still-to-happen lessons only (same set as receipts' upcoming list);
+        // leave/excused/absent outcomes are not lessons the charge covers.
+        return $query->whereIn('Status', ['scheduled', 'rescheduled'])
             ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
     }
