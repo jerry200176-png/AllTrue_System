@@ -362,6 +362,7 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
+import { isPaymentNoticeStatus, paymentCenterIntentFor } from '../lib/paymentStatus.js';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
@@ -863,9 +864,7 @@ const paymentAlertBadgeText = (s) => {
   return `未繳 · ${s.remaining_lessons} 堂`;
 };
 
-const isPaymentNoticeAvailable = (student) =>
-  ['unpaid', 'partial', 'pending_report'].includes(student?.payment_status)
-  || (student?.payment_status == null && student?.alert_type === 'unpaid');
+const isPaymentNoticeAvailable = (student) => isPaymentNoticeStatus(student?.payment_status);
 
 const paymentStudentClassId = (student) => Number(student?.student_class_id || student?.id || 0);
 
@@ -885,14 +884,7 @@ const openPaymentSlip = (student) => {
   paymentSlipOpen.value = true;
 };
 
-const paymentCenterIntent = (student) => {
-  const status = student?.payment_status;
-  if (status === 'pending_report') return 'pending_report';
-  if (status === 'pending_reconciliation') return 'pending_reconciliation';
-  if (status === 'unpaid' || status === 'partial' || (status == null && student?.alert_type === 'unpaid')) return 'unpaid';
-  if (student?.alert_type === 'low_sessions' || student?.alert_type === 'monthly_due_soon') return 'renewal';
-  return 'pending';
-};
+const paymentCenterIntent = paymentCenterIntentFor;
 
 const openPaymentCenter = (student) => {
   emit('navigate', {

@@ -12,7 +12,7 @@
         <span class="pe-info-item"><strong>學生</strong>{{ row?.student_name }}</span>
         <span class="pe-info-item"><strong>科目</strong>{{ row?.subject }}</span>
         <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}</span>
-        <span v-if="row?.payable_status !== 'unbilled'" class="pe-info-item"><strong>{{ row?.payable_status === 'invoiced' ? '帳單應繳' : '應繳' }}</strong>NT$ {{ Number(row?.payable_amount ?? row?.charge ?? 0).toLocaleString('zh-TW') }}</span>
+        <span v-if="row?.payable_status !== 'unbilled'" class="pe-info-item"><strong>{{ row?.payable_status === 'invoiced' ? '帳單應繳' : '應繳' }}</strong>NT$ {{ Number(row?.payable_amount ?? 0).toLocaleString('zh-TW') }}</span>
         <span v-else class="pe-info-item pe-info-item--pending"><strong>應繳</strong>待開單／尚無帳單</span>
         <span v-if="row?.estimated_amount != null" class="pe-info-item pe-info-item--muted"><strong>估算</strong>NT$ {{ Number(row.estimated_amount).toLocaleString('zh-TW') }}</span>
         <span v-if="row?.billing_period" class="pe-info-item"><strong>帳務期間</strong>{{ row.billing_period }}</span>
@@ -124,7 +124,7 @@ watch(() => props.show, (val) => {
     form.account_last5 = '';
     form.amount = props.row.payable_status === 'unbilled'
       ? ''
-      : (props.row.payable_outstanding ?? props.row.payable_amount ?? props.row.charge ?? '');
+      : (props.row.payable_outstanding ?? props.row.payable_amount ?? '');
     form.note = '';
     submitError.value = '';
   }
