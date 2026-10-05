@@ -326,7 +326,7 @@ class MonthlyBillingSlipTest extends TestCase
             'monthly_sessions' => 4,
             'rate_unit' => 'session',
         ]);
-        foreach ([['2026-09-01', 'scheduled'], ['2026-09-08', 'scheduled'], ['2026-09-15', 'cancelled'], ['2026-09-29', 'scheduled']] as [$date, $status]) {
+        foreach ([['2026-09-01', 'attended'], ['2026-09-08', 'scheduled'], ['2026-09-15', 'cancelled'], ['2026-09-22', 'rescheduled'], ['2026-09-29', 'scheduled']] as [$date, $status]) {
             ClassSession::create([
                 'StudentClassID' => $course->ID,
                 'SessionDate' => $date,
@@ -351,6 +351,15 @@ class MonthlyBillingSlipTest extends TestCase
             'Description' => '月結費用 2026年8月',
             'Amount' => 6600,
             'PeriodStart' => '2026-08-30',
+            'PeriodEnd' => '2026-09-14',
+        ]);
+        // MonthlySplit shape: a second bounded item for the same course.
+        InvoiceItem::create([
+            'InvoiceID' => $invoice->id,
+            'StudentClassID' => $course->ID,
+            'Description' => '月結費用 2026年9月',
+            'Amount' => 0,
+            'PeriodStart' => '2026-09-15',
             'PeriodEnd' => '2026-09-28',
         ]);
         // A second, non-course line (material fee) must not hide the course item's range.
@@ -363,16 +372,17 @@ class MonthlyBillingSlipTest extends TestCase
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/invoices/{$invoice->id}/slip-data")
             ->assertOk()
-            ->assertJsonCount(2, 'sessions')
+            ->assertJsonCount(3, 'sessions')
             ->assertJsonPath('sessions.0.date', '2026-09-01')
-            ->assertJsonPath('sessions.1.date', '2026-09-08')
+            ->assertJsonPath('sessions.0.status', 'attended')
+            ->assertJsonPath('sessions.2.date', '2026-09-22')
             ->assertJsonPath('items.0.period_start', '2026-08-30');
 
         // Course Management opens the same notice by course id (tuition slip).
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->getJson("/api/v1/alerts/tuition-slip/{$course->ID}")
             ->assertOk()
-            ->assertJsonCount(2, 'sessions')
+            ->assertJsonCount(3, 'sessions')
             ->assertJsonPath('sessions.0.date', '2026-09-01');
     }
 

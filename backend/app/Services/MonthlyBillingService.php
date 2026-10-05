@@ -21,6 +21,7 @@ class MonthlyBillingService
 {
     /** @var list<string> */
     private const BILLABLE_STATUSES = ['attended', 'completed', 'late'];
+    private const PLANNED_STATUSES = ['scheduled', 'rescheduled'];
 
     public function __construct(private StudentClassPricingService $pricing)
     {
@@ -243,17 +244,20 @@ class MonthlyBillingService
             $sessions = $this->plannedSessions($this->periodSessionQuery($course, $billingPeriod));
         }
         if ($sessions->isEmpty() && $serviceStart !== null && $serviceEnd !== null) {
-            $sessions = $this->plannedSessions(
-                $this->periodSessionQuery($course, $billingPeriod, (string) $serviceStart, (string) $serviceEnd)
-            );
+            // The service range is the whole prepaid period: held and still-to-happen lessons.
+            $sessions = $this->periodSessionQuery($course, $billingPeriod, (string) $serviceStart, (string) $serviceEnd)
+                ->whereIn('Status', [...self::BILLABLE_STATUSES, ...self::PLANNED_STATUSES])
+                ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+                ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
         }
 
         return $this->sessionDetails($course, $sessions);
     }
 
     /**
-     * The invoice item that carries this course's service range: the one item
-     * linked to the course with both bounds, else the invoice's only item.
+     * This course's service range on the invoice: the span of its linked
+     * items with both bounds (a MonthlySplit invoice has several), else the
+     * invoice's only item.
      *
      * @return array{0:?string,1:?string}
      */
@@ -262,13 +266,15 @@ class MonthlyBillingService
         $items = $invoice->loadMissing('items')->getRelationValue('items');
         $bounded = $items->filter(fn ($item) => $item->PeriodStart && $item->PeriodEnd);
         $linked = $bounded->filter(fn ($item) => (int) ($item->StudentClassID ?? 0) === $courseId);
-        $item = $linked->count() === 1
-            ? $linked->first()
-            : ($items->count() === 1 ? $bounded->first() : null);
+        $source = $linked->isNotEmpty() ? $linked : ($items->count() === 1 ? $bounded : collect());
+        if ($source->isEmpty()) {
+            return [null, null];
+        }
 
-        return $item
-            ? [Carbon::parse($item->PeriodStart)->toDateString(), Carbon::parse($item->PeriodEnd)->toDateString()]
-            : [null, null];
+        return [
+            $source->map(fn ($item) => Carbon::parse($item->PeriodStart)->toDateString())->min(),
+            $source->map(fn ($item) => Carbon::parse($item->PeriodEnd)->toDateString())->max(),
+        ];
     }
 
     /** @return Collection<int, ClassSession> */
@@ -276,7 +282,7 @@ class MonthlyBillingService
     {
         // Still-to-happen lessons only (same set as receipts' upcoming list);
         // leave/excused/absent outcomes are not lessons the charge covers.
-        return $query->whereIn('Status', ['scheduled', 'rescheduled'])
+        return $query->whereIn('Status', self::PLANNED_STATUSES)
             ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
             ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status', 'session_charge']);
     }
