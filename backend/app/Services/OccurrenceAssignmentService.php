@@ -157,7 +157,7 @@ class OccurrenceAssignmentService
     /** Serialize writers on one occurrence: no unique index yet, so two first writes must not both create a chain. */
     private function lockOccurrence(ClassSession $session): void
     {
-        ClassSession::where('id', (int) $session->id)->lockForUpdate()->first();
+        ClassSession::query()->where('id', (int) $session->id)->lockForUpdate()->first();
     }
 
     /** @return array{0: StudentClass, 1: string, 2: string, 3: string} */
