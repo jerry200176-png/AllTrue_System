@@ -517,6 +517,13 @@ jobs:
                 ->orderBy('id')->get(['id', 'StudentClassID', 'Status', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'billing_period']);
               $invoiceIds = $invoices->pluck('id')->all();
               $out['invoices'] = $invoices->map(fn ($r) => (array)$r)->values()->all();
+              // Invoices whose contract is outside this student's window: show only ownership facts (IDs, no names).
+              $foreignClassIds = $invoices->pluck('StudentClassID')->filter()->map(fn ($id) => (int)$id)
+                ->reject(fn ($id) => in_array($id, $classIds, true))->unique()->values()->all();
+              $out['invoice_foreign_classes'] = $foreignClassIds === [] ? [] : $db::table('StudentClass')->whereIn('ID', $foreignClassIds)
+                ->get(['ID', 'StudentID', 'SubjectID', 'TeacherID', 'ScheduleMode', 'Stop', 'StartDate', 'EndDate', 'Charge', 'Paid'])
+                ->map(fn ($r) => array_merge((array)$r, ['same_student' => in_array((int)$r->StudentID, $studentIds, true)]))->values()->all();
+              $out['invoice_foreign_classes_missing'] = array_values(array_diff($foreignClassIds, array_map(fn ($r) => (int)$r['ID'], $out['invoice_foreign_classes'])));
               $out['invoice_items'] = $invoiceIds === [] ? [] : $db::table('InvoiceItem')->whereIn('InvoiceID', $invoiceIds)
                 ->get(['id', 'InvoiceID', 'StudentClassID', 'PeriodStart', 'PeriodEnd', 'Amount'])->map(fn ($r) => (array)$r)->values()->all();
               $out['payments'] = $invoiceIds === [] ? [] : $db::table('Payment')->whereIn('InvoiceID', $invoiceIds)
